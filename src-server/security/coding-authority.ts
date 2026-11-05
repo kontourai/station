@@ -12,6 +12,7 @@ import {
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
 import { isAgentOriginatedRequest } from '../runtime/mcp/station-control-caller.js';
+import { managedCeilingRefuses } from './managed-approval-ceiling.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   isBoundRuntimeLocalOperator,
@@ -250,11 +251,16 @@ export function refusesWorkingDirectoryChoice(
  * from its access editor). Tightening, and a Default pick, need neither.
  * Never a request that may be an agent's (`actsForAnAgent`): the internal
  * principal, with or without the station-control origin marker.
+ *
+ * #4518: nobody, the operator included, while the machine's managed policy
+ * caps approval below full access. Every `FullAccessGrant` is minted here
+ * (`fullAccessGrantFor`), so none exists above the ceiling.
  */
 export function mayGrantFullAccess(
   request: Request,
   grantedScope: string | undefined,
 ): boolean {
+  if (managedCeilingRefuses('never')) return false;
   // An agent may never give itself, or any session, full access.
   if (actsForAnAgent(request)) return false;
   if (isOperatorInPerson(request)) return true;

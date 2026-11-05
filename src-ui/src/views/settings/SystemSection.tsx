@@ -1,8 +1,10 @@
 import { ACCOUNT_PREFERENCE_KEYS } from '@kontourai/station-contracts/account-preferences';
+import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { SettingsGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { ChangelogPreference } from '../../components/updates/ChangelogPreference';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import {
   useDeviceSettings,
@@ -17,6 +19,7 @@ import {
 } from './BuildProvenance';
 import { ConnectedServerUpdates } from './ConnectedServerUpdates';
 import { DesktopUpdateCheck } from './DesktopUpdateCheck';
+import { ManagedFieldset, ManagedSettingBadge } from './SettingRowStatus';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 import { buildDeviceResetPlan } from './station-reset';
@@ -29,6 +32,7 @@ export function SystemSection({
   onImport,
   onResetToDefaults,
   hasUnsavedChanges = false,
+  provenance,
 }: {
   apiBase: string;
   config: AppConfig;
@@ -43,6 +47,8 @@ export function SystemSection({
    * agrees with the server.
    */
   hasUnsavedChanges?: boolean;
+  /** #4517: per-setting provenance, for the managed policy's badge and lock. */
+  provenance?: Record<string, SettingProvenanceEntry>;
 }) {
   const [buildDetailsOpen, setBuildDetailsOpen] = useState(false);
   const platformProfile = usePlatformProfile();
@@ -83,6 +89,10 @@ export function SystemSection({
         </div>
       )}
 
+      <div {...settingsRow('show-release-notes')} tabIndex={-1}>
+        <ChangelogPreference />
+      </div>
+
       {/* The card's own "Server · {name}" heading labels this row; a row
           title above it would name the same server twice. */}
       <section
@@ -105,21 +115,26 @@ export function SystemSection({
         >
           {settingsRow('server-update-download-policy').title}
         </label>
-        <select
-          id="serverUpdateDownloadPolicy"
-          value={config.serverUpdateDownloadPolicy ?? 'after-24h'}
-          onChange={(event) =>
-            onChange({
-              ...config,
-              serverUpdateDownloadPolicy: event.target
-                .value as AppConfig['serverUpdateDownloadPolicy'],
-            })
-          }
-        >
-          <option value="never">Never</option>
-          <option value="after-24h">After 24 hours</option>
-          <option value="immediately">Immediately</option>
-        </select>
+        <ManagedSettingBadge
+          provenance={provenance?.serverUpdateDownloadPolicy}
+        />
+        <ManagedFieldset provenance={provenance?.serverUpdateDownloadPolicy}>
+          <select
+            id="serverUpdateDownloadPolicy"
+            value={config.serverUpdateDownloadPolicy ?? 'after-24h'}
+            onChange={(event) =>
+              onChange({
+                ...config,
+                serverUpdateDownloadPolicy: event.target
+                  .value as AppConfig['serverUpdateDownloadPolicy'],
+              })
+            }
+          >
+            <option value="never">Never</option>
+            <option value="after-24h">After 24 hours</option>
+            <option value="immediately">Immediately</option>
+          </select>
+        </ManagedFieldset>
         <span className="settings__field-hint">
           For a Station service installed from a release archive: when it
           downloads an available update by itself. It never restarts without
@@ -150,22 +165,25 @@ export function SystemSection({
         <label className="settings__field-label" htmlFor="logLevel">
           {settingsRow('log-level').title}
         </label>
-        <select
-          id="logLevel"
-          value={config.logLevel || 'info'}
-          onChange={(event) =>
-            onChange({
-              ...config,
-              logLevel: event.target.value as AppConfig['logLevel'],
-            })
-          }
-        >
-          <option value="error">Error</option>
-          <option value="warn">Warning</option>
-          <option value="info">Info</option>
-          <option value="debug">Debug</option>
-          <option value="trace">Trace</option>
-        </select>
+        <ManagedSettingBadge provenance={provenance?.logLevel} />
+        <ManagedFieldset provenance={provenance?.logLevel}>
+          <select
+            id="logLevel"
+            value={config.logLevel || 'info'}
+            onChange={(event) =>
+              onChange({
+                ...config,
+                logLevel: event.target.value as AppConfig['logLevel'],
+              })
+            }
+          >
+            <option value="error">Error</option>
+            <option value="warn">Warning</option>
+            <option value="info">Info</option>
+            <option value="debug">Debug</option>
+            <option value="trace">Trace</option>
+          </select>
+        </ManagedFieldset>
         <span className="settings__field-hint">
           Choose how much detail Station logs.
         </span>

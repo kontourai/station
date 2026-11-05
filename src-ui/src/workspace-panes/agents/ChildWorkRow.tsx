@@ -19,6 +19,7 @@ import { ChildWorkIdentity } from '../../components/chat/ChildWorkIdentity';
 import {
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
+  childWorkSummaryLabel,
   childWorkUsageClauses,
   formatChildWorkElapsed,
   latestChildTool,
@@ -51,7 +52,7 @@ function provenanceText(provenance: ChildWorkProvenance): string {
     case 'task':
       return `From task ${provenance.taskId}`;
     case 'cli':
-      return 'Started from the CLI';
+      return 'Recorded origin: CLI (reported)';
     case 'none':
       return 'No parent';
   }
@@ -175,7 +176,8 @@ export function ChildWorkRow({
   const handle = item.result?.handle;
   const sessionHandle = handle?.kind === 'session' ? handle : undefined;
   const usage = childWorkUsageClauses(item.usage);
-  const expandable = Boolean(summary) || isDelegate || usage.length > 0;
+  const expandable =
+    !running || Boolean(summary) || isDelegate || usage.length > 0;
 
   const stop = () => {
     if (row.stop === 'delegate-interrupt')
@@ -232,6 +234,9 @@ export function ChildWorkRow({
               progress={item.progress}
             />
           ) : null}
+          {item.status === 'completed' && !summary && (
+            <span className="child-work-row__note">Summary not reported</span>
+          )}
           {showProvenance && (
             <span className="child-work-row__provenance">
               {provenanceText(row.provenance)}
@@ -251,7 +256,18 @@ export function ChildWorkRow({
       </button>
       {expanded && (
         <div className="child-work-row__detail">
-          {summary && <p className="child-work-row__summary">{summary}</p>}
+          {summary && (
+            <p className="child-work-row__summary">
+              <strong>{childWorkSummaryLabel(item.result?.source)}</strong>
+              {' · '}
+              <span>{summary}</span>
+            </p>
+          )}
+          {!running && !isDelegate && item.result?.source !== 'tool-return' && (
+            <p className="child-work-row__note">
+              No returned result was reported.
+            </p>
+          )}
           {summary && item.result?.summaryTruncated && (
             <p className="child-work-row__note">
               Summary cut at {CHILD_WORK_SUMMARY_MAX_CHARS.toLocaleString()}{' '}

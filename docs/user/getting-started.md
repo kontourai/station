@@ -1,8 +1,9 @@
 # Getting Started
 
-Station is a local-first workspace for agent work. This guide covers the ways
-to run Station today, a verified macOS/Linux install when its release ring is
-published, first launch, connection setup, and routine lifecycle.
+Run Station on your computer and connect an agent such as Claude Code or Codex.
+This guide covers installation, your first chat and Project, connecting a phone,
+and keeping Station updated. To share a Project with someone, read the
+[sharing setup and current limits](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md).
 
 ## First chat with Codex
 
@@ -853,6 +854,20 @@ can use the screen. Explicit maximized conversation links still
 open chat at their requested size, and the prior chat size remains available
 when you return to the conversation.
 
+### Read child-work outcomes
+
+Child-work cards distinguish **Returned result**, **Provider summary**,
+**Child message**, and **Provider error**. Older text may show that its source
+was not recorded. A summary or transcript handle alone does not establish a
+returned result. An existing completion notice is corrected when a later
+structured tool return arrives from the same Station and child.
+
+Background-task **Recent activity** is a bounded cache. Older tool rows and
+closed-chat history can be omitted; counts marked **shown** describe retained
+rows. Closing a chat does not stop its child work. Use Activity to inspect the
+Session history available from that Station. Missing snapshot evidence keeps an
+outcome unresolved rather than declaring success.
+
 ### Send a follow-up while an engine works
 
 For a running Codex subagent that supports direct instructions, expand its
@@ -1117,6 +1132,11 @@ Each conversation is filed under a Project by the folder it ran in:
 3. Otherwise, **No project**. Choose **No project** in Activity's **Project**
    filter to list these.
 
+Rows can show **Directory · …/parent/folder** when a working folder is recorded
+without a Project label. The label provides folder context and leaves Project
+membership unchanged; use **No project** in the Project filter for unassigned
+conversations.
+
 A conversation keeps its Project after its worktree is removed. If its Project
 is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
 of a worktree outside the Project folder also lands in **No project**: Station
@@ -1240,6 +1260,24 @@ automatically. See [Scheduler identity and recovery](https://github.com/kontoura
 Open the help menu and choose **Troubleshoot with an agent**, or search the
 command palette for **Troubleshoot an issue**. It is also under Settings →
 Diagnostics.
+
+Where Station shows an error, a **Troubleshoot** action starts the same
+conversation with that error already attached:
+
+- a view that stopped working (under **More actions** when Station refused
+  the view), and an error notification;
+- a pane that is temporarily unavailable, and a layout tab Station can't show;
+- an engine that isn't connected, and an agent that can't run;
+- a local Station that stopped or failed when **Restart Station** isn't
+  offered;
+- a reply that failed (**Troubleshoot this**);
+- a reply you rated thumbs-down, through **This looks like a Station bug**.
+  Your rating is saved as usual; the bug report isn't added to it.
+
+The assistant receives the page you were on (without anything after `?` or
+`#`), the error's code and first line with known credential shapes, links and
+file paths removed, and for a reply, the conversation and turn ids. It never
+receives a stack trace.
 
 1. Describe what went wrong in your own words and choose **Start
    troubleshooting**. You can paste or drop screenshots into the chat.

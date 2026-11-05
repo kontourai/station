@@ -60,3 +60,14 @@ an exhaustive audit from a completed scan or remove real entrypoints to quiet it
 - AI tool or tools used:
 - Material areas affected by AI-assisted work:
 - Personal inspection performed:
+
+### Agent sessions
+
+For each agent session behind this change: harness, a resumable session or
+thread identifier, model or models, and input/output tokens where the harness
+records them; then the session count and totals. Fill it in, or generate it,
+between the markers, and leave them empty when no agent was used. Identifiers
+only; never transcripts or message text.
+
+<!-- agent-sessions:v1 -->
+<!-- /agent-sessions:v1 -->

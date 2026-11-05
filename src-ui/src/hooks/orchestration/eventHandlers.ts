@@ -155,14 +155,27 @@ export function handleOrchestrationEvent(
   // this costs nothing for chats that never touch background tasks.
   const replayThread = isReplayThread(event.threadId);
   if (!replayThread) {
-    backgroundTasksStore.ingest(event);
+    backgroundTasksStore.ingest(event, apiBase);
+    // Alias retention must classify the current child transition.
+    childWorkGlobalStore.ingest(apiBase, event);
+    if (
+      event.method === 'child-work.updated' ||
+      event.method === 'extension.notification'
+    ) {
+      const chatKey = activeChatsStore.getChatKeyForExecutionSession(
+        event.threadId,
+      );
+      if (chatKey)
+        backgroundTasksStore.bindProviderReporter(
+          apiBase,
+          event.threadId,
+          chatKey,
+        );
+    }
     // #2456 D2: a session's end must reach the child-work registry even when
     // its chat was since rebound to a newer session (the guard below would
     // drop it), or the chat keeps the dead session's children.
-    observeChildWorkLifecycle(event);
-    // #2459: the Agents pane's "All" scope — every session's engine
-    // subagents, including sessions no chat has open (a CLI delegate).
-    childWorkGlobalStore.ingest(apiBase, event);
+    observeChildWorkLifecycle(event, apiBase);
     // A settled request's approval toast goes whether or not any chat still
     // routes this thread: the toast (and the header "Approval needed" count
     // built from it) is global, and the chat that raised it may be closed
@@ -255,10 +268,10 @@ function dispatchProjectedOrchestrationEvent(
       handleSessionLifecycleEvent(event);
       return;
     case 'session.state-changed':
-      handleSessionStateChangedEvent(event);
+      handleSessionStateChangedEvent(event, undefined, apiBase);
       return;
     case 'session.exited':
-      handleSessionExitedEvent(event);
+      handleSessionExitedEvent(event, undefined, apiBase);
       return;
     case 'session.cancellation-requested':
       // Intent is not a terminal outcome; settlement owns completion and queue handling.
@@ -354,10 +367,10 @@ function dispatchProjectedOrchestrationEvent(
       handlePlanUpdatedEvent(event);
       return;
     case 'extension.notification':
-      handleExtensionNotificationEvent(event);
+      handleExtensionNotificationEvent(event, apiBase);
       return;
     case 'child-work.updated':
-      handleChildWorkUpdatedEvent(event);
+      handleChildWorkUpdatedEvent(event, apiBase);
       return;
     case 'token-usage.updated':
       handleTokenUsageUpdatedEvent(event);

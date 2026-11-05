@@ -19,6 +19,7 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import { currentUnattendedPrincipal } from '../../../runtime/agents/unattended-principal-context.js';
 import { createAutomationActionsRuntime } from '../../../runtime/automation-actions-runtime.js';
+import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
 import { createRuntimeResourcePostureController } from '../../infra/resource-posture.js';
 import { EventBus } from '../../orchestration/event-bus.js';
@@ -64,7 +65,9 @@ class RecordingAdapter extends GateTestAdapter {
     principal: ReturnType<typeof currentUnattendedPrincipal>;
     invocationId?: string;
   }[] = [];
+  readonly starts: ProviderSessionStartInput[] = [];
   override async startSession(input: ProviderSessionStartInput) {
+    this.starts.push(input);
     const session = await super.startSession(input);
     this.events.push({
       method: 'session.started',
@@ -109,6 +112,8 @@ async function world(
     ruleModes?: readonly ('observe' | 'live')[];
     /** Store the rules in the pre-#4509 `enabled: true` shape. */
     legacyEnabled?: boolean;
+    /** The rule action's posture (`dispatch-task` `approvalMode`). */
+    approvalMode?: 'ask' | 'auto';
   } = {},
 ) {
   const ruleModes = options.ruleModes ?? ['live'];
@@ -142,6 +147,9 @@ async function world(
           agentId: FIXTURE_TASK_AGENT,
           instructions: 'Investigate the failure.',
           budget: { maxTurns: 1, maxTokens: 20000, maxWallRuntimeMs: 60000 },
+          ...(options.approvalMode
+            ? { approvalMode: options.approvalMode }
+            : {}),
         },
       }),
     );
@@ -402,6 +410,41 @@ test('revoking the source before dispatch refuses the retained intent without cr
   expect(w.adapter.sends).toEqual([]);
   expect(w.ledger.listActionIntents()).toEqual([]);
   expect(w.ledger.listDeliveries()[0]?.outcome).toBe('refused');
+});
+
+test('Task dispatch reports retryable unavailable instead of waiting for engine capacity', async () => {
+  const w = await world();
+  const task = await w.graph.createTask({
+    projectId: 'project',
+    agentId: FIXTURE_TASK_AGENT,
+    title: 'Capacity-constrained task',
+  });
+  const held = w.controller.reserveEngineStart();
+  let queued!: () => void;
+  const queuedSignal = new Promise<'queued'>((resolve) => {
+    queued = () => resolve('queued');
+  });
+  const wait = w.controller.waitForEngineStart.bind(w.controller);
+  vi.spyOn(w.controller, 'waitForEngineStart').mockImplementation((signal) => {
+    const result = wait(signal);
+    queued();
+    return result;
+  });
+  const dispatch = w.dispatcher.dispatch(task.id, {
+    ownerUserId: 'test-owner',
+    fullAccessGrant: null,
+    agentId: FIXTURE_TASK_AGENT,
+    provider: 'claude',
+  });
+  try {
+    expect(await Promise.race([dispatch, queuedSignal])).toMatchObject({
+      kind: 'unavailable',
+      retryable: true,
+    });
+  } finally {
+    held.release();
+    await dispatch;
+  }
 });
 
 test('actual engine-start capacity refusal retains one pending intent/Task and consumes no attempt until admitted', async () => {
@@ -777,4 +820,37 @@ test('the mode check alone refuses an intent whose fingerprint matches the rule 
   });
   expect(w.graph.listTasks()).toEqual([]);
   expect(w.adapter.sends).toEqual([]);
+});
+
+/**
+ * #4518: an automation rule's posture is a default, so under the machine's
+ * managed approval ceiling its run starts at the ceiling. Driven through the
+ * real automation runtime, Task dispatcher and `OrchestrationService`.
+ */
+test('an Auto automation rule starts its engine at a managed ceiling of Ask', async () => {
+  const w = await world({ approvalMode: 'auto' });
+  installManagedApprovalCeiling({
+    summary: {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: { maxApprovalMode: 'ask' },
+    },
+  });
+  cleanup.push(async () => installManagedApprovalCeiling(null));
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(w.adapter.starts.length).toBeGreaterThan(0);
+  expect(
+    w.adapter.starts.map((start) => start.modelOptions?.approvalMode),
+  ).toEqual(w.adapter.starts.map(() => 'ask'));
+});
+
+test('control: without a ceiling the same Auto rule starts at Auto', async () => {
+  const w = await world({ approvalMode: 'auto' });
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(w.adapter.starts[0]?.modelOptions?.approvalMode).toBe('auto');
 });

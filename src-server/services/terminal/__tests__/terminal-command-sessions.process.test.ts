@@ -36,6 +36,7 @@ function service(home: string, root: string) {
     {
       authorize: (principal) => principal === 'operator',
       resolveRoot: async () => root,
+      authorizeAgentCommand: async () => {},
     },
   );
 }
@@ -55,6 +56,7 @@ function bridge(terminals: AcpSessionTerminals, cwd: string) {
     cwd,
     terminals: new Map(),
     sessionTerminals: terminals,
+    terminalConfinement: () => 'host',
     approvalRegistry: new ApprovalRegistry(logger),
     getActiveWriter: () => null,
     nextTerminalId: () => `acp-term-${++next}`,
@@ -153,7 +155,10 @@ describe('ACP agent terminals on terminal sessions', () => {
     const root = await realpath(makeTempDir(`${name}-root-`));
     const sessions = service(home, root);
     const client = bridge(
-      new AcpSessionTerminals(sessions, agentScope, root),
+      new AcpSessionTerminals(sessions, agentScope, root, () => ({
+        threadId: 'agent',
+        confinement: 'host',
+      })),
       root,
     );
     return { home, root, sessions, client };

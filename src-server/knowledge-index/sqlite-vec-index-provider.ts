@@ -15,7 +15,6 @@ import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type {
-  IEmbeddingProvider,
   KnowledgeIndexEntry,
   KnowledgeIndexGeneration,
   KnowledgeIndexHit,
@@ -24,7 +23,7 @@ import type {
 import type {
   KitRecord,
   KitRecordType,
-  KnowledgeStoreProvider,
+  KnowledgeStoreAdapter,
 } from '@kontourai/station-contracts/knowledge-store';
 import { getLoadablePath } from 'sqlite-vec';
 import { chunkKnowledgeText } from '../services/knowledge/knowledge-storage.js';
@@ -38,6 +37,7 @@ import { knowledgeEmbeddingIdentity } from './embedding-identity.js';
 import { KeyedInFlightGuard } from './inflight-guard.js';
 
 const require = createRequire(import.meta.url);
+type RebuildDeps = Parameters<KnowledgeIndexProvider['rebuildRoot']>[1];
 const { DatabaseSync } = require('node:sqlite') as {
   DatabaseSync: new (
     path: string,
@@ -111,6 +111,7 @@ interface SqliteVecIndexProviderOptions {
  * the two genuinely rare, explicit, multi-step admin actions are.
  */
 export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
+  readonly supportsRootRevision = true;
   readonly id = 'sqlite-vec';
   readonly displayName = 'sqlite-vec (embedded semantic index)';
 
@@ -471,7 +472,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
    * DIFFERENT roots are unaffected (different lock keys). */
   async rebuildRoot(
     rootId: string,
-    deps: { store: KnowledgeStoreProvider; embedder: IEmbeddingProvider },
+    deps: RebuildDeps,
   ): Promise<{ records: number; chunks: number }> {
     return this.inFlight.run(rootId, () =>
       this.rebuildRootUnguarded(rootId, deps),
@@ -480,16 +481,22 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
 
   private async rebuildRootUnguarded(
     rootId: string,
-    deps: { store: KnowledgeStoreProvider; embedder: IEmbeddingProvider },
+    deps: RebuildDeps,
   ): Promise<{ records: number; chunks: number }> {
     const start = performance.now();
 
-    const adapter = await deps.store.adapterFor(rootId);
-    const records: KitRecord[] = [];
-    for (const type of ALL_KIT_RECORD_TYPES) {
-      const forType = await adapter.listByType(type, { includeRetired: true });
-      records.push(...forType);
-    }
+    const readRecords = async (adapter: KnowledgeStoreAdapter) => {
+      const records: KitRecord[] = [];
+      for (const type of ALL_KIT_RECORD_TYPES) {
+        records.push(
+          ...(await adapter.listByType(type, { includeRetired: true })),
+        );
+      }
+      return records;
+    };
+    const records = deps.withRootRevision
+      ? await deps.withRootRevision(readRecords)
+      : await readRecords(await deps.store.adapterFor(rootId));
 
     const embeddingIdentity = knowledgeEmbeddingIdentity(deps.embedder);
     const pending: Array<{
@@ -515,6 +522,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       });
     }
 
+    if (deps.withRootRevision) await deps.withRootRevision(async () => {});
     const vectors =
       pending.length > 0
         ? await deps.embedder.embed(pending.map((p) => p.text))
@@ -523,22 +531,25 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
     // Drop the root's existing partition only after the (possibly-failing) embed
     // call above has succeeded — an embedder error must never leave a root
     // half-deleted with nothing re-derived to replace it.
-    this.deleteRootRows(rootId);
+    const publish = async () => {
+      this.deleteRootRows(rootId);
+      if (pending.length > 0) {
+        const entries: KnowledgeIndexEntry[] = pending.map((p, i) => ({
+          recordId: p.recordId,
+          rootId,
+          chunkOrdinal: p.chunkOrdinal,
+          text: p.text,
+          vector: vectors[i],
+          metadata: p.metadata,
+          embeddingIdentity,
+        }));
+        this.writeEntries(entries);
+      }
 
-    if (pending.length > 0) {
-      const entries: KnowledgeIndexEntry[] = pending.map((p, i) => ({
-        recordId: p.recordId,
-        rootId,
-        chunkOrdinal: p.chunkOrdinal,
-        text: p.text,
-        vector: vectors[i],
-        metadata: p.metadata,
-        embeddingIdentity,
-      }));
-      this.writeEntries(entries);
-    }
-
-    this.setLastRebuiltAt(rootId);
+      this.setLastRebuiltAt(rootId);
+    };
+    if (deps.withRootRevision) await deps.withRootRevision(publish);
+    else await publish();
 
     const durationMs = performance.now() - start;
     knowledgeIndexRebuildDuration.record(durationMs, { rootId });

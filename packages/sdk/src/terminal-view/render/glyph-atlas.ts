@@ -121,6 +121,11 @@ export class GlyphAtlas {
     this.dirty = { x0: 0, y0: 0, x1: this.size, y1: this.size };
   }
 
+  /** Every tile must be uploaded again: the renderer's texture was lost. */
+  markAllDirty(): void {
+    this.dirty = { x0: 0, y0: 0, x1: this.size, y1: this.size };
+  }
+
   takeDirty(): { x: number; y: number; width: number; height: number } | null {
     const d = this.dirty;
     this.dirty = null;

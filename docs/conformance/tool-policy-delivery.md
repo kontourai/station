@@ -376,8 +376,10 @@ its request sheet's overflow item, #3331) and inbox card label it:
   (Ask, Auto or full access), that decision stands and nothing is recorded.
   It is not recorded over a standing Auto or full access. The composer chip,
   later turns and their metadata then show Auto, and picking Ask ends it. An
-  answer from another path is sent to the engine as a one-call accept: no mode
-  change is forwarded and nothing is recorded. That covers the delegated
+  answer from another path, or any answer under a managed approval ceiling of
+  Ask ([ceiling](../guides/managed-policy.md#approval-mode-ceiling)), is sent
+  to the engine as a one-call accept: no mode change is forwarded and nothing
+  is recorded. That covers the delegated
   `respond_to_task_request` path for a task on this Station, which admits a
   bound Project approver who may not set the approval mode, and the approval
   inbox. The inbox card does not offer the option at all. For a task on a

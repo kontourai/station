@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { expect, test, vi } from 'vitest';
+import { StationHttpError } from '../client/http';
 import { useUsageQuery } from '../query-domains/analytics';
 import { usePairedDevicesQuery } from '../query-domains/devicePairingRequests';
 import { useStationUsageQuery } from '../query-domains/stationUsage';
@@ -171,6 +172,62 @@ test('mounted usage observers refetch newer totals without a local mutation', as
     messages = 7;
     await act(() => vi.advanceTimersByTimeAsync(30_010));
     expect(view.result.current.data.lifetime.totalMessages).toBe(7);
+  } finally {
+    view.unmount();
+    client.clear();
+    vi.useRealTimers();
+    fetch.mockReset();
+  }
+});
+
+test('usage observers preserve an HTTP failure response status and explanation', async () => {
+  vi.useFakeTimers();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  fetch
+    .mockReset()
+    .mockResolvedValue(
+      Response.json(
+        { success: false, error: 'Usage temporarily unavailable' },
+        { status: 503 },
+      ),
+    );
+  const view = renderHook(() => useUsageQuery(), {
+    wrapper: wrapperFor(client),
+  });
+  try {
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(view.result.current.isError).toBe(true);
+    expect(view.result.current.data).toBeUndefined();
+    expect(view.result.current.error).toBeInstanceOf(StationHttpError);
+    expect(view.result.current.error).toMatchObject({
+      status: 503,
+      message: 'Usage temporarily unavailable',
+    });
+  } finally {
+    view.unmount();
+    client.clear();
+    vi.useRealTimers();
+    fetch.mockReset();
+  }
+});
+
+test('usage observers retain a genuine fetch transport rejection', async () => {
+  vi.useFakeTimers();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const failure = new TypeError('Failed to fetch');
+  fetch.mockReset().mockRejectedValue(failure);
+  const view = renderHook(() => useUsageQuery(), {
+    wrapper: wrapperFor(client),
+  });
+  try {
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(view.result.current.isError).toBe(true);
+    expect(view.result.current.data).toBeUndefined();
+    expect(view.result.current.error).toBe(failure);
   } finally {
     view.unmount();
     client.clear();

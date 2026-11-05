@@ -101,6 +101,8 @@ export interface SearchState {
 }
 
 const SCRATCH_BYTES = 4096;
+/** Presses within this time (and a cell's width) count as a repeat click. */
+const REPEAT_CLICK_INTERVAL_NS = 500_000_000n;
 const OUT_BYTES = 64 * 1024;
 /**
  * Grapheme clusters are read into the output buffer past the style struct.
@@ -988,6 +990,14 @@ export class TerminalEngine {
           GestureEventOpt.POSITION,
           pos,
         );
+      }
+      // Each event type takes only its own options and refuses the rest
+      // (GHOSTTY_INVALID_VALUE): a press counts clicks by time and has no
+      // geometry, a drag needs geometry and has no time. Setting both on
+      // both made every pointer selection fail, which on a phone's long press
+      // stopped the terminal (#3994).
+      if (type === 'drag') {
+        const view = vt.data();
         const geometry = this.scratch + 224;
         const g = L.GhosttySelectionGestureGeometry.fields;
         view.setUint32(geometry + g.columns, this.size.cols, true);
@@ -1004,6 +1014,8 @@ export class TerminalEngine {
           GestureEventOpt.GEOMETRY,
           geometry,
         );
+      }
+      if (type === 'press') {
         const time = this.scratch + 248;
         vt.data().setBigUint64(time, BigInt(Math.round(timeMs * 1e6)), true);
         vt.check(
@@ -1011,6 +1023,24 @@ export class TerminalEngine {
           handle,
           GestureEventOpt.TIME_NS,
           time,
+        );
+        // Without a repeat window every press is a first click: no word on a
+        // double click and none on the double press a long touch sends.
+        const interval = this.scratch + 256;
+        vt.data().setBigUint64(interval, REPEAT_CLICK_INTERVAL_NS, true);
+        vt.check(
+          'ghostty_selection_gesture_event_set',
+          handle,
+          GestureEventOpt.REPEAT_INTERVAL_NS,
+          interval,
+        );
+        const distance = this.scratch + 264;
+        vt.data().setFloat64(distance, this.size.cellWidth, true);
+        vt.check(
+          'ghostty_selection_gesture_event_set',
+          handle,
+          GestureEventOpt.REPEAT_DISTANCE,
+          distance,
         );
       }
       // Press and drag need a cell; a release may land outside the grid.

@@ -34,6 +34,7 @@ import {
   orchestrationLifecycleLabel,
 } from '../../utils/session-state';
 import {
+  sessionCwdLabel,
   sessionProjectLabel,
   sessionRecency,
   sessionTitle,
@@ -392,12 +393,7 @@ function buildSessionWorkItem(
       ?.name,
     provider: session.provider,
   });
-  const cwdLabel = session.cwd
-    ?.trim()
-    .split(/[/\\]+/)
-    .filter(Boolean)
-    .slice(-2)
-    .join('/');
+  const cwdLabel = sessionCwdLabel(session);
   const lifecycleLabel = orchestrationLifecycleLabel(session);
   // archive#1783: the serving Station's own observation, read off the
   // summary's required decoration (ADR 0012) and never recomputed here.
@@ -465,7 +461,7 @@ function buildSessionWorkItem(
       session.reportedModel ?? session.effectiveModel ?? session.model,
     ),
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
-    ...(cwdLabel ? { cwdLabel: `…/${cwdLabel}` } : {}),
+    ...(cwdLabel ? { cwdLabel } : {}),
     turnProgress: activeTurnProgress(session),
     // #2312 review: a Draft's own clocks move without anyone touching it — a
     // stop (idle reaper, shutdown) rewrites `updatedAt`, engine housekeeping

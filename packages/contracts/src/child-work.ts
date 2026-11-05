@@ -374,8 +374,17 @@ export type ChildWorkResultHandle =
   | { kind: 'transcript-file'; path: string }
   | { kind: 'session'; threadId: string; conversationId?: string };
 
+export type ChildWorkSummarySource =
+  | 'tool-return'
+  | 'provider-summary'
+  | 'child-message'
+  | 'provider-error';
+
 export interface ChildWorkResult {
+  /** Reported text, never evidence that a returned artifact was verified. */
   summary?: string;
+  /** Provenance of summary text only; discarded without text. A handle is not a returned report. */
+  source?: ChildWorkSummarySource;
   /** Present only when `summary` was cut to `CHILD_WORK_SUMMARY_MAX_CHARS`. */
   summaryTruncated?: true;
   handle?: ChildWorkResultHandle;
@@ -613,8 +622,50 @@ function normalizeResult(
     ...(truncated || (summary !== undefined && result.summaryTruncated)
       ? { summaryTruncated: true as const }
       : {}),
+    ...(summary !== undefined &&
+    (result.source === 'tool-return' ||
+      result.source === 'provider-summary' ||
+      result.source === 'child-message' ||
+      result.source === 'provider-error')
+      ? { source: result.source }
+      : {}),
     ...(handle ? { handle } : {}),
   };
+}
+
+/** A tool return supersedes a summary; other reports only fill missing facts. */
+function enrichResult(
+  existing: ChildWorkResult | undefined,
+  incoming: ChildWorkResult | undefined,
+): ChildWorkResult | undefined {
+  if (!existing || !incoming) return existing ?? incoming;
+  if (incoming.source === 'tool-return' && existing.source !== 'tool-return') {
+    const {
+      summary: _summary,
+      source: _source,
+      summaryTruncated: _truncated,
+      ...retained
+    } = existing;
+    return {
+      ...retained,
+      ...incoming,
+      handle: incoming.handle ?? existing.handle,
+    };
+  }
+  if (
+    existing.summary !== undefined &&
+    (existing.summary !== incoming.summary ||
+      existing.summaryTruncated ||
+      incoming.summaryTruncated)
+  ) {
+    const {
+      source: _source,
+      summaryTruncated: _truncated,
+      ...other
+    } = incoming;
+    return fillAbsent(existing, other);
+  }
+  return fillAbsent(existing, incoming);
 }
 
 function normalizeDepth(depth: unknown): number | undefined {
@@ -973,7 +1024,7 @@ function applySettle(
     next = normalizeItem({
       ...(fillAbsent(existing, identity as ChildWorkItem) ?? existing),
       status: existing.status,
-      result: fillAbsent(existing.result, result),
+      result: enrichResult(existing.result, result),
       ...settledUsage(existing, usage, {
         open: false,
         provisional,
