@@ -1156,6 +1156,45 @@ describe('Home, the dock and Activity agree on one item', () => {
     }
   });
 
+  test.each([
+    {
+      cwd: '/work/worktrees/review',
+      projectSlug: undefined,
+      directory: 'Directory · …/worktrees/review',
+    },
+    {
+      cwd: 'E:\\code\\review',
+      projectSlug: undefined,
+      directory: 'Directory · …/code/review',
+    },
+    { cwd: '/', projectSlug: undefined, directory: 'Directory · /' },
+    { cwd: 'E:\\', projectSlug: undefined, directory: 'Directory · E:\\' },
+    { cwd: '/work/station', projectSlug: 'station', directory: undefined },
+    { cwd: undefined, projectSlug: undefined, directory: undefined },
+    { cwd: '   ', projectSlug: undefined, directory: undefined },
+  ])(
+    'directory context stays distinct from Project membership for $cwd',
+    ({ cwd, projectSlug, directory }) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(NOW);
+      summaries = [{ ...runningSummary(minutesAgo(3)), projectSlug, cwd }];
+      const { activity, home, dock, sheet } = surfaces();
+      const meta = within(activity).getByTestId('activity-row-meta');
+      if (directory) {
+        for (const root of [activity, home, dock, sheet])
+          expect(
+            within(root).getByText(directory, { exact: true }),
+          ).toBeTruthy();
+        expect(meta.querySelector('[data-segment="project"]')).toBeNull();
+      } else {
+        expect(meta.querySelector('[data-segment="directory"]')).toBeNull();
+        expect(
+          meta.querySelector('[data-segment="project"]')?.textContent,
+        ).toBe(projectSlug);
+      }
+    },
+  );
+
   test('project marks follow each surface layout', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);

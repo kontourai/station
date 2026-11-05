@@ -66,6 +66,7 @@ import {
   humanizeId,
   isStreamingSession,
   isTerminalSession,
+  sessionCwdLabel,
   sessionIconAgent,
   sessionKindLabel,
   sessionProjectLabel,
@@ -215,6 +216,7 @@ function ActivityRowMeta({
   const attached = isReadOnlyAttachedSession(session);
   const agentName = attached ? null : sessionIconAgent(session, agents).name;
   const project = sessionProjectLabel(session);
+  const cwdLabel = project ? undefined : sessionCwdLabel(session);
   // An attached row's origin is the app it was started in, which is also its
   // agent name; the "Elsewhere" word beside it says the rest.
   const origin = activityOriginShortLabel(session);
@@ -230,6 +232,8 @@ function ActivityRowMeta({
     segments.push({ key: 'kind', text: sessionKindLabel(session) });
   if (agentName) segments.push({ key: 'agent', text: agentName });
   if (project) segments.push({ key: 'project', text: project });
+  else if (cwdLabel)
+    segments.push({ key: 'directory', text: `Directory · ${cwdLabel}` });
   if (originText) segments.push({ key: 'origin', text: originText });
   // NOT the `eventCount` proxy refused above: the sibling turn-sessions
   // folded behind this conversation row, a floor rather than an exact count.
