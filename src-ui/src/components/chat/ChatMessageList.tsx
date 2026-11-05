@@ -114,6 +114,7 @@ const loadTurnBrowser = () =>
   }));
 
 interface ChatMessageListProps {
+  recordAgents?: ReturnType<typeof useAgents>;
   externalScrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   preserveReading?: boolean;
   activeSession: ChatSession;
@@ -2330,7 +2331,7 @@ export const ChatMessageList = React.memo(function ChatMessageList(
       {...props}
       sendMessage={recordSendUnavailable}
       apiBase={target.apiBase}
-      agents={EMPTY_RECORD_AGENTS}
+      agents={props.recordAgents ?? EMPTY_RECORD_AGENTS}
     />
   ) : (
     <LiveChatMessageList {...props} />

@@ -371,6 +371,7 @@ export function MutableSessionDetail({
         answeringDeniedReason={sessionUnanswerableNotice ?? undefined}
         reader={{
           agentLabel,
+          agents,
           isStreaming,
           failureShownAbove: !isPeerRecord && Boolean(failureText),
           notices: historyNotices,
@@ -418,72 +419,69 @@ export function MutableSessionDetail({
               items={visibleAttentionItems}
               answerHere={!isPeerRecord}
             />
-          </>
-        }
-        afterTranscript={
-          <details
-            ref={detailsRef}
-            className="sessions-detail__disclosure"
-            data-testid="session-details-disclosure"
-          >
-            <summary>Details</summary>
-            <div className="sessions-detail__disclosure-body">
-              <p className="sessions-detail__session-id">
-                <span>Session ID</span>
-                <code>{threadId}</code>
-                <Button variant="secondary" onClick={copySessionId}>
-                  Copy ID
-                </Button>
-              </p>
-              <dl
-                className="sessions-detail__context"
-                aria-label="Task context"
-                ref={evidenceRegionRef}
-                tabIndex={-1}
-                data-testid="session-evidence-region"
-              >
-                <div className="sessions-detail__context-item">
-                  <dt>Last user action</dt>
-                  <dd
-                    title={
-                      latestOrigin
-                        ? clientOriginDetail(latestOrigin)
-                        : undefined
-                    }
-                  >
-                    {lastUserAction}
-                    {lastUserActionWhen ? ` · ${lastUserActionWhen}` : ''}
-                  </dd>
-                </div>
-                {rows.map((row) => (
-                  <div
-                    className="sessions-detail__context-item"
-                    key={row.label}
-                  >
-                    <dt>{row.label}</dt>
-                    <dd>{row.value}</dd>
-                  </div>
-                ))}
-                {linkedFlowRun && (
-                  <div
-                    className="sessions-detail__context-item"
-                    key="linked-flow"
-                  >
-                    <dt>Linked Flow</dt>
-                    <dd>
-                      <strong>
-                        {flowRunDisplayIdentity(linkedFlowRun.definitionId)}
-                      </strong>
-                      <p className="sessions-detail__workflow-hint">
-                        {linkedFlowStateLabel(linkedFlowRun.run.state)}
-                        {linkedFlowRun.run.openGates.length > 0
-                          ? ` · gates: ${linkedFlowRun.run.openGates.map((gate) => gate.id).join(', ')}`
-                          : ''}
-                      </p>
+            <details
+              ref={detailsRef}
+              className="sessions-detail__disclosure"
+              data-testid="session-details-disclosure"
+            >
+              <summary>Details</summary>
+              <div className="sessions-detail__disclosure-body">
+                <p className="sessions-detail__session-id">
+                  <span>Session ID</span>
+                  <code>{threadId}</code>
+                  <Button variant="secondary" onClick={copySessionId}>
+                    Copy ID
+                  </Button>
+                </p>
+                <dl
+                  className="sessions-detail__context"
+                  aria-label="Task context"
+                  ref={evidenceRegionRef}
+                  tabIndex={-1}
+                  data-testid="session-evidence-region"
+                >
+                  <div className="sessions-detail__context-item">
+                    <dt>Last user action</dt>
+                    <dd
+                      title={
+                        latestOrigin
+                          ? clientOriginDetail(latestOrigin)
+                          : undefined
+                      }
+                    >
+                      {lastUserAction}
+                      {lastUserActionWhen ? ` · ${lastUserActionWhen}` : ''}
                     </dd>
                   </div>
-                )}
-                {/* archive#189. Its own row, always — never merged into "Linked
+                  {rows.map((row) => (
+                    <div
+                      className="sessions-detail__context-item"
+                      key={row.label}
+                    >
+                      <dt>{row.label}</dt>
+                      <dd>{row.value}</dd>
+                    </div>
+                  ))}
+                  {linkedFlowRun && (
+                    <div
+                      className="sessions-detail__context-item"
+                      key="linked-flow"
+                    >
+                      <dt>Linked Flow</dt>
+                      <dd>
+                        <strong>
+                          {flowRunDisplayIdentity(linkedFlowRun.definitionId)}
+                        </strong>
+                        <p className="sessions-detail__workflow-hint">
+                          {linkedFlowStateLabel(linkedFlowRun.run.state)}
+                          {linkedFlowRun.run.openGates.length > 0
+                            ? ` · gates: ${linkedFlowRun.run.openGates.map((gate) => gate.id).join(', ')}`
+                            : ''}
+                        </p>
+                      </dd>
+                    </div>
+                  )}
+                  {/* archive#189. Its own row, always — never merged into "Linked
                 Flow" above and never suppressed by it. They are two different
                 runs with independent lifecycles, and a session routinely has
                 one and not the other; one combined figure is how a
@@ -491,88 +489,94 @@ export function MutableSessionDetail({
                 progress. No freshness is claimed: `flow_run` carries no
                 currency stamp upstream, so the row says where the values came
                 from and stops. */}
-                {builderRun && (
-                  <div className="sessions-detail__context-item">
-                    <dt>Builder run</dt>
-                    <dd>
-                      <strong>{builderRun.taskSlug ?? 'Unavailable'}</strong>
-                      <p className="sessions-detail__workflow-hint">
-                        {builderRunMatchLabel(builderRun.matchKind)} ·{' '}
-                        {builderRunIdentityLabel(builderRun.identityStatus)}
-                      </p>
-                      {builderRun.flowRun ? (
+                  {builderRun && (
+                    <div className="sessions-detail__context-item">
+                      <dt>Builder run</dt>
+                      <dd>
+                        <strong>{builderRun.taskSlug ?? 'Unavailable'}</strong>
                         <p className="sessions-detail__workflow-hint">
-                          {flowRunDisplayIdentity(
-                            builderRun.flowRun.definition_id,
-                          )}{' '}
-                          · {builderRun.flowRun.current_step} ·{' '}
-                          {builderRun.flowRun.status}
-                          {builderRun.flowRun.open_gate_ids.length > 0
-                            ? ` · gates: ${builderRun.flowRun.open_gate_ids.join(', ')}`
-                            : ''}
-                          {sidecarWriteProvenance(builderRun.sidecarUpdatedAt)}
+                          {builderRunMatchLabel(builderRun.matchKind)} ·{' '}
+                          {builderRunIdentityLabel(builderRun.identityStatus)}
                         </p>
-                      ) : (
-                        /* Only for a sidecar that was actually READ. A binding
+                        {builderRun.flowRun ? (
+                          <p className="sessions-detail__workflow-hint">
+                            {flowRunDisplayIdentity(
+                              builderRun.flowRun.definition_id,
+                            )}{' '}
+                            · {builderRun.flowRun.current_step} ·{' '}
+                            {builderRun.flowRun.status}
+                            {builderRun.flowRun.open_gate_ids.length > 0
+                              ? ` · gates: ${builderRun.flowRun.open_gate_ids.join(', ')}`
+                              : ''}
+                            {sidecarWriteProvenance(
+                              builderRun.sidecarUpdatedAt,
+                            )}
+                          </p>
+                        ) : (
+                          /* Only for a sidecar that was actually READ. A binding
                        whose sidecar could not be opened is a broken binding,
                        not a run that has yet to publish, and saying otherwise
                        would assert a currency nobody has — directly above the
                        true reason. */
-                        builderRun.taskSlug &&
-                        !builderRun.taskSidecarUnreadable && (
+                          builderRun.taskSlug &&
+                          !builderRun.taskSidecarUnreadable && (
+                            <p className="sessions-detail__workflow-hint">
+                              No run has been published for this task yet.
+                            </p>
+                          )
+                        )}
+                        {builderRun.reason && (
                           <p className="sessions-detail__workflow-hint">
-                            No run has been published for this task yet.
+                            {builderRun.reason}
                           </p>
-                        )
-                      )}
-                      {builderRun.reason && (
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                  {!linkedFlowRun && workflowEntries.length > 0 && (
+                    <div
+                      className="sessions-detail__context-item"
+                      key="workflow"
+                    >
+                      <dt>Project workflows</dt>
+                      <dd>
                         <p className="sessions-detail__workflow-hint">
-                          {builderRun.reason}
+                          Not linked to this session — active flow-agents tasks
+                          in this project workspace.
                         </p>
-                      )}
-                    </dd>
-                  </div>
-                )}
-                {!linkedFlowRun && workflowEntries.length > 0 && (
-                  <div className="sessions-detail__context-item" key="workflow">
-                    <dt>Project workflows</dt>
-                    <dd>
-                      <p className="sessions-detail__workflow-hint">
-                        Not linked to this session — active flow-agents tasks in
-                        this project workspace.
-                      </p>
-                      <WorkflowStatusLineList
-                        entries={workflowEntries}
-                        moreCount={workflowMoreCount}
-                      />
-                    </dd>
-                  </div>
-                )}
-              </dl>
+                        <WorkflowStatusLineList
+                          entries={workflowEntries}
+                          moreCount={workflowMoreCount}
+                        />
+                      </dd>
+                    </div>
+                  )}
+                </dl>
 
-              <LazyBoundary
-                load={loadConversationPullRequestLinks}
-                // The durable conversation, not this Session's own thread: a
-                // successor Session (after a context reset or a handoff) is not
-                // a conversation id, and the links belong to the conversation.
-                componentProps={{
-                  conversationId: session.conversationId ?? threadId,
-                  linkFormCollapsed: true,
-                }}
-                pending={
-                  <SkeletonBlock
-                    label="Reading linked pull requests"
-                    count={1}
-                  />
-                }
-              />
+                <LazyBoundary
+                  load={loadConversationPullRequestLinks}
+                  // The durable conversation, not this Session's own thread: a
+                  // successor Session (after a context reset or a handoff) is not
+                  // a conversation id, and the links belong to the conversation.
+                  componentProps={{
+                    conversationId: session.conversationId ?? threadId,
+                    linkFormCollapsed: true,
+                  }}
+                  pending={
+                    <SkeletonBlock
+                      label="Reading linked pull requests"
+                      count={1}
+                    />
+                  }
+                />
 
-              <SessionDetailDiagnostics
-                eventCount={events.length}
-                entries={diagnosticsLog}
-              />
-            </div>
-          </details>
+                <SessionDetailDiagnostics
+                  eventCount={events.length}
+                  entries={diagnosticsLog}
+                />
+              </div>
+            </details>
+          </>
         }
       />
 

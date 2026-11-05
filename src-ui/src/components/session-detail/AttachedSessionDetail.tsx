@@ -485,7 +485,12 @@ export function AttachedSessionDetail({
     </>
   );
   const composerDisabled =
-    !continuationSupported || adoption.isPending || continued || handoffPending;
+    !continuationSupported ||
+    (connection.station &&
+      connection.station.capabilities.continue.state !== 'allowed') ||
+    adoption.isPending ||
+    continued ||
+    handoffPending;
   const requestSend = async () => {
     if (!draft.trim() || composerDisabled) return;
     if (onContinueInChat) {
@@ -632,6 +637,10 @@ export function AttachedSessionDetail({
           retry: onLoadOlder ?? onRetryCapabilityRecovery,
         }}
         composer={{
+          submitAction: {
+            label: 'Continue in Station',
+            placeholder: 'Continue in Station from this history…',
+          },
           input: draft,
           onInputChange: setDraft,
           disabled: composerDisabled,

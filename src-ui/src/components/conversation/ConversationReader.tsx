@@ -1,4 +1,5 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
@@ -12,6 +13,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import type { useAgents } from '../../contexts/AgentsContext';
 import { conversationMessageToChatMessage } from '../../hooks/orchestration/conversationTranscriptParts';
 import { useSessionTranscriptEvents } from '../../hooks/orchestration/useSessionTranscriptEvents';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -35,8 +37,11 @@ import {
 export interface ConversationReaderProps {
   apiBase?: string;
   session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'> &
-    Partial<Pick<OrchestrationSessionSummary, 'lifecycleState'>>;
+    Partial<
+      Pick<OrchestrationSessionSummary, 'lifecycleState' | 'assignedAgentSlug'>
+    >;
   agentLabel: string;
+  agents?: ReturnType<typeof useAgents>;
   isStreaming: boolean;
   failureShownAbove?: boolean;
   notices?: ReactNode;
@@ -70,6 +75,7 @@ export function SessionConversationReader(props: ConversationReaderProps) {
 }
 
 export interface ConversationReaderState {
+  sessionLineage?: OrchestrationConversationEventWindow['sessionLineage'];
   events: readonly CanonicalRuntimeEvent[];
   partialTurnStartEventIds?: ReadonlySet<string>;
   hasMore?: boolean;
@@ -85,6 +91,7 @@ export interface ConversationReaderState {
 export const ConversationReader = memo(function ConversationReader({
   session,
   agentLabel,
+  agents,
   isStreaming,
   failureShownAbove = false,
   notices,
@@ -94,6 +101,7 @@ export const ConversationReader = memo(function ConversationReader({
   fontSize = 14,
   pendingMessages = [],
   events,
+  sessionLineage,
   partialTurnStartEventIds,
   hasMore = false,
   loadOlder = async () => {},
@@ -119,11 +127,27 @@ export const ConversationReader = memo(function ConversationReader({
   }, [onSettledChange, settled]);
   const previousRows = useRef<readonly TranscriptRow[]>([]);
   const rows = useMemo(() => {
+    const identities = new Map(
+      sessionLineage?.map((entry) => [entry.sessionId, entry]),
+    );
     let projected = projectRuntimeEventsToMessages([...events], {
       stableIds: true,
+      markEndedTurns: true,
       partialTurnStartEventIds,
     })
-      .map(conversationMessageToChatMessage)
+      .map((message) => ({
+        ...conversationMessageToChatMessage(message),
+        // A record's immutable Session is the same identity source the dock's
+        // session map uses. Never label a different Session after a handoff.
+        agentSlug:
+          identities.get(message.metadata?.sessionId ?? '')?.agentSlug ??
+          (message.metadata?.sessionId === session.threadId
+            ? session.assignedAgentSlug
+            : undefined),
+        agentDisplayName: identities.get(message.metadata?.sessionId ?? '')
+          ?.agentDisplayName,
+        agentIcon: identities.get(message.metadata?.sessionId ?? '')?.agentIcon,
+      }))
       .map((message) =>
         requestsReadOnly
           ? {
@@ -163,9 +187,11 @@ export const ConversationReader = memo(function ConversationReader({
     return next;
   }, [
     events,
+    sessionLineage,
     partialTurnStartEventIds,
     failureShownAbove,
     session.threadId,
+    session.assignedAgentSlug,
     requestsReadOnly,
   ]);
   const activityBinding = useActivityWorkspacePaneBinding();
@@ -286,7 +312,7 @@ export const ConversationReader = memo(function ConversationReader({
       ]),
       conversationId: session.conversationId ?? session.threadId,
       currentSessionId: session.threadId,
-      agentSlug: agentId('record'),
+      agentSlug: session.assignedAgentSlug ?? agentId('record'),
       agentName: agentLabel,
       title: agentLabel,
       source: 'manual',
@@ -312,6 +338,7 @@ export const ConversationReader = memo(function ConversationReader({
       target,
       session.threadId,
       session.conversationId,
+      session.assignedAgentSlug,
       rows,
       agentLabel,
       isStreaming,
@@ -330,6 +357,7 @@ export const ConversationReader = memo(function ConversationReader({
       ref={contentRef}
     >
       <ChatMessageList
+        recordAgents={agents}
         activeSession={activeSession}
         fontSize={fontSize}
         showReasoning={false}

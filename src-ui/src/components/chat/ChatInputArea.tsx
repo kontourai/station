@@ -389,6 +389,8 @@ interface ChatInputAreaProps {
    * no "Type a message" placeholder (its `sendBlockedReason` says why).
    */
   sendRefused?: boolean;
+  /** A record may continue into a new owned chat instead of replying here. */
+  submitAction?: { label: string; placeholder: string };
   /**
    * The conversation's open read is still in flight: the composer is disabled
    * and its placeholder names the wait. It occupies no new space, so the
@@ -563,6 +565,7 @@ export function ChatInputArea({
   agentHandoffDisabledReason,
   workspaceRefused = false,
   sendRefused = false,
+  submitAction,
   loadingConversation = false,
   onStartNewChat,
 }: ChatInputAreaProps) {
@@ -756,25 +759,27 @@ export function ChatInputArea({
       : null;
   // A composer whose sending the server refused invites no typing: its
   // reason, under the draft, says why.
-  const placeholder = sendRefused
-    ? ''
-    : workspaceRefused
-      ? 'This conversation continues from its original workspace — start a new chat to work here'
-      : loadingConversation
-        ? 'Loading chat…'
-        : allowDraftWhileDisabled
-          ? turnInFlight
-            ? 'Draft a follow-up while this turn finishes…'
-            : 'Waiting on this chat — check again above to send…'
-          : turnInFlight
-            ? sendMode === 'steer' && busyFollowUp === 'steer'
-              ? busySteeringKind === 'native'
-                ? 'Steer this turn…'
-                : 'Send at a safe boundary…'
-              : 'Queue a follow-up…'
-            : mentionLocation && mentionRequestScope
-              ? 'Type a message — @ files, / for commands…'
-              : 'Type a message — / for commands…';
+  const placeholder =
+    submitAction?.placeholder ??
+    (sendRefused
+      ? ''
+      : workspaceRefused
+        ? 'This conversation continues from its original workspace — start a new chat to work here'
+        : loadingConversation
+          ? 'Loading chat…'
+          : allowDraftWhileDisabled
+            ? turnInFlight
+              ? 'Draft a follow-up while this turn finishes…'
+              : 'Waiting on this chat — check again above to send…'
+            : turnInFlight
+              ? sendMode === 'steer' && busyFollowUp === 'steer'
+                ? busySteeringKind === 'native'
+                  ? 'Steer this turn…'
+                  : 'Send at a safe boundary…'
+                : 'Queue a follow-up…'
+              : mentionLocation && mentionRequestScope
+                ? 'Type a message — @ files, / for commands…'
+                : 'Type a message — / for commands…');
   const composerTokens = parseComposerTokens(input);
   const displayInput = composerDisplayValue(input, composerTokens);
 
@@ -1870,7 +1875,12 @@ export function ChatInputArea({
                       attachments.length === 0)
                 }
                 tabIndex={hideMobileSubmit ? -1 : 0}
-                aria-label={workspaceRefused ? 'Start new chat' : 'Send'}
+                aria-label={
+                  workspaceRefused
+                    ? 'Start new chat'
+                    : (submitAction?.label ?? 'Send')
+                }
+                data-submit-action={submitAction ? 'continuation' : undefined}
                 aria-describedby={
                   sendBlockedReason
                     ? `composer-attachment-send-gate-${sessionId}`
@@ -1879,7 +1889,7 @@ export function ChatInputArea({
                 title={
                   workspaceRefused
                     ? 'Start new chat'
-                    : (sendBlockedReason ?? 'Send')
+                    : (sendBlockedReason ?? submitAction?.label ?? 'Send')
                 }
                 className={`send-button chat-input__send-btn ${
                   sendReady
@@ -1901,7 +1911,9 @@ export function ChatInputArea({
                 >
                   <path d="M12 19V5M5 12l7-7 7 7" />
                 </svg>
-                <span className="chat-input__send-label">Send</span>
+                <span className="chat-input__send-label">
+                  {submitAction?.label ?? 'Send'}
+                </span>
               </button>
               {turnInFlight && onQueueFollowUp && (
                 <button

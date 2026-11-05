@@ -46,6 +46,7 @@ export interface RecordConversationBodyProps {
     onSubmit?: () => Promise<void>;
     onSent?: (submitted: string) => void;
     textareaRef?: RefObject<HTMLTextAreaElement | null>;
+    submitAction?: { label: string; placeholder: string };
   };
   readOnly?: boolean;
   answeringDeniedReason?: string;
@@ -176,6 +177,7 @@ function RecordBody(
             sessionId={session.threadId}
             activeConversationId={session.conversationId}
             input={composer.input}
+            submitAction={composer.submitAction}
             attachments={[]}
             textareaRef={composer.textareaRef ?? ownTextareaRef}
             disabled={

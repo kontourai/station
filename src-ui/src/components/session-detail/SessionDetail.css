@@ -120,8 +120,8 @@
 }
 
 .sessions-detail__disclosure > summary {
-  display: flex;
-  align-items: center;
+  display: list-item;
+  align-content: center;
   min-height: 44px;
   color: var(--text-primary);
   font-weight: var(--weight-semibold);

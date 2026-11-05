@@ -63,6 +63,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 }));
 
 import { AdoptSessionError } from '@kontourai/station-sdk';
+import * as conversationClient from '@kontourai/station-sdk/client';
 import { AttachedSessionDetail } from '../components/session-detail/AttachedSessionDetail';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
 import {
@@ -194,8 +195,31 @@ function sendFromComposer(message = 'carry on') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
     target: { value: message },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue in Station' }));
 }
+
+test('a read-only attached composer continues in Station and cannot issue a direct reply', async () => {
+  const directReply = vi.spyOn(conversationClient, 'continueExecutionMessage');
+  const directSend = vi.spyOn(
+    conversationClient,
+    'sendExecutionMessageWithInventory',
+  );
+  try {
+    await renderAttached();
+    expect(screen.queryByRole('button', { name: /^Send$/ })).toBeNull();
+    expect(
+      screen.getByPlaceholderText('Continue in Station from this history…'),
+    ).toBeTruthy();
+    sendFromComposer('A new owned continuation');
+    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    expect(directReply).not.toHaveBeenCalled();
+    expect(directSend).not.toHaveBeenCalled();
+  } finally {
+    directReply.mockRestore();
+    directSend.mockRestore();
+  }
+});
 
 test('reply intent offers continuation in the normal composer without changing the conversation automatically', async () => {
   adoptOrchestrationSession.mockClear();
@@ -216,7 +240,7 @@ test('reply intent offers continuation in the normal composer without changing t
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.change(composer, { target: { value: 'Keep my draft' } });
   expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue in Station' }));
   expect(
     screen.getByRole('button', { name: 'Continue and send' }),
   ).toBeTruthy();
@@ -346,7 +370,9 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
     fireEvent.change(activityView.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'Typed in Activity' },
     });
-    fireEvent.click(activityView.getByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      activityView.getByRole('button', { name: 'Continue in Station' }),
+    );
     const dialogs = screen.getAllByRole('dialog', { name: 'Continue here?' });
     expect(dialogs).toHaveLength(1);
     expect(
@@ -414,7 +440,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     expect(
       screen.getByText('Waiting for the source configuration to be verified.'),
     ).toBeTruthy();
-    const send = screen.getByRole('button', { name: 'Send' });
+    const send = screen.getByRole('button', { name: 'Continue in Station' });
     expect((send as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(send);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -435,7 +461,9 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
           'Station has not established independent continuation support for this engine.',
         ),
       ).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Continue in Station' }),
+      );
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(adoptOrchestrationSession).not.toHaveBeenCalled();
     },
@@ -934,7 +962,9 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
     expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
     await waitFor(() =>
@@ -1003,7 +1033,9 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
     const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
     expect(dialog.textContent).toContain(
       'Station will continue it as a No project chat that works only in /work/scratch/app.',
@@ -1049,7 +1081,9 @@ describe('a conversation no project claims (#3386)', () => {
     }) as HTMLTextAreaElement;
     expect(composer.disabled).toBe(true);
     fireEvent.keyDown(composer, { key: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
   });
@@ -1086,7 +1120,9 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe(refusal);
@@ -1131,7 +1167,9 @@ describe('a continuation Station settled as not created', () => {
       fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
         target: { value: 'carry on' },
       });
-      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Continue in Station' }),
+      );
       fireEvent.click(
         screen.getByRole('button', { name: 'Continue and send' }),
       );

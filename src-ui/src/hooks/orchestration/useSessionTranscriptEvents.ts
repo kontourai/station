@@ -152,6 +152,7 @@ export function useSessionTranscriptEvents(
 
   return {
     events,
+    sessionLineage: window.sessionLineage,
     // #4266: turns the window holds only as their start and tail.
     partialTurnStartEventIds: window.partialTurnStartEventIds,
     hasMore: window.hasMore,

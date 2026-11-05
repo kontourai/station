@@ -1,4 +1,4 @@
-import { engineId } from '@kontourai/station-contracts/agent-identity';
+import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { type ReactNode, useSyncExternalStore } from 'react';
@@ -113,7 +113,10 @@ vi.mock('../hooks/orchestration/ensureOrchestrationEventStream', () => ({
 }));
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SessionConversationReader } from '../components/conversation/ConversationReader';
+import {
+  ConversationReader,
+  SessionConversationReader,
+} from '../components/conversation/ConversationReader';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import {
   recordSequencedLiveEvent,
@@ -221,6 +224,47 @@ beforeEach(() => {
 });
 
 describe('SessionConversationReader source', () => {
+  test('resolves an earlier reply from its immutable Session identity after a handoff', async () => {
+    const events = [
+      ev({
+        method: 'turn.started',
+        turnId: 'identity-turn',
+        prompt: 'Review this',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'identity-turn',
+        outputText: 'The review is ready.',
+      }),
+    ];
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <PreviewProvider>
+          <ConversationConnectionContext.Provider
+            value={{ apiBase: API, record: { readOnly: true } }}
+          >
+            <ConversationReader
+              session={{ threadId: 'successor', conversationId: THREAD }}
+              agentLabel="Successor agent"
+              isStreaming={false}
+              events={events}
+              settled
+              sessionLineage={[
+                {
+                  sessionId: THREAD,
+                  agentSlug: agentId('original-reviewer'),
+                  agentDisplayName: 'Original reviewer',
+                  agentIcon: 'R',
+                },
+              ]}
+            />
+          </ConversationConnectionContext.Provider>
+        </PreviewProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Original reviewer')).toBeTruthy();
+    expect(screen.queryByText('AI')).toBeNull();
+  });
   test('the receiver transcript reads bounded history under the captured source authority', async () => {
     windowState.realWindow = true;
     const scope = {

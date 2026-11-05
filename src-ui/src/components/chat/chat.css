@@ -3335,11 +3335,21 @@
   .chat-input__mode-label {
     display: none;
   }
+
+  .chat-input__send-btn[data-submit-action] .chat-input__send-label {
+    display: inline;
+  }
   .chat-input .chat-input__send-btn,
   .chat-input .chat-input__send-mode {
     width: 44px;
     min-width: 44px;
     padding: 0;
+  }
+
+  .chat-input .chat-input__send-btn[data-submit-action] {
+    width: auto;
+    padding-inline: var(--k-space-3);
+    white-space: nowrap;
   }
 }
 
