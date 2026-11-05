@@ -20,3 +20,9 @@ Turn navigation:
 - [390 / light](after-turn-rail-390-light.png)
 - [1440 / dark](after-turn-rail-1440-dark.png)
 - [1440 / light](after-turn-rail-1440-light.png)
+
+Task family navigation (candidate):
+- [390 / dark](after-task-family-390-dark.png)
+- [390 / light](after-task-family-390-light.png)
+- [1440 / dark](after-task-family-1440-dark.png)
+- [1440 / light](after-task-family-1440-light.png)

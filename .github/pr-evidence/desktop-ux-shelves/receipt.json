@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "f8cee5936a3fdee80357bf98ccfd1dee4d0f0873",
+  "sourceRevision": "dad0fcd31cd3778461fc364be12ddf7d58e03578",
   "baselineRevision": "df1b823d9c55c4fa2e2e8b404c3f80bcc6ae44dd",
   "widths": [
     390,
@@ -14,6 +14,7 @@
     "Not an installed desktop or mobile shell",
     "No live provider/account mutation or backend persistence qualification",
     "Inbox captures show controlled representative rows; behavioral suites cover attention, drafts, dismissed search, ordering and task families",
-    "Turn rail images are candidate-only; previous/next placement has separate real-browser geometry tests"
+    "Turn rail images are candidate-only; previous/next placement has separate real-browser geometry tests",
+    "Task-family candidate captures come from the real-row Chromium geometry suite with controlled task/chat data."
   ]
 }
