@@ -85,6 +85,10 @@ function fixture() {
       { status: string; merge_base_commit: { sha: string } }
     >(),
     metadataRevision: base,
+    mainRef: {
+      ref: 'refs/heads/main',
+      object: { type: 'commit', sha: base },
+    },
     error: '',
     truncate: false,
     reads: 0,
@@ -115,6 +119,7 @@ function fixture() {
         });
       if (parsed.pathname === '/repos/kontourai/station')
         return json({ id: 1 });
+      if (path === 'git/ref/heads/main') return json(state.mainRef);
       if (path === `commits/${head}/pulls`) {
         state.reads += 1;
         if (state.move && state.reads === 2) state.owners[0].head.ref = 'moved';
@@ -488,6 +493,8 @@ describe('source verification reconciler API boundary', () => {
     ['success', 'same revision', 'success'],
     ['pending', 'newer trusted workflow', 'pending'],
     ['success', 'newer trusted workflow', 'success'],
+    ['pending', 'stale reported base', 'pending'],
+    ['success', 'stale reported base', 'success'],
     ['success', 'future workflow', 'failure'],
     ['success', 'diverged workflow', 'failure'],
     ['success', 'diverged reported base', 'pending'],
@@ -498,7 +505,9 @@ describe('source verification reconciler API boundary', () => {
       const liveBase = 'd'.repeat(40);
       const revision = lineage === 'same revision' ? base : advanced;
       if (lineage !== 'same revision') {
-        state.owners[0].base.sha = liveBase;
+        if (lineage !== 'stale reported base')
+          state.owners[0].base.sha = liveBase;
+        state.mainRef.object.sha = liveBase;
         state.metadataRevision = revision;
         state.comparisons.set(`compare/${base}...${liveBase}`, {
           status: lineage === 'diverged reported base' ? 'diverged' : 'ahead',
