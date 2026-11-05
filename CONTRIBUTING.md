@@ -1,8 +1,9 @@
 # Contributing to Station
 
-Station is the agent workspace where work ships with receipts. Start with the
-path that matches the change instead of treating every request as a pull
-request.
+Help developers run coding agents, continue work across devices, and review
+the results. Plugins and selected Project sharing build on that personal coding
+experience. The [constitution](docs/strategy/constitution.md) owns the product
+direction. Start with the path that matches the change.
 
 ## Choose a path
 
