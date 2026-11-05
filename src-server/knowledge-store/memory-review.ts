@@ -604,6 +604,7 @@ export class MemoryReviewService {
       return {
         claimId: id,
         text: `${view.subject} · ${view.property}: ${view.value}`,
+        label: snapshot.presented.get(id)?.review.label ?? 'unreviewed',
       };
     };
     const entries: MemoryRecallEntry[] = visible

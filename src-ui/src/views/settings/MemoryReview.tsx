@@ -399,13 +399,23 @@ export function MemoryReview() {
                       <>
                         <dt>Disagrees with</dt>
                         {entry.conflictsWith.map((other) => (
-                          <dd key={other.claimId}>{other.text}</dd>
+                          <dd key={other.claimId}>
+                            {other.text}
+                            {(other.label === 'confirmed' ||
+                              other.label === 'corrected') &&
+                              ' (you confirmed this one)'}
+                          </dd>
                         ))}
                       </>
                     )}
                   </dl>
                   {entry.review.label === 'unreviewed' &&
-                    entry.review.routing === 'uncontested' && (
+                    entry.review.routing === 'uncontested' &&
+                    !entry.conflictsWith.some(
+                      (other) =>
+                        other.label === 'confirmed' ||
+                        other.label === 'corrected',
+                    ) && (
                       <Button
                         disabled={decide.isPending}
                         onClick={() =>

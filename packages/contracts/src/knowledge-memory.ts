@@ -104,6 +104,13 @@ export interface MemoryDecisionResult {
   reviewSeconds: number | null;
 }
 
+/** A related claim, in plain words, with where its review stands. */
+export interface MemoryClaimRef {
+  claimId: string;
+  text: string;
+  label: MemoryReviewLabel;
+}
+
 export interface MemoryRecallEntry extends MemoryClaimView {
   review: {
     label: MemoryReviewLabel;
@@ -111,11 +118,11 @@ export interface MemoryRecallEntry extends MemoryClaimView {
     reasons: MemoryRoutingReason[];
   };
   /** Claims this one replaces, in plain words. */
-  replaces: { claimId: string; text: string }[];
+  replaces: MemoryClaimRef[];
   /** Claims that replace this one. */
-  replacedBy: { claimId: string; text: string }[];
+  replacedBy: MemoryClaimRef[];
   /** Other claims in the same slot that disagree with it. */
-  conflictsWith: { claimId: string; text: string }[];
+  conflictsWith: MemoryClaimRef[];
 }
 
 export interface MemoryRecall {
