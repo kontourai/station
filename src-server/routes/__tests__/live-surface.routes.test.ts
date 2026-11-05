@@ -7,6 +7,7 @@ import {
   LIVE_SURFACE_FRAMES_CONTENT_TYPE,
   LIVE_SURFACE_INPUT_MAX_BODY_BYTES,
   LIVE_SURFACE_INPUT_MAX_EVENTS,
+  type LiveSurfaceFold,
   type LiveSurfaceRecord,
   LiveSurfaceRecordDecoder,
 } from '@kontourai/station-contracts/live-surface';
@@ -1006,13 +1007,13 @@ describe('a revoked device share ends the stream while the host is busy (#2433)'
 });
 
 describe('a foldable stream and a released shell (desktop-v0.1.11-nightly.2500)', () => {
-  const FOLD = {
+  const FOLD: LiveSurfaceFold = {
     activeDisplay: 'inner',
     hingeAngle: 90,
     posture: 'book',
     postures: ['closed', 'open', 'book', 'laptop', 'tent'],
     angleControl: true,
-  } as const;
+  };
 
   function foldableHarness() {
     const h = harness();
