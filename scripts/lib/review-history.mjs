@@ -282,6 +282,27 @@ export function deriveReviewHistory(root, state, committedNotes) {
       selectors.set(input, bindingDigest(input, blobs.get(spec)));
     return selectors.get(input);
   };
+  // Resolve each file's value bindings together so the bounded parser cache
+  // does not repeatedly parse one YAML blob while replaying other entries.
+  const pointersByFile = new Map();
+  for (const input of pointers) {
+    const file = bindingFile(input);
+    const grouped = pointersByFile.get(file) ?? [];
+    grouped.push(input);
+    pointersByFile.set(file, grouped);
+  }
+  for (const commit of commits)
+    for (const { file } of commit.changes) {
+      const grouped = pointersByFile.get(file);
+      if (!grouped) continue;
+      const specs = [
+        `${commit.revision}^1:${file}`,
+        `${commit.revision}:${file}`,
+      ];
+      if (specs.some((spec) => blobs.get(spec) === undefined)) continue;
+      for (const spec of specs)
+        for (const input of grouped) digest(input, spec);
+    }
   const json = (spec) =>
     blobs.get(spec) === undefined
       ? undefined
