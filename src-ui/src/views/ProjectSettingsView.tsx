@@ -9,7 +9,7 @@ import {
   useProjectIconCandidatesQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AccountIdentityConflict,
   isAccountIdentityConflict,
@@ -23,10 +23,7 @@ import {
 } from '../components/icons/ProjectIcon';
 import { ModelSelector } from '../components/ModelSelector';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
-import {
-  getWorkingDirectoryLeaf,
-  normalizeWorkingDirectory,
-} from '../components/modals/project-form-utils';
+import { normalizeWorkingDirectory } from '../components/modals/project-form-utils';
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
 import { PathAutocomplete } from '../components/PathAutocomplete';
@@ -34,7 +31,8 @@ import {
   ProjectIconPicker,
   projectIconInputProblem,
 } from '../components/project-icon/ProjectIconPicker';
-import { SectionNav } from '../components/SectionNav';
+import { SectionNavigation } from '../components/SectionNavigation';
+import { StationPath } from '../components/StationPath';
 import { ErrorState, Skeleton } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useConfig } from '../contexts/ConfigContext';
@@ -46,6 +44,7 @@ import {
 } from '../contexts/ProjectsContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
+import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
@@ -168,6 +167,7 @@ function connectionInitialModelId(
 export function ProjectSettingsView({ slug }: { slug: string }) {
   const authority = useHostRequestAuthorityScope();
   const stationConfig = useConfig();
+  const stationName = useDevicePresentation()?.hostName ?? 'This Station';
   const { navigate } = useNavigation();
   const showSurface = useShowSurface();
 
@@ -176,15 +176,11 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  // `SectionNav` forwards this ref to its own `<nav>` element (archive#4463
-  // review — no wrapper `<div>` needed, so this flex child's
-  // `flex-shrink: 0` (`.project-settings__section-nav` in the CSS) lands on
-  // the real scrolling strip, not an inert wrapper one level out).
-  const sectionNavRef = useRef<HTMLElement | null>(null);
   const { activeSection, hrefForSection, navigateToSection } =
     useSectionNavigation(
       PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
       'workspace',
+      { scrollOnNavigate: false },
     );
 
   const {
@@ -226,22 +222,13 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     setSavedForm(next);
   }, [project, slug, form, savedForm]);
 
-  useEffect(() => {
-    if (!form) return;
-    sectionNavRef.current
-      ?.querySelector<HTMLElement>(
-        `[aria-current="location"][href*="section=${activeSection}"]`,
-      )
-      ?.scrollIntoView?.({ block: 'nearest', inline: 'start' });
-  }, [activeSection, form]);
-
   // Connections a project default could actually run through. `status` on a
   // model connection is derived from "a non-empty key is saved", so `ready`
   // is the weakest honest filter available here; offering a disabled or
   // unconfigured connection would persist a pair that resolves to nothing.
-  const { data: modelConnections = [] } = useModelConnectionsQuery() as {
-    data?: ModelConnectionConfig[];
-  };
+  const modelConnectionsQuery = useModelConnectionsQuery();
+  const modelConnections: ModelConnectionConfig[] =
+    modelConnectionsQuery.data ?? [];
   const selectableModelConnections = modelConnections.filter(
     (connection) =>
       connection.kind === 'model' &&
@@ -250,6 +237,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   );
   const selectedConnection = selectableModelConnections.find(
     (connection) => connection.id === form?.defaultProviderId,
+  );
+  const unavailableConnection = Boolean(
+    form?.defaultProviderId && !selectedConnection,
   );
   // Undefined (not an empty array) when there is no catalog to offer, so the
   // picker falls back to the global model list rather than rendering empty,
@@ -327,13 +317,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const workingDirectory = normalizeWorkingDirectory(
     form.workingDirectory ?? '',
   );
-  const workingDirectoryLeaf = getWorkingDirectoryLeaf(workingDirectory);
-  // The header preview start-truncates the parent so the leaf folder stays in
-  // view (#2799); a root (`/`, `~`, `D:\`) has no leaf to split off.
-  const workingDirectoryParent = workingDirectoryLeaf
-    ? workingDirectory.slice(0, -workingDirectoryLeaf.length)
-    : workingDirectory;
-
   // Only a CHANGED icon can block Save: a stored value the icon rule now
   // refuses (a legacy remote URL) is not re-sent by an unrelated edit — see
   // `buildProjectSavePayload` — so it must not block one either.
@@ -413,355 +396,439 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         </Button>
       </DetailHeader>
 
-      <SectionNav
-        ref={sectionNavRef}
-        className="project-settings__section-nav"
-        aria-label="Project settings sections"
-        items={PROJECT_SETTINGS_SECTIONS.map(([id, label]) => ({
-          key: id,
-          label,
-          href: hrefForSection(id),
-        }))}
-        activeKey={activeSection}
-        onNavigate={navigateToSection}
-      />
-
-      {/* Body */}
-      <div className="project-settings__body">
-        <p className="project-settings__save-hint">
-          Save to apply changes to project defaults.
-        </p>
-        {saveError && (
-          <ErrorState
-            variant="compact"
-            title="Could not save project settings"
-            description={saveError}
-          />
-        )}
-
-        <PageSection
-          id="section-workspace"
-          className="project-settings__section project-settings__section--hero"
-          eyebrow="Project home"
-          title="Workspace"
-          description="The folder used for work in this project."
-          actions={
-            <div className="project-settings__identity-preview">
-              <ProjectIcon
-                project={{ name: form.name, icon: form.icon }}
-                size={46}
-                fallback="initials"
-              />
-              <div className="project-settings__identity-copy">
-                <div className="project-settings__identity-name">
-                  {form.name}
-                </div>
-                {workingDirectory ? (
-                  <div
-                    className="project-settings__identity-path"
-                    title={workingDirectory}
-                  >
-                    {/* The line is rtl only for the start-side ellipsis; the
-                        ltr isolate restores character order (#304). Both parts
-                        stay inline, so the path reads and copies as one. */}
-                    <span dir="ltr">
-                      <span className="project-settings__identity-path-parent">
-                        {workingDirectoryParent}
-                      </span>
-                      {workingDirectoryLeaf && (
-                        <span className="project-settings__identity-path-leaf">
-                          {workingDirectoryLeaf}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="project-settings__identity-path project-settings__identity-path--unset">
-                    No working directory configured
-                  </div>
-                )}
-              </div>
-            </div>
-          }
-        >
-          <div className="project-settings__hero-grid">
-            <div className="editor-field project-settings__field--featured">
-              <label
-                className="editor-label"
-                htmlFor="project-working-directory"
-              >
-                Working Directory
-              </label>
-              <PathAutocomplete
-                id="project-working-directory"
-                autoFocus={false}
-                suggestionsInitiallyOpen={false}
-                value={form.workingDirectory ?? ''}
-                onChange={(v) => setField('workingDirectory', v)}
-                placeholder="~/code/my-project"
-                className="editor-input path-autocomplete__input project-settings__working-dir-input"
-              />
-              <span className="editor-hint">
-                Use an absolute path or <code>~/…</code>.
-              </span>
-              {workingDirectory && (
-                <div className="project-settings__path-pills">
-                  <span className="project-settings__path-pill">
-                    leaf <code>{workingDirectoryLeaf || 'project'}</code>
-                  </span>
-                  <span className="project-settings__path-pill">
-                    path{' '}
-                    <code>
-                      {workingDirectory
-                        .split(/(?<=[/\\])/)
-                        .map((part, index) => (
-                          <Fragment key={index}>
-                            {part}
-                            <wbr />
-                          </Fragment>
-                        ))}
-                    </code>
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="project-settings__checkout-freshness">
-            <ProjectCheckoutFreshnessNotice slug={slug} />
-          </div>
-        </PageSection>
-
-        <PageSection
-          id="section-basic-info"
-          className="project-settings__section"
-          eyebrow="Project identity"
-          title="Basic info"
-        >
-          <div className="project-settings__identity-grid">
-            <div className="editor-field">
-              <label className="editor-label" htmlFor="project-name">
-                Name *
-              </label>
-              <div className="project-settings__name-row">
-                <button
-                  type="button"
-                  className="project-settings__icon-button"
-                  aria-label="Choose project icon"
-                  aria-expanded={iconPickerOpen}
-                  onClick={() => setIconPickerOpen((open) => !open)}
-                >
-                  <ProjectIcon
-                    project={{ name: form.name, icon: form.icon }}
-                    size={40}
-                    fallback="initials"
-                  />
-                </button>
-                <input
-                  id="project-name"
-                  required
-                  className="editor-input project-settings__name-input"
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setField('name', e.target.value)}
-                />
-              </div>
-              {legacyIcon && (
-                <p className="project-settings__icon-notice">
-                  This project’s icon can’t be shown any more. Choose a new one.
-                </p>
-              )}
-              {iconPickerOpen && (
-                <ProjectIconPicker
-                  idPrefix="project-settings-icon"
-                  name={form.name}
-                  value={legacyIcon ? '' : (form.icon ?? '')}
-                  onChange={(icon) => setField('icon', icon)}
-                  candidates={iconCandidates.data ?? []}
-                  fetching={iconCandidates.isFetching}
-                />
-              )}
-            </div>
-          </div>
-          <div className="editor-field">
-            <label className="editor-label" htmlFor="project-description">
-              Description
-            </label>
-            <textarea
-              id="project-description"
-              className="editor-textarea"
-              value={form.description ?? ''}
-              rows={2}
-              onChange={(e) => setField('description', e.target.value)}
-            />
-          </div>
-        </PageSection>
-
-        {/* Default AI Model */}
-        <PageSection
-          id="section-model"
-          className="project-settings__section"
-          eyebrow="Conversation default"
-          title="AI model"
-          description="Choose a connection and model, or follow the Station default."
-        >
-          <PageRow
-            label="Model connection"
-            description="The connection used for this project’s model."
-            control={
-              <select
-                id="project-default-provider"
-                className="editor-input"
-                aria-label="Model connection"
-                value={form.defaultProviderId ?? ''}
-                onChange={(event) => {
-                  const providerId = event.target.value;
-                  // A model id only means something against the connection
-                  // that offers it. Choosing or switching a connection
-                  // commits a model THAT connection offers, so the field
-                  // never carries the previous connection's id (which the
-                  // server refuses outright). Clearing the connection clears
-                  // the model with it.
-                  //
-                  // One case still leaves the pair half-set: a ready
-                  // connection that declares no `config.defaultModel` and
-                  // lists no `modelOptions` has no id to commit, so the
-                  // field lands empty. The server then resolves this project
-                  // to the Station default, which is what the model field's
-                  // own hint says happens when either half is missing.
-                  setForm((current) =>
-                    current
-                      ? {
-                          ...current,
-                          defaultProviderId: providerId,
-                          defaultModel: connectionInitialModelId(
-                            selectableModelConnections.find(
-                              (connection) => connection.id === providerId,
-                            ),
-                          ),
-                        }
-                      : current,
-                  );
-                }}
-              >
-                <option value="">Station default</option>
-                {selectableModelConnections.map((connection) => (
-                  <option key={connection.id} value={connection.id}>
-                    {connection.name}
-                  </option>
-                ))}
-              </select>
-            }
-          />
-          <PageRow
-            label="Default model"
-            // Derived from what the field actually holds. A connection that
-            // offered nothing to pre-fill leaves this empty, and saying
-            // "pre-filled" over an empty box is the class of claim this whole
-            // change exists to remove.
-            description={
-              !form.defaultProviderId
-                ? 'Choose a connection to override the Station default.'
-                : form.defaultModel
-                  ? 'Used with the selected connection.'
-                  : 'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.'
-            }
-            control={
-              <ModelSelector
-                value={form.defaultModel ?? ''}
-                models={selectedConnectionModels}
-                disabled={!form.defaultProviderId}
-                onChange={(modelId) => setField('defaultModel', modelId)}
-                placeholder="System default"
-              />
-            }
-          />
-        </PageSection>
-
-        <NewChatDefaultsSection
-          form={form}
-          setField={setField}
-          chatDefaults={chatDefaults}
-          stationApprovalDefault={stationConfig?.defaultApprovalMode}
-          stationConfigLoaded={stationConfig !== null}
-          projectModelSet={!!form.defaultProviderId && !!form.defaultModel}
+      <div className="section-nav-rail project-settings__layout">
+        <SectionNavigation
+          label="Project settings sections"
+          pickerLabel="Project settings section"
+          items={PROJECT_SETTINGS_SECTIONS.map(([id, label]) => ({
+            key: id,
+            label,
+            href: hrefForSection(id),
+          }))}
+          activeKey={activeSection}
+          onNavigate={navigateToSection}
         />
 
-        <PageSection
-          id="section-thread-execution"
-          className="project-settings__section"
-          eyebrow="New thread default"
-          title="Thread execution"
-          description="A thread's own selection takes precedence."
-        >
-          <EnvironmentPicker
-            id="project-default-environment"
-            value={form.defaultEnvironment ?? { kind: 'current' }}
-            onChange={(value) => setField('defaultEnvironment', value)}
-          />
-          <PageRow
-            label="Execution environment"
-            description="A fresh worktree isolates changes. The current checkout shares this project’s working directory."
-            control={
-              <select
-                id="project-default-workspace-isolation"
-                className="editor-input"
-                aria-label="Execution environment"
-                value={form.defaultWorkspaceIsolation}
-                onChange={(event) =>
-                  setField(
-                    'defaultWorkspaceIsolation',
-                    event.target
-                      .value as ProjectForm['defaultWorkspaceIsolation'],
-                  )
+        {/* Body */}
+        <div className="section-nav-rail__body project-settings__body">
+          <p className="project-settings__save-hint">
+            {['layouts', 'resources', 'access', 'knowledge'].includes(
+              activeSection,
+            )
+              ? 'Actions in this section apply when confirmed.'
+              : 'Save to apply changes to project defaults.'}
+          </p>
+          {activeSection !== 'basic-info' &&
+            (!form.name.trim() || iconProblem) && (
+              <ErrorState
+                variant="compact"
+                title="Review Basic info before saving"
+                description={
+                  !form.name.trim()
+                    ? 'Enter a project name.'
+                    : (iconProblem ?? undefined)
                 }
-              >
-                <option value="inherit">
-                  {inheritOptionLabel(
-                    stationConfig?.defaultWorkspaceIsolation,
-                    stationConfig !== null,
-                  )}
-                </option>
-                <option value="worktree">Use a fresh git worktree</option>
-                <option value="shared">Use the current checkout</option>
-              </select>
-            }
-          />
-        </PageSection>
+                action={
+                  <Button onClick={() => navigateToSection('basic-info')}>
+                    Fix Basic info
+                  </Button>
+                }
+              />
+            )}
+          {isLoadError && project && (
+            <ErrorState
+              variant="compact"
+              title="Could not refresh project settings"
+              description={userFacingErrorMessage(loadError)}
+              action={<Button onClick={() => refetchProject()}>Retry</Button>}
+            />
+          )}
+          {saveError && (
+            <ErrorState
+              variant="compact"
+              title="Could not save project settings"
+              description={saveError}
+            />
+          )}
 
-        {/* Layouts — list + save as template */}
-        <AgentsSection form={form} setForm={setForm} projectSlug={slug} />
-        <ToolsSection slug={slug} form={form} setForm={setForm} />
-
-        <p className="project-settings__save-hint">
-          Layouts, sources, access, and knowledge actions apply immediately.
-        </p>
-        <LayoutsSection slug={slug} />
-
-        <ProjectSourcesSection slug={slug} projectId={project?.id} />
-        {project && <AccessSection slug={slug} projectId={project.id} />}
-
-        {/* Knowledge */}
-        <KnowledgeSection slug={slug} />
-
-        {/* Danger Zone */}
-        <PageSection
-          id="section-danger"
-          className="project-settings__section"
-          eyebrow="Destructive action"
-          title="Danger zone"
-          description="Deleting this project cannot be undone."
-          tone="danger"
-        >
-          <Button
-            variant="danger-outline"
-            onClick={() => {
-              setDeleteError(null);
-              setDeleteOpen(true);
-            }}
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'workspace'}
           >
-            Delete Project
-          </Button>
-        </PageSection>
+            <PageSection
+              id="section-workspace"
+              className="project-settings__section project-settings__section--hero"
+              eyebrow="Project home"
+              title="Workspace"
+              description="The folder used for work in this project."
+              actions={
+                <div className="project-settings__identity-preview">
+                  <ProjectIcon
+                    project={{ name: form.name, icon: form.icon }}
+                    size={46}
+                    fallback="initials"
+                  />
+                  <div className="project-settings__identity-copy">
+                    <div className="project-settings__identity-name">
+                      {form.name}
+                    </div>
+                    {workingDirectory ? (
+                      <StationPath
+                        path={workingDirectory}
+                        stationName={stationName}
+                        className="project-settings__identity-path"
+                      />
+                    ) : (
+                      <div className="project-settings__identity-path project-settings__identity-path--unset">
+                        No working directory configured
+                      </div>
+                    )}
+                  </div>
+                </div>
+              }
+            >
+              <div className="project-settings__hero-grid">
+                <div className="editor-field project-settings__field--featured">
+                  <label
+                    className="editor-label"
+                    htmlFor="project-working-directory"
+                  >
+                    Working Directory
+                  </label>
+                  <PathAutocomplete
+                    id="project-working-directory"
+                    autoFocus={false}
+                    suggestionsInitiallyOpen={false}
+                    value={form.workingDirectory ?? ''}
+                    onChange={(v) => setField('workingDirectory', v)}
+                    placeholder="~/code/my-project"
+                    className="editor-input path-autocomplete__input project-settings__working-dir-input"
+                  />
+                  <span className="editor-hint">
+                    On {stationName}. Use an absolute path or <code>~/…</code>.
+                  </span>
+                </div>
+              </div>
+              <div className="project-settings__checkout-freshness">
+                <ProjectCheckoutFreshnessNotice slug={slug} />
+              </div>
+            </PageSection>
+          </div>
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'basic-info'}
+          >
+            <PageSection
+              id="section-basic-info"
+              className="project-settings__section"
+              eyebrow="Project identity"
+              title="Basic info"
+            >
+              <div className="project-settings__identity-grid">
+                <div className="editor-field">
+                  <label className="editor-label" htmlFor="project-name">
+                    Name *
+                  </label>
+                  <div className="project-settings__name-row">
+                    <button
+                      type="button"
+                      className="project-settings__icon-button"
+                      aria-label="Choose project icon"
+                      aria-expanded={iconPickerOpen}
+                      onClick={() => setIconPickerOpen((open) => !open)}
+                    >
+                      <ProjectIcon
+                        project={{ name: form.name, icon: form.icon }}
+                        size={40}
+                        fallback="initials"
+                      />
+                    </button>
+                    <input
+                      id="project-name"
+                      required
+                      className="editor-input project-settings__name-input"
+                      type="text"
+                      value={form.name}
+                      onChange={(e) => setField('name', e.target.value)}
+                    />
+                  </div>
+                  {legacyIcon && (
+                    <p className="project-settings__icon-notice">
+                      This project’s icon can’t be shown any more. Choose a new
+                      one.
+                    </p>
+                  )}
+                  {iconPickerOpen && (
+                    <ProjectIconPicker
+                      idPrefix="project-settings-icon"
+                      name={form.name}
+                      value={legacyIcon ? '' : (form.icon ?? '')}
+                      onChange={(icon) => setField('icon', icon)}
+                      candidates={iconCandidates.data ?? []}
+                      fetching={iconCandidates.isFetching}
+                    />
+                  )}
+                </div>
+              </div>
+              <div className="editor-field">
+                <label className="editor-label" htmlFor="project-description">
+                  Description
+                </label>
+                <textarea
+                  id="project-description"
+                  className="editor-textarea"
+                  value={form.description ?? ''}
+                  rows={2}
+                  onChange={(e) => setField('description', e.target.value)}
+                />
+              </div>
+            </PageSection>
+          </div>
+
+          {/* Default AI Model */}
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'model'}
+          >
+            <PageSection
+              id="section-model"
+              className="project-settings__section"
+              eyebrow="Conversation default"
+              title="AI model"
+              description="Choose a connection and model, or follow the Station default."
+            >
+              <PageRow
+                label="Model connection"
+                description="The connection used for this project’s model."
+                control={
+                  <select
+                    id="project-default-provider"
+                    className="editor-input"
+                    aria-label="Model connection"
+                    value={form.defaultProviderId ?? ''}
+                    onChange={(event) => {
+                      const providerId = event.target.value;
+                      // A model id only means something against the connection
+                      // that offers it. Choosing or switching a connection
+                      // commits a model THAT connection offers, so the field
+                      // never carries the previous connection's id (which the
+                      // server refuses outright). Clearing the connection clears
+                      // the model with it.
+                      //
+                      // One case still leaves the pair half-set: a ready
+                      // connection that declares no `config.defaultModel` and
+                      // lists no `modelOptions` has no id to commit, so the
+                      // field lands empty. The server then resolves this project
+                      // to the Station default, which is what the model field's
+                      // own hint says happens when either half is missing.
+                      setForm((current) =>
+                        current
+                          ? {
+                              ...current,
+                              defaultProviderId: providerId,
+                              defaultModel: connectionInitialModelId(
+                                selectableModelConnections.find(
+                                  (connection) => connection.id === providerId,
+                                ),
+                              ),
+                            }
+                          : current,
+                      );
+                    }}
+                  >
+                    <option value="">Station default</option>
+                    {unavailableConnection && (
+                      <option value={form.defaultProviderId}>
+                        {form.defaultProviderId} — saved connection unavailable
+                      </option>
+                    )}
+                    {selectableModelConnections.map((connection) => (
+                      <option key={connection.id} value={connection.id}>
+                        {connection.name}
+                      </option>
+                    ))}
+                  </select>
+                }
+              />
+              <PageRow
+                label="Default model"
+                // Derived from what the field actually holds. A connection that
+                // offered nothing to pre-fill leaves this empty, and saying
+                // "pre-filled" over an empty box is the class of claim this whole
+                // change exists to remove.
+                description={
+                  !form.defaultProviderId
+                    ? 'Choose a connection to override the Station default.'
+                    : unavailableConnection
+                      ? 'The saved connection is unavailable. Its model is preserved until you choose another connection.'
+                      : form.defaultModel
+                        ? 'Used with the selected connection.'
+                        : 'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.'
+                }
+                control={
+                  <ModelSelector
+                    value={form.defaultModel ?? ''}
+                    models={selectedConnectionModels}
+                    disabled={!form.defaultProviderId || unavailableConnection}
+                    onChange={(modelId) => setField('defaultModel', modelId)}
+                    placeholder="System default"
+                  />
+                }
+              />
+              {modelConnectionsQuery.isError && (
+                <ErrorState
+                  variant="compact"
+                  title="Could not load model connections"
+                  description={userFacingErrorMessage(
+                    modelConnectionsQuery.error,
+                  )}
+                  action={
+                    <Button
+                      onClick={() => void modelConnectionsQuery.refetch()}
+                    >
+                      Retry
+                    </Button>
+                  }
+                />
+              )}
+            </PageSection>
+          </div>
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'new-chat'}
+          >
+            <NewChatDefaultsSection
+              form={form}
+              setField={setField}
+              chatDefaults={chatDefaults}
+              stationApprovalDefault={stationConfig?.defaultApprovalMode}
+              stationConfigLoaded={stationConfig !== null}
+              projectModelSet={!!form.defaultProviderId && !!form.defaultModel}
+            />
+          </div>
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'thread-execution'}
+          >
+            <PageSection
+              id="section-thread-execution"
+              className="project-settings__section"
+              eyebrow="New thread default"
+              title="Thread execution"
+              description="A thread's own selection takes precedence."
+            >
+              <EnvironmentPicker
+                id="project-default-environment"
+                value={form.defaultEnvironment ?? { kind: 'current' }}
+                onChange={(value) => setField('defaultEnvironment', value)}
+              />
+              <PageRow
+                label="Execution environment"
+                description="A fresh worktree isolates changes. The current checkout shares this project’s working directory."
+                control={
+                  <select
+                    id="project-default-workspace-isolation"
+                    className="editor-input"
+                    aria-label="Execution environment"
+                    value={form.defaultWorkspaceIsolation}
+                    onChange={(event) =>
+                      setField(
+                        'defaultWorkspaceIsolation',
+                        event.target
+                          .value as ProjectForm['defaultWorkspaceIsolation'],
+                      )
+                    }
+                  >
+                    <option value="inherit">
+                      {inheritOptionLabel(
+                        stationConfig?.defaultWorkspaceIsolation,
+                        stationConfig !== null,
+                      )}
+                    </option>
+                    <option value="worktree">Use a fresh git worktree</option>
+                    <option value="shared">Use the current checkout</option>
+                  </select>
+                }
+              />
+            </PageSection>
+          </div>
+
+          {/* Layouts — list + save as template */}
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'agents'}
+          >
+            <AgentsSection form={form} setForm={setForm} projectSlug={slug} />
+          </div>
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'tools'}
+          >
+            <ToolsSection slug={slug} form={form} setForm={setForm} />
+          </div>
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'layouts'}
+          >
+            <LayoutsSection slug={slug} />
+          </div>
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'resources'}
+          >
+            <ProjectSourcesSection
+              slug={slug}
+              projectId={project?.id}
+              stationName={stationName}
+              onNavigateToSection={navigateToSection}
+              hrefForSection={hrefForSection}
+            />
+          </div>
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'access'}
+          >
+            {project && <AccessSection slug={slug} projectId={project.id} />}
+          </div>
+
+          {/* Knowledge */}
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'knowledge'}
+          >
+            <KnowledgeSection slug={slug} />
+          </div>
+
+          {/* Danger Zone */}
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'danger'}
+          >
+            <PageSection
+              id="section-danger"
+              className="project-settings__section"
+              eyebrow="Destructive action"
+              title="Danger zone"
+              description="Deleting this project cannot be undone."
+              tone="danger"
+            >
+              <Button
+                variant="danger-outline"
+                onClick={() => {
+                  setDeleteError(null);
+                  setDeleteOpen(true);
+                }}
+              >
+                Delete Project
+              </Button>
+            </PageSection>
+          </div>
+        </div>
       </div>
 
       <ConfirmModal

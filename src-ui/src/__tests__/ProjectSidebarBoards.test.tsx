@@ -376,14 +376,14 @@ beforeEach(() => {
 
 /** The section's own header, found by the heading text the user reads. */
 function boardsHeader() {
-  return screen.queryByText('Personal Boards');
+  return screen.queryByText('Apps');
 }
 
 function boardMenu(name: string) {
   fireEvent.click(screen.getByRole('button', { name: `${name} actions` }));
 }
 
-describe('Personal Boards stay discoverable after Projects', () => {
+describe('Apps stay discoverable after Projects', () => {
   test('keeps the group and first-create action visible when empty', async () => {
     await renderSidebar(<ProjectSidebar />);
     expect(boardsHeader()).not.toBeNull();
@@ -417,7 +417,7 @@ describe('Personal Boards stay discoverable after Projects', () => {
   });
 });
 
-describe('collapsed Personal Boards navigation', () => {
+describe('collapsed Apps navigation', () => {
   test('opens the list, returns focus on Escape, and dismisses after selecting a Board', async () => {
     boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
@@ -425,25 +425,21 @@ describe('collapsed Personal Boards navigation', () => {
       window.dispatchEvent(new Event('toggle-sidebar'));
     });
     const trigger = screen.getByRole('button', {
-      name: 'Personal Boards',
+      name: 'Apps',
     });
     trigger.focus();
     fireEvent.click(trigger);
-    const popup = screen.getByRole('dialog', { name: 'Personal Boards' });
+    const popup = screen.getByRole('dialog', { name: 'Apps' });
     expect(
       within(popup).getByRole('button', { name: 'Daily brief' }),
     ).toBeTruthy();
     fireEvent.keyDown(popup, { key: 'Escape' });
-    expect(
-      screen.queryByRole('dialog', { name: 'Personal Boards' }),
-    ).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Apps' })).toBeNull();
     expect(document.activeElement).toBe(trigger);
     fireEvent.click(trigger);
     fireEvent.click(screen.getByRole('button', { name: 'Daily brief' }));
     expect(navigate).toHaveBeenCalledWith('/boards/daily');
-    expect(
-      screen.queryByRole('dialog', { name: 'Personal Boards' }),
-    ).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Apps' })).toBeNull();
   });
 
   test('retires the popup when the selected Station authority changes', async () => {
@@ -458,10 +454,8 @@ describe('collapsed Personal Boards navigation', () => {
     act(() => {
       window.dispatchEvent(new Event('toggle-sidebar'));
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Personal Boards' }));
-    expect(
-      screen.getByRole('dialog', { name: 'Personal Boards' }),
-    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Apps' }));
+    expect(screen.getByRole('dialog', { name: 'Apps' })).toBeTruthy();
     await act(async () => {
       view.rerender(
         <KeyboardShortcutsProvider>
@@ -469,12 +463,10 @@ describe('collapsed Personal Boards navigation', () => {
         </KeyboardShortcutsProvider>,
       );
     });
-    expect(
-      screen.queryByRole('dialog', { name: 'Personal Boards' }),
-    ).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Apps' })).toBeNull();
     expect(
       screen
-        .getByRole('button', { name: 'Personal Boards' })
+        .getByRole('button', { name: 'Apps' })
         .getAttribute('aria-expanded'),
     ).toBe('false');
   });
@@ -484,7 +476,7 @@ describe('collapsed Personal Boards navigation', () => {
     act(() => {
       window.dispatchEvent(new Event('toggle-sidebar'));
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Personal Boards' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apps' }));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'New Board' }));
     });
@@ -492,9 +484,9 @@ describe('collapsed Personal Boards navigation', () => {
       name: 'Rename Untitled Board',
     });
     expect(document.activeElement).toBe(input);
-    expect(
-      screen.getByRole('dialog', { name: 'Personal Boards' }).contains(input),
-    ).toBe(true);
+    expect(screen.getByRole('dialog', { name: 'Apps' }).contains(input)).toBe(
+      true,
+    );
     fireEvent.change(input, { target: { value: 'My desk' } });
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Enter' });
@@ -507,9 +499,7 @@ describe('collapsed Personal Boards navigation', () => {
     // Naming finishes the gesture, so the new Board opens and the popup that
     // created it closes.
     expect(navigate).toHaveBeenCalledWith('/boards/my-desk');
-    expect(
-      screen.queryByRole('dialog', { name: 'Personal Boards' }),
-    ).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Apps' })).toBeNull();
   });
 
   test('palette creation with the rail collapsed opens the Board without a hidden rename', async () => {
@@ -531,7 +521,7 @@ describe('collapsed Personal Boards navigation', () => {
   });
 });
 
-describe('Personal Boards read recovery', () => {
+describe('Apps read recovery', () => {
   test.each(['pending', 'error'])(
     'does not create from an unread %s list',
     async (status) => {
@@ -550,13 +540,13 @@ describe('Personal Boards read recovery', () => {
         fireEvent.click(
           within(
             screen
-              .getByText('Unable to load personal Boards')
+              .getByText('Unable to load apps')
               .closest('[role="alert"]') as HTMLElement,
           ).getByRole('button', { name: 'Retry' }),
         );
         expect(readState.refetch).toHaveBeenCalledOnce();
       } else {
-        expect(screen.getByLabelText('Loading personal Boards')).toBeTruthy();
+        expect(screen.getByLabelText('Loading apps')).toBeTruthy();
       }
     },
   );

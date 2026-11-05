@@ -495,6 +495,7 @@
   min-width: 0;
 }
 .inbox-row-family > .disclosure-toggle {
+  font-size: var(--k-text-sm);
   min-height: 44px;
   padding-inline: var(--k-space-3);
   color: var(--k-text-muted);
@@ -506,6 +507,7 @@
 }
 
 .inbox-row-family__summary {
+  font-size: var(--k-text-sm);
   margin: 0;
   padding: var(--k-space-2) var(--k-space-3);
   color: var(--k-text-muted);
@@ -629,4 +631,36 @@
 .inbox-row__meta,
 .inbox-row__time {
   color: var(--k-text-muted);
+}
+
+.inbox-row--task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+}
+.inbox-row--task .inbox-row__title,
+.inbox-row--task .inbox-row__status {
+  grid-column: 1;
+}
+.inbox-row__task-label {
+  grid-column: 1;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.inbox-row__task-actions {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  min-height: 44px;
+  font-size: var(--k-text-sm);
+}
+
+.inbox-row__task-actions {
+  display: flex;
+  align-items: center;
+}
+.inbox-row__task-actions > button {
+  min-height: 44px;
+  font-size: var(--k-text-sm);
 }

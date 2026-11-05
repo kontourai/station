@@ -8,8 +8,8 @@ Tasks, approvals or conversations into it.
 ## Browse Apps
 
 Enable **Apps library** in **Settings → Advanced → Feature previews**, then
-choose **Browse apps** in the sidebar's Boards section. In the collapsed rail,
-open the dashboard button first. On a phone, open the navigation drawer.
+choose **Browse apps** in the **Apps** section. In the collapsed rail,
+choose **Apps** first. On a phone, open the navigation drawer.
 
 The Apps launcher searches your personal layouts by name, description, address
 and plugin. **Your Boards** lists records without a plugin source; **Plugin
@@ -30,7 +30,7 @@ remain available.
 
 ## Create and edit
 
-Choose **+** beside **Personal Boards**, name the Board, and open it. Start with
+Choose **+** beside **Apps**, name the Board, and open it. Start with
 **Daily brief**, **Project watch**, **Review desk**, or **Start blank**. Project
 watch asks you to choose an available Project first.
 

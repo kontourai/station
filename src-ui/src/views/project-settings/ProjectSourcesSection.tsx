@@ -15,9 +15,15 @@ import './ProjectSourcesSection.css';
 export function ProjectSourcesSection({
   slug,
   projectId,
+  stationName,
+  onNavigateToSection,
+  hrefForSection,
 }: {
   slug: string;
   projectId?: string;
+  stationName?: string;
+  onNavigateToSection?: (section: string) => void;
+  hrefForSection?: (section: string) => string;
 }) {
   const authority = useHostRequestAuthorityScope();
   const { navigate } = useNavigation();
@@ -48,11 +54,23 @@ export function ProjectSourcesSection({
                 slug={slug}
                 projectId={projectId}
                 authority={authority}
+                stationName={stationName}
               />
             )}
             <details className="project-sources__diagnostics">
               <summary>Working copies and repair</summary>
-              <ResourcesSection slug={slug} requestScope={authority} embedded />
+              <ResourcesSection
+                slug={slug}
+                requestScope={authority}
+                stationName={stationName}
+                workspaceHref={hrefForSection?.('workspace')}
+                onNavigateToWorkspace={
+                  onNavigateToSection
+                    ? () => onNavigateToSection('workspace')
+                    : undefined
+                }
+                embedded
+              />
             </details>
           </details>
           <section
@@ -66,9 +84,11 @@ export function ProjectSourcesSection({
             </p>
             <Button
               onClick={() =>
-                navigate(`/projects/${encodeURIComponent(slug)}/edit`, {
-                  section: 'tools',
-                })
+                onNavigateToSection
+                  ? onNavigateToSection('tools')
+                  : navigate(`/projects/${encodeURIComponent(slug)}/edit`, {
+                      section: 'tools',
+                    })
               }
             >
               Manage connections

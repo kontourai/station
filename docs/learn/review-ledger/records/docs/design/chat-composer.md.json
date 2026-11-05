@@ -284,7 +284,17 @@
 
     "src-ui/src/__tests__/ConversationHandoffDialog.test.tsx",
 
-    "src-ui/src/components/chat-start/__tests__/StartStationControl.test.tsx"
+    "src-ui/src/components/chat-start/__tests__/StartStationControl.test.tsx",
+
+    "src-ui/src/components/chat-dock/useInboxGroups.ts",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.tsx",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.css",
+
+    "src-ui/src/hooks/useIsMobile.ts",
+
+    "src-ui/src/hooks/useCoarsePointer.ts"
   ],
 
   "checks": [

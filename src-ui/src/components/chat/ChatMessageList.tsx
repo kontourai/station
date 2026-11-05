@@ -16,6 +16,7 @@ import { chatFormDraftsStore } from '../../contexts/chat-form-drafts-store';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useToolApproval } from '../../hooks/useToolApproval';
@@ -72,7 +73,6 @@ import { StreamingMessage } from './StreamingMessage';
 import { SubagentTranscriptCard } from './SubagentTranscriptCard';
 import { ToolCallDisplay } from './ToolCallDisplay';
 import {
-  TranscriptTurnActions,
   TranscriptTurnRail,
   turnLabel,
   turnStepTarget,
@@ -296,6 +296,8 @@ function ChatMessageListComponent({
 }: ChatMessageListProps) {
   const agents = useAgents();
   const isMobile = useIsMobile();
+  const coarsePointer = useCoarsePointer();
+  const touchTurnControls = isMobile || coarsePointer;
   const [turnBrowserOpen, setTurnBrowserOpen] = useState(false);
   const [pendingTurnJump, setPendingTurnJump] = useState<string | null>(null);
   useEffect(() => {
@@ -631,8 +633,6 @@ function ChatMessageListComponent({
   // History replay keeps its own timeline; the live transcript gets the rail.
   const turnNavigation = !activeSession.replay && turnLandmarks.length > 0;
   const turnRailRef = useRef<HTMLElement>(null);
-  // Reported by the rail; until it measures, assume the wide layout.
-  const [turnRailAvailable, setTurnRailAvailable] = useState(true);
   const turnViewport = useTranscriptTurnViewport({
     enabled: turnNavigation,
     scrollElement: messagesContainerRef,
@@ -1254,13 +1254,9 @@ function ChatMessageListComponent({
     // re-arm the link's hold against the very trip to the end the reader
     // just asked for.
     clearMessageRevealHash();
-    // The control (and the turn steps beside it) leave for the glide; focus
-    // on them stays in the conversation rather than falling to the page.
-    if (
-      document.activeElement?.closest(
-        '.chat-scroll-to-bottom, .transcript-turn-actions',
-      )
-    )
+    // The latest-message control leaves during the glide; keep its focus
+    // in the conversation.
+    if (document.activeElement?.closest('.chat-scroll-to-bottom'))
       el.focus({ preventScroll: true });
     setReaderRestoreRequest(null);
     visibleAnchorRef.current = null;
@@ -1735,40 +1731,7 @@ function ChatMessageListComponent({
     isUserScrolledUp && !scrollingToBottom ? (
       <ScrollToBottomButton onClick={handleScrollToBottom} />
     ) : null;
-  // #342: previous/next turn travel with the return-to-latest control, which
-  // is the transcript's one place for "you are not at the end" actions.
-  // #3862: at the latest message that control is gone, and a column too
-  // narrow for the rail (a phone) would have no turn navigation at all, so
-  // Previous turn alone stays in the same composer slot. Same component in
-  // the same place: stepping keeps focus on the Previous button as the
-  // group grows to its away-from-the-end form.
-  const latestTurnStep =
-    !isMobile &&
-    !scrollToBottomControl &&
-    turnNavigation &&
-    !turnRailAvailable &&
-    Boolean(scrollControlsTarget);
-  const scrollControls =
-    scrollToBottomControl && turnNavigation && !isMobile ? (
-      <TranscriptTurnActions
-        previousTurn={previousTurn}
-        nextTurn={nextTurn}
-        onJump={stepToTurn}
-        floating={!scrollControlsTarget}
-      >
-        {scrollToBottomControl}
-      </TranscriptTurnActions>
-    ) : latestTurnStep ? (
-      <TranscriptTurnActions
-        previousTurn={previousTurn}
-        nextTurn={undefined}
-        onJump={stepToTurn}
-        floating={false}
-        latest
-      />
-    ) : (
-      scrollToBottomControl
-    );
+  const scrollControls = scrollToBottomControl;
 
   return (
     <ApprovalSheetProvider
@@ -1836,6 +1799,9 @@ function ChatMessageListComponent({
           />
           <div
             className="chat-messages"
+            data-touch-turn-controls={
+              (turnNavigation && touchTurnControls) || undefined
+            }
             data-answer-width={chatAnswerWidth}
             ref={messagesContainerRef}
             role="log"
@@ -2056,7 +2022,10 @@ function ChatMessageListComponent({
               activeTurn={turnViewport.activeTurn}
               onJump={jumpToTurn}
               olderHistory={Boolean(hasOlderMessages)}
-              onAvailableChange={setTurnRailAvailable}
+              previousTurn={previousTurn}
+              nextTurn={nextTurn}
+              onStep={stepToTurn}
+              touchControls={touchTurnControls}
             />
           )}
           {/* Mounted with the navigation, before anything is said: a region
