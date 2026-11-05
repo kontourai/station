@@ -213,7 +213,8 @@ test.each([true, false])(
       delete view.identity.executionRoot;
     }
     mount(view, { posture: 'not-backing' });
-    if (empty) await screen.findByText('No repositories attached');
+    if (empty)
+      await screen.findByText('Start with documents or connected tools');
     else
       await waitFor(() =>
         expect(

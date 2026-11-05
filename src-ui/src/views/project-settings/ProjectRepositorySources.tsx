@@ -103,8 +103,8 @@ export function ProjectRepositorySources({
       ) : !manifest.repos.length ? (
         <Empty
           variant="compact"
-          label="No repositories attached"
-          description="Add one when you need code. Documents and connected tools can be used on their own."
+          label="Start with documents or connected tools"
+          description="Add a repository when you need code."
         />
       ) : (
         <ul className="project-repositories__list">
