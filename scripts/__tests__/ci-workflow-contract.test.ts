@@ -3025,6 +3025,18 @@ describe('CI verification workflow contracts', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       "${{ steps.rust_relevance.outputs.relevant != 'false' }}",
     );
+    // #3994: the Desktop test build's WebDriver plugin compiles against
+    // Tauri's Windows crates only on Windows; check it after the staging step.
+    const webdriverCheck = floorJob.steps.find(
+      (step) => step.name === 'Check the Desktop webdriver build',
+    );
+    expect(webdriverCheck?.run).toBe(
+      'cargo check --manifest-path src-desktop/Cargo.toml --features webdriver',
+    );
+    expect(webdriverCheck?.if).toBe(compile?.if);
+    expect(floorJob.steps.indexOf(webdriverCheck!)).toBeGreaterThan(
+      floorJob.steps.indexOf(compile!),
+    );
     const relevanceIndex = floorJob.steps.findIndex(
       (step) => step.id === 'rust_relevance',
     );

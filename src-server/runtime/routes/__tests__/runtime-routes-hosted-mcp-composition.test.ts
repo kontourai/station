@@ -52,10 +52,21 @@ import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../r
 // Removed in an after-hook even when an assertion fails (#2421).
 const makeTempDir = trackTempDirs();
 
+// The routes open the home's project room databases; on Windows an open
+// SQLite file keeps its home from being removed (EPERM), so each test closes
+// the routes it configured before its homes go.
+const openRoutes: { projectRoomRuntime: { close(): Promise<void> } }[] = [];
+async function closeOpenRoutes() {
+  for (const routes of openRoutes.splice(0))
+    await routes.projectRoomRuntime.close();
+}
+afterEach(closeOpenRoutes);
+
 async function configureRuntimeRoutes(
   context: Parameters<typeof configureRuntimeRoutesProduction>[0],
 ) {
   const result = configureRuntimeRoutesProduction(context);
+  openRoutes.push(result);
   await result.kitLifecycleReady;
   return result;
 }
@@ -227,7 +238,8 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
   const directories: string[] = [];
   const originalRegistry = process.env[registryFileEnv];
 
-  afterEach(() => {
+  afterEach(async () => {
+    await closeOpenRoutes();
     __resetStationControlMcpTokensForTests();
     runtimeSupport.notificationService.list.mockReset();
     runtimeSupport.notificationService.list.mockReturnValue([]);

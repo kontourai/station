@@ -193,6 +193,21 @@ function configurationRuntime(
 }
 
 const makeTempDir = trackTempDirs();
+// The routes open the home's project room databases; on Windows an open
+// SQLite file keeps its home from being removed (EPERM). Registered after the
+// tracker, so it runs before the homes are removed.
+const openRoutes: { projectRoomRuntime: { close(): Promise<void> } }[] = [];
+afterEach(async () => {
+  for (const routes of openRoutes.splice(0))
+    await routes.projectRoomRuntime.close();
+});
+function configureRuntimeRoutes(
+  context: Parameters<typeof configureRuntimeRoutesProduction>[0],
+) {
+  const result = configureRuntimeRoutesProduction(context);
+  openRoutes.push(result);
+  return result;
+}
 
 const disclosure: Awaited<ReturnType<UsageTelemetryService['disclosure']>> = {
   acknowledged: false,
@@ -222,7 +237,7 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
     // Exactly the production lifecycle: `configureRuntimeRoutes` runs first
     // and the service does not exist yet.
     let usageTelemetry: UsageTelemetryService | undefined;
-    const result = configureRuntimeRoutesProduction(
+    const result = configureRuntimeRoutes(
       runtimeContext(app, homeDir, {
         usageTelemetry: undefined,
         getUsageTelemetry: () => usageTelemetry,
@@ -504,7 +519,7 @@ describe('persisted telemetry configuration during Agent activation', () => {
       const app = new Hono();
       bindOperatorPrincipal(app);
       let live: UsageTelemetryService | undefined;
-      const mounted = configureRuntimeRoutesProduction(
+      const mounted = configureRuntimeRoutes(
         runtimeContext(app, homeDir, {
           configLoader: loader,
           usageTelemetry: undefined,
@@ -1059,7 +1074,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
     }
     const app = new Hono();
     bindOperatorPrincipal(app);
-    const mounted = configureRuntimeRoutesProduction(
+    const mounted = configureRuntimeRoutes(
       runtimeContext(app, homeDir, {
         configLoader: loader,
         usageTelemetry: undefined,

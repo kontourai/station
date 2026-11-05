@@ -28,7 +28,9 @@
 
     "packages/contracts/src/session-lifecycle.ts",
 
-    "src-server/services/orchestration/flow-policy-sidecar.ts"
+    "src-server/services/orchestration/flow-policy-sidecar.ts",
+
+    "docs/strategy/constitution.md"
   ],
 
   "checks": [

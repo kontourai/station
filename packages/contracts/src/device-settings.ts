@@ -370,6 +370,8 @@ export interface DeviceSettings {
   hapticsEnabled: boolean;
   /** Reopen this phone's last explicitly selected Station on its next launch. */
   openLastStationOnLaunch: boolean;
+  /** Show the installed app’s changelog once after each upgrade on this device. */
+  showReleaseNotesAfterUpdate: boolean;
   /**
    * Terminals keep a navigable text mirror of their screen and announce new
    * output (#3994). Off by default: browsers report no screen reader, and the
@@ -1038,6 +1040,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
     // Matches the prior `navigation-store.ts`'s
     // `getDefaultNavigationState`/`parseUrl` default: 'bottom'.
     defaultValue: 'bottom',
+  }),
+  defineDeviceSetting({
+    key: 'showReleaseNotesAfterUpdate',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Show changelog after updates',
+    help: 'This device shows what changed the first time a newer app version opens.',
+    description:
+      'Show the installed app’s release notes once after an upgrade. Previous changelogs remain available in Updates.',
+    defaultValue: true,
   }),
   defineDeviceSetting({
     key: 'openLastStationOnLaunch',

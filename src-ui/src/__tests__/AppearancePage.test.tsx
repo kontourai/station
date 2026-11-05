@@ -218,12 +218,27 @@ describe('Appearance page', () => {
     expect(screen.queryByText(/Your custom accent/)).toBeNull();
   });
 
-  test('Station offers its own presets and a custom color, not named accents', () => {
+  test('Station accent presets announce selection, switching and restoration of the default', () => {
     renderPage();
     expect(screen.queryByRole('radiogroup', { name: 'Accent' })).toBeNull();
     expect(screen.getByLabelText('Custom accent color')).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('Accent color #ec4899'));
+    const pink = screen.getByRole('button', { name: 'Accent color #ec4899' });
+    const green = screen.getByRole('button', { name: 'Accent color #22c55e' });
+    expect(pink.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(pink);
     expect(deviceSettingsStore.getSnapshot().accentColor).toBe('#ec4899');
+    expect(screen.getAllByRole('button', { pressed: true })).toEqual([pink]);
+
+    fireEvent.click(green);
+    expect(deviceSettingsStore.getSnapshot().accentColor).toBe('#22c55e');
+    expect(pink.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getAllByRole('button', { pressed: true })).toEqual([green]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use default' }));
+    expect(deviceSettingsStore.getSnapshot().accentColor).toBeNull();
+    expect(green.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.queryByRole('button', { pressed: true })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Use default' })).toBeNull();
   });
 
   test('the mode control writes the same theme setting and the previews follow it', () => {

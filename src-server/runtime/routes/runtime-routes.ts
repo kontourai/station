@@ -958,6 +958,8 @@ import {
   type WorkItemObserver,
 } from '../../services/work-item-providers/github-work-item-observer.js';
 import { LocalWorkItemProvider } from '../../services/work-item-providers/local-work-item-provider.js';
+import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
+import type { TaskFollowUpWake } from '../../services/work-item-providers/task-follow-up-wake.js';
 import {
   checkpointCaptureOps,
   clientCompatHandshakes,
@@ -1245,6 +1247,11 @@ export interface ConfigureRuntimeRoutesContext {
    * route-local GitHub observer.
    */
   workItemObserver?: WorkItemObserver;
+  /**
+   * The runtime's Task follow-up store (#4508): the poller writes it and the
+   * Task brief reads it. Absent: no follow-ups are polled or shown.
+   */
+  taskFollowUps?: TaskFollowUpStoreHolder;
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
@@ -1657,6 +1664,10 @@ export function configureRuntimeRoutes(
 ): ConfigureRuntimeRoutesResult {
   let contextEfficiency: ReturnType<typeof composeContextEfficiencyRuntime>;
   let durableTaskQuestionWake: TaskQuestionWake | undefined;
+  /** #4508: assigned once the support services compose the follow-up wake. */
+  let durableTaskFollowUpWake:
+    | Pick<TaskFollowUpWake, 'placementRefusal'>
+    | undefined;
   // Shared by the operator grant routes and diagnostics admission.
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
@@ -3400,6 +3411,7 @@ export function configureRuntimeRoutes(
       localProjectIdFor(context.projectService, identity),
     roomRuntime: () => projectTaskRoomRuntime,
     workItemObserver,
+    ...(context.taskFollowUps ? { followUps: context.taskFollowUps } : {}),
     logger: context.logger,
   });
   context.orchestrationService.bindMandatoryTaskContextVerifier(
@@ -6845,6 +6857,11 @@ export function configureRuntimeRoutes(
         }) ??
         contextEfficiency?.placementRefusal(input) ??
         durableTaskQuestionWake?.placementRefusal({
+          conversationId: input.conversationId,
+          clientTurnId: input.clientTurnId,
+          userId: input.payload.actor.userId,
+        }) ??
+        durableTaskFollowUpWake?.placementRefusal({
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,
           userId: input.payload.actor.userId,
@@ -11600,6 +11617,7 @@ export function configureRuntimeRoutes(
     pushSigningKeyStore,
     pushGatewayAvailable,
     agentActivityPublisher,
+    taskFollowUpWake,
   } = configureRuntimeSupportServices(context, flowRunService, {
     threadInbox: () => threadInbox,
     focus: focusPresence,
@@ -11619,6 +11637,7 @@ export function configureRuntimeRoutes(
       ),
   });
   automationActions = runtimeAutomationActions;
+  durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
   contextEfficiency?.start();
   const nativeInvocationRunReader =

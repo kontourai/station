@@ -322,7 +322,7 @@ export async function reconcileSourceVerification({
       throw new Error('Unsupported reconciliation event');
 
     const metadataWorkflows = new Map();
-    const trustedCancelledMetadata = async (run, sourceBase) => {
+    const trustedCancelledMetadata = async (run, liveBase) => {
       if (
         run.status !== 'completed' ||
         run.conclusion !== 'cancelled' ||
@@ -340,8 +340,8 @@ export async function reconcileSourceVerification({
       );
       if (refs.length !== 1) return false;
       const revision = refs[0].sha;
-      if (revision !== sourceBase) {
-        const comparison = await request(`compare/${revision}...${sourceBase}`);
+      if (revision !== liveBase) {
+        const comparison = await request(`compare/${revision}...${liveBase}`);
         if (
           !['ahead', 'identical'].includes(comparison.status) ||
           comparison.merge_base_commit?.sha !== revision
@@ -453,10 +453,8 @@ export async function reconcileSourceVerification({
             `actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
             'jobs',
           );
-          const verifiedMetadata = await trustedCancelledMetadata(
-            run,
-            sourceBase,
-          );
+          const verifiedMetadata =
+            compatibleBase && (await trustedCancelledMetadata(run, liveBase));
           const classified = sourceVerdict(
             jobs,
             owner.head.repo.id !== repo.id,

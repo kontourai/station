@@ -2453,3 +2453,8 @@ Task incarnation, checkpoint, coordinator and known wait facts. The server
 reconciles through the existing inbox; it does not infer a new workflow DAG.
 See [bounded agent work](../guides/agent-efficiency.md) for current consumers and
 qualification limits.
+
+`DeviceSettings.showReleaseNotesAfterUpdate` is a device-local boolean,
+defaulting to `true`. It controls the installed app’s first-launch changelog
+after an upgrade; it does not control update downloads, installation, or
+release availability.

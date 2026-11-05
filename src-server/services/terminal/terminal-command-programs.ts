@@ -133,12 +133,15 @@ export async function resolveTerminalCommandLaunch(
   },
 ): Promise<ShellLaunch> {
   const env = { PATH: await deps.path() };
+  const platform = deps.platform ?? process.platform;
+  const comspec = (deps.env ?? process.env).COMSPEC ?? 'cmd.exe';
   if (program.kind === 'run') {
-    const platform = deps.platform ?? process.platform;
+    // cmd.exe reads its line verbatim (spawnCommandProcess passes it so):
+    // `/s /c "…"` strips the outer quotes and keeps the person's own.
     return platform === 'win32'
       ? {
-          file: (deps.env ?? process.env).COMSPEC ?? 'cmd.exe',
-          args: ['/d', '/s', '/c', program.command],
+          file: comspec,
+          args: ['/d', '/s', '/c', `"${program.command}"`],
           env,
         }
       : { file: '/bin/sh', args: ['-c', program.command], env };
@@ -151,5 +154,22 @@ export async function resolveTerminalCommandLaunch(
   const file = await deps.findBinary(packageManager);
   if (!file)
     throw new TerminalProgramUnavailable(`${packageManager} is not installed`);
+  if (platform === 'win32' && /\.(cmd|bat)$/i.test(file)) {
+    // Windows package managers are batch shims, which only cmd.exe runs
+    // (spawning one directly fails with EINVAL). cmd interprets the line, so
+    // a name it would read as syntax is refused rather than escaped.
+    if (!CMD_LITERAL_SCRIPT_NAME.test(program.name) || /[%"]/.test(file))
+      throw new TerminalProgramUnavailable(
+        `"${program.name}" cannot run on Windows: its name has characters the Windows command processor would interpret`,
+      );
+    return {
+      file: comspec,
+      args: ['/d', '/s', '/c', `""${file}" run ${program.name}"`],
+      env,
+    };
+  }
   return { file, args: ['run', program.name], env };
 }
+
+/** A script name cmd.exe reads as one literal word. */
+const CMD_LITERAL_SCRIPT_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.:+@/-]*$/;
