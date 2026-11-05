@@ -9,6 +9,12 @@ import {
 
 test.setTimeout(600_000);
 
+// The Station engine accepts images; document input is model-dependent.
+const QUALIFICATION_IMAGE = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 test('owner Device chats through a real Station delegation and keeps target refusal separate from source authentication', async ({
   page,
   stations,
@@ -118,9 +124,9 @@ test('owner Device chats through a real Station delegation and keeps target refu
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Attach files', exact: true }).click();
   await (await chooser).setFiles({
-    name: 'qualification.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('Receiver attachment qualification.\n'.repeat(8192)),
+    name: 'qualification.png',
+    mimeType: 'image/png',
+    buffer: QUALIFICATION_IMAGE,
   });
   expect((await prepared).ok()).toBe(true);
   const upload = await uploaded;
@@ -239,9 +245,9 @@ test('owner Device chats through a real Station delegation and keeps target refu
   const refusedChooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Attach files', exact: true }).click();
   await (await refusedChooser).setFiles({
-    name: 'refused.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('This upload must be refused.\n'.repeat(8192)),
+    name: 'refused.png',
+    mimeType: 'image/png',
+    buffer: QUALIFICATION_IMAGE,
   });
   expect((await refusedPreparation).status()).toBe(424);
   await expect(
