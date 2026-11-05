@@ -822,6 +822,10 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
       await vi.waitFor(() => expect(entry(key)?.state).toBe('refused'), {
         timeout: 10_000,
       });
+      // Refused by the follow-up wake, not by any other placement rule.
+      expect(JSON.parse(String(entry(key)?.outcome))).toMatchObject({
+        reasonCode: 'task_follow_up_source_changed',
+      });
       expect(asked).toContainEqual(
         expect.objectContaining({
           clientTurnId: key,
