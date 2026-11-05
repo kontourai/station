@@ -344,3 +344,82 @@ test('a session’s events reach only its own listeners', async () => {
   expect(seen.quiet).toEqual([]);
   expect(quiet.status).toBe('running');
 });
+
+test('credits the host for output only once a listener that consumes it later has', async () => {
+  vi.useFakeTimers();
+  const f = fixture(ticket);
+  const session = f.store.attach(target, id);
+  await flush();
+  const socket = f.sockets[0]!;
+  socket.open();
+  const channel = attachedReady(socket);
+  const acks = () =>
+    socket
+      .controls()
+      .filter((item) => item.type === 'ack')
+      .map((item) => item.seq);
+  const consumed: (() => void)[] = [];
+  const unsubscribe = session.subscribe({
+    output: () =>
+      new Promise<void>((resolve) => {
+        consumed.push(resolve);
+      }),
+  });
+  // A listener that consumes at once does not hold credit back.
+  session.subscribe({ output: () => undefined });
+  for (let seq = 1; seq <= 3; seq += 1) output(socket, channel, seq, `${seq}`);
+  await flush();
+  // Received, not yet consumed: nothing beyond the attach baseline.
+  expect(acks()).toEqual([0]);
+  // Out of order: the newest consumed first still waits for the oldest.
+  consumed[2]!();
+  await flush();
+  expect(acks()).toEqual([0]);
+  consumed[0]!();
+  await flush();
+  expect(acks()).toEqual([0, 1]);
+  consumed[1]!();
+  await flush();
+  // Cumulative: one acknowledgement covers the rest.
+  expect(acks()).toEqual([0, 1, 3]);
+  // A listener that goes away releases what it still owed.
+  output(socket, channel, 4, '4');
+  await flush();
+  expect(acks()).toEqual([0, 1, 3]);
+  unsubscribe();
+  await flush();
+  expect(acks()).toEqual([0, 1, 3, 4]);
+});
+
+test('a new channel acknowledges nothing a consumer finishes from the old one', async () => {
+  vi.useFakeTimers();
+  const f = fixture(ticket);
+  const session = f.store.attach(target, id);
+  await flush();
+  const first = f.sockets[0]!;
+  first.open();
+  const channel = attachedReady(first);
+  const consumed: (() => void)[] = [];
+  session.subscribe({
+    output: () =>
+      new Promise<void>((resolve) => {
+        consumed.push(resolve);
+      }),
+  });
+  output(first, channel, 1, 'a');
+  first.drop(1006);
+  await vi.advanceTimersByTimeAsync(250);
+  const second = f.sockets[1]!;
+  second.open();
+  attachedReady(second, 1);
+  consumed[0]!();
+  await flush();
+  // The resumed channel starts from sequence 1; acknowledging 1 again on it
+  // is refused by the host, so the late release sends nothing.
+  expect(
+    second
+      .controls()
+      .filter((item) => item.type === 'ack')
+      .map((item) => item.seq),
+  ).toEqual([1]);
+});

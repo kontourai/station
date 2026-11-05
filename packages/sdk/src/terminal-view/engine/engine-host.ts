@@ -12,6 +12,11 @@ import { GhosttyVtModule } from './wasm';
 
 export type PostEvent = (event: EngineEvent, transfer?: Transferable[]) => void;
 
+/** Output held while the module instantiates, at most. */
+export const ENGINE_MAX_QUEUED_WRITE_BYTES = 4 * 1024 * 1024;
+/** Requests held while the module instantiates, at most. */
+export const ENGINE_MAX_QUEUED_REQUESTS = 4096;
+
 export class EngineHost {
   private engine: TerminalEngine | null = null;
   private visible = true;
@@ -19,6 +24,7 @@ export class EngineHost {
   private framePending = false;
   private frameTimer: ReturnType<typeof setTimeout> | null = null;
   private queue: EngineRequest[] | null = [];
+  private queuedWriteBytes = 0;
 
   constructor(private readonly post: PostEvent) {}
 
@@ -29,10 +35,36 @@ export class EngineHost {
     }
     // Requests that arrive while the module instantiates run afterwards.
     if (this.queue) {
-      this.queue.push(request);
+      this.enqueue(this.queue, request);
       return;
     }
     this.apply(request);
+  }
+
+  /**
+   * Holds a request for after instantiation, within bounds. Output past the
+   * bound is dropped with an explicit `overflow`, so the view rebuilds its
+   * screen from replay instead of rendering an incomplete stream.
+   */
+  private enqueue(queue: EngineRequest[], request: EngineRequest): void {
+    const bytes = request.type === 'write' ? request.bytes.byteLength : 0;
+    if (
+      queue.length < ENGINE_MAX_QUEUED_REQUESTS &&
+      this.queuedWriteBytes + bytes <= ENGINE_MAX_QUEUED_WRITE_BYTES
+    ) {
+      queue.push(request);
+      this.queuedWriteBytes += bytes;
+      return;
+    }
+    if (request.type !== 'write') {
+      // Input and layout requests made before the terminal exists; the
+      // latest resize and theme still arrive with the view's next update.
+      if (queue.length < ENGINE_MAX_QUEUED_REQUESTS) queue.push(request);
+      return;
+    }
+    this.queue = queue.filter((pending) => pending.type !== 'write');
+    this.queuedWriteBytes = 0;
+    this.post({ type: 'overflow', id: request.id });
   }
 
   private async init(request: Extract<EngineRequest, { type: 'init' }>) {
@@ -47,6 +79,7 @@ export class EngineHost {
       this.post({ type: 'ready' });
       const queued = this.queue ?? [];
       this.queue = null;
+      this.queuedWriteBytes = 0;
       for (const pending of queued) this.apply(pending);
       this.schedule();
     } catch (error) {
@@ -77,7 +110,12 @@ export class EngineHost {
   private applyTo(engine: TerminalEngine, request: EngineRequest): void {
     switch (request.type) {
       case 'write':
-        engine.write(request.bytes, request.mode);
+        try {
+          engine.write(request.bytes, request.mode);
+        } finally {
+          // Parsed (or refused): the view may take more output either way.
+          this.post({ type: 'written', id: request.id });
+        }
         break;
       case 'resize':
         engine.resize(request.size);
