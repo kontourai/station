@@ -3,9 +3,37 @@
 One ongoing branch, `feat/child-work-epic-20261021`, owns work outside the
 master consolidation in #3991. It starts at published
 `d96f54887837be058c5e5119b8028daab0befea1`. Merge subsequent master/main
-normally before publication. Open one PR when the combined work is ready.
+normally before publication. The user subsequently authorized staged delivery:
+land a meaningful foundation first, then continue the preserved group/recovery
+work. Each landing keeps its own evidence and does not close the full epic.
 
 ## Current delivery state
+
+**IN_PROGRESS; full epic NOT_READY.** The independently useful retention,
+result-provenance, Station-isolation, parent-notice and Directory foundation is
+[PR #4602](https://github.com/kontourai/station/pull/4602), armed for auto-merge.
+Its merged source passes 1,036 focused tests; readiness reports zero failures
+and zero warnings. Hosted checks and actual merge remain separate. Group,
+lineage, context-sync and finalizer/recovery work remains on this branch;
+neither production qualification flag is enabled.
+
+At `59821ae7e773`, the delayed attached-session follower start belongs to the
+existing runtime timer list. Shutdown cancels it before stopping the follower,
+so a later callback cannot restart polling against closed stores. The unchanged
+cold-start suite passes all 40 cases in 83.83 seconds, including the committed
+post-shutdown regression and the initialized Flow report/raw-result/exact
+accounting-recovery journey. That journey uses a controlled HTTP model, not a
+live provider. Its same-key recovery retry stays replayed and the model remains
+called once. The earlier 39-pass/one-failure timer baseline is retained. No
+claim is made that this defect caused the earlier 120-second caller latency.
+
+The resumed managed install initially found a missing example-local Flow 9.7
+package resolving to root Flow 9.12 despite pnpm's up-to-date report. The failed
+receipt and old generated tree were retained; a fresh managed install restored
+both locked versions and verified successfully. No dependency declaration or
+verification policy was changed.
+
+### Historical delivery checkpoint at `5a212193a67d`
 
 **NOT_READY.** At the merged-main test prefix `5a212193a67d`, the retention,
 background-status and scoped-hook selection passes 86 cases. The new real
