@@ -177,7 +177,11 @@ External policy delivery follows the [engine policy contract](../conformance/too
 For a plugin-owned Agent, Station ignores plugin-declared
 `unattendedAutoApprove` and filters attended patterns made entirely of `*`.
 An operator in person, or a caller with `approval:full-access`, can change
-these grants through the Agent update route. Station records the choice outside
+these grants through the Agent update route. Removing grants, or keeping a
+subset of them, needs only the normal authority to edit the Agent. Under a
+[managed approval ceiling](managed-policy.md#approval-mode-ceiling) below full
+access nobody holds the full-access authority, so grants can be removed or
+narrowed but not added while the policy is installed. Station records the choice outside
 the plugin-owned Agent directory, scoped to the owning plugin, so an update of
 that plugin does not replace it and another plugin does not inherit it. An
 explicit empty list records removal of a grant. Other approval and policy checks

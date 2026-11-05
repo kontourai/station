@@ -250,6 +250,21 @@ session. A pool only expires its own ended records, so a busy agent can never
 expire a person's shell history, and commands get no shell number and are
 never restored.
 
+Stopping a command, or its output cap, ends what it started, not only the
+command: [termination](../../src-server/services/terminal/command-process.ts)
+resolves once none of it remains, and fails otherwise. On POSIX the command
+leads its own process group, signaled SIGTERM then SIGKILL; after the leader
+exits, the group is checked continuously while termination runs and signaled
+only right after a check shows members, and once seen empty it is never
+signaled again, so a reused group id is not. On Windows the command itself is
+ended at once (Node still holds its handle, so its pid names no other process),
+without waiting on a process-table read; then each process proven to
+descend from the command (parent pid plus birth order, the owned-process
+sweep's rule) is ended by pid until the process table shows none; a
+descendant whose parent had already exited before the stop cannot be proven
+and is not reached. A command that exits by itself leaves background children
+it started running, as before.
+
 When a slot is needed, the oldest ended or failed record in the same pool,
 eligible for the caller's operate authority, expires: its journal and cache entry are discarded
 and its metadata is removed. Live/stopping sessions are pinned. Closed/failed
@@ -349,6 +364,13 @@ Settings › Appearance › Terminal screen reader mode (`terminalScreenReader`)
 off by default and restored by Restore device defaults. Shell-integration
 marks, images and ligatures remain deferred.
 
+Output reaches the worker under the socket's credit: the SDK store
+acknowledges output only after each view's worker reports it parsed, so a
+flooding program waits for the emulator instead of queueing in front of it.
+A view holds at most 4 MiB it has not seen parsed, and the worker at most
+4 MiB before it starts; past either bound the view resets and replays the
+session's retained output instead of rendering a stream with a gap.
+
 A view handed a different session while mounted (Reconnect terminal, a
 read-only change) resets its emulator to a fresh terminal (RIS plus
 scrollback) before the new attachment replays, since a fresh attachment
@@ -362,6 +384,37 @@ other Ctrl+Shift letter chords elsewhere are left to the page, so Station's
 command palette, Settings and shortcut list work from a focused terminal; the
 rest go to the program. The shortcuts sheet (`?` or ⌘/) lists the view's keys
 under "In a terminal" from the SDK's `terminalViewShortcuts`.
+
+Phone keyboards (#3994). Gboard on Android Chrome, recorded on an emulator,
+sends each letter as a keydown with keyCode 229 and then a
+`beforeinput insertText`, and its Send (Enter) and Backspace keys as keydowns
+whose `key` is set and whose `code` is empty. The view derives a missing code
+from the key, since the encoder knows keys only by code: Send had typed
+nothing, so a command never ran. The keyboard's own insertions and deletions
+are left in the hidden input, which is emptied when a line is sent, so the
+keyboard's view of the field stays true: cancelling them had left Gboard
+deleting from a field it believed held text, which fires no event, and
+Backspace was lost.
+
+Selection gestures carry only the options Ghostty accepts for their type: a
+press takes a time and a repeat window (500 ms and a cell's width), and a drag
+takes the grid geometry. Sending both to both made every pointer selection
+fail, which on a phone's long press stopped the terminal ("could not start").
+A double click selects a word, and so does the double press a long touch
+sends; the long press also opens the terminal menu on that selection.
+
+A hidden view (another tab, a put-away region, the page in the background)
+gives its WebGL context back. Shown again, it restores it through the
+`WEBGL_lose_context` handle taken while the context was live (a lost context
+answers `getExtension` with null, so the view had stayed blank) and uploads
+the whole glyph atlas into the new texture (otherwise only the cursor was
+drawn). A context the browser does not give back within 1.5 s, or one it takes
+from a shown view, is replaced by the Canvas 2D renderer. The
+[renderer suite](../../packages/sdk/src/__tests__/terminal-view/webgl2-renderer.test.ts),
+the [engine suite](../../packages/sdk/src/__tests__/terminal-view/terminal-engine.test.ts)
+and the Android keyboard cases in the
+[controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+fail when any of these is removed.
 
 A view refits on every change to its box through one `ResizeObserver`:
 renderer and emulator at once, the PTY with the latest size at most every
@@ -633,6 +686,21 @@ its range, a relative location and a total below the per-terminal size are
 refused with the setting's name, not clamped; an agent cannot move the
 location. Defaults are starting points to tune once real usage is measured.
 
+Journals are private to the user Station runs as. On POSIX their directories
+are 0700 and files 0600. On Windows those modes set no ACL, and a journal
+would inherit its location's (on a non-system drive or a shared folder this
+commonly admits Authenticated Users or Users), so before anything is written
+the [journal privacy](../../src-server/services/terminal/terminal-journal-privacy.ts)
+establishes the protected current-user DACL Station uses for its other
+private files. A location Station owns (the default, or one it created) is
+protected once and its journals inherit that; an existing folder the person
+chose keeps its own ACL and each journal directory in it is protected
+instead, and so is a journal moved there. A location where this cannot be
+established (a drive without Windows permissions) is refused when it is
+chosen in Settings, and a terminal is refused rather than journaled there.
+The [privacy suite](../../src-server/services/terminal/__tests__/terminal-journal-privacy.process.test.ts)
+reads the real DACLs on Windows.
+
 ### Transport
 
 One authenticated WebSocket per client at `/api/terminal/socket` on the main
@@ -857,7 +925,9 @@ is the sample plugin.
   person, under their terminal authority, and is refused if its directory no
   longer resolves to the one shown. `terminal_read` follows a run's state and
   pages its output by sequence. An unanswered request expires after ten
-  minutes, at most three wait per chat, and requests live in memory. Reading a
+  minutes, at most three wait per chat and 64 across all chats (expired ones
+  are swept before another is admitted), at most 512 are retained, and
+  requests live in memory. Reading a
   terminal the person shares with the thread is not implemented; an agent
   reads only its own runs.
 - **Add to chat.** The terminal menu's Add to chat puts the selection in the
@@ -873,7 +943,7 @@ is the sample plugin.
 | `port + 1` WebSocket, `GET /api/system/terminal-port`, SDK `fetchTerminalPort` | Removed ([decision](../decisions/terminal-same-origin-only.md)) |
 | `DELETE /api/projects/:slug/terminals/:terminalId` | Kept, backed by the new session store; the server rejects an id whose session is not in `:slug` |
 | Project-scoped terminal ids | Mapped once to new instance-unique ids when their history and stored tabs are imported |
-| `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept |
+| `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept, except `cwd` is null for a caller who may only observe |
 | `POST /api/coding/exec` fallback | Kept for hosts without node-pty |
 | `PAIRING_SCOPE_TERMINAL_OPERATE` | Kept; `terminal:observe` added |
 | `terminalShell` setting, `TerminalCapability`, system-status `terminal` | Kept |
@@ -941,12 +1011,57 @@ verification.
   fail when a channel's events reach another session or output re-renders a
   panel.
 
-**NOT_VERIFIED.** No journey has run on a physical phone, the Desktop app,
-the iOS shell or the Android shell; the screen reader mode has not been used
-with real assistive technology (VoiceOver, NVDA, TalkBack); Windows/ConPTY is
-not qualified. The manual screen reader pass listed above has not happened.
-The browser broker (DataChannel) route is unsupported by design, not
-untested.
+- Phone (#3994, 2026-11-04, revision `031fed73e8`): real Android Chrome
+  124.0.6367.219 with Gboard on the Android 35 x86_64 emulator (Medium Phone,
+  1080×2400), typed through taps on Gboard's keys and `adb shell input`,
+  against an isolated Station on Windows 11 (cmd.exe). Verified: tapping the
+  terminal raises the keyboard; typing, Backspace and Send run the command;
+  the key bar's ^C (interrupting `ping -t`), Esc, Tab completion, ↑ history
+  and sticky Ctrl with a Gboard letter; the cursor row and key bar stay inside
+  the visual viewport with the keyboard open or closed and in landscape; a
+  reload keeps the same shell; `exit` then Restart shell; a second shell's tab
+  and closing it; Home and back redraws the screen; a long press selects a
+  word, Add to chat puts it in the open chat's composer, and the sent message
+  reaches the model with the output as a fenced block. Before the fixes above,
+  Send and Backspace typed nothing, the screen stayed blank after Home and
+  back, and a long press stopped the terminal. The
+  [phone keyboard journey](../../tests/terminal-mobile-keyboard.spec.ts) (Pixel 7
+  emulation, a real shell on an isolated Station, `smoke-live` and the PR
+  smoke contract) passed on macOS and failed with all the fixes, the renderer
+  fix or the selection fix reverted.
+- Desktop (#3994, same revision): Chromium at 1440×900 on the same Station
+  typed and ran a command, selected by drag and double click without stopping
+  the terminal, and opened the menu with Copy and Add to chat enabled.
+- Windows host (#3994, 2026-11-04, Windows 11 26200): the Desktop app's
+  WebDriver debug build (`--features webdriver`, which compiles on Windows only
+  with `tauri-plugin-wdio-webdriver` 1.5.1) started its bundled Station, opened
+  the Coding terminal, and a command typed through WebView2's DevTools input
+  ran; the plugin's own keystrokes are synthetic DOM events, which produce no
+  `beforeinput`, so they cannot type into a terminal. On the isolated Station,
+  PowerShell 7.6, Windows PowerShell 5.1 and Git Bash each ran a command,
+  stopped a long one with Ctrl+C, reported the width the view sized them to
+  after a resize, and restarted after `exit`. The
+  [script-runner and agent-run suite](../../src-server/services/terminal/__tests__/terminal-runs.process.test.ts)
+  runs on Windows (and in `test:windows:portable`): package managers' batch
+  shims run through cmd.exe, an approved command reaches cmd with its quotes
+  as shown, and both fail when their fix is reverted.
+
+**NOT_VERIFIED.** No journey has run on a physical phone, the iOS shell, or
+the Desktop app on macOS or Linux. The Android shell was not exercised: the CI debug APK of
+`470f8b49` installed on the emulator but stopped at "Station couldn't finish
+starting: saved mobile Station metadata is missing after initialization;
+refusing to recreate it", also after its data was cleared. An agent's
+`terminal_run` was not approved from a phone: a Station-native agent's call
+was refused as unattended in a chat started from the composer, and a Claude
+Code chat in a Project was not offered the tool. Desktop copy to the system
+clipboard was not read back. On Windows, Stop does not reach a command's
+descendant whose parent already exited, and the journal does not record
+resizes, so ConPTY output replayed at another size can repaint over lines
+already scrolled. The
+screen reader mode has not been used with real assistive technology
+(VoiceOver, NVDA, TalkBack); Windows/ConPTY is not qualified. The manual
+screen reader pass listed above has not happened. The browser broker
+(DataChannel) route is unsupported by design, not untested.
 
 ## Open questions
 

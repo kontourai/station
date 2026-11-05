@@ -4,6 +4,7 @@ import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ApprovalModeChip } from '../components/badges/ApprovalModeChip';
+import { ManagedPolicyContext } from '../contexts/ManagedPolicyContext';
 
 /**
  * The chip's picker is a `ComposerModeSheet` (a `ResponsiveDialogSurface`) now
@@ -777,4 +778,43 @@ describe('ApprovalModeChip', () => {
       );
     });
   }
+});
+
+// #4518: an inherited default above the machine's managed ceiling starts the
+// chat at the ceiling, so the chip shows the ceiling; a pick shows as picked.
+describe('under a managed approval ceiling of Auto', () => {
+  const policy = {
+    organization: 'Acme',
+    supportUrl: null,
+    lockedSettings: [],
+    limits: { maxApprovalMode: 'auto' as const },
+  };
+  test("an Agent's full-access default reads Auto (agent default)", () => {
+    render(
+      <ManagedPolicyContext.Provider value={policy}>
+        <ApprovalModeChip
+          engineConnectionId="claude"
+          agentDefault="never"
+          stationDefault="ask"
+          onChange={vi.fn()}
+        />
+      </ManagedPolicyContext.Provider>,
+    );
+    expect(chipValue()).toBe('Auto (agent default)');
+    expect(trigger().getAttribute('aria-label')).not.toMatch(/Full access/);
+  });
+
+  test('a Station default of full access reads Auto', () => {
+    render(
+      <ManagedPolicyContext.Provider value={policy}>
+        <ApprovalModeChip
+          engineConnectionId="codex"
+          isNewSession
+          stationDefault="never"
+          onChange={vi.fn()}
+        />
+      </ManagedPolicyContext.Provider>,
+    );
+    expect(chipValue()).toBe('Auto');
+  });
 });

@@ -16,6 +16,7 @@ import {
 import { Hono } from 'hono';
 import { isExternalEngineBoundAgent } from '../../runtime/agents/agent-engine-classification.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { managedCeilingRefuses } from '../../security/managed-approval-ceiling.js';
 import {
   type AgentService,
   StationEngineIsAppSettingError,
@@ -23,7 +24,10 @@ import {
 import type { SkillService } from '../../services/agents/skill-service.js';
 import { effectiveDefaultPosture } from '../../services/orchestration/approval-posture.js';
 import { agentOps } from '../../telemetry/metrics.js';
-import { refuseUngrantedFullAccess } from '../orchestration/approval-authority.js';
+import {
+  managedApprovalCeilingRefusal,
+  refuseUngrantedFullAccess,
+} from '../orchestration/approval-authority.js';
 import {
   agentCreateSchema,
   agentMaterializeEngineSchema,
@@ -52,6 +56,13 @@ function validateSkills(
     return `Unknown skills: ${unknown.join(', ')}`;
   }
   return null;
+}
+
+/** Carries the refusal out of the serialized mutation without writing. */
+class GrantWideningRefused extends Error {
+  constructor(readonly response: Response) {
+    super('plugin tool grant widening refused');
+  }
 }
 
 export function createAgentRoutes(
@@ -280,6 +291,25 @@ export function createAgentRoutes(
     }
   });
 
+  /**
+   * #4518: whether `next` grants nothing beyond `current`: absent, `null`,
+   * an empty list, or a list of patterns each already granted. Patterns are
+   * compared as exact strings, so a new pattern that a granted one would
+   * match still counts as an addition.
+   */
+  function narrowsToolGrant(next: unknown, current: unknown): boolean {
+    if (next === undefined || next === null) return true;
+    if (!Array.isArray(next)) return false;
+    const granted = new Set(
+      Array.isArray(current)
+        ? current.filter((entry): entry is string => typeof entry === 'string')
+        : [],
+    );
+    return next.every(
+      (entry) => typeof entry === 'string' && granted.has(entry),
+    );
+  }
+
   /** The default approval posture an Agent body asks for, if any. */
   function agentDefaultApprovalMode(body: unknown): unknown {
     const execution = (body as { execution?: unknown } | undefined)?.execution;
@@ -304,6 +334,23 @@ export function createAgentRoutes(
     next: unknown,
     readPrevious?: () => Promise<unknown>,
   ): Promise<Response | undefined> {
+    // #4518: under a managed ceiling below full access, the rule is about the
+    // Agent's OWN default, not the effective one. Writing an explicit `never`
+    // is refused even where the inherited default is already `never`; one
+    // already saved (a client resending the execution block) is kept, as a
+    // stored Station default is. Clearing to an inherited `never` is allowed:
+    // an inherited default is lowered to the ceiling where it applies.
+    if (managedCeilingRefuses('never')) {
+      if (next !== 'never') return undefined;
+      if (readPrevious) {
+        try {
+          if ((await readPrevious()) === 'never') return undefined;
+        } catch {
+          // Unreadable: no evidence of a saved `never`; refused below.
+        }
+      }
+      return managedApprovalCeilingRefusal(c);
+    }
     let station: unknown;
     try {
       station = await resolveStationDefaultApprovalMode?.();
@@ -522,40 +569,58 @@ export function createAgentRoutes(
         if (fullAccessRefused) return fullAccessRefused;
       }
       // Tool grants on plugin-owned Agents are operator authority, kept outside
-      // the package. Gate any submitted change, including removal.
-      if (
+      // the package. Adding or widening one needs full-access authority.
+      // #4518: revoking does not: an absent, `null` or empty list (recorded as
+      // an empty grant by `recordPluginToolApprovalChoice`) or any subset of
+      // the Agent's current effective grants only narrows what runs without a
+      // prompt, so it is allowed under the normal mutation authority, and
+      // under a managed ceiling where no full-access authority exists.
+      const touchesGrants =
         updates.tools &&
         typeof updates.tools === 'object' &&
         (Object.hasOwn(updates.tools, 'autoApprove') ||
           Object.hasOwn(updates.tools, 'unattendedAutoApprove')) &&
-        agentService.isPluginOwnedAgent(slug)
-      ) {
+        agentService.isPluginOwnedAgent(slug);
+      // Refuses a widening of the grants as they stand NOW. Checked here for
+      // a fast refusal and again inside the serialized mutation below, so a
+      // request validated against grants a concurrent revoke then removed
+      // cannot restore them (#4570 review).
+      const refuseWidenedGrants = async (): Promise<Response | undefined> => {
+        if (!touchesGrants) return undefined;
         const previous = await agentService.getAgent(slug);
-        const changed = (
+        const widened = (
           ['autoApprove', 'unattendedAutoApprove'] as const
         ).some(
           (field) =>
             Object.hasOwn(updates.tools!, field) &&
-            JSON.stringify(updates.tools![field]) !==
-              JSON.stringify(previous.tools?.[field]),
+            !narrowsToolGrant(updates.tools![field], previous.tools?.[field]),
         );
-        if (changed) {
-          const refused = refuseUngrantedFullAccess(c, ['never']);
-          if (refused) return refused;
-        }
-      }
+        return widened ? refuseUngrantedFullAccess(c, ['never']) : undefined;
+      };
+      const earlyGrantRefusal = await refuseWidenedGrants();
+      if (earlyGrantRefusal) return earlyGrantRefusal;
       const skillError = validateSkills(updates.skills, skillService);
       if (skillError) {
         return c.json({ success: false, error: skillError }, 400);
       }
-      const mutation = await captureConfigurationMutation(
-        applyAgentConfigurationMutation,
-        (beginMutation) => {
-          beginMutation();
-          return agentService.updateAgent(slug, updates);
-        },
-        { resolveAgentSlug: () => slug, activationMode: 'defer' },
-      );
+      let mutation: Awaited<
+        ReturnType<typeof captureConfigurationMutation<AgentSpec>>
+      >;
+      try {
+        mutation = await captureConfigurationMutation(
+          applyAgentConfigurationMutation,
+          async (beginMutation) => {
+            const refused = await refuseWidenedGrants();
+            if (refused) throw new GrantWideningRefused(refused);
+            beginMutation();
+            return agentService.updateAgent(slug, updates);
+          },
+          { resolveAgentSlug: () => slug, activationMode: 'defer' },
+        );
+      } catch (error) {
+        if (error instanceof GrantWideningRefused) return error.response;
+        throw error;
+      }
       agentOps.add(1, { op: 'update' });
       const [validationOutcome, ownershipFinding] = await Promise.all([
         computeValidationOutcome(mutation.value),

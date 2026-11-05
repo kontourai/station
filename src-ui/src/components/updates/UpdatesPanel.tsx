@@ -6,6 +6,8 @@ import { DesktopUpdateCheck } from '../../views/settings/DesktopUpdateCheck';
 import { settingsDeepLinkUrl } from '../../views/settings/settings-deep-link';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
+import { ChangelogPreference } from './ChangelogPreference';
+import { ReleaseHistory, ReleaseNotes } from './ReleaseNotes';
 import { type UpdateTarget, useUpdateNotices } from './updatesEvents';
 import '../../views/SettingsView.css';
 
@@ -43,6 +45,15 @@ export function UpdatesPanel({
         <div key={notice.id} className="updates-panel__notice">
           <p role="status">{notice.message}</p>
           {notice.detail && <p>{notice.detail}</p>}
+          {!profile.isDesktop &&
+            notice.target === 'desktop' &&
+            notice.releaseVersion && (
+              <ReleaseNotes
+                version={notice.releaseVersion}
+                nativeApp
+                active={open}
+              />
+            )}
           {notice.href && (
             <a href={notice.href} target="_blank" rel="noopener noreferrer">
               {notice.actionLabel ?? 'View release'}
@@ -101,17 +112,24 @@ export function UpdatesPanel({
             </p>
             {noticesFor('desktop')}
             {profile.isDesktop && (
-              <DesktopUpdateCheck active={open} showPolicy={false} />
+              <DesktopUpdateCheck
+                active={open}
+                showPolicy={false}
+                showReleaseNotes
+              />
             )}
           </section>
         )}
         <section ref={serverRef} tabIndex={-1} aria-labelledby={`${id}-server`}>
           <ConnectedServerUpdates
             active={open}
+            showReleaseNotes
             headingId={`${id}-server`}
             notices={noticesFor('server')}
           />
         </section>
+        <ReleaseHistory active={open} />
+        <ChangelogPreference />
       </div>
     </Dialog>
   );

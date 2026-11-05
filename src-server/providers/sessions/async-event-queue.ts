@@ -1,3 +1,11 @@
+export class AsyncEventQueueConsumerConflictError extends Error {
+  readonly code = 'async_event_queue_consumer_conflict';
+  constructor() {
+    super('Async event queue already has an active consumer.');
+    this.name = 'AsyncEventQueueConsumerConflictError';
+  }
+}
+
 interface EventWaiter<T> {
   resolve(result: IteratorResult<T>): void;
   reject(error: Error): void;
@@ -24,6 +32,7 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
   private readonly items: T[] = [];
   private readonly waiters: EventWaiter<T>[] = [];
   private readonly enqueueObservers = new Set<(value: T) => void>();
+  private releaseConsumer?: () => IteratorResult<T>;
   private closed = false;
   private failure: Error | null = null;
   private generation = 0;
@@ -87,12 +96,15 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
     signal,
     onEnqueue,
   }: AsyncEventStreamOptions<T> = {}): AsyncIterator<T> {
+    if (this.releaseConsumer && !signal?.aborted)
+      throw new AsyncEventQueueConsumerConflictError();
     let closed = signal?.aborted ?? false;
     let pending: EventWaiter<T> | undefined;
     const generation = this.generation;
 
     const close = (): IteratorResult<T> => {
       closed = true;
+      if (this.releaseConsumer === close) this.releaseConsumer = undefined;
       if (onEnqueue) this.enqueueObservers.delete(onEnqueue);
       signal?.removeEventListener('abort', close);
       if (pending) {
@@ -104,8 +116,9 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
       return { value: undefined as never, done: true };
     };
 
-    if (!closed && onEnqueue) {
-      this.enqueueObservers.add(onEnqueue);
+    if (!closed) {
+      this.releaseConsumer = close;
+      if (onEnqueue) this.enqueueObservers.add(onEnqueue);
       signal?.addEventListener('abort', close, { once: true });
     }
 

@@ -183,7 +183,9 @@ namespace and are retired when that account changes; explicit chat picks remain
 separate. Existing chats,
 unattended starts and remote-Station execution do not inherit the initiating
 Station's personal preference. Engine capability and device authorization still
-apply. The composer distinguishes startup intent, confirmed engine mode,
+apply. Under a managed approval ceiling (#4518) the preference is recorded
+as a personal default, not a pick, and lowered to the ceiling; the pickers
+disable modes above it. The composer distinguishes startup intent, confirmed engine mode,
 next-turn requests and restart-required refusal. Its picker changes this chat;
 **Save as my … default** is a separate explicit action.
 

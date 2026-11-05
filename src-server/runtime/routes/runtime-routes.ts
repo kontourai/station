@@ -938,7 +938,11 @@ import {
   registerTerminalGateway,
   TerminalGateway,
 } from '../../services/terminal/terminal-gateway.js';
-import { resolveTerminalRetention } from '../../services/terminal/terminal-retention.js';
+import { TerminalJournalPrivacy } from '../../services/terminal/terminal-journal-privacy.js';
+import {
+  defaultTerminalJournalDirectory,
+  resolveTerminalRetention,
+} from '../../services/terminal/terminal-retention.js';
 import { TerminalRunRequests } from '../../services/terminal/terminal-runs.js';
 import {
   confineTerminalDirectory,
@@ -954,6 +958,8 @@ import {
   type WorkItemObserver,
 } from '../../services/work-item-providers/github-work-item-observer.js';
 import { LocalWorkItemProvider } from '../../services/work-item-providers/local-work-item-provider.js';
+import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
+import type { TaskFollowUpWake } from '../../services/work-item-providers/task-follow-up-wake.js';
 import {
   checkpointCaptureOps,
   clientCompatHandshakes,
@@ -1241,6 +1247,11 @@ export interface ConfigureRuntimeRoutesContext {
    * route-local GitHub observer.
    */
   workItemObserver?: WorkItemObserver;
+  /**
+   * The runtime's Task follow-up store (#4508): the poller writes it and the
+   * Task brief reads it. Absent: no follow-ups are polled or shown.
+   */
+  taskFollowUps?: TaskFollowUpStoreHolder;
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
@@ -1653,6 +1664,10 @@ export function configureRuntimeRoutes(
 ): ConfigureRuntimeRoutesResult {
   let contextEfficiency: ReturnType<typeof composeContextEfficiencyRuntime>;
   let durableTaskQuestionWake: TaskQuestionWake | undefined;
+  /** #4508: assigned once the support services compose the follow-up wake. */
+  let durableTaskFollowUpWake:
+    | Pick<TaskFollowUpWake, 'placementRefusal'>
+    | undefined;
   // Shared by the operator grant routes and diagnostics admission.
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
@@ -3396,6 +3411,7 @@ export function configureRuntimeRoutes(
       localProjectIdFor(context.projectService, identity),
     roomRuntime: () => projectTaskRoomRuntime,
     workItemObserver,
+    ...(context.taskFollowUps ? { followUps: context.taskFollowUps } : {}),
     logger: context.logger,
   });
   context.orchestrationService.bindMandatoryTaskContextVerifier(
@@ -6844,6 +6860,11 @@ export function configureRuntimeRoutes(
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,
           userId: input.payload.actor.userId,
+        }) ??
+        durableTaskFollowUpWake?.placementRefusal({
+          conversationId: input.conversationId,
+          clientTurnId: input.clientTurnId,
+          userId: input.payload.actor.userId,
         }),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
@@ -7258,7 +7279,8 @@ export function configureRuntimeRoutes(
   const scopedTerminalSummary = (record: {
     terminalId: string;
     projectId: string;
-    cwd: string;
+    /** Absent when the caller may only observe the terminal. */
+    cwd?: string;
     status: string;
     pid: number | null;
     exitCode?: number | null;
@@ -7273,7 +7295,7 @@ export function configureRuntimeRoutes(
         .find((project) => project.id === record.projectId)?.slug ??
       record.projectId,
     terminalId: record.terminalId,
-    cwd: record.cwd,
+    cwd: record.cwd ?? null,
     status:
       record.status === 'starting' || record.status === 'running'
         ? record.status
@@ -11185,6 +11207,12 @@ export function configureRuntimeRoutes(
       },
       async () =>
         (await context.getUsageTelemetry?.()?.canSaveAuthorFull()) ?? false,
+      (directory) =>
+        new TerminalJournalPrivacy(
+          defaultTerminalJournalDirectory(
+            context.configLoader.getProjectHomeDir(),
+          ),
+        ).problem(directory),
     ),
   );
   context.app.route(
@@ -11589,6 +11617,7 @@ export function configureRuntimeRoutes(
     pushSigningKeyStore,
     pushGatewayAvailable,
     agentActivityPublisher,
+    taskFollowUpWake,
   } = configureRuntimeSupportServices(context, flowRunService, {
     threadInbox: () => threadInbox,
     focus: focusPresence,
@@ -11608,6 +11637,7 @@ export function configureRuntimeRoutes(
       ),
   });
   automationActions = runtimeAutomationActions;
+  durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
   contextEfficiency?.start();
   const nativeInvocationRunReader =

@@ -54,10 +54,13 @@ export function assembleNightlyDesktopManifest({
   version,
   sourceSha,
   pubDate,
+  notes,
   builds,
 }) {
   if (!/^[a-f0-9]{40}$/.test(sourceSha ?? ''))
     throw new Error('Invalid source SHA');
+  if (typeof notes !== 'string' || !notes.trim())
+    throw new Error('Desktop release notes are required');
   const expected = ['darwin-aarch64', WINDOWS_NIGHTLY_PLATFORM];
   if (!Array.isArray(builds) || builds.length !== expected.length) {
     throw new Error('Both desktop builds are required');
@@ -105,7 +108,7 @@ export function assembleNightlyDesktopManifest({
   return createUpdaterManifestForPlatforms({
     version,
     pubDate,
-    notes: `Station Nightly ${version} at ${sourceSha}`,
+    notes,
     releaseTag: 'nightly-desktop',
     platforms,
   });

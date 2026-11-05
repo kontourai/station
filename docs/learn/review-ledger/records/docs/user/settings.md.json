@@ -66,7 +66,15 @@
 
     "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx",
 
-    "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx"
+    "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx",
+
+    "src-ui/src/components/updates/ChangelogPreference.tsx",
+
+    "src-ui/src/components/updates/ReleaseNotes.tsx",
+
+    "src-ui/src/components/updates/PostUpdateChangelog.tsx",
+
+    "src-ui/src/components/updates/UpdateDownloadIcon.tsx"
   ],
 
   "checks": [

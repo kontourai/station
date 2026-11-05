@@ -376,6 +376,32 @@ for (const previous of [8, 9] as const)
     }
   });
 
+it('interleaved frame batches bound block rewrites and retain ordered receipts on reopen', async () => {
+  const f = await turnFixture();
+  cleanup.push(() => f.close());
+  const changes = () =>
+    Number(f.database.prepare('SELECT total_changes() AS n').get()?.n);
+  const frames = Array.from({ length: 50 }, (_, index) => [
+    {
+      id: `answer:${index}`,
+      wire: `data: ${JSON.stringify({ type: 'text-delta', delta: String(index) })}\n\n`,
+    },
+    { id: `control:${index}`, wire: 'data: {"type":"checkpoint"}\n\n' },
+  ]).flat();
+  const before = changes();
+  const receipts = await f.lease.frameBatch(frames);
+  // Bounded write amplification is independent of disk speed and CPU scheduling.
+  expect(changes() - before).toBeLessThanOrEqual(4);
+  expect(
+    receipts.map(({ id, wire, position }) => ({ id, wire, position })),
+  ).toEqual(frames.map((frame, position) => ({ ...frame, position })));
+  await f.crash.reopen();
+  expect(readSqliteAgentFrames({ database: f.database, key: f.key })).toEqual(
+    receipts,
+  );
+  expect(await f.lease.frameBatch(frames)).toEqual(receipts);
+});
+
 it('400 individually committed text chunks retain bounded storage and an exact aborted prefix', async () => {
   const f = await turnFixture();
   cleanup.push(() => f.close());
