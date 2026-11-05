@@ -267,6 +267,9 @@ not records or search inputs. Project membership and delegation do not grant
 access. The owner or an approved personal-account device may read under the
 existing private-root rule; an unknown identity is refused. Disabling the
 preview retains the store and withholds it from Knowledge reads.
+Only the host operator, not an agent or delegation peer, can confirm erasure.
+The confirmation carries Corpus's preview revision; a changed store refuses
+the purge before writing. Search rechecks records before response delivery.
 
 When the default-off experimental S3 flag is enabled, separate Knowledge leaves
 admit current Project readers to source metadata, a bounded selected-prefix page
