@@ -1,0 +1,7 @@
+{
+  "revision": "0cfbe7dc2289d13dc4eaa00513f43811185281c8",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Scoped review of the Ensemble sign-in composition delta against the historical design and its current-owner header. ApprovalPosture, coding-authority, recorded approval command application, full-access grants and engine posture setters are unchanged by this feature. The new callback observes native authentication under existing local authority, starts no turn and changes no approval posture. Historical line citations and test reports retain their recorded revision meaning; this note is not a full new authorization audit.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
