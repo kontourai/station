@@ -19,6 +19,7 @@ import { installMockOrchestrationSse } from './helpers/orchestration';
 import {
   addDirectReceiver,
   captureConnectionState,
+  ensureConnectionInboxOpen,
   startConnectionChat,
   stationJson,
   test,
@@ -507,6 +508,15 @@ for (const access of ['owner', 'member', 'guest'] as const) {
       await page.route('**' + historyPath + '**', async (route) => {
         if (route.request().method() !== 'GET')
           return rejectUnexpectedFixtureRequest(route);
+        if (access === 'owner') {
+          // The real initial room snapshot invalidates history. Admit the
+          // fixture checkpoint only after that snapshot has reached its UI.
+          await expect(
+            page.locator(
+              '[data-station-performance-surface="task-room-presence"]',
+            ),
+          ).toHaveAttribute('data-viewer-actor-id', /.+/);
+        }
         const cursor = new URL(route.request().url()).searchParams.get(
           'cursor',
         );
@@ -716,6 +726,12 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await expect.poll(() => stations.streams.length).toBe(1);
       stations.streams[0]!.stream.text('Current chat is ready.');
       stations.streams[0]!.stream.finish();
+      await expect(
+        page.getByRole('log', { name: 'Conversation transcript' }),
+      ).toContainText('Current chat is ready.');
+      const existing = await stationJson<{
+        data: OrchestrationSessionSummary[];
+      }>(stations.source, '/api/orchestration/sessions/read-model');
       const summaries: OrchestrationSessionSummary[] = ['first', 'latest'].map(
         (name, index) => ({
           threadId: 'external:claude:inbox-' + name,
@@ -741,7 +757,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
       );
       await page.route('**/api/orchestration/sessions/read-model', (route) =>
         route.request().method() === 'GET'
-          ? route.fulfill({ json: { success: true, data: summaries } })
+          ? route.fulfill({
+              json: { success: true, data: [...existing.data, ...summaries] },
+            })
           : rejectUnexpectedFixtureRequest(route),
       );
       let releaseFirst: () => void = () => {},
@@ -794,18 +812,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
         );
       }
       await page.reload();
-      const inboxToggle = page.getByRole('button', {
-        name: /^(Show|Hide) inbox/,
-      });
-      await expect(inboxToggle).toBeVisible();
-      if (
-        (await inboxToggle.getAttribute('aria-label'))?.startsWith('Show inbox')
-      )
-        await inboxToggle.click();
-      const inbox =
-        layout === 'mobile'
-          ? page.getByRole('region', { name: 'Inbox', exact: true })
-          : page.getByRole('complementary', { name: 'Inbox chats' });
+      const inbox = await ensureConnectionInboxOpen(page);
       if (layout === 'mobile')
         await inbox.getByRole('button', { name: 'Search inbox' }).click();
       const search = inbox.getByRole('searchbox', {
@@ -827,8 +834,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await page.keyboard.press('Enter');
       try {
         await requested;
-        if (layout === 'mobile')
-          await page.getByRole('button', { name: /^Show inbox/ }).click();
+        if (layout === 'mobile') await ensureConnectionInboxOpen(page);
         await search.fill('Latest cold');
         const latest = inbox.getByRole('button', {
           name: /Latest cold selection,/,
@@ -855,8 +861,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
               document.activeElement !== document.body,
           ),
         ).toBe(true);
-        if (layout === 'mobile')
-          await page.getByRole('button', { name: /^Show inbox/ }).click();
+        if (layout === 'mobile') await ensureConnectionInboxOpen(page);
         await search.fill('First cold');
         const firstTitle = 'First cold selection';
         const firstRow = inbox.getByRole('button', {
@@ -872,6 +877,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
             .getByRole('button', { name: '1 hour', exact: true })
             .click();
         } else {
+          await firstRow.hover();
           await inbox
             .getByRole('button', { name: 'Snooze ' + firstTitle, exact: true })
             .click();
@@ -882,27 +888,45 @@ for (const layout of ['desktop', 'mobile'] as const) {
         const snoozed = inbox.getByRole('button', { name: /^Snoozed/ });
         await expect(snoozed).toContainText('1');
         await snoozed.click();
-        await inbox
-          .getByRole('button', { name: 'Details for ' + firstTitle })
-          .click();
-        await page
-          .getByRole('dialog')
-          .getByRole('button', { name: 'Unsnooze', exact: true })
-          .click();
+        if (layout === 'desktop') {
+          await firstRow.hover();
+          await inbox
+            .getByRole('button', {
+              name: 'Unsnooze ' + firstTitle,
+              exact: true,
+            })
+            .click();
+        } else {
+          await inbox
+            .getByRole('button', { name: 'Details for ' + firstTitle })
+            .click();
+          await page
+            .getByRole('dialog')
+            .getByRole('button', { name: 'Unsnooze', exact: true })
+            .click();
+        }
         await expect(firstRow).toBeVisible();
-        const details = inbox.getByRole('button', {
-          name: 'Details for ' + firstTitle,
-        });
         if (layout === 'mobile') {
+          const details = inbox.getByRole('button', {
+            name: 'Details for ' + firstTitle,
+          });
           const bounds = await details.boundingBox();
           expect(bounds?.width).toBeGreaterThanOrEqual(44);
           expect(bounds?.height).toBeGreaterThanOrEqual(44);
+          await details.click();
+          await page
+            .getByRole('dialog')
+            .getByRole('button', { name: 'Dismiss from inbox', exact: true })
+            .click();
+        } else {
+          await firstRow.hover();
+          await inbox
+            .getByRole('button', {
+              name: 'Dismiss ' + firstTitle + ' from inbox',
+              exact: true,
+            })
+            .click();
         }
-        await details.click();
-        await page
-          .getByRole('dialog')
-          .getByRole('button', { name: 'Dismiss from inbox', exact: true })
-          .click();
         await page.getByRole('button', { name: 'Undo', exact: true }).click();
         await expect(firstRow).toBeVisible();
         await search.fill('');

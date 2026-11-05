@@ -409,7 +409,9 @@ export async function startConnectionChat(
   const startOwner = (await mobileHeader.isVisible())
     ? mobileHeader
     : page.getByRole('complementary', { name: 'Inbox chats' });
-  await startOwner.getByRole('button', { name: 'New chat', exact: true }).click();
+  await startOwner
+    .getByRole('button', { name: 'New chat', exact: true })
+    .click();
   const form = page
     .getByRole('region', { name: 'New chat', exact: true })
     .getByRole('form', { name: 'Start work' });
@@ -525,11 +527,7 @@ export async function captureConnectionState(
           }),
         ).toBeVisible();
       } else if (surface === 'inbox') {
-        await expect(
-          page.locator(
-            '[aria-label="Inbox chats"]:visible, [role="region"][aria-label="Inbox"]:visible',
-          ),
-        ).toBeVisible();
+        await ensureConnectionInboxOpen(page);
       } else {
         await expect(
           page.getByRole('log', { name: 'Conversation transcript' }),
@@ -556,4 +554,24 @@ export async function captureConnectionState(
       copyFileSync(testInfo.outputPath(name), join(kept, name));
     }
   if (original) await page.setViewportSize(original);
+}
+
+/** The mobile Inbox is a page in the dock, with its own named entry. */
+export async function ensureConnectionInboxOpen(page: Page) {
+  const mobileHeader = page.getByTestId('chat-dock-mobile-header');
+  if (await mobileHeader.isVisible()) {
+    const entry = mobileHeader.getByRole('button', {
+      name: 'Inbox',
+      exact: true,
+    });
+    if (await entry.isVisible()) await entry.click();
+    const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
+    await expect(inbox).toBeVisible();
+    return inbox;
+  }
+  const entry = page.getByRole('button', { name: /^Show inbox/ });
+  if (await entry.isVisible()) await entry.click();
+  const inbox = page.getByRole('complementary', { name: 'Inbox chats' });
+  await expect(inbox).toBeVisible();
+  return inbox;
 }

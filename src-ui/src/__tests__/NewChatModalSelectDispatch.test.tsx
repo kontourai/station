@@ -1741,9 +1741,7 @@ describe('the start composer in the dock', () => {
         }),
       );
       if (openFails)
-        expect(
-          await screen.findByText('Try again in a moment.'),
-        ).toBeTruthy();
+        expect(await screen.findByText('Try again in a moment.')).toBeTruthy();
       expect(screen.queryByText('Could not open the chat.')).toBeNull();
       expect(onTaskStarted).not.toHaveBeenCalled();
       expect(onSelect).not.toHaveBeenCalled();
