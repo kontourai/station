@@ -37,6 +37,7 @@ host.
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
 | Nearby Station discovery | unsupported | iOS and Android 14+ source integration | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
+| Fold geometry | CSS Viewport Segments where the engine has them | iOS 27.1+ (`station-fold`); Android and desktop use the web path | Read-only hinge geometry and posture for foldable displays. Safari has no segments API, so on an iPhone only the native shell reports a crease. See [Fold geometry](#fold-geometry). |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
 | Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (#178). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
 | Remote push wakeup | unsupported | build-dependent | Enabled for Android builds carrying all four Firebase values or iOS builds carrying the Live Activity plugin. iOS also checks push signing before offering registration. User opt-in, server registration and provider delivery remain separate. |
@@ -85,6 +86,37 @@ See [native shell verification](../guides/native-shell-verification.md#nearby-st
 for installed-shell and physical-network evidence requirements. The source and
 unit checks do not qualify permission prompts, real mobile discovery or background
 recovery.
+
+### Fold geometry
+
+The [station-fold plugin](../../src-desktop/plugins/station-fold/src/lib.rs)
+reports where a foldable iPhone's display divides, for layouts that keep text
+off the crease. Its [Swift half](../../src-desktop/plugins/station-fold/ios/Sources/StationFoldPlugin.swift)
+reads two iOS 27.1 seams: `UIView.reservedRegionsOfKind:` with
+`UIViewReservedRegionKind.divisionRegionKind` (the crease, in the WebView's
+coordinates, including the system's interactive margins), and
+`UIHingeInteraction` (hinge status and angle, and the one callback that fires
+when Book becomes Open flat at an unchanged size). Both are looked up through
+the Objective-C runtime because the hosted iOS builds use an SDK that predates
+them; where they are absent the plugin reports `supported: false`.
+
+`plugin:station-fold|state` answers `{ revision, supported, hinge?, regions,
+viewport }`; the `change` event is a nudge to read it again. It controls
+nothing and carries no identifiers. The WebView side is one store,
+[`foldStore`](../../src-ui/src/platform/fold/foldStore.ts), fed by
+[`foldSources`](../../src-ui/src/platform/fold/foldSources.ts): the native reply
+wins whenever the shell answers, and otherwise CSS Viewport Segments (with the
+Device Posture API's `continuous` read as flat) decide. The store publishes
+`data-fold-posture` and `data-fold-axis` on `<html>` and the
+`--station-hinge-x|y|width|height` properties; [responsive UI](../guides/responsive-ui.md#foldable-displays)
+owns how layouts use them.
+
+The iPhone Duo simulator (iOS 27.1, 2026-11-04) reported a 40pt vertical
+division at x 455.5 in Book (hinge `partially-open`, 90°), the same region with
+`fully-open` at 180° when open flat, a horizontal one in Laptop, and no region
+on the cover display (Closed, Tent). Those replies are the
+[test fixtures](../../src-ui/src/platform/fold/__tests__/nativeFoldFixtures.ts).
+A physical device remains **NOT_VERIFIED**.
 
 ### Personal analytics requester consent
 

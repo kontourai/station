@@ -54,6 +54,7 @@ vi.mock('../contexts/NavigationContext', () => {
 vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => true,
+  useStackedListDetail: () => true,
   MOBILE_MEDIA_QUERY: '(max-width: 768px)',
 }));
 

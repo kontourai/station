@@ -12,7 +12,8 @@ import React, {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigationActions } from '../contexts/NavigationContext';
-import { useIsMobile } from '../hooks/useIsMobile';
+import { useFoldSplit } from '../hooks/useFoldSplit';
+import { useIsMobile, useStackedListDetail } from '../hooks/useIsMobile';
 import {
   afterInitialStartup,
   initialStartupIsActive,
@@ -32,6 +33,7 @@ import {
 import {
   collapseSplitPaneState,
   expandSplitPaneState,
+  foldSnappedListWidth,
   framedBreadcrumbSegments,
   parseSplitPaneState,
   resizePaneFromKeyboard,
@@ -446,7 +448,9 @@ export function SplitPaneLayout({
   title,
   subtitle,
 }: SplitPaneLayoutProps) {
-  const isMobile = useIsMobile();
+  // Stacking (list, then a detail sheet) is a room question, not a phone
+  // one: a foldable open in portrait is a phone shell with room for both.
+  const stacked = useStackedListDetail();
   const framed = useIsPageFramed();
   const actionsSlot = usePageFrameActionsSlot();
   const { navigate } = useNavigationActions();
@@ -566,17 +570,24 @@ export function SplitPaneLayout({
     [paneId],
   );
   const showMobileDetailSheet = shouldShowMobileDetailSheet(
-    isMobile,
+    stacked,
     selectedId,
     unselectedDetailOpen,
   );
   const mobileDetailLogicallyOpen = Boolean(selectedId || unselectedDetailOpen);
-  const leftVisible = !isMobile ? !paneState.collapsed : !showMobileDetailSheet;
-  const rightVisible = !isMobile || showMobileDetailSheet;
+  const leftVisible = !stacked ? !paneState.collapsed : !showMobileDetailSheet;
+  const rightVisible = !stacked || showMobileDetailSheet;
+  // On a folded display the split IS the crease: the list fills the side
+  // before it and the detail starts after it (fold-layout rules in the CSS).
+  const foldSplit = useFoldSplit(paneRef);
+  const foldListWidth = foldSnappedListWidth(foldSplit, {
+    stacked,
+    collapsed: paneState.collapsed,
+  });
   const mobileDetailSlot = usePageFrameMobileDetailSlot();
   const [detailPortalPlacement, setDetailPortalPlacement] =
     useState<DetailPortalPlacement>('bootstrap');
-  const wantsMobilePortal = isMobile && framed && showMobileDetailSheet;
+  const wantsMobilePortal = stacked && framed && showMobileDetailSheet;
   // Placement is state, rather than a parentNode read during render: an
   // imperative reparent in layout effect otherwise leaves inert/focus one
   // render behind the actual sheet.
@@ -703,7 +714,7 @@ export function SplitPaneLayout({
     // path. A desktop breakpoint is only a reparenting transition and must not
     // consume or restore the mobile chain.
     if (
-      isMobile &&
+      stacked &&
       wasMobileDetailShown &&
       !showMobileDetailSheet &&
       pendingMobileFocusRef.current !== 'return'
@@ -716,7 +727,7 @@ export function SplitPaneLayout({
     // return from. Abandon the old intent before a later mobile deep link can
     // mistake it for this surface's opener.
     if (
-      !isMobile &&
+      !stacked &&
       wasMobileDetailLogicallyOpen &&
       !mobileDetailLogicallyOpen
     ) {
@@ -742,11 +753,7 @@ export function SplitPaneLayout({
       };
       if (initialStartupIsActive()) return afterInitialStartup(focusBack);
       focusBack();
-    } else if (
-      pendingFocus === 'return' &&
-      isMobile &&
-      !showMobileDetailSheet
-    ) {
+    } else if (pendingFocus === 'return' && stacked && !showMobileDetailSheet) {
       const returnChain = mobileFocusReturnRef.current;
       // Removing the focused Back button can make the browser synchronously
       // rehome focus on `.content-view` before this passive effect. For this
@@ -774,7 +781,7 @@ export function SplitPaneLayout({
     }
   }, [
     externalMobileReturnFocus,
-    isMobile,
+    stacked,
     mobileDetailLogicallyOpen,
     showMobileDetailSheet,
     mobileDetailRendered,
@@ -791,7 +798,7 @@ export function SplitPaneLayout({
   }
 
   function selectItem(id: string) {
-    if (isMobile) {
+    if (stacked) {
       // `listIntro` can call this for a row that has no button of its own; the
       // capture then falls back to whatever the user actually activated, which
       // is the control focus belongs on either way.
@@ -804,7 +811,7 @@ export function SplitPaneLayout({
   }
 
   function activateAdd(event: React.MouseEvent<HTMLButtonElement>) {
-    if (isMobile) {
+    if (stacked) {
       mobileFocusReturnRef.current = captureReturnFocus(event.currentTarget);
       pendingMobileFocusRef.current = 'dismiss';
     }
@@ -818,7 +825,7 @@ export function SplitPaneLayout({
   }
 
   function startResize(event: React.PointerEvent<HTMLButtonElement>) {
-    if (isMobile || paneState.collapsed) return;
+    if (stacked || paneState.collapsed) return;
     event.preventDefault();
     const paneLeft = paneRef.current?.getBoundingClientRect().left ?? 0;
     const pointerId = event.pointerId;
@@ -862,7 +869,7 @@ export function SplitPaneLayout({
   }
 
   function resizeWithKeyboard(event: React.KeyboardEvent<HTMLButtonElement>) {
-    if (isMobile || paneState.collapsed) return;
+    if (stacked || paneState.collapsed) return;
     const nextWidth = resizePaneFromKeyboard(paneState.width, event.key, {
       shiftKey: event.shiftKey,
     });
@@ -1194,7 +1201,7 @@ export function SplitPaneLayout({
     ) : null;
   const detailContents = (
     <>
-      {!isMobile && selectedId && onDeselect && (
+      {!stacked && selectedId && onDeselect && (
         <button
           type="button"
           className="split-pane__region-back"
@@ -1270,12 +1277,15 @@ export function SplitPaneLayout({
 
   return (
     <div
-      className={`split-pane${compact ? ' split-pane--compact' : ''}${heightResponsive ? ' split-pane--height-responsive' : ''}${paneState.collapsed && !isMobile ? ' split-pane--collapsed' : ''}${showMobileDetailSheet ? ' split-pane--mobile-sheet-open' : ''}`}
+      className={`split-pane${compact ? ' split-pane--compact' : ''}${heightResponsive ? ' split-pane--height-responsive' : ''}${paneState.collapsed && !stacked ? ' split-pane--collapsed' : ''}${showMobileDetailSheet ? ' split-pane--mobile-sheet-open' : ''}${foldListWidth !== null ? ' split-pane--fold-snapped' : ''}`}
       ref={paneRef}
+      // Places its own panes on each side of a crease, so the route outlet's
+      // single-column treatment leaves it the full width.
+      data-fold-aware=""
       data-first-run-anchor={firstRunAnchor}
       data-has-detail={selectedId || unselectedDetailOpen ? '' : undefined}
     >
-      {!isMobile && paneState.collapsed && (
+      {!stacked && paneState.collapsed && (
         <button
           ref={reopenButtonRef}
           type="button"
@@ -1290,8 +1300,8 @@ export function SplitPaneLayout({
       <div
         className={`split-pane__left${leftVisible ? ' split-pane__left--visible' : ''}`}
         style={
-          !isMobile && !paneState.collapsed
-            ? { width: paneState.width }
+          !stacked && !paneState.collapsed
+            ? { width: foldListWidth ?? paneState.width }
             : undefined
         }
       >
@@ -1314,7 +1324,7 @@ export function SplitPaneLayout({
                 </h2>
                 {subtitle && <p className="split-pane__subtitle">{subtitle}</p>}
               </div>
-              {!isMobile && collapseButton}
+              {!stacked && collapseButton}
             </div>
           )}
           <div className="split-pane__filter-row">
@@ -1325,7 +1335,7 @@ export function SplitPaneLayout({
               value={searchValue}
               onChange={(e) => onSearch(e.target.value)}
             />
-            {framed && !isMobile && collapseButton}
+            {framed && !stacked && collapseButton}
           </div>
         </div>
 
@@ -1588,7 +1598,7 @@ export function SplitPaneLayout({
         ? createPortal(headerActionBlock, actionsSlot)
         : null}
 
-      {!isMobile && !paneState.collapsed && (
+      {!stacked && !paneState.collapsed && foldListWidth === null && (
         // The suggested <hr> is a decorative rule: not focusable, not
         // operable, and unable to carry aria-valuenow. This is a window
         // splitter — a real button that resizes with the arrow keys

@@ -1,6 +1,6 @@
 import { readNativeCommandError } from './nativeCommandError';
 import { validateNativeShareText } from './share';
-import { invokeTauri } from './tauriInvoke';
+import { invokeTauri, listenTauriPlugin } from './tauriInvoke';
 import type {
   BundledServerOwnership,
   BundledServerPhase,
@@ -59,13 +59,7 @@ const TAURI_EVENT_BRIDGE: TauriEventBridge = {
     const { listen } = await import('@tauri-apps/api/event');
     return listen<T>(event, handler);
   },
-  async addPluginListener(plugin, event, handler) {
-    const { addPluginListener } = await import('@tauri-apps/api/core');
-    const listener = await addPluginListener(plugin, event, () => handler());
-    return () => {
-      void listener.unregister().catch(() => {});
-    };
-  },
+  addPluginListener: listenTauriPlugin,
 };
 
 const TAURI_DEEP_LINK_BRIDGE: TauriDeepLinkBridge = {
