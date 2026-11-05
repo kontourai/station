@@ -4,6 +4,7 @@
  */
 
 import { Mods } from '../engine/abi';
+import { GHOSTTY_KEY_BY_CODE } from '../engine/keys.generated';
 import type { KeyActionName, KeyInput } from '../engine/terminal-engine';
 
 export function modsOf(event: {
@@ -23,27 +24,53 @@ export function modsOf(event: {
   return mods;
 }
 
+const PUNCTUATION_BY_CODE: Readonly<Record<string, string>> = {
+  Space: ' ',
+  Minus: '-',
+  Equal: '=',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  Semicolon: ';',
+  Quote: "'",
+  Backquote: '`',
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+};
+const CODE_BY_PUNCTUATION: Readonly<Record<string, string>> =
+  Object.fromEntries(
+    Object.entries(PUNCTUATION_BY_CODE).map(([code, char]) => [char, code]),
+  );
+
+/** Keys whose `key` value is also their code's name (Enter, ArrowUp, F1…). */
+const NAMED_KEYS: ReadonlySet<string> = new Set(
+  Object.keys(GHOSTTY_KEY_BY_CODE),
+);
+
 /** The key's code point on an unshifted US layout, or 0. */
 function unshiftedCodepoint(code: string, key: string): number {
   if (/^Key[A-Z]$/.test(code)) return code.charCodeAt(3) + 32;
   if (/^Digit\d$/.test(code)) return code.charCodeAt(5);
-  const fixed: Record<string, string> = {
-    Space: ' ',
-    Minus: '-',
-    Equal: '=',
-    BracketLeft: '[',
-    BracketRight: ']',
-    Backslash: '\\',
-    Semicolon: ';',
-    Quote: "'",
-    Backquote: '`',
-    Comma: ',',
-    Period: '.',
-    Slash: '/',
-  };
-  const char = fixed[code];
+  const char = PUNCTUATION_BY_CODE[code];
   if (char) return char.codePointAt(0)!;
   return [...key].length === 1 ? key.toLowerCase().codePointAt(0)! : 0;
+}
+
+/**
+ * The event's physical key. Android soft keyboards send Enter, Backspace and
+ * the like with `key` set and `code` empty; the encoder knows keys only by
+ * code, so such a key would encode to nothing (#3994: the phone's Send key
+ * typed nothing). A named key's `key` value is its code's name; a printable
+ * key maps through the US layout.
+ */
+export function keyCode(event: Pick<KeyboardEvent, 'code' | 'key'>): string {
+  if (event.code && event.code !== 'Unidentified') return event.code;
+  const { key } = event;
+  if (NAMED_KEYS.has(key)) return key;
+  if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
+  if (/^\d$/.test(key)) return `Digit${key}`;
+  return CODE_BY_PUNCTUATION[key] ?? '';
 }
 
 export function keyInput(
@@ -51,12 +78,13 @@ export function keyInput(
   action: KeyActionName,
 ): KeyInput {
   const printable = [...event.key].length === 1;
+  const code = keyCode(event);
   return {
-    code: event.code,
+    code,
     action,
     mods: modsOf(event),
     text: printable ? event.key : '',
-    unshifted: unshiftedCodepoint(event.code, event.key),
+    unshifted: unshiftedCodepoint(code, event.key),
     composing: event.isComposing,
   };
 }

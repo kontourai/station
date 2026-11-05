@@ -258,6 +258,14 @@ engine with an approval knob, and it resolves in this order:
    - **Owner decision (2026-09-23): this applies to every session start.**
      That includes `station chat`, delegations, inbound webhooks, Discord and
      scheduled jobs, not only chats from the UI.
+
+Later addition (#4518): under a machine's managed
+[approval-mode ceiling](../decisions/managed-policy.md#approval-mode-ceiling),
+a recorded pick above it refuses the start or turn, carried postures and
+defaults are lowered to it, and where none of the three applies the start
+sends Ask rather than nothing. A recorded personal default is not a pick: its
+`session.approval-mode-set` event is marked `source: "personal-default"`, and
+it is lowered to the ceiling in force like any other default.
    - Before this change only a UI chat sent the default. Choosing Full access
      as the Station default now gives those unattended starters full access.
      The settings row, `AppConfig.defaultApprovalMode` and the app schema say
@@ -438,6 +446,11 @@ A session spawned before this change has nothing recorded.
   Ask or Auto, or pick Default.
 - **Full access (`never`) is gated.** It needs the operator in person, or a
   device holding the new operator-promotion scope `approval:full-access`.
+  Later addition (#4518): under a managed approval ceiling below full access,
+  nobody holds it, the operator included. A `never` carried on a request's
+  options (`approvalMode`, the default channel) is then lowered to the
+  ceiling instead of refused; a known ACP full-access `mode` is still
+  refused, because nothing lowers it.
   Since 2026-11-02 the operator in person includes one of the owner's own
   devices holding [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02);
   its grant still names that device as grantor.

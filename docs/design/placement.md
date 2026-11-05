@@ -930,6 +930,22 @@ The Agents pane remains the complete list and stop surface, including
 children with no loaded spawn anchor. The card and pane share status words
 and time formatting (`utils/child-work-display.ts`).
 
+**Child-work retention and result amendment (2026-11-05).** The pane and
+background sheet show retained work, not a complete lifetime inventory.
+Recent activity bounds settled tool rows and closed-chat history; counts marked
+“shown” count retained rows. Running work survives chat closure. The “All”
+child registry and completion notices are scoped to the Station connection;
+a foreign Station with the same reported child IDs cannot replace a notice.
+Missing snapshot evidence leaves an outcome unknown.
+
+Result text identifies its recorded source: returned result, provider summary,
+child message or provider error. Older text keeps unknown provenance. A later
+structured tool return from the same Station and child corrects an existing
+completion notice in place without another announcement. A transcript handle
+alone does not prove a returned result. These rules qualify the dated
+“complete list” wording above; transcript cards can still represent loaded
+spawns beyond the live registry's bounded history.
+
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
 no chord, dock regions only, `right` by default because a device screen is

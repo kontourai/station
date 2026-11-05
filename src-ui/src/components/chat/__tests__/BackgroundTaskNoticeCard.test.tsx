@@ -103,6 +103,9 @@ describe('background task settle notice', () => {
     expect(details).not.toBeNull();
     expect(details!.open).toBe(false);
     expect(
+      within(details!).getByText(/^Summary · source not recorded/),
+    ).toBeTruthy();
+    expect(
       within(details!).getByText(/completed \(exit code 0\)/),
     ).toBeTruthy();
     const outsideDetails = [...card.querySelectorAll('.task-notice__line')]

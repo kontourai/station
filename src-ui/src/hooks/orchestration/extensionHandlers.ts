@@ -58,6 +58,7 @@ function activityHintsEqual(
 function handleClaudeNotification(
   event: Extract<OrchestrationEvent, { method: 'extension.notification' }>,
   consumer: ExtensionNotificationConsumer,
+  apiBase?: string,
 ) {
   if (consumer === 'ui.claude.api-retry') {
     const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
@@ -139,7 +140,7 @@ function handleClaudeNotification(
       event,
       event.threadId,
     );
-    if (delta) applyChildWorkToChat(event.threadId, delta);
+    if (delta) applyChildWorkToChat(event.threadId, delta, apiBase);
     return;
   }
 }
@@ -155,6 +156,7 @@ function handleClaudeNotification(
  */
 export function handleExtensionNotificationEvent(
   event: Extract<OrchestrationEvent, { method: 'extension.notification' }>,
+  apiBase?: string,
 ) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
@@ -174,7 +176,7 @@ export function handleExtensionNotificationEvent(
   }
 
   if (binding.consumer.startsWith('ui.claude.')) {
-    handleClaudeNotification(event, binding.consumer);
+    handleClaudeNotification(event, binding.consumer, apiBase);
     return;
   }
 

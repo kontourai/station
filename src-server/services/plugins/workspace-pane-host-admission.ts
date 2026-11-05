@@ -10,6 +10,7 @@ import {
 import type { WorkspacePaneHostAgentRef } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { capturePluginAgentInvocation } from '../../domain/config-loader-agents.js';
 import { readRegularFileNoFollow } from '../../domain/home-schema-gate.js';
+import { withoutLockedProjectOverrides } from '../../domain/managed-settings.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import {
@@ -219,7 +220,8 @@ export function createWorkspacePaneHostAdmission(input: {
         if (project.slug !== projectSlug)
           throw new ForegroundInvocationUnavailableError();
         const workspaceIsolationMode = resolveWorkspaceIsolationMode(
-          project.defaultWorkspaceIsolation,
+          // #4517: a managed lock outranks the project's override.
+          withoutLockedProjectOverrides(project).defaultWorkspaceIsolation,
           await input.stationDefaultWorkspaceIsolation?.(),
         );
         const agentSnapshot = await capturePluginAgentInvocation(

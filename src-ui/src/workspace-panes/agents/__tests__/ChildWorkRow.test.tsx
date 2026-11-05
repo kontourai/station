@@ -150,6 +150,7 @@ test('a settled child with no reported end shows no elapsed', () => {
   expect(container.querySelector('.child-work-row__meta')?.textContent).toBe(
     'Subagent',
   );
+  expect(screen.getByText('Summary not reported')).toBeTruthy();
 });
 
 test('unresolved and unconfirmed-stop terminals never read as Completed or Stopped', () => {
@@ -839,4 +840,39 @@ test('#3163: a settled child’s transcript offers no Refresh', () => {
   mount(row({ status: 'completed', transcript: TRANSCRIPT }));
   fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
   expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+});
+
+test('a provider summary is labeled as a report rather than a verified returned artifact', () => {
+  mount(
+    row({
+      status: 'completed',
+      result: {
+        summary: 'I will investigate next.',
+        source: 'provider-summary',
+      },
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(screen.getByText('Provider summary')).toBeTruthy();
+  expect(screen.getByText('I will investigate next.')).toBeTruthy();
+  expect(screen.getByText('No returned result was reported.')).toBeTruthy();
+});
+
+test('returned report text is labeled separately from completion and provider summaries', () => {
+  mount(
+    row({
+      status: 'completed',
+      result: { summary: 'Found the cause.', source: 'tool-return' },
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(screen.getByText('Returned result')).toBeTruthy();
+  expect(screen.getByText('Found the cause.')).toBeTruthy();
+  expect(screen.queryByText('No returned result was reported.')).toBeNull();
+});
+
+test('a completed child without report or usage still exposes the missing-result disclosure', () => {
+  mount(row({ status: 'completed', result: undefined, usage: undefined }));
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(screen.getByText('No returned result was reported.')).toBeTruthy();
 });

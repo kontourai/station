@@ -29,6 +29,10 @@ import {
 } from '../services/knowledge/knowledge-storage.js';
 import { knowledgeMigrationOps } from '../telemetry/metrics.js';
 import { createLogger } from '../utils/logger.js';
+import {
+  canonicalPathThroughExistingAncestor,
+  isCanonicalPathWithin,
+} from '../utils/path-containment.js';
 import { KeyedInFlightGuard } from './inflight-guard.js';
 import { assertSafePathSegment, isSafePathSegment } from './path-safety.js';
 
@@ -210,9 +214,8 @@ async function ensureMigrationRoot(
     projectSlug,
     namespace,
   );
-  const existing = (await store.listRoots()).find(
-    (root) => root.storeRoot === storeRoot,
-  );
+  const matches = await migrationDestinationRoots(store, storeRoot);
+  const existing = matches[0];
   if (existing) return existing;
 
   return store.createRoot({
@@ -223,10 +226,29 @@ async function ensureMigrationRoot(
   });
 }
 
+async function migrationDestinationRoots(
+  store: KnowledgeStoreProvider,
+  storeRoot: string,
+) {
+  const destination = canonicalPathThroughExistingAncestor(storeRoot);
+  const matches: KnowledgeStoreRoot[] = [];
+  for (const root of await store.listRoots()) {
+    const candidate = canonicalPathThroughExistingAncestor(root.storeRoot);
+    if (
+      root.readPolicy !== undefined &&
+      (isCanonicalPathWithin(candidate, destination) ||
+        isCanonicalPathWithin(destination, candidate))
+    )
+      throw new Error('Migration destination is unavailable.');
+    if (candidate === destination) matches.push(root);
+  }
+  return matches;
+}
+
 /**
  * Migrate one pre-index (projectSlug, namespace) pair into a K2 store root + K3 index (extracted
  * from `migratePreIndexKnowledge`'s per-namespace orchestration body — code-review HIGH-2).
- * Returns `null` when the namespace has no `metadata.json` or no documents.
+ * After provider admission, returns `null` when the namespace has no `metadata.json` or no documents.
  * Existing records skip creation but still participate in index repair on retry.
  * Throws on a real failure (a store/index
  * error partway through); the caller catches this per-namespace so one namespace's failure never
@@ -242,6 +264,9 @@ async function migrateNamespace(
 } | null> {
   const { dataDir, store, indexProvider, embedder } = deps;
   const { projectSlug, namespace } = ref;
+
+  if (store.withRootRevision && !indexProvider.supportsRootRevision)
+    throw new Error('Knowledge index cannot pin a root revision.');
 
   const storageDir = defaultKnowledgeStorageDir(
     dataDir,
@@ -288,53 +313,67 @@ async function migrateNamespace(
     namespace,
     vectorNamespace,
   );
-  const adapter = await store.adapterFor(root.id);
+  const migrateIntoRoot = async (
+    adapter: Awaited<ReturnType<KnowledgeStoreProvider['adapterFor']>>,
+  ) => {
+    await migrationDestinationRoots(store, root.storeRoot);
+    let namespaceDocsMigrated = 0;
 
-  let namespaceDocsMigrated = 0;
+    for (const doc of docs) {
+      const existingRecord = await adapter.get(doc.id);
+      if (existingRecord) {
+        observeMigration('noop', 'already-migrated');
+        continue;
+      }
 
-  for (const doc of docs) {
-    const existingRecord = await adapter.get(doc.id);
-    if (existingRecord) {
-      observeMigration('noop', 'already-migrated');
-      continue;
+      const body = resolvePreIndexDocBody(
+        snapshot.contentById.get(doc.id) ?? null,
+        doc,
+        preIndexVectorDocs,
+      );
+      if (!body.trim()) {
+        observeMigration('noop', 'no-content');
+        continue;
+      }
+
+      await adapter.create({
+        id: doc.id,
+        type: 'raw',
+        title: doc.filename || doc.path || doc.id,
+        body,
+        category: 'migrated-knowledge',
+        tags: ['pre-index-import'],
+        provenance: {
+          agent: 'import:pre-index-knowledge',
+          note: `migrated from pre-index vectordb namespace ${vectorNamespace}`,
+        },
+      });
+      namespaceDocsMigrated += 1;
+      observeMigration('write', 'created');
     }
 
-    const body = resolvePreIndexDocBody(
-      snapshot.contentById.get(doc.id) ?? null,
-      doc,
-      preIndexVectorDocs,
-    );
-    if (!body.trim()) {
-      observeMigration('noop', 'no-content');
-      continue;
-    }
-
-    await adapter.create({
-      id: doc.id,
-      type: 'raw',
-      title: doc.filename || doc.path || doc.id,
-      body,
-      category: 'migrated-knowledge',
-      tags: ['pre-index-import'],
-      provenance: {
-        agent: 'import:pre-index-knowledge',
-        note: `migrated from pre-index vectordb namespace ${vectorNamespace}`,
-      },
-    });
-    namespaceDocsMigrated += 1;
-    observeMigration('write', 'created');
-  }
-
-  // Re-derive the whole root from its records with the current embedder.
+    return namespaceDocsMigrated;
+  };
+  const documentsMigrated = store.withRootRevision
+    ? await store.withRootRevision(root, migrateIntoRoot)
+    : await migrateIntoRoot(await store.adapterFor(root.id));
+  const withRootRevision: Parameters<
+    KnowledgeIndexProvider['rebuildRoot']
+  >[1]['withRootRevision'] = store.withRootRevision
+    ? (operation) =>
+        store.withRootRevision!(root, async (adapter) => {
+          await migrationDestinationRoots(store, root.storeRoot);
+          return operation(adapter);
+        })
+    : undefined;
   const rebuildResult = await indexProvider.rebuildRoot(root.id, {
     store,
     embedder,
+    withRootRevision,
   });
-  const chunksIndexed = rebuildResult.chunks;
-
   return {
-    documentsMigrated: namespaceDocsMigrated,
-    chunksIndexed,
+    documentsMigrated,
+    chunksIndexed: rebuildResult.chunks,
     vectorNamespace,
   };
 }

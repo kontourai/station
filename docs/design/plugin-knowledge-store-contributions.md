@@ -39,6 +39,8 @@ The current surfaces do not compose safely enough to expose directly:
   generated IDs can be reused after deregistration.
 - `KnowledgeStoreProvider.registerAdapter()` is last-write-wins. A plugin can therefore shadow a
   built-in or another plugin's adapter if that method is exposed without a new policy layer.
+- An adapter may now validate root registration metadata before use, but that
+  hook does not supply the missing plugin admission or conflict policy.
 - `KnowledgeStoreAdapter` combines reads and mutations in one interface. Calling an arbitrary
   plugin implementation “read-only” would not enforce read-only behavior.
 - Station's current built-in adapters are not non-writing readers: construction may create a root,

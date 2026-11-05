@@ -58,6 +58,7 @@ export function AccentColorPicker({
             style={{ backgroundColor: preset }}
             onClick={() => apply(preset)}
             aria-label={`Accent color ${preset}`}
+            aria-pressed={color === preset}
           />
         ))}
         <label className="settings__accent-custom-hit">

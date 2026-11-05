@@ -220,6 +220,7 @@ export function CoreUpdateLaunchCheck({
         target: 'desktop',
         message: `Station ${latest.version} is available.`,
         href: latest.releaseUrl,
+        releaseVersion: latest.version,
         actionLabel: 'Update app',
       });
     } else if (

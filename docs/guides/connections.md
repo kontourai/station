@@ -1398,7 +1398,10 @@ the [credential check](../../src-server/providers/llm/bedrock.ts).
 
 See [docs/reference/config.md](../reference/config.md) for the full `app.json` reference and an Ollama-first example.
 
-A Project can override them with `defaultProviderId` and `defaultModel`. Its
+A Project can override them with `defaultProviderId` and `defaultModel`, unless
+the machine's [managed policy](managed-policy.md#settings) locks either
+setting; a lock outranks the Project's pair and its `last-used` model
+selection. Its
 **New chats** settings can instead start each new chat on the model the
 person's last chat in that Project started with (`defaultModelSelection:
 'last-used'`), falling back to the chain above when that model is no longer

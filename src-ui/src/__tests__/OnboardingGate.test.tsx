@@ -1623,114 +1623,163 @@ describe('OnboardingGate', () => {
    * This drives the action's `onClick` directly, the way a reader clicking
    * "Try again" IN THE TOAST (not back on the original control) would.
    */
-  test('restart failures retain one actionable notice and a successful retry clears it', async () => {
-    const { toastStore: realToastStore } = await vi.importActual<
-      typeof import('../contexts/ToastContext')
-    >('../contexts/ToastContext');
-    toastMocks.upsertToast.mockImplementation((options: ToastOptions) =>
-      realToastStore.upsert(options),
-    );
-    toastMocks.dismissToast.mockImplementation((id: string) =>
-      realToastStore.dismiss(id),
-    );
-    realToastStore.dismissAll();
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    platformProfile = {
-      isTauri: true,
-      target: 'macos',
-      isMobile: false,
-      isDesktop: true,
-      supervisesBundledServer: true,
-    };
-    connections = [
-      {
-        id: 'remote',
-        name: 'Paired Station',
-        environmentId: 'env-1',
-        endpoints: [],
-        selectedEndpointId: '',
-      },
-    ];
-    currentStatus = chatReadyStatus();
-    bundledStatus = {
-      phase: 'failed',
-      attempt: 5,
-      maxAttempts: 5,
-      apiBase: null,
-      port: null,
-      lastExitCode: 1,
-      nextRetryInMs: null,
-      logPath: '/tmp/station-server.log',
-      ownership: 'sidecar',
-      canRunInBackground: true,
-      failClosed: false,
-      message: '',
-    };
-    restartBundledServerMock.mockResolvedValue(false);
-
-    try {
-      render(
-        <OnboardingGate>
-          <div>App shell</div>
-        </OnboardingGate>,
+  test.each([
+    'sequential retry',
+    'older overlapping success',
+    'older overlapping failure',
+  ] as const)(
+    'restart failures retain the current actionable notice: %s',
+    async (scenario) => {
+      const { toastStore: realToastStore } = await vi.importActual<
+        typeof import('../contexts/ToastContext')
+      >('../contexts/ToastContext');
+      toastMocks.upsertToast.mockImplementation((options: ToastOptions) =>
+        realToastStore.upsert(options),
       );
-      fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
-      fireEvent.click(screen.getByTestId('cm-restart-injected'));
-
-      await waitFor(() =>
-        expect(toastMocks.upsertToast).toHaveBeenCalledTimes(1),
+      toastMocks.dismissToast.mockImplementation((id: string) =>
+        realToastStore.dismiss(id),
       );
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
-
-      // The EFFECT, from the real store — not the mocked call's arguments.
-      const toastBefore = realToastStore
-        .getSnapshot()
-        .find((t) => t.message.match(/couldn.t restart/i));
-      expect(
-        toastBefore,
-        'restart-failure toast never reached the real store',
-      ).toBeTruthy();
-
-      // Run every timer the store scheduled. A `duration: 0` toast must
-      // still be present after this — the exact case broke.
-      act(() => {
-        vi.runAllTimers();
-      });
-      const toastAfter = realToastStore
-        .getSnapshot()
-        .find((t) => t.message.match(/couldn.t restart/i));
-      expect(
-        toastAfter,
-        'the restart-failure toast auto-dismissed despite duration: 0',
-      ).toBeTruthy();
-
-      expect(toastAfter?.actions).toHaveLength(1);
-      expect(toastAfter?.actions?.[0]?.label).toBe('Try again');
-      act(() => {
-        toastAfter?.actions?.[0]?.onClick();
-      });
-      await waitFor(() =>
-        expect(toastMocks.upsertToast).toHaveBeenCalledTimes(2),
-      );
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
-      expect(realToastStore.getSnapshot()).toHaveLength(1);
-      const repeated = realToastStore.getSnapshot()[0];
-      expect(repeated.id).toBe(toastBefore?.id);
-      expect(repeated.occurrences).toBe(2);
-      restartBundledServerMock.mockResolvedValue(true);
-      act(() => {
-        repeated.actions?.[0]?.onClick();
-      });
-      await waitFor(() =>
-        expect(toastMocks.dismissToast).toHaveBeenCalledWith(repeated.id),
-      );
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(3);
-      expect(realToastStore.getSnapshot()).toHaveLength(0);
-    } finally {
-      vi.useRealTimers();
       realToastStore.dismissAll();
-    }
-  });
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      platformProfile = {
+        isTauri: true,
+        target: 'macos',
+        isMobile: false,
+        isDesktop: true,
+        supervisesBundledServer: true,
+      };
+      connections = [
+        {
+          id: 'remote',
+          name: 'Paired Station',
+          environmentId: 'env-1',
+          endpoints: [],
+          selectedEndpointId: '',
+        },
+      ];
+      currentStatus = chatReadyStatus();
+      bundledStatus = {
+        phase: 'failed',
+        attempt: 5,
+        maxAttempts: 5,
+        apiBase: null,
+        port: null,
+        lastExitCode: 1,
+        nextRetryInMs: null,
+        logPath: '/tmp/station-server.log',
+        ownership: 'sidecar',
+        canRunInBackground: true,
+        failClosed: false,
+        message: '',
+      };
+      restartBundledServerMock.mockResolvedValue(false);
+
+      try {
+        render(
+          <OnboardingGate>
+            <div>App shell</div>
+          </OnboardingGate>,
+        );
+        fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
+        fireEvent.click(screen.getByTestId('cm-restart-injected'));
+
+        await waitFor(() =>
+          expect(toastMocks.upsertToast).toHaveBeenCalledTimes(1),
+        );
+        expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
+
+        // The EFFECT, from the real store — not the mocked call's arguments.
+        const toastBefore = realToastStore
+          .getSnapshot()
+          .find((t) => t.message.match(/couldn.t restart/i));
+        expect(
+          toastBefore,
+          'restart-failure toast never reached the real store',
+        ).toBeTruthy();
+
+        // Run every timer the store scheduled. A `duration: 0` toast must
+        // still be present after this — the exact case broke.
+        act(() => {
+          vi.runAllTimers();
+        });
+        const toastAfter = realToastStore
+          .getSnapshot()
+          .find((t) => t.message.match(/couldn.t restart/i));
+        expect(
+          toastAfter,
+          'the restart-failure toast auto-dismissed despite duration: 0',
+        ).toBeTruthy();
+
+        expect(toastAfter?.actions).toHaveLength(1);
+        expect(toastAfter?.actions?.[0]?.label).toBe('Try again');
+        if (scenario !== 'sequential retry') {
+          const latestSucceeds = scenario === 'older overlapping failure';
+          restartBundledServerMock.mockResolvedValue(latestSucceeds);
+          let finishOlder!: (ok: boolean) => void;
+          restartBundledServerMock.mockImplementationOnce(
+            () =>
+              new Promise<boolean>((resolve) => {
+                finishOlder = resolve;
+              }),
+          );
+          act(() => {
+            toastAfter?.actions?.[0]?.onClick();
+          });
+          expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
+          act(() => {
+            toastAfter?.actions?.[0]?.onClick();
+          });
+          if (latestSucceeds) {
+            await waitFor(() =>
+              expect(realToastStore.getSnapshot()).toHaveLength(0),
+            );
+          } else {
+            await waitFor(() =>
+              expect(toastMocks.upsertToast).toHaveBeenCalledTimes(2),
+            );
+          }
+          await act(async () => {
+            finishOlder(!latestSucceeds);
+          });
+          expect(realToastStore.getSnapshot()).toEqual(
+            latestSucceeds
+              ? []
+              : [
+                  expect.objectContaining({
+                    id: toastBefore?.id,
+                    occurrences: 2,
+                    actions: [expect.objectContaining({ label: 'Try again' })],
+                  }),
+                ],
+          );
+          return;
+        }
+        act(() => {
+          toastAfter?.actions?.[0]?.onClick();
+        });
+        await waitFor(() =>
+          expect(toastMocks.upsertToast).toHaveBeenCalledTimes(2),
+        );
+        expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
+        expect(realToastStore.getSnapshot()).toHaveLength(1);
+        const repeated = realToastStore.getSnapshot()[0];
+        expect(repeated.id).toBe(toastBefore?.id);
+        expect(repeated.occurrences).toBe(2);
+        restartBundledServerMock.mockResolvedValue(true);
+        act(() => {
+          repeated.actions?.[0]?.onClick();
+        });
+        await waitFor(() =>
+          expect(toastMocks.dismissToast).toHaveBeenCalledWith(repeated.id),
+        );
+        expect(restartBundledServerMock).toHaveBeenCalledTimes(3);
+        expect(realToastStore.getSnapshot()).toHaveLength(0);
+      } finally {
+        vi.useRealTimers();
+        realToastStore.dismissAll();
+      }
+    },
+  );
 
   test('withholds the modal Restart handler when the sidecar does not own the home', () => {
     // The negative the gate exists for, and the one nothing asserted: a

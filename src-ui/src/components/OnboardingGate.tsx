@@ -315,9 +315,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   }, [bootstrapRecoveryError, profile.isDesktop, showToast]);
 
   const restartNoticeId = useRef<string | null>(null);
+  const restartRequestSequence = useRef(0);
   const handleRestartBundledServer = useCallback((): Promise<void> => {
+    const requestSequence = ++restartRequestSequence.current;
     const priorNoticeId = restartNoticeId.current;
     return restartBundledServer().then((ok) => {
+      if (requestSequence !== restartRequestSequence.current) return;
       if (ok) {
         if (priorNoticeId) dismissToast(priorNoticeId);
         if (restartNoticeId.current === priorNoticeId)

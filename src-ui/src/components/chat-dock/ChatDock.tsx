@@ -81,7 +81,10 @@ import { useConversationActivityFeed } from '../../hooks/orchestration/useConver
 import { useACPConnections } from '../../hooks/useACPConnections';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
-import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
+import {
+  useChatBackgroundTasksLimited,
+  useChatBackgroundTasksRunningCount,
+} from '../../hooks/useBackgroundTasks';
 import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import {
   type OpenConversationOptions,
@@ -910,8 +913,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // station#1301 slice 1: the active session's running-background-task count,
   // for the tab bar's badge and the Background tasks rows' labels.
-  const backgroundTasksRunningCount =
-    useChatBackgroundTasksRunningCount(activeSessionId);
+  const backgroundTasksRunningCount = useChatBackgroundTasksRunningCount(
+    activeSessionId,
+    apiBase,
+  );
+  const backgroundTasksLimited = useChatBackgroundTasksLimited(
+    activeSessionId,
+    apiBase,
+  );
 
   // #869 / #1298: a maximized dock is opaque and full-height, so navigating
   // to another part of the app changed the view *underneath* it and nothing
@@ -3031,6 +3040,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         : undefined,
       status: sessionContextStatus,
       backgroundTasksRunning: backgroundTasksRunningCount,
+      backgroundTasksLimited,
       onOpenBackgroundTasks: () => actions().showBackgroundTasks(),
       pendingMessages: sessionContextPendingMessages,
       conversationId: sessionContextConversationId,
@@ -3071,6 +3081,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     gitStatus,
     sessionContextStatus,
     backgroundTasksRunningCount,
+    backgroundTasksLimited,
     sessionContextPendingMessages,
     sessionContextConversationId,
     sessionContextDetailsId,
@@ -3678,6 +3689,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     ? showBackgroundTasks
                     : undefined,
                 backgroundTasksRunningCount,
+                backgroundTasksLimited,
                 onOpenSessionContext: sessionContextAvailable
                   ? (returnFocus) => {
                       setSessionContextReturnFocus(returnFocus);
@@ -3811,6 +3823,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? 0
                         : backgroundTasksRunningCount,
                       isBackgroundTasksOpen,
+                      backgroundTasksLimited:
+                        !importedSessionId && backgroundTasksLimited,
                       backgroundTasksOpensPane,
                       onToggleBackgroundTasks: toggleBackgroundTasks,
                       sessionInventory: sessionInventoryControls,
@@ -4409,6 +4423,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           load={loadBackgroundTasksSheet}
           componentProps={{
             chatThreadId: activeSessionId,
+            apiBase,
             anchorRef: backgroundTasksTriggerRef,
             returnFocusTarget: backgroundTasksTriggerRef.current,
             onOpenTranscript: (threadId) => {

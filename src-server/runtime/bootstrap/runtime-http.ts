@@ -956,7 +956,8 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, X-Station-Background-Refresh, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
+        // If-Match carries the revision precondition for account preference saves.
+        `Authorization, Content-Type, If-Match, Last-Event-ID, X-Station-Client-Session, X-Station-Background-Refresh, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''

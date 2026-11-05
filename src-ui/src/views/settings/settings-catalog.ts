@@ -209,6 +209,13 @@ const SETTINGS_CATALOG_SOURCE = [
     conditional: 'desktop',
   },
   {
+    id: 'show-release-notes',
+    title: 'Show changelog after updates',
+    section: 'system',
+    configKeys: ['showReleaseNotesAfterUpdate'],
+    keywords: ['release notes changelog what is new update startup'],
+  },
+  {
     id: 'core-app-updates',
     title: 'Connected Station server',
     section: 'system',

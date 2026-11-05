@@ -14,7 +14,10 @@ import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 import { renderLearningDocument } from '../lib/learning-markdown.mjs';
 import { compileLearningMedia } from '../lib/learning-media.mjs';
 import { createLearningSourceReader } from '../lib/learning-source-reader.mjs';
-import { readReviewState } from '../lib/review-ledger-store.mjs';
+import {
+  readReviewState,
+  withReviewHistory,
+} from '../lib/review-ledger-store.mjs';
 import {
   forbidAmbientFreshnessMode,
   JOB_ENV,
@@ -386,7 +389,7 @@ it('checks the actual capture manifest and recorded source bytes in the required
     if (policy.mode !== 'scoped') {
       phase = 'read-review-state-with-history';
       mark('enter');
-      state = readReviewState(process.cwd());
+      state = withReviewHistory(process.cwd(), state);
       mark('exit');
     }
     phase = 'read-review-state';
