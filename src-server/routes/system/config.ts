@@ -1112,7 +1112,10 @@ export function createConfigRoutes(
         update,
       );
       const updated = mutation.value;
-      const publicUpdated = projectPublicAppConfig(updated);
+      // #4518: the response reports the values in effect, as GET does.
+      const publicUpdated = projectPublicAppConfig(
+        withManagedApprovalCeiling(updated),
+      );
       logger.info('App config updated', { config: publicUpdated });
       // archive#1194: this key is the onboarding engine picker's own
       // mutation surface — rebind immediately rather than waiting for some

@@ -2503,8 +2503,9 @@ describe('Station default approval mode under a managed ceiling', () => {
     }
   });
 
-  // #4515 fix round 3: GET reports the values in effect.
-  test('GET reports a default saved above the ceiling lowered to it', async () => {
+  // #4515 fix round 3/4: GET and the PUT response report the values in
+  // effect; an explicit write at or below the ceiling is stored.
+  test('GET and a PUT response report a default saved above the ceiling lowered to it', async () => {
     ceiling();
     try {
       const loader = createMockConfigLoader({ defaultApprovalMode: 'never' });
@@ -2515,6 +2516,13 @@ describe('Station default approval mode under a managed ceiling', () => {
         data: Record<string, unknown>;
       };
       expect(read.data.defaultApprovalMode).toBe('ask');
+      // Settings sends only the key it changed.
+      const saved = await put(app, { defaultMaxTurns: 27 });
+      expect(saved.status, await saved.clone().text()).toBe(200);
+      const body = (await saved.json()) as { data: Record<string, unknown> };
+      expect(body.data.defaultApprovalMode).toBe('ask');
+      expect(body.data.defaultMaxTurns).toBe(27);
+      // The saved default is not changed by either.
       expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('never');
       // Resending the saved `never` is not a raise: 200, nothing changes.
       const resent = await put(app, { defaultApprovalMode: 'never' });
