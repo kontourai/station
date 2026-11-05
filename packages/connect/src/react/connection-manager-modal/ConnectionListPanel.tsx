@@ -903,7 +903,7 @@ export function ConnectionListPanel({
           >
             <h3>Connect another device to this Station</h3>
             <p>
-              Invite your phone to{' '}
+              Invite another device to{' '}
               {connections.find(
                 (connection) => connection.id === activeConnectionId,
               )?.name ?? 'the selected Station'}

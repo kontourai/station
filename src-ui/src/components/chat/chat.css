@@ -2983,13 +2983,20 @@
 }
 .station-switcher__footer {
   display: flex;
+  /* A phone's "Connect another device" is longer than "Pair phone": a row
+     wraps whole rather than breaking a label over three lines. */
+  flex-wrap: wrap;
   margin-top: var(--k-space-2);
 }
 .station-switcher__footer > .menu-row {
-  flex: 1;
+  /* Basis from the label, not `.menu-row`'s full width, so the three share
+     one row whenever their labels fit. */
+  flex: 1 0 max-content;
+  width: auto;
   justify-content: center;
   padding: 0 var(--k-space-2);
   color: var(--k-text-muted);
+  white-space: nowrap;
 }
 
 /* The Agent/Model/Mode rail has no fill of its own and sits flush on the
@@ -3156,15 +3163,25 @@
        `.chat-dock__mobile-conn`). */
     padding: 4px 6px;
   }
-  /* Keep the status control touchable without spending phone width on its
-     name. Holding the dot reveals the name; tapping opens the Station chooser. */
+  /* A state that needs action stays a touchable dot (its remedy is in the
+     accessible name and the chooser). The healthy chip keeps a short visible
+     Station name: a bare green dot told a phone user nothing about which
+     Station it was. The name truncates before the row would grow; holding the
+     chip still reveals it whole. */
   .app-toolbar__conn {
     box-sizing: border-box;
     width: 44px;
     min-width: 44px;
     flex: 0 0 44px;
   }
-  .app-toolbar__conn-label,
+  .app-toolbar__conn.app-toolbar__conn--compact {
+    width: auto;
+    flex: 0 1 auto;
+    padding-inline: var(--k-space-2);
+  }
+  .app-toolbar__conn-label {
+    max-width: min(28vw, 120px);
+  }
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
     display: none;
