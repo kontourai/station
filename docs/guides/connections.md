@@ -879,6 +879,8 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
   cannot confirm that such a copy runs at all, let alone that it is current.
 - The installed executable runs when Station cannot read the bundled version, so an unreadable
   Agent SDK never silently downgrades a working installation.
+- On a machine whose [managed policy](managed-policy.md#pinned-launch-fields) pins `binaryPath`
+  for Claude, Station runs that program and never the bundled copy; if it cannot, chats are refused.
 
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
@@ -1063,6 +1065,10 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
   `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
   station-managed app-home opt-in (`useAppHome`); a selected credential
   profile still wins over both.
+
+On a machine whose [managed policy](managed-policy.md#pinned-launch-fields)
+locks the engine's environment, `env`, `configHome` and **Connect through** are
+not applied.
 
 For example, if your local proxy expects a placeholder token:
 
