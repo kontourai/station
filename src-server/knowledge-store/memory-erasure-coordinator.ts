@@ -241,11 +241,12 @@ export class MemoryErasureCoordinator {
         const root = roots.find(
           (candidate) =>
             candidate.id === intent.rootId &&
-            candidate.registrationId === intent.registrationId &&
             candidate.readPolicy?.ownerId === intent.ownerId,
         );
         if (!root)
           throw new Error('Memory erasure root changed before recovery.');
+        // A re-registration may recover only against the same bound store;
+        // withRecoveryStatus checks that binding under the current root lease.
         await this.manager.withRecoveryStatus(
           root,
           intent.targetKind,

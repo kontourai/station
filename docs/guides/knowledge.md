@@ -154,6 +154,10 @@ that survive or link to erased records may still contain the erased content.
 The host operator can confirm permanent erasure after reviewing these effects.
 Station returns a receipt after cleanup. If a request's outcome is unknown,
 retry in the same confirmation dialog. If it still fails, restart Station.
+If the original store was replaced while cleanup was pending, recovery refuses
+and private memory remains unavailable.
+If a disconnected root is recreated while Station is running, pending cleanup
+waits for the next Station restart or erasure ([#4614](https://github.com/kontourai/station/issues/4614)).
 
 If another tool writes to this store outside Station during a purge, a copy of
 the erased text can remain in the search index file until the next cleanup pass.

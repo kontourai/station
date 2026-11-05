@@ -326,6 +326,44 @@ test('an interrupted cleanup does not strand later erasures', async () => {
   }
 });
 
+test('a re-registered root recovers an interrupted intent for the same bound store', async () => {
+  const f = await setup();
+  try {
+    const preview = await f.manager.previewErasureTarget(
+      owner,
+      f.root,
+      current,
+      'record',
+      f.id,
+    );
+    if (!preview) throw new Error('Expected preview');
+    const fault = vi
+      .spyOn(f.index, 'removeErasedRecords')
+      .mockRejectedValueOnce(new Error('interrupted cleanup'));
+    await expect(
+      f.coordinator.erase(
+        owner,
+        f.root,
+        current,
+        'record',
+        f.id,
+        preview.impact.revision,
+        'registration-change',
+      ),
+    ).rejects.toThrow('interrupted cleanup');
+    fault.mockRestore();
+    await f.store.removeRoot(f.root.id, f.root);
+    await f.persistence.saveKnowledgeStoreRoot({
+      ...f.root,
+      registrationId: 'da6b5d07-5851-4ba0-8b7b-05e4f18405e2',
+    });
+    await expect(f.coordinator.recoverAll()).resolves.toBeUndefined();
+    expect((await f.index.stats(f.root.id)).chunks).toBe(0);
+  } finally {
+    f.index.close();
+  }
+});
+
 test('refuses recovery if the Corpus store is replaced after the intent', async () => {
   const f = await setup();
   try {
@@ -365,6 +403,10 @@ test('refuses recovery if the Corpus store is replaced after the intent', async 
       coordinationIdentity: () => () => {},
     };
     await initializeRootBinding(replacementOptions);
+    await f.persistence.saveKnowledgeStoreRoot({
+      ...f.root,
+      registrationId: 'da6b5d07-5851-4ba0-8b7b-05e4f18405e2',
+    });
     const reopenedStore = new KnowledgeStoreProvider(f.persistence);
     const reopenedManager = new MemoryRootManager(
       reopenedStore,
