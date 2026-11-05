@@ -77,11 +77,7 @@ function createHarness() {
   // test is the credential middleware in front of it.
   app.get('/ui', (c) => c.html('<html>station</html>'));
 
-  const send = (
-    path: string,
-    init: RequestInit,
-    peer: string = SHARED_PEER,
-  ) =>
+  const send = (path: string, init: RequestInit, peer: string = SHARED_PEER) =>
     app.request(path, init, {
       incoming: { socket: { remoteAddress: peer } },
     } as TestBindings);
