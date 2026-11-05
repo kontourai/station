@@ -15,6 +15,11 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { projectOutboundQueueEntries } from '../hooks/outboundQueueProjection';
 import type { QueuedOutboundTurn } from '../lib/outboundQueue';
 
+const recheckOutboundTurnMock = vi.fn();
+vi.mock('../lib/deliveryLookup', () => ({
+  recheckOutboundTurn: (...args: unknown[]) => recheckOutboundTurnMock(...args),
+}));
+
 const discardOutboundTurnMock = vi.fn();
 const editOutboundTurnMock = vi.fn();
 const reorderOutboundTurnMock = vi.fn();
@@ -42,6 +47,45 @@ vi.mock('../lib/outboundQueue', () => ({
 import { OutboundQueuedMessages } from '../components/chat/OutboundQueuedMessages';
 
 describe('OutboundQueuedMessages (station#2522)', () => {
+  it.each(['indeterminate', 'error'])(
+    'refresh delivery reports %s without resending',
+    async (outcome) => {
+      if (outcome === 'error')
+        recheckOutboundTurnMock.mockRejectedValueOnce(
+          new Error('The requested conversation is unavailable.'),
+        );
+      else recheckOutboundTurnMock.mockResolvedValueOnce(outcome);
+      const retry = vi.fn();
+      render(
+        <OutboundQueuedMessages
+          sessionId="chat-1"
+          turns={[
+            {
+              clientTurnId: 'uncertain',
+              content: 'continue',
+              status: 'may-have-started',
+              lastError: 'Automatic delivery checks paused.',
+            },
+          ]}
+          onError={vi.fn()}
+          onRetry={retry}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh delivery' }));
+      await waitFor(() =>
+        expect(screen.getByText(/Nothing was resent/)).toBeTruthy(),
+      );
+      if (outcome === 'error')
+        expect(
+          screen.getByText(
+            /Could not refresh delivery: The requested conversation is unavailable/,
+          ),
+        ).toBeTruthy();
+      expect(retry).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
+    },
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
     discardOutboundTurnMock.mockResolvedValue(undefined);
@@ -432,7 +476,9 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     expect(screen.queryByText(/may have reached/i)).toBeNull();
     expect(screen.queryByText(/no answer yet/i)).toBeNull();
     // Its answer is coming in that window; a Check here would find nothing.
-    expect(screen.queryByRole('button', { name: 'Check' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Refresh delivery' }),
+    ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Discard…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete message' })).toBeNull();
@@ -462,7 +508,9 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     expect(
       label.classList.contains('queued-messages__label--unconfirmed'),
     ).toBe(true);
-    expect(screen.getByRole('button', { name: 'Check' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Refresh delivery' }),
+    ).toBeTruthy();
   });
 
   it('rows only: the pending list above the composer owns the frame and the count', () => {
@@ -623,7 +671,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     ).toBeTruthy();
     expect(screen.queryByText(/delivery-uncertain/)).toBeNull();
     // Check and Discard… sit in one action group, outside the label.
-    const check = screen.getByRole('button', { name: 'Check' });
+    const check = screen.getByRole('button', { name: 'Refresh delivery' });
     const discard = screen.getByRole('button', { name: 'Discard…' });
     expect(check.parentElement).toBe(discard.parentElement);
     expect(

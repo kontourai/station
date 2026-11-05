@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { copyToClipboard } from '../../lib/clipboard';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { FileAttachment } from '../../types';
@@ -317,6 +318,12 @@ export function OutboundQueuedMessages({
                 Accepted · waiting for the agent to finish
               </span>
             ) : null}
+            {turn.status === 'may-have-started' && turn.lastError ? (
+              <span className="queued-messages__label" role="status">
+                {turn.lastError} Your message is saved here and will not be
+                resent automatically.
+              </span>
+            ) : null}
             <UnconfirmedRowActions
               sessionId={sessionId}
               turn={turn}
@@ -480,29 +487,46 @@ function HeldCopyNotice({
   );
 }
 
-/** Asks Station again what became of a possibly-started message; never resends. */
-function RecheckDeliveryButton({
-  clientTurnId,
-  onError,
-}: {
-  clientTurnId: string;
-  onError: (message: string) => void;
-}) {
+/** Refreshes delivery evidence without sending the message again. */
+function RecheckDeliveryButton({ clientTurnId }: { clientTurnId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string>();
+  const refresh = async () => {
+    if (busy) return;
+    setBusy(true);
+    setResult(undefined);
+    try {
+      const { recheckOutboundTurn } = await import('../../lib/deliveryLookup');
+      const outcome = await recheckOutboundTurn(clientTurnId);
+      setResult(
+        outcome === 'not-received'
+          ? 'Station confirms it was not received. It can now be sent safely with the same message key.'
+          : outcome === 'received' || outcome === 'queued'
+            ? 'Station has the message. The agent has not started it yet.'
+            : outcome === 'started'
+              ? 'The agent started this message.'
+              : 'Delivery is still unconfirmed. Nothing was resent. Review the chat before sending a copy.',
+      );
+    } catch (error) {
+      setResult(
+        `Could not refresh delivery: ${error instanceof Error ? error.message : String(error)} Nothing was resent.`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <button
-      type="button"
-      onClick={() =>
-        void import('../../lib/deliveryLookup')
-          .then(({ recheckOutboundTurn }) => recheckOutboundTurn(clientTurnId))
-          .catch((error: unknown) =>
-            onError(
-              `Could not check this message: ${error instanceof Error ? error.message : String(error)}`,
-            ),
-          )
-      }
-    >
-      Check
-    </button>
+    <>
+      <button
+        type="button"
+        disabled={busy}
+        title="Ask Station whether this message arrived. Does not resend it."
+        onClick={() => void refresh()}
+      >
+        {busy ? 'Refreshing delivery…' : 'Refresh delivery'}
+      </button>
+      {result ? <span role="status">{result}</span> : null}
+    </>
   );
 }
 
@@ -523,6 +547,7 @@ function UnconfirmedRowActions({
   onError: (message: string) => void;
 }) {
   const disclosure = useUnconfirmedDiscardDisclosure();
+  const [copied, setCopied] = useState(false);
   if (turn.status !== 'may-have-started' && turn.status !== 'invoking')
     return null;
   // Under way in a running window: its answer is coming there, and a Check
@@ -535,11 +560,22 @@ function UnconfirmedRowActions({
     <>
       <span className="queued-message__actions">
         {turn.waitingForStation ? null : (
-          <RecheckDeliveryButton
-            clientTurnId={clientTurnId}
-            onError={onError}
-          />
+          <RecheckDeliveryButton clientTurnId={clientTurnId} />
         )}
+        <button
+          type="button"
+          onClick={() =>
+            void copyToClipboard(turn.content).then((copied) => {
+              setCopied(copied);
+              if (!copied)
+                onError(
+                  'Could not copy this message. Select its text to copy it.',
+                );
+            })
+          }
+        >
+          {copied ? 'Copied' : 'Copy message'}
+        </button>
         {discardable ? (
           <button type="button" {...disclosure.triggerProps}>
             Discard…

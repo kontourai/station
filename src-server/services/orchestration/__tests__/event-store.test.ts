@@ -278,6 +278,103 @@ describe('EventStore concurrent-home boot', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('stopping an unstarted successor preserves its reservation without materializing an ownerless session', () => {
+    const path = join(dir, 'reservation.sqlite');
+    const store = new EventStore(path);
+    try {
+      store.upsertSession({
+        provider: 'codex',
+        threadId: 'root',
+        status: 'closed',
+        createdAt: '2026-11-02T00:00:00.000Z',
+        updatedAt: '2026-11-02T00:00:00.000Z',
+      });
+      store.reserveNextConversationSession({
+        conversationId: 'root',
+        predecessorSessionId: 'root',
+        proposedSessionId: 'child',
+        createdAt: '2026-11-02T00:01:00.000Z',
+      });
+      store.markSessionClosed('child', 'codex');
+      expect(store.readSessionByThread('child')).toBeUndefined();
+      expect(store.conversationSessions('root').at(-1)?.sessionId).toBe(
+        'child',
+      );
+    } finally {
+      store.close();
+    }
+  });
+
+  test.each([false, true])(
+    'boot repairs legacy successor stubs but retains a started session (started=%s)',
+    (started) => {
+      const path = join(dir, 'legacy-reservation.sqlite');
+      const store = new EventStore(path);
+      store.upsertSession({
+        provider: 'codex',
+        threadId: 'root',
+        status: 'closed',
+        createdAt: '2026-11-02T00:00:00.000Z',
+        updatedAt: '2026-11-02T00:00:00.000Z',
+      });
+      store.reserveNextConversationSession({
+        conversationId: 'root',
+        predecessorSessionId: 'root',
+        proposedSessionId: 'child',
+        createdAt: '2026-11-02T00:01:00.000Z',
+      });
+      store.appendEvent({
+        eventId: 'child-exit',
+        provider: 'codex',
+        threadId: 'child',
+        sessionId: 'child',
+        method: 'session.exited',
+        reason: 'stopped',
+        createdAt: '2026-11-02T00:02:00.000Z',
+      });
+      store.appendEvent({
+        eventId: 'child-warning',
+        provider: 'codex',
+        threadId: 'child',
+        method: 'runtime.warning',
+        message: 'Configuration warning',
+        createdAt: '2026-11-02T00:01:01.000Z',
+      });
+      if (started)
+        store.appendEvent({
+          eventId: 'child-start',
+          provider: 'codex',
+          threadId: 'child',
+          sessionId: 'child',
+          method: 'session.started',
+          initialState: 'created',
+          metadata: { userId: 'owner' },
+          createdAt: '2026-11-02T00:01:02.000Z',
+        });
+      store.close();
+      const legacy = new DatabaseSync(path);
+      legacy.exec(
+        "INSERT OR REPLACE INTO provider_session_state(thread_id,provider,status,created_at,updated_at) VALUES ('child','codex','closed','2026-11-02T00:01:00.000Z','2026-11-02T00:02:00.000Z')",
+      );
+      legacy.close();
+      const reopened = new EventStore(path);
+      try {
+        if (started)
+          expect(reopened.readSessionByThread('child')).toBeDefined();
+        else expect(reopened.readSessionByThread('child')).toBeUndefined();
+        expect(reopened.readSessionByThread('root')).toBeDefined();
+        expect(reopened.conversationSessions('root').at(-1)?.sessionId).toBe(
+          'child',
+        );
+        expect(reopened.listEvents('child').map((event) => event.id)).toContain(
+          'child-exit',
+        );
+      } finally {
+        reopened.close();
+      }
+    },
+  );
+
   test('round-trips command receipt origin across an EventStore restart', () => {
     const receipt = {
       commandId: 'origin-receipt',
