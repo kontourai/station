@@ -893,3 +893,159 @@ describe('a binary plist whose offset table aliases or overlaps objects', () => 
     expect(binaryPlistKeyScanProblem(build([3, 5], 11))).toBeNull();
   });
 });
+
+// #4515 fix round 6: key strings are decoded once per offset, and their
+// bytes are charged against the object area with the references. Each case
+// runs through the real profile source, as startup does; the converter
+// records whether the scan let the profile through.
+describe('key strings are bounded by the object area', () => {
+  const throughSource = (bytes: Buffer) => {
+    const path = join(makeTempDir('station-policy-strings-'), 'p.plist');
+    writeFileSync(path, bytes);
+    let converted = false;
+    const started = performance.now();
+    let error = '';
+    try {
+      macosProfileSource(path, null, () => {
+        converted = true;
+        return { ok: false, reason: 'stub converter' };
+      }).read();
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : String(caught);
+    }
+    return { converted, error, ms: performance.now() - started };
+  };
+
+  /** The reviewer's attack A: n dicts sharing one key string of `length`. */
+  const sharedKey = (n: number, length: number, utf16: boolean) => {
+    const refSize = 2;
+    const top = Buffer.alloc(6 + n * refSize);
+    top[0] = 0xaf;
+    top[1] = 0x12;
+    top.writeUInt32BE(n, 2);
+    for (let i = 0; i < n; i += 1) top.writeUInt16BE(i + 1, 6 + i * refSize);
+    const dictLength = 1 + 2 * refSize;
+    const dicts = Buffer.alloc(n * dictLength);
+    for (let i = 0; i < n; i += 1) {
+      dicts[i * dictLength] = 0xd1;
+      dicts.writeUInt16BE(n + 1, i * dictLength + 1);
+      dicts.writeUInt16BE(n + 2, i * dictLength + 1 + refSize);
+    }
+    const header = Buffer.from([utf16 ? 0x6f : 0x5f, 0x12, 0, 0, 0, 0]);
+    header.writeUInt32BE(length, 2);
+    const text = utf16
+      ? Buffer.alloc(2 * length).fill(Buffer.from([0x00, 0x61]))
+      : Buffer.alloc(length, 0x61);
+    const area = Buffer.concat([top, dicts, header, text, Buffer.from([0x09])]);
+    const dictsAt = 8 + top.length;
+    return rawBplist({
+      area,
+      offsets: [
+        8,
+        ...Array.from({ length: n }, (_, i) => dictsAt + i * dictLength),
+        dictsAt + dicts.length,
+        8 + area.length - 1,
+      ],
+      refSize,
+      top: 0,
+    });
+  };
+
+  test.each([
+    ['ASCII, 600K characters', 600_000, false],
+    ['UTF-16, 300K characters', 300_000, true],
+  ])(
+    'one %s key shared by 40,000 dicts is decoded once and passes the scan',
+    (_name, length, utf16) => {
+      const bytes = sharedKey(40_000, length, utf16);
+      expect(bytes.length).toBeLessThan(1024 * 1024);
+      const outcome = throughSource(bytes);
+      // A well-formed file: the scan lets it through to the converter.
+      expect(outcome.converted, outcome.error).toBe(true);
+      expect(outcome.ms).toBeLessThan(500);
+    },
+    20_000,
+  );
+
+  test("4,000 overlapping long keys in one dict are refused before they are hashed (the reviewer's attack B)", () => {
+    // One dict; key i is a string at unit i whose characters run over the
+    // later units and a tail, all of one length past V8's hashing limit.
+    const keys = 4_000;
+    const length = 16_400;
+    const header = Buffer.from([0xdf, 0x11, 0, 0]);
+    header.writeUInt16BE(keys, 2);
+    const refs = Buffer.alloc(4 * keys);
+    for (let i = 0; i < keys; i += 1) {
+      refs.writeUInt16BE(i + 1, i * 2);
+      refs.writeUInt16BE(keys + 1, (keys + i) * 2);
+    }
+    const units = Buffer.alloc(4 * keys);
+    for (let i = 0; i < keys; i += 1) {
+      units[4 * i] = 0x5f;
+      units[4 * i + 1] = 0x11;
+      units.writeUInt16BE(length, 4 * i + 2);
+    }
+    const tail = Buffer.alloc(length);
+    for (let i = 0; i < length; i += 1) tail[i] = 0x30 + (i % 7);
+    const area = Buffer.concat([
+      header,
+      refs,
+      units,
+      tail,
+      Buffer.from([0x09]),
+    ]);
+    const unitsAt = 8 + header.length + refs.length;
+    const bytes = rawBplist({
+      area,
+      offsets: [
+        8,
+        ...Array.from({ length: keys }, (_, i) => unitsAt + 4 * i),
+        8 + area.length - 1,
+      ],
+      refSize: 2,
+      top: 0,
+    });
+    const outcome = throughSource(bytes);
+    expect(outcome.converted).toBe(false);
+    expect(outcome.error).toMatch(
+      /^STATION_MANAGED_POLICY_INVALID: .*it is a binary property list Station cannot read/,
+    );
+    expect(outcome.ms).toBeLessThan(500);
+  }, 20_000);
+
+  // The reviewer's realistic files, written by the real plutil: a 200 KB
+  // string among many shared ones, and 70,000 strings (4-byte references).
+  test.skipIf(!hasPlutil)(
+    'plutil profiles with a 200 KB string and with 70,000 strings pass the scan',
+    () => {
+      const dir = makeTempDir('station-policy-plutil-strings-');
+      const plist = (body: string) =>
+        `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0">${body}</plist>`;
+      const files = {
+        big: plist(
+          `<dict><key>big</key><string>${'x'.repeat(200_000)}</string><key>allowedModels</key><array>${'<string>claude-opus</string><string>gpt</string>'.repeat(4_000)}</array><key>projects</key><array>${Array.from({ length: 3_000 }, (_, i) => `<dict><key>name</key><string>proj${i % 50}</string><key>enabled</key><true/><key>limits</key><dict><key>max</key><integer>${i}</integer></dict></dict>`).join('')}</array></dict>`,
+        ),
+        many: plist(
+          `<dict><key>items</key><array>${Array.from({ length: 70_000 }, (_, i) => `<string>${i}</string>`).join('')}</array></dict>`,
+        ),
+      };
+      for (const [name, xml] of Object.entries(files)) {
+        writeFileSync(join(dir, `${name}.xml`), xml);
+        const out = join(dir, `${name}.plist`);
+        execFileSync('/usr/bin/plutil', [
+          '-convert',
+          'binary1',
+          '-o',
+          out,
+          join(dir, `${name}.xml`),
+        ]);
+        const bytes = readFileSync(out);
+        if (name === 'many') expect(bytes[bytes.length - 32 + 7]).toBe(4);
+        const outcome = throughSource(bytes);
+        expect(outcome.converted, `${name}: ${outcome.error}`).toBe(true);
+        expect(outcome.ms).toBeLessThan(500);
+      }
+    },
+    60_000,
+  );
+});

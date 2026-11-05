@@ -267,20 +267,44 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
     const count = readUint(at + 2, size);
     return count === null ? null : { count, start: at + 2 + size };
   };
-  const stringAt = (ref: number): string | null => {
+  // #4515: what the scan reads is bounded by the object area. A container's
+  // references (both halves of a dict) and a key string's characters are
+  // charged in bytes the first time each distinct object is read, before
+  // reading them; objects a writer lays out never overlap, so they never
+  // exceed the area, and a file that does is refused as unreadable.
+  const objectArea = tableOffset - 8;
+  let charged = 0;
+  const charge = (bytesRead: number): boolean => {
+    charged += bytesRead;
+    return charged <= objectArea;
+  };
+  /** A key string, decoded once per offset; `over` when past the area. */
+  const decoded = new Map<number, string | null>();
+  const over = Symbol('over');
+  const stringAt = (ref: number): string | null | typeof over => {
     const at = offsetOf(ref);
     if (at === null) return null;
+    const cached = decoded.get(at);
+    if (cached !== undefined) return cached;
     const kind = bytes[at] >> 4;
-    if (kind !== 0x5 && kind !== 0x6) return null;
-    const length = lengthOf(at);
-    if (length === null) return null;
-    const byteLength = kind === 0x5 ? length.count : length.count * 2;
-    if (length.start + byteLength > end) return null;
-    const raw = bytes.subarray(length.start, length.start + byteLength);
-    if (kind === 0x5) return raw.toString('latin1');
-    const swapped = Buffer.from(raw);
-    swapped.swap16();
-    return swapped.toString('utf16le');
+    let value: string | null = null;
+    if (kind === 0x5 || kind === 0x6) {
+      const length = lengthOf(at);
+      const byteLength =
+        length === null ? 0 : kind === 0x5 ? length.count : length.count * 2;
+      if (length !== null && length.start + byteLength <= end) {
+        if (!charge(byteLength)) return over;
+        const raw = bytes.subarray(length.start, length.start + byteLength);
+        if (kind === 0x5) value = raw.toString('latin1');
+        else {
+          const swapped = Buffer.from(raw);
+          swapped.swap16();
+          value = swapped.toString('utf16le');
+        }
+      }
+    }
+    decoded.set(at, value);
+    return value;
   };
   const refsAt = (start: number, count: number): number[] | null => {
     const refs: number[] = [];
@@ -297,14 +321,6 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
   // one being scanned and reached again is a cycle.
   const visiting = new Set<number>();
   const clean = new Set<number>();
-  // The references the object area can hold. Expanding a container charges
-  // its references (both halves of a dict) before they are read, so the
-  // scan reads at most this many. Distinct, non-overlapping objects, as a
-  // writer lays them out, never exceed it: each is expanded once and its
-  // references are its own bytes. Containers that overlap in the file (a
-  // crafted offset table) can, and are refused before reading past it.
-  const referenceSlots = Math.floor((tableOffset - 8) / refSize);
-  let charged = 0;
   const walk = (ref: number, path: string, depth: number): string | null => {
     const at = offsetOf(ref);
     if (at === null) return unreadable;
@@ -314,8 +330,9 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
     if (kind !== 0xa && kind !== 0xc && kind !== 0xd) return null;
     const length = lengthOf(at);
     if (length === null) return unreadable;
-    charged += kind === 0xd ? length.count * 2 : length.count;
-    if (charged > referenceSlots) return unreadable;
+    // Charged before the references are read (see `charge` above).
+    if (!charge((kind === 0xd ? length.count * 2 : length.count) * refSize))
+      return unreadable;
     visiting.add(at);
     try {
       if (kind !== 0xd) {
@@ -337,6 +354,7 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
       const seen = new Set<string>();
       for (let i = 0; i < keys.length; i += 1) {
         const name = stringAt(keys[i]);
+        if (name === over) return unreadable;
         if (name === null)
           return 'a binary property list holds a key that is not a string';
         const keyPath = path ? `${path}.${name}` : name;
