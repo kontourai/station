@@ -834,6 +834,19 @@ for (const width of [390, 1440]) {
         await library
           .getByRole('button', { name: 'New Board', exact: true })
           .click();
+        await page.keyboard.press('Escape');
+        await expect(library).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(library).toBeHidden();
+        const launcher = page.getByRole('button', {
+          name: 'Browse apps',
+          exact: true,
+        });
+        await expect(launcher).toBeFocused();
+        await launcher.click();
+        await library
+          .getByRole('button', { name: 'New Board', exact: true })
+          .click();
         const details = page.getByRole('dialog', {
           name: 'New Board',
           exact: true,
@@ -923,6 +936,10 @@ for (const width of [390, 1440]) {
         await launch.click();
         await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
         await page.goto(`/boards/${slug}${width === 390 ? '/' : ''}`);
+        await page.getByRole('button', { name: /Daily brief/ }).click();
+        await page
+          .getByLabel('Board name', { exact: true })
+          .fill('Unsaved release desk');
         await openLibrary();
         await library.getByLabel('Search apps').fill(name);
         await expect(
@@ -947,6 +964,31 @@ for (const width of [390, 1440]) {
         await confirm
           .getByRole('button', { name: 'Delete Board', exact: true })
           .click();
+        const discard = page.getByRole('dialog', {
+          name: 'Unsaved Changes',
+          exact: true,
+        });
+        await expect(discard).toBeVisible();
+        expect(
+          (
+            await authenticatedRequest.get(`${API}/api/me/layouts/${slug}`)
+          ).status(),
+        ).toBe(200);
+        await discard
+          .getByRole('button', { name: 'Cancel', exact: true })
+          .click();
+        await expect(page).toHaveURL(new RegExp(`/boards/${slug}/?$`));
+        await expect(
+          page.getByLabel('Board name', { exact: true }),
+        ).toHaveValue('Unsaved release desk');
+        await expect(confirm).toBeVisible();
+        await confirm
+          .getByRole('button', { name: 'Delete Board', exact: true })
+          .click();
+        await expect(discard).toBeVisible();
+        await discard
+          .getByRole('button', { name: 'Discard', exact: true })
+          .click();
         await expect(page).toHaveURL(/\/$/);
         await expect(
           library.getByRole('button', { name: `Open ${name}`, exact: true }),
@@ -958,12 +1000,12 @@ for (const width of [390, 1440]) {
         ).toBe(404);
         slug = undefined;
       } finally {
-        if (slug)
-          expect(
-            (
-              await authenticatedRequest.delete(`${API}/api/me/layouts/${slug}`)
-            ).ok(),
-          ).toBe(true);
+        if (slug) {
+          const cleanup = await authenticatedRequest.delete(
+            `${API}/api/me/layouts/${slug}`,
+          );
+          expect([200, 404]).toContain(cleanup.status());
+        }
         expect(
           (
             await authenticatedRequest.put(

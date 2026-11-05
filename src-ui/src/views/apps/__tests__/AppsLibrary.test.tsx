@@ -3,13 +3,17 @@ import type { LayoutMetadata } from '@kontourai/station-contracts/layout';
 import { _setApiBase } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { navigationStore } from '../../../contexts/navigation-store';
 import { AppsLibrary } from '../AppsLibrary';
 
 let boards: LayoutMetadata[];
@@ -18,7 +22,6 @@ let denied: boolean;
 let readFailed: boolean;
 let requests: { method: string; path: string; body: unknown }[];
 const open = vi.fn();
-const deleted = vi.fn();
 const clients: QueryClient[] = [];
 
 beforeEach(() => {
@@ -90,14 +93,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
-function mount() {
+function mount(content?: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   clients.push(client);
   return render(
     <QueryClientProvider client={client}>
-      <AppsLibrary onClose={vi.fn()} onOpen={open} onDeleted={deleted} />
+      {content ?? <AppsLibrary onClose={vi.fn()} onOpen={open} />}
     </QueryClientProvider>,
   );
 }
@@ -197,13 +200,11 @@ test('requires deletion confirmation and retains the Board when authority refuse
     screen.getByRole('button', { name: 'Delete Board', exact: true }),
   );
   await screen.findByText('Access refused');
-  expect(deleted).not.toHaveBeenCalled();
   expect(boards.some((board) => board.slug === 'daily')).toBe(true);
   denied = false;
   fireEvent.click(
     screen.getByRole('button', { name: 'Delete Board', exact: true }),
   );
-  await waitFor(() => expect(deleted).toHaveBeenCalledWith('daily'));
   await waitFor(() =>
     expect(
       screen.queryByRole('button', { name: 'Open Daily brief' }),
@@ -224,4 +225,74 @@ test('a failed list cannot create and recovers through Retry apps', async () => 
   expect(
     screen.getByRole('button', { name: 'New Board' }).hasAttribute('disabled'),
   ).toBe(false);
+});
+
+test('route cancellation preserves metadata and discard closes the editor and releases its guard', async () => {
+  act(() => navigationStore.navigate('/apps-review-start'));
+  mount();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Edit Daily brief details' }),
+  );
+  fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), {
+    target: { value: 'Keep this draft' },
+  });
+  act(() => navigationStore.navigate('/apps-review-target'));
+  let decision = await screen.findByRole('dialog', { name: 'Unsaved Changes' });
+  fireEvent.click(
+    within(decision).getByRole('button', { name: 'Cancel', exact: true }),
+  );
+  expect(window.location.pathname).toBe('/apps-review-start');
+  expect(
+    screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Description' })
+      .value,
+  ).toBe('Keep this draft');
+  act(() => navigationStore.navigate('/apps-review-target'));
+  decision = await screen.findByRole('dialog', { name: 'Unsaved Changes' });
+  fireEvent.click(
+    within(decision).getByRole('button', { name: 'Discard', exact: true }),
+  );
+  await waitFor(() =>
+    expect(window.location.pathname).toBe('/apps-review-target'),
+  );
+  expect(screen.queryByRole('dialog', { name: 'Edit app details' })).toBeNull();
+  act(() => navigationStore.navigate('/apps-review-finished'));
+  expect(window.location.pathname).toBe('/apps-review-finished');
+  expect(screen.queryByRole('dialog', { name: 'Unsaved Changes' })).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Edit Daily brief details' }),
+  );
+  expect(
+    screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Description' })
+      .value,
+  ).toBe('Morning decisions');
+  expect(requests.some((request) => request.method === 'PUT')).toBe(false);
+});
+
+function Launcher() {
+  const [opened, setOpened] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpened(true)}>
+        Browse apps
+      </button>
+      {opened && <AppsLibrary onClose={() => setOpened(false)} onOpen={open} />}
+    </>
+  );
+}
+
+test('returns keyboard focus to the launcher after visiting a child dialog', async () => {
+  mount(<Launcher />);
+  const trigger = screen.getByRole('button', { name: 'Browse apps' });
+  trigger.focus();
+  fireEvent.click(trigger);
+  await screen.findByRole('button', { name: 'Open Daily brief' });
+  const create = screen.getByRole('button', { name: 'New Board' });
+  create.focus();
+  fireEvent.click(create);
+  fireEvent.keyDown(screen.getByRole('dialog', { name: 'New Board' }), {
+    key: 'Escape',
+  });
+  const library = await screen.findByRole('dialog', { name: 'Apps' });
+  fireEvent.keyDown(library, { key: 'Escape' });
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
 });

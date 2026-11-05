@@ -35,9 +35,15 @@ export function AppDetailsDialog({
     (name !== (board?.name ?? '') ||
       description !== (board?.description ?? '') ||
       icon !== (board?.icon ?? ''));
-  const { guard, DiscardModal } = useUnsavedGuard(dirty);
+  const { guard, DiscardModal } = useUnsavedGuard(dirty, () => {
+    if (pending) return false;
+    onClose();
+    return true;
+  });
   const close = () => {
-    if (!pending) guard(onClose);
+    if (pending) return;
+    if (dirty) guard(() => undefined);
+    else onClose();
   };
 
   return (

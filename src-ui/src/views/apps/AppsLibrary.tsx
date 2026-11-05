@@ -3,7 +3,8 @@ import {
   useDeletePersonalLayoutMutation,
   usePersonalLayoutsQuery,
 } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { parseBoardPath } from '../../app-shell/board-route';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { DashboardGlyph } from '../../components/icons/Glyph';
@@ -14,6 +15,7 @@ import {
   FilteredEmpty,
   SkeletonBlock,
 } from '../../components/state';
+import { navigationStore } from '../../contexts/navigation-store';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { AppDetailsDialog } from './AppDetailsDialog';
 import './AppsLibrary.css';
@@ -22,7 +24,6 @@ import './AppsLibrary.css';
 export function AppsLibrary(props: {
   onClose: () => void;
   onOpen: (slug: string) => void;
-  onDeleted: (slug: string) => void;
   returnFocusTarget?: HTMLElement | null;
 }) {
   const enabled = useSurfaceVisibilityFlags().has('apps-library');
@@ -32,16 +33,23 @@ export function AppsLibrary(props: {
 function Library({
   onClose,
   onOpen,
-  onDeleted,
   returnFocusTarget,
 }: {
   onClose: () => void;
   onOpen: (slug: string) => void;
-  onDeleted: (slug: string) => void;
   returnFocusTarget?: HTMLElement | null;
 }) {
+  const [initialReturnFocusTarget] = useState(
+    () =>
+      returnFocusTarget ??
+      (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null),
+  );
   const query = usePersonalLayoutsQuery();
   const remove = useDeletePersonalLayoutMutation();
+  const deletionAdmission = useRef<AbortController | null>(null);
+  useEffect(() => () => deletionAdmission.current?.abort(), []);
   const [search, setSearch] = useState('');
   const [editor, setEditor] = useState<{ board?: LayoutMetadata } | null>(null);
   const [deleting, setDeleting] = useState<LayoutMetadata | null>(null);
@@ -65,6 +73,31 @@ function Library({
     },
   ];
   const busy = editor !== null || deleting !== null;
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    const slug = deleting.slug;
+    const location = navigationStore.captureLocation();
+    try {
+      if (parseBoardPath(location.pathname) === slug) {
+        const controller = new AbortController();
+        deletionAdmission.current = controller;
+        const committed = await navigationStore.navigateWithPrecommit('/', {
+          current: () => navigationStore.isCurrentLocation(location),
+          prepare: async () => {
+            await remove.mutateAsync(slug);
+            return true;
+          },
+          signal: controller.signal,
+        });
+        if (!committed) return;
+      } else {
+        await remove.mutateAsync(slug);
+      }
+      setDeleting(null);
+    } catch {
+      // The mutation keeps its error in the confirmation for retry.
+    }
+  };
   return (
     <>
       <Dialog
@@ -74,7 +107,7 @@ function Library({
         closeLabel="Close Apps"
         subtitle="Your personal Boards and plugin layouts, ready to open."
         size="lg"
-        returnFocusTarget={returnFocusTarget}
+        returnFocusTarget={initialReturnFocusTarget}
         panelClassName="apps-library"
         onClose={() => {
           if (!busy) onClose();
@@ -209,15 +242,7 @@ function Library({
         onCancel={() => {
           if (!remove.isPending) setDeleting(null);
         }}
-        onConfirm={() => {
-          if (deleting)
-            remove.mutate(deleting.slug, {
-              onSuccess: () => {
-                setDeleting(null);
-                onDeleted(deleting.slug);
-              },
-            });
-        }}
+        onConfirm={() => void confirmDelete()}
       />
     </>
   );
