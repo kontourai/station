@@ -3,6 +3,7 @@ import { useStationOutlivesApp } from '../../../hooks/useStationOutlivesApp';
 import type { MessageDeliveryState } from '../../../utils/messageDeliveryState';
 import { describeStationFailure } from '../../../utils/stationFailure';
 import { ActionOverflowMenu } from '../../ActionOverflowMenu';
+import { Button } from '../../Button';
 import type { DeliveryPort } from '../../conversation/DeliveryPort';
 import {
   AWAITING_CONFIRMATION_LABEL,
@@ -255,9 +256,8 @@ export function MessageDeliveryNote({
               </span>
             ) : (state === 'held-on-device' || state === 'held-for-send') &&
               port.release ? (
-              <button
-                type="button"
-                className="message-delivery__action"
+              <Button
+                size="sm"
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -267,7 +267,7 @@ export function MessageDeliveryNote({
                 }
               >
                 Send
-              </button>
+              </Button>
             ) : state === 'unconfirmed' || state === 'awaiting-confirmation' ? (
               <span className="message-delivery__actions">
                 {port.check && (
