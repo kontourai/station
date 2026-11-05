@@ -1,6 +1,6 @@
-import type { LiveSurfaceHeldInput } from '@kontourai/station-contracts/live-surface';
 import { expect, test, vi } from 'vitest';
 import { SyntheticLiveSurfaceProducer } from '../../../__test-utils__/synthetic-live-surface-producer.js';
+import type { LiveSurfaceHeldInput } from '../../live-surface/producer.js';
 import {
   dispatchHumanInput,
   LiveSurfaceRegistry,
@@ -62,6 +62,7 @@ test("a key whose release keeps failing ends the device session; the device's ne
     },
   });
   const first = await service.open({
+    hostId: 'local',
     platform: 'android',
     deviceId: device.deviceId,
   });
@@ -81,6 +82,7 @@ test("a key whose release keeps failing ends the device session; the device's ne
   expect(surfaces.get(first.surfaceId)).toBeUndefined();
   // Reconnect: a new session on the same device releases the key first.
   const next = await service.open({
+    hostId: 'local',
     platform: 'android',
     deviceId: device.deviceId,
   });
