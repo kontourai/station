@@ -110,7 +110,7 @@ export interface MemoryRecallEntry extends MemoryClaimView {
     routing: 'not-evaluated' | 'uncontested' | 'routed';
     reasons: MemoryRoutingReason[];
   };
-  /** Claims this one replaces, oldest first. */
+  /** Claims this one replaces, in plain words. */
   replaces: { claimId: string; text: string }[];
   /** Claims that replace this one. */
   replacedBy: { claimId: string; text: string }[];

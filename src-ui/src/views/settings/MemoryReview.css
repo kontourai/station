@@ -34,9 +34,15 @@
 }
 
 .memory-review__claim {
+  display: grid;
+  gap: var(--k-space-1);
   margin: 0;
-  font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+.memory-review__subject {
+  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
 }
 
 .memory-review__reasons {

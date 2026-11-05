@@ -598,9 +598,13 @@ export class MemoryReviewService {
     const byId = new Map(visible.map((entry) => [entry.claim.id, entry]));
     const ref = (id: string) => {
       const found = byId.get(id);
-      return found
-        ? { claimId: id, text: this.view(snapshot, found).text }
-        : null;
+      if (!found) return null;
+      const view = this.view(snapshot, found);
+      // Plain words for a person; the Kit's bracketed label stays on `text` of the entry itself.
+      return {
+        claimId: id,
+        text: `${view.subject} · ${view.property}: ${view.value}`,
+      };
     };
     const entries: MemoryRecallEntry[] = visible
       .filter((entry) => matches(textOf(entry)))

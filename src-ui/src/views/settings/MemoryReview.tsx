@@ -1,4 +1,5 @@
 import type {
+  MemoryClaimView,
   MemoryDecisionOutcome,
   MemoryQueueItem,
   MemoryRecallEntry,
@@ -35,26 +36,28 @@ const DECISION_TEXT: Record<MemoryDecisionOutcome, string> = {
   hold: 'Left open',
 };
 
-function Evidence({
-  label,
-  text,
-  excerpt,
-  observedAt,
-}: {
-  label: string;
-  text: string;
-  excerpt: string;
-  observedAt: string;
-}) {
+/** What a memory says, in plain words: what it is about, then the value. */
+function ClaimLine({ claim }: { claim: MemoryClaimView }) {
+  return (
+    <p className="memory-review__claim">
+      <span className="memory-review__subject">
+        {claim.subject} · {claim.property}
+      </span>
+      <span>{claim.value}</span>
+    </p>
+  );
+}
+
+function Evidence({ label, claim }: { label: string; claim: MemoryClaimView }) {
   return (
     <figure className="memory-review__evidence">
       <figcaption>{label}</figcaption>
-      <p className="memory-review__claim">{text}</p>
-      <blockquote>“{excerpt}”</blockquote>
+      <ClaimLine claim={claim} />
+      <blockquote>“{claim.source.excerpt}”</blockquote>
       <small>
         Said{' '}
-        <time dateTime={observedAt}>
-          {new Date(observedAt).toLocaleDateString()}
+        <time dateTime={claim.source.observedAt}>
+          {new Date(claim.source.observedAt).toLocaleDateString()}
         </time>
       </small>
     </figure>
@@ -108,19 +111,9 @@ function QueueCard({
       )}
       {(open || decided) && (
         <div className="memory-review__compare">
-          <Evidence
-            label="New"
-            text={item.proposed.text}
-            excerpt={item.proposed.source.excerpt}
-            observedAt={item.proposed.source.observedAt}
-          />
+          <Evidence label="New" claim={item.proposed} />
           {item.current && (
-            <Evidence
-              label="Already remembered"
-              text={item.current.text}
-              excerpt={item.current.source.excerpt}
-              observedAt={item.current.source.observedAt}
-            />
+            <Evidence label="Already remembered" claim={item.current} />
           )}
         </div>
       )}
@@ -383,7 +376,7 @@ export function MemoryReview() {
               {recall.data.entries.map((entry) => (
                 <li key={entry.claimId} className="memory-review__card">
                   <div className="memory-review__card-head">
-                    <p className="memory-review__claim">{entry.text}</p>
+                    <ClaimLine claim={entry} />
                     <Badge
                       value={LABEL[entry.review.label].text}
                       tone={LABEL[entry.review.label].tone}
