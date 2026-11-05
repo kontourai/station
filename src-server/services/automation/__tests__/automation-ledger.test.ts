@@ -1,5 +1,7 @@
 import { statSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { AUTOMATION_EXECUTION_LIMITS } from '@kontourai/station-contracts/automation';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -538,5 +540,60 @@ describe('AutomationLedger', () => {
     expect(() => ledger()).toThrow(
       expect.objectContaining({ code: 'policy_unavailable' }),
     );
+  });
+
+  test('expired rule decisions are pruned as fast as one delivery can add them (#4509)', () => {
+    const subject = ledger();
+    const recordWithDecisions = (
+      semanticKey: string,
+      now: number,
+      rules: number,
+    ) =>
+      subject.recordIntake({
+        delivery: {
+          sourceId: 'source-1',
+          transportId: semanticKey,
+          semanticKey,
+          eventType: 'github.workflow_run.completed',
+          receivedAt: now,
+          outcome: 'matched',
+        },
+        openings: [],
+        closings: [],
+        decisions: Array.from({ length: rules }, (_, index) => ({
+          ruleId: `rule-${index}`,
+          ruleName: `Rule ${index}`,
+          mode: 'observe' as const,
+          actionKind: 'dispatch-task' as const,
+          projectId: 'station',
+          agentId: 'repairer',
+          episodeKey: JSON.stringify([`rule-${index}`, semanticKey]),
+          episodeId: '1',
+          keyedEpisode: false,
+          maxStartsPerHour: 12,
+        })),
+        now,
+      });
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+    const count = () => {
+      const database = new DatabaseSync(join(directory, 'automation.sqlite'));
+      try {
+        return (
+          database
+            .prepare('SELECT COUNT(*) AS count FROM automation_rule_decisions')
+            .get() as { count: number }
+        ).count;
+      } finally {
+        database.close();
+      }
+    };
+    const maxRules = AUTOMATION_EXECUTION_LIMITS.maxRules;
+    expect(maxRules).toBe(256);
+    recordWithDecisions('workflow_run:1:1:completed', T0, maxRules);
+    expect(count()).toBe(maxRules);
+    // One later write, past the retention window, removes every expired row.
+    const later = T0 + AUTOMATION_EXECUTION_LIMITS.deliveryRetentionMs + 1;
+    recordWithDecisions('workflow_run:2:1:completed', later, 1);
+    expect(count()).toBe(1);
   });
 });

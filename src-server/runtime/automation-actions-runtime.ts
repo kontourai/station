@@ -209,9 +209,11 @@ class AutomationActionsRuntime implements AutomationActions {
       (source) => source.id === intent.sourceId,
     );
     const rule = config.rules.find((rule) => rule.id === intent.ruleId);
+    // Only a `live` rule may act; an `observe` rule never retains an intent,
+    // and one switched to `observe` or `off` refuses any intent it left.
     if (
       !source ||
-      !rule?.enabled ||
+      rule?.mode !== 'live' ||
       rule.action.kind !== 'dispatch-task' ||
       !sourceGrantsRuleAction(source, rule) ||
       automationPolicyFingerprint(source, rule) !== intent.policyFingerprint ||
