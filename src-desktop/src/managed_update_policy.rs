@@ -936,7 +936,7 @@ mod tests {
     fn a_macos_profile_counts_as_present_and_its_absence_does_not() {
         assert!(macos_profile_present(&root_with_profile("profile")));
         assert!(!macos_profile_present(&scratch("no-profile")));
-        // An empty Managed Preferences folder holds no Station profile.
+        // An empty Managed Preferences folder holds no configuration profile for Station.
         let empty = scratch("empty-managed-preferences");
         std::fs::create_dir_all(empty.join("Library/Managed Preferences")).unwrap();
         assert!(!macos_profile_present(&empty));
