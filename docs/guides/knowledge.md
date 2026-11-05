@@ -204,8 +204,9 @@ Known limits:
 - **Merges and splits of "the same thing".** The Kit and Survey can review them,
   but nothing yet produces those proposals into a memory root, so none reaches
   the queue ([#4612](https://github.com/kontourai/station/issues/4612)).
-- **A restart forgets which chats were briefed.** Station briefs each conversation
-  once while it runs; after a restart a long-running chat can be briefed once
+- **A restart forgets which chats were briefed.** A conversation is briefed once,
+  when its first message reaches the model; a message that is refused or replayed
+  does not use that up. After a restart a long-running chat can be briefed once
   more, still marked as background.
 - **Other people's sessions.** The brief follows the person a session belongs
   to. A session another person started on this Station gets no brief from your

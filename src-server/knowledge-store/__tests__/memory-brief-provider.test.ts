@@ -143,15 +143,17 @@ test('a relayed session is briefed only from its recorded owner’s memory', asy
   expect(own?.entries).toBe(1);
 });
 
-test('a conversation is briefed once, however many turns the relay sends', async () => {
+test('a conversation is briefed once its brief is delivered, however many turns follow', async () => {
   const { provider, request, clock } = await setup();
   const session = { relayOwner: OWNER, conversationId: 'thread-1' };
   const first = await provider(request, session);
   expect(first?.entries).toBe(1);
-  first?.commit?.();
-  // Committed: not again, however long ago.
+  first?.delivered();
   clock.now += 24 * 60 * 60 * 1000;
   expect(await provider(request, session)).toBeNull();
+  expect(await provider(request, session)).toBeNull();
+  // Reporting an abandoned turn afterwards changes nothing: it was delivered.
+  first?.abandoned();
   expect(await provider(request, session)).toBeNull();
   // Another conversation is a new session.
   expect(
@@ -160,18 +162,28 @@ test('a conversation is briefed once, however many turns the relay sends', async
   ).toBe(1);
 });
 
-test('a brief whose turn never reached the model does not use up the conversation', async () => {
-  const { provider, request, clock } = await setup();
+test('an abandoned turn gives the conversation its brief back at once', async () => {
+  const { provider, request } = await setup();
   const session = { relayOwner: OWNER, conversationId: 'thread-refused' };
-  expect((await provider(request, session))?.entries).toBe(1);
-  // The turn is being sent: a second turn waits.
+  const first = await provider(request, session);
+  expect(first?.entries).toBe(1);
+  // While that turn is in flight, a second one waits.
   expect(await provider(request, session)).toBeNull();
-  // The request was refused before dispatch and never committed. The reservation lapses.
-  clock.now += 61_000;
+  // It was refused before it reached the model. The very next turn is briefed.
+  first?.abandoned();
   const retry = await provider(request, session);
   expect(retry?.entries).toBe(1);
-  retry?.commit?.();
+  retry?.delivered();
   expect(await provider(request, session)).toBeNull();
+});
+
+test('a turn that never reports does not hold the brief forever', async () => {
+  const { provider, request, clock } = await setup();
+  const session = { relayOwner: OWNER, conversationId: 'thread-lost' };
+  expect((await provider(request, session))?.entries).toBe(1);
+  expect(await provider(request, session)).toBeNull();
+  clock.now += 11 * 60_000;
+  expect((await provider(request, session))?.entries).toBe(1);
 });
 
 test('a refused or failed attempt does not use up a conversation’s brief', async () => {

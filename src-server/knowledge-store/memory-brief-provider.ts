@@ -25,15 +25,20 @@ export interface MemoryBriefProviderDeps {
  * check they may read it, and let the delivery guard have the last word.
  * Anything short of all of that is no brief, never someone else's memory.
  */
-export interface MemoryBrief {
+/**
+ * How a brief's turn ended. The caller reports exactly one of these:
+ * `delivered` when the agent is actually invoked with the brief in its input,
+ * `abandoned` when the turn ends first for any other reason (a refusal, a
+ * replayed turn, an error). Until then the conversation is only reserved.
+ */
+export interface MemoryBriefDelivery {
+  delivered(): void;
+  abandoned(): void;
+}
+
+export interface MemoryBrief extends MemoryBriefDelivery {
   text: string | null;
   entries: number;
-  /**
-   * Call once the turn carrying the brief is on its way to the model. Until then
-   * the conversation is only reserved, and the reservation lapses, so a request
-   * refused before dispatch does not use up the brief.
-   */
-  commit?: () => void;
 }
 
 export function createMemoryBriefProvider(
@@ -52,7 +57,9 @@ export function createMemoryBriefProvider(
   const done = new Set<string>();
   const reserved = new Map<string, number>();
   const MAX_REMEMBERED = 5000;
-  const RESERVATION_MS = 60_000;
+  // Only a backstop for a turn that never reports (a crash mid-request): every
+  // normal ending reports `delivered` or `abandoned`, which settles it at once.
+  const RESERVATION_MS = 10 * 60_000;
   const keyOf = (userId: string, conversationId: string) =>
     createHash('sha256')
       .update(`${userId}\u0000${conversationId}`)
@@ -88,6 +95,9 @@ export function createMemoryBriefProvider(
     if (key) {
       const until = reserved.get(key);
       if (done.has(key) || (until !== undefined && until > now())) return null;
+      if (reserved.size > 1000)
+        for (const [held, expiry] of reserved)
+          if (expiry <= now()) reserved.delete(held);
       reserved.set(key, now() + RESERVATION_MS);
     }
     let handedOff = false;
@@ -107,14 +117,23 @@ export function createMemoryBriefProvider(
       if (!guarded.ok) return null;
       if (!brief.text) {
         if (key) finish(key);
-        return { text: null, entries: 0 };
+        return {
+          text: null,
+          entries: 0,
+          delivered: () => {},
+          abandoned: () => {},
+        };
       }
       handedOff = true;
       return {
         text: brief.text,
         entries: brief.entries.length,
-        commit: () => {
+        delivered: () => {
           if (key) finish(key);
+        },
+        // After delivery this is a no-op: the conversation stays briefed.
+        abandoned: () => {
+          if (key && !done.has(key)) reserved.delete(key);
         },
       };
     } finally {

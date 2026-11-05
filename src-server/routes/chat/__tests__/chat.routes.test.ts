@@ -238,8 +238,8 @@ describe('Chat Routes', () => {
       expect(ctx.activeAgents.size).toBe(2);
       expect(ctx.activeAgents.get(runtimeKey)).toBe(registered);
 
-      // A memory brief counts as delivered only once the turn is on its way to the
-      // model: after every refusal this route can make, and never on one.
+      // A memory brief is settled by what happens to the turn: a refusal this route
+      // makes abandons it; otherwise it is handed to the stream, which delivers it.
       const post = () =>
         app.request(`/${publicSlug}/chat`, {
           method: 'POST',
@@ -249,36 +249,49 @@ describe('Chat Routes', () => {
             options: { model: 'model-a' },
           }),
         });
-      const prepared = (commit: () => void) => ({
+      const prepared = (delivery: {
+        delivered: () => void;
+        abandoned: () => void;
+      }) => ({
         options: { model: 'model-a' },
         resolvedProviderConn: provider,
         injectContext: null,
         ragContext: null,
         contextInjection: {},
-        memoryBriefCommit: commit,
+        memoryBriefDelivery: delivery,
       });
-      const refusedCommit = vi.fn();
-      vi.mocked(prepareChatRequest).mockResolvedValueOnce(
-        prepared(refusedCommit),
-      );
+      const refused = { delivered: vi.fn(), abandoned: vi.fn() };
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(refused));
       vi.mocked(resolveChatAgentModelOverride).mockResolvedValueOnce({
         error: 'A configured provider connection is required.',
         status: 400,
       } as never);
       expect((await post()).status).toBe(400);
-      expect(refusedCommit).not.toHaveBeenCalled();
+      expect(refused.abandoned).toHaveBeenCalledTimes(1);
+      expect(refused.delivered).not.toHaveBeenCalled();
 
-      const sentCommit = vi.fn();
-      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(sentCommit));
+      const sent = { delivered: vi.fn(), abandoned: vi.fn() };
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(sent));
       vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
         realModelOverride.resolveChatAgentModelOverride,
       );
       streamPrimaryAgentChat.mockClear();
       expect((await post()).status).toBe(200);
-      expect(sentCommit).toHaveBeenCalledTimes(1);
-      expect(sentCommit.mock.invocationCallOrder[0]).toBeLessThan(
-        streamPrimaryAgentChat.mock.invocationCallOrder[0] as number,
+      // The stream is the one that reports delivery; the route only hands it over.
+      expect(streamPrimaryAgentChat.mock.calls[0]?.[0].memoryBrief).toBe(sent);
+      expect(sent.abandoned).not.toHaveBeenCalled();
+
+      // A stream that throws before starting hands nothing over: the brief is abandoned.
+      const broken = { delivered: vi.fn(), abandoned: vi.fn() };
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(broken));
+      vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
+        realModelOverride.resolveChatAgentModelOverride,
       );
+      streamPrimaryAgentChat.mockImplementationOnce(() => {
+        throw new Error('stream refused');
+      });
+      expect((await post()).status).toBe(500);
+      expect(broken.abandoned).toHaveBeenCalledTimes(1);
     },
   );
 

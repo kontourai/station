@@ -211,6 +211,13 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
       );
     }
 
+    // The memory brief reserved for this turn, if any: it is settled by the stream
+    // (delivered when the agent is invoked) or, if the turn never reaches the stream,
+    // abandoned below so the conversation can be briefed on a retry.
+    let memoryBriefDelivery:
+      | { delivered(): void; abandoned(): void }
+      | undefined;
+    let briefHandedToStream = false;
     try {
       if (trustedRelay && relayHandoff && !turnCorrelation)
         throw new NativeMemoryContinuityUnavailableError();
@@ -270,7 +277,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         injectContext,
         ragContext: preparedRagContext,
         contextInjection,
-        memoryBriefCommit,
+        memoryBriefDelivery: preparedBriefDelivery,
       } = await prepareChatRequest({
         ctx,
         slug,
@@ -299,6 +306,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
           nativeMemory.currentSessionId !== turnCorrelation?.sessionId)
       )
         throw new NativeMemoryContinuityUnavailableError();
+      memoryBriefDelivery = preparedBriefDelivery;
       const ragContext = preparedRagContext;
 
       logDebugChatImages(ctx.logger, input as string | ChatMessage[]);
@@ -383,10 +391,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
 
       agent = await projectToolContext(ctx, slug, projectSlug, agent);
 
-      // Every refusal above has passed: the turn, brief included, is on its way to the
-      // model. Only now does the conversation count as briefed.
-      memoryBriefCommit?.();
-      return streamPrimaryAgentChat({
+      const streamed = streamPrimaryAgentChat({
         c,
         ctx,
         slug,
@@ -401,6 +406,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         modelOverride,
         agent,
         configurationLease,
+        ...(memoryBriefDelivery ? { memoryBrief: memoryBriefDelivery } : {}),
         projectSlug,
         // archive#1224 (offline): claims live in the runtime's orchestration
         // store, so a replay of the same clientTurnId (retry, or a flushed
@@ -422,6 +428,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
           ? { nativeForeground, nativeRuntimeAgent: runtimeAgent.agent }
           : {}),
       });
+      // The stream owns the brief from here: it reports delivered or abandoned.
+      briefHandedToStream = true;
+      return streamed;
     } catch (error: unknown) {
       nativeWorkspace?.close();
       nativeForeground?.refuse();
@@ -454,6 +463,8 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
             ? 401
             : 500;
       return c.json({ success: false, error: errMsg }, status);
+    } finally {
+      if (!briefHandedToStream) memoryBriefDelivery?.abandoned();
     }
   });
 

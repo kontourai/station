@@ -697,8 +697,10 @@ export interface RuntimeContext {
   ) => Promise<{
     text: string | null;
     entries: number;
-    /** Call once the turn is on its way to the model; see `createMemoryBriefProvider`. */
-    commit?: () => void;
+    /** The turn reached the agent with the brief in its input. */
+    delivered: () => void;
+    /** The turn ended without reaching the agent; the conversation may be briefed again. */
+    abandoned: () => void;
   } | null>;
   feedbackService: FeedbackService;
   usageAggregator?: import('../analytics/usage-aggregator.js').UsageAggregator;
