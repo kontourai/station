@@ -1,0 +1,154 @@
+{
+  "data": {
+    "viewer": {
+      "login": "station-host"
+    },
+    "repository": {
+      "issueOrPullRequest": {
+        "__typename": "PullRequest",
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpHPAAAAAXvNS2g="
+          },
+          "edges": [
+            {
+              "cursor": "Y3Vyc29yOnYyOpHPAAAAAXvNS2g=",
+              "node": {
+                "databaseId": 6372019048,
+                "url": "https://github.com/acme/widgets/pull/14804#issuecomment-6372019048",
+                "body": "Synthetic multi-line text 1.",
+                "createdAt": "2026-10-23T18:32:16Z",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "github-actions"
+                },
+                "authorAssociation": "CONTRIBUTOR"
+              }
+            }
+          ]
+        },
+        "reviews": {
+          "pageInfo": {
+            "hasNextPage": true,
+            "endCursor": "Y3Vyc29yOnYyOpO0MjAyNi0xMC0yM1QxODo0NToyMFq0MjAyNi0xMC0yM1QxODo0MToyMVrPAAAAAU_AK4A="
+          },
+          "edges": [
+            {
+              "cursor": "Y3Vyc29yOnYyOpO0MjAyNi0xMC0yM1QxODoxNjo0MFq0MjAyNi0xMC0yM1QxODoxNjo0MFrPAAAAAU-7fxo=",
+              "node": {
+                "databaseId": 5632655130,
+                "url": "https://github.com/acme/widgets/pull/14804#pullrequestreview-5632655130",
+                "body": "Synthetic multi-line text 2.",
+                "state": "COMMENTED",
+                "submittedAt": "2026-10-23T18:16:40Z",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "CONTRIBUTOR",
+                "comments": {
+                  "totalCount": 0,
+                  "nodes": []
+                }
+              }
+            },
+            {
+              "cursor": "Y3Vyc29yOnYyOpO0MjAyNi0xMC0yM1QxODo0NToyMFq0MjAyNi0xMC0yM1QxODo0MToyMVrPAAAAAU_AK4A=",
+              "node": {
+                "databaseId": 5632961408,
+                "url": "https://github.com/acme/widgets/pull/14804#pullrequestreview-5632961408",
+                "body": "Synthetic multi-line text 3.",
+                "state": "COMMENTED",
+                "submittedAt": "2026-10-23T18:45:20Z",
+                "author": {
+                  "__typename": "User",
+                  "login": "member-reviewer"
+                },
+                "authorAssociation": "MEMBER",
+                "comments": {
+                  "totalCount": 1,
+                  "nodes": [
+                    {
+                      "databaseId": 4363072349,
+                      "url": "https://github.com/acme/widgets/pull/14804#discussion_r4363072349",
+                      "body": "Synthetic single-line text 4.",
+                      "createdAt": "2026-10-23T18:41:21Z",
+                      "path": "src/widgets/jam.ts",
+                      "author": {
+                        "__typename": "User",
+                        "login": "member-reviewer"
+                      },
+                      "authorAssociation": "MEMBER"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "oid": "fa812ef2b1ab1240ca023b7a4b720cbeef7fbdcd",
+                "checkSuites": {
+                  "nodes": [
+                    {
+                      "app": {
+                        "slug": "github-actions"
+                      },
+                      "checkRuns": {
+                        "nodes": [
+                          {
+                            "databaseId": 120578852247,
+                            "name": "label-external / label_issues",
+                            "conclusion": "SUCCESS",
+                            "completedAt": "2026-10-23T18:14:20Z",
+                            "detailsUrl": "https://github.com/acme/widgets/actions/runs/40001613444/job/120578852247"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "app": {
+                        "slug": "github-actions"
+                      },
+                      "checkRuns": {
+                        "nodes": [
+                          {
+                            "databaseId": 120612864113,
+                            "name": "build (windows-latest)",
+                            "conclusion": "SUCCESS",
+                            "completedAt": "2026-10-23T19:38:13Z",
+                            "detailsUrl": "https://github.com/acme/widgets/actions/runs/40001614534/job/120612864113"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "app": {
+                        "slug": "github-actions"
+                      },
+                      "checkRuns": {
+                        "nodes": [
+                          {
+                            "databaseId": 120612876932,
+                            "name": "lint",
+                            "conclusion": "FAILURE",
+                            "completedAt": "2026-10-23T19:29:36Z",
+                            "detailsUrl": "https://github.com/acme/widgets/actions/runs/40001614519/job/120612876932"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
