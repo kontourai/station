@@ -10,6 +10,7 @@ import {
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, extname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   type Browser,
   chromium,
@@ -32,7 +33,7 @@ import {
   removalSuccess,
 } from './fixtures/member-passkeys-render';
 
-const ROOT = resolve(import.meta.dirname, '../../..');
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const require = createRequire(import.meta.url);
 const OWNER = 'src-ui/src/views/account/MemberPasskeys.tsx';
 const ENTRY = '/virtual/member-passkeys-harness.tsx';
@@ -43,7 +44,7 @@ const normalized = (path: string) => path.replaceAll('\\', '/');
 const ARTIFACTS = resolve(
   ROOT,
   '.kontourai/collaboration/rendered/member-passkeys',
-  hash(readFileSync(import.meta.filename)).slice(0, 12),
+  hash(readFileSync(fileURLToPath(import.meta.url))).slice(0, 12),
 );
 const CSP = Object.entries(
   require('../../../src-desktop/tauri.conf.json').app.security.csp,
@@ -325,10 +326,13 @@ async function bundle() {
   observations.push({
     source: '3730c07cd0c6729e4edf0d7040eb9ae70f836c67',
     ownerSha256: hash(readFileSync(resolve(ROOT, OWNER))),
-    testSha256: hash(readFileSync(import.meta.filename)),
+    testSha256: hash(readFileSync(fileURLToPath(import.meta.url))),
     fixtureSha256: hash(
       readFileSync(
-        resolve(import.meta.dirname, 'fixtures/member-passkeys-render.ts'),
+        resolve(
+          dirname(fileURLToPath(import.meta.url)),
+          'fixtures/member-passkeys-render.ts',
+        ),
       ),
     ),
     resourceSha256: hash(
