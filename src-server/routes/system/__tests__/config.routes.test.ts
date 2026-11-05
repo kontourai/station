@@ -2486,7 +2486,7 @@ describe('Station default approval mode under a managed ceiling', () => {
     }
   });
 
-  test('resending a value saved before the policy, and lowering, still save', async () => {
+  test('resending a value saved before the policy saves; resending the lowered one keeps it', async () => {
     ceiling();
     try {
       const loader = createMockConfigLoader({ defaultApprovalMode: 'auto' });
@@ -2495,12 +2495,60 @@ describe('Station default approval mode under a managed ceiling', () => {
       );
       const resent = await put(app, { defaultApprovalMode: 'auto' });
       expect(resent.status, await resent.clone().text()).toBe(200);
+      // #4515: GET reports `ask` (the default in effect), so `ask` sent back
+      // (Settings saves the whole config) is not a change, as a locked
+      // value sent back is not: the saved `auto` stays for when the policy
+      // goes.
       const lowered = await put(app, { defaultApprovalMode: 'ask' });
       expect(lowered.status, await lowered.clone().text()).toBe(200);
-      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('ask');
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('auto');
     } finally {
       installManagedApprovalCeiling(null);
     }
+  });
+
+  // #4515 fix round 3: GET returns the values in effect.
+  test('GET reports a default saved above the ceiling lowered to it, and a round trip keeps the saved one', async () => {
+    ceiling();
+    try {
+      const loader = createMockConfigLoader({ defaultApprovalMode: 'never' });
+      const app = withOperatorPrincipal(
+        createConfigRoutes(loader as never, mockLogger),
+      );
+      const read = await app.request('/app');
+      expect(read.status).toBe(200);
+      const body = (await read.json()) as {
+        data: Record<string, unknown>;
+      };
+      expect(body.data.defaultApprovalMode).toBe('ask');
+      // Settings sends the whole config it read back.
+      const saved = await put(app, {
+        defaultApprovalMode: body.data.defaultApprovalMode,
+      });
+      expect(saved.status, await saved.clone().text()).toBe(200);
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('never');
+      // Resending the saved `never` is not a raise: 200, nothing changes.
+      const resent = await put(app, { defaultApprovalMode: 'never' });
+      expect(resent.status, await resent.clone().text()).toBe(200);
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('never');
+      expect(
+        ((await (await app.request('/app')).json()) as typeof body).data
+          .defaultApprovalMode,
+      ).toBe('ask');
+    } finally {
+      installManagedApprovalCeiling(null);
+    }
+  });
+
+  test('control: without a ceiling GET reports the saved default', async () => {
+    const loader = createMockConfigLoader({ defaultApprovalMode: 'never' });
+    const app = withOperatorPrincipal(
+      createConfigRoutes(loader as never, mockLogger),
+    );
+    const body = (await (await app.request('/app')).json()) as {
+      data: Record<string, unknown>;
+    };
+    expect(body.data.defaultApprovalMode).toBe('never');
   });
 
   test('control: without a ceiling the operator may raise it to Auto', async () => {

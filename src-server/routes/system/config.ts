@@ -59,7 +59,10 @@ import {
   isOperatorInPersonNotAgent,
   mayGrantFullAccess,
 } from '../../security/coding-authority.js';
-import { managedCeilingRefuses } from '../../security/managed-approval-ceiling.js';
+import {
+  clampToManagedCeiling,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
 import {
   managedCapabilityRefusalBody,
   telemetryAllowedByManagedPolicy,
@@ -431,7 +434,17 @@ export function createConfigRoutes(
       // the stored config; the body is what every reader sees (#4517).
       const stored = await configLoader.loadStoredAppConfig();
       const managed = installedManagedAppSettings();
-      const config = overlayManagedAppSettings(stored, managed);
+      const overlaid = overlayManagedAppSettings(stored, managed);
+      // #4518: the Station default in effect, lowered to the managed
+      // approval ceiling (a default saved before the policy stays stored).
+      const config = overlaid.defaultApprovalMode
+        ? {
+            ...overlaid,
+            defaultApprovalMode: clampToManagedCeiling(
+              overlaid.defaultApprovalMode,
+            ),
+          }
+        : overlaid;
       const frameOrigin = getMcpUiFrameOrigin?.();
       const pluginFrameOrigin = getPluginFrameOrigin?.();
       // #1582 D9: what a terminal would start here with nothing configured,
@@ -954,6 +967,19 @@ export function createConfigRoutes(
       const update = async (beginMutation: () => void) => {
         beginMutation();
         const updated = await configLoader.mutateAppConfig(async (current) => {
+          // #4518: GET reports a stored default above the managed ceiling
+          // lowered to it. Sending that lowered value back (Settings saves
+          // the whole config) is not a change: it is dropped, so the stored
+          // default stays as it was, as a locked value sent back is dropped.
+          if (
+            Object.hasOwn(accepted, 'defaultApprovalMode') &&
+            current.defaultApprovalMode !== undefined &&
+            clampToManagedCeiling(current.defaultApprovalMode) !==
+              current.defaultApprovalMode &&
+            accepted.defaultApprovalMode ===
+              clampToManagedCeiling(current.defaultApprovalMode)
+          )
+            delete accepted.defaultApprovalMode;
           if (
             ['publicTelemetryRegistries', 'telemetryPublisherPolicy'].some(
               (key) =>
