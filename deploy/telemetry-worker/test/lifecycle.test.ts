@@ -98,8 +98,32 @@ test('closing a day erases its salt and every contributor key', async () => {
 });
 
 // The Worker trusts the platform clock. These guards only make a clock
-// fault harmless to the data: one salt per day, one finalization per day,
-// no published week without a real day. Refused pings are the accepted cost.
+// fault harmless to the data: one salt per day, one finalization per day.
+// Refused pings are the accepted cost. Publication depends only on the clock
+// and configuration, never on traffic.
+
+test('a closed week with no arrivals is still published, so publication does not depend on traffic', async () => {
+  at('2026-10-26T09:00:00Z');
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  await provision(env);
+  at('2026-11-02T00:10:00Z');
+  await receiver.object.alarm();
+  expect(
+    receiver.rows('SELECT week FROM lite_publications ORDER BY week'),
+  ).toEqual([
+    { week: '2026-10-05' },
+    { week: '2026-10-12' },
+    { week: '2026-10-19' },
+    { week: '2026-10-26' },
+  ]);
+  // The same full fixed domain as a week with traffic, all noise.
+  expect(
+    receiver.rows(
+      "SELECT count(*) AS n FROM lite_published WHERE week = '2026-10-26' AND dimension = 'channel'",
+    ),
+  ).toEqual([{ n: 3 }]);
+});
 
 test('a backward step into a day with no traffic is refused and keeps the real day open', async () => {
   at('2026-11-04T10:00:00Z');
@@ -118,7 +142,7 @@ test('a backward step into a day with no traffic is refused and keeps the real d
   ]);
 });
 
-test('a forward jump refuses the skipped days, keeps one salt per day and publishes no week without a real day', async () => {
+test('a forward jump refuses the skipped days and keeps one salt per day; its skipped weeks publish and stay frozen', async () => {
   at('2026-11-04T10:00:00Z');
   const receiver = fakeReceiver();
   const env = testEnv(receiver);
@@ -131,8 +155,16 @@ test('a forward jump refuses the skipped days, keeps one salt per day and publis
   );
   at('2027-01-04T11:00:05Z');
   await receiver.object.alarm();
-  // The four weeks before 2027-01-04 had no real day: nothing is published.
-  expect(receiver.rows('SELECT week FROM lite_publications')).toEqual([]);
+  // Accepted under the trusted-clock assumption: the four closed weeks
+  // before the jumped day are published from no data and stay frozen.
+  expect(
+    receiver.rows('SELECT week FROM lite_publications ORDER BY week'),
+  ).toEqual([
+    { week: '2026-12-07' },
+    { week: '2026-12-14' },
+    { week: '2026-12-21' },
+    { week: '2026-12-28' },
+  ]);
   // Corrected: every day up to the jumped one is refused until real time
   // reaches it; then the jumped day's one salt is still the day's salt.
   at('2026-11-05T10:00:00Z');

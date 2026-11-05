@@ -103,10 +103,11 @@ const SCHEMA = [
     estimate INTEGER NOT NULL CHECK (estimate >= 0), PRIMARY KEY (week, publisher, dimension, value))`,
   // `closed_through`: every UTC day at or before it refuses arrivals.
   `CREATE TABLE IF NOT EXISTS lite_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
-  // Days whose salt was erased: days that really had arrivals. A week is
-  // published only if it holds one. Like lite_finalized (one row per
-  // publisher per day), this is about one row per day and is never pruned:
-  // pruning would let an old day reopen after a long clock jump.
+  // Days whose salt was erased: days that really had arrivals. Their pending
+  // pings are finalized even if a clock fault left them ahead of today. Like
+  // lite_finalized (one row per publisher per day), this is about one row per
+  // day and is never pruned: pruning would let an old day reopen after a
+  // long clock jump.
   `CREATE TABLE IF NOT EXISTS lite_closed_days (day TEXT PRIMARY KEY)`,
   // One row per finalized publisher/day: finalization happens once.
   `CREATE TABLE IF NOT EXISTS lite_finalized (day TEXT NOT NULL, publisher TEXT NOT NULL, PRIMARY KEY (day, publisher))`,
@@ -506,19 +507,10 @@ export class LiteReceiverStore {
               ),
             );
             if (unfinished) return;
-            // Never publish a week with no real day: after a forward clock
-            // jump, the skipped weeks have no arrivals and must not freeze as
-            // noise-only publications.
-            if (
-              !one(
-                this.exec(
-                  `SELECT 1 FROM lite_closed_days WHERE day >= ? AND day < ? LIMIT 1`,
-                  week,
-                  end,
-                ),
-              )
-            )
-              return;
+            // Every closed week is published whether or not it had traffic,
+            // as in the Node receiver: publication depends only on the clock
+            // and configuration. Gating it on arrivals would release an
+            // unnoised bit that one network's ping could flip.
             this.exec(
               `INSERT INTO lite_publications VALUES (?, ?)`,
               week,

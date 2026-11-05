@@ -97,8 +97,9 @@ from running one process. Each request runs its SQL inside one
 - **The clock is trusted; faults cost availability, never data.** The
   Worker uses the platform clock, which Cloudflare keeps in sync and this
   receiver does not control. Recovering from clock jumps is out of scope. The
-  guards only make a fault harmless to the data: one salt per day, one
-  finalization per day, and no published week without a real day.
+  guards only make a fault harmless to the data: one salt per day and one
+  finalization per day. Publication depends only on the clock and
+  configuration, never on traffic.
   - A day closes once a later day has begun, maintenance has passed it, or it
     is finalized. Every day at or before the latest closed day (the
     `closed_through` watermark, which only increases) refuses arrivals with
@@ -112,9 +113,12 @@ from running one process. Each request runs its SQL inside one
     After the clock is corrected, arrivals are refused until real time
     reaches F, and then day F's original salt is used. Pings in the refused
     windows are lost, because senders do not retry.
-  - A week is published only if it contains a day that really had arrivals
-    (a closed-day record). The weeks a forward jump skips are never
-    published, so they cannot freeze as noise-only releases.
+  - Every closed week is published whether or not it had traffic, so a
+    forward jump can publish the skipped weeks from zero data, and they stay
+    frozen (publications are immutable). That is accepted under the
+    trusted-clock assumption, not guarded: gating publication on arrivals
+    would release an unnoised bit that one network's ping could flip,
+    breaking the differential-privacy guarantee.
   - `lite_finalized` and `lite_closed_days` hold about one row per publisher
     per day and are never pruned: pruning would let an old day reopen after
     a long jump.
@@ -127,9 +131,9 @@ from running one process. Each request runs its SQL inside one
   hashes for closed days. A failed publisher/day is skipped, retried on the
   next pass and recorded as a content-free code in the exact view's
   `finalizationDiagnostics`.
-- **Weekly publication.** Each of the last four closed ISO weeks that holds
-  a real day is published once per publisher, after all of its days are
-  finalized. Every cell of the fixed domain gets noise, including true zeros.
+- **Weekly publication.** Each of the last four closed ISO weeks is
+  published once per publisher, with or without traffic, after all of its
+  days are finalized. Every cell of the fixed domain gets noise, including true zeros.
   Channel cells are the publisher's provisioned channels. The marker and the
   cells commit together and are never rewritten.
 - **Retention.** Raw pings and feedback keep 90 UTC days including today
@@ -151,10 +155,6 @@ Differences from the Node receiver:
   published twice under the same noise seeds exposes the exact difference. It
   would also bring back erased salts and contributor hashes (see *What erasure
   covers*).
-- Whether a week is published depends on whether any ping arrived in it; the
-  Node receiver publishes every closed week. A published week therefore
-  reveals that at least one network reported that week. The cells are
-  unaffected: every published week releases its full fixed domain with noise.
 - Public aggregate pages are cached in Cloudflare's cache for at most 60
   seconds and never past UTC midnight.
 
