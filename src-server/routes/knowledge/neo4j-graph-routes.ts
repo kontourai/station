@@ -109,7 +109,7 @@ const MAX_PATH_HOPS = 15;
 async function readableGraph(
   store: KnowledgeStoreProvider,
   rootId: string,
-  kind: 'shared' | 'session-backed',
+  kind: 'shared' | 'session-backed' | 'author-private',
   graph: ReadGraphResult,
 ): Promise<ReadGraphResult> {
   if (kind === 'shared') return graph;
@@ -373,7 +373,7 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
         );
       }
       const path =
-        kind === 'session-backed'
+        kind !== 'shared'
           ? shortestReadablePath(
               await readableGraph(
                 deps.store,

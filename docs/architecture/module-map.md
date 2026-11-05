@@ -3186,6 +3186,28 @@ New managed paths use Project IDs so a replacement slug cannot reuse its
 predecessor's default storage. Legacy upload/migration stays in Project knowledge;
 Sources owns registration and attachment.
 
+An internally registered author-private root carries its owner in the registry
+and root identity. In personal mode, root and record reads admit that owner or
+an approved personal-account device; delegation peers and unknown callers are
+refused. Search rechecks the root and request authority at response delivery.
+Hosted access and the local source-observation path refuse this classification.
+Only an operator credential or home-possession authority, never an agent, may
+mutate the root through the Knowledge routes.
+Project Task learning and automatic Project tool discovery exclude it.
+Existing roots without the policy retain their prior access rules.
+
+The default-off Private memory preview registers a per-owner `corpus-private-memory`
+root through the same registry. Its adapter validates the exact private
+registration on each access and exposes ordinary record reads only; create
+proposals use the explicit memory route. The registry and adapter reject paths
+that alias another author-private root, with authorization and path identity
+rechecked at response delivery. Corpus receives Station's coordination lock and
+home-identity check; ordinary access does not enable purge. Pending proposals
+are not records and do not enter the index. This does not provide review,
+distillation or erasure. [Memory tests](../../src-server/knowledge-store/__tests__/memory-root.test.ts)
+and [route tests](../../src-server/routes/knowledge/__tests__/memory.routes.test.ts)
+exercise local fixtures; they do not qualify a live model provider.
+
 The separate [Neo4j graph routes](../../src-server/routes/knowledge/neo4j-graph-routes.ts)
 require current access to the exact registered root. Graph and shortest-path
 reads require view access. Sync requires edit access for writable roots;

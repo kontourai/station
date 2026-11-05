@@ -247,6 +247,10 @@ const knowledgeRootSchema = z
         .strict(),
     ]),
     projectId: z.string().uuid().optional(),
+    readPolicy: z
+      .object({ kind: z.literal('author-private'), ownerId: nonEmptyString })
+      .strict()
+      .optional(),
     registrationId: z.string().uuid().optional(),
     adapterId: nonEmptyString,
     storeRoot: nonEmptyString,

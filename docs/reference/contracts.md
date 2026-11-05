@@ -2240,6 +2240,11 @@ ETag, optional returned version, SHA-256, observation time and citation. These
 shapes describe bounded live reads; they confer no write, execution or indexing
 authority. The implementation remains default-off pending AWS acceptance.
 
+`KnowledgeAdapterDescriptor.validateRegistration`, when supplied, refuses a
+root whose metadata is invalid for that adapter before an adapter is returned,
+including when an instance is cached. It is an internal validation hook, not a
+grant or a public plugin admission policy.
+
 `KnowledgeStoreRoot.projectId` is an optional durable Project binding. Older
 registrations omit it; member access never infers it from `scope.projectSlug`.
 The pure `isProjectKnowledgeRoot(root, projectId)` helper owns matching for

@@ -143,6 +143,19 @@ describe('privacy inventory', () => {
     expect(policy).not.toContain('this repository is private');
   });
 
+  test('declares the owner-linked private-memory preview and its pending exclusion', () => {
+    const policy = renderPrivacyPolicy();
+    expect(policy).toContain(
+      '| `private-memory` | Other User Content | true | false | App Functionality |',
+    );
+    expect(policy).toContain(
+      'Pending proposals are excluded from ordinary record lists and index rebuilds.',
+    );
+    expect(renderPlayDataSafety()).toContain(
+      'Does this inventory declare any data as linked to a user identity?** Yes.',
+    );
+  });
+
   test('covers the real telemetry inventory', () => {
     expect(() => assertPrivacyInventoryCoversUsageTelemetry()).not.toThrow();
   });
