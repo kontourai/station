@@ -108,6 +108,33 @@ export function assertEngineAllowedByManagedPolicy(
     );
 }
 
+/**
+ * #4515: the managed refusal for an engine the policy does not allow, or null
+ * when it may run. A surface that finds an engine's connection off uses it
+ * to say why when the policy is the reason, instead of "turned off".
+ */
+export function managedEngineRefusalFor(
+  engine: string | undefined,
+): ManagedEngineRefusedError | null {
+  if (engine === undefined || engineAllowedByManagedPolicy(engine)) return null;
+  return new ManagedEngineRefusedError(
+    denial(
+      `which engines run on this computer: ${managedPolicyEngineId(engine)} is not allowed`,
+    ),
+  );
+}
+
+/**
+ * The managed refusal, with the sentence the Agent catalog already gave an
+ * Agent whose engine the policy does not allow (`unavailableFix.kind:
+ * 'policy'`).
+ */
+export function managedEngineRefusalWithReason(
+  reason: string,
+): ManagedEngineRefusedError {
+  return new ManagedEngineRefusedError(reason);
+}
+
 /** The JSON body a route answers a managed engine refusal with (status 403). */
 export function managedEngineRefusalBody(error: unknown) {
   return {

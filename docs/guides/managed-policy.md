@@ -531,8 +531,8 @@ entry for an engine `allowed` leaves out.
 
 An engine the policy does not allow is unavailable everywhere:
 
-- Starting a chat on it, sending a turn to an existing chat on it, and setting
-  up or adding a connection for it are refused with "Example Corp's policy
+- Starting a chat on it, sending a turn to an existing chat on it, delegating
+  to it, and setting up or adding a connection for it are refused with "Example Corp's policy
   manages which engines run on this computer: codex is not allowed." and the
   support link. Over HTTP that is a `403` with code
   `managed-policy-engine-refused`.

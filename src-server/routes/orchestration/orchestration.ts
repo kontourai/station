@@ -118,6 +118,7 @@ import {
   type FullAccessGrant,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
+import { managedEngineRefusalBody } from '../../security/managed-engine-limits.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   resolveClientOriginForRequest,
@@ -404,6 +405,11 @@ const DELEGATION_REFUSAL_CODES = new Set([
 
 function delegationRefusal(c: Context, error: unknown): Response | undefined {
   const code = errorCode(error);
+  // #4515: an engine the managed policy does not allow, with the one body
+  // every managed engine refusal carries (the delegation route had no
+  // mapping for it and answered 400).
+  if (code === MANAGED_POLICY_ENGINE_REFUSED_CODE)
+    return c.json(managedEngineRefusalBody(error), 403);
   if (!code || !DELEGATION_REFUSAL_CODES.has(code)) return undefined;
   return c.json({ success: false, error: errorMessage(error), code }, 403);
 }
