@@ -283,6 +283,50 @@ describe('a held-back touch press meets the eligibility of when it goes out', ()
     expect(h.events()).toEqual([]);
   });
 
+  test('a takeover by this device in another viewer is a change of control: the held press never goes', async () => {
+    const h = canvasHarness();
+    await renderCanvas(
+      h,
+      {},
+      lease(1, { kind: 'agent', principal: 'agent:coder', sessionId: 's' }),
+    );
+    fireEvent.pointerDown(canvas(), touch(1, 100, 62.5));
+    await flush();
+    // The same person and device took control from another tab: this
+    // viewer asked for nothing, so it is not this viewer's takeover.
+    await h.pushState(lease(2, MY_HOLD));
+    await wait(TOUCH_PRESS_HOLD_MS + 50);
+    await flush();
+    expect(h.events()).toEqual([]);
+  });
+
+  test('a dropped old press never swallows the release of a newer press of the same button', async () => {
+    const h = canvasHarness();
+    await renderCanvas(h, {}, lease(1, MY_HOLD));
+    fireEvent.pointerDown(canvas(), touch(1, 100, 62.5));
+    await flush();
+    await h.pushState(
+      lease(2, { kind: 'agent', principal: 'agent:coder', sessionId: 's' }),
+    );
+    // A fresh mouse press, in the new control, goes at once.
+    const mouse = {
+      pointerId: 2,
+      pointerType: 'mouse',
+      button: 0,
+      clientX: 100,
+      clientY: 62.5,
+    };
+    fireEvent.pointerDown(canvas(), mouse);
+    await flush();
+    // The old held touch press now expires and is dropped.
+    await wait(TOUCH_PRESS_HOLD_MS + 50);
+    await flush();
+    fireEvent.pointerUp(canvas(), mouse);
+    await flush();
+    const types = h.events().map((event) => (event as { type: string }).type);
+    expect(types).toEqual(['down', 'up']);
+  });
+
   test('losing control during the hold, where the lease comes first, cancels the press', async () => {
     const h = canvasHarness();
     await renderCanvas(h, { inputRequiresLease: true }, lease(0, MY_HOLD));

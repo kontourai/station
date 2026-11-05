@@ -1623,6 +1623,84 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     ).toEqual(['down', 'move', 'up']);
   });
 
+  test('input queued behind an answer that is discarded (control changed meanwhile) still goes, with no further input', async () => {
+    let answer!: (reply: Response) => void;
+    let call = 0;
+    const h = harness({
+      inputReply: (body) => {
+        call += 1;
+        if (call === 1)
+          return new Promise<Response>((resolve) => {
+            answer = resolve;
+          });
+        return {
+          success: true,
+          data: {
+            ok: true,
+            accepted: body.events.length,
+            lease: lease(body.epoch + 1, MY_HOLD),
+          },
+        };
+      },
+    });
+    const stream = await renderLive(h);
+    fireEvent.input(keyboardInput(), { target: { value: 'old' } });
+    await flush();
+    await stream.push(stateRecord(lease(2, AGENT_HOLD)));
+    // Typed after the agent took over: new input, in the new lineage.
+    fireEvent.input(keyboardInput(), { target: { value: 'new' } });
+    await flush();
+    expect(h.inputs).toHaveLength(1);
+    answer(busy());
+    await flush();
+    await flush();
+    expect(sentText(h)).toEqual([
+      { epoch: 0, text: 'old' },
+      { epoch: 2, text: 'new' },
+    ]);
+  });
+
+  test("this viewer's own takeover keeps typing queued behind it, even when the stream reports it before the answer", async () => {
+    let answer!: (reply: Response) => void;
+    let call = 0;
+    const h = harness({
+      inputReply: (body) => {
+        call += 1;
+        if (call === 1)
+          return new Promise<Response>((resolve) => {
+            answer = resolve;
+          });
+        return {
+          success: true,
+          data: {
+            ok: true,
+            accepted: body.events.length,
+            lease: lease(body.epoch, MY_HOLD),
+          },
+        };
+      },
+    });
+    const stream = await renderLive(h, lease(1, AGENT_HOLD));
+    fireEvent.input(keyboardInput(), { target: { value: 'a' } });
+    await flush();
+    fireEvent.input(keyboardInput(), { target: { value: 'b' } });
+    await flush();
+    // The takeover is on the stream first; the answer follows.
+    await stream.push(stateRecord(lease(2, MY_HOLD)));
+    answer(
+      Response.json({
+        success: true,
+        data: { ok: true, accepted: 1, lease: lease(2, MY_HOLD) },
+      }),
+    );
+    await flush();
+    await flush();
+    expect(sentText(h)).toEqual([
+      { epoch: 1, text: 'a' },
+      { epoch: 2, text: 'b' },
+    ]);
+  });
+
   test('Retry is not offered once this viewer may no longer send input', async () => {
     const h = busyOnce();
     const canvas = (readOnly: boolean) => (

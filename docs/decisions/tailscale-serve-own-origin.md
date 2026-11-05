@@ -32,7 +32,9 @@ sign-in origin picker read it. It adds no setting.
 
 Ownership is an admission, so it does not ride the endpoint-suggestion
 resolver's 30-second cache. It reads the daemon through its own single-flight
-lookup. An answer is trusted for at most 1 second, counted from when the
+lookup. Its ages are read from a monotonic clock, so setting the wall clock back
+cannot make old evidence fresh, and a negative age is refused. An answer is
+trusted for at most 1 second, counted from when the
 lookup started, not from when the reply arrived. A reply that arrives after
 that second admits nothing, and a lookup that fails or takes more than 3
 seconds refuses. Re-reading on every admission was rejected

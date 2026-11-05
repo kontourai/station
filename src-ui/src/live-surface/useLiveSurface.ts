@@ -405,24 +405,40 @@ export function useLiveSurface(
     open: Set<string>;
   } | null>(null);
   const [retryableInput, setRetryableInput] = useState(false);
+  /** This viewer's own input batch or claim is awaiting its answer. */
+  const claimInFlightRef = useRef(false);
   /**
    * A newer epoch was observed. `holder` is the lease's, or undefined when
-   * only a frame told of it. Only this device taking the very next epoch is
-   * its own takeover; anything else is a change of control.
+   * only a frame told of it. `ownAnswer`: the lease came in the answer to
+   * this viewer's own successful request. Only that, taking the very next
+   * epoch, is this viewer's own takeover: the same person on the same device
+   * in another tab or window has the same identity, so identity is never
+   * the proof. Anything else is a change of control.
    */
   const observeEpoch = useCallback(
-    (epoch: number, holder?: LiveSurfaceControlLease['holder']) => {
+    (
+      epoch: number,
+      holder?: LiveSurfaceControlLease['holder'],
+      ownAnswer = false,
+    ) => {
       if (epoch <= epochRef.current) return;
       const me = selfRef.current;
-      const ownTakeover =
-        epoch === epochRef.current + 1 &&
+      const heldByThisDevice =
         holder?.kind === 'human' &&
         !!me &&
         holder.principal === me.principal &&
         holder.device === me.device;
-      // A frame alone cannot say who took control; while this viewer's own
-      // batch is in flight its answer (or the state record) settles it.
-      if (holder === undefined && inFlightRef.current) return;
+      const ownTakeover =
+        ownAnswer && heldByThisDevice && epoch === epochRef.current + 1;
+      // While this viewer's own request is in flight, a frame or a state
+      // record naming this device cannot say whose takeover it is: that
+      // request's answer settles it.
+      if (
+        !ownAnswer &&
+        (holder === undefined || heldByThisDevice) &&
+        (inFlightRef.current || claimInFlightRef.current)
+      )
+        return;
       epochRef.current = epoch;
       if (ownTakeover) return;
       lineageRef.current += 1;
@@ -436,8 +452,8 @@ export function useLiveSurface(
     [],
   );
   const adoptLease = useCallback(
-    (next: LiveSurfaceControlLease) => {
-      observeEpoch(next.epoch, next.holder);
+    (next: LiveSurfaceControlLease, ownAnswer = false) => {
+      observeEpoch(next.epoch, next.holder, ownAnswer);
       setLease(next);
     },
     [observeEpoch],
@@ -712,6 +728,7 @@ export function useLiveSurface(
     targetGenerationRef.current += 1;
     queueRef.current = [];
     inFlightRef.current = false;
+    claimInFlightRef.current = false;
     undeliveredRef.current = null;
     setRetryableInput(false);
     pressedRef.current.clear();
@@ -821,7 +838,7 @@ export function useLiveSurface(
       const nextLease = result
         ? parseLiveSurfaceControlLease(result.lease)
         : null;
-      if (nextLease) adoptLease(nextLease);
+      if (nextLease) adoptLease(nextLease, result?.ok === true);
       if (result?.ok) {
         // A later success is not the kept input arriving: only Retry or the
         // person moving on retires that (see `sendInput`).
@@ -859,11 +876,21 @@ export function useLiveSurface(
       queueRef.current = [];
       setInputNotice('input-failed');
     } finally {
-      if (generation === targetGenerationRef.current)
+      // Whatever happened to this batch's answer (used, or discarded as
+      // describing ended control), input queued behind it in the current
+      // lineage still goes.
+      if (generation === targetGenerationRef.current) {
         inFlightRef.current = false;
+        if (queueRef.current.length > 0) scheduleFlushRef.current();
+      }
     }
-    if (queueRef.current.length > 0) void flush();
   }, [adoptLease, showHostBusy, keepUndelivered]);
+  const scheduleFlushRef = useRef(() => {});
+  scheduleFlushRef.current = () => {
+    if (flushScheduledRef.current) return;
+    flushScheduledRef.current = true;
+    queueMicrotask(() => void flush());
+  };
 
   const sendInput = useCallback(
     (events: LiveSurfaceInput[], options?: { lineage?: number }) => {
@@ -872,8 +899,11 @@ export function useLiveSurface(
         const id = pressId(event);
         if (lineage !== lineageRef.current) {
           // Created before control changed hands (a held-back press): never
-          // sent, and its release is swallowed like any orphaned press's.
-          if (id && !isRelease(event)) orphanedRef.current.add(id);
+          // sent, and its release is swallowed like any orphaned press's,
+          // unless a newer press of the same button or key is down: that
+          // release is the newer press's, and must reach the surface.
+          if (id && !isRelease(event) && !pressedRef.current.has(id))
+            orphanedRef.current.add(id);
           continue;
         }
         const kept = undeliveredRef.current;
@@ -961,6 +991,7 @@ export function useLiveSurface(
 
   const claimControl = useCallback(async () => {
     const generation = targetGenerationRef.current;
+    claimInFlightRef.current = true;
     try {
       const response = await transportRef.current(
         `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
@@ -982,10 +1013,13 @@ export function useLiveSurface(
         ? parseLiveSurfaceControlLease(envelope.data.lease)
         : null;
       if (!nextLease) return;
-      adoptLease(nextLease);
+      adoptLease(nextLease, envelope?.data?.ok === true);
     } catch {
       if (generation === targetGenerationRef.current)
         setInputNotice('input-failed');
+    } finally {
+      if (generation === targetGenerationRef.current)
+        claimInFlightRef.current = false;
     }
   }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
