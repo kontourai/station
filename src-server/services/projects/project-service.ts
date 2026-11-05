@@ -21,6 +21,10 @@ import {
   resolveWorkspaceIsolationMode,
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
+import {
+  projectUpdatesWithoutLockedFields,
+  withoutLockedProjectOverrides,
+} from '../../domain/managed-settings.js';
 import { FileStorageUnavailableError } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
@@ -418,7 +422,11 @@ export class ProjectService {
     reservedId?: string,
   ): Promise<ProjectConfig> {
     assertWritableProjectIcon(config.icon);
-    const project = await this.prepareProjectConfig(config, reservedId);
+    // #4517: a project may not choose a setting the managed policy locks.
+    const project = await this.prepareProjectConfig(
+      projectUpdatesWithoutLockedFields(config),
+      reservedId,
+    );
     await this.storageAdapter.createProject(project);
     // The manifest is derived from the project record that was just written,
     // so it is created AFTER the project exists on disk. `ensureProjectManifest`
@@ -451,7 +459,8 @@ export class ProjectService {
       operation: 'create',
       project: project.slug || project.id,
     });
-    return project;
+    // Readers never see a field a lock hides, the create response included.
+    return withoutLockedProjectOverrides(project);
   }
 
   async createAttachedProject(
@@ -472,7 +481,8 @@ export class ProjectService {
       operation: 'create',
       project: project.slug || project.id,
     });
-    return project;
+    // Readers never see a field a lock hides, the create response included.
+    return withoutLockedProjectOverrides(project);
   }
 
   private async prepareProjectConfig(
@@ -569,7 +579,7 @@ export class ProjectService {
 
   async updateProject(
     slug: string,
-    updates: ProjectUpdate,
+    requested: ProjectUpdate,
     options: {
       /**
        * The caller's own proof it may raise the Project's new-chat approval
@@ -582,6 +592,10 @@ export class ProjectService {
   ): Promise<ProjectConfig> {
     const revision = this.storageAdapter.projectRevision(slug);
     const existing = revision.value;
+    // #4517: a managed lock outranks a project's override of that setting.
+    // A hidden field sent back as "no choice" is dropped, so the stored
+    // value stays; any other change to it is refused.
+    const updates = projectUpdatesWithoutLockedFields(requested, existing);
     if (
       updates.defaultApprovalMode === 'never' &&
       existing.defaultApprovalMode !== 'never' &&
@@ -630,7 +644,8 @@ export class ProjectService {
     }
     await revision.replace(updated);
     projectOps.add(1, { operation: 'update', project: slug });
-    return updated;
+    // The response is a read: it hides what `getProject` hides (#4517).
+    return withoutLockedProjectOverrides(updated);
   }
 
   async deleteProject(slug: string): Promise<void> {
