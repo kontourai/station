@@ -141,6 +141,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Owns a production AccountEntry Vite bundle and pinned Chromium lifecycle.
+  'src-ui/src/__tests__/AccountEntryView.browser.test.tsx',
   // Full 4,800-effect WAL/FULL retention backlog; the small case stays ordinary.
   'packages/agent-runtime/src/__tests__/turn-retention.process.test.ts',
   // Creates a private FIFO and reads it in a bounded child so a blocking regression cannot hang Vitest.
