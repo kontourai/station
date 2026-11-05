@@ -33,3 +33,29 @@ The standard screenshot runner separately failed its unchanged 120-second
 startup deadline before browser capture. That failure remains recorded; the
 source-development images do not turn it into a pass. Phone-sized Chromium
 renders do not establish installed-shell or physical-device behavior.
+
+## Completion after Back
+
+Captured at `dc3715f37ace9f756898e7b810652f43c711f70a` using a separate,
+isolated CLI `--watch` runtime and real personal Layout records. All four
+phone/desktop theme observations passed and were inspected. The browser and
+runtime were stopped afterward.
+
+![Successful deletion closes its confirmation while preserving the Back destination](completion.png)
+
+Each observation buffers the real successful DELETE response after the server
+has removed the selected Board, goes Back to a different saved Board, then
+releases the response. The deletion confirmation closes, the library excludes
+the removed Board, the newer URL remains, and GET the destination Board returns
+200. This is source-development behavior evidence, not installed-shell proof.
+
+The committed four-case managed product journey separately passed in 52.5 seconds,
+including the prior dirty-Board Cancel/Discard, metadata and focus checks plus
+this response ordering. Its first new attempt used the retired Activity URL
+and failed at that invalid navigation precondition; the corrected journey uses
+a second real saved Board without changing product routes or deadlines.
+
+The mounted real-SDK/navigation regression failed on the reviewed early return
+and passed after cleanup was tied to confirmed deletion. The closing owner batch
+passed 66 tests. Cancellation and refusal/retry remain covered, and cleanup only
+clears the confirmation belonging to the completed operation.
