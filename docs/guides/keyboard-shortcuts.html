@@ -28,7 +28,7 @@
 <ul>
 <li>Select a shortcut, then press the new key combination.
 </li>
-<li>If the editor finds another registered command using it, Station explains the conflict before saving. Choose <strong>Replace</strong> to clear the old command and move the shortcut, or <strong>Cancel</strong> to leave both unchanged.
+<li>If a new binding or restored default belongs to another registered command, Station explains the conflict before saving. Choose <strong>Replace</strong> to clear the old command and move the shortcut, or <strong>Cancel</strong> to leave both unchanged.
 </li>
 <li><strong>Clear</strong> removes a shortcut. <strong>Restore default</strong> returns the command to its current registered default binding, which may come from a plugin or command skill.
 </li>
@@ -53,7 +53,7 @@
 <p>After dismissing an inbox conversation, choose <strong>Undo</strong> in the toast or press <strong>⌘Z</strong> on macOS / <strong>Ctrl+Z</strong> on Windows and Linux. <strong>Undo inbox dismissal</strong> can be rebound in Keyboard shortcuts. The command declines inside text fields, contenteditable editors, CodeMirror and terminals, preserving their own Undo. Dismissal does not stop work or delete conversation history.</p>
 <h2 id="dispatch-and-limits">Dispatch and limits</h2>
 <p>The registry orders matching shortcuts by priority, then registry order. It checks the registered <code>when</code> expression and current input/modal state before running a handler. An active modal suppresses global registry shortcuts; Escape and chat shortcuts have additional input-ownership rules. A visible row or saved binding does not bypass those conditions or a browser-reserved key. A handler that returns <code>false</code> declines the key: it is not prevented, the next matching shortcut is tried, and otherwise the browser keeps it. The Coding stack's Back/Forward chords decline inside editors that own those keys (CodeMirror, the terminal, a contenteditable editor) and when there is nowhere to go; in plain text fields they are the stack's Back and Forward.</p>
-<p>The editor's replacement dialog considers the first matching enabled command. It does not analyze all conditional overlaps or guarantee that restoring a default leaves every chord conflict-free. The catalog also depends on which components have registered their commands in the current view.</p>
+<p>The editor's replacement dialog considers the first matching enabled command, including when restoring a default. It does not analyze all conditional overlaps or guarantee that every chord is conflict-free. The catalog also depends on which components have registered their commands in the current view.</p>
 <p>Custom bindings containing Space currently store a key name that does not match the standard keyboard event. <a href="https://github.com/kontourai/station/issues/2771">#2771</a> tracks the capture-to-dispatch correction; the defect was reproduced through the mounted editor and registry with DOM events.</p>
 <p>The <a href="https://github.com/kontourai/station/blob/main/docs/architecture/module-map.md#keyboard-shortcuts">keyboard shortcut module</a> connects these rules to the editor, registry, device store, import/export owner and tests. DOM/storage tests do not qualify every physical keyboard, OS shortcut, or native shell.</p>
 <h2 id="browser-shortcuts">Browser shortcuts</h2>
