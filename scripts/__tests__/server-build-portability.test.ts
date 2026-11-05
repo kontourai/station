@@ -944,11 +944,66 @@ describe('server build package portability', () => {
       'rxjs-node-runtime-only',
       'otlp-transformer-node-runtime-only',
       'node-pty-foreign-prebuilds',
+      'koffi-build-sources',
+      'koffi-off-windows',
       'flow-agents-harness-bundles',
     ]);
     expect(RUNTIME_DEPENDENCY_EXCLUSIONS.map((rule) => rule.id)).toEqual([
       'flow-agents-bundle-builder-esbuild',
     ]);
+  });
+
+  it('ships koffi only to Windows, without its build sources, and keeps its license everywhere (#4524)', () => {
+    const root = makeTempDir('station-runtime-koffi-');
+    const project = join(root, 'project');
+    const koffi = join(project, 'node_modules/koffi');
+    writeFixturePackage(koffi, {
+      name: 'koffi',
+      version: '3.3.6',
+      main: 'index.cjs',
+    });
+    writeFileSync(join(koffi, 'index.cjs'), 'module.exports = {};');
+    writeFileSync(join(koffi, 'LICENSE.txt'), 'fixture license');
+    for (const dir of ['src', 'vendor', 'doc', 'lib/native/base']) {
+      mkdirSync(join(koffi, dir), { recursive: true });
+      writeFileSync(join(koffi, dir, 'file'), 'fixture');
+    }
+    const native = join(project, 'node_modules/@koromix/koffi-linux-x64');
+    writeFixturePackage(native, {
+      name: '@koromix/koffi-linux-x64',
+      version: '3.3.6',
+    });
+    writeFileSync(join(native, 'koffi.node'), 'fixture binary');
+    writeFileSync(join(native, 'LICENSE.txt'), 'fixture license');
+    const stage = (platform: NodeJS.Platform) => {
+      const output = join(root, platform);
+      stageDesktopServerRuntime({
+        projectRoot: project,
+        outputRoot: output,
+        packages: ['koffi', '@koromix/koffi-linux-x64'],
+        platform,
+        arch: 'x64',
+      });
+      return join(output, 'node_modules');
+    };
+
+    const windows = stage('win32');
+    expect(existsSync(join(windows, 'koffi/index.cjs'))).toBe(true);
+    expect(existsSync(join(windows, 'koffi/lib/native/base/file'))).toBe(true);
+    for (const dir of ['src', 'vendor', 'doc'])
+      expect(existsSync(join(windows, 'koffi', dir))).toBe(false);
+    expect(
+      existsSync(join(windows, '@koromix/koffi-linux-x64/koffi.node')),
+    ).toBe(true);
+
+    const linux = stage('linux');
+    expect(readdirSync(join(linux, 'koffi')).sort()).toEqual([
+      'LICENSE.txt',
+      'package.json',
+    ]);
+    expect(readdirSync(join(linux, '@koromix/koffi-linux-x64')).sort()).toEqual(
+      ['LICENSE.txt', 'package.json'],
+    );
   });
 
   it('ships compiled SDK entrypoints without their development sources and keeps Node Cedar assets', async () => {
