@@ -2,20 +2,24 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { SettingsToggle } from '../../views/settings/feature-toggle';
 
 export function ChangelogPreference() {
   const { showReleaseNotesAfterUpdate } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   return (
-    <label className="release-notes__preference">
-      <input
-        type="checkbox"
-        checked={showReleaseNotesAfterUpdate}
-        onChange={(event) =>
-          setDeviceSetting('showReleaseNotesAfterUpdate', event.target.checked)
-        }
-      />
-      Show changelog after updates
-    </label>
+    <SettingsToggle
+      className="release-notes__preference"
+      checked={showReleaseNotesAfterUpdate}
+      label="Show changelog after updates"
+      onChange={() =>
+        setDeviceSetting(
+          'showReleaseNotesAfterUpdate',
+          !showReleaseNotesAfterUpdate,
+        )
+      }
+    >
+      <span>Show changelog after updates</span>
+    </SettingsToggle>
   );
 }

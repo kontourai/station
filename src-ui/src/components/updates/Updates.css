@@ -19,6 +19,7 @@
   color: var(--k-text);
 }
 .updates-control:focus-visible,
+.release-notes__preference:focus-visible,
 .updates-panel section:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-focus);
   outline-offset: var(--k-focus-ring-offset);
@@ -170,6 +171,15 @@
   border-radius: var(--k-radius-control);
 }
 .release-notes__preference {
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: var(--k-space-2);

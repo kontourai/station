@@ -556,10 +556,10 @@ test.each([false, true])(
     const dialog = screen.getByRole('dialog', {
       name: `Updated to Station ${current.currentVersion}`,
     });
-    const preference = within(dialog).getByRole('checkbox', {
+    const preference = within(dialog).getByRole('switch', {
       name: 'Show changelog after updates',
     });
-    expect((preference as HTMLInputElement).checked).toBe(true);
+    expect(preference.getAttribute('aria-checked')).toBe('true');
     if (optOut) fireEvent.click(preference);
     expect(deviceSettingsStore.get('showReleaseNotesAfterUpdate')).toBe(
       !optOut,
