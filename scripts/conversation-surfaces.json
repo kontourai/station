@@ -1,0 +1,370 @@
+{
+  "version": 1,
+  "roots": ["src-ui/src"],
+  "owners": [
+    {
+      "concern": "body",
+      "file": "src-ui/src/components/conversation/ConversationBody.tsx",
+      "symbol": "ConversationBody",
+      "reason": "One local/direct/relay conversation body."
+    },
+    {
+      "concern": "composer",
+      "file": "src-ui/src/components/chat/ChatInputArea.tsx",
+      "symbol": "ChatInputArea",
+      "reason": "One reply editor and submission behavior."
+    },
+    {
+      "concern": "stop",
+      "file": "src-ui/src/components/conversation/ConversationStopControl.tsx",
+      "symbol": "ConversationStopControl",
+      "reason": "One control; adapters supply turn versus whole-Task intent."
+    },
+    {
+      "concern": "approval",
+      "file": "src-ui/src/components/conversation/useApprovalAnswering.ts",
+      "symbol": "useApprovalAnswering",
+      "reason": "One bound answer/inspection/trust policy."
+    },
+    {
+      "concern": "delivery",
+      "file": "src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx",
+      "symbol": "MessageDeliveryNote",
+      "reason": "One delivery action/copy renderer inside the message bubble."
+    },
+    {
+      "concern": "history",
+      "file": "src-ui/src/components/conversation/SharedTaskHistoryList.tsx",
+      "symbol": "SharedTaskHistoryList",
+      "reason": "P2.3 will adopt owner/guest/member record pagination.",
+      "planned": "P2.3"
+    },
+    {
+      "concern": "inbox",
+      "file": "src-ui/src/components/chat-dock/useInboxPanelController.ts",
+      "symbol": "useInboxPanelController",
+      "reason": "P2.4 will adopt both Inbox shells.",
+      "planned": "P2.4"
+    },
+    {
+      "concern": "failure",
+      "file": "src-ui/src/utils/stationFailure.ts",
+      "symbol": "describeStationFailure",
+      "reason": "Station-aware safe failure translator, composed with provider-domain translation."
+    },
+    {
+      "concern": "initialDraft",
+      "file": "src-ui/src/components/chat-start/StartComposer.tsx",
+      "symbol": "StartComposer",
+      "reason": "Distinct initial-draft owner; never a second reply composer."
+    }
+  ],
+  "surfaces": [
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "requires": ["body"],
+      "reason": "Dock shell resolves the owning connection before rendering."
+    },
+    {
+      "file": "src-ui/src/components/conversation/ConversationBody.tsx",
+      "requires": ["composer", "stop"],
+      "reason": "Shared transcript and composer composition."
+    },
+    {
+      "file": "src-ui/src/components/chat/ChatInputArea.tsx",
+      "requires": ["stop"],
+      "reason": "Shared reply composer, including keyboard and IME behavior."
+    },
+    {
+      "file": "src-ui/src/components/chat/ChatMessageList.tsx",
+      "requires": ["approval"],
+      "reason": "Shared transcript approval answering."
+    },
+    {
+      "file": "src-ui/src/components/chat/MessageBubble.tsx",
+      "requires": ["delivery"],
+      "reason": "User bubble owns the shared delivery note."
+    },
+    {
+      "file": "src-ui/src/components/home/HomeStartComposer.tsx",
+      "requires": ["initialDraft"],
+      "reason": "Home initial draft adapter."
+    },
+    {
+      "file": "src-ui/src/components/modals/NewChatModal.tsx",
+      "requires": ["initialDraft"],
+      "reason": "Target-aware ordinary New Chat adapter."
+    },
+    {
+      "file": "src-ui/src/hooks/useToolApproval.ts",
+      "requires": ["approval"],
+      "reason": "Compatibility adapter delegates to the shared answer owner."
+    },
+    {
+      "file": "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
+      "requires": ["body"],
+      "reason": "P2.1 Activity conversation adoption."
+    },
+    {
+      "file": "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",
+      "requires": ["body"],
+      "reason": "P2.1 attached conversation and read-only continuation adapter."
+    },
+    {
+      "file": "src-ui/src/components/session-detail/SessionReplyComposer.tsx",
+      "requires": ["composer"],
+      "reason": "P2.1 retired reply composer."
+    },
+    {
+      "file": "src-ui/src/components/session-detail/SessionTranscript.tsx",
+      "requires": ["body"],
+      "reason": "P2.1 retired transcript stack."
+    },
+    {
+      "file": "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
+      "requires": ["composer", "delivery"],
+      "reason": "P2.2 child instruction adapter."
+    },
+    {
+      "file": "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
+      "requires": ["stop", "approval"],
+      "reason": "P2.2 review work controls."
+    },
+    {
+      "file": "src-ui/src/components/chat/QueuedMessages.tsx",
+      "requires": ["delivery"],
+      "reason": "P2.2 held message actions."
+    },
+    {
+      "file": "src-ui/src/components/chat/UnsentMessages.tsx",
+      "requires": ["delivery"],
+      "reason": "P2.2 unsent message actions."
+    },
+    {
+      "file": "src-ui/src/components/chat/OutboundQueuedMessages.tsx",
+      "requires": ["delivery"],
+      "reason": "P2.2 durable outbox actions."
+    },
+    {
+      "file": "src-ui/src/components/attention/ExactRequestInline.tsx",
+      "requires": ["approval"],
+      "reason": "P2.2 exact request controls."
+    },
+    {
+      "file": "src-ui/src/components/attention/AttentionCard.tsx",
+      "requires": ["approval"],
+      "reason": "P2.2 attention answer controls."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+      "requires": ["history", "stop"],
+      "reason": "P2.2/P2.3 whole-Task and history adapters."
+    },
+    {
+      "file": "src-ui/src/views/account/GuestSharedTaskView.tsx",
+      "requires": ["history"],
+      "reason": "P2.3 read-only guest task adapter."
+    },
+    {
+      "file": "src-ui/src/views/project-page/MemberProjectPage.tsx",
+      "requires": ["history"],
+      "reason": "P2.3 authorized member history adapter."
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx",
+      "requires": ["inbox"],
+      "reason": "P2.4 desktop Inbox adapter."
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
+      "requires": ["inbox"],
+      "reason": "P2.4 mobile Inbox adapter."
+    },
+    {
+      "file": "src-ui/src/views/SessionsView.tsx",
+      "requires": ["stop"],
+      "reason": "P2.1/P2.2 Activity work controls."
+    },
+    {
+      "file": "src-ui/src/components/acp-connections/ACPChatPanel.tsx",
+      "requires": ["body"],
+      "reason": "P2.6 remaining ACP conversation surface adoption."
+    },
+    {
+      "file": "src-ui/src/components/attention/NeedsInputReply.tsx",
+      "requires": ["composer"],
+      "reason": "P2.2 exact needs-input reply adapter."
+    },
+    {
+      "file": "src-ui/src/components/attention/RequestInspectionDialog.tsx",
+      "requires": ["approval"],
+      "reason": "P2.2 request inspection answer adapter."
+    },
+    {
+      "file": "src-ui/src/components/chat/InputRequestRequest.tsx",
+      "requires": ["approval"],
+      "reason": "P2.2 exact input-request answer primitive."
+    },
+    {
+      "file": "src-ui/src/views/task-workspace/TaskSupervisionPanel.tsx",
+      "requires": ["stop"],
+      "reason": "P2.2 whole-Task supervision adapter."
+    },
+    {
+      "file": "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx",
+      "requires": ["stop"],
+      "reason": "P2.2 child whole-Task stop adapter."
+    },
+    {
+      "file": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+      "requires": ["failure"],
+      "reason": "The durable-send controller consumes the shared Station failure translator."
+    },
+    {
+      "file": "src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx",
+      "requires": ["failure"],
+      "reason": "Shared delivery actions translate their failures through the same owner."
+    }
+  ],
+  "modules": [
+    "src-ui/src/components/conversation/ConversationConnectionContext.tsx",
+    "src-ui/src/components/conversation/conversation-transport.ts",
+    "src-ui/src/components/chat-dock/useDockDeliveryPort.ts",
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+    "src-ui/src/hooks/useMutableSessionDetailState.ts",
+    "src-ui/src/hooks/orchestration/answerRequest.ts",
+    "src-ui/src/hooks/orchestration/useActiveChatTranscript.ts",
+    "src-ui/src/components/chat/ComposerStopButton.tsx",
+    "src-ui/src/components/chat/InputRequestCard.tsx",
+    "src-ui/src/components/chat-dock/DockStartComposer.tsx",
+    "src-ui/src/components/skill-experiences/RichExperiencePane.tsx",
+    "src-ui/src/lib/foregroundMessageDispatch.ts",
+    "src-ui/src/hooks/orchestration/queueDrain.ts",
+    "src-ui/src/hooks/useChatInput.ts",
+    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
+    "src-ui/src/hooks/useConversationInbox.ts",
+    "src-ui/src/hooks/useConversationStartTarget.ts",
+    "src-ui/src/hooks/orchestration/approvalHandlers.ts"
+  ],
+  "contracts": [
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "G1",
+      "symbols": ["useApiBase", "useHostRequestAuthorityScope"],
+      "reason": "Host-shell composition fallback only; a resolved Station supplies explicit target context."
+    },
+    {
+      "file": "src-ui/src/components/conversation/ConversationBody.tsx",
+      "rule": "G1",
+      "symbols": ["useAgents"],
+      "reason": "Transitional host catalog fallback only when no Station exists; resolved targets use useAgentsQuery with scoped readTarget. P2.6 removes transitional callers."
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/DockStartComposer.tsx",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "reason": "Initial-draft host-shell composition, before a conversation is created."
+    },
+    {
+      "file": "src-ui/src/components/conversation/conversation-transport.ts",
+      "rule": "G2",
+      "symbols": [
+        "sendExecutionMessageWithInventory",
+        "interruptTurn",
+        "answerRequest"
+      ],
+      "reason": "Designated explicit Station transport adapter; capability/currentness checked at the connection seam."
+    },
+    {
+      "file": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+      "rule": "G2",
+      "symbols": ["sendExecutionMessageWithInventory", "sendExecutionMessage"],
+      "reason": "Dock durable-send transport adapter; owns keyed dispatch and failure observation."
+    },
+    {
+      "file": "src-ui/src/hooks/orchestration/answerRequest.ts",
+      "rule": "G2",
+      "symbols": ["answerRequest", "respondToRequest"],
+      "reason": "Exact request/proof transport boundary, consumed by the shared answering hook."
+    },
+    {
+      "file": "src-ui/src/components/conversation/useApprovalAnswering.ts",
+      "rule": "G2",
+      "symbols": ["submitToolApproval"],
+      "reason": "Shared provider-specific approval transport fallback."
+    },
+    {
+      "file": "src-ui/src/components/chat/ComposerStopButton.tsx",
+      "rule": "G2",
+      "symbols": ["Stop control"],
+      "reason": "Existing presentational leaf used by ConversationStopControl; owns no mutation policy."
+    },
+    {
+      "file": "src-ui/src/components/chat/InputRequestCard.tsx",
+      "rule": "G2",
+      "symbols": ["reply textarea"],
+      "reason": "Input-question primitive, not a conversation reply editor."
+    },
+    {
+      "file": "src-ui/src/components/home/HomeStartComposer.tsx",
+      "rule": "G1",
+      "symbols": ["useAgents"],
+      "reason": "Initial-draft host-shell catalog before any conversation exists."
+    },
+    {
+      "file": "src-ui/src/components/modals/NewChatModal.tsx",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "reason": "Initial-draft host-shell scope before target selection; conversation starts resolve their explicit Station."
+    },
+    {
+      "file": "src-ui/src/components/conversation/conversation-transport.ts",
+      "rule": "G2",
+      "symbols": ["respondToRequest"],
+      "reason": "Designated connection-bound request answer transport."
+    },
+    {
+      "file": "src-ui/src/components/conversation/useApprovalAnswering.ts",
+      "rule": "G2",
+      "symbols": ["answerOrchestrationRequest"],
+      "reason": "Shared exact-proof answering adapter."
+    },
+    {
+      "file": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+      "rule": "G2",
+      "symbols": ["interruptOrchestrationTurn"],
+      "reason": "Dock keyed-turn transport adapter; turn coordinates captured from the owning chat."
+    },
+    {
+      "file": "src-ui/src/lib/foregroundMessageDispatch.ts",
+      "rule": "G2",
+      "symbols": ["sendExecutionMessage"],
+      "reason": "Durable foreground transport invoked by the owning send controller."
+    },
+    {
+      "file": "src-ui/src/hooks/orchestration/queueDrain.ts",
+      "rule": "G2",
+      "symbols": ["interruptOrchestrationTurn"],
+      "reason": "Queue transport adapter captures the owning Station for steering."
+    },
+    {
+      "file": "src-ui/src/components/skill-experiences/RichExperiencePane.tsx",
+      "rule": "G1",
+      "symbols": ["useHostRequestAuthorityScope"],
+      "reason": "Skill-experience runtime is an explicit host boundary; not a conversation surface."
+    },
+    {
+      "file": "src-ui/src/components/skill-experiences/RichExperiencePane.tsx",
+      "rule": "G2",
+      "symbols": ["respondToRequest"],
+      "reason": "Skill-experience exact invocation adapter, independent of chat approval rendering."
+    },
+    {
+      "file": "src-ui/src/hooks/useConversationInbox.ts",
+      "rule": "G2",
+      "symbols": ["transcript polling"],
+      "fingerprints": ["e2bc849f806bce4a63d3"],
+      "reason": "This exact query reads non-transcript Inbox delivery entries. New transcript polling in the same file remains forbidden."
+    }
+  ]
+}
