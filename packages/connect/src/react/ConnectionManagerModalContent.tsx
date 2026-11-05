@@ -599,6 +599,8 @@ export function ConnectionManagerModalContent({
     .filter(
       (pending): pending is PendingPairingExchange =>
         pending !== null &&
+        // A held attempt is past approval; its row shows the access remedy.
+        !pending.exchangeAttempt &&
         typeof pending.targetConnectionId === 'string' &&
         typeof pending.targetConnectionLabel === 'string',
     )

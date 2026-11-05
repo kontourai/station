@@ -892,7 +892,7 @@ export function ConnectionListPanel({
               onClick={onDiscover}
               className="station-connect-btn station-connect-btn--secondary"
             >
-              Find other Stations
+              Find nearby Stations
             </button>
           )}
         </section>

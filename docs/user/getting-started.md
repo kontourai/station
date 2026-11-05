@@ -133,17 +133,18 @@ configured. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
 nearby** on the computer, then choose **Find nearby Stations** on the native phone
-app. Discovery is off by default and shows names and local addresses without
+app (on the welcome screen it is under **More connection options**). Discovery is off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
 versions before Android 14 offer QR and manual address entry instead. Browser
-clients do not browse the local network. **Other ways to connect** expands to **Open connection manager**, where you can
-enter an address when discovery is unavailable or finds nothing.
+clients do not browse the local network. Choose **Enter Station address** to
+type an address when discovery is unavailable or finds nothing.
 
 If an exchange loses its response or cannot save approved access, Station holds
-the attempt instead of sending the one-time proof again. Check paired devices on
-the computer and revoke any unintended access before retiring the held request
-and creating a fresh invitation.
+the attempt instead of sending the one-time proof again. Choose **Pair again** to
+send a fresh request; approving it replaces any access the held attempt left
+behind, so you don't need to revoke anything on the computer first. For a
+pairing code, create a new code on the computer.
 
 A new phone shows the connection welcome until you save a real Station.
 A saved Station that is offline or needs access keeps its connection recovery

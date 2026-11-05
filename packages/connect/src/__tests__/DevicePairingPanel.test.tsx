@@ -2271,6 +2271,69 @@ describe('device pairing panels', () => {
     view.unmount();
   });
 
+  test('Pair again recovers an unsaved approval with a fresh request, without revoking on the computer', async () => {
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
+    let saves = 0;
+    let requests = 0;
+    // A real Station issues a new request id per request; reusing one would
+    // (correctly) read as the already-spent request.
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) => {
+        if (String(input).endsWith('/exchange')) return PAIRED_RESPONSE();
+        requests += 1;
+        return response(
+          {
+            environmentId: 'environment-direct',
+            offerId: `offer-${requests}`,
+            proof: `proof-${requests}`,
+            requestId: `request-${requests}`,
+            expiresAt: Date.now() + 300_000,
+          },
+          202,
+        );
+      });
+    const onPaired = vi.fn(() => {
+      saves += 1;
+      if (saves === 1) throw new Error('storage unavailable');
+    });
+    const { view } = renderDirectJoin(onPaired);
+    await tick(600);
+    await tick(600);
+    expect(screen.getByText('Pairing outcome needs review')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/revoke (that|any) access/);
+    const requestsBefore = fetchSpy.mock.calls.filter(
+      ([input]) => !String(input).endsWith('/exchange'),
+    ).length;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pair again' }));
+    await tick(600);
+    await tick(600);
+
+    // A fresh request went out (the same client instance, so the Station's
+    // approval supersedes the unsaved grant) and this time it was saved.
+    expect(
+      fetchSpy.mock.calls.filter(
+        ([input]) => !String(input).endsWith('/exchange'),
+      ).length,
+    ).toBe(requestsBefore + 1);
+    const bodies = fetchSpy.mock.calls
+      .filter(([input]) => !String(input).endsWith('/exchange'))
+      .map(([, init]) => JSON.parse(String(init?.body)).clientInstanceId);
+    expect(new Set(bodies).size).toBe(1);
+    expect(onPaired).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Pairing outcome needs review')).toBeNull();
+    view.unmount();
+  });
+
   test('still fails loudly on a malformed success response', async () => {
     vi.useFakeTimers({
       toFake: [
@@ -2635,7 +2698,7 @@ describe('device pairing panels', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'The server address is not valid.',
+      'Enter a Station address, like https://station.example.ts.net.',
     );
     // Nothing was contacted, so nothing may be claimed about a Station.
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -2646,6 +2709,10 @@ describe('device pairing panels', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
     const address = screen.getByLabelText('Station server address');
     const hint = /Messages sent this way are not encrypted/i;
+    // Connect stays disabled until both fields are filled.
+    fireEvent.change(screen.getByLabelText('Pairing code'), {
+      target: { value: 'PAIRME2345' },
+    });
 
     fireEvent.change(address, { target: { value: 'http://192.168.1.9:3141' } });
     expect(await screen.findByText(hint)).toBeTruthy();
@@ -3960,5 +4027,40 @@ test('a pairing code connects, and an approval wait stays in place while the cal
   } finally {
     fetchMock.mockRestore();
     globalThis.localStorage.clear();
+  }
+});
+
+test('a pairing code needs both fields, submits on Return, and names a bad address on that field', async () => {
+  const fetchSpy = vi.spyOn(globalThis, 'fetch');
+  try {
+    render(
+      <JoinDevicePairingPanel
+        initialMode="manual"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const connect = screen.getByRole('button', { name: 'Connect' });
+    expect(connect.hasAttribute('disabled')).toBe(true);
+    const address = screen.getByLabelText('Station server address');
+    // URL keyboard without autocapitalize/autocorrect on a phone.
+    expect(address.getAttribute('inputmode')).toBe('url');
+    expect(address.getAttribute('autocapitalize')).toBe('none');
+    expect(address.getAttribute('autocorrect')).toBe('off');
+    fireEvent.change(address, { target: { value: 'https://exa mple' } });
+    expect(connect.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(screen.getByLabelText('Pairing code'), {
+      target: { value: 'PAIRME2345' },
+    });
+    expect(connect.hasAttribute('disabled')).toBe(false);
+
+    fireEvent.submit(address.closest('form')!);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/Enter a Station address/);
+    expect(address.getAttribute('aria-invalid')).toBe('true');
+    expect(address.getAttribute('aria-describedby')).toBe(alert.id);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  } finally {
+    fetchSpy.mockRestore();
   }
 });

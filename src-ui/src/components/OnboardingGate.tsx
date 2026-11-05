@@ -509,7 +509,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     // one twice over here, since the sentence before it had just named the
     // Station. Naming it again is what the map does.
     if (effectivePendingExchange?.exchangeAttempt)
-      return `Pairing with ${serverLabel} may have granted access without saving it, and won’t be retried. On that computer, revoke that access, then start again.`;
+      return `Access to ${serverLabel} wasn’t saved here. Pair again to replace it.`;
     const waitMessage = waitingForTransport
       ? `Waiting to reach ${serverLabel} again. The request stays open.`
       : pairingStateCopy(
@@ -540,7 +540,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       actions: [
         {
           label: effectivePendingExchange?.exchangeAttempt
-            ? 'Review connection'
+            ? 'Pair again'
             : 'Cancel request',
           variant: 'secondary',
           onClick: () => {

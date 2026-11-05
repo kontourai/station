@@ -20,6 +20,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -200,6 +201,20 @@ function CopyCommandButton({
   );
 }
 
+/** A Station address is a URL: URL keyboard, no autocapitalize or autocorrect. */
+/** The inline button styles carry no disabled look; a disabled action must read as one. */
+const DISABLED_BTN_STYLE = { opacity: 0.45, cursor: 'not-allowed' } as const;
+
+// `inputMode`, not `type="url"`: a bare host such as `station.local` is a
+// valid entry that URL constraint validation would refuse.
+const STATION_ADDRESS_INPUT_PROPS = {
+  inputMode: 'url',
+  autoCapitalize: 'none',
+  autoCorrect: 'off',
+  autoComplete: 'url',
+  spellCheck: false,
+} as const;
+
 export function JoinDevicePairingPanel({
   onPaired,
   onCancel,
@@ -357,6 +372,11 @@ export function JoinDevicePairingPanel({
     return () => clearInterval(timer);
   }, [pending]);
   const [error, setError] = useState<string | null>(null);
+  // Guidance after a recovery step; not a failure, so not the error box.
+  const [notice, setNotice] = useState<string | null>(null);
+  // An address the panel itself refused, shown on that field.
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const addressErrorId = useId();
   const [requestingAccess, setRequestingAccess] = useState(false);
   const requestInFlight = useRef(false);
   // Set while the exchange is retrying something worth waiting out, so the
@@ -537,6 +557,7 @@ export function JoinDevicePairingPanel({
       return;
     }
     setError(null);
+    setNotice(null);
     setWaitingOnConnection(false);
     try {
       const request = await requestDevicePairing({
@@ -574,6 +595,8 @@ export function JoinDevicePairingPanel({
   const beginManual = async () => {
     if (!httpConsent.allowed) return;
     setError(null);
+    setNotice(null);
+    setAddressError(null);
     setWaitingOnConnection(false);
     let endpoint: string;
     try {
@@ -583,7 +606,9 @@ export function JoinDevicePairingPanel({
       // it can honestly claim. Everything the host itself refuses is named by
       // `describePairingRequestFailure` below, instead of being blamed on an
       // address that was fine.
-      setError('The server address is not valid.');
+      setAddressError(
+        'Enter a Station address, like https://station.example.ts.net.',
+      );
       return;
     }
     try {
@@ -658,11 +683,17 @@ export function JoinDevicePairingPanel({
         : manualEndpoint),
   );
 
+  const manualReady =
+    httpConsent.allowed &&
+    manualEndpoint.trim().length > 0 &&
+    manualCode.trim().length > 0;
+
   const beginDirect = async () => {
     if (requestInFlight.current || !httpConsent.allowed) return;
     requestInFlight.current = true;
     setRequestingAccess(true);
     setError(null);
+    setNotice(null);
     setWaitingOnConnection(false);
     try {
       // When the page was served by a Station, the origin is the host itself
@@ -760,25 +791,28 @@ export function JoinDevicePairingPanel({
     }
   };
 
-  if (pending?.exchangeAttempt)
+  if (pending?.exchangeAttempt) {
+    const heldLabel =
+      directLabel || pending.targetConnectionLabel || 'The Station';
     return (
       <div className="pairing-wait" role="alert">
         <strong>Pairing outcome needs review</strong>
         <p>
-          Station may have approved this device, but the reply could not be
-          saved. This request will not be sent again automatically.
+          {heldLabel} may have approved this device, but this device could not
+          save that access. It will not be sent again automatically.
         </p>
         <p>
-          On the computer running Station, review paired devices and revoke any
-          access from this attempt before starting again. Closing this screen
-          keeps the request for review.
+          Pair again to send a new request. Once it is approved, it replaces the
+          unsaved access; you do not need to revoke anything on the computer
+          first.
         </p>
-        <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
-          Close
-        </button>
         <button
           type="button"
           onClick={() => {
+            // The held request keeps a spent proof from being replayed; only
+            // this explicit action retires it. The new request carries this
+            // origin's stable client instance id, so the Station supersedes
+            // any grant the unsaved attempt left behind when it approves.
             void retirePendingExchangeAfterReview(pending).then((retired) => {
               if (!retired) {
                 setError(
@@ -787,17 +821,27 @@ export function JoinDevicePairingPanel({
                 return;
               }
               setPending(null);
-              setError(
-                'The local request was retired. This did not revoke access on the computer. Use a fresh invitation after reviewing paired devices.',
+              setError(null);
+              if (pending.requestKind === 'direct' && mode === 'direct') {
+                void beginDirect();
+                return;
+              }
+              setNotice(
+                `Create a new pairing code on ${heldLabel === 'The Station' ? 'the Station' : heldLabel}, then enter it here. Approving it replaces the unsaved access.`,
               );
             });
           }}
-          style={secondaryBtnStyle}
+          style={primaryBtnStyle}
         >
-          I reviewed access on the computer — start again
+          Pair again
         </button>
+        <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
+          Close
+        </button>
+        {error && <p className="pairing-error">{error}</p>}
       </div>
     );
+  }
 
   if (pending) {
     const pendingLabel = directLabel || pending.targetConnectionLabel;
@@ -959,6 +1003,11 @@ export function JoinDevicePairingPanel({
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      {notice && (
+        <p role="status" style={{ margin: 0, fontSize: 13, lineHeight: 1.45 }}>
+          {notice}
+        </p>
+      )}
       <label style={{ display: 'grid', gap: 6, fontSize: 12 }}>
         Device name
         <input
@@ -1017,13 +1066,17 @@ export function JoinDevicePairingPanel({
               ? `Ask to connect to ${directLabel}. Approve this device on that computer.`
               : originIsStation
                 ? 'Ask to connect. Approve this device on the computer running Station.'
-                : 'Enter the address of the computer running Station, then request access.'}
+                : 'Enter the address of the computer running Station, then request access.'}{' '}
+            {/* The approver reads this same level ("asks for full device
+                access"); say it here too, rather than leave it unchosen. */}
+            {accountBoundDeviceRequest
+              ? 'It asks for Standard access; whoever approves it decides.'
+              : 'It asks for full device access; whoever approves it can limit that.'}
           </p>
           {!knowsEndpoint && (
             <input
               aria-label="Station server address"
-              inputMode="url"
-              autoCapitalize="none"
+              {...STATION_ADDRESS_INPUT_PROPS}
               placeholder="https://station.example.ts.net"
               value={manualEndpoint}
               onChange={(event) => setManualEndpoint(event.target.value)}
@@ -1047,7 +1100,11 @@ export function JoinDevicePairingPanel({
             type="button"
             onClick={beginDirect}
             disabled={requestingAccess || !httpConsent.allowed}
-            style={primaryBtnStyle}
+            style={
+              requestingAccess || !httpConsent.allowed
+                ? { ...primaryBtnStyle, ...DISABLED_BTN_STYLE }
+                : primaryBtnStyle
+            }
           >
             {requestingAccess
               ? 'Sending request…'
@@ -1090,7 +1147,15 @@ export function JoinDevicePairingPanel({
           />
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: 8 }}>
+        <form
+          noValidate
+          style={{ display: 'grid', gap: 8 }}
+          onSubmit={(event) => {
+            // Return in either field submits, like Connect.
+            event.preventDefault();
+            if (manualReady) void beginManual();
+          }}
+        >
           <button
             type="button"
             onClick={pastePairingPayload}
@@ -1100,37 +1165,63 @@ export function JoinDevicePairingPanel({
           </button>
           <input
             aria-label="Station server address"
-            inputMode="url"
-            autoCapitalize="none"
+            {...STATION_ADDRESS_INPUT_PROPS}
+            enterKeyHint="next"
             placeholder="https://station.example.ts.net"
             value={manualEndpoint}
-            onChange={(event) => setManualEndpoint(event.target.value)}
+            aria-invalid={addressError ? true : undefined}
+            aria-describedby={addressError ? addressErrorId : undefined}
+            onChange={(event) => {
+              setManualEndpoint(event.target.value);
+              setAddressError(null);
+            }}
             style={inputStyle}
           />
+          {addressError && (
+            <p
+              id={addressErrorId}
+              className="pairing-error"
+              role="alert"
+              style={{ margin: 0 }}
+            >
+              {addressError}
+            </p>
+          )}
           <HttpConnectionConsent consent={httpConsent} />
           <input
             aria-label="Pairing code"
             autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
             autoComplete="one-time-code"
+            enterKeyHint="go"
             placeholder="10-character code"
             value={manualCode}
             onChange={(event) => setManualCode(event.target.value)}
             style={inputStyle}
           />
+          {error && (
+            <div className="pairing-error" role="alert">
+              {error}
+            </div>
+          )}
           <button
-            type="button"
-            onClick={beginManual}
-            disabled={!httpConsent.allowed}
-            style={primaryBtnStyle}
+            type="submit"
+            disabled={!manualReady}
+            style={
+              manualReady
+                ? primaryBtnStyle
+                : { ...primaryBtnStyle, ...DISABLED_BTN_STYLE }
+            }
           >
             Connect
           </button>
           <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
             Back
           </button>
-        </div>
+        </form>
       )}
-      {error && mode !== 'direct' && (
+      {error && mode === 'scan' && (
         <div className="pairing-error" role="alert">
           {error}
         </div>
