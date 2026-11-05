@@ -1,7 +1,7 @@
 import {
   type ManagedPolicyStatus,
   parseManagedPolicyStatus,
-} from '@kontourai/station-contracts/managed-policy';
+} from '@kontourai/station-contracts/managed-policy-status';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
 import { type QueryConfig, resolveApiBase, useApiQuery } from '../query-core';
