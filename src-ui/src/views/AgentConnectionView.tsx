@@ -691,15 +691,18 @@ export function AgentConnectionView({
                 }
               />
             )}
-            {providerPresentation?.readiness !== 'Ready' && (
-              <ConnectionReadinessNotice
-                readiness={providerPresentation?.readiness ?? ''}
-                detail={providerPresentation?.detail ?? ''}
-                kind="agent"
-                prerequisites={form.prerequisites}
-                devicePresentation={devicePresentation}
-              />
-            )}
+            {/* #4520: a policy-disallowed engine is explained by the managed
+                notice; "turn this on" would offer a fix the policy refuses. */}
+            {providerPresentation?.readiness !== 'Ready' &&
+              !selectedManagedState?.disallowed && (
+                <ConnectionReadinessNotice
+                  readiness={providerPresentation?.readiness ?? ''}
+                  detail={providerPresentation?.detail ?? ''}
+                  kind="agent"
+                  prerequisites={form.prerequisites}
+                  devicePresentation={devicePresentation}
+                />
+              )}
 
             <div className="editor-field">
               <label className="editor-label" htmlFor="agent-default-model">

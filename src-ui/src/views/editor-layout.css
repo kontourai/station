@@ -1369,3 +1369,12 @@
 .managed-engine-notice .editor-help {
   margin: 0;
 }
+
+.managed-engine-notice__help {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 44px;
+  color: var(--k-action);
+  font-size: var(--k-text-sm);
+}
