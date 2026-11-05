@@ -210,7 +210,10 @@ export async function authenticateEnsembleSessionGroup(
     selection.checkedAt = observation.checkedAt;
     selection.nativeContinuation = continuation;
   };
-  for (const selection of selections) await observe(selection);
+  // A refusal must not leave another member's native probe running.
+  const observations = await Promise.allSettled(selections.map(observe));
+  for (const observation of observations)
+    if (observation.status === 'rejected') throw observation.reason;
   for (const selection of selections) {
     assertSelection(selection);
     selection.nativeContinuation?.assertCurrent();

@@ -529,27 +529,26 @@ async function fixture(
 async function authenticateFixture(
   f: Awaited<ReturnType<typeof fixture>>,
   signal = new AbortController().signal,
+  seats: readonly string[] = ['lead'],
 ) {
   return authenticateEnsembleSessionGroup(
     {
       groupId: 'native-spawn',
       intentDigest: 'native-intent',
       signal,
-      members: [
-        {
-          seatId: 'lead',
-          target: {
-            agent: agentId('coordinator'),
-            environment: { kind: 'current' },
-            expectedEngine: {
-              kind: 'connection',
-              connectionId: engineConnectionId(f.engine),
-            },
-            workspace: { kind: 'project', projectSlug: 'project' },
-            model: { override: f.preset.members[0].model, options: {} },
+      members: seats.map((seatId) => ({
+        seatId,
+        target: {
+          agent: agentId('coordinator'),
+          environment: { kind: 'current' },
+          expectedEngine: {
+            kind: 'connection',
+            connectionId: engineConnectionId(f.engine),
           },
+          workspace: { kind: 'project', projectSlug: 'project' },
+          model: { override: f.preset.members[0].model, options: {} },
         },
-      ],
+      })),
     },
     f.inventory,
     'fixture-principal',
@@ -558,6 +557,92 @@ async function authenticateFixture(
 }
 
 describe('production Ensemble preparation authentication', () => {
+  test.each(['authenticated', 'one-signed-out'] as const)(
+    'roster probes overlap and drain before returning %s',
+    async (outcome) => {
+      const f = await fixture('codex');
+      const held: Array<() => void> = [];
+      let released = false;
+      let statusCount = 0;
+      execFile.mockImplementation((_command, args, _options, callback) => {
+        if (args[0] === '--version') {
+          callback(null, { stdout: '99.0.0', stderr: '' });
+          return;
+        }
+        if (!args.includes('status'))
+          throw new Error('Unexpected authentication command');
+        const index = statusCount++;
+        const reply = () =>
+          callback(null, {
+            stdout:
+              outcome === 'one-signed-out' && index === 0
+                ? 'Not logged in'
+                : 'Logged in using ChatGPT',
+            stderr: '',
+          });
+        if (released) reply();
+        else held.push(reply);
+      });
+      let firstReturned: () => void = () => {};
+      const firstObservation = new Promise<void>((resolve) => {
+        firstReturned = resolve;
+      });
+      const observations: Promise<unknown>[] = [];
+      const observe = f.adapter.observeExecutionAuthentication.bind(f.adapter);
+      vi.spyOn(f.adapter, 'observeExecutionAuthentication').mockImplementation(
+        (input) => {
+          const read = observe(input).finally(firstReturned);
+          observations.push(read);
+          return read;
+        },
+      );
+      let helperSettled = false;
+      const settled = authenticateFixture(f, new AbortController().signal, [
+        'lead',
+        'check',
+        'join',
+      ]).then(
+        (value) => {
+          helperSettled = true;
+          return { status: 'fulfilled' as const, value };
+        },
+        (reason: unknown) => {
+          helperSettled = true;
+          return { status: 'rejected' as const, reason };
+        },
+      );
+      let completed: Awaited<typeof settled>;
+      try {
+        await vi.waitFor(() => expect(held).toHaveLength(3), {
+          timeout: 3_000,
+        });
+        if (outcome === 'one-signed-out') {
+          const first = held.shift();
+          if (!first) throw new Error('Missing first authentication gate');
+          first();
+          await firstObservation;
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          expect(helperSettled).toBe(false);
+        }
+      } finally {
+        released = true;
+        for (const reply of held.splice(0)) reply();
+        completed = await settled;
+        await Promise.allSettled(observations);
+      }
+      expect(completed).toMatchObject(
+        outcome === 'authenticated'
+          ? { status: 'fulfilled' }
+          : {
+              status: 'rejected',
+              reason: { code: 'ensemble_auth_unverified' },
+            },
+      );
+      expect(statusCount).toBe(3);
+      expect(nativeSpawn).not.toHaveBeenCalled();
+      f.assertNoInvocations();
+    },
+  );
   test.each([
     ['inactive', false],
     ['selected', true],

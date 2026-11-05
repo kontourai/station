@@ -3126,8 +3126,10 @@ Observations are private to that supervision run and bound to the persisted
 intent. Configuration/permission currency is rechecked at dispatch and the
 session/initial-turn effect boundaries. Each pending member gets a fresh login
 observation immediately before its start reservation; concurrent preparation
-shares that probe. The closing native-launch fence still requires an observation
-less than 30 seconds old. Slow dispatch preparation can still refuse rather than
+shares that probe. Independent native status probes overlap only after the whole roster's receiver
+support has been established. The request waits for every probe to settle,
+including when a member refuses, so no probe outlives its request. The closing
+native-launch fence still requires an observation less than 30 seconds old. Slow dispatch preparation can still refuse rather than
 extend that window. A changed binding refuses rather than rebinds. Cancel/deadline abort the bounded login
 commands. Completed replay and zero-allowance groups need no new login probes.
 A later per-seat login refusal remains a bounded `dispatchFailure` on the pending
