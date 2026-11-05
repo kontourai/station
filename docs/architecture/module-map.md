@@ -5395,8 +5395,7 @@ bounded-body replacement. ACP remains unavailable without independent binding.
 Control operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.
-Host exit/restart produces `needs-reopen` (as does a key that may be stuck on
-the page: endReason `input-stuck`), and old-generation live surfaces are
+Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
 unregistered. Idle host shutdown runs after its last live target closes,
 not merely when nobody watches.
 `browser-live-surfaces.ts` also owns per-generation page tools: a JavaScript
@@ -5462,47 +5461,8 @@ extends only their own current hold at the current epoch, never claims, and
 is capped by `maxHumanHoldMs` from their last real input. Epoch identifies
 controller succession;
 the separate fence changes on release/expiry as well, so reclaiming cannot
-resurrect old work. Each frames stream opened with `epochCause=1` is issued an
-unguessable `viewerId`, told only to that stream; a replacement stream (new
-stream params, a reconnect) presents it and stays that viewer. Claims, input and
-`release-pressed` carry it, and the registry honours it only from the
-controller it was issued to. The lease records which viewer's handoff created
-the current epoch; each stream's state records and each answer carry only
-`epochCause` for that viewer (`self`, `other` or `agent`), with the lease read
-at the same snapshot, so no viewer ever learns another's id. A renewal by the
-controller already holding the lease (another tab of the same person and
-device) creates no epoch and changes no cause. An older viewer that does not
-ask sees neither key (`liveSurfaceEpochCause` capability). The registry
-serializes and fences input and is the one account of what each controller
-holds: a press counts from when it is sent, and a release only once the
-producer confirms it (one that fails or times out stays held, and is confirmed
-if it lands late). Producers keep the same rule: Browser and Device
-`cancelHeldInput` release the registry's supplied held set, forget a release
-only once it was delivered, try every release and fail if any did not go. It
-releases presses (never completing them) on handoff, on lapse to no holder,
-on the unfenced `release-pressed` lease action (only the caller's own
-presses, and only those its sender pressed in batches up to the
-`LiveSurfaceInputOrder` it names, so a retried or late request never releases
-a newer press), after a release the producer failed, and once the
-controller has had no open stream for a grace window (checked again when it
-ends), so a replacement stream releases nothing. One cleanup per surface does
-this, one attempt at a time on the input chain, retrying a failed cancel
-itself with a pause doubling from 200 ms to at most 5 s, whoever controls the
-surface by then; it waits out a wedge without holding the chain. While a
-release is owed, input is refused `release-pending` (after the epoch or fence
-check, so a controller that lost control is told that first), and
-`release-pressed` answers `release-pending` at once rather than queuing.
-After six failed attempts in a row (waiting out a wedge is not one) the
-surface is stuck: those refusals become `release-stuck`, opted-in viewers get
-`releaseStuck` in their state record, and the host's `onReleaseStuck` resets
-it (the Browser session stops for Reopen, the Device session ends for
-Reconnect). Presses still held when a surface is unregistered are carried to
-the next surface registered in the same `heldScope` (the reopened session,
-the device's next session), which releases them before taking input. The grace window is 2 s by default: measured, a
-stream reopened for new params attaches about 1 ms after the old one closes
-and a dropped connection reconnects in about 0.5 s; a longer window only
-keeps an abandoned press down longer. It marks a timed-out dispatch wedged
-until it settles.
+resurrect old work. The registry serializes and fences input, cancels held
+buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
 A producer may refuse an event for a reason the viewer can act on
 (`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
 page dialog waits for its person), which reaches the viewer as that code
@@ -5511,8 +5471,8 @@ input kind and type, bounded cause; never key or text) and reaches the viewer
 as `dispatch-failed`. The event that failed may already have applied, so the
 canvas says the input may not have reached the page and sends nothing again.
 Retry is offered only for a batch the host refused before dispatching any of it
-(`surface-busy`), kept whole as one gesture in the control lineage it was made
-in. The registry cannot cancel an arbitrary producer effect already in flight.
+(`surface-busy`), kept whole as one gesture with the control epoch it was made
+at, and dropped when control changes hands. The registry cannot cancel an arbitrary producer effect already in flight.
 
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the
@@ -5584,43 +5544,10 @@ set its fit aspect) and maps points back to it; the Device pane, its
 full-screen view and its float use one to draw a foldable's display. Such a
 host reads the surface's producer status through `onProducerStatus`, which
 keeps reporting in immersive mode, where `renderHeader` is not mounted. When the origin, surface ID or
-Project context changes, the viewer discards queued input, aborts its requests
-and ignores responses from the previous target. Within a target, every input
-item carries the control lineage it was created in (`useLiveSurface`'s
-`controlLineage`). It advances on every change of control except this viewer's
-own takeover: an epoch whose server-attested `epochCause` for this viewer is
-`self`. Another tab of the same person and device is a change of control.
-Requests name this viewer only while the stream that confirmed its id is open,
-and the host is asked which Station it is (`environmentId`) and whether it
-attests on every (re)connect: a different Station behind the same address
-resets the viewer. The published lease never moves back to an older snapshot. Queued input, a held-back press and a kept gesture are checked against
-it immediately before dispatch, a release goes out only in the lineage its press
-was sent in (otherwise the server already released it), and an answer for an
-ended lineage is ignored. Input and claim requests are bounded (10 s); after any
-completion the viewer reconciles to the newest lease its stream reported. The
-viewer asks the server to release its presses on blur, a hidden page and
-unmount, and after any batch whose effect is unknown (then even when it knows
-of no press; the server knows what is held). Each batch carries its place in
-the viewer's own input order (a sender id picked once and a `seq` counting
-up, only while a stream confirmed the viewer), and a release names the last
-`seq` sent, going only after the input queued ahead of it. Any answer hands the release to
-the server; only a request that got no answer is sent again, after its own
-pause (doubling to at most 5 s, never on a state record), while the view stays
-mounted on the same target and control. Each press carries its own
-generation, and an answer marks released only the generations it asked about,
-so a later press of the same key keeps its own release. Input refused
-`release-pending` before any of it was dispatched is kept for Retry, as when
-the host is busy; `release-stuck` (from a refusal or the state record) says a
-key may be stuck and to reload or reopen, and offers no Retry. Queued releases are never discarded, and a batch refused as
-stale only because of this viewer's own takeover goes again at the adopted
-epoch. A stream about
-to present an existing viewer id first asks which Station answers, and a
-connection reporting a lower epoch (a restarted Station) resets the viewer's
-epoch. Against a host without `liveSurfaceEpochCause`
-it sends none of these fields: an input answer that took exactly the next epoch
-is its own, a report naming this device waits for its own request, and the
-releases queued behind a lost answer still go. This does not yet bind the queue
-to a credential generation.
+Project context changes, the viewer discards queued input and ignores
+responses from the previous target. This does not yet bind the queue to a
+credential generation; [input safety](../plans/live-surface-input-safety.md)
+records the requirements for its redesign.
 Shown-source tracking avoids
 duplicating the same pane in its floater, but there is no single multiplexed
 frame transport across all visible viewers. The admission cap meets

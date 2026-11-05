@@ -131,8 +131,7 @@ automatically. Agents cannot answer a dialog that is waiting for you.
 Hiding or closing the pane does not stop the page; an Agent may keep working.
 Choose **⋯ → Close session** to stop it. If the browser or Station
 restarts, the session shows **needs reopen**; reopening starts a fresh browser
-for it. A key that may be stuck on the page (Station kept failing to release
-it) stops the session the same way; **Reopen** releases it first.
+for it.
 
 ## Troubleshooting
 
