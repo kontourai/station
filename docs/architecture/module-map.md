@@ -3208,7 +3208,8 @@ uses Corpus's revision-bound preview and purge, and records content-free intents
 in Monument before the effect. Cleanup is replayed on startup and reconciles
 tombstones after purge. A Station root lease fences Station-mediated rebuilds;
 an outside writer can race publication until [corpus#74](https://github.com/kontourai/corpus/issues/74).
-Search rechecks hits at delivery. This does not provide review or distillation.
+Search and private graph responses recheck records at delivery. This does not
+provide review or distillation.
 [Memory tests](../../src-server/knowledge-store/__tests__/memory-root.test.ts)
 and [route tests](../../src-server/routes/knowledge/__tests__/memory.routes.test.ts)
 exercise local fixtures; they do not qualify a live model provider.
