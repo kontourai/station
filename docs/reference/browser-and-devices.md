@@ -261,8 +261,14 @@ the chip opens **Hand back to agent** (**Release control** when no Agent has
 driven the session), which releases the lease explicitly and is recorded as
 `control-released`; an Agent may then claim at once instead of waiting for the
 person's hold to lapse. Closing the pane does not release the lease; it
-can lapse. A timeout or interrupted operation does not establish that an
-already-sent browser effect was undone.
+can lapse. What a person pressed (buttons, keys, touches) is released by
+Station, not completed: when control passes to someone else or lapses, when
+the viewer asks (blur, a hidden page, closing the pane, or an answer lost for
+a press), and when that person's last open view of the surface closes. A second
+tab of the same person on the same device shares that control; a tap made in
+one tab before the other took control is not sent into it. A timeout or
+interrupted operation does not establish that an already-sent browser effect
+was undone.
 
 **Let agents run JavaScript in this Project's pages** (**Settings → Advanced →
 Browser & devices**) is off by

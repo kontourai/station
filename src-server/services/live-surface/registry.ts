@@ -1,10 +1,12 @@
 import type {
   LiveSurfaceAction,
   LiveSurfaceController,
+  LiveSurfaceEpochCause,
   LiveSurfaceInput,
   LiveSurfaceInputResult,
   LiveSurfacePointerButton,
   LiveSurfacePointerType,
+  LiveSurfaceRequestId,
 } from '@kontourai/station-contracts/live-surface';
 import {
   type AgentController,
@@ -216,20 +218,30 @@ class PressedInput {
     return false;
   }
 
-  /** Everything held, then forget it; null when nothing is held. */
-  take(): LiveSurfaceHeldInput | null {
-    if (this.buttons.size === 0 && this.keys.size === 0) return null;
+  /**
+   * Everything held (or, given `controller`, only what that controller
+   * pressed), then forget it; null when nothing is held.
+   */
+  take(controller?: LiveSurfaceController): LiveSurfaceHeldInput | null {
+    const owner = controller ? controllerKey(controller) : null;
+    const buttons = [...this.buttons].filter(
+      ([, held]) => owner === null || held.owner === owner,
+    );
+    const keys = [...this.keys].filter(
+      ([, held]) => owner === null || held.owner === owner,
+    );
+    if (buttons.length === 0 && keys.length === 0) return null;
     const held: LiveSurfaceHeldInput = {
-      buttons: [...this.buttons.keys()],
-      keys: [...this.keys.values()].map(({ key, code }) => ({ key, code })),
+      buttons: buttons.map(([button]) => button),
+      keys: keys.map(([, { key, code }]) => ({ key, code })),
       pointer: { ...this.pointer },
       pointerType: this.pointerType,
       buttonPointerTypes: Object.fromEntries(
-        [...this.buttons].map(([button, held]) => [button, held.pointerType]),
+        buttons.map(([button, held]) => [button, held.pointerType]),
       ),
     };
-    this.buttons.clear();
-    this.keys.clear();
+    for (const [button] of buttons) this.buttons.delete(button);
+    for (const [id] of keys) this.keys.delete(id);
     return held;
   }
 }
@@ -282,6 +294,8 @@ interface EntryInternals {
   dispatchTimeoutMs: number;
   onError: (message: string, error: unknown) => void;
   onExplicitControl: NonNullable<LiveSurfaceRegistration['onExplicitControl']>;
+  /** Open viewer streams per human controller (for release on disconnect). */
+  viewers: Map<string, number>;
 }
 
 const internals = new WeakMap<LiveSurfaceEntry, EntryInternals>();
@@ -365,6 +379,7 @@ export class LiveSurfaceRegistry {
         this.options.dispatchTimeoutMs ?? DEFAULT_DISPATCH_TIMEOUT_MS,
       onError: this.options.hub?.onError ?? (() => {}),
       onExplicitControl: registration.onExplicitControl ?? (() => {}),
+      viewers: new Map(),
     };
     internals.set(entry, own);
     own.dispose = async () => {
@@ -523,11 +538,14 @@ function wedged(entry: LiveSurfaceEntry): LiveSurfaceInputResult | null {
  * out a wedge first so the cancel cannot overlap an orphaned dispatch, and
  * reads the held state only when it runs, after everything sent before it.
  */
-function cancelHeld(entry: LiveSurfaceEntry): void {
+function cancelHeld(
+  entry: LiveSurfaceEntry,
+  controller?: LiveSurfaceController,
+): void {
   const own = internalsOf(entry);
   void enqueue(entry, async () => {
     while (own.orphan) await own.orphan;
-    const held = own.pressed.take();
+    const held = own.pressed.take(controller);
     if (!held) return null;
     const producer = entry.producer;
     const outcomes = producer.cancelHeldInput
@@ -620,23 +638,78 @@ async function dispatchFenced(
  * Authorization is the caller's job (the route checks `input` and
  * `control` for the resolved human before calling this).
  */
-export function dispatchHumanInput(
+export async function dispatchHumanInput(
   entry: LiveSurfaceEntry,
   human: HumanController,
   observedEpoch: number,
   events: readonly LiveSurfaceInput[],
+  /** The batch's own id: the answer then says what caused its epoch. */
+  requestId?: LiveSurfaceRequestId,
 ): Promise<LiveSurfaceInputResult> {
+  const own = internalsOf(entry);
+  const withCause = (result: LiveSurfaceInputResult): LiveSurfaceInputResult =>
+    requestId === undefined
+      ? result
+      : { ...result, epochCause: own.lease.epochCause() };
   const unsupported = refuseUnsupported(entry, events) ?? wedged(entry);
-  if (unsupported) return Promise.resolve(unsupported);
-  const claim = internalsOf(entry).lease.claimForHumanInput(
-    human,
-    observedEpoch,
-  );
-  if (!claim.ok) return Promise.resolve({ ...claim, accepted: 0 });
+  if (unsupported) return withCause(unsupported);
+  const claim = own.lease.claimForHumanInput(human, observedEpoch, requestId);
+  if (!claim.ok) return withCause({ ...claim, accepted: 0 });
   const fence = claim.lease.fence ?? 0;
-  return enqueue(entry, () =>
-    dispatchFenced(entry, { ...human }, fence, events),
+  return withCause(
+    await enqueue(entry, () =>
+      dispatchFenced(entry, { ...human }, fence, events),
+    ),
   );
+}
+
+/**
+ * Release what this human controller has pressed on the surface, never
+ * completing it (#90 B). Fenced: only while `epoch` is current and the
+ * caller holds the lease; otherwise a handoff or lapse already released it.
+ */
+export function releaseHumanPressed(
+  entry: LiveSurfaceEntry,
+  human: HumanController,
+  epoch: number,
+): FencedLeaseResult {
+  const own = internalsOf(entry);
+  const lease = own.lease.snapshot();
+  if (lease.epoch !== epoch) return { ok: false, code: 'stale-epoch', lease };
+  if (
+    lease.holder?.kind !== 'human' ||
+    lease.holder.principal !== human.principal ||
+    (lease.holder.device ?? '') !== (human.device ?? '')
+  )
+    return { ok: false, code: 'not-holder', lease };
+  cancelHeld(entry, { ...human });
+  return { ok: true, lease };
+}
+
+/**
+ * A viewer stream for `human` opened; the returned function closes it.
+ * When a controller's last stream closes it can no longer see or release
+ * what it pressed, so the server releases it.
+ */
+export function attachHumanViewer(
+  entry: LiveSurfaceEntry,
+  human: HumanController,
+): () => void {
+  const own = internalsOf(entry);
+  const key = controllerKey({ ...human });
+  own.viewers.set(key, (own.viewers.get(key) ?? 0) + 1);
+  let closed = false;
+  return () => {
+    if (closed) return;
+    closed = true;
+    const left = (own.viewers.get(key) ?? 1) - 1;
+    if (left > 0) {
+      own.viewers.set(key, left);
+      return;
+    }
+    own.viewers.delete(key);
+    cancelHeld(entry, { ...human });
+  };
 }
 
 /** A listener's fault never changes the outcome of a control action. */
@@ -657,11 +730,15 @@ function notifyExplicit(
 export function claimHumanControl(
   entry: LiveSurfaceEntry,
   human: HumanController,
-): FencedLeaseResult {
+  /** The claim's own id: the answer then says what caused its epoch. */
+  requestId?: LiveSurfaceRequestId,
+): FencedLeaseResult & { epochCause?: LiveSurfaceEpochCause } {
   const own = internalsOf(entry);
-  const result = own.lease.claimHuman(human);
+  const result = own.lease.claimHuman(human, requestId);
   if (result.ok) notifyExplicit(own, 'claim', human, result.lease.fence);
-  return result;
+  return requestId === undefined
+    ? result
+    : { ...result, epochCause: own.lease.epochCause() };
 }
 
 /** Release, and cancel anything the human still held (never completing it). */

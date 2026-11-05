@@ -272,6 +272,45 @@ describe('live surface routes through runtime authentication', () => {
     expect(h.producer.stops).toBe(1);
   });
 
+  test("epochCause=1 puts what caused the epoch on this stream's state records; without it the record is the shape older viewers parse", async () => {
+    const h = harness();
+    const asked = recordReader(
+      await h.request(`${base}/frames?epochCause=1`, 'operator'),
+    );
+    const plain = recordReader(await h.request(`${base}/frames`, 'operator'));
+    const first = await asked.next();
+    expect(first?.kind === 'state' && first.state.epochCause).toBeNull();
+    const plainFirst = await plain.next();
+    expect(
+      plainFirst?.kind === 'state' && 'epochCause' in plainFirst.state,
+    ).toBe(false);
+    const requestId = 'operator-request-000001';
+    const input = await h.request(
+      `${base}/input`,
+      'operator',
+      JSON.stringify({
+        epoch: 0,
+        events: [{ kind: 'pointer', type: 'move', x: 1, y: 1 }],
+        requestId,
+      }),
+    );
+    expect(((await input.json()) as { data: unknown }).data).toMatchObject({
+      ok: true,
+      epochCause: { requestId },
+    });
+    let record = await asked.next();
+    while (
+      record &&
+      (record.kind !== 'state' || record.state.lease.epoch !== 1)
+    )
+      record = await asked.next();
+    expect(record?.kind === 'state' && record.state.epochCause).toEqual({
+      requestId,
+    });
+    await asked.cancel();
+    await plain.cancel();
+  });
+
   test('stream params outside their bounds or unknown query keys are refused', async () => {
     const h = harness();
     // Each refusal names the key it was refused for (#4418).

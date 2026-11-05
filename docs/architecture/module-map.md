@@ -5461,8 +5461,18 @@ extends only their own current hold at the current epoch, never claims, and
 is capped by `maxHumanHoldMs` from their last real input. Epoch identifies
 controller succession;
 the separate fence changes on release/expiry as well, so reclaiming cannot
-resurrect old work. The registry serializes and fences input, cancels held
-buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
+resurrect old work. A claim or input batch may carry a viewer `requestId`; the
+lease records, for the current epoch, the id of the request whose handoff
+created it (`epochCause`, null for an Agent or a request without one). A
+renewal by the controller already holding the lease (another tab of the same
+person and device) creates no epoch and changes no cause. Answers carry
+`epochCause` when the request named an id, and state records carry it on a
+stream opened with `epochCause=1`, so an older viewer never sees the key
+(`liveSurfaceEpochCause` capability). The registry serializes and fences
+input, records what each controller pressed, and releases a controller's
+presses (never completing them) on handoff, on lapse to no holder, on the
+fenced `release-pressed` lease action, and when that controller's last viewer
+stream closes. It marks a timed-out dispatch wedged until it settles.
 A producer may refuse an event for a reason the viewer can act on
 (`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
 page dialog waits for its person), which reaches the viewer as that code
@@ -5544,17 +5554,23 @@ set its fit aspect) and maps points back to it; the Device pane, its
 full-screen view and its float use one to draw a foldable's display. Such a
 host reads the surface's producer status through `onProducerStatus`, which
 keeps reporting in immersive mode, where `renderHeader` is not mounted. When the origin, surface ID or
-Project context changes, the viewer discards queued input and ignores
-responses from the previous target. Within a target, every input item carries
-the control lineage it was created in (`useLiveSurface`'s `controlLineage`): it
-advances on every change of control except this viewer's own takeover: one that
-arrives in the answer to this viewer's own successful input or claim. The same
-person on the same device in another tab is a change of control; while a request
-is in flight, a stream record naming this device waits for that answer.
-Queued input, a held-back press and a kept gesture are checked against it
-immediately before dispatch, and an answer for an ended lineage is ignored, so
-input never crosses a change of control. This does not yet bind the queue to a
-credential generation.
+Project context changes, the viewer discards queued input, aborts its requests
+and ignores responses from the previous target. Within a target, every input
+item carries the control lineage it was created in (`useLiveSurface`'s
+`controlLineage`). It advances on every change of control except this viewer's
+own takeover: an epoch whose server-attested `epochCause` is one of this
+viewer's request ids. Another tab of the same person and device is a change of
+control. Queued input, a held-back press and a kept gesture are checked against
+it immediately before dispatch, a release goes out only in the lineage its press
+was sent in (otherwise the server already released it), and an answer for an
+ended lineage is ignored. Input and claim requests are bounded (10 s); after any
+completion the viewer reconciles to the newest lease its stream reported. The
+viewer asks the server to release its presses on blur, a hidden page, unmount
+and an answer lost for a press. Against a host without `liveSurfaceEpochCause`
+it sends none of these fields: an input answer that took exactly the next epoch
+is its own, a report naming this device waits for its own request, and the
+releases queued behind a lost answer still go. This does not yet bind the queue
+to a credential generation.
 Shown-source tracking avoids
 duplicating the same pane in its floater, but there is no single multiplexed
 frame transport across all visible viewers. The admission cap meets

@@ -374,3 +374,64 @@ describe('live surface H.264 sequence parameters (#4418)', () => {
     ).toBeNull();
   });
 });
+
+describe('epoch causality and host release (#90 A, B)', () => {
+  const lease = { surfaceId: 's1', epoch: 2, holder: null, expiresAt: null };
+  const state = {
+    surfaceId: 's1',
+    lease,
+    effectiveParams: LIVE_SURFACE_DEFAULT_STREAM_PARAMS,
+  };
+
+  test('an input batch and a claim carry a bounded request id', () => {
+    const requestId = 'abcdefABCDEF0123456789_-';
+    expect(
+      parseLiveSurfaceInputBatch({
+        epoch: 1,
+        events: [{ kind: 'text', text: 'x' }],
+        requestId,
+      }),
+    ).toEqual({ epoch: 1, events: [{ kind: 'text', text: 'x' }], requestId });
+    expect(
+      parseLiveSurfaceLeaseRequest({ action: 'claim', requestId }),
+    ).toEqual({
+      action: 'claim',
+      requestId,
+    });
+    for (const bad of ['short', 'has space in it 0000', 'x'.repeat(65), 7])
+      expect(
+        parseLiveSurfaceLeaseRequest({ action: 'claim', requestId: bad }),
+      ).toBeNull();
+    expect(parseLiveSurfaceLeaseRequest({ action: 'claim' })).toEqual({
+      action: 'claim',
+    });
+  });
+
+  test('release-pressed is a fenced lease action', () => {
+    expect(
+      parseLiveSurfaceLeaseRequest({ action: 'release-pressed', epoch: 3 }),
+    ).toEqual({ action: 'release-pressed', epoch: 3 });
+    expect(
+      parseLiveSurfaceLeaseRequest({ action: 'release-pressed' }),
+    ).toBeNull();
+  });
+
+  test('a state record carries an epoch cause only in its own bounded shape; without it the record is unchanged', () => {
+    expect(parseLiveSurfaceStreamState(state)).toEqual(state);
+    expect(
+      parseLiveSurfaceStreamState({
+        ...state,
+        epochCause: { requestId: 'abcdefABCDEF0123456789' },
+      })?.epochCause,
+    ).toEqual({ requestId: 'abcdefABCDEF0123456789' });
+    expect(
+      parseLiveSurfaceStreamState({ ...state, epochCause: null })?.epochCause,
+    ).toBeNull();
+    expect(
+      parseLiveSurfaceStreamState({
+        ...state,
+        epochCause: { requestId: 'abcdefABCDEF0123456789', extra: 1 },
+      }),
+    ).toBeNull();
+  });
+});

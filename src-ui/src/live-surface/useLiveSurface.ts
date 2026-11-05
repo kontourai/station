@@ -1,10 +1,16 @@
 import {
+  PUBLIC_STATION_HANDSHAKE_PATH,
+  parsePublicStationHandshake,
+} from '@kontourai/station-contracts/environment-security';
+import {
+  LIVE_SURFACE_EPOCH_CAUSE_QUERY_KEY,
   LIVE_SURFACE_INPUT_MAX_BODY_BYTES,
   LIVE_SURFACE_INPUT_MAX_EVENTS,
   LIVE_SURFACE_TEXT_MAX_LENGTH,
   type LiveSurfaceAgentAction,
   type LiveSurfaceCodec,
   type LiveSurfaceControlLease,
+  type LiveSurfaceEpochCause,
   type LiveSurfaceFrameHeader,
   type LiveSurfaceInput,
   type LiveSurfaceInputResult,
@@ -14,8 +20,10 @@ import {
   type LiveSurfaceStreamParams,
   type LiveSurfaceViewerIdentity,
   parseLiveSurfaceControlLease,
+  parseLiveSurfaceEpochCause,
 } from '@kontourai/station-contracts/live-surface';
-import { authenticatedFetch } from '@kontourai/station-sdk';
+import { authenticatedFetch, hasCapability } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type RefObject,
   useCallback,
@@ -128,6 +136,8 @@ export interface UseLiveSurfaceOptions {
   onFrame: (frame: LiveSurfaceFrame) => void;
   /** Test seam; defaults to the SDK's `authenticatedFetch`. */
   transport?: typeof authenticatedFetch;
+  /** Bound on each input or claim request (default 10 s); a test seam. */
+  requestTimeoutMs?: number;
   now?: () => number;
   /**
    * Optional (Device pane lane, D12): the Project this surface is reached
@@ -180,6 +190,12 @@ export interface UseLiveSurfaceResult {
    * created (e.g. a held-back press) and pass it to `sendInput`.
    */
   controlLineage: () => number;
+  /**
+   * Ask the host to release whatever this viewer has pressed (blur, a
+   * hidden page, unmount). True when the host does that itself; false on a
+   * host without it, where the caller sends its own releases.
+   */
+  releasePressed: () => boolean;
   /**
    * Input the host refused before dispatching any of it (`host-busy`), kept
    * at the control epoch it was meant for and sendable with `retryInput`.
@@ -254,6 +270,7 @@ function streamUrl(
   projectSlug: string | undefined,
   agentActionsEnabled: boolean,
   h264: boolean,
+  epochCause: boolean,
 ): string {
   const query = new URLSearchParams();
   for (const key of ['maxFps', 'quality', 'maxWidth', 'maxHeight'] as const) {
@@ -263,11 +280,113 @@ function streamUrl(
   if (projectSlug) query.set('projectSlug', projectSlug);
   if (agentActionsEnabled) query.set('agentActions', '1');
   if (h264) query.set('codec', 'h264');
+  if (epochCause) query.set(LIVE_SURFACE_EPOCH_CAUSE_QUERY_KEY, '1');
   const suffix = query.size > 0 ? `?${query}` : '';
   return `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/frames${suffix}`;
 }
 
 const encoder = new TextEncoder();
+
+/** One capability answer per host and transport, shared by its viewers. */
+const epochCauseCapabilities = new WeakMap<
+  object,
+  Map<string, Promise<boolean>>
+>();
+
+/**
+ * Whether the host at `apiBase` advertises `liveSurfaceEpochCause`. Unknown
+ * (unreachable, an older host) is false: the viewer then sends no request
+ * ids and asks for no cause, which such a host would refuse.
+ */
+function epochCauseCapability(
+  apiBase: string,
+  transport: typeof authenticatedFetch,
+): Promise<boolean> {
+  let byHost = epochCauseCapabilities.get(transport);
+  if (!byHost) {
+    byHost = new Map();
+    epochCauseCapabilities.set(transport, byHost);
+  }
+  const known = byHost.get(apiBase);
+  if (known) return known;
+  const asked = (async () => {
+    try {
+      const response = await transport(
+        `${apiBase}${PUBLIC_STATION_HANDSHAKE_PATH}`,
+        { method: 'GET' },
+      );
+      if (!response.ok) return false;
+      const handshake = parsePublicStationHandshake(
+        await response.json().catch(() => null),
+      );
+      return hasCapability(handshake, 'liveSurfaceEpochCause');
+    } catch {
+      return false;
+    }
+  })();
+  byHost.set(apiBase, asked);
+  // A failed read is asked again later rather than pinned.
+  void asked.then((supported) => {
+    if (!supported) setTimeout(() => byHost?.delete(apiBase), 30_000);
+  });
+  return asked;
+}
+
+/** Bound on one input, claim or lease request (#90 C). */
+export const LIVE_SURFACE_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * A fresh id for one of this viewer's own requests (contract shape). Not a
+ * secret: the server still authorizes the caller. The shared helper works in
+ * an insecure context, where `crypto.randomUUID` is undefined.
+ */
+function newRequestId(): string {
+  return randomCorrelationId().replaceAll('-', '');
+}
+
+/** A queued release that may go in whichever lineage is current. */
+const ANY_LINEAGE = -2;
+
+/** How many of this viewer's own request ids it remembers. */
+const OWN_REQUEST_IDS = 64;
+
+/** A request was cut off: its deadline passed or its target went away. */
+class LiveSurfaceRequestAborted extends Error {
+  constructor() {
+    super('live surface request aborted');
+    this.name = 'LiveSurfaceRequestAborted';
+  }
+}
+
+/**
+ * Run `send` with a deadline and an abort signal, and settle when either
+ * fires even if the transport ignores the signal: a hung request can never
+ * hold the viewer's input or epoch.
+ */
+async function boundedRequest<T>(
+  send: (signal: AbortSignal) => Promise<T>,
+  target: AbortSignal,
+  timeoutMs = LIVE_SURFACE_REQUEST_TIMEOUT_MS,
+): Promise<T> {
+  const controller = new AbortController();
+  let rejectAborted!: (error: Error) => void;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectAborted = reject;
+  });
+  const abort = () => {
+    controller.abort();
+    rejectAborted(new LiveSurfaceRequestAborted());
+  };
+  const timer = setTimeout(abort, timeoutMs);
+  if (target.aborted) abort();
+  else target.addEventListener('abort', abort, { once: true });
+  try {
+    return await Promise.race([send(controller.signal), aborted]);
+  } finally {
+    clearTimeout(timer);
+    target.removeEventListener('abort', abort);
+  }
+}
 
 /** The held thing an event presses or releases, or null. */
 function pressId(event: LiveSurfaceInput): string | null {
@@ -321,7 +440,10 @@ export function useLiveSurface(
     agentActionsEnabled = false,
     acceptH264 = false,
     streamAdmission = liveSurfaceStreamAdmission,
+    requestTimeoutMs = LIVE_SURFACE_REQUEST_TIMEOUT_MS,
   } = options;
+  const requestTimeoutRef = useRef(requestTimeoutMs);
+  requestTimeoutRef.current = requestTimeoutMs;
   const onFrameRef = useRef(options.onFrame);
   onFrameRef.current = options.onFrame;
   const nowRef = useRef(now);
@@ -388,10 +510,38 @@ export function useLiveSurface(
   const selfRef = useRef<LiveSurfaceViewerIdentity | null>(null);
   selfRef.current = self;
   const inFlightRef = useRef(false);
-  /** Buttons/keys this client pressed and has not released. */
-  const pressedRef = useRef(new Set<string>());
-  /** Pressed when control changed hands; the server released them already. */
-  const orphanedRef = useRef(new Set<string>());
+  /**
+   * Each button/key this viewer pressed and has not released, with the
+   * lineage it was pressed in. A release goes out only in that lineage: once
+   * control changed hands (or the host released it), the host has released
+   * the press, and sending its release would be fresh input that claims.
+   */
+  const pressedRef = useRef(new Map<string, number>());
+  /** The host has released these presses itself (no lineage matches). */
+  const RELEASED_BY_HOST = -1;
+  /**
+   * Whether the host says which request caused each epoch
+   * (`liveSurfaceEpochCause`): null until known for this target.
+   */
+  const [epochCauseSupported, setEpochCauseSupported] = useState<
+    boolean | null
+  >(null);
+  const epochCauseRef = useRef<boolean | null>(null);
+  epochCauseRef.current = epochCauseSupported;
+  /** This viewer's own recent request ids, newest last. */
+  const ownRequestIdsRef = useRef<string[]>([]);
+  const rememberRequestId = useCallback((id: string) => {
+    const ids = ownRequestIdsRef.current;
+    ids.push(id);
+    if (ids.length > OWN_REQUEST_IDS) ids.shift();
+  }, []);
+  /** Aborted when this target's work must stop (target change, unmount). */
+  const targetAbortRef = useRef(new AbortController());
+  /** The newest lease the stream reported, with its cause, for reconcile. */
+  const latestStreamLeaseRef = useRef<{
+    lease: LiveSurfaceControlLease;
+    cause: LiveSurfaceEpochCause | undefined;
+  } | null>(null);
 
   /**
    * One gesture the host refused before dispatching any of it, kept whole
@@ -405,59 +555,86 @@ export function useLiveSurface(
     open: Set<string>;
   } | null>(null);
   const [retryableInput, setRetryableInput] = useState(false);
-  /** This viewer's own input batch or claim is awaiting its answer. */
+  /** This viewer's own claim is awaiting its answer. */
   const claimInFlightRef = useRef(false);
   /**
-   * A newer epoch was observed. `holder` is the lease's, or undefined when
-   * only a frame told of it. `ownAnswer`: the lease came in the answer to
-   * this viewer's own successful request. Only that, taking the very next
-   * epoch, is this viewer's own takeover: the same person on the same device
-   * in another tab or window has the same identity, so identity is never
-   * the proof. Anything else is a change of control.
+   * A newer epoch was observed, and whether it is this viewer's own
+   * takeover. Where the host says what caused each epoch, only that answer
+   * decides: the epoch is this viewer's own exactly when its cause is one of
+   * this viewer's request ids (another tab of the same person and device is
+   * someone else). Where the host cannot say (an older Station), an answer
+   * to this viewer's own input batch that took exactly the next epoch is its
+   * own (the host hands control off only for that batch), and anything
+   * reported while a request is in flight waits for that request's answer.
+   * Anything else is a change of control: input from before it is retired.
    */
   const observeEpoch = useCallback(
     (
       epoch: number,
-      holder?: LiveSurfaceControlLease['holder'],
-      ownAnswer = false,
+      evidence:
+        | { from: 'answer'; cause?: LiveSurfaceEpochCause; handoff: boolean }
+        | {
+            from: 'stream';
+            holder: LiveSurfaceControlLease['holder'];
+            cause?: LiveSurfaceEpochCause;
+          }
+        | { from: 'frame' },
     ) => {
       if (epoch <= epochRef.current) return;
-      const me = selfRef.current;
-      const heldByThisDevice =
-        holder?.kind === 'human' &&
-        !!me &&
-        holder.principal === me.principal &&
-        holder.device === me.device;
-      const ownTakeover =
-        ownAnswer && heldByThisDevice && epoch === epochRef.current + 1;
-      // While this viewer's own request is in flight, a frame or a state
-      // record naming this device cannot say whose takeover it is: that
-      // request's answer settles it.
-      if (
-        !ownAnswer &&
-        (holder === undefined || heldByThisDevice) &&
-        (inFlightRef.current || claimInFlightRef.current)
-      )
-        return;
+      const attested = epochCauseRef.current === true;
+      const cause = evidence.from === 'frame' ? undefined : evidence.cause;
+      let own = false;
+      if (attested && cause !== undefined) {
+        own =
+          cause !== null && ownRequestIdsRef.current.includes(cause.requestId);
+      } else if (attested) {
+        // A frame alone: the state record, with its cause, follows it.
+        if (evidence.from === 'frame') return;
+      } else if (evidence.from === 'answer') {
+        own = evidence.handoff;
+      } else {
+        const me = selfRef.current;
+        const thisDevice =
+          evidence.from === 'frame' ||
+          (evidence.holder?.kind === 'human' &&
+            !!me &&
+            evidence.holder.principal === me.principal &&
+            evidence.holder.device === me.device);
+        // Reconciled when that request completes (see `reconcile`).
+        if (thisDevice && (inFlightRef.current || claimInFlightRef.current))
+          return;
+      }
       epochRef.current = epoch;
-      if (ownTakeover) return;
+      if (own) return;
       lineageRef.current += 1;
-      // The server released this viewer's presses at the handoff: their
-      // releases would be fresh input that takes control back.
-      for (const id of pressedRef.current) orphanedRef.current.add(id);
-      pressedRef.current.clear();
       undeliveredRef.current = null;
       setRetryableInput(false);
     },
     [],
   );
   const adoptLease = useCallback(
-    (next: LiveSurfaceControlLease, ownAnswer = false) => {
-      observeEpoch(next.epoch, next.holder, ownAnswer);
+    (
+      next: LiveSurfaceControlLease,
+      evidence: Parameters<typeof observeEpoch>[1] = {
+        from: 'answer',
+        handoff: false,
+      },
+    ) => {
+      observeEpoch(next.epoch, evidence);
       setLease(next);
     },
     [observeEpoch],
   );
+  /** After any request completes: the newest lease the stream reported. */
+  const reconcile = useCallback(() => {
+    const latest = latestStreamLeaseRef.current;
+    if (!latest) return;
+    observeEpoch(latest.lease.epoch, {
+      from: 'stream',
+      holder: latest.lease.holder,
+      cause: latest.cause,
+    });
+  }, [observeEpoch]);
 
   const paramsKey = JSON.stringify(params ?? {});
 
@@ -468,8 +645,9 @@ export function useLiveSurface(
       return;
     }
     // The caller is still settling what to ask for (the pane's size): open
-    // once, with the final parameters, rather than twice.
-    if (paramsPending) {
+    // once, with the final parameters, rather than twice. The same while
+    // it is not yet known whether the host says what caused each epoch.
+    if (paramsPending || epochCauseSupported === null) {
       setStatus('connecting');
       return;
     }
@@ -488,6 +666,7 @@ export function useLiveSurface(
         projectSlug,
         agentActionsEnabled,
         h264,
+        epochCauseSupported === true,
       );
 
     const scheduleReconnect = () => {
@@ -608,7 +787,15 @@ export function useLiveSurface(
               // Who this viewer is decides whether a new epoch is its own
               // takeover, so it is known before the lease is adopted.
               if (record.state.viewer) selfRef.current = record.state.viewer;
-              adoptLease(record.state.lease);
+              latestStreamLeaseRef.current = {
+                lease: record.state.lease,
+                cause: record.state.epochCause,
+              };
+              adoptLease(record.state.lease, {
+                from: 'stream',
+                holder: record.state.lease.holder,
+                cause: record.state.epochCause,
+              });
               setEffectiveParams(record.state.effectiveParams);
               setWedged(record.state.wedged === true);
               const {
@@ -647,7 +834,7 @@ export function useLiveSurface(
                 );
               }
             } else {
-              observeEpoch(record.header.epoch);
+              observeEpoch(record.header.epoch, { from: 'frame' });
               setLastFrameAt(receivedAt);
               setActiveCodec(record.header.codec);
               // Images after H.264 on one stream: the hub switched this
@@ -694,6 +881,7 @@ export function useLiveSurface(
     declineH264For,
     adoptLease,
     observeEpoch,
+    epochCauseSupported,
   ]);
 
   const declineH264 = useCallback(
@@ -732,7 +920,10 @@ export function useLiveSurface(
     undeliveredRef.current = null;
     setRetryableInput(false);
     pressedRef.current.clear();
-    orphanedRef.current.clear();
+    ownRequestIdsRef.current = [];
+    latestStreamLeaseRef.current = null;
+    targetAbortRef.current.abort();
+    targetAbortRef.current = new AbortController();
     epochRef.current = 0;
     lineageRef.current += 1;
     setLease(null);
@@ -741,8 +932,25 @@ export function useLiveSurface(
     return () => {
       targetGenerationRef.current += 1;
       queueRef.current = [];
+      // Requests for this target stop; their answers are not waited for.
+      targetAbortRef.current.abort();
     };
   }, [apiBase, surfaceId, projectSlug]);
+
+  // Whether this host says what caused each epoch: asked once per host,
+  // through the same transport, before the stream opens.
+  useEffect(() => {
+    let current = true;
+    setEpochCauseSupported(null);
+    void epochCauseCapability(apiBase, transportRef.current).then(
+      (supported) => {
+        if (current) setEpochCauseSupported(supported);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [apiBase]);
   const flushScheduledRef = useRef(false);
   const busyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -777,23 +985,27 @@ export function useLiveSurface(
     // has ended was meant for control that changed hands. It is dropped,
     // never sent at the newer epoch.
     const lineage = lineageRef.current;
-    const stale = queueRef.current.filter((item) => item.lineage !== lineage);
+    const current = (item: { lineage: number }) =>
+      item.lineage === lineage || item.lineage === ANY_LINEAGE;
+    const stale = queueRef.current.filter((item) => !current(item));
     if (stale.length > 0) {
-      queueRef.current = queueRef.current.filter(
-        (item) => item.lineage === lineage,
-      );
+      queueRef.current = queueRef.current.filter(current);
       setInputNotice('control-changed');
     }
     if (queueRef.current.length === 0) return;
     const batch: LiveSurfaceInput[] = [];
     let body = '';
+    const batchEpoch = epochRef.current;
+    // Only a host that says what caused each epoch takes a request id.
+    const requestId = epochCauseRef.current === true ? newRequestId() : null;
     while (
       queueRef.current.length > 0 &&
       batch.length < LIVE_SURFACE_INPUT_MAX_EVENTS
     ) {
       const candidate = JSON.stringify({
-        epoch: epochRef.current,
+        epoch: batchEpoch,
         events: [...batch, queueRef.current[0]!.event],
+        ...(requestId ? { requestId } : {}),
       });
       if (
         encoder.encode(candidate).byteLength > LIVE_SURFACE_INPUT_MAX_BODY_BYTES
@@ -809,15 +1021,26 @@ export function useLiveSurface(
     }
     inFlightRef.current = true;
     const generation = targetGenerationRef.current;
+    if (requestId) rememberRequestId(requestId);
     try {
-      const response = await transportRef.current(inputUrlRef.current, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      });
-      const envelope = (await response.json().catch(() => null)) as {
-        data?: LiveSurfaceInputResult;
-      } | null;
+      const { response, envelope } = await boundedRequest(
+        async (signal) => {
+          const answer = await transportRef.current(inputUrlRef.current, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+            signal,
+          });
+          return {
+            response: answer,
+            envelope: (await answer.json().catch(() => null)) as {
+              data?: LiveSurfaceInputResult & { epochCause?: unknown };
+            } | null,
+          };
+        },
+        targetAbortRef.current.signal,
+        requestTimeoutRef.current,
+      );
       if (generation !== targetGenerationRef.current) return;
       // An answer for a lineage that has since ended describes control that
       // changed hands: nothing in it is kept, noticed or retried.
@@ -838,7 +1061,14 @@ export function useLiveSurface(
       const nextLease = result
         ? parseLiveSurfaceControlLease(result.lease)
         : null;
-      if (nextLease) adoptLease(nextLease, result?.ok === true);
+      if (nextLease)
+        adoptLease(nextLease, {
+          from: 'answer',
+          cause: parseLiveSurfaceEpochCause(result?.epochCause),
+          // On a host that cannot say: only this batch, taking exactly the
+          // next epoch, hands control off (the host refuses a stale epoch).
+          handoff: result?.ok === true && nextLease.epoch === batchEpoch + 1,
+        });
       if (result?.ok) {
         // A later success is not the kept input arriving: only Retry or the
         // person moving on retires that (see `sendInput`).
@@ -852,8 +1082,6 @@ export function useLiveSurface(
       ) {
         queueRef.current = [];
         keepUndelivered([]);
-        for (const id of pressedRef.current) orphanedRef.current.add(id);
-        pressedRef.current.clear();
         setInputNotice('control-changed');
       } else if (result && !result.ok && result.code === 'page-dialog-open') {
         queueRef.current = [];
@@ -864,27 +1092,48 @@ export function useLiveSurface(
         // its error or timeout (`accepted` counts only completed ones), and
         // what follows it would land after a gap. Nothing is kept to send
         // again; the person checks the page.
-        keepUndelivered([]);
-        queueRef.current = [];
-        setInputNotice('input-failed');
+        abandonIndeterminateRef.current();
       }
     } catch {
       if (generation !== targetGenerationRef.current) return;
       if (lineage !== lineageRef.current) return;
-      // The response was lost: the batch may have been applied.
-      keepUndelivered([]);
-      queueRef.current = [];
-      setInputNotice('input-failed');
+      // The answer was lost (or the request timed out): the batch may have
+      // been applied.
+      abandonIndeterminateRef.current();
     } finally {
-      // Whatever happened to this batch's answer (used, or discarded as
-      // describing ended control), input queued behind it in the current
-      // lineage still goes.
+      // Whatever happened to this batch's answer (used, discarded as
+      // describing ended control, lost or timed out): reconcile to the
+      // newest lease the stream reported, then send what is queued behind
+      // it in the current lineage.
       if (generation === targetGenerationRef.current) {
         inFlightRef.current = false;
+        reconcile();
         if (queueRef.current.length > 0) scheduleFlushRef.current();
       }
     }
-  }, [adoptLease, showHostBusy, keepUndelivered]);
+  }, [adoptLease, showHostBusy, keepUndelivered, reconcile, rememberRequestId]);
+  /**
+   * After a batch whose effect is unknown: nothing is sent again, and what
+   * this viewer may have pressed is released. A host that releases presses
+   * itself is asked to; on an older host the releases already queued still
+   * go, so a press that did land is not left down.
+   */
+  const abandonIndeterminateRef = useRef(() => {});
+  abandonIndeterminateRef.current = () => {
+    keepUndelivered([]);
+    if (releasePressedRef.current()) queueRef.current = [];
+    // An older host: the releases already queued go in whatever lineage
+    // the stream settles on. A change to anyone else would already have
+    // ended this lineage (and this answer would not be handled here), so
+    // what can still follow is this device's own controller, whose
+    // release the host accepts and needs.
+    else
+      queueRef.current = queueRef.current
+        .filter((item) => isRelease(item.event))
+        .map((item) => ({ ...item, lineage: ANY_LINEAGE }));
+    setInputNotice('input-failed');
+  };
+  const releasePressedRef = useRef<() => boolean>(() => false);
   const scheduleFlushRef = useRef(() => {});
   scheduleFlushRef.current = () => {
     if (flushScheduledRef.current) return;
@@ -897,15 +1146,10 @@ export function useLiveSurface(
       const lineage = options?.lineage ?? lineageRef.current;
       for (const event of normalizeEvents(events)) {
         const id = pressId(event);
-        if (lineage !== lineageRef.current) {
-          // Created before control changed hands (a held-back press): never
-          // sent, and its release is swallowed like any orphaned press's,
-          // unless a newer press of the same button or key is down: that
-          // release is the newer press's, and must reach the surface.
-          if (id && !isRelease(event) && !pressedRef.current.has(id))
-            orphanedRef.current.add(id);
-          continue;
-        }
+        // Created before control changed hands (a held-back press): never
+        // sent. It never becomes a press of this viewer, so a newer press of
+        // the same button keeps its own release.
+        if (lineage !== lineageRef.current) continue;
         const kept = undeliveredRef.current;
         if (kept) {
           const continuesGesture =
@@ -939,14 +1183,17 @@ export function useLiveSurface(
             current === 'host-busy' ? null : current,
           );
         }
-        if (id && isRelease(event) && orphanedRef.current.delete(id)) continue;
-        if (id && !isRelease(event)) {
-          // A fresh press (including a held key's auto-repeat) is new input:
-          // its release is no longer the orphan the server cancelled.
-          orphanedRef.current.delete(id);
-          pressedRef.current.add(id);
+        if (id && isRelease(event)) {
+          const pressedIn = pressedRef.current.get(id);
+          pressedRef.current.delete(id);
+          // The press belongs to control that has since changed hands (or
+          // the host released it itself): the host released it, so this
+          // release would be fresh input that claims. It is not sent.
+          if (pressedIn !== undefined && pressedIn !== lineage) continue;
+        } else if (id) {
+          // A fresh press (including a held key's auto-repeat), in this lineage.
+          pressedRef.current.set(id, lineage);
         }
-        if (id && isRelease(event)) pressedRef.current.delete(id);
         const queue = queueRef.current;
         const last = queue[queue.length - 1]?.event;
         if (
@@ -970,6 +1217,39 @@ export function useLiveSurface(
 
   const controlLineage = useCallback(() => lineageRef.current, []);
 
+  /**
+   * Ask the host to release whatever this viewer has pressed, fenced by the
+   * epoch it holds. False on a host without that (the caller then sends its
+   * own releases). Its releases are then not sent: the host did it.
+   */
+  const releasePressed = useCallback(() => {
+    if (epochCauseRef.current !== true) return false;
+    for (const id of pressedRef.current.keys())
+      pressedRef.current.set(id, RELEASED_BY_HOST);
+    void boundedRequest(
+      (signal) =>
+        transportRef.current(
+          `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'release-pressed',
+              epoch: epochRef.current,
+            }),
+            signal,
+            keepalive: true,
+          },
+        ),
+      // Not tied to the target: an unmount sends it on the way out.
+      new AbortController().signal,
+    ).catch(() => {
+      // The host also releases when this viewer's stream closes.
+    });
+    return true;
+  }, [apiBase, surfaceId, projectSlug]);
+  releasePressedRef.current = releasePressed;
+
   const retryInput = useCallback(() => {
     const kept = undeliveredRef.current;
     keepUndelivered([]);
@@ -992,18 +1272,33 @@ export function useLiveSurface(
   const claimControl = useCallback(async () => {
     const generation = targetGenerationRef.current;
     claimInFlightRef.current = true;
+    const requestId = epochCauseRef.current === true ? newRequestId() : null;
+    if (requestId) rememberRequestId(requestId);
     try {
-      const response = await transportRef.current(
-        `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'claim' }),
+      const { response, envelope } = await boundedRequest(
+        async (signal) => {
+          const answer = await transportRef.current(
+            `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'claim',
+                ...(requestId ? { requestId } : {}),
+              }),
+              signal,
+            },
+          );
+          return {
+            response: answer,
+            envelope: (await answer.json().catch(() => null)) as {
+              data?: LiveSurfaceLeaseResult & { epochCause?: unknown };
+            } | null,
+          };
         },
+        targetAbortRef.current.signal,
+        requestTimeoutRef.current,
       );
-      const envelope = (await response.json().catch(() => null)) as {
-        data?: LiveSurfaceLeaseResult;
-      } | null;
       if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
         showHostBusy();
@@ -1013,15 +1308,31 @@ export function useLiveSurface(
         ? parseLiveSurfaceControlLease(envelope.data.lease)
         : null;
       if (!nextLease) return;
-      adoptLease(nextLease, envelope?.data?.ok === true);
+      // A claim never proves a takeover by itself (it may only renew control
+      // another tab of this device took): only its attested cause does.
+      adoptLease(nextLease, {
+        from: 'answer',
+        cause: parseLiveSurfaceEpochCause(envelope?.data?.epochCause),
+        handoff: false,
+      });
     } catch {
       if (generation === targetGenerationRef.current)
         setInputNotice('input-failed');
     } finally {
-      if (generation === targetGenerationRef.current)
+      if (generation === targetGenerationRef.current) {
         claimInFlightRef.current = false;
+        reconcile();
+      }
     }
-  }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
+  }, [
+    apiBase,
+    surfaceId,
+    projectSlug,
+    adoptLease,
+    showHostBusy,
+    reconcile,
+    rememberRequestId,
+  ]);
 
   const leaseRef = useRef(lease);
   leaseRef.current = lease;
@@ -1099,6 +1410,7 @@ export function useLiveSurface(
     declineH264,
     sendInput,
     controlLineage,
+    releasePressed,
     retryableInput,
     retryInput,
     claimControl,

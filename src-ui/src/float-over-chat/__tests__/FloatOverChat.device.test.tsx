@@ -347,8 +347,11 @@ test('a requested device floats, read from ITS host with the chat’s Project, a
       call.startsWith(`GET /api/mobile-devices/hosts/${HOST}/sessions`),
     ),
   );
-  // The live view asks for the surface as the chat's Project.
-  expect(calls.some((call) => call.startsWith(`GET ${FRAMES}?`))).toBe(true);
+  // The live view asks for the surface as the chat's Project (once it knows
+  // what the host supports, which it asks first).
+  await waitFor(() =>
+    expect(calls.some((call) => call.startsWith(`GET ${FRAMES}?`))).toBe(true),
+  );
   expect(calls.find((call) => call.startsWith(`GET ${FRAMES}`))).toContain(
     'projectSlug=alpha',
   );
@@ -603,8 +606,10 @@ test('M2: a device shared with Project A floats and shows in a chat in Project B
         call.includes('projectSlug=bravo') && call.includes('/mobile-devices/'),
     ),
   ).toBe(false);
-  expect(calls.find((call) => call.startsWith(`GET ${FRAMES}`))).toContain(
-    'projectSlug=alpha',
+  await waitFor(() =>
+    expect(calls.find((call) => call.startsWith(`GET ${FRAMES}`))).toContain(
+      'projectSlug=alpha',
+    ),
   );
 });
 
