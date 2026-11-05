@@ -1869,8 +1869,9 @@ function LiveConversationBody({
       )}
       {sessionRecordUnreadable && (
         <ErrorState
+          variant="compact"
           title="Could not read this Station's chat records"
-          description="The chat below is what this browser still holds. Retry to find out whether the chat is still there."
+          description="Showing the chat this browser still holds."
           action={
             onRetryOrchestrationSessions ? (
               <button
