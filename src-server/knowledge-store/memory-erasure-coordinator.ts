@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type { PurgeResult } from '@kontourai/corpus-store';
 import type { KnowledgeIndexProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
@@ -321,7 +321,16 @@ export class MemoryErasureCoordinator {
         const parent: MemoryErasureIntent = {
           version: 1,
           operation: 'purge',
-          purgeId: randomUUID(),
+          purgeId: createHash('sha256')
+            .update(
+              JSON.stringify([
+                'reconcile',
+                root.id,
+                root.registrationId,
+                binding,
+              ]),
+            )
+            .digest('hex'),
           rootId: root.id,
           ownerId: root.readPolicy!.ownerId,
           registrationId: root.registrationId!,

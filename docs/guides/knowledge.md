@@ -161,7 +161,8 @@ It is never shown in results. The separate atomic publication contract is tracke
 in [corpus#74](https://github.com/kontourai/corpus/issues/74). An interrupted
 Corpus erasure can leave its before-images in a transaction journal until recovery
 ([corpus#73](https://github.com/kontourai/corpus/issues/73)). Backups and filesystem
-snapshots have their own retention.
+snapshots have their own retention. Erasure does not remove titles or categories
+previously copied to a Neo4j graph; remove those copies separately.
 Agent-backed proposals and human review are separate future work.
 
 ## `./station knowledge reindex` — (re)build the index

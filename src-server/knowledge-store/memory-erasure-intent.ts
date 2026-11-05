@@ -59,13 +59,22 @@ const MAX_INTENT_BYTES = 1024 * 1024;
 const inboxId = (
   rootId: string,
   operation: 'purge' | 'cleanup',
+  key: string,
   targetId?: string,
 ) => {
   if (operation === 'cleanup' && !targetId)
     throw new Error('Memory cleanup target is required.');
-  return operation === 'purge'
-    ? `memory:purge:${rootId}`
-    : `memory:cleanup:${rootId}:${createHash('sha256').update(targetId!).digest('hex')}`;
+  const identity = createHash('sha256')
+    .update(
+      JSON.stringify([
+        rootId,
+        operation,
+        key,
+        operation === 'cleanup' ? targetId : null,
+      ]),
+    )
+    .digest('hex');
+  return `memory:${operation}:${identity}`;
 };
 
 /** The caller must serialize work for a root before claiming or replaying an effect. */
@@ -101,7 +110,12 @@ export class MemoryErasureIntentStore {
     return this.kernel.executeSync(
       {
         type: 'inbox.submit',
-        inboxId: inboxId(intent.rootId, intent.operation, intent.targetId),
+        inboxId: inboxId(
+          intent.rootId,
+          intent.operation,
+          intent.purgeId,
+          intent.targetId,
+        ),
         key: intent.purgeId,
         kind: 'follow-up',
         digest: createHash('sha256').update(payload).digest('hex'),
@@ -121,7 +135,7 @@ export class MemoryErasureIntentStore {
     return this.kernel.executeSync(
       {
         type: 'inbox.claimNext',
-        inboxId: inboxId(rootId, operation, targetId),
+        inboxId: inboxId(rootId, operation, placement, targetId),
         placement,
         now: Date.now(),
       },
@@ -142,7 +156,7 @@ export class MemoryErasureIntentStore {
     return this.kernel.executeSync(
       {
         type: 'inbox.read',
-        inboxId: inboxId(rootId, operation, targetId),
+        inboxId: inboxId(rootId, operation, purgeId, targetId),
         key: purgeId,
       },
       context,
@@ -167,7 +181,7 @@ export class MemoryErasureIntentStore {
     return this.kernel.executeSync(
       {
         type: 'inbox.settle',
-        inboxId: inboxId(rootId, operation, targetId),
+        inboxId: inboxId(rootId, operation, purgeId, targetId),
         key: purgeId,
         to,
         outcome: serialized,
@@ -184,8 +198,12 @@ export class MemoryErasureIntentStore {
       throw new Error('Memory erasure intent is corrupt.');
     const parsed = memoryErasureIntentSchema.parse(JSON.parse(entry.payload));
     if (
-      inboxId(parsed.rootId, parsed.operation, parsed.targetId) !==
-        entry.inboxId ||
+      inboxId(
+        parsed.rootId,
+        parsed.operation,
+        parsed.purgeId,
+        parsed.targetId,
+      ) !== entry.inboxId ||
       parsed.purgeId !== entry.key
     )
       throw new Error('Memory erasure intent identity is invalid.');

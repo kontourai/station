@@ -231,6 +231,79 @@ test('the same request can finish interrupted cleanup without repeating the purg
   }
 });
 
+test('an interrupted cleanup does not strand later erasures', async () => {
+  const f = await setup();
+  try {
+    const first = await f.manager.previewErasureTarget(
+      owner,
+      f.root,
+      current,
+      'record',
+      f.id,
+    );
+    if (!first) throw new Error('Expected preview');
+    const fault = vi
+      .spyOn(f.index, 'removeErasedRecords')
+      .mockRejectedValueOnce(new Error('interrupted cleanup'));
+    await expect(
+      f.coordinator.erase(
+        owner,
+        f.root,
+        current,
+        'record',
+        f.id,
+        first.impact.revision,
+        'first',
+      ),
+    ).rejects.toThrow('interrupted cleanup');
+    fault.mockRestore();
+    const proposal = await f.manager.propose(
+      owner,
+      f.root,
+      current,
+      {
+        type: 'raw',
+        title: 'Second',
+        body: 'Second body',
+        category: 'memory',
+        provenance: { agent: 'source' },
+      },
+      { agent: 'source', proposal: 'evidence' },
+      'agent:source',
+      'second-source',
+    );
+    const secondId = await f.manager.applyCreate(
+      owner,
+      f.root,
+      current,
+      proposal,
+    );
+    const second = await f.manager.previewErasureTarget(
+      owner,
+      f.root,
+      current,
+      'record',
+      secondId,
+    );
+    if (!second) throw new Error('Expected second preview');
+    await expect(
+      f.coordinator.erase(
+        owner,
+        f.root,
+        current,
+        'record',
+        secondId,
+        second.impact.revision,
+        'second',
+      ),
+    ).resolves.toMatchObject({ kind: 'record' });
+    await f.coordinator.recoverAll();
+    expect((await f.index.stats(f.root.id)).chunks).toBe(0);
+  } finally {
+    f.index.close();
+  }
+});
+
 test('refuses recovery if the Corpus store is replaced after the intent', async () => {
   const f = await setup();
   try {
@@ -397,6 +470,71 @@ test('rejects a stale preview without erasing the target', async () => {
     expect(
       await (await f.store.adapterFor(f.root.id)).get(f.id),
     ).not.toBeNull();
+  } finally {
+    f.index.close();
+  }
+});
+
+test('Corpus rejects an outside write between the final preview and purge', async () => {
+  const f = await setup();
+  const external = new KitDefaultStoreAdapter({
+    storeRoot: f.root.storeRoot,
+    coordinationDirectory: join(
+      f.home,
+      'coordination',
+      'knowledge-file-transactions',
+    ),
+    lock: acquireFileMutationLockAsync,
+    coordinationIdentity: () => () => {},
+  });
+  try {
+    const preview = await f.manager.previewErasureTarget(
+      owner,
+      f.root,
+      current,
+      'record',
+      f.id,
+    );
+    if (!preview) throw new Error('Expected preview');
+    const original = KitDefaultStoreAdapter.prototype.previewPurge;
+    const mutation = vi
+      .spyOn(KitDefaultStoreAdapter.prototype, 'previewPurge')
+      .mockImplementationOnce(async function (
+        this: KitDefaultStoreAdapter,
+        ids,
+      ) {
+        const plan = await original.call(this, ids);
+        await external.proposeCreate(
+          {
+            type: 'raw',
+            title: 'Outside',
+            body: 'New',
+            category: 'memory',
+            provenance: { agent: 'outside' },
+          },
+          'outside',
+          { agent: 'outside', proposal: 'evidence' },
+        );
+        return plan;
+      });
+    try {
+      await expect(
+        f.coordinator.erase(
+          owner,
+          f.root,
+          current,
+          'record',
+          f.id,
+          preview.impact.revision,
+          'outside-race',
+        ),
+      ).rejects.toMatchObject({ code: 'STALE_REVISION' });
+      expect(
+        await (await f.store.adapterFor(f.root.id)).get(f.id),
+      ).not.toBeNull();
+    } finally {
+      mutation.mockRestore();
+    }
   } finally {
     f.index.close();
   }

@@ -10858,12 +10858,25 @@ export function configureRuntimeRoutes(
     context.configLoader.getProjectHomeDir(),
     memoryEnabled,
   );
+  let memoryRecovery: Promise<boolean> | undefined;
   const memoryRootPreviewGuard = async (
     c: import('hono').Context,
     next: () => Promise<void>,
   ) => {
     if (!memoryEnabled() && isMemoryRootId(c.req.param('rootId')))
       return c.json(MEMORY_PREVIEW_DISABLED, 404);
+    if (
+      isMemoryRootId(c.req.param('rootId')) &&
+      memoryRecovery &&
+      !(await memoryRecovery)
+    )
+      return c.json(
+        {
+          success: false,
+          error: 'Memory recovery is unavailable. Restart Station to retry.',
+        },
+        503,
+      );
     await next();
   };
   context.app.use('/api/knowledge/roots/:rootId', memoryRootPreviewGuard);
@@ -10930,7 +10943,9 @@ export function configureRuntimeRoutes(
     if (!root) return false;
     if (
       root.adapterId === MEMORY_ADAPTER_ID &&
-      (!memoryEnabled() || !memoryRootManager.isMemoryRoot(root))
+      (!memoryEnabled() ||
+        !memoryRootManager.isMemoryRoot(root) ||
+        (memoryRecovery && !(await memoryRecovery)))
     )
       return false;
     try {
@@ -11021,11 +11036,11 @@ export function configureRuntimeRoutes(
         knowledgeIndexProvider,
       )
     : undefined;
-  const memoryRecovery = memoryErasure?.recoverAll().then(
+  memoryRecovery = memoryErasure?.recoverAll().then(
     () => true,
     () => false,
   );
-  context.app.use('/api/knowledge/*', async (c, next) => {
+  context.app.use('/api/knowledge/memory/*', async (c, next) => {
     if (memoryRecovery && !(await memoryRecovery))
       return c.json(
         {

@@ -3988,6 +3988,36 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(direct.status).toBe(404);
     });
 
+    test('memory recovery failure leaves other knowledge available', async () => {
+      const { MemoryErasureCoordinator } = await import(
+        '../../../knowledge-store/memory-erasure-coordinator.js'
+      );
+      const recovery = vi
+        .spyOn(MemoryErasureCoordinator.prototype, 'recoverAll')
+        .mockRejectedValueOnce(new Error('root changed'));
+      try {
+        const { app, featurePreviews } = await principalSetup({
+          knowledge: true,
+        });
+        await featurePreviews.setEnabled('private-memory', true);
+        const headers = { Authorization: `Bearer ${OPERATOR_SECRET}` };
+        const roots = await app.request(
+          '/api/knowledge/roots',
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(roots.status).toBe(200);
+        const memory = await app.request(
+          '/api/knowledge/memory/root',
+          { method: 'POST', headers },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(memory.status).toBe(503);
+      } finally {
+        recovery.mockRestore();
+      }
+    });
+
     test('private memory preview keeps pending proposals out of search', async () => {
       const embedded: string[][] = [];
       const {
