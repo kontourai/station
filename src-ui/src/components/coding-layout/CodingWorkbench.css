@@ -977,6 +977,6 @@
   border-radius: var(--k-radius-sm);
   background: var(--k-panel);
   color: var(--k-text);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1;
 }

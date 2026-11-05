@@ -1354,7 +1354,6 @@ export function InboxGroupList({
         isDismissed={group.id === 'dismissed'}
         resolution={
           resolutionState.supported &&
-          item.kind !== 'task' &&
           item.kind !== 'remote-session' &&
           item.controlMode !== 'read-only-attached' &&
           item.conversationId &&
