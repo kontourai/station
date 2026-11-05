@@ -1,0 +1,19 @@
+{
+  "sourceRevision": "2c1fae5270d00a3d799e0d525c8830e13bf46a84",
+  "baselineRevision": "df1b823d9c55c4fa2e2e8b404c3f80bcc6ae44dd",
+  "widths": [
+    390,
+    1440
+  ],
+  "themes": [
+    "dark",
+    "light"
+  ],
+  "method": "Chromium mounted production React owners with controlled query/provider fixtures. Baseline source loaded from origin/main at the recorded revision using the same fixtures. Finite animations disabled for captures.",
+  "limits": [
+    "Not an installed desktop or mobile shell",
+    "No live provider/account mutation or backend persistence qualification",
+    "Inbox captures show controlled representative rows; behavioral suites cover attention, drafts, dismissed search, ordering and task families",
+    "Turn rail images are candidate-only; previous/next placement has separate real-browser geometry tests"
+  ]
+}

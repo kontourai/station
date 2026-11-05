@@ -122,7 +122,9 @@
 
     "src-ui/src/lib/color-theme-selection.ts",
 
-    "src-ui/src/lib/appearance-cache.ts"
+    "src-ui/src/lib/appearance-cache.ts",
+
+    "src-ui/src/components/editor-controls.css"
   ],
 
   "checks": [
