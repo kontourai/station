@@ -53,9 +53,19 @@ test('a recorded erasure intent survives reopening under the same idempotency ke
       'in-flight',
     );
     expect(
-      store.settle(intent.rootId, intent.purgeId, 'placed', 'done').kind,
+      store.settle(intent.rootId, intent.purgeId, 'placed', {
+        kind: 'record',
+        result: intent.impact,
+      }).kind,
     ).toBe('applied');
     expect(store.open()).toMatchObject({ kind: 'entries', entries: [] });
+    const settled = store.read(intent.rootId, intent.purgeId);
+    expect(settled.kind).toBe('found');
+    if (settled.kind !== 'found') throw new Error('Expected settled intent');
+    expect(store.decodeReceipt(settled.entry)).toEqual({
+      kind: 'record',
+      result: intent.impact,
+    });
   } finally {
     await store.close();
   }

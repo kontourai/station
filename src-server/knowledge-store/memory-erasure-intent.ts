@@ -17,6 +17,22 @@ const recordImpact = z.object({
   proposalsScrubbed: z.array(id),
   proposalsBlocked: z.array(id),
 });
+const receiptSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('record'), result: recordImpact }).strict(),
+  z
+    .object({
+      kind: z.literal('proposal'),
+      result: z
+        .object({
+          proposalId: id,
+          alreadyErased: z.boolean(),
+          record: recordImpact.optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+]);
+export type MemoryErasureReceipt = z.infer<typeof receiptSchema>;
 
 /** Only content-free identifiers and the confirmed Corpus plan enter the journal. */
 export const memoryErasureIntentSchema = z
@@ -93,19 +109,33 @@ export class MemoryErasureIntentStore {
     return this.kernel.executeSync({ type: 'inbox.listOpen' }, context);
   }
 
+  read(rootId: string, purgeId: string) {
+    return this.kernel.executeSync(
+      { type: 'inbox.read', inboxId: rootId, key: purgeId },
+      context,
+    );
+  }
+
   settle(
     rootId: string,
     purgeId: string,
     to: 'placed' | 'refused' | 'unconfirmed',
-    outcome: string | null,
+    outcome: MemoryErasureReceipt | null,
   ) {
+    const serialized =
+      outcome === null ? null : JSON.stringify(receiptSchema.parse(outcome));
+    if (
+      serialized !== null &&
+      Buffer.byteLength(serialized, 'utf8') > MAX_INTENT_BYTES
+    )
+      throw new Error('Memory erasure receipt is too large.');
     return this.kernel.executeSync(
       {
         type: 'inbox.settle',
         inboxId: rootId,
         key: purgeId,
         to,
-        outcome,
+        outcome: serialized,
         now: Date.now(),
       },
       context,
@@ -121,6 +151,11 @@ export class MemoryErasureIntentStore {
     if (parsed.rootId !== entry.inboxId || parsed.purgeId !== entry.key)
       throw new Error('Memory erasure intent identity is invalid.');
     return parsed;
+  }
+
+  decodeReceipt(entry: InboxEntryRecord): MemoryErasureReceipt | null {
+    if (entry.state !== 'placed' || entry.outcome === null) return null;
+    return receiptSchema.parse(JSON.parse(entry.outcome));
   }
 
   async close() {
