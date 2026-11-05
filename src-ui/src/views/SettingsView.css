@@ -494,7 +494,7 @@
 }
 .settings__field input:focus,
 .settings__field textarea:focus,
-.settings__field select:not(.control):focus,
+.settings__field select:focus,
 .voice-provider-section__select:focus {
   outline: none;
   border-color: var(--accent-primary);
