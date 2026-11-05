@@ -4,6 +4,8 @@ import type {
   OrchestrationSessionSummary,
   TaskListRecord,
 } from '@kontourai/station-sdk';
+import type { ChatStationBindingV1 } from '../../connections/station-connection';
+import { chatBelongsToStation } from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { serverWorkLive } from '../../utils/conversation-activity';
 import {
@@ -65,6 +67,9 @@ export interface WorkActivity {
 }
 
 export interface WorkFacts {
+  chatBinding?: ChatStationBindingV1;
+  /** Host-only detail reads and controls must not borrow a bound receiver ID. */
+  hostDetails?: boolean;
   /** Recorded run root, resolved against this presentation's row identities. */
   runRootId?: string;
   station?: { id: string; label: string };
@@ -207,7 +212,16 @@ export function buildWorkFacts({
           ? sessionByThread.get(item.orchestrationThreadId)
           : undefined;
     const chat = item.chatSessionId ? chats[item.chatSessionId] : undefined;
-    const entry: WorkFacts = {};
+    const entry: WorkFacts = {
+      chatBinding: chat?.stationBinding,
+      hostDetails:
+        item.kind !== 'remote-session' && (!chat || chatBelongsToStation(chat)),
+    };
+    if (chat?.stationBinding && chat.stationBinding.affinity.kind !== 'host')
+      entry.station = {
+        id: chat.stationBinding.environmentId,
+        label: chat.stationBinding.stationName,
+      };
     if (
       session?.delegation?.environmentKind === 'peer' &&
       session.delegation.environmentId

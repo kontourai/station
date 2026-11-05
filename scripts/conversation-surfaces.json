@@ -42,8 +42,7 @@
       "concern": "inbox",
       "file": "src-ui/src/components/chat-dock/useInboxPanelController.ts",
       "symbol": "useInboxPanelController",
-      "reason": "P2.4 will adopt both Inbox shells.",
-      "planned": "P2.4"
+      "reason": "Shared activation currency, filtering and Inbox actions for both shells."
     },
     {
       "concern": "failure",

@@ -587,3 +587,40 @@ describe('the git section on Home', () => {
     expect(card.textContent).not.toContain('Git');
   });
 });
+
+it('a receiver row never reads or renders host detail data for a colliding conversation', async () => {
+  const remote = workItem({
+    id: 'receiver-principal:conv-1',
+    kind: 'chat',
+    kindLabel: 'Direct chat',
+    chatSessionId: 'remote-tab',
+  });
+  vi.mocked(useGitStatusQuery).mockReturnValue({
+    data: { ...gitRepo(), branch: 'host-private-branch' },
+    isLoading: false,
+    error: null,
+  } as never);
+  render(
+    <QueryClientProvider client={queryClient}>
+      <InboxRow
+        item={remote}
+        facts={{ hostDetails: false }}
+        isCurrent={false}
+        isSnoozed={false}
+        isOpenChat
+        now={NOW}
+        onActivate={() => {}}
+        gitLocation={{ projectSlug: 'station', workingDir: '/host/private' }}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.focus(screen.getByTestId('inbox-row'));
+  const card = await screen.findByTestId('inbox-row-hover-card');
+  expect(vi.mocked(useGitStatusQuery).mock.calls.at(-1)?.[0]).toBeNull();
+  expect(getConversationPullRequestLinks).not.toHaveBeenCalled();
+  expect(
+    vi.mocked(useSessionInventoryQuery).mock.calls.at(-1)?.[1]?.enabled,
+  ).toBe(false);
+  expect(card.textContent).not.toContain('host-private-branch');
+  expect(card.textContent).not.toContain('Pull requests');
+});

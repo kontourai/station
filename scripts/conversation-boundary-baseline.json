@@ -226,14 +226,6 @@
       "migrate": "P2.5"
     },
     {
-      "rule": "G5",
-      "file": "src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx",
-      "fingerprint": "7fbeab0244ef1d7c88c2",
-      "syntax": "adopt inbox",
-      "count": 1,
-      "migrate": "P2.4"
-    },
-    {
       "rule": "G3",
       "file": "src-ui/src/components/chat-dock/DelegationLauncher.tsx",
       "fingerprint": "3229b9cf1da264997ddf",
@@ -248,14 +240,6 @@
       "syntax": "raw failure sink: {discoveryError.message}",
       "count": 1,
       "migrate": "P2.5"
-    },
-    {
-      "rule": "G5",
-      "file": "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
-      "fingerprint": "7fbeab0244ef1d7c88c2",
-      "syntax": "adopt inbox",
-      "count": 1,
-      "migrate": "P2.4"
     },
     {
       "rule": "G1",

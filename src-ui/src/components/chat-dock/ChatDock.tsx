@@ -3886,6 +3886,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     componentProps={{
                       open: workspaceShown && mobileInboxShown,
                       tasks: taskItems,
+                      authority: requestAuthority,
                       pending: taskItemsPending,
                       loadError: taskItemsFailed,
                       onRetryLoad: resyncInbox,
@@ -3933,6 +3934,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       componentProps={{
                         exiting: inboxPresence.exiting,
                         items: taskItems,
+                        authority: requestAuthority,
                         agents,
                         gitLocationByThreadId,
                         projectAccentBySlug,

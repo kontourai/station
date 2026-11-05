@@ -669,3 +669,171 @@ for (const access of ['owner', 'member', 'guest'] as const) {
     },
   );
 }
+
+for (const layout of ['desktop', 'mobile'] as const) {
+  test(
+    layout +
+      ' Inbox search and keyboard selection retain the latest reader after a stale response',
+    async ({ page, stations }, testInfo) => {
+      await page.setViewportSize({
+        width: layout === 'mobile' ? 390 : 1440,
+        height: 900,
+      });
+      await startConnectionChat(
+        page,
+        'host',
+        'Keep the current chat available.',
+      );
+      await expect.poll(() => stations.streams.length).toBe(1);
+      stations.streams[0]!.stream.text('Current chat is ready.');
+      stations.streams[0]!.stream.finish();
+      const summaries: OrchestrationSessionSummary[] = ['first', 'latest'].map(
+        (name, index) => ({
+          threadId: 'external:claude:inbox-' + name,
+          provider: 'claude',
+          controlMode: 'read-only-attached',
+          status: 'ready',
+          lifecycleState: 'idle',
+          hasActiveTurn: false,
+          answerability: { answerable: true },
+          attachedSource: {
+            kind: 'claude-transcript',
+            externalSessionId: 'inbox-' + name,
+            affinity: { kind: 'fixture-home', ref: 'inbox-fixture' },
+          },
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 2,
+          displayTitle:
+            name === 'first' ? 'First cold selection' : 'Latest cold selection',
+          createdAt: '2026-11-05T00:00:00Z',
+          updatedAt: '2026-11-05T00:00:0' + index + 'Z',
+        }),
+      );
+      await page.route('**/api/orchestration/sessions/read-model', (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill({ json: { success: true, data: summaries } })
+          : rejectUnexpectedFixtureRequest(route),
+      );
+      let releaseFirst: () => void = () => {},
+        firstRequested: () => void = () => {};
+      const released = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      const requested = new Promise<void>((resolve) => {
+        firstRequested = resolve;
+      });
+      for (const [index, session] of summaries.entries()) {
+        const id = encodeURIComponent(session.threadId);
+        const turns = buildLongSessionTurns({
+          threadId: session.threadId,
+          provider: 'claude',
+          turnCount: 1,
+          replyText: () =>
+            index === 0 ? 'Old reader response' : 'Latest reader response',
+        });
+        await mockRuntimeConversation(page, {
+          id: session.threadId,
+          agentSlug: 'connection-qualification',
+          title: session.displayTitle!,
+          provider: 'claude',
+          model: 'fixture',
+          canContinue: false,
+          turns: () => turns,
+        });
+        await page.route(
+          '**/api/orchestration/sessions/' + id,
+          async (route) => {
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            if (index === 0) {
+              firstRequested();
+              await released;
+            }
+            return route.fulfill({
+              json: { success: true, data: { session, events: [] } },
+            });
+          },
+        );
+        await page.route(
+          '**/api/orchestration/sessions/' + id + '/event-window**',
+          createLongSessionEventWindowHandler({
+            threadId: session.threadId,
+            provider: 'claude',
+            availableTurns: () => turns,
+          }),
+        );
+      }
+      await page.reload();
+      const inboxToggle = page.getByRole('button', {
+        name: /^(Show|Hide) inbox/,
+      });
+      await expect(inboxToggle).toBeVisible();
+      if (
+        (await inboxToggle.getAttribute('aria-label'))?.startsWith('Show inbox')
+      )
+        await inboxToggle.click();
+      const inbox =
+        layout === 'mobile'
+          ? page.getByRole('region', { name: 'Inbox', exact: true })
+          : page.getByRole('complementary', { name: 'Inbox chats' });
+      if (layout === 'mobile')
+        await inbox.getByRole('button', { name: 'Search inbox' }).click();
+      const search = inbox.getByRole('searchbox', {
+        name: 'Search chats and tasks',
+      });
+      await search.fill('First cold');
+      await expect(
+        inbox.getByRole('button', { name: /Latest cold selection,/ }),
+      ).toHaveCount(0);
+      await inbox
+        .getByRole('button', { name: /First cold selection,/ })
+        .focus();
+      const oldResponse = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname ===
+          '/api/orchestration/sessions/' +
+            encodeURIComponent(summaries[0]!.threadId),
+      );
+      await page.keyboard.press('Enter');
+      try {
+        await requested;
+        if (layout === 'mobile')
+          await page.getByRole('button', { name: /^Show inbox/ }).click();
+        await search.fill('Latest cold');
+        const latest = inbox.getByRole('button', {
+          name: /Latest cold selection,/,
+        });
+        await latest.focus();
+        await page.keyboard.press('Enter');
+        await expect(page.getByTestId('session-detail')).toContainText(
+          'Latest reader response',
+        );
+        const committedUrl = page.url();
+        releaseFirst();
+        expect((await oldResponse).status()).toBe(200);
+        await expect(page.getByTestId('session-detail')).toContainText(
+          'Latest reader response',
+        );
+        await expect(page.getByTestId('session-detail')).not.toContainText(
+          'Old reader response',
+        );
+        expect(page.url()).toBe(committedUrl);
+        expect(
+          await page.evaluate(
+            () =>
+              document.activeElement?.isConnected &&
+              document.activeElement !== document.body,
+          ),
+        ).toBe(true);
+        await captureConnectionState(
+          page,
+          testInfo,
+          layout + '-inbox-latest-selection',
+        );
+      } finally {
+        releaseFirst();
+      }
+    },
+  );
+}

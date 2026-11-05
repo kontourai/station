@@ -4,6 +4,8 @@ import { isRecord } from './isRecord';
 
 const STORAGE_KEY = 'station.inbox.dismissed.v1';
 const MAX_DISMISSALS = 500;
+const storageKey = (namespace?: string | null) =>
+  namespace ? JSON.stringify([STORAGE_KEY, namespace]) : STORAGE_KEY;
 
 interface Dismissal {
   lifecycle: string;
@@ -22,7 +24,12 @@ function changed() {
 }
 
 function onStorage(event: StorageEvent) {
-  if (event.key === STORAGE_KEY || event.key === null) changed();
+  if (
+    event.key === STORAGE_KEY ||
+    event.key?.startsWith('["station.inbox.dismissed.v1",') ||
+    event.key === null
+  )
+    changed();
 }
 
 export function subscribeInboxDismissals(listener: () => void) {
@@ -39,14 +46,16 @@ export function inboxDismissalsVersion() {
 }
 
 function keyFor(item: HomeWorkItem) {
-  const id = item.conversationId ?? item.id;
+  const id = item.id;
   return item.environmentId ? JSON.stringify([item.environmentId, id]) : id;
 }
 
-export function readInboxDismissals(): InboxDismissals {
+export function readInboxDismissals(
+  namespace?: string | null,
+): InboxDismissals {
   try {
     const parsed: unknown = JSON.parse(
-      localStorage.getItem(STORAGE_KEY) ?? '{}',
+      localStorage.getItem(storageKey(namespace)) ?? '{}',
     );
     if (!isRecord(parsed)) return {};
     const entries: [string, Dismissal][] = [];
@@ -77,9 +86,9 @@ export function readInboxDismissals(): InboxDismissals {
   }
 }
 
-function write(entries: InboxDismissals) {
+function write(entries: InboxDismissals, namespace?: string | null) {
   localStorage.setItem(
-    STORAGE_KEY,
+    storageKey(namespace),
     JSON.stringify(
       Object.fromEntries(
         Object.entries(entries)
@@ -91,20 +100,30 @@ function write(entries: InboxDismissals) {
   changed();
 }
 
-export function dismissInboxItem(item: HomeWorkItem, facts?: WorkFacts) {
-  write({
-    ...readInboxDismissals(),
-    [keyFor(item)]: {
-      lifecycle: item.lifecycleLabel,
-      updatedAt: item.updatedAt,
-      dismissedAt: Date.now(),
-      attention: facts?.attention,
+export function dismissInboxItem(
+  item: HomeWorkItem,
+  facts?: WorkFacts,
+  namespace?: string | null,
+) {
+  write(
+    {
+      ...readInboxDismissals(namespace),
+      [keyFor(item)]: {
+        lifecycle: item.lifecycleLabel,
+        updatedAt: item.updatedAt,
+        dismissedAt: Date.now(),
+        attention: facts?.attention,
+      },
     },
-  });
+    namespace,
+  );
 }
 
-export function restoreInboxItems(items: readonly HomeWorkItem[]) {
-  const entries = readInboxDismissals();
+export function restoreInboxItems(
+  items: readonly HomeWorkItem[],
+  namespace?: string | null,
+) {
+  const entries = readInboxDismissals(namespace);
   let removed = false;
   for (const item of items) {
     const key = keyFor(item);
@@ -113,7 +132,7 @@ export function restoreInboxItems(items: readonly HomeWorkItem[]) {
       removed = true;
     }
   }
-  if (removed) write(entries);
+  if (removed) write(entries, namespace);
 }
 
 export function hasInboxDismissal(
@@ -143,11 +162,15 @@ export function isInboxDismissed(
   );
 }
 
-export function migrateInboxDismissal(oldId: string, newId: string) {
-  const entries = readInboxDismissals();
+export function migrateInboxDismissal(
+  oldId: string,
+  newId: string,
+  namespace?: string | null,
+) {
+  const entries = readInboxDismissals(namespace);
   if (oldId === newId || !Object.hasOwn(entries, oldId)) return;
   const old = entries[oldId];
   delete entries[oldId];
   if (!Object.hasOwn(entries, newId)) entries[newId] = old;
-  write(entries);
+  write(entries, namespace);
 }

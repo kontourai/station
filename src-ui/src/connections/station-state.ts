@@ -104,6 +104,16 @@ export function stationStateKey(binding?: ChatStationBindingV1): string {
       : 'invalid';
 }
 
+/** Identity for an Inbox row; host rows retain their published conversation key. */
+export function conversationStateKey(
+  binding: ChatStationBindingV1 | undefined,
+  id: string,
+): string {
+  return !binding || binding.affinity.kind === 'host'
+    ? id
+    : JSON.stringify(['station-chat', stationStateKey(binding), id]);
+}
+
 export function chatBelongsToStation(
   chat: ChatOwner,
   station?: StationStateScope,

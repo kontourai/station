@@ -2,6 +2,7 @@ import type { ConversationTurnActivity } from '@kontourai/station-contracts/orch
 import type { StationConnection } from '../connections/station-connection';
 import {
   chatBelongsToStation,
+  conversationStateKey,
   outboundStationIdentity,
   type StationStateScope,
   stationStateKey,
@@ -775,8 +776,10 @@ export class ActiveChatsStore {
     // it to the new key at the exact moment of promotion, the one place
     // both ids are known together.
     try {
-      migrateSnoozeKey(sessionId, conversationId, this.now());
-      migrateInboxDismissal(sessionId, conversationId);
+      const oldKey = conversationStateKey(chat.stationBinding, sessionId);
+      const newKey = conversationStateKey(chat.stationBinding, conversationId);
+      migrateSnoozeKey(oldKey, newKey, this.now());
+      migrateInboxDismissal(oldKey, newKey);
     } catch {
       /* ignore — snooze migration is a convenience, never load-bearing for
        * chat state itself. */

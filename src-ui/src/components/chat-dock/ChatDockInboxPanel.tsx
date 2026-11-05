@@ -1,38 +1,27 @@
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
-import { navigationStore } from '../../contexts/navigation-store';
-import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
-import {
-  type ConversationOpenResult,
-  openWorkItem,
-  workItemOpenFailureMessage,
-} from '../../views/home/work-item-open-policy';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { MessageGlyph, RefreshGlyph } from '../icons/Glyph';
 import { NewChatAction } from '../NewChatAction';
-import { Empty, ErrorState } from '../state';
+import { Empty, ErrorState, FilteredEmpty } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import {
   type CollapsibleInboxSectionId,
   InboxGroupList,
   type InboxGroupListProps,
-  moveFocusBeforeRemovingInboxRow,
 } from './ChatDockInboxRows';
-import { InboxScopeFilter, useInboxScope } from './InboxScopeFilter';
-import { useInboxDismissActions } from './inbox-dismissals';
+import { InboxScopeFilter } from './InboxScopeFilter';
 import {
-  clearSnooze,
-  snoozeKeyFor,
-  writeSnooze,
-} from './mobile-activity-groups';
-import { useInboxGroups } from './useInboxGroups';
+  type InboxPanelControllerOptions,
+  useInboxPanelController,
+} from './useInboxPanelController';
 
 export interface ChatDockInboxPanelProps {
   items: HomeWorkItem[];
@@ -41,14 +30,8 @@ export interface ChatDockInboxPanelProps {
   onFocusChat: (id: string) => void;
   /** station#1297: rehydrates a session with no live tab into the chat
    *  overlay — mirrors `useChatDockActions`' `openConversation`. */
-  onOpenConversation: (
-    conversationId: string,
-    agentSlug: string,
-    projectSlug?: string,
-    projectName?: string,
-    model?: string,
-    conversationUpdatedAt?: string,
-  ) => Promise<ConversationOpenResult> | ConversationOpenResult;
+  authority?: InboxPanelControllerOptions['authority'];
+  onOpenConversation: InboxPanelControllerOptions['onOpenConversation'];
   onOpenSession: (threadId: string) => void;
   /** See WorkItemOpenHandlers.agentsLoaded (station#3687). */
   agentsLoaded?: boolean;
@@ -116,6 +99,7 @@ function ChatDockInboxPanelImpl({
   onOpenConversation,
   onOpenSession,
   agentsLoaded,
+  authority,
   onOpenFailed,
   onCloseChat,
   onAcknowledgeConversation,
@@ -132,7 +116,7 @@ function ChatDockInboxPanelImpl({
 }: ChatDockInboxPanelProps) {
   // One coarse tick for the whole list's relative times, rather than a new
   // `now` on every render of the dock around it.
-  const now = useCoarseNow(suppliedNow);
+
   // A pointer that cannot hover gets the always-visible 44px chrome, the
   // same one the mobile sheet uses, rather than hover-revealed controls.
   const coarsePointer = useCoarsePointer();
@@ -149,15 +133,23 @@ function ChatDockInboxPanelImpl({
   }, [exiting]);
   const { inboxSections: sections } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
-  const openChatIds = useMemo(
-    () => new Set(openChatSessionIds),
-    [openChatSessionIds],
-  );
-  // The live groups (held lifecycles, live snoozes): the same hook the
-  // inbox toggle's Needs-you count reads, so the two cannot disagree.
-  const scope = useInboxScope(items, now, workFacts);
-  const groups = useInboxGroups(scope.items, now, workFacts);
-  const dismissals = useInboxDismissActions(items, workFacts);
+  const controller = useInboxPanelController({
+    items,
+    open: !exiting,
+    authority,
+    panelRef,
+    openChatSessionIds,
+    workFacts,
+    now: suppliedNow,
+    onFocusChat,
+    onOpenConversation,
+    onOpenSession,
+    agentsLoaded,
+    onOpenFailed,
+    onCloseChat,
+    onAcknowledgeConversation,
+  });
+  const { now, scope, groups, openChatIds, query, setQuery } = controller;
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
     setDeviceSetting('inboxSections', {
@@ -210,6 +202,14 @@ function ChatDockInboxPanelImpl({
         />
       </div>
       <InboxScopeFilter scope={scope} />
+      <input
+        type="search"
+        className="chat-dock-inbox__search"
+        aria-label="Search chats and tasks"
+        placeholder="Search…"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
       <div className="chat-dock-inbox__scroll">
         {sync?.failed && (
           <ErrorState
@@ -223,18 +223,27 @@ function ChatDockInboxPanelImpl({
             }
           />
         )}
-        {!hasAnyItems && (
-          <Empty
-            variant="compact"
-            label={
-              scope.value === 'all'
-                ? 'Nothing here yet.'
-                : 'No work in this filter.'
-            }
+        {!hasAnyItems && query.trim() ? (
+          <FilteredEmpty
+            query={query}
+            noun="work"
+            onClear={() => setQuery('')}
           />
+        ) : (
+          !hasAnyItems && (
+            <Empty
+              variant="compact"
+              label={
+                scope.value === 'all'
+                  ? 'Nothing here yet.'
+                  : 'No work in this filter.'
+              }
+            />
+          )
         )}
         {hasAnyItems && (
           <InboxGroupList
+            key={controller.stateKey}
             swipeActions={swipeActions}
             groups={groups}
             idPrefix="chat-dock-inbox"
@@ -248,76 +257,11 @@ function ChatDockInboxPanelImpl({
             workFacts={workFacts}
             chrome={coarsePointer ? 'touch' : 'hover'}
             collapsible={{ sections, onToggle: toggleSection }}
-            onActivate={(item) => {
-              // station#3687 seam 4: acknowledge only after the click did
-              // something. Acknowledging first moved a row the user could
-              // not open out of "Just finished" — a failed open quietly
-              // buried its own evidence.
-              if (item.kind === 'task') {
-                navigationStore.navigate(
-                  `/tasks/${encodeURIComponent(item.id)}`,
-                  {
-                    dock: null,
-                    chat: null,
-                    maximize: null,
-                    surface: null,
-                    taskView: 'overview',
-                  },
-                );
-                return;
-              }
-              void openWorkItem(item, {
-                onFocusChat,
-                onOpenConversation,
-                onOpenSession,
-                agentsLoaded,
-              })
-                .then((outcome) => {
-                  if (outcome === 'cancelled') return;
-                  if (outcome === 'opened' || outcome === 'fallback') {
-                    onAcknowledgeConversation?.(item);
-                    return;
-                  }
-                  onOpenFailed?.(workItemOpenFailureMessage(item, outcome));
-                })
-                // Seam 5: a throw inside a handler was an unhandled
-                // rejection with no user-visible signal.
-                .catch(() => {
-                  onOpenFailed?.(
-                    'Could not open this item. Try again, or open it from Activity.',
-                  );
-                });
-            }}
-            onSnoozeWake={(item, wakeAt, action) => {
-              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
-              const key = snoozeKeyFor(item);
-              // The write notifies every reader of the snooze map.
-              if (wakeAt === null) clearSnooze(key, now);
-              else writeSnooze(key, wakeAt, now);
-            }}
-            onDismiss={(item, action) => {
-              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
-              dismissals.dismiss(item);
-            }}
-            onRestore={(item, action) => {
-              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
-              dismissals.restore(item);
-            }}
-            onCloseChat={(sessionId, action) => {
-              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
-              onCloseChat(sessionId);
-            }}
-            onDraftDiscarded={(item, action) => {
-              // #2312: the server deleted the Draft; its open tab, if any,
-              // now names nothing.
-              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
-              if (item.chatSessionId && openChatIds.has(item.chatSessionId))
-                onCloseChat(item.chatSessionId);
-            }}
+            {...controller.rowActions}
           />
         )}
       </div>
-      {dismissals.notice}
+      {controller.notice}
     </aside>
   );
 }
@@ -343,3 +287,5 @@ function ChatDockInboxPanelImpl({
  * array, so it does not defeat the wrap.
  */
 export const ChatDockInboxPanel = memo(ChatDockInboxPanelImpl);
+
+import './InboxPanelSearch.css';

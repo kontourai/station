@@ -721,6 +721,12 @@ describe('ChatDockInboxPanel', () => {
       'station',
       undefined,
       '2020-06-15T12:00:00.000Z',
+      undefined,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        isCurrent: expect.any(Function),
+        beforeFocus: expect.any(Function),
+      }),
     );
     expect(onOpenSession).not.toHaveBeenCalled();
   });
