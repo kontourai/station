@@ -294,6 +294,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4521: builds throwaway git origins and runs real git (init, commit,
   // remote) to prove a refused registry origin is never fetched on update.
   'src-server/services/plugins/__tests__/plugin-update-check-git-provenance.test.ts',
+  // #4523: converts real configuration profiles with /usr/bin/plutil
+  // (single-shot spawns, no wall-clock assertion).
+  'packages/shared/src/__tests__/managed-policy-macos.test.ts',
+  // #4524: validates the generated ADMX/ADML against Microsoft's schema with
+  // xmllint (single-shot spawns, no wall-clock assertion).
+  'packages/shared/src/__tests__/managed-policy-templates.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
