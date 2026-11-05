@@ -2,7 +2,7 @@ import {
   type ManagedPolicySummary,
   managedPolicyAllowsRemoteClients,
   managedRemoteClientsDenial,
-} from '@kontourai/station-contracts/managed-policy';
+} from '@kontourai/station-contracts/managed-policy-status';
 import { useManagedPolicyStatusQuery } from '@kontourai/station-sdk';
 import { useApiBase } from '../contexts/ApiBaseContext';
 

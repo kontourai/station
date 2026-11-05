@@ -60,7 +60,7 @@ vi.mock('../lib/serverHealth', () => ({ checkServerHealthDetailed: vi.fn() }));
 // #4519: the managed limit, set per test.
 const managed = vi.hoisted(() => ({
   limit: undefined as
-    | import('@kontourai/station-contracts/managed-policy').ManagedPolicySummary
+    | import('@kontourai/station-contracts/managed-policy-status').ManagedPolicySummary
     | undefined,
 }));
 vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({

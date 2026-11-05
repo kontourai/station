@@ -175,7 +175,9 @@ Choose the app identifier for your installed channel (Stable, Beta, or Nightly)
 from the [channel log path table in the repository guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md).
 
 The desktop shell honors `STATION_DESKTOP_LOG_LEVEL` set before launch:
-`trace`, `debug`, `info`, `warn`, `error`, or `off`. Its file rotation is
+`trace`, `debug`, `info`, `warn`, `error`, or `off`. At any level, the
+desktop updater's own records are left out and update errors show only each
+URL's scheme, host and port. Its file rotation is
 configured for up to five archived files plus the active log, with a 5 MiB
 rotation threshold. This is not a hard file-size or total-size cap: an oversized
 log entry can exceed the threshold. If the shell log directory is unwritable,

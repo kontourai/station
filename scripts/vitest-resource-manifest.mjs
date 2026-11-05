@@ -328,6 +328,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4517: runs offline `station config set` and `station registry` as CLI
   // children on private homes with an injected managed policy.
   'packages/cli/src/__tests__/managed-settings-offline.test.ts',
+  // #4522: runs `station upgrade` as a CLI child in a private directory.
+  'packages/cli/src/__tests__/upgrade-managed-policy.process.test.ts',
   // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.
   'packages/shared/src/__tests__/managed-policy.test.ts',
   'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',

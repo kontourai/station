@@ -262,6 +262,9 @@ keeps two independent mechanisms and separately labelled actions:
   [CLI `service` reference](../reference/cli.md#service). Any other archive
   names `station upgrade` on the host, or a reinstall.
 
+A machine's [managed policy](managed-policy.md#update-control) can turn both
+checks off, make the nightly channel unavailable, or send them to a mirror.
+
 An established built-in (embedded sidecar) server never runs the ordinary
 source check at all; its update path is the desktop app itself, including the
 built-in server in that app update and its restart confirmation. The server

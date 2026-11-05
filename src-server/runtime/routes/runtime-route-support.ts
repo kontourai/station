@@ -156,6 +156,8 @@ export function createRuntimeSystemRouteDeps(
   context: ConfigureRuntimeRoutesContext,
 ) {
   return {
+    // #4522: the update routes enforce the managed policy's update limit.
+    managedUpdates: context.managedPolicy?.document.limits?.updates ?? null,
     getHomeRecovery: (): HomeRecoveryDisclosure => {
       const result = readStationHomeRecovery(
         context.configLoader.getProjectHomeDir(),

@@ -5,13 +5,17 @@ import {
   MANAGED_POLICY_INVALID_MARKER,
   MANAGED_POLICY_KEY_DISPLAY_MAX_CHARS,
   MANAGED_POLICY_REMOTE_CLIENTS_CODE,
+  MANAGED_POLICY_UPDATES_REFUSED_CODE,
   managedByLabel,
   managedPolicyAllowsRemoteClients,
   managedPolicyDenial,
   managedRemoteClientsDenial,
   managedSettingsProblems,
+  managedUpdateMirrorUrl,
+  managedUpdatesRefusal,
   parseManagedPolicyDocument,
   parseManagedPolicyStatus,
+  STATION_RELEASE_DOWNLOAD_BASE,
   summarizeManagedPolicy,
   withoutLockedProjectFields,
 } from '../managed-policy.js';
@@ -84,7 +88,7 @@ describe('parseManagedPolicyDocument', () => {
   });
 
   test('refuses every reserved limit key until enforcement lands', () => {
-    for (const key of ['maxApprovalMode', 'engines', 'updates']) {
+    for (const key of ['maxApprovalMode', 'engines']) {
       expect(
         problemsOf({
           schemaVersion: 1,
@@ -673,6 +677,178 @@ describe('limits.clients (#4519)', () => {
     );
     expect(MANAGED_POLICY_REMOTE_CLIENTS_CODE).toBe(
       'managed-policy-remote-clients',
+    );
+  });
+});
+
+describe('limits.updates (#4522)', () => {
+  const withUpdates = (updates: unknown) => ({
+    schemaVersion: 1,
+    organization: 'Acme',
+    limits: { updates },
+  });
+
+  test('accepts each key and keeps exactly what was set', () => {
+    expect(
+      parseManagedPolicyDocument(
+        withUpdates({
+          mode: 'off',
+          feedUrl: 'https://mirror.example/station/t0ken/',
+          allowNightly: false,
+        }),
+      ),
+    ).toEqual({
+      ok: true,
+      document: {
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: {
+          updates: {
+            mode: 'off',
+            feedUrl: 'https://mirror.example/station/t0ken/',
+            allowNightly: false,
+          },
+        },
+      },
+    });
+    expect(parseManagedPolicyDocument(withUpdates({}))).toEqual({
+      ok: true,
+      document: {
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { updates: {} },
+      },
+    });
+  });
+
+  test('refuses a bad value for each key and any unknown key', () => {
+    expect(
+      problemsOf(
+        withUpdates({
+          mode: 'manual',
+          feedUrl: 'http://mirror.example/',
+          allowNightly: 'no',
+          channel: 'stable',
+        }),
+      ),
+    ).toEqual([
+      {
+        path: 'limits.updates.channel',
+        message:
+          'unknown key; this version of Station refuses keys it cannot enforce',
+      },
+      { path: 'limits.updates.mode', message: 'must be "auto" or "off"' },
+      { path: 'limits.updates.feedUrl', message: 'must be an https URL' },
+      { path: 'limits.updates.allowNightly', message: 'must be true or false' },
+    ]);
+    expect(problemsOf(withUpdates(false))).toEqual([
+      { path: 'limits.updates', message: 'must be an object' },
+    ]);
+  });
+
+  test.each([
+    [
+      'https://user:pw@mirror.example/',
+      'must not contain a user name or password',
+    ],
+    [
+      'https://mirror.example/?token=1',
+      'must not contain a query or fragment; release paths are appended to it',
+    ],
+    [
+      'https://mirror.example/#x',
+      'must not contain a query or fragment; release paths are appended to it',
+    ],
+    ['https://mirror.example/a/../b/', 'must be a plain URL in canonical form'],
+    ['https://Mirror.example/', 'must be a plain URL in canonical form'],
+    ['not a url', 'must be an https URL'],
+    ['', 'must be an https URL'],
+    [
+      `https://mirror.example/${'a'.repeat(2048)}`,
+      'must be at most 2048 characters',
+    ],
+  ])('refuses the feed URL %s', (feedUrl, message) => {
+    expect(problemsOf(withUpdates({ feedUrl }))).toEqual([
+      { path: 'limits.updates.feedUrl', message },
+    ]);
+  });
+
+  test('accepts a feed URL with or without a trailing slash', () => {
+    for (const feedUrl of [
+      'https://mirror.example',
+      'https://mirror.example/a',
+    ])
+      expect(parseManagedPolicyDocument(withUpdates({ feedUrl })).ok).toBe(
+        true,
+      );
+  });
+
+  test('the client summary says a mirror is set but never carries its URL', () => {
+    const parsed = parseManagedPolicyDocument(
+      withUpdates({ feedUrl: 'https://mirror.example/secret-token/' }),
+    );
+    if (!parsed.ok) throw new Error('expected a valid policy');
+    const summary = summarizeManagedPolicy(parsed.document);
+    expect(summary.limits).toEqual({
+      updates: { mode: 'auto', mirror: true, allowNightly: true },
+    });
+    expect(JSON.stringify(summary)).not.toContain('secret-token');
+    const status = {
+      state: 'loaded',
+      source: { kind: 'file', location: '/etc/station/policy.json' },
+      digest: `sha256:${'a'.repeat(64)}`,
+      summary,
+    };
+    expect(parseManagedPolicyStatus(status)).toEqual(status);
+    expect(
+      parseManagedPolicyStatus({
+        ...status,
+        summary: { ...summary, limits: { updates: { mode: 'sometimes' } } },
+      }),
+    ).toBeNull();
+  });
+
+  test('maps a default release URL into the mirror and refuses anything else', () => {
+    expect(STATION_RELEASE_DOWNLOAD_BASE).toBe(
+      'https://github.com/kontourai/station/releases/download/',
+    );
+    for (const feed of [
+      'https://mirror.example/s',
+      'https://mirror.example/s/',
+    ])
+      expect(
+        managedUpdateMirrorUrl(
+          'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json',
+          feed,
+        ),
+      ).toBe('https://mirror.example/s/nightly-desktop/latest.json');
+    expect(
+      managedUpdateMirrorUrl(
+        'https://example.com/releases/download/x/y.json',
+        'https://mirror.example/',
+      ),
+    ).toBeNull();
+    expect(
+      managedUpdateMirrorUrl(
+        STATION_RELEASE_DOWNLOAD_BASE,
+        'https://mirror.example/',
+      ),
+    ).toBeNull();
+  });
+
+  test('refuses updates when off, and nightly only when nightly is not allowed', () => {
+    expect(managedUpdatesRefusal(undefined, 'nightly')).toBeNull();
+    expect(managedUpdatesRefusal({ mode: 'auto' }, 'stable')).toBeNull();
+    expect(managedUpdatesRefusal({ mode: 'off' }, 'stable')).toBe(
+      "This machine's managed policy turns off Station updates",
+    );
+    expect(managedUpdatesRefusal({ allowNightly: false }, 'nightly')).toBe(
+      "This machine's managed policy makes the nightly channel unavailable",
+    );
+    expect(managedUpdatesRefusal({ allowNightly: false }, 'stable')).toBeNull();
+    expect(managedUpdatesRefusal({ allowNightly: true }, 'nightly')).toBeNull();
+    expect(MANAGED_POLICY_UPDATES_REFUSED_CODE).toBe(
+      'managed-policy-updates-refused',
     );
   });
 });

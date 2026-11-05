@@ -1,4 +1,4 @@
-import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy';
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 /**
  * @vitest-environment jsdom
  */

@@ -12,6 +12,7 @@ import { AUTH_RATE_LIMITED_ERROR_CODE } from './http.js';
 import {
   MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
   MANAGED_POLICY_REMOTE_CLIENTS_CODE,
+  MANAGED_POLICY_UPDATES_REFUSED_CODE,
 } from './managed-policy.js';
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
@@ -212,6 +213,8 @@ export const PROVIDER_FAILURE_KINDS = {
   [ACP_APPROVAL_GOVERNANCE_REFUSED_CODE]: 'permission_denied',
   // #4519: remote access the machine's managed policy forbids.
   [MANAGED_POLICY_REMOTE_CLIENTS_CODE]: 'permission_denied',
+  // #4522: an update check, download or install the managed policy forbids.
+  [MANAGED_POLICY_UPDATES_REFUSED_CODE]: 'permission_denied',
   [MUSE_SERVE_HOST_EXITED_CODE]: 'engine_crashed',
   [MUSE_SERVE_STOP_UNCONFIRMED_CODE]: 'warning',
   [PROVIDER_TURN_IN_PROGRESS_CODE]: 'busy',

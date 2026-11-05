@@ -26,6 +26,11 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from '../../scripts/lib/owned-process.mjs';
+import {
+  EVERY_KEY_FEED_URL,
+  EVERY_KEY_POLICY,
+  EVERY_KEY_SUMMARY_LIMITS,
+} from '../../packages/contracts/src/__tests__/managed-policy-every-key.fixture.js';
 import { trackTempDirs } from '../__test-utils__/temp-dirs.js';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
@@ -150,6 +155,58 @@ async function expectRefusal(
   expect(markerLine, stderr.text.slice(-3000)).toBeDefined();
   expect(markerLine).toContain(policyPath);
   return { stderr: markerLine as string, fullStderr: stderr.text, policyPath };
+}
+
+/** Boot a server on `policyPath` and mint a local credential for it. */
+async function bootWithGrant(root: string, policyPath: string) {
+  const env = isolatedEnv(root, policyPath);
+  const { owned } = startServer(env);
+  const child = owned.child;
+  if (!('stdout' in child) || !child.stdout)
+    throw new Error('Station stdout unavailable');
+  let pending = '';
+  const ready = new Promise<number>((resolveReady) => {
+    child.stdout?.on('data', (chunk: Buffer) => {
+      pending += chunk.toString('utf8');
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+      for (const line of lines)
+        if (line.startsWith(readyPrefix))
+          resolveReady(JSON.parse(line).port as number);
+    });
+  });
+  const early = owned.completion.then((result) => {
+    throw new Error(`Station exited before listening (${result.status})`);
+  });
+  void early.catch(() => {});
+  const port = await bounded(
+    Promise.race([ready, early]),
+    'readiness',
+    150_000,
+  );
+  const apiBase = `http://127.0.0.1:${port}`;
+
+  const grant = await fetch(
+    `${apiBase}/.well-known/station/v1/pairing/local-grant`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: readFileSync(
+          join(env.STATION_HOME, 'runtime/local-grant.secret'),
+          'utf8',
+        ).trim(),
+        deviceName: 'managed-policy-test',
+        clientInstanceId: randomUUID(),
+      }),
+    },
+  );
+  const grantBody = await grant.text();
+  expect(grant.status, grantBody).toBe(200);
+  const { credential } = JSON.parse(grantBody) as { credential: string };
+  expect(credential).toBeTruthy();
+
+  return { env, apiBase, credential };
 }
 
 describe('managed policy at real server startup', () => {
@@ -286,53 +343,7 @@ describe('managed policy at real server startup', () => {
         '{"organization":"Acme","schemaVersion":1,"supportUrl":"https://help.example/station"}',
       )
       .digest('hex')}`;
-    const env = isolatedEnv(root, policyPath);
-    const { owned } = startServer(env);
-    const child = owned.child;
-    if (!('stdout' in child) || !child.stdout)
-      throw new Error('Station stdout unavailable');
-    let pending = '';
-    const ready = new Promise<number>((resolveReady) => {
-      child.stdout?.on('data', (chunk: Buffer) => {
-        pending += chunk.toString('utf8');
-        const lines = pending.split('\n');
-        pending = lines.pop() ?? '';
-        for (const line of lines)
-          if (line.startsWith(readyPrefix))
-            resolveReady(JSON.parse(line).port as number);
-      });
-    });
-    const early = owned.completion.then((result) => {
-      throw new Error(`Station exited before listening (${result.status})`);
-    });
-    void early.catch(() => {});
-    const port = await bounded(
-      Promise.race([ready, early]),
-      'readiness',
-      150_000,
-    );
-    const apiBase = `http://127.0.0.1:${port}`;
-
-    const grant = await fetch(
-      `${apiBase}/.well-known/station/v1/pairing/local-grant`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret: readFileSync(
-            join(env.STATION_HOME, 'runtime/local-grant.secret'),
-            'utf8',
-          ).trim(),
-          deviceName: 'managed-policy-test',
-          clientInstanceId: randomUUID(),
-        }),
-      },
-    );
-    const grantBody = await grant.text();
-    expect(grant.status, grantBody).toBe(200);
-    const { credential } = JSON.parse(grantBody) as { credential: string };
-    expect(credential).toBeTruthy();
-
+    const { env, apiBase, credential } = await bootWithGrant(root, policyPath);
     const unauthenticated = await fetch(
       `${apiBase}/api/settings/managed-policy`,
     );
@@ -546,5 +557,115 @@ describe('managed policy at real server startup', () => {
     );
     expect(stored).not.toHaveProperty('defaultMaxTurns');
     expect(stored).not.toHaveProperty('checkoutStaleAfterDays');
+  }, 300_000);
+});
+
+describe('the managed update limit at a real server (#4522)', () => {
+  test('off refuses the core update check and apply, and the summary never carries the feed URL', async () => {
+    const root = fixtureRoot();
+    const policyPath = join(root, 'policy.json');
+    writeFileSync(
+      policyPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: {
+          updates: {
+            mode: 'off',
+            feedUrl: 'https://mirror.example/feed-secret-token/',
+            allowNightly: false,
+          },
+        },
+      }),
+    );
+    const { apiBase, credential } = await bootWithGrant(root, policyPath);
+    const headers = { Authorization: `Bearer ${credential}` };
+
+    const summary = await fetch(`${apiBase}/api/settings/managed-policy`, {
+      headers,
+    });
+    const summaryText = await summary.text();
+    expect(summary.status, summaryText).toBe(200);
+    expect(summaryText).not.toContain('feed-secret-token');
+    expect(JSON.parse(summaryText).data.summary.limits).toEqual({
+      updates: { mode: 'off', mirror: true, allowNightly: false },
+    });
+
+    const check = await fetch(`${apiBase}/api/system/core-update`, {
+      headers,
+    });
+    expect(check.status).toBe(200);
+    expect(await check.json()).toMatchObject({
+      updateAvailable: false,
+      managedPolicyCode: 'managed-policy-updates-refused',
+      message: "This machine's managed policy turns off Station updates.",
+    });
+
+    const apply = await fetch(`${apiBase}/api/system/core-update`, {
+      method: 'POST',
+      headers,
+    });
+    expect(apply.status).toBe(403);
+    expect(await apply.json()).toMatchObject({
+      code: 'managed-policy-updates-refused',
+    });
+  }, 300_000);
+});
+
+describe('every enforced key at a real server (#4515)', () => {
+  // The combined policy the contracts round trip and `station policy check`
+  // use. Startup composes every slice's installation (settings overlay,
+  // capability switches, listener admission, update limit), so one boot
+  // proves they load together and each still enforces.
+  test('starts, reports every limit as clients see it, and each slice still refuses', async () => {
+    const root = fixtureRoot();
+    const policyPath = join(root, 'policy.json');
+    writeFileSync(policyPath, JSON.stringify(EVERY_KEY_POLICY));
+    const { apiBase, credential } = await bootWithGrant(root, policyPath);
+    const headers = { Authorization: `Bearer ${credential}` };
+
+    const summary = await fetch(`${apiBase}/api/settings/managed-policy`, {
+      headers,
+    });
+    const summaryText = await summary.text();
+    expect(summary.status, summaryText).toBe(200);
+    expect(summaryText).not.toContain(EVERY_KEY_FEED_URL);
+    expect(JSON.parse(summaryText).data.summary).toEqual({
+      organization: 'Acme',
+      supportUrl: 'https://help.example/station',
+      lockedSettings: ['defaultMaxTurns'],
+      limits: EVERY_KEY_SUMMARY_LIMITS,
+    });
+
+    // #4522: updates are off.
+    const check = await fetch(`${apiBase}/api/system/core-update`, {
+      headers,
+    });
+    expect(check.status).toBe(200);
+    expect(await check.json()).toMatchObject({
+      managedPolicyCode: 'managed-policy-updates-refused',
+    });
+
+    // #4521: inbound webhooks are refused before anything is read.
+    const webhook = await fetch(`${apiBase}/api/webhooks/inbound`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    const webhookText = await webhook.text();
+    expect(webhook.status, webhookText).toBe(403);
+    expect(JSON.parse(webhookText).code).toBe(
+      'managed-policy-capability-disabled',
+    );
+
+    // #4517: the locked setting is in effect and refuses a write.
+    const write = await fetch(`${apiBase}/config/app`, {
+      method: 'PUT',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultMaxTurns: 41 }),
+    });
+    const writeText = await write.text();
+    expect(write.status, writeText).toBe(403);
+    expect(JSON.parse(writeText).code).toBe('managed_setting_locked');
   }, 300_000);
 });

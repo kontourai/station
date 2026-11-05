@@ -9,6 +9,11 @@ import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+import {
+  EVERY_KEY_FEED_URL,
+  EVERY_KEY_POLICY,
+  EVERY_KEY_SUMMARY_LIMITS,
+} from '../../../contracts/src/__tests__/managed-policy-every-key.fixture.js';
 
 const repoRoot = resolve(import.meta.dirname, '../../../..');
 const makeTempDir = trackTempDirs();
@@ -58,6 +63,28 @@ function write(body: string): string {
 }
 
 describe('station policy check', () => {
+  // #4515: the combined policy the contracts round trip uses, every enforced
+  // key at once, accepted by the real CLI exactly as server startup would.
+  test('accepts a policy that sets every enforced key, and its summary never names the mirror', () => {
+    const path = write(JSON.stringify(EVERY_KEY_POLICY));
+    const text = check(path);
+    expect(text.status, text.stderr).toBe(0);
+    expect(text.stdout).toContain(`Policy ${path} is valid.`);
+    expect(text.stdout).toContain(
+      `  Limits: ${Object.keys(EVERY_KEY_POLICY.limits).length}`,
+    );
+    expect(text.stdout).toContain('defaultMaxTurns');
+    expect(text.stdout).not.toContain(EVERY_KEY_FEED_URL);
+
+    const json = check(path, '--json');
+    expect(json.status, json.stderr).toBe(0);
+    const report = JSON.parse(json.stdout);
+    expect(report).toMatchObject({ valid: true, path });
+    expect(report.summary.limits).toEqual(EVERY_KEY_SUMMARY_LIMITS);
+    expect(report.summary.lockedSettings).toEqual(['defaultMaxTurns']);
+    expect(json.stdout).not.toContain(EVERY_KEY_FEED_URL);
+  });
+
   test('exits 0 on a valid policy and prints what it does', () => {
     const path = write(
       JSON.stringify({

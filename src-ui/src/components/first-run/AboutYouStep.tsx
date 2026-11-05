@@ -25,7 +25,7 @@
  * only ever open inside a chapter the person is already in.
  */
 
-import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy';
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 import {
   buildUserProfileContextBlock,
   USER_PROFILE_COMFORT_LABELS,

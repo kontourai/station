@@ -13,6 +13,8 @@ evidence:
     ref: https://github.com/kontourai/station/issues/4521
   - kind: issue
     ref: https://github.com/kontourai/station/issues/4519
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/4522
 ---
 
 # Managed policy
@@ -75,9 +77,10 @@ looking managed while that restriction is not enforced.
 
 **Keys that later slices own are refused until their enforcement lands.**
 Version 1 reserves `limits` (#4518–#4522). This build accepts in `limits` only
-the [capability switches](#capability-switches) (#4521) and `clients` ([network
-exposure](#network-exposure), #4519). Any other limit key gets a "not supported
-by this version of Station" error. If Station accepted a key before it enforced
+the [capability switches](#capability-switches) (#4521), `clients` ([network
+exposure](#network-exposure), #4519) and `updates` ([update
+control](#update-control), #4522). Any other limit key gets a "not supported by
+this version of Station" error. If Station accepted a key before it enforced
 that key, the administrator would see the machine as managed while nothing was
 managed. Each enforcement slice adds its key to the parser in the same change
 that enforces it. `settings` entries are enforced since #4517; see [Managed
@@ -154,6 +157,19 @@ the installed policy's to report whether a restart is needed.
 
 The policy must not hold credentials: every user on the machine can read it.
 The parser refuses a support link that contains a user name or password.
+
+**Limits are rebuilt from every slice.** Each enforced limit is one entry in
+`MANAGED_POLICY_LIMIT_SLICES`: its problems and its accepted value. The parsed
+document, the client summary and the status decode each rebuild `limits` by
+merging every entry, rather than from one slice's own fields. A slice reads
+either shape, the document or the summary it projects to, because the status
+decode re-checks the summary a server sent. Two slices differ between the
+shapes: `clients` does not require the local kinds in a summary, since a newer
+server may enforce a list this build refuses in a document, and `updates` is
+projected to `mirror` (see [Update control](#update-control)) only when the
+summary is built, so the parsed document keeps its `feedUrl`. One round-trip
+test sets every enforced key at once and fails when a key is missing from any
+of the three, so merging two slices cannot silently drop a restriction.
 
 ## Test-only injection
 
@@ -288,13 +304,6 @@ capability on. Each enforcement seam reads the switches through
 from the loaded policy before the runtime is built, and refuses with one
 sentence (`managedPolicyDenial`) and the error code
 `managed-policy-capability-disabled` (`permission_denied`).
-
-**Limits are rebuilt from every slice.** The parsed document, the client
-summary and the status decode each rebuild `limits` by merging every entry in
-`MANAGED_POLICY_LIMIT_SLICES`, rather than from one slice's own fields. A
-later slice adds itself to that list, and a round-trip test that sets every
-enforced key fails when a key is missing from any of the three, so merging two
-slices cannot silently drop a restriction.
 
 **Telemetry is off at the publisher, not at the setting.** The usage resolver
 (`resolveTelemetryConfiguration`) gives every publisher tier `off` with reason
@@ -564,8 +573,127 @@ the same foreground seam as chat, so under the limit the gateway does not
 start, and its status carries the managed sentence. Its configuration is
 kept; it is the only such integration in this build.
 
+## Update control
+
+`limits.updates` (#4522) has three optional keys: `mode` (`auto` or `off`),
+`feedUrl` (a mirror) and `allowNightly`. The decisions:
+
+**Each update surface enforces it where it runs.** There are four, Station's
+own update paths: the server's core update routes and its own update
+coordinator, `station upgrade`, the Station service launcher's download and
+apply steps, and the desktop app updater. The launcher checks the policy on
+every update or apply request, so a version staged before the policy was
+installed is not applied under it. A nightly-numbered version or a nightly
+runtime channel counts as nightly whatever ring the install state records,
+and when the state records no ring, or a ring this build does not ship (only
+stable, preview and nightly are recognized), and nothing marks it nightly,
+`allowNightly: false` still refuses, because a missing or unknown field must
+not pass a nightly refusal.
+The server loads the policy at startup with the rest of the document.
+`station upgrade` and the launcher are separate processes that run without
+the server, so each reads the installed policy when it runs, and an installed
+policy it cannot use refuses the update, as it refuses server startup.
+
+**The desktop app reads the policy natively, not from the server.** The
+updater must obey the policy when the bundled server is not running, and in
+particular when the server refused to start because of the policy; asking the
+server would then have no answer, and treating no answer as "no policy" would
+update a machine whose administrator turned updates off. The desktop shell
+(`src-desktop/src/managed_update_policy.rs`) reads the same fixed path and
+repeats the server reader's steps (`readManagedPolicyFile` and
+`managedPolicyDirectoryProblem` in `@kontourai/station-shared/managed-policy`):
+a missing entry means no policy; a link (even a dangling one) or a directory
+is refused at `lstat`; the file is opened without following a link and without
+blocking, and the opened descriptor must be a regular file with the device and
+inode `lstat` saw; on macOS and Linux the file and both its literal and its
+resolved directory chains must be root's and not writable by group or others;
+the read stops one byte past 1 MiB and refuses rather than truncates; a UTF-8
+byte-order mark is dropped; a repeated key is unusable. It honors the test
+override under the same rule as the server. Bytes that are not UTF-8 are
+refused (the server substitutes U+FFFD). On Windows, where stable Rust exposes
+no file index, the shell opens the file with `FILE_FLAG_OPEN_REPARSE_POINT` and
+takes the identity from `GetFileInformationByHandle` (volume serial number and
+file index, which Node reports there as device and inode). It opens the path a
+second time the same way to stand in for the `lstat` identity, as libuv's own
+`lstat` does. Both handles must name the same file, neither may be a reparse
+point or a directory, and an identity Windows cannot report refuses the
+policy. Only the macOS and Linux behavior is executed in tests; the Windows
+path is compile-checked only. Windows owners and ACLs are #4524 on both
+sides. The shell enforces only `limits.updates`:
+
+- a policy it cannot use, a `schemaVersion` other than 1, or a
+  `limits.updates` with an unknown key or a bad value turns updates **off**,
+  because the shell cannot tell what the administrator allowed;
+- a usable `limits.updates` applies even when another part of the document is
+  something this build's server refuses. Otherwise the policy that stopped
+  the server would also stop the approved update that can enforce it.
+
+**A refusal stops before any network access.** `off`, and `allowNightly:
+false` on a nightly install, refuse the check as well as the download and the
+install: the server's check contacts nothing, its coordinator never checks or
+downloads on its own, and the desktop updater stays disabled and starts no
+check. Every server refusal carries `managed-policy-updates-refused`, mapped to
+`permission_denied`. Nightly means the install's own channel or ring is
+nightly. The policy governs Station's own update paths only. Running
+`install.sh` or `install.ps1` by hand is replacing Station, and the policy does
+not govern it: a policy cannot stop a user from replacing Station, and
+application controls are the tool for that. `install.sh` follows a mirror only
+through `STATION_INSTALL_MIRROR_URL`, which Station's own update paths set.
+
+**A mirror reproduces the release download tree.** Station's update files all
+live at `https://github.com/kontourai/station/releases/download/<tag>/<file>`
+(the desktop feeds, the signed server manifests and the server archives), so
+one rule maps each of them: `<feedUrl>/<tag>/<file>`
+(`managedUpdateMirrorUrl` in `@kontourai/station-contracts/managed-policy`,
+mirrored by the desktop shell and `install.sh`). A URL outside that tree is
+refused instead of fetched from the default. The mapping keeps every signature
+check: the signed server manifest is served unchanged and binds each archive's
+size and SHA-256, and each desktop archive carries its own updater signature,
+so a mirror may rewrite `latest.json`'s download URLs without re-signing. The
+desktop updater refuses a download whose URL is not under `feedUrl`, and
+`install.sh` maps each archive into the mirror. The feed
+URL has no query or fragment, because paths are appended to it, and must be in
+canonical form, so the text the administrator reviewed is the URL Station
+fetches.
+
+- The server check, `station upgrade` and the launcher read
+  `portable-<ring>/station-portable-<ring>-manifest.json` from the mirror
+  instead of the manifest the install recorded, and set
+  `STATION_INSTALL_MIRROR_URL` for `install.sh`. `install.sh` then requires the
+  manifest to come from the mirror, maps each archive into it, and refuses to
+  download Node.js or take the authenticated GitHub path.
+- A source checkout and a desktop bundle's server update compare against a git
+  remote, which the mirror does not serve. Both are refused under a mirror;
+  the desktop app updates a desktop bundle through its own updater instead.
+- The Windows installer (`install.ps1`) cannot follow a mirror yet, so on
+  Windows a mirrored `station upgrade` or launcher update is refused rather
+  than fetched from the default.
+
+**Under a mirror, every redirect stays on the mirror's origin.** Each hop for
+a feed, a manifest or an archive must keep `feedUrl`'s scheme, host and port,
+for at most five hops; any other redirect is refused. The server follows hops
+by hand, `install.sh` turns off curl's own redirects and checks each hop, and
+the desktop updater gives the plugin's HTTP client a custom redirect policy.
+Same-origin rather than no redirects at all: the policy approves a server, a
+hop within it reaches nothing the administrator did not approve, and a mirror
+may well redirect within itself (a trailing slash, a versioned path). A
+redirect to another host, which is how a mirror in front of a CDN or object
+storage would hand off, is refused, so such a mirror must serve the bytes
+itself. Without a mirror the default redirects through GitHub's asset host
+are followed as before.
+
+**The feed URL never reaches clients.** It may carry an access token in its
+path, so the client summary reports `limits.updates` as `mode`, `allowNightly`
+and `mirror: true | false`. The parser still refuses a user name or password in
+it: every user on the machine can read the policy. The HTTP client puts
+request URLs into its error text, so the desktop shell keeps only the scheme,
+host and port of every URL in an update error before it reaches the window
+state or a log, and drops the updater plugin's own log records (it logs raw
+client errors at Error and request URLs at Debug).
+
 ## Status of later slices
 
-The remaining limits, the macOS profile, the Windows registry, and
-`station policy templates` are tracked by #4518–#4524. Until each one lands,
-its keys are refused, as described above.
+The remaining limits (`maxApprovalMode` and `engines`), the macOS profile,
+the Windows registry, and `station policy templates` are tracked by
+#4518–#4524. Until each one lands, its keys are refused, as
+described above.

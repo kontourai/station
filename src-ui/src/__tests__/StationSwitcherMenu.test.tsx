@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import type { SavedConnection } from '@kontourai/station-connect';
-import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy';
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 import {
   act,
   cleanup,

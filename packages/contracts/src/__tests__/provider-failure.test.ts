@@ -81,6 +81,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['foreground_message_indeterminate', 'indeterminate', false],
     ['managed-policy-capability-disabled', 'permission_denied', false],
     ['managed-policy-remote-clients', 'permission_denied', false],
+    ['managed-policy-updates-refused', 'permission_denied', false],
     ['mcp_sign_in_required', 'auth', false],
     ['model-override-unsupported', 'input_unsupported', false],
     ['model_not_advertised', 'model_unavailable', false],

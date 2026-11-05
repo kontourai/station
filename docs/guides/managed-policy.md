@@ -18,9 +18,10 @@ fail-closed startup check, `station policy check` and `station policy show`,
 a value-free summary that clients can read,
 [managed settings](#settings) (defaults and fixed values for Station
 settings), and these limits: three [capability switches](#capability-switches)
-(`telemetry`, `webhookAutomations` and `registries`) and
-[network exposure](#network-exposure) (`clients`). It does **not** yet enforce
-any other limit. A policy that contains another limit key is refused with "not
+(`telemetry`, `webhookAutomations` and `registries`),
+[network exposure](#network-exposure) (`clients`) and
+[update control](#update-control) (`updates`). It does **not** yet enforce any
+other limit. A policy that contains another limit key is refused with "not
 supported by this version of Station". Station never accepts a key it does not
 yet enforce, so a machine never looks managed when it is not.
 
@@ -45,8 +46,9 @@ manage settings:
 | `organization` | yes | One line, 1–200 characters, no leading or trailing spaces. Users see "Managed by <organization>". |
 | `supportUrl` | no | An `https` URL of at most 2048 characters, with no user name or password. |
 | `settings` | no | Managed settings, keyed by setting. See [Settings](#settings). |
-| `limits` | no | Only the [capability switches](#capability-switches) and `clients` in this release. |
+| `limits` | no | Only the [capability switches](#capability-switches), `clients` and `updates` in this release. |
 | `limits.clients` | no | A list of `"desktop"`, `"local-browser"` and `"remote"`. See [Network exposure](#network-exposure). |
+| `limits.updates` | no | How Station updates itself. See [Update control](#update-control). |
 
 Station refuses any other key, at any level. An unknown key may be a
 restriction from a newer release, and Station will not run while it cannot
@@ -358,6 +360,108 @@ Devices still cannot pair or sign in through such a route.
   start while one runs under that name, but a renamed copy, or any other
   forwarder, is not detected.
 
+## Update control
+
+`limits.updates` controls how Station on the machine updates itself:
+
+```json
+{
+  "schemaVersion": 1,
+  "organization": "Example Corp",
+  "limits": {
+    "updates": {
+      "mode": "auto",
+      "feedUrl": "https://mirror.example.com/station/",
+      "allowNightly": false
+    }
+  }
+}
+```
+
+| Key | Default | Rules |
+| --- | --- | --- |
+| `mode` | `"auto"` | `"off"` stops every update check, download and install. |
+| `feedUrl` | none | An `https` URL of at most 2048 characters, in canonical form (lowercase host, no `..`), with no user name, password, query or fragment. Updates come only from this mirror. |
+| `allowNightly` | `true` | `false` makes the nightly channel unavailable: a nightly install, desktop app or server does not update. |
+
+Every key is optional; `"updates": {}` changes nothing. Any other key inside
+`updates` is refused.
+
+### What each surface does
+
+| Surface | `mode: "off"` or nightly not allowed | `feedUrl` |
+| --- | --- | --- |
+| Desktop app updater | Never checks, downloads or installs. The update panel shows updates as unavailable, with the policy's sentence under the check error's technical details; clearer wording is a follow-up. | Checks the mirror's copy of the app's channel feed and refuses an update whose download is outside the mirror. |
+| Server update (`/api/system/core-update` and the server's own background check and download) | The check contacts nothing and reports the policy; download, apply and update when idle are refused (403). | A prebuilt archive checks the mirror's copy of its ring's signed manifest. A desktop bundle's or source checkout's server update is refused, because it compares against a git remote the mirror does not serve; the desktop app updates a desktop bundle from the mirror. |
+| `station upgrade` | Refused before anything changes, and exits `1`. | A packaged install runs its installer against the mirror. A source checkout is refused. |
+| The Station service's own update (the launcher's download and apply steps) | Every request is refused before anything downloads or restarts, including applying a version that was downloaded before the policy was installed. Under `allowNightly: false`, a nightly-numbered version counts as nightly whatever ring the install records, and an install whose recorded state names no ring, or a ring this build does not ship, is refused. | The installer reads the mirror's manifest and downloads every archive from the mirror. |
+
+`limits.updates` governs these four, Station's own update paths. Running
+`install.sh` or `install.ps1` by hand is replacing Station, not updating it,
+and the policy does not govern it: a policy cannot stop a user from replacing
+Station, and application controls are the tool for that. `install.sh` follows
+a mirror only when `STATION_INSTALL_MIRROR_URL` is set, which `station upgrade`
+and the service's update step do under a `feedUrl`; run by hand without it, it
+downloads from the default location.
+
+The desktop app reads the policy itself when it starts, not from the server, so
+the updater obeys the policy even when the bundled server cannot start, and
+even when the server refuses to start because of the policy. If the desktop app
+cannot use the installed policy file (for example it is not valid JSON, it is
+not owned by root, or `limits.updates` contains a value it does not
+understand), it turns updates off rather than guess. If only another part of
+the policy is something this version cannot enforce, the server refuses to
+start but the desktop app still applies `limits.updates`, so an approved
+mirror can deliver the version that understands the rest.
+
+The server and the desktop app read the policy when they start; restart them
+after changing it. `station upgrade` and the service's update step read it
+each time they run. An installed policy Station cannot use refuses
+`station upgrade` the same way it refuses server startup.
+
+Not yet supported: on Windows, the installer cannot download from a mirror, so
+with a `feedUrl` set `station upgrade` and the service's update step are
+refused there. The desktop app's mirror support works on every desktop
+platform.
+
+### Mirror layout
+
+A mirror reproduces Station's release download tree. Every file Station
+updates from is published at
+`https://github.com/kontourai/station/releases/download/<release tag>/<file>`,
+and Station fetches the same `<release tag>/<file>` under the mirror instead.
+With `"feedUrl": "https://mirror.example.com/station/"`:
+
+| Surface | Fetched from the mirror |
+| --- | --- |
+| Desktop app | `<channel>-desktop/latest.json` (for example `stable-desktop/latest.json`): the path of the endpoint the app was built with. Rewrite each `platforms.*.url` in it to the mirror's copy of the update archive; Station refuses a download whose URL is not under `feedUrl`. The archives keep their signatures, so rewriting the URLs does not need a new signature. |
+| Prebuilt server archive (check, `station upgrade`, the service's update) | `portable-<ring>/station-portable-<ring>-manifest.json`, where the ring is `stable`, `preview` or `nightly`; then `<tag>/<archive>` for every archive the signed manifest names (for example `v1.2.3/station-server-linux-x64.tar.gz`). Serve the manifest unchanged: it is signed, and its archive size and SHA-256 still bind the bytes the mirror serves. |
+
+Serve every file directly from the mirror's own origin. Under a mirror,
+Station follows a redirect for a feed, manifest or archive only when it stays
+on the same scheme, host and port as `feedUrl`, at most five times; a redirect
+anywhere else, including a CDN or object storage on another host, is refused.
+This applies to the server's check, `install.sh` under
+`STATION_INSTALL_MIRROR_URL`, and the desktop updater. `install.sh` also
+refuses a redirect `Location`, or a download URL, that is not plain ASCII
+text: a backslash, a user name, whitespace or control characters, or `@` or
+`%` in the host part. It then downloads only the canonical form of the URL it
+checked. Without a mirror,
+Station follows the redirects GitHub serves release assets through, as before.
+
+The installer also refuses to download Node.js under a mirror. The service's
+update step uses the Node.js the installed version bundles; if you run
+`station upgrade` on a machine without Node.js 24 on the `PATH`, install it
+first.
+
+`feedUrl` may contain an access token in its path. Clients never see it: the
+summary reports only `"mirror": true`. It is still readable by every user on
+the machine, like the rest of the policy, and a packaged install records the
+mirror's manifest URL in its own install state after an update. The desktop
+app removes the path from every URL in an update error before it shows or
+logs it, keeping only the scheme, host and port, and it drops the updater
+plugin's own log records, which contain request URLs.
+
 ## Where to install it
 
 | OS | Path |
@@ -447,8 +551,8 @@ Station refuses to start when:
 - the document repeats a key name in the same object (`duplicate key
   <path>`), so a second `limits` cannot quietly replace the first;
 - the document does not match the schema, including a wrong `schemaVersion`,
-  an unknown key, a [settings entry Station cannot apply](#settings), or a
-  limit key;
+  an unknown key, a [settings entry Station cannot apply](#settings), a
+  limit key this release does not enforce, or a limit value it refuses;
 - more than one policy source is installed (this matters once configuration
   profiles and Group Policy are supported).
 
@@ -465,7 +569,8 @@ Authenticated clients can read `GET /api/settings/managed-policy`. It returns
 `{ "state": "none" }`, or the source, the fingerprint and a summary: the
 organization, the support link, the locked setting keys and the effective
 limits, including each capability switch and the registry allow list. It never
-returns a setting value.
+returns a setting value or the update feed URL; for `limits.updates` it
+returns `mode`, `allowNightly` and whether a mirror is set (`mirror`).
 
 `GET /config/app` returns the values in effect, managed ones included, and its
 per-setting provenance reports `{ "source": "managed", "locked": true | false,
