@@ -107,16 +107,24 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
       .join('');
   }
 
-  /** Scrollback and screen after replaying `data` at the shell's size. */
-  async function rendered(data: string): Promise<string> {
+  /**
+   * Scrollback and screen after replaying `data` at the shell's size, or
+   * journal records at their recorded sizes in a view of `box`, as the
+   * terminal view replays them (#4625).
+   */
+  async function rendered(
+    data: string | { data: string; resize?: object }[],
+    box = dimensions,
+  ): Promise<string> {
     const child = spawn(
       process.execPath,
       [
         '--import',
         'tsx',
         REPLAY,
-        String(dimensions.cols),
-        String(dimensions.rows),
+        String(box.cols),
+        String(box.rows),
+        ...(typeof data === 'string' ? [] : ['--records']),
       ],
       { cwd: REPO, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
     );
@@ -128,7 +136,7 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
     child.stderr.on('data', (chunk) => {
       stderr += String(chunk);
     });
-    child.stdin.end(data);
+    child.stdin.end(typeof data === 'string' ? data : JSON.stringify(data));
     const code = await new Promise<number | null>((resolve, reject) => {
       child.once('error', reject);
       child.once('close', resolve);
@@ -225,6 +233,47 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
     expect(screen.lastIndexOf('after:')).toBeGreaterThan(divider);
     expect((await readFile(join(root, 'ran.txt'), 'utf8')).trim()).toBe('ran');
     expect(TERMINAL_RESTORED_DIVIDER).toContain('restored after restart');
+  });
+
+  test('a resize is journaled in order, and a replay at the recorded sizes keeps the lines that had scrolled (#4625)', async () => {
+    const opened = await sessions.open(request(), scope, dimensions);
+    const id = opened.terminalId;
+    await output(id, PROMPT);
+    // 40 numbered rows: at 24 rows the first ones scroll off the screen.
+    await sessions.write(
+      request(),
+      scope,
+      id,
+      line(
+        windows
+          ? 'for /L %i in (1,1,40) do @echo row-%i.'
+          : 'i=1; while [ $i -le 40 ]; do echo "row-$i."; i=$((i+1)); done',
+      ),
+    );
+    await output(id, 'row-40.');
+    const beforeResize = (await sessions.read(request(), scope, id)).journal
+      .lastSeq;
+    // ConPTY repaints its whole screen for the new size.
+    await sessions.resize(request(), scope, id, 80, 10);
+    await sessions.write(request(), scope, id, line(print('after:', 'resize')));
+    await output(id, 'after:resize');
+    const records = (await sessions.read(request(), scope, id)).journal.records;
+    const sizes = records.filter((record) => record.resize);
+    // The spawn's size opens the journal; the resize follows the output
+    // written before it.
+    expect(records[0]?.resize).toEqual({ cols: 80, rows: 24 });
+    expect(sizes.map((record) => record.resize)).toEqual([
+      { cols: 80, rows: 24 },
+      { cols: 80, rows: 10 },
+    ]);
+    expect(sizes[1]!.seq).toBeGreaterThan(beforeResize);
+    for (const record of sizes) expect(record.data).toBe('');
+    // A view of another size replays every row, including those that had
+    // scrolled before the resize repainted the screen.
+    const screen = await rendered(records, { cols: 100, rows: 30 });
+    for (let row = 1; row <= 40; row++)
+      expect(screen, `row-${row}.`).toContain(`row-${row}.`);
+    expect(screen).toContain('after:resize');
   });
 
   test('a shell stays ended when restore is not offered, its Project is gone, or it ended by itself', async () => {

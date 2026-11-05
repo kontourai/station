@@ -26,6 +26,9 @@ class StationWindowsOwnedGuard {
   const int CONTROL_RESUME = 1;
   const int CONTROL_ABORT = 2;
   const int CONTROL_INVALID = -1;
+  const uint CREATE_NO_WINDOW = 0x08000000;
+  const int JobObjectBasicAccountingInformation = 1;
+  const int JOB_END_DEADLINE_MS = 10000;
 
   [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] struct STARTUPINFO { public int cb; public string lpReserved; public string lpDesktop; public string lpTitle; public int dwX; public int dwY; public int dwXSize; public int dwYSize; public int dwXCountChars; public int dwYCountChars; public int dwFillAttribute; public int dwFlags; public short wShowWindow; public short cbReserved2; public IntPtr lpReserved2; public IntPtr hStdInput; public IntPtr hStdOutput; public IntPtr hStdError; }
   [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] struct STARTUPINFOEX { public STARTUPINFO StartupInfo; public IntPtr lpAttributeList; }
@@ -35,6 +38,9 @@ class StationWindowsOwnedGuard {
   [StructLayout(LayoutKind.Sequential)] struct JOBOBJECT_BASIC_LIMIT_INFORMATION { public long PerProcessUserTimeLimit; public long PerJobUserTimeLimit; public uint LimitFlags; public UIntPtr MinimumWorkingSetSize; public UIntPtr MaximumWorkingSetSize; public uint ActiveProcessLimit; public IntPtr Affinity; public uint PriorityClass; public uint SchedulingClass; }
   [StructLayout(LayoutKind.Sequential)] struct IO_COUNTERS { public ulong ReadOperationCount; public ulong WriteOperationCount; public ulong OtherOperationCount; public ulong ReadTransferCount; public ulong WriteTransferCount; public ulong OtherTransferCount; }
   [StructLayout(LayoutKind.Sequential)] struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION { public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation; public IO_COUNTERS IoInfo; public UIntPtr ProcessMemoryLimit; public UIntPtr JobMemoryLimit; public UIntPtr PeakProcessMemoryUsed; public UIntPtr PeakJobMemoryUsed; }
+  [StructLayout(LayoutKind.Sequential)] struct JOBOBJECT_BASIC_ACCOUNTING_INFORMATION { public long TotalUserTime; public long TotalKernelTime; public long ThisPeriodTotalUserTime; public long ThisPeriodTotalKernelTime; public uint TotalPageFaultCount; public uint TotalProcesses; public uint ActiveProcesses; public uint TotalTerminatedProcesses; }
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateJobObject(IntPtr job, uint code);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool QueryInformationJobObject(IntPtr job, int infoClass, out JOBOBJECT_BASIC_ACCOUNTING_INFORMATION info, uint length, IntPtr returned);
   [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] static extern bool CreateProcess(string app, string cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr environment, string cwd, ref STARTUPINFOEX startup, out PROCESS_INFORMATION info);
   [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr CreateJobObject(IntPtr attributes, string name);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint length);
@@ -111,6 +117,35 @@ class StationWindowsOwnedGuard {
     return monitor.State == CONTROL_RESUME;
   }
 
+  // Session mode (#4624): Stop and the output cap end the whole Job, and
+  // ENDED is reported only once the Job holds no live process. The Job has
+  // no breakaway limit, so every process the command started is in it.
+  static bool EndJob(IntPtr job) {
+    TerminateJobObject(job, 1);
+    var deadline = DateTime.UtcNow.AddMilliseconds(JOB_END_DEADLINE_MS);
+    uint length = (uint)Marshal.SizeOf(typeof(JOBOBJECT_BASIC_ACCOUNTING_INFORMATION));
+    while (true) {
+      JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting;
+      if (!QueryInformationJobObject(job, JobObjectBasicAccountingInformation, out accounting, length, IntPtr.Zero)) return false;
+      if (accounting.ActiveProcesses == 0) return true;
+      if (DateTime.UtcNow >= deadline) return false;
+      Thread.Sleep(20);
+    }
+  }
+  static int EndSession(IntPtr job, TextWriter writer) {
+    if (!EndJob(job)) return FailWin32("job-not-empty");
+    Send(writer, "ENDED");
+    return 0;
+  }
+  // Session mode: a command that exits by itself leaves what it started
+  // running, as a POSIX command's background children are; closing the Job
+  // then ends nothing.
+  static bool ReleaseJob(IntPtr job) {
+    int bytes = Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION)); IntPtr limits = Marshal.AllocHGlobal(bytes);
+    try { var value = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION(); Marshal.StructureToPtr(value, limits, false); return SetInformationJobObject(job, JobObjectExtendedLimitInformation, limits, (uint)bytes); }
+    finally { Marshal.FreeHGlobal(limits); }
+  }
+
   static int ReadIdentity(string value) {
     int pid;
     if (!Int32.TryParse(value, out pid) || pid < 1) return Fail("identity-pid");
@@ -127,6 +162,12 @@ class StationWindowsOwnedGuard {
 
   static int Main(string[] args) {
     if (args.Length == 2 && args[0] == "--identity") return ReadIdentity(args[1]);
+    // `--session <parent pid> <parent creation> <application> <command line>`:
+    // a terminal command session (#4624). The command reads fd 5 as its
+    // stdin, runs with its command line verbatim and without a console
+    // window, and ABORT ends its whole Job before ENDED is reported.
+    bool session = args.Length > 0 && args[0] == "--session";
+    if (session) { if (args.Length != 5) return 125; var rest = new string[4]; Array.Copy(args, 1, rest, 0, 4); args = rest; }
     if (args.Length < 3) return 125;
     int parentPid; if (!Int32.TryParse(args[0], out parentPid)) return 125;
     IntPtr parent = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, false, parentPid);
@@ -144,19 +185,25 @@ class StationWindowsOwnedGuard {
           try { var value = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION(); value.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE; Marshal.StructureToPtr(value, limits, false); if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, limits, (uint)bytes)) return FailWin32("job-config"); }
           finally { Marshal.FreeHGlobal(limits); }
           IntPtr rawOut = _get_osfhandle(3), rawErr = _get_osfhandle(4); if (rawOut == (IntPtr)(-1) || rawErr == (IntPtr)(-1)) return Fail("raw-fd");
+          IntPtr rawIn = session ? _get_osfhandle(5) : IntPtr.Zero; if (rawIn == (IntPtr)(-1)) return Fail("raw-fd");
           if (!SetHandleInformation(rawOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) || !SetHandleInformation(rawErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)) return FailWin32("raw-handle-inherit");
+          if (session && !SetHandleInformation(rawIn, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)) return FailWin32("raw-handle-inherit");
           var attributes = new SECURITY_ATTRIBUTES(); attributes.nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES)); attributes.bInheritHandle = true;
           IntPtr nul = CreateFile("NUL", GENERIC_READ, 0, ref attributes, OPEN_EXISTING, 0, IntPtr.Zero); if (nul == (IntPtr)(-1)) return FailWin32("nul-open");
           IntPtr listSize = IntPtr.Zero; InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref listSize); IntPtr list = Marshal.AllocHGlobal(listSize);
           IntPtr handles = IntPtr.Zero;
           try {
             if (!InitializeProcThreadAttributeList(list, 1, 0, ref listSize)) return FailWin32("attribute-list-init");
-            handles = Marshal.AllocHGlobal(IntPtr.Size * 3); Marshal.WriteIntPtr(handles, 0, nul); Marshal.WriteIntPtr(handles, IntPtr.Size, rawOut); Marshal.WriteIntPtr(handles, IntPtr.Size * 2, rawErr);
+            IntPtr input = session ? rawIn : nul;
+            handles = Marshal.AllocHGlobal(IntPtr.Size * 3); Marshal.WriteIntPtr(handles, 0, input); Marshal.WriteIntPtr(handles, IntPtr.Size, rawOut); Marshal.WriteIntPtr(handles, IntPtr.Size * 2, rawErr);
             if (!UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles, (IntPtr)(IntPtr.Size * 3), IntPtr.Zero, IntPtr.Zero)) return FailWin32("attribute-list-update");
             var command = new StringBuilder(Quote(args[2])); for (int i = 3; i < args.Length; i++) command.Append(' ').Append(Quote(args[i]));
-            var startup = new STARTUPINFOEX(); startup.StartupInfo.cb = Marshal.SizeOf(typeof(STARTUPINFOEX)); startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES; startup.StartupInfo.hStdInput = nul; startup.StartupInfo.hStdOutput = rawOut; startup.StartupInfo.hStdError = rawErr; startup.lpAttributeList = list;
+            var startup = new STARTUPINFOEX(); startup.StartupInfo.cb = Marshal.SizeOf(typeof(STARTUPINFOEX)); startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES; startup.StartupInfo.hStdInput = input; startup.StartupInfo.hStdOutput = rawOut; startup.StartupInfo.hStdError = rawErr; startup.lpAttributeList = list;
             // The whitelist excludes control stdin/stdout, parent, Job, and all process/thread handles.
-            if (!CreateProcess(null, command.ToString(), IntPtr.Zero, IntPtr.Zero, true, CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, Environment.CurrentDirectory, ref startup, out child)) return FailWin32("create-process");
+            bool created = session
+              ? CreateProcess(args[2], args[3], IntPtr.Zero, IntPtr.Zero, true, CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW, IntPtr.Zero, Environment.CurrentDirectory, ref startup, out child)
+              : CreateProcess(null, command.ToString(), IntPtr.Zero, IntPtr.Zero, true, CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, Environment.CurrentDirectory, ref startup, out child);
+            if (!created) return FailWin32("create-process");
           } finally { if (handles != IntPtr.Zero) Marshal.FreeHGlobal(handles); DeleteProcThreadAttributeList(list); Marshal.FreeHGlobal(list); CloseHandle(nul); }
           if (!AssignProcessToJobObject(job, child.hProcess)) return FailWin32("assign-job");
           string childCreation = CreationIsoAtMicrosecondPrecision(child.hProcess); if (String.IsNullOrEmpty(childCreation)) return FailWin32("child-identity");
@@ -172,12 +219,15 @@ class StationWindowsOwnedGuard {
           try { abortMonitor.Start(reader); }
           catch { KillAndReapOnce(child.hProcess, ref childReaped); return 125; }
           while (true) {
+            if (session && abortMonitor.State != CONTROL_PENDING) return EndSession(job, writer);
             if (abortMonitor.State != CONTROL_PENDING) { KillAndReapOnce(child.hProcess, ref childReaped); return 125; }
             uint childWait = WaitForSingleObject(child.hProcess, 50);
-            if (childWait == WAIT_TIMEOUT) { if (WaitForSingleObject(parent, 0) != WAIT_TIMEOUT) { KillAndReapOnce(child.hProcess, ref childReaped); return 126; } continue; }
+            if (childWait == WAIT_TIMEOUT) { if (WaitForSingleObject(parent, 0) != WAIT_TIMEOUT) { if (session) TerminateJobObject(job, 1); KillAndReapOnce(child.hProcess, ref childReaped); return 126; } continue; }
+            if (session && abortMonitor.State != CONTROL_PENDING) return EndSession(job, writer);
             if (abortMonitor.State != CONTROL_PENDING) { KillAndReapOnce(child.hProcess, ref childReaped); return 125; }
-            if (childWait != WAIT_OBJECT_0 || WaitForSingleObject(parent, 0) != WAIT_TIMEOUT) { KillAndReapOnce(child.hProcess, ref childReaped); return 126; }
+            if (childWait != WAIT_OBJECT_0 || WaitForSingleObject(parent, 0) != WAIT_TIMEOUT) { if (session) TerminateJobObject(job, 1); KillAndReapOnce(child.hProcess, ref childReaped); return 126; }
             uint exitCode; if (!GetExitCodeProcess(child.hProcess, out exitCode)) return 125;
+            if (session && !ReleaseJob(job)) return FailWin32("job-release");
             Send(writer, "COMPLETE " + exitCode.ToString(CultureInfo.InvariantCulture));
             // COMPLETE carries the target result; a successful guard protocol
             // exits zero so the launcher can distinguish it from guard failure.

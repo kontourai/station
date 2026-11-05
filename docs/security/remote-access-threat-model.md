@@ -1105,8 +1105,9 @@ non-operator members is a separate program and is not widened here.
   current principal and at least `terminal:observe` (the pairing table refuses
   personal tokens). The response is a 32-byte random ticket, valid for 30
   seconds and redeemable once. The client offers it as a WebSocket subprotocol
-  (`station.terminal.ticket.<ticket>`) beside `station.terminal.v1`; the server
-  selects only `station.terminal.v1`, so the ticket is never echoed, never
+  (`station.terminal.ticket.<ticket>`) beside the version subprotocols
+  (`station.terminal.v2`, `station.terminal.v1`); the server selects only a
+  version, so the ticket is never echoed, never
   enters a URL, access log or referrer, and only its SHA-256 digest is kept.
   Redemption consumes it whether or not the upgrade then succeeds. An upgrade
   without exactly one valid ticket gets `401` before any socket, parser or

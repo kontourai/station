@@ -10,10 +10,31 @@ import { join } from 'node:path';
 import { z } from 'zod/v3';
 import { TerminalOutputSanitizer } from './terminal-output-sanitizer.js';
 
+const sizeSchema = z
+  .object({
+    cols: z.number().int().min(1).max(1000),
+    rows: z.number().int().min(1).max(1000),
+  })
+  .strict();
+/**
+ * An output record, or (#4625) a resize record: `data` is empty and `resize`
+ * is the terminal's size from this record on. Journals written before resize
+ * records have none and replay as before, at the viewer's size.
+ */
 const recordSchema = z
-  .object({ seq: z.number().int().positive().safe(), data: z.string() })
+  .object({
+    seq: z.number().int().positive().safe(),
+    data: z.string(),
+    resize: sizeSchema.optional(),
+  })
   .strict();
 type JournalRecord = z.infer<typeof recordSchema>;
+export type TerminalJournalSize = z.infer<typeof sizeSchema>;
+type PendingAppend = {
+  bytes: number;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+} & ({ data: string } | { resize: TerminalJournalSize });
 type Segment = {
   name: string;
   bytes: number;
@@ -85,12 +106,9 @@ export class TerminalJournal {
   private nextSeq = 1;
   private queue: Promise<void> = Promise.resolve();
   private queuedBytes = 0;
-  private pendingAppends: {
-    data: string;
-    bytes: number;
-    resolve: () => void;
-    reject: (error: unknown) => void;
-  }[] = [];
+  private pendingAppends: PendingAppend[] = [];
+  /** The size of the last resize record, restated by each new segment. */
+  private size: TerminalJournalSize | undefined;
   private appendScheduled = false;
   private failure: unknown;
   private sealed = false;
@@ -159,6 +177,24 @@ export class TerminalJournal {
     return task;
   }
 
+  /**
+   * Records that output from here on is written for a `cols`x`rows`
+   * terminal (#4625), in order with the output appended around it. A size
+   * equal to the last recorded one adds nothing. Replay applies it, so a
+   * screen repainted for one size is not replayed over lines at another.
+   */
+  resize(cols: number, rows: number): Promise<void> {
+    if (this.retired)
+      return Promise.reject(new Error('Terminal journal retired'));
+    if (this.failure) return Promise.reject(this.failure);
+    const resize = sizeSchema.parse({ cols, rows });
+    const task = new Promise<void>((resolve, reject) => {
+      this.pendingAppends.push({ resize, bytes: 0, resolve, reject });
+    });
+    if (!this.appendScheduled) this.scheduleAppends();
+    return task;
+  }
+
   private scheduleAppends(): void {
     const batch = this.pendingAppends;
     this.appendScheduled = true;
@@ -170,10 +206,23 @@ export class TerminalJournal {
       let failed = false;
       try {
         if (this.failure) throw this.failure;
-        const sanitized = this.sanitizer.append(
-          batch.map((item) => item.data).join(''),
-        );
-        await this.appendRecords(this.chunks(sanitized));
+        // Output between resizes is sanitized as one stream, as before.
+        const items: { data: string; resize?: TerminalJournalSize }[] = [];
+        let output = '';
+        const takeOutput = () => {
+          if (output)
+            for (const data of this.chunks(this.sanitizer.append(output)))
+              items.push({ data });
+          output = '';
+        };
+        for (const item of batch)
+          if ('data' in item) output += item.data;
+          else {
+            takeOutput();
+            items.push({ data: '', resize: item.resize });
+          }
+        takeOutput();
+        await this.appendRecords(items);
         if (this.failure) throw this.failure;
       } catch (error) {
         failed = true;
@@ -302,9 +351,13 @@ export class TerminalJournal {
     if (text) yield text;
   }
 
-  private async appendRecords(chunks: Iterable<string>): Promise<void> {
+  private async appendRecords(
+    items: Iterable<{ data: string; resize?: TerminalJournalSize }>,
+  ): Promise<void> {
     if (this.failure) throw this.failure;
     let segment = this.segments.at(-1);
+    /** The size in effect after the records so far. */
+    let size = this.size;
     let records: JournalRecord[] = [];
     let encoded = '';
     let bytes = 0;
@@ -329,16 +382,33 @@ export class TerminalJournal {
       lines = 0;
       await this.compact();
     };
-    for (const data of chunks) {
-      const record = { seq: this.nextSeq + records.length, data };
+    const push = (record: JournalRecord) => {
       const text = `${JSON.stringify(record)}\n`;
-      const size = Buffer.byteLength(text);
-      const newlines = lineBreaks(data);
+      records.push(record);
+      encoded += text;
+      bytes += Buffer.byteLength(text);
+      lines += lineBreaks(record.data);
+      if (record.resize) size = record.resize;
+    };
+    for (const item of items) {
+      if (
+        item.resize &&
+        size?.cols === item.resize.cols &&
+        size.rows === item.resize.rows
+      )
+        continue;
+      let record: JournalRecord = {
+        seq: this.nextSeq + records.length,
+        data: item.data,
+        ...(item.resize && { resize: item.resize }),
+      };
+      const length = Buffer.byteLength(`${JSON.stringify(record)}\n`);
+      const newlines = lineBreaks(item.data);
       if (
         this.options.persist &&
         (this.sealed ||
           !segment ||
-          segment.bytes + bytes + size >
+          segment.bytes + bytes + length >
             Math.min(this.options.segmentBytes, this.options.maxBytes) ||
           segment.lines + lines + newlines + 1 > this.options.maxLines)
       ) {
@@ -352,16 +422,20 @@ export class TerminalJournal {
         };
         this.segments.push(segment);
         this.sealed = false;
+        // Compaction drops whole segments, so each one opens with the size
+        // its output was written for (#4625).
+        if (size && !item.resize) {
+          push({ seq: record.seq, data: '', resize: size });
+          record = { ...record, seq: record.seq + 1 };
+        }
       }
-      records.push(record);
-      encoded += text;
-      bytes += size;
-      lines += newlines;
+      push(record);
     }
     await flush();
   }
 
   private remember(record: JournalRecord): void {
+    if (record.resize) this.size = record.resize;
     this.tail.push(record);
     this.tailBytes += Buffer.byteLength(record.data);
     this.tailLines += lineBreaks(record.data);

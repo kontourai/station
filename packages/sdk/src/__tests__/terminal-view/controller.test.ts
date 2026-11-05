@@ -361,6 +361,74 @@ describe('TerminalController', () => {
     },
   );
 
+  // #4625: ConPTY repaints its whole screen for a new size. Replayed at the
+  // view's size instead, that repaint landed on lines that had scrolled.
+  it('replays output at its recorded sizes, keeping lines that scrolled before a resize', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const lines = Array.from(
+      { length: 15 },
+      (_, index) => `line-${String(index + 1).padStart(2, '0')}`,
+    );
+    // Written at 100x10: the first six lines scroll. Then the terminal was
+    // resized to 100x5 and repainted its five rows from the top.
+    const events: (
+      | { text: string }
+      | { size: { cols: number; rows: number } }
+    )[] = [
+      { size: { cols: 100, rows: 10 } },
+      { text: `${lines.join('\r\n')}\r\n` },
+      { size: { cols: 100, rows: 5 } },
+      {
+        text: `\x1b[H${lines
+          .slice(11)
+          .map((line) => `${line}\x1b[K`)
+          .join('\r\n')}\r\n\x1b[K\x1b[J`,
+      },
+    ];
+    const replaying = (applySizes: boolean) => {
+      const session = {
+        state: 'ready' as const,
+        readOnly: false,
+        subscribe(next: TerminalViewSessionListener) {
+          for (const event of events)
+            if ('text' in event)
+              next.output(new TextEncoder().encode(event.text), 'replay');
+            else if (applySizes)
+              next.resize?.(event.size.cols, event.size.rows, 'replay');
+          next.replayed?.();
+          return () => undefined;
+        },
+        write: vi.fn((_bytes: Uint8Array) => true),
+        resize: vi.fn((_cols: number, _rows: number) => undefined),
+      } satisfies TerminalViewSession;
+      return session;
+    };
+    const copied = async (controller: TerminalController) => {
+      let text = '';
+      await vi.waitFor(async () => {
+        controller.selectAll();
+        expect(await controller.copy()).toBe(true);
+        text = String(writeText.mock.lastCall?.[0]);
+        expect(text).toContain('line-15');
+      });
+      return text;
+    };
+    // The view's box is 100x20.
+    const { controller } = await startController();
+    controller.setSession(replaying(true));
+    const screen = await copied(controller);
+    for (const line of lines) expect(screen, line).toContain(line);
+    // Control: without the recorded sizes the repaint overwrites them.
+    controller.setSession(replaying(false));
+    const unsized = await copied(controller);
+    expect(unsized).not.toContain('line-01');
+    controller.dispose();
+  });
+
   // A dock region put away keeps its view mounted with no box; sizing the
   // shared shell from it squeezed every other view to two columns.
   it('never sizes the session from a view with no box', async () => {
