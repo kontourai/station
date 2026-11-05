@@ -7,6 +7,7 @@ import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
+import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import type { MemoryRootManager } from '../../knowledge-store/memory-root.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 
@@ -215,7 +216,11 @@ export function createMemoryRoutes(deps: MemoryRouteDeps) {
       );
     const kind = c.req.query('kind');
     const id = c.req.query('id');
-    if ((kind !== 'record' && kind !== 'proposal') || !id || id.length > 512)
+    if (
+      (kind !== 'record' && kind !== 'proposal') ||
+      !isSafePathSegment(id) ||
+      id.length > 200
+    )
       return c.json({ success: false, error: 'Invalid memory target.' }, 400);
     try {
       const root = await deps.manager.findRoot(

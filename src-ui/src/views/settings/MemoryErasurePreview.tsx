@@ -6,7 +6,7 @@ import {
 import { useState } from 'react';
 import { z } from 'zod/v3';
 import { Button } from '../../components/Button';
-import { ErrorState, Skeleton } from '../../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 
 const responseSchema = z.object({
@@ -17,6 +17,22 @@ const responseSchema = z.object({
     title: z.string(),
   }),
 });
+const proposalListSchema = z.object({
+  success: z.literal(true),
+  data: z.array(
+    z.object({
+      id: z.string(),
+      candidate: z.object({ title: z.string() }),
+      erasure: z.unknown().optional(),
+    }),
+  ),
+});
+
+class MemoryLookupError extends Error {
+  constructor(readonly kind: 'not-found' | 'unavailable') {
+    super(kind);
+  }
+}
 
 export function MemoryErasurePreview() {
   const scope = useHostRequestAuthorityScope();
@@ -30,26 +46,53 @@ export function MemoryErasurePreview() {
     kind: 'record' | 'proposal';
     id: string;
   } | null>(null);
+  const scopeKey = [scope?.apiBase ?? null, scope?.authorityKey ?? null];
+  const proposals = useApiQuery(
+    ['memory', 'proposals', ...scopeKey],
+    async (signal) => {
+      if (!scope || !scope.isCurrent())
+        throw new MemoryLookupError('unavailable');
+      const response = await getJson(
+        `${scope.apiBase}/api/knowledge/memory/proposals`,
+        { requestScope: scope, signal },
+      );
+      if (response.status === 404) throw new MemoryLookupError('not-found');
+      if (!response.ok) throw new MemoryLookupError('unavailable');
+      const result = proposalListSchema.parse(await response.json()).data;
+      if (!scope.isCurrent()) throw new MemoryLookupError('unavailable');
+      return result
+        .filter((item) => !item.erasure)
+        .map((item) => ({ id: item.id, title: item.candidate.title }));
+    },
+    {
+      enabled: Boolean(enabled && scope),
+      retry: false,
+      staleTime: 0,
+      gcTime: 0,
+      cancelWhenInactive: true,
+    },
+  );
   const preview = useApiQuery(
     [
       'memory',
       'erasure-preview',
-      scope?.apiBase ?? null,
-      scope?.authorityKey ?? null,
+      ...scopeKey,
       target?.kind ?? null,
       target?.id ?? null,
     ],
     async (signal) => {
       if (!scope || !target || !scope.isCurrent())
-        throw new Error('Choose a memory first.');
+        throw new MemoryLookupError('unavailable');
       const query = new URLSearchParams({ kind: target.kind, id: target.id });
       const response = await getJson(
         `${scope.apiBase}/api/knowledge/memory/erasure-preview?${query}`,
         { requestScope: scope, signal },
       );
-      if (!response.ok) throw new Error('Could not find that memory.');
+      if (response.status === 404 || response.status === 400)
+        throw new MemoryLookupError('not-found');
+      if (!response.ok) throw new MemoryLookupError('unavailable');
       const result = responseSchema.parse(await response.json()).data;
-      if (!scope.isCurrent()) throw new Error('Memory access changed.');
+      if (!scope.isCurrent()) throw new MemoryLookupError('unavailable');
       return result;
     },
     {
@@ -60,14 +103,64 @@ export function MemoryErasurePreview() {
       cancelWhenInactive: true,
     },
   );
-  if (!scope || !enabled) return null;
+  if (!scope || !enabled || !scope.isCurrent()) return null;
+  const listMissing =
+    proposals.error instanceof MemoryLookupError &&
+    proposals.error.kind === 'not-found';
+  const targetMissing =
+    preview.error instanceof MemoryLookupError &&
+    preview.error.kind === 'not-found';
   return (
     <section
       aria-label="Memory erasure preview"
       className="knowledge-memory-preview"
     >
-      <h3>Preview memory erasure</h3>
-      <p>Find a memory or proposal by its ID. Erasure is not available yet.</p>
+      <h3>Look up a memory</h3>
+      <p>Erasing memories isn’t available yet.</p>
+      <h4>Proposals</h4>
+      {proposals.isFetching && (
+        <SkeletonBlock count={1} label="Loading proposals" />
+      )}
+      {listMissing && (
+        <Empty
+          label="Private memory hasn’t been created yet"
+          description="Create it using the memory API on this Station."
+        />
+      )}
+      {proposals.isError && !listMissing && (
+        <ErrorState
+          title="Couldn’t load proposals"
+          action={
+            <Button onClick={() => void proposals.refetch()}>Retry</Button>
+          }
+        />
+      )}
+      {!proposals.isFetching &&
+        !proposals.isError &&
+        proposals.data?.length === 0 && (
+          <Empty label="Proposals will appear here" />
+        )}
+      {!proposals.isFetching &&
+        !proposals.isError &&
+        proposals.data &&
+        proposals.data.length > 0 && (
+          <ul>
+            {proposals.data.map((proposal) => (
+              <li key={proposal.id}>
+                {proposal.title}{' '}
+                <Button
+                  onClick={() => {
+                    setKind('proposal');
+                    setId(proposal.id);
+                    setTarget({ kind: 'proposal', id: proposal.id });
+                  }}
+                >
+                  Preview erasure
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       <div className="knowledge-memory-preview__form">
         <label>
           Type{' '}
@@ -90,7 +183,7 @@ export function MemoryErasurePreview() {
           <input
             className="editor-input"
             value={id}
-            maxLength={512}
+            maxLength={200}
             onChange={(event) => {
               setId(event.target.value);
               setTarget(null);
@@ -101,13 +194,14 @@ export function MemoryErasurePreview() {
           disabled={!id.trim() || preview.isFetching}
           onClick={() => setTarget({ kind, id: id.trim() })}
         >
-          Preview
+          Look up
         </Button>
       </div>
       {preview.isFetching && (
-        <Skeleton variant="block" label="Loading preview" />
+        <SkeletonBlock count={1} label="Loading preview" />
       )}
-      {preview.isError && (
+      {targetMissing && <p>That ID doesn’t match a memory or proposal.</p>}
+      {preview.isError && !targetMissing && (
         <ErrorState
           title="Couldn’t load preview"
           action={<Button onClick={() => void preview.refetch()}>Retry</Button>}
@@ -117,7 +211,7 @@ export function MemoryErasurePreview() {
         <div>
           <h4>{preview.data.title}</h4>
           <p>
-            {preview.data.kind}: {preview.data.id}
+            Found {preview.data.kind} · {preview.data.id}
           </p>
           <p>
             Claims affected (from Surface): unavailable.{' '}
@@ -125,10 +219,9 @@ export function MemoryErasurePreview() {
               About claim impact
             </a>
           </p>
-          <p>Station has no verified claim bundle for this memory.</p>
+          <p>Station can’t yet show which answers depend on this memory.</p>
           <p>
-            The effects on other records and proposals are determined at erasure
-            time.{' '}
+            Station can’t yet show what else erasing this would remove.{' '}
             <a href="https://github.com/kontourai/corpus/issues/69">
               About cascade preview
             </a>

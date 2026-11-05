@@ -504,6 +504,10 @@ a conflicting key returns409 with `REQUEST_KEY_CONFLICT`. `GET
 /api/knowledge/memory/proposals` is the explicit owner-authorized proposal
 query. Pending proposals do not appear in ordinary record lists or search.
 
+`GET /api/knowledge/memory/erasure-preview?kind=record|proposal&id=<id>`
+returns the target's `{ kind, id, title }` without changing it. It does not
+calculate a cascade or expose erasure.
+
 Unknown identity, hosted access, Project membership and delegation do not grant
 memory access. With the preview off, direct memory requests return the standard
 `feature_preview_disabled` 404. Review, application and erasure are not exposed

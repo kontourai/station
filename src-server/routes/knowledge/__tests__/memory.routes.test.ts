@@ -100,6 +100,14 @@ test('memory routes require the preview and owner, and expose proposals only exp
   });
   expect(proposed.status).toBe(201);
   const id = ((await proposed.json()) as { data: { id: string } }).data.id;
+  expect(
+    (
+      await app.request(
+        '/memory/erasure-preview?kind=record&id=..%2F..%2Fsecret',
+        { headers },
+      )
+    ).status,
+  ).toBe(400);
   const preview = await app.request(
     `/memory/erasure-preview?kind=proposal&id=${id}`,
     { headers },

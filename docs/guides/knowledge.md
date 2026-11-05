@@ -147,8 +147,8 @@ refuses that same person as an approver, including through a future review route
 Corpus permits the proposer to reject a proposal, but rejection retains its
 content. The preview provides no decision or erasure route; proposal content
 remains in the store until erased through a separately authorized flow.
-With the preview enabled, **My knowledge** can look up a record or proposal by
-ID before erasure. The preview identifies the target; affected claims are
+With the preview enabled, **My knowledge store** lists proposals for lookup and
+can look up a record or proposal by ID. The preview identifies the target; affected claims are
 unavailable until a producer-authored Surface bundle exists ([surface#360](https://github.com/kontourai/surface/issues/360)).
 Corpus determines affected records and proposals at erasure time; Station cannot
 preview that cascade yet ([corpus#69](https://github.com/kontourai/corpus/issues/69)).
