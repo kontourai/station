@@ -100,6 +100,17 @@ async function liveService(endpoint: string) {
     version: '1.2.3',
     env: {},
     logger: { warn: vi.fn() },
+    // #4591's engine throughput, so the daily ping carries every field a
+    // ping can send today.
+    dailyUsage: () => [
+      {
+        sourceEventId: 'turn',
+        provider: 'claude',
+        messages: 1,
+        inputTokens: 500,
+        outputTokens: 500,
+      },
+    ],
   });
   services.push(live);
   return { live, homeDir, config };
@@ -146,6 +157,12 @@ test('control: without a policy the same calls reach both destinations', async (
     action: 'tier-lowered',
     reason: 'privacy',
   });
+  // The daily ping includes the engine throughput main added (#4591).
+  expect(operator.payloads).toContainEqual(
+    expect.objectContaining({
+      engine_tokens_today: [{ engine: 'claude', bucket: '1-10k' }],
+    }),
+  );
 });
 
 test('limits.telemetry false: no destination receives anything, lowering feedback included', async () => {
