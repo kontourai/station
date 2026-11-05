@@ -1,5 +1,41 @@
 # Station API Documentation
 
+## Paired Station conversation tunnel
+
+On a personal host with **Paired Station chats** enabled,
+`GET /api/environments/peers/:id/chat-connection` returns `{success:true,data}`
+containing version 1, verified `environmentId`, `stationName`, `principalNamespace`,
+receiver `delegationLocalConversationV1` and the source `read`/`operate`/locality
+ceiling. It contains no credentials. Public capability `peerChatTunnelV1` advertises
+this source protocol; missing receiver support does not enable a polling fallback.
+
+`/api/environments/peers/:id/chat-api/<receiver path>` admits only the exact
+methods, bounded queries and bodies in the [policy](../../src-server/routes/environments/peer-chat-policy.ts).
+Families include chat/continue, commands/receipts, open/event-window/live events,
+inbox/delivery lookup, requests/content, checkpoints, usage, projected catalogs
+and attachment staging/media. Command discriminants are `interruptTurn`,
+`steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`, `stopSession`
+and `discardDraft`. Arbitrary session mutations and onward remote execution are
+denied. Foreground targets must explicitly select the current receiver; its
+continue/inbox locality guard also checks saved/default execution state.
+
+The source authenticates its current owner Device/operator, rechecks the preview
+and saved peer grant, verifies R's identity and forwards only its saved delegation
+credential. Peer enrollment and credential administration remain operator-only.
+SSE uses streaming byte forwarding, abort/backpressure and idle revocation checks;
+revocation closes the connection rather than emitting a synthetic auth event.
+Attachment uploads authenticate S normally and carry the separate receiver upload
+grant in the staging header; media responses retain bounded binary bytes.
+
+R's 401/403 refusal becomes source-authored HTTP **424** with a version-1
+[refusal observation](../../packages/contracts/src/peer-chat.ts): target environment,
+`failureAuthority:'target'`, `remoteStatus`, `disposition:'refused-before-dispatch'`
+and the original mutation key when applicable. Only a verified source envelope
+bound to that target/key proves definite non-delivery. Raw upstream errors remain
+relayed, without source authority; loss/unknown outcomes stay uncertain. Source
+401 still means reconnect to S. See the [threat model](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)
+and [connection design](../design/station-connection.md) for limits and evidence.
+
 ## Session Goals
 
 While the default-off **Session goals** Feature Preview is enabled,

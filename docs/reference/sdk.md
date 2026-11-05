@@ -2354,6 +2354,32 @@ and the target API base as its second argument. Explicit target reads partition
 cache entries by that target and authority. These options grant no access and
 expose no outbound peer credential.
 
+The [Station connection contract](../design/station-connection.md) binds these
+options to host/direct/relay leases. For relay, `targetApiBase` names S's tunnel
+subtree while `requestScope` continues to name S's credential authority. For a
+direct connection both belong to R's independently paired profile. Credential
+and raw-egress resolvers receive the captured selector; equal origins do not imply
+equal principals. Never temporarily select a profile or forward R's credential
+to S. Lease retirement fences dispatch, response readers and stream chunks.
+
+The [conversation transport](../../src-ui/src/components/conversation/conversation-transport.ts)
+binds send, Stop, steering, request inspection/answers and delivery lookup.
+`steerTurn(apiBase, input, opts?)`, `inspectSteerInput(apiBase, input, opts?)` and
+`getConversationUsageTree(apiBase, conversationId, opts?)` accept captured
+`ClientRequestOptions.requestScope`. `setOrchestrationApprovalMode` takes
+`requestScope` in its input; `useConversationUsageTreeQuery` also scopes its read.
+Content inspection is URL-and-authority qualified. Shared controls consume
+capability decisions from that connection; reachability cannot grant full access
+or folder authority.
+
+The [attachment adapter](../../packages/sdk/src/client/attachment-staging.ts)
+keeps the ephemeral receiver upload grant separate from the credential that
+authenticates S's tunnel. Binary uploads/media preserve bytes. A typed
+[target refusal](../../packages/contracts/src/peer-chat.ts) is definite only when
+its source envelope, target and original mutation key match the current relay
+lease. R's authentication failure is HTTP 424 and must not retire S's credential.
+An unverified error or lost response remains uncertain; retain the key for lookup.
+
 ## API Functions
 
 Imperative API calls — use in event handlers, slash commands, or anywhere hooks aren't available.

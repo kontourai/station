@@ -1,9 +1,10 @@
 # Station connections and shared conversations
 
-> **Status: proposed implementation contract, 2026-11-04.** This is the canonical
-> design for connecting conversation surfaces to their owning Station. It does
-> not describe shipped behavior or establish browser, native-device, or provider
-> qualification. Source inspection used lane revision `63d72a1955`. The
+> **Status: partially implemented design, 2026-11-04.** The dock connection,
+> relay, observation, delivery, migration and common-body foundations are
+> implemented through `063bb00df3`. Activity, attached sessions, shared history
+> and Inbox adoption below remain planned P2 work. This record does not establish
+> release, physical-provider or native-device qualification. The
 > [chat composer policy](chat-composer.md) owns interaction decisions; the
 > [remote access threat model](../security/remote-access-threat-model.md) owns
 > authorization. Implementation must update those owners together.
@@ -17,10 +18,30 @@ lifetime; reconnecting the same profile cannot revive an old reader. Direct
 candidates require a live credential-bound authority observation. Native
 profiles require an existing exact host binding; its absence makes that route
 unavailable without changing the selected profile. Broker owners retain their
-current route ceiling. Relay descriptors/tunneling, stream/state adoption,
-durable delivery and shared conversation controls belong to subsequent plan
-steps; existing chats still use the host. Focused JS tests do not establish
-installed-shell or physical-device qualification.
+current route ceiling. The [relay policy](../../src-server/routes/environments/peer-chat-policy.ts)
+and [routes](../../src-server/routes/environments/peer-chat-routes.ts) implement
+the bounded HTTP/SSE tunnel. [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx)
+and its [controller](../../src-ui/src/components/conversation/useConversationController.ts)
+own the dock's shared transcript and controls. [Outbound delivery](../../src-ui/src/lib/outboundQueue.ts)
+and [observation](../../src-ui/src/hooks/useServerEvents.ts) use owning-Station
+partitions. Focused JS tests establish diagnostic behavior only.
+
+The [live qualification spec](../../tests/station-connection-chat.spec.ts) and
+[initial surface spec](../../tests/conversation-surfaces.spec.ts) own the browser
+acceptance route. Their deterministic HTTP model is a provider fixture, not a
+physical external engine. Results and incomplete journey steps must be reported
+separately; spec presence and screenshots alone establish no authorization claim.
+Native direct/broker custody, installed shells and physical devices remain
+**NOT_VERIFIED** by this browser route. Review-ledger source reviews are deferred
+until the combined P2 migration commits are complete.
+
+The P1.7 product command was attempted on Windows and stopped before browser
+startup: `assertSupportedE2EPlatform` requires POSIX process-group settlement and
+a separately owned host lane on Windows. Consequently all live journey steps,
+new viewport/theme captures and the reconnect clip are **NOT_VERIFIED** here.
+No lifecycle guard was bypassed and earlier fixture screenshots were not relabeled
+as new evidence. The specs retain actionable assertions for execution on a supported
+host; Windows component/policy results cannot substitute for that run.
 
 A chat on a paired Station uses the same conversation, messages, composer,
 approval controls, delivery feedback, and live events as a chat on this Station.
@@ -30,9 +51,8 @@ reason. They do not select a different conversation component.
 
 ## Problem and evidence
 
-The current [PeerChatBody](../../src-ui/src/components/chat-dock/PeerChatBody.tsx)
-polls history and independently owns send, busy, error, pending-message, Stop,
-and approval wiring. The dock instead uses
+The former peer body polled history and independently owned send, busy, error,
+pending-message, Stop and approval wiring. It has been removed. The dock uses
 [ChatDockBody](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
 [the foreground sender](../../src-ui/src/hooks/useActiveChatSessionMessaging.ts),
 and [the SSE owner](../../src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts).
@@ -45,9 +65,10 @@ Merely mounting the dock against a relay URL is unsafe. The
 [work observation](../../src-ui/src/contexts/work-observation.ts),
 [outbound queue](../../src-ui/src/lib/outboundQueue.ts), and
 [conversation open controller](../../src-ui/src/components/chat-dock/conversationOpenController.ts)
-currently assume one Station in important paths. Another Station's snapshot
-can exit a host chat, and host pruning or queue replay can delete or misroute
-remote work. These partitions are prerequisites to peer cutover.
+now partition the dock path by Station and authority. The former single-Station
+assumptions could exit a host chat on a peer snapshot or misroute remote queue
+work. Collision and late-result fixtures exercise these boundaries; they do not
+establish real two-machine execution by themselves.
 
 T3 Code's reference model is an environment registry, one connection resolver,
 and environment-scoped state consumed by one chat view. Its transport is
@@ -413,7 +434,7 @@ Use one `describeStationFailure` entry point, composing the established
 provider/domain failures. It returns safe copy, recovery action, retryability,
 authority and delivery disposition. All UI sinks consume the translated result.
 Examples: `Reconnect to <Station>` for target 401;
-`This connection cannot send to <Station>` for target 403;
+`<Station> didn't accept this message.` for target 403;
 `Reconnect to <source>` for source 401.
 Unknown errors get a useful fixed fallback. Raw `error.message` or `.code` is
 diagnostic data, never UI copy. Preserve domain-specific safe hints and their

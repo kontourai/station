@@ -449,6 +449,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    'tests/station-connection-chat.spec.ts',
+    'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
     'tests/operator-sessions.spec.ts',
@@ -521,6 +523,26 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
 };
 
 export const e2eManifest = [
+  {
+    path: 'tests/station-connection-chat.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Station connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Two disposable real Stations, public owner-Device and delegation pairing, receiver Project selection, held local HTTP provider stream, approval, follow-up, Stop, history and grant narrowing; no authentication or conversation route mocks.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/conversation-surfaces.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Conversation surfaces',
+    tierTarget: 'partial',
+    primary: true,
+    rationale:
+      'Initial host and peer shared dock adoption with real provider streams and approvals; isolated Stations and retained viewport/theme screenshots. Activity, attached sessions and shared history remain separate migrations.',
+    exceptions: [],
+  },
   {
     path: 'tests/operator-sessions.spec.ts',
     bucket: 'product',

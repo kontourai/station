@@ -514,13 +514,15 @@ runs**. Choose the Station, then its **Engine & model**. With **Paired Station
 chats** enabled in Settings → Advanced → Feature previews, choose a Project
 from that Station’s own list, or **start without a project**. **Start** opens a
 chat tab that reads and replies to the conversation on the chosen Station.
-It keeps the destination visible, supports Stop and answers requests there.
-A failed or uncertain send keeps its text and delivery identity; **Check
-conversation** reads what arrived, and **Retry this message** reuses that
-message’s identity. **Edit in New Chat** opens a separate editable draft with
-those remote choices and keeps the original message. Check whether it arrived
-before sending changed work. You choose the receiver’s Project again before Start.
-This preview takes text only; attachment and visual-reply reads are unavailable.
+It looks like any chat, with **Via <Station>** in the header. Replies, files,
+Stop and approval answers use that Station. A refused message offers **Retry**
+and **Edit**. If delivery is uncertain, use **Check** before sending a
+changed copy. Station keeps the original pending message.
+
+Full access, choosing a folder, mentions, offline copies and local skill or
+workspace integrations are unavailable on a relayed chat. Turning the preview
+off keeps saved text and drafts visible. An older held chat offers **Reconnect
+chat**; confirm the Station before continuing.
 
 Choose the destination’s Project explicitly; Station does not match Projects
 between computers by name. Remote Tasks keep their separate execution consent.

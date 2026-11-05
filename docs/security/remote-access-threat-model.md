@@ -1221,14 +1221,42 @@ on the host (`ui-bootstrap`):
   (`isProtectedPairingPromotionScope`, and the existing `access:devices` and
   `home:control` refusals);
 - the [Paired Station chat bridge](../design/chat-composer.md#paired-station-foreground-chats)'s
-  two write leaves (`POST /api/environments/peers/:id/chat-api/api/orchestration/chat`
-  and `…/commands`), matched exactly in
+  enumerated mutations under `/api/environments/peers/:id/chat-api`, matched by
+  the shared [method/path/body policy](../../src-server/routes/environments/peer-chat-policy.ts) in
   [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts),
   so the owner can chat on a paired Station from a phone. The bridge's own
   allowlist and agent-origin refusal still apply, and the receiver still
   checks the saved peer grant. Every other peer-family write (adding,
   replacing, enrolling or removing outbound peer credentials) stays
   operator-only.
+
+The [tunnel boundary](../../src-server/routes/environments/peer-chat-routes.ts)
+negotiates `peerChatTunnelV1` and receiver `delegationLocalConversationV1` through
+an authenticated `chat-connection` descriptor. The descriptor exposes identity,
+principal namespace and an operation ceiling, never the outbound credential.
+Allowed families cover bounded conversation/history/request/usage/catalog/media
+reads, live orchestration events and enumerated send, command, inbox, staging and
+checkpoint mutations. Unknown methods, leaves, query keys and commands are denied.
+Receiver schemas reparse bodies; foreground targets must be explicitly current.
+The receiver's [orchestration locality guard](../../src-server/routes/orchestration/orchestration.ts)
+also prevents continue and inbox operations from reaching an onward environment,
+including a saved/default remote target. Agent-origin requests cannot use the tunnel.
+
+The [stream forwarder](../../src-server/services/remote-stations/remote-station-forwarder.ts)
+preserves event bytes and backpressure, owns cancellation and rechecks source and
+peer currency before chunks and during idle periods. Revocation closes the stream;
+the next authenticated request must establish current access. A close is not an
+invented authorization-expired SSE event or proof that remote execution stopped.
+
+Receiver authentication refusal is source-authored HTTP **424**, carrying the typed
+[target refusal observation](../../packages/contracts/src/peer-chat.ts), original
+target and mutation key. It never becomes a source 401 that retires S's Device.
+Raw upstream responses remain relayed and cannot acquire S's verified envelope.
+Only the current, target/key-bound source observation proves a pre-dispatch refusal;
+unknown or lost responses retain uncertainty. A confirmed acceptance outranks a
+later refusal. Receiver attachment upload grants travel only in the exact staging
+header, separately from the source credential authenticating the tunnel. Binary
+media uses bounded byte forwarding and validated response headers, not text decoding.
 
 **What it does not grant.** No mint-time possession proof: everything keyed
 on `isBoundLocalGrantMintedOperator` (native consent custody, outside-agent

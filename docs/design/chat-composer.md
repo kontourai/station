@@ -277,8 +277,9 @@ on personal hosts. [Peer chat routes](../../src-server/routes/environments/peer-
 own its server branch. Every read and write rechecks the preview and source
 request authority. The existing `access:manage` peer-family boundary and the
 agent-origin refusal prevent a delegated agent from using another Station’s
-saved credential for an onward hop. The two write leaves (send, and Stop or a
-request answer) admit the operator and the owner's own devices with
+saved credential for an onward hop. The enumerated mutations in the shared
+[tunnel policy](../../src-server/routes/environments/peer-chat-policy.ts) admit
+the operator and the owner's own devices with
 [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02);
 every other peer-family write stays operator-only. The receiver still applies its credential,
 Project, engine, approval and full-access checks.
@@ -287,23 +288,34 @@ New Chat reads the receiver’s Projects through that bridge. It never sends the
 source Project’s slug as a receiver selection. This is an explicit foreground
 chat under the existing personal-peer grant, not portable Task placement;
 portable Project offers retain their existing separate consent. The bridge
-allows only bounded chat/history/request reads and typed foreground sends,
-Stop and request decisions. It confirms the saved environment identity,
+allows bounded conversation, request, media and catalog reads, live events,
+typed foreground sends, inbox changes, Stop, steering, request decisions and
+checkpoint restores. It confirms the saved environment identity,
 forwards only the saved peer credential, refuses redirects, withholds results
 after authority or credential rotation, and publishes no remote cookies.
 
-[PeerChatBody](../../src-ui/src/components/chat-dock/PeerChatBody.tsx) opens in the
-normal dock. The active-chat store retains its remote binding and keyed pending
-message; it never promotes the remote identity to a local conversation ID.
-It polls bounded conversation windows, shares `SessionTranscript` and the shared
-approval and input-form controls, and reuses `SessionReplyComposer` with Activity.
-An uncertain message stays pending and an explicit retry keeps the same key.
-**Edit in New Chat** copies it into a separate draft with the remote choices,
-requires the receiver Project to be chosen again, and never sends automatically.
-The original pending message remains available; the warning asks the person to
-check for delivery before sending changed work. Invalid saved remote bindings
-show a recovery action and cannot fall back to the source chat composer.
-Turning the preview off stops remote operations and leaves retained work visible.
+The normal dock uses [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx)
+for host, direct and relayed chats. One header says `Via <Station>`; message rows
+do not repeat that attribution. The modal leases the selected connection until
+the new tab takes ownership. Its versioned binding pins Station, principal and
+route lineage; pairing a direct route later cannot silently switch an existing
+relay chat's owner. New chats prefer a verified direct connection.
+
+The shared controller binds transcript, media, stats, inbox, steering, current-turn
+Stop and approval answers to that connection. Approval inspection proofs bind
+the request URL, content and authority; unsupported trust choices stay unavailable.
+Full access, arbitrary folders, remote mentions, offline copies/replay, personal
+defaults and local skill/workspace integrations are unavailable on relayed chats.
+
+A definite refusal appears inside the ordinary not-sent user bubble with Retry
+and Edit, a short target-aware reason and closed Details. An uncertain send keeps
+its key and offers **Check delivery**; it is never automatically replayed remotely.
+Retry requires safe non-delivery evidence. **Edit a copy** retains the uncertain
+original; Discard requires confirmation. Legacy chats without a source receipt
+retain text and draft and offer **Reconnect chat**, with explicit source confirmation
+before import and receiver lookup before any possibly dispatched resend.
+Preview off stops non-host operations and streams while keeping local content and
+drafts readable. See [Station connections](station-connection.md) for the full contract.
 
 Home and New Chat share the heading with its inline Project picker, optional
 No project action, compact Agent/Model row, and Station/location line below the
