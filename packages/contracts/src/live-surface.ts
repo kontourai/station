@@ -756,15 +756,16 @@ export type LiveSurfaceLeaseRequest =
   /**
    * Release what the caller has pressed on the surface (buttons, keys,
    * touches), without completing it. Not fenced: it touches only the
-   * caller's own presses and, with `through`, only those its sender pressed
-   * in batches up to that `seq`. A viewer sends it when it can no longer see
+   * caller's own presses, and only those its sender pressed in batches up
+   * to `through.seq` (a press sent with no order counts as covered), so no
+   * late or retried request ever releases a newer press. A viewer sends it when it can no longer see
    * its own releases (blur, a hidden page, unmount) or after a batch whose
    * effect is unknown; the host owns the release from then on.
    */
   | {
       action: 'release-pressed';
       viewerId?: LiveSurfaceViewerId;
-      through?: LiveSurfaceInputOrder;
+      through: LiveSurfaceInputOrder;
     }
   | { action: 'release'; epoch: number }
   /**
@@ -790,17 +791,14 @@ export function parseLiveSurfaceLeaseRequest(
     onlyKeys(record, ['action', 'viewerId', 'through']) &&
     (record.viewerId === undefined || isLiveSurfaceViewerId(record.viewerId))
   ) {
-    const through =
-      record.through === undefined
-        ? undefined
-        : parseLiveSurfaceInputOrder(record.through);
-    if (through === null) return null;
+    const through = parseLiveSurfaceInputOrder(record.through);
+    if (!through) return null;
     return {
       action: 'release-pressed',
       ...(record.viewerId === undefined
         ? {}
         : { viewerId: record.viewerId as string }),
-      ...(through ? { through } : {}),
+      through,
     };
   }
   if (

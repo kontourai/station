@@ -1493,13 +1493,12 @@ describe('the device toolbar', () => {
       new URL(stream.url).pathname.split('/').at(-2)!,
     );
     // The host says a release kept failing, then ends the session.
+    const record = stateRecord(surfaceId, { inputChannel: 'connected' });
+    if (record.kind !== 'state') throw new Error('a state record');
     await stream.push({
-      ...stateRecord(surfaceId, { inputChannel: 'connected' }),
-      state: {
-        ...stateRecord(surfaceId).state,
-        releaseStuck: true,
-      },
-    } as never);
+      ...record,
+      state: { ...record.state, releaseStuck: true },
+    });
     plan.framesStatus = 404;
     await stream.end();
     expect(

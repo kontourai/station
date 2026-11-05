@@ -396,8 +396,16 @@ describe('epoch causality and host release (#90 A, B)', () => {
       { action: 'claim', viewerId },
     );
     expect(
-      parseLiveSurfaceLeaseRequest({ action: 'release-pressed', viewerId }),
-    ).toEqual({ action: 'release-pressed', viewerId });
+      parseLiveSurfaceLeaseRequest({
+        action: 'release-pressed',
+        viewerId,
+        through: { sender: viewerId, seq: 0 },
+      }),
+    ).toEqual({
+      action: 'release-pressed',
+      viewerId,
+      through: { sender: viewerId, seq: 0 },
+    });
     for (const bad of [
       'short',
       'has space in it 00000000000000000',
@@ -454,12 +462,20 @@ describe('epoch causality and host release (#90 A, B)', () => {
     }
   });
 
-  test('release-pressed is an unfenced lease action: it names no epoch', () => {
-    expect(parseLiveSurfaceLeaseRequest({ action: 'release-pressed' })).toEqual(
-      { action: 'release-pressed' },
-    );
+  test('release-pressed is unfenced and always bound: it names the last batch it covers, never an epoch', () => {
+    const through = { sender: viewerId, seq: 3 };
     expect(
-      parseLiveSurfaceLeaseRequest({ action: 'release-pressed', epoch: 3 }),
+      parseLiveSurfaceLeaseRequest({ action: 'release-pressed', through }),
+    ).toEqual({ action: 'release-pressed', through });
+    expect(
+      parseLiveSurfaceLeaseRequest({ action: 'release-pressed' }),
+    ).toBeNull();
+    expect(
+      parseLiveSurfaceLeaseRequest({
+        action: 'release-pressed',
+        epoch: 3,
+        through,
+      }),
     ).toBeNull();
   });
 
