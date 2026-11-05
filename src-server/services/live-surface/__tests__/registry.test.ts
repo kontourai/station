@@ -793,33 +793,32 @@ describe('server-owned release of pressed input (#90 B)', () => {
     thief.close();
   });
 
-  test("an answer's lease and cause are read at one point: a takeover during the dispatch never pairs an old lease with a new cause (finding 5)", async () => {
-    const { producer, entry } = setup();
-    const mine = attachHumanViewer(entry, human);
-    let resume!: () => void;
-    producer.dispatchImpl = () =>
-      new Promise<void>((resolve) => {
-        resume = resolve;
+  test("an answer's lease and cause are read at one point: a takeover at any moment of the answer never pairs one epoch's lease with another's cause (finding 5)", async () => {
+    // The takeover lands after a varying number of microtasks, sweeping the
+    // window between the batch's last dispatch and its answer.
+    for (let steps = 0; steps <= 40; steps += 1) {
+      const { entry } = setup();
+      const mine = attachHumanViewer(entry, human);
+      const answer = dispatchHumanInput(
+        entry,
+        human,
+        0,
+        [move(1)],
+        mine.viewerId,
+      );
+      for (let step = 0; step < steps; step += 1) await Promise.resolve();
+      claimHumanControl(entry, other);
+      const result = await answer;
+      // Epoch 1 is this viewer's own takeover; epoch 2 is the other's.
+      expect(
+        { steps, epoch: result.lease.epoch, cause: result.epochCause },
+        `takeover after ${steps} microtasks`,
+      ).toEqual({
+        steps,
+        epoch: result.lease.epoch,
+        cause: result.lease.epoch === 1 ? 'self' : 'other',
       });
-    const answer = dispatchHumanInput(
-      entry,
-      human,
-      0,
-      [move(1)],
-      mine.viewerId,
-    );
-    await settleChain();
-    // Someone else takes control while this batch's event is in flight.
-    producer.dispatchImpl = async () => {};
-    claimHumanControl(entry, other);
-    resume();
-    const result = await answer;
-    const now = attestedLease(entry, mine.viewerId);
-    expect({ epoch: result.lease.epoch, cause: result.epochCause }).toEqual({
-      epoch: now.lease.epoch,
-      cause: now.epochCause,
-    });
-    expect(result.epochCause).toBe(result.lease.epoch === 1 ? 'self' : 'other');
-    mine.close();
+      mine.close();
+    }
   });
 });
