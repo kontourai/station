@@ -448,17 +448,9 @@ export function createLiveSurfaceRoutes(
         : request.action === 'keep-alive'
           ? keepHumanControlAlive(found.value, human, request.epoch)
           : request.action === 'release-pressed'
-            ? await releaseHumanPressed(
-                found.value,
-                human,
-                request.epoch,
-                request.viewerId,
-              )
+            ? await releaseHumanPressed(found.value, human, request.viewerId)
             : releaseHumanControl(found.value, human, request.epoch);
-    return c.json(
-      { success: result.ok, data: result },
-      result.ok ? 200 : result.code === 'release-failed' ? 502 : 409,
-    );
+    return c.json({ success: result.ok, data: result }, result.ok ? 200 : 409);
   });
 
   return app;

@@ -371,10 +371,12 @@ export type LiveSurfaceLeaseRefusalCode =
   /** The caller is not the current holder (release/renew/dispatch). */
   | 'not-holder'
   /**
-   * `release-pressed` could not release what was pressed (the producer's
-   * cancel failed or timed out). Nothing was forgotten: the caller retries.
+   * A release of what was pressed is owed and not yet confirmed (an attempt
+   * in flight, a failed cancel, a wedge). The host keeps trying it itself;
+   * input is refused with this code until it succeeds, so nobody types
+   * through a stuck key or button.
    */
-  | 'release-failed';
+  | 'release-pending';
 
 export type LiveSurfaceLeaseResult = (
   | { ok: true; lease: LiveSurfaceControlLease }
@@ -716,11 +718,12 @@ export type LiveSurfaceLeaseRequest =
   | { action: 'claim'; viewerId?: LiveSurfaceViewerId }
   /**
    * Release whatever the caller has pressed on the surface (buttons, keys,
-   * touches), without completing it. Fenced by the epoch the caller holds:
-   * a viewer sends it when it can no longer see its own releases (blur, a
-   * hidden page, unmount) or when the answer to a press was lost.
+   * touches), without completing it. Not fenced: it touches only the
+   * caller's own presses. A viewer sends it when it can no longer see its
+   * own releases (blur, a hidden page, unmount) or after a batch whose
+   * effect is unknown; the host owns the release from then on.
    */
-  | { action: 'release-pressed'; epoch: number; viewerId?: LiveSurfaceViewerId }
+  | { action: 'release-pressed'; viewerId?: LiveSurfaceViewerId }
   | { action: 'release'; epoch: number }
   /**
    * Keep the caller's OWN current hold alive while a person is shown
@@ -742,13 +745,11 @@ export function parseLiveSurfaceLeaseRequest(
   }
   if (
     record.action === 'release-pressed' &&
-    onlyKeys(record, ['action', 'epoch', 'viewerId']) &&
-    isLiveSurfaceEpoch(record.epoch) &&
+    onlyKeys(record, ['action', 'viewerId']) &&
     (record.viewerId === undefined || isLiveSurfaceViewerId(record.viewerId))
   )
     return {
       action: 'release-pressed',
-      epoch: record.epoch as number,
       ...(record.viewerId === undefined
         ? {}
         : { viewerId: record.viewerId as string }),

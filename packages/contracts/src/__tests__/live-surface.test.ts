@@ -396,12 +396,8 @@ describe('epoch causality and host release (#90 A, B)', () => {
       { action: 'claim', viewerId },
     );
     expect(
-      parseLiveSurfaceLeaseRequest({
-        action: 'release-pressed',
-        epoch: 3,
-        viewerId,
-      }),
-    ).toEqual({ action: 'release-pressed', epoch: 3, viewerId });
+      parseLiveSurfaceLeaseRequest({ action: 'release-pressed', viewerId }),
+    ).toEqual({ action: 'release-pressed', viewerId });
     for (const bad of [
       'short',
       'has space in it 00000000000000000',
@@ -420,12 +416,12 @@ describe('epoch causality and host release (#90 A, B)', () => {
     ).toBeNull();
   });
 
-  test('release-pressed is a fenced lease action', () => {
+  test('release-pressed is an unfenced lease action: it names no epoch', () => {
+    expect(parseLiveSurfaceLeaseRequest({ action: 'release-pressed' })).toEqual(
+      { action: 'release-pressed' },
+    );
     expect(
       parseLiveSurfaceLeaseRequest({ action: 'release-pressed', epoch: 3 }),
-    ).toEqual({ action: 'release-pressed', epoch: 3 });
-    expect(
-      parseLiveSurfaceLeaseRequest({ action: 'release-pressed' }),
     ).toBeNull();
   });
 

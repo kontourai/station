@@ -724,53 +724,158 @@ describe('server-owned release of pressed input (#90 B)', () => {
     return [...down];
   };
 
-  test("release-pressed releases only the caller's presses, fenced by the epoch it holds", async () => {
+  /** Keys and buttons down on the surface, replayed from what it received. */
+  const heldOn = (producer: SyntheticLiveSurfaceProducer) => {
+    const down = new Set<string>();
+    for (const event of producer.dispatched) {
+      const id =
+        event.kind === 'pointer' &&
+        (event.type === 'down' || event.type === 'up')
+          ? `button:${event.button ?? 'left'}`
+          : event.kind === 'key'
+            ? `key:${event.code || event.key}`
+            : null;
+      if (!id || !('type' in event)) continue;
+      if (event.type === 'down') down.add(id);
+      else down.delete(id);
+    }
+    return [...down];
+  };
+  /** Refuse (and do not apply) the next `times` releases of keys. */
+  const refuseKeyUps = (
+    producer: SyntheticLiveSurfaceProducer,
+    times: number,
+  ) => {
+    let left = times;
+    const calls = { ups: 0 };
+    producer.dispatchImpl = async (event) => {
+      if (event.kind !== 'key' || event.type !== 'up') return;
+      calls.ups += 1;
+      if (left <= 0) return;
+      left -= 1;
+      producer.dispatched.pop();
+      throw new Error('surface refused the key up');
+    };
+    return calls;
+  };
+  const shift = (type: 'down' | 'up') =>
+    ({ kind: 'key', type, key: 'Shift', code: 'ShiftLeft' }) as const;
+
+  test("release-pressed releases only the caller's own presses, at any epoch", async () => {
     const { producer, entry } = setup();
     const first = await dispatchHumanInput(entry, human, 0, [
       press('down', 5, 5),
     ]);
     expect(first.ok).toBe(true);
-    const epoch = entry.lease.snapshot().epoch;
-    // A stale epoch, or a caller who does not hold control, releases nothing.
-    expect(await releaseHumanPressed(entry, human, epoch - 1)).toMatchObject({
-      ok: false,
-      code: 'stale-epoch',
-    });
-    expect(await releaseHumanPressed(entry, other, epoch)).toMatchObject({
-      ok: false,
-      code: 'not-holder',
-    });
-    await settleChain();
+    // Someone who pressed nothing releases nothing.
+    expect((await releaseHumanPressed(entry, other)).ok).toBe(true);
     expect(downOn(producer)).toEqual(['left']);
-    expect((await releaseHumanPressed(entry, human, epoch)).ok).toBe(true);
-    await settleChain();
+    expect((await releaseHumanPressed(entry, human)).ok).toBe(true);
     expect(downOn(producer)).toEqual([]);
   });
 
-  test('release-pressed answers ok only once the surface performed the release; a failed cancel keeps the press held and answers release-failed (round 6, item 3)', async () => {
+  test('a failed cancel is answered release-pending and the server keeps trying it itself; input waits until it succeeds (round 7, item 2)', async () => {
     const { producer, entry } = setup();
-    await dispatchHumanInput(entry, human, 0, [press('down', 5, 5)]);
-    const epoch = entry.lease.snapshot().epoch;
-    producer.dispatchImpl = async (event) => {
-      if (event.kind === 'pointer' && event.type === 'up') {
-        // The surface refused: the button never went up.
-        producer.dispatched.pop();
-        throw new Error('surface refused the release');
-      }
-    };
-    expect(await releaseHumanPressed(entry, human, epoch)).toMatchObject({
+    await dispatchHumanInput(entry, human, 0, [shift('down')]);
+    const calls = refuseKeyUps(producer, 2);
+    expect(await releaseHumanPressed(entry, human)).toMatchObject({
       ok: false,
-      code: 'release-failed',
+      code: 'release-pending',
     });
-    expect(downOn(producer)).toEqual(['left']);
-    // Still accounted for: the next try releases it.
-    producer.dispatchImpl = async () => {};
-    expect((await releaseHumanPressed(entry, human, epoch)).ok).toBe(true);
-    expect(downOn(producer)).toEqual([]);
-    // And nothing is left to release a second time.
-    const sent = producer.dispatched.length;
-    expect((await releaseHumanPressed(entry, human, epoch)).ok).toBe(true);
-    expect(producer.dispatched.length).toBe(sent);
+    expect(heldOn(producer)).toEqual(['key:ShiftLeft']);
+    // Nobody types through the stuck key while the release is owed.
+    expect(
+      await dispatchHumanInput(entry, human, 1, [{ kind: 'text', text: 'x' }]),
+    ).toMatchObject({ ok: false, code: 'release-pending', accepted: 0 });
+    // No one asks again: the server's own retries release it.
+    await sleep(900);
+    await settleChain();
+    expect(calls.ups).toBe(3);
+    expect(heldOn(producer)).toEqual([]);
+    expect(
+      (await dispatchHumanInput(entry, human, 1, [{ kind: 'text', text: 'x' }]))
+        .ok,
+    ).toBe(true);
+  });
+
+  test('a release the producer failed is not forgotten: the key stays held, and the server releases it (round 7, item 1)', async () => {
+    const { producer, entry } = setup();
+    await dispatchHumanInput(entry, human, 0, [shift('down')]);
+    refuseKeyUps(producer, 1);
+    expect(
+      await dispatchHumanInput(entry, human, 1, [shift('up')]),
+    ).toMatchObject({ ok: false, code: 'dispatch-failed', accepted: 0 });
+    // Still held, and released by the server's cleanup (not completed).
+    await settleChain();
+    await settleChain();
+    expect(heldOn(producer)).toEqual([]);
+    expect(producer.dispatched.filter((event) => event.kind === 'key')).toEqual(
+      [shift('down'), shift('up')],
+    );
+    // Nothing is owed any more.
+    expect((await releaseHumanPressed(entry, human)).ok).toBe(true);
+  });
+
+  test("a cancel that fails at a handoff is retried by the server after control changed; the new controller's input waits for it (round 7, item 2)", async () => {
+    const { producer, entry } = setup();
+    await dispatchHumanInput(entry, human, 0, [shift('down')]);
+    const calls = refuseKeyUps(producer, 2);
+    // Another person takes over by typing while the previous one's Shift is
+    // down and its cancel fails.
+    expect(
+      await dispatchHumanInput(entry, other, 1, [
+        { kind: 'text', text: 'new' },
+      ]),
+    ).toMatchObject({ ok: false, code: 'release-pending', accepted: 0 });
+    expect(entry.lease.snapshot().holder).toMatchObject({
+      principal: other.principal,
+    });
+    await sleep(900);
+    await settleChain();
+    expect(calls.ups).toBe(3);
+    expect(heldOn(producer)).toEqual([]);
+    const epoch = entry.lease.snapshot().epoch;
+    expect(
+      (
+        await dispatchHumanInput(entry, other, epoch, [
+          { kind: 'text', text: 'new' },
+        ])
+      ).ok,
+    ).toBe(true);
+    // The text never landed while Shift was down.
+    const order = producer.dispatched.map((event) =>
+      event.kind === 'text'
+        ? 'text'
+        : `${event.kind}:${'type' in event ? event.type : ''}`,
+    );
+    expect(order).toEqual(['key:down', 'key:up', 'text']);
+  });
+
+  test('release requests against a hung cancel share one attempt: one producer call, and every request is answered (round 7, item 4)', async () => {
+    const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 30 });
+    await dispatchHumanInput(entry, human, 0, [shift('down')]);
+    let cancels = 0;
+    producer.dispatchImpl = (event) => {
+      if (event.kind === 'key' && event.type === 'up') {
+        cancels += 1;
+        return new Promise<void>(() => {});
+      }
+      return Promise.resolve();
+    };
+    const started = Date.now();
+    const answers = await Promise.all(
+      Array.from({ length: 5 }, () => releaseHumanPressed(entry, human)),
+    );
+    expect(Date.now() - started).toBeLessThan(500);
+    for (const answer of answers)
+      expect(answer).toMatchObject({ ok: false, code: 'release-pending' });
+    // More requests while it is wedged are answered at once, never queued.
+    const more = await Promise.all(
+      Array.from({ length: 5 }, () => releaseHumanPressed(entry, human)),
+    );
+    for (const answer of more)
+      expect(answer).toMatchObject({ ok: false, code: 'release-pending' });
+    expect(cancels).toBe(1);
   });
 
   test("a controller's presses are released only after its last stream has been closed for the grace window", async () => {

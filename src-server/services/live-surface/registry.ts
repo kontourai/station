@@ -173,13 +173,6 @@ export interface LiveSurfaceRegistration {
 
 const DEFAULT_DISPATCH_TIMEOUT_MS = 10_000;
 
-/**
- * What a controller currently holds down on the surface, recorded from what
- * was SENT to the producer (before awaiting it), so an event that is still
- * in flight — or that timed out and lands later — is accounted for. When
- * control changes hands, or is released, whatever is held is cancelled
- * (never completed; see `cancelHeld`).
- */
 /** One controller, as a comparable string (who dispatched a press). */
 function controllerKey(controller: LiveSurfaceController): string {
   return controller.kind === 'human'
@@ -187,47 +180,110 @@ function controllerKey(controller: LiveSurfaceController): string {
     : `agent\u0000${controller.principal}\u0000${controller.sessionId}`;
 }
 
+/** Which held button or key a down/up is about; null for anything else. */
+function pressOf(
+  event: LiveSurfaceInput,
+):
+  | { kind: 'button'; id: LiveSurfacePointerButton }
+  | { kind: 'key'; id: string }
+  | null {
+  if (event.kind === 'pointer') {
+    if (event.type !== 'down' && event.type !== 'up') return null;
+    // A down/up with no `button` is the primary one (a raw client's touch
+    // names none). Recording it as nothing would leave that press
+    // uncancelled at a handoff (Device pane lane, #1970).
+    return { kind: 'button', id: event.button ?? 'left' };
+  }
+  if (event.kind === 'key') return { kind: 'key', id: event.code || event.key };
+  return null;
+}
+
+/**
+ * What each controller holds down on the surface: the server's single
+ * account of it. A press is recorded when it is SENT (before awaiting it),
+ * so one still in flight, or one that timed out and lands later, is
+ * accounted for. A release is forgotten only once the producer confirmed
+ * it: one that failed or timed out may not have landed, so it stays held
+ * and is marked for release. Whatever is marked (at a handoff, a lapse, an
+ * abandoned viewer, a viewer's `release-pressed`, or such a failed release)
+ * is cancelled by the surface's cleanup (`runCleanup`), never completed,
+ * and input waits until it is.
+ */
 class PressedInput {
   /**
-   * Each held button: the pointer type its down was dispatched as, and the
+   * Each held button: the pointer type its down was dispatched as, the
    * controller that dispatched it (so one controller's stuck press never
-   * keeps a different holder live).
+   * keeps a different holder live), and whether it is to be released.
    */
   private readonly buttons = new Map<
     LiveSurfacePointerButton,
-    { pointerType: LiveSurfacePointerType; owner: string }
+    { pointerType: LiveSurfacePointerType; owner: string; releasing: boolean }
   >();
   private readonly keys = new Map<
     string,
-    { key: string; code: string; owner: string }
+    { key: string; code: string; owner: string; releasing: boolean }
   >();
   private pointer = { x: 0, y: 0 };
   private pointerType: LiveSurfacePointerType = 'mouse';
 
-  record(event: LiveSurfaceInput, controller: LiveSurfaceController): void {
+  /** An event about to be sent: a press is held from now on. */
+  sent(event: LiveSurfaceInput, controller: LiveSurfaceController): void {
     const owner = controllerKey(controller);
     if (event.kind === 'pointer') {
       this.pointer = { x: event.x, y: event.y };
       if (event.type === 'down')
         this.pointerType = event.pointerType ?? 'mouse';
-      // A down/up with no `button` is the primary one (a raw client's touch
-      // names none). Recording it as nothing would leave that press
-      // uncancelled at a handoff (Device pane lane, #1970).
-      const button =
-        event.button ??
-        (event.type === 'down' || event.type === 'up' ? 'left' : undefined);
-      if (event.type === 'down' && button)
-        this.buttons.set(button, {
-          pointerType: event.pointerType ?? 'mouse',
-          owner,
-        });
-      if (event.type === 'up' && button) this.buttons.delete(button);
-    } else if (event.kind === 'key') {
-      const id = event.code || event.key;
-      if (event.type === 'down')
-        this.keys.set(id, { key: event.key, code: event.code, owner });
-      else this.keys.delete(id);
     }
+    const press = pressOf(event);
+    if (!press || !('type' in event) || event.type !== 'down') return;
+    if (press.kind === 'button')
+      this.buttons.set(press.id, {
+        pointerType:
+          (event.kind === 'pointer' ? event.pointerType : undefined) ?? 'mouse',
+        owner,
+        releasing: false,
+      });
+    else if (event.kind === 'key')
+      this.keys.set(press.id, {
+        key: event.key,
+        code: event.code,
+        owner,
+        releasing: false,
+      });
+  }
+
+  /**
+   * The producer answered for an event that was sent. A release it
+   * confirmed is forgotten; one that failed or timed out may not have
+   * landed, so it stays held, marked for release. True when it was marked.
+   */
+  settled(event: LiveSurfaceInput, confirmed: boolean): boolean {
+    const press = pressOf(event);
+    if (!press || !('type' in event) || event.type !== 'up') return false;
+    const map: Map<string, { releasing: boolean }> =
+      press.kind === 'button' ? this.buttons : this.keys;
+    if (confirmed) {
+      map.delete(press.id);
+      return false;
+    }
+    const held = map.get(press.id);
+    if (!held) return false;
+    held.releasing = true;
+    return true;
+  }
+
+  /** Mark what `controller` (or, without one, anyone) holds for release. */
+  markForRelease(controller?: LiveSurfaceController): void {
+    const owner = controller ? controllerKey(controller) : null;
+    for (const held of [...this.buttons.values(), ...this.keys.values()])
+      if (owner === null || held.owner === owner) held.releasing = true;
+  }
+
+  /** Whether a release is still owed: input waits until it is not. */
+  unresolved(): boolean {
+    for (const held of [...this.buttons.values(), ...this.keys.values()])
+      if (held.releasing) return true;
+    return false;
   }
 
   /** Whether `controller` itself has anything pressed. */
@@ -240,19 +296,12 @@ class PressedInput {
   }
 
   /**
-   * Everything held (or, given `controller`, only what that controller
-   * pressed), then forget it; null when nothing is held.
+   * Everything marked for release, then forget it (`restore` puts it back
+   * when the cancel failed); null when nothing is marked.
    */
-  take(
-    controller?: LiveSurfaceController,
-  ): { held: LiveSurfaceHeldInput; restore: () => void } | null {
-    const owner = controller ? controllerKey(controller) : null;
-    const buttons = [...this.buttons].filter(
-      ([, held]) => owner === null || held.owner === owner,
-    );
-    const keys = [...this.keys].filter(
-      ([, held]) => owner === null || held.owner === owner,
-    );
+  takeReleasing(): { held: LiveSurfaceHeldInput; restore: () => void } | null {
+    const buttons = [...this.buttons].filter(([, held]) => held.releasing);
+    const keys = [...this.keys].filter(([, held]) => held.releasing);
     if (buttons.length === 0 && keys.length === 0) return null;
     const held: LiveSurfaceHeldInput = {
       buttons: buttons.map(([button]) => button),
@@ -267,9 +316,8 @@ class PressedInput {
     for (const [id] of keys) this.keys.delete(id);
     return {
       held,
-      // A cancel that failed: still held, so it is accounted for (and
-      // released) again. Nothing is dispatched between take and restore:
-      // both run on the surface's serialized input chain.
+      // Nothing is dispatched between take and restore: both run on the
+      // surface's serialized input chain.
       restore: () => {
         for (const [button, value] of buttons) this.buttons.set(button, value);
         for (const [id, value] of keys) this.keys.set(id, value);
@@ -340,7 +388,21 @@ interface EntryInternals {
     }
   >;
   viewerGraceMs: number;
+  /**
+   * The surface's one release cleanup: the attempt in flight (at most one),
+   * the timer for the next try, and how many tries in a row failed.
+   */
+  cleanup: {
+    attempt: Promise<boolean> | null;
+    retry: ReturnType<typeof setTimeout> | null;
+    failures: number;
+  };
 }
+
+/** The first pause before a failed release is tried again, doubling. */
+const CLEANUP_RETRY_MS = 200;
+/** The longest pause between tries of a failed release. */
+const CLEANUP_RETRY_MAX_MS = 5_000;
 
 const internals = new WeakMap<LiveSurfaceEntry, EntryInternals>();
 
@@ -425,10 +487,13 @@ export class LiveSurfaceRegistry {
       onExplicitControl: registration.onExplicitControl ?? (() => {}),
       viewers: new Map(),
       viewerGraceMs: this.options.viewerGraceMs ?? DEFAULT_VIEWER_GRACE_MS,
+      cleanup: { attempt: null, retry: null, failures: 0 },
     };
     internals.set(entry, own);
     own.dispose = async () => {
       lifetime.abort();
+      if (own.cleanup.retry) clearTimeout(own.cleanup.retry);
+      own.cleanup.retry = null;
       lease.dispose();
       await Promise.all([
         hub.dispose(),
@@ -438,7 +503,7 @@ export class LiveSurfaceRegistry {
     // A handoff cancels whatever the previous controller held. It is queued
     // synchronously at the claim: AHEAD of the new controller's first batch
     // and behind the old controller's current one.
-    lease.onHandoff(() => cancelHeld(entry));
+    lease.onHandoff(() => releaseHeld(entry));
     // A human still pressing something THEY dispatched stays live (up to the
     // lease's ceiling) — never on another controller's stuck press, and
     // never while the surface is wedged (a press that cannot be released).
@@ -447,7 +512,7 @@ export class LiveSurfaceRegistry {
     );
     // Control lapsing to NOBODY — release or expiry — cancels held input too.
     lease.onChange((next) => {
-      if (next.holder === null) cancelHeld(entry);
+      if (next.holder === null) releaseHeld(entry);
     });
     // Viewers see the wedge in their state record, so a surface that stops
     // taking input (a page showing a dialog) says so instead of going quiet.
@@ -502,6 +567,8 @@ async function dispatchWithTimeout(
   run: () => Promise<void>,
   /** What is dispatched, for the failure log: a kind and type, never content. */
   what: string,
+  /** Told whether a dispatch that timed out landed once it settles. */
+  onLate?: (landed: boolean) => void,
 ): Promise<'ok' | 'failed' | 'timeout' | LiveSurfaceInputRefusal> {
   const own = internalsOf(entry);
   const pending = run();
@@ -527,12 +594,18 @@ async function dispatchWithTimeout(
   if (timer) clearTimeout(timer);
   if (outcome === 'timeout') {
     const orphan: Promise<unknown> = pending
-      .catch(() => {})
-      .then(() => {
+      .then(
+        () => true,
+        () => false,
+      )
+      .then((landed) => {
+        onLate?.(landed);
         if (own.orphan !== orphan) return;
         own.orphan = null;
         own.wedgedSince = null;
         entry.hub.announce();
+        // A release that waited out the wedge is tried now.
+        if (own.pressed.unresolved()) void runCleanup(entry);
       });
     own.orphan = orphan;
     own.wedgedSince = Date.now();
@@ -578,45 +651,105 @@ function wedged(entry: LiveSurfaceEntry): LiveSurfaceInputResult | null {
 }
 
 /**
- * Cancel whatever is held, without completing it (see
- * `LiveSurfaceProducer.cancelHeldInput`). Queued on the input chain; waits
- * out a wedge first so the cancel cannot overlap an orphaned dispatch, and
- * reads the held state only when it runs, after everything sent before it.
+ * Mark what `controller` (or, without one, anyone) holds for release and
+ * start the surface's cleanup. Called synchronously at a handoff, so the
+ * first try is queued AHEAD of the new controller's first batch.
  */
-function cancelHeld(
+function releaseHeld(
   entry: LiveSurfaceEntry,
   controller?: LiveSurfaceController,
 ): Promise<boolean> {
+  internalsOf(entry).pressed.markForRelease(controller);
+  return runCleanup(entry);
+}
+
+/**
+ * The surface's release cleanup, owned by the server: one attempt at a time
+ * (a caller while one is in flight shares it), queued on the input chain,
+ * cancelling everything marked without completing it (see
+ * `LiveSurfaceProducer.cancelHeldInput`). A failed attempt keeps what it
+ * could not release and is tried again after a capped pause, whoever
+ * controls the surface by then, until it succeeds or the surface goes; a
+ * wedge is waited out without holding the chain. Resolves true once
+ * nothing is owed.
+ */
+function runCleanup(entry: LiveSurfaceEntry): Promise<boolean> {
   const own = internalsOf(entry);
-  return enqueue(entry, async () => {
-    while (own.orphan) await own.orphan;
-    const taken = own.pressed.take(controller);
-    if (!taken) return true;
-    const { held } = taken;
-    const producer = entry.producer;
-    const outcomes = producer.cancelHeldInput
-      ? [
-          await dispatchWithTimeout(
-            entry,
-            () => producer.cancelHeldInput!(held),
-            'held-input cancel',
-          ),
-        ]
-      : [];
-    if (!producer.cancelHeldInput)
-      for (const event of neutralCancelEvents(held))
-        outcomes.push(
-          await dispatchWithTimeout(
-            entry,
-            () => producer.dispatch(event),
-            `held-input cancel ${describeInput(event)}`,
-          ),
-        );
-    if (outcomes.every((outcome) => outcome === 'ok')) return true;
-    own.onError('live surface held-input cancel failed', outcomes);
-    taken.restore();
+  const cleanup = own.cleanup;
+  if (cleanup.attempt) return cleanup.attempt;
+  if (cleanup.retry) clearTimeout(cleanup.retry);
+  cleanup.retry = null;
+  if (entry.signal.aborted || !own.pressed.unresolved()) {
+    cleanup.failures = 0;
+    return Promise.resolve(true);
+  }
+  const attempt = enqueue(entry, () => cancelMarked(entry));
+  cleanup.attempt = attempt;
+  return attempt.then((released) => {
+    cleanup.attempt = null;
+    if (entry.signal.aborted) return false;
+    if (released) cleanup.failures = 0;
+    if (!own.pressed.unresolved()) return true;
+    // Marked while this attempt ran: tried at once. Failed: after a pause.
+    if (released) return runCleanup(entry);
+    const pause = Math.min(
+      CLEANUP_RETRY_MS * 2 ** cleanup.failures,
+      CLEANUP_RETRY_MAX_MS,
+    );
+    cleanup.failures += 1;
+    cleanup.retry = setTimeout(() => {
+      cleanup.retry = null;
+      void runCleanup(entry);
+    }, pause);
+    cleanup.retry.unref?.();
     return false;
   });
+}
+
+/** One cleanup attempt, on the input chain. */
+async function cancelMarked(entry: LiveSurfaceEntry): Promise<boolean> {
+  const own = internalsOf(entry);
+  // Never overlaps an orphaned dispatch; the orphan settling resumes it.
+  if (own.orphan) return false;
+  const taken = own.pressed.takeReleasing();
+  if (!taken) return true;
+  const { held } = taken;
+  const producer = entry.producer;
+  const outcomes = producer.cancelHeldInput
+    ? [
+        await dispatchWithTimeout(
+          entry,
+          () => producer.cancelHeldInput!(held),
+          'held-input cancel',
+        ),
+      ]
+    : [];
+  if (!producer.cancelHeldInput)
+    for (const event of neutralCancelEvents(held))
+      outcomes.push(
+        await dispatchWithTimeout(
+          entry,
+          () => producer.dispatch(event),
+          `held-input cancel ${describeInput(event)}`,
+        ),
+      );
+  if (outcomes.every((outcome) => outcome === 'ok')) return true;
+  own.onError('live surface held-input cancel failed', outcomes);
+  taken.restore();
+  return false;
+}
+
+/** Input waits while a release is owed, so nobody types through it. */
+function releasePending(
+  entry: LiveSurfaceEntry,
+): LiveSurfaceInputResult | null {
+  if (!internalsOf(entry).pressed.unresolved()) return null;
+  return {
+    ok: false,
+    code: 'release-pending',
+    accepted: 0,
+    lease: entry.lease.snapshot(),
+  };
 }
 
 function refuseUnsupported(
@@ -646,9 +779,13 @@ async function dispatchFenced(
     if (refused) return { ...refused, accepted };
     const check = entry.lease.isCurrent(fence, controller);
     if (!check.ok) return { ...check, accepted };
+    // A controller that lost control is told so first; one that holds it
+    // waits for any release still owed.
+    const owed = releasePending(entry);
+    if (owed) return { ...owed, accepted };
     // Recorded as SENT: an event in flight at a takeover, or one that times
     // out and lands later, is still accounted for by the cancel.
-    own.pressed.record(event, controller);
+    own.pressed.sent(event, controller);
     const outcome = await dispatchWithTimeout(
       entry,
       () =>
@@ -656,7 +793,18 @@ async function dispatchFenced(
           isCurrent: () => entry.lease.isCurrent(fence, controller).ok,
         }),
       describeInput(event),
+      // A release that timed out and then lands is confirmed after all.
+      (landed) => {
+        if (landed) own.pressed.settled(event, true);
+      },
     );
+    // A release the producer did not confirm stays held and is released by
+    // the cleanup (a refusal acted on nothing: it stays held, unmarked).
+    if (
+      !(outcome instanceof LiveSurfaceInputRefusal) &&
+      own.pressed.settled(event, outcome === 'ok')
+    )
+      void runCleanup(entry);
     if (outcome instanceof LiveSurfaceInputRefusal)
       return {
         ok: false,
@@ -697,7 +845,8 @@ export async function dispatchHumanInput(
   const viewerId = viewerOf(entry, human, presentedViewerId);
   const withCause = (result: LiveSurfaceInputResult): LiveSurfaceInputResult =>
     presentedViewerId === undefined ? result : attest(entry, viewerId, result);
-  const unsupported = refuseUnsupported(entry, events) ?? wedged(entry);
+  const unsupported =
+    refuseUnsupported(entry, events) ?? wedged(entry) ?? releasePending(entry);
   if (unsupported) return withCause(unsupported);
   const claim = own.lease.claimForHumanInput(human, observedEpoch, viewerId);
   if (!claim.ok) return withCause({ ...claim, accepted: 0 });
@@ -711,13 +860,15 @@ export async function dispatchHumanInput(
 
 /**
  * Release what this human controller has pressed on the surface, never
- * completing it (#90 B). Fenced: only while `epoch` is current and the
- * caller holds the lease; otherwise a handoff or lapse already released it.
+ * completing it (#90 B). Not fenced: it touches only the caller's own
+ * presses, which are safe to release at any epoch. Answered ok once nothing
+ * is owed; `release-pending` when the release is not yet confirmed (an
+ * attempt already in flight, a failed try, a wedge), which the server keeps
+ * trying itself: the caller never needs to ask again.
  */
 export async function releaseHumanPressed(
   entry: LiveSurfaceEntry,
   human: HumanController,
-  epoch: number,
   /** The asking viewer: the answer then carries its attestation. */
   presentedViewerId?: LiveSurfaceViewerId,
 ): Promise<FencedLeaseResult & { epochCause?: LiveSurfaceEpochCause }> {
@@ -731,23 +882,16 @@ export async function releaseHumanPressed(
       : (attest(entry, viewerId, result) as FencedLeaseResult & {
           epochCause: LiveSurfaceEpochCause;
         });
+  // One attempt at a time: a caller arriving while one is in flight, or
+  // while the server is already retrying, is answered at once.
+  const busy = own.cleanup.attempt !== null || own.cleanup.failures > 0;
+  own.pressed.markForRelease({ ...human });
+  const released = busy ? !own.pressed.unresolved() : await runCleanup(entry);
   const lease = own.lease.snapshot();
-  if (lease.epoch !== epoch)
-    return answer({ ok: false, code: 'stale-epoch', lease });
-  if (
-    lease.holder?.kind !== 'human' ||
-    lease.holder.principal !== human.principal ||
-    (lease.holder.device ?? '') !== (human.device ?? '')
-  )
-    return answer({ ok: false, code: 'not-holder', lease });
-  // Answered only once the producer has released them: a failed cancel
-  // keeps them accounted for and is refused, so the viewer asks again.
-  const released = await cancelHeld(entry, { ...human });
-  const now = own.lease.snapshot();
   return answer(
     released
-      ? { ok: true, lease: now }
-      : { ok: false, code: 'release-failed', lease: now },
+      ? { ok: true, lease }
+      : { ok: false, code: 'release-pending', lease },
   );
 }
 
@@ -834,7 +978,7 @@ export function attachHumanViewer(
         own.viewers.delete(viewerId);
         // A fresh check: a replacement stream for the same controller (even
         // under a new id) means it can still see what it pressed.
-        if (!hasOpenStream(own, controller)) cancelHeld(entry, { ...human });
+        if (!hasOpenStream(own, controller)) releaseHeld(entry, { ...human });
       }, own.viewerGraceMs);
       viewer.forget.unref?.();
     },
@@ -948,7 +1092,8 @@ export async function dispatchAgentInput(
       accepted: 0,
       lease: entry.lease.snapshot(),
     };
-  const unsupported = refuseUnsupported(entry, events) ?? wedged(entry);
+  const unsupported =
+    refuseUnsupported(entry, events) ?? wedged(entry) ?? releasePending(entry);
   if (unsupported) return unsupported;
   return enqueue(entry, () => dispatchFenced(entry, agent, fence, events));
 }

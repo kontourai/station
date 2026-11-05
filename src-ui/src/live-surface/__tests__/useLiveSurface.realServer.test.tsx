@@ -513,7 +513,7 @@ test('R6-1: a late answer to an earlier release never swallows the release of a 
   a.unmount();
 });
 
-test("R6-2: a release answered stale while this viewer's own takeover is still on its way is tried again, not abandoned", async () => {
+test("R6-2: a release asked while this viewer's own takeover is still on its way releases the key (it names no epoch to be stale)", async () => {
   server = await realLiveSurfaceServer();
   await server.agentClaim();
   let openStream!: () => void;
@@ -556,7 +556,7 @@ test("R6-2: a release answered stale while this viewer's own takeover is still o
   a.unmount();
 });
 
-test('R6-3: a release the producer failed to perform is not confirmed; the viewer asks again until it is', async () => {
+test('R6-3: a release the producer failed to perform is answered release-pending and the host keeps trying it itself; the viewer asks once', async () => {
   server = await realLiveSurfaceServer();
   const a = viewer(server.transport());
   await settle();
@@ -580,38 +580,18 @@ test('R6-3: a release the producer failed to perform is not confirmed; the viewe
   await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
     timeout: 3_000,
   });
-  expect(releaseRequests(server)).toBeGreaterThanOrEqual(2);
+  expect(releaseRequests(server)).toBe(1);
   a.unmount();
 });
 
-test('R6-4: many release calls make one request at a time, and an obligation still unconfirmed after many failures resumes on reconnect', async () => {
-  // No heartbeat: nothing from the host prompts a retry, so every try below
-  // is the worker's own.
-  // ...and a long server grace, so the dropped stream below is not what
-  // releases the key.
-  server = await realLiveSurfaceServer({
-    heartbeatMs: 60_000,
-    viewerGraceMs: 10_000,
-  });
-  let inflight = 0;
-  let maxInflight = 0;
-  // One more failure than the old six-try limit allowed.
-  let failures = 7;
-  const base = server.transport({
-    fail: (url, body) => isRelease(url, body) && failures-- > 0,
-  });
-  const transport = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const body =
-      typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
-    const counted = isRelease(String(input), body);
-    if (counted) maxInflight = Math.max(maxInflight, ++inflight);
-    try {
-      return await base(input, init);
-    } finally {
-      if (counted) inflight -= 1;
-    }
-  }) as typeof base;
-  const a = viewer(transport);
+test('R7-5: calls while a request is on its way ask nothing more, and a request with no answer is sent again on its own pause, not on every state record', async () => {
+  server = await realLiveSurfaceServer({ heartbeatMs: 60_000 });
+  let failures = 3;
+  const a = viewer(
+    server.transport({
+      fail: (url, body) => isRelease(url, body) && failures-- > 0,
+    }),
+  );
   await settle();
   act(() => a.result.current.sendInput([shiftDown]));
   await waitFor(() =>
@@ -620,21 +600,146 @@ test('R6-4: many release calls make one request at a time, and an obligation sti
   act(() => {
     for (let call = 0; call < 8; call += 1) a.result.current.releasePressed();
   });
-  // A seventh try, with no reconnect to prompt it: the worker never gave up.
-  await waitFor(() => expect(releaseRequests(server!)).toBe(7), {
-    timeout: 15_000,
+  // Twenty state records over 400 ms: none of them is a reason to ask again.
+  const hub = server.registry.get(REAL_SURFACE)!.hub;
+  await act(async () => {
+    for (let record = 0; record < 20; record += 1) {
+      hub.announce();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
   });
-  expect(server.remotePressed()).toEqual(['key:ShiftLeft']);
-  expect(maxInflight).toBe(1);
-  // Back in touch with the host: the obligation is tried again at once.
-  server.dropStreams();
-  // Well inside the 5 s pause the worker is now in: the reconnect woke it.
+  // The first try, and the one after its 200 ms pause.
+  expect(releaseRequests(server)).toBe(2);
   await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 3_000,
+  });
+  expect(releaseRequests(server)).toBe(4);
+  a.unmount();
+});
+
+test('R7-1: a physical release the surface failed is not forgotten: the host releases the key and later typing lands with it up', async () => {
+  server = await realLiveSurfaceServer({ viewerGraceMs: 10_000 });
+  const a = viewer(server.transport());
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  let refuse = true;
+  server.producer.dispatchImpl = async (event) => {
+    if (event.kind === 'key' && event.type === 'up' && refuse) {
+      refuse = false;
+      server!.producer.dispatched.pop();
+      throw new Error('temporary key-up failure');
+    }
+  };
+  act(() => a.result.current.sendInput([shiftUp]));
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 3_000,
+  });
+  act(() => a.result.current.sendInput([text('after')]));
+  await waitFor(() => expect(dispatchedText(server!)).toEqual(['after']));
+  expect(
+    server.producer.dispatched.map((event) =>
+      event.kind === 'key' ? `key:${event.type}` : event.kind,
+    ),
+  ).toEqual(['key:down', 'key:up', 'text']);
+  a.unmount();
+});
+
+test("R7-2: when a cancel fails at a handoff the host retries it, and the new controller's typing waits for it and can be sent again", async () => {
+  server = await realLiveSurfaceServer({ viewerGraceMs: 10_000 });
+  const a = viewer(server.transport());
+  const b = viewer(server.transport({ person: 'human:other' }));
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  let refusals = 2;
+  server.producer.dispatchImpl = async (event) => {
+    if (event.kind === 'key' && event.type === 'up' && refusals > 0) {
+      refusals -= 1;
+      server!.producer.dispatched.pop();
+      throw new Error('temporary cancel failure');
+    }
+  };
+  // Someone else takes over by typing: refused until the release lands.
+  act(() => b.result.current.sendInput([text('new-holder-input')]));
+  await waitFor(() => expect(b.result.current.retryableInput).toBe(true));
+  expect(dispatchedText(server)).toEqual([]);
+  expect(server.remotePressed()).toEqual(['key:ShiftLeft']);
+  // Nobody asks: the host's own retries release it.
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 3_000,
+  });
+  await settle();
+  act(() => b.result.current.retryInput());
+  await waitFor(() =>
+    expect(dispatchedText(server!)).toEqual(['new-holder-input']),
+  );
+  expect(
+    server.producer.dispatched.map((event) =>
+      event.kind === 'key' ? `key:${event.type}` : event.kind,
+    ),
+  ).toEqual(['key:down', 'key:up', 'text']);
+  a.unmount();
+  b.unmount();
+});
+
+test("R7-3: a release still on its way for the previous target never holds up the new target's release", async () => {
+  server = await realLiveSurfaceServer({ heartbeatMs: 60_000 });
+  const next = await realLiveSurfaceServer({ heartbeatMs: 60_000 });
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const before = server.transport({
+    delay: (url, body) => (isRelease(url, body) ? gate : null),
+  });
+  const after = next.transport();
+  const NEW_API = 'http://new.test';
+  const transport = ((input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).startsWith(NEW_API)
+      ? after(String(input).replace(NEW_API, REAL_API), init)
+      : before(input, init)) as typeof before;
+  const view = renderHook(
+    ({ apiBase }) =>
+      useLiveSurface({
+        apiBase,
+        surfaceId: REAL_SURFACE,
+        visibilityRef: createRef<Element>(),
+        onFrame: () => {},
+        transport: transport as never,
+      }),
+    { initialProps: { apiBase: REAL_API } },
+  );
+  await settle();
+  act(() => view.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  act(() => {
+    view.result.current.releasePressed();
+  });
+  await waitFor(() => expect(releaseRequests(server!)).toBe(1));
+  view.rerender({ apiBase: NEW_API });
+  await waitFor(() => expect(view.result.current.status).toBe('live'), {
+    timeout: 3_000,
+  });
+  act(() => view.result.current.sendInput([shiftDown]));
+  await waitFor(() => expect(next.remotePressed()).toEqual(['key:ShiftLeft']));
+  act(() => {
+    view.result.current.releasePressed();
+  });
+  // Released while the previous target's answer is still held back.
+  await waitFor(() => expect(next.remotePressed()).toEqual([]), {
     timeout: 2_000,
   });
-  expect(releaseRequests(server)).toBe(8);
-  a.unmount();
-}, 30_000);
+  open();
+  view.unmount();
+  await next.dispose();
+});
 
 test("R6-5: a stream reopened for new params verifies the Station before it presents this viewer's id", async () => {
   server = await realLiveSurfaceServer();
@@ -735,7 +840,7 @@ test("R6-2b: a release refused as stale only because this viewer's own takeover 
   a.unmount();
 });
 
-test('R6-2c: a release whose own answer is lost stays owed until the host confirms it', async () => {
+test('R6-2c: after a release whose answer is lost, the viewer asks the host to release whatever it holds', async () => {
   server = await realLiveSurfaceServer({ viewerGraceMs: 10_000 });
   await server.agentClaim();
   let openStream!: () => void;
