@@ -777,3 +777,176 @@ test('legacy Board tabs retain their active fallback when entering authoring and
       ).toBe(200);
   }
 });
+
+for (const width of [390, 1440]) {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`Apps library creates, edits, launches and deletes a Board at ${width}px in ${colorScheme}`, async ({
+      page,
+      authenticatedRequest,
+    }, testInfo) => {
+      const name = `Release desk ${width} ${colorScheme} ${Date.now()}`;
+      const catalogResponse = await authenticatedRequest.get(
+        `${API}/api/feature-previews`,
+      );
+      expect(catalogResponse.ok()).toBe(true);
+      const catalog = await catalogResponse.json();
+      const preview = catalog.data.find(
+        (entry: { id: string }) => entry.id === 'apps-library',
+      );
+      expect(preview).toBeDefined();
+      let slug: string | undefined;
+      const openLibrary = async () => {
+        if (width === 390)
+          await page
+            .getByRole('button', { name: 'Toggle menu', exact: true })
+            .click();
+        await page
+          .getByRole('button', { name: 'Browse apps', exact: true })
+          .click();
+        await expect(
+          page.getByRole('dialog', { name: 'Apps', exact: true }),
+        ).toBeVisible();
+      };
+      try {
+        expect(
+          (
+            await authenticatedRequest.put(
+              `${API}/api/feature-previews/apps-library`,
+              {
+                data: { enabled: true },
+              },
+            )
+          ).ok(),
+        ).toBe(true);
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme });
+        await page.goto('/');
+        await dismissSetupLauncher(page);
+        await openLibrary();
+        const library = page.getByRole('dialog', { name: 'Apps', exact: true });
+        await page.screenshot({
+          path: testInfo.outputPath('apps-library-before-create.png'),
+          fullPage: true,
+        });
+        await library
+          .getByRole('button', { name: 'New Board', exact: true })
+          .click();
+        const details = page.getByRole('dialog', {
+          name: 'New Board',
+          exact: true,
+        });
+        await details.getByLabel('Name', { exact: true }).fill(name);
+        await details.getByLabel('Icon', { exact: true }).fill('🌿');
+        await details
+          .getByLabel('Description', { exact: true })
+          .fill('Release decisions and useful links.');
+        const createdResponse = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/api/me/layouts' &&
+            response.request().method() === 'POST',
+        );
+        await details
+          .getByRole('button', { name: 'Create Board', exact: true })
+          .click();
+        const created = await createdResponse;
+        expect(created.status()).toBe(201);
+        slug = (await created.json()).data.slug;
+        expect(slug).toBeTruthy();
+        await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
+        await expect(
+          page.getByRole('button', { name: /Daily brief/ }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('dialog', { name: 'Unsaved Changes' }),
+        ).toHaveCount(0);
+        await openLibrary();
+        await library.getByLabel('Search apps').fill(name);
+        const launch = library.getByRole('button', {
+          name: `Open ${name}`,
+          exact: true,
+        });
+        await expect(launch).toContainText(
+          'Release decisions and useful links.',
+        );
+        await expect(launch).toContainText('🌿');
+        const box = await launch.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+        await page.screenshot({
+          path: testInfo.outputPath('apps-library-populated.png'),
+          fullPage: true,
+        });
+        await library
+          .getByRole('button', { name: `Edit ${name} details`, exact: true })
+          .click();
+        const edit = page.getByRole('dialog', {
+          name: 'Edit app details',
+          exact: true,
+        });
+        await edit
+          .getByLabel('Description', { exact: true })
+          .fill('Release watch, ready to open.');
+        await edit
+          .getByRole('button', { name: 'Save details', exact: true })
+          .click();
+        await expect(launch).toContainText('Release watch, ready to open.');
+        await launch.click();
+        await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
+        await page.reload();
+        await openLibrary();
+        await library.getByLabel('Search apps').fill(name);
+        await expect(
+          library.getByRole('button', { name: `Open ${name}`, exact: true }),
+        ).toContainText('Release watch, ready to open.');
+        await library
+          .getByRole('button', { name: `Delete ${name}`, exact: true })
+          .click();
+        const confirm = page.getByRole('dialog', {
+          name: 'Delete Board?',
+          exact: true,
+        });
+        await confirm
+          .getByRole('button', { name: 'Cancel', exact: true })
+          .click();
+        await expect(
+          library.getByRole('button', { name: `Open ${name}`, exact: true }),
+        ).toBeVisible();
+        await library
+          .getByRole('button', { name: `Delete ${name}`, exact: true })
+          .click();
+        await confirm
+          .getByRole('button', { name: 'Delete Board', exact: true })
+          .click();
+        await expect(page).toHaveURL(/\/$/);
+        await expect(
+          library.getByRole('button', { name: `Open ${name}`, exact: true }),
+        ).toHaveCount(0);
+        expect(
+          (
+            await authenticatedRequest.get(`${API}/api/me/layouts/${slug}`)
+          ).status(),
+        ).toBe(404);
+        slug = undefined;
+      } finally {
+        if (slug)
+          expect(
+            (
+              await authenticatedRequest.delete(`${API}/api/me/layouts/${slug}`)
+            ).ok(),
+          ).toBe(true);
+        expect(
+          (
+            await authenticatedRequest.put(
+              `${API}/api/feature-previews/apps-library`,
+              {
+                data: { enabled: preview.enabled },
+              },
+            )
+          ).ok(),
+        ).toBe(true);
+      }
+    });
+  }
+}

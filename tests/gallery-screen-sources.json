@@ -8,6 +8,22 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "apps-library-dark-mobile": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx"
+    ],
+    "apps-library-dark-desktop": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx"
+    ],
+    "apps-library-light-mobile": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx"
+    ],
+    "apps-library-light-desktop": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx"
+    ],
     "task-capabilities-dark-desktop": [
       "src-ui/src/views/TaskWorkspaceView.tsx"
     ],

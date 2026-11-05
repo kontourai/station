@@ -5755,6 +5755,13 @@ content in docked Boards and promoted Project Layouts. Legacy Layout tabs are
 retained. Live sections read scoped Task, attention, recent-work and Project
 queries; the Board persists configuration rather than copies of their records.
 
+The preview-gated [Apps library](../../src-ui/src/views/apps/AppsLibrary.tsx)
+is a discovery and metadata surface over the existing personal-layout queries
+and mutations. The sidebar owns its entry and canonical Board navigation;
+[details editing](../../src-ui/src/views/apps/AppDetailsDialog.tsx) sends only
+name, icon and description. It does not replace dashboard configuration or plugin
+hosting. The existing layout routes retain owner and plugin authority.
+
 See [Personal Boards](../user/personal-boards.md) and the
 [SDK contract](../reference/sdk.md#personal-board-authoring). Route tests cover
 ownership, revision conflicts, publication, rename and move. Browser journeys

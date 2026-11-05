@@ -190,3 +190,9 @@
 .sidebar--collapsed .sidebar__board-rename {
   display: none;
 }
+
+.apps-library-entry {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: var(--k-space-2);
+}

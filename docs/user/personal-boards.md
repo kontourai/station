@@ -5,6 +5,28 @@ your signed-in identity, so devices connected as that person see the same saved
 Board. Its live sections read work you can access; saving a Board does not copy
 Tasks, approvals or conversations into it.
 
+## Browse Apps
+
+Enable **Apps library** in **Settings → Advanced → Feature previews**, then
+choose **Browse apps** in the sidebar's Boards section. In the collapsed rail,
+open the dashboard button first. On a phone, open the navigation drawer.
+
+The Apps launcher searches your personal layouts by name, description, address
+and plugin. **Your Boards** lists records without a plugin source; **Plugin
+layouts** lists records with a plugin source. Each tile shows the saved icon,
+name and description. Open a tile to use its existing Board or Layout tabs.
+**Details** edits its name, icon and description without replacing its sections
+or panes. **Delete** asks for confirmation; deleting the open Board returns the
+underlying page to Home.
+
+**New Board** asks for a name before creation, then opens the existing editor
+with the starter choices below. A refused save keeps the form and its error.
+After an interrupted create, refresh the library and inspect it before retrying.
+The library uses the same signed-in owner and plugin permissions as the sidebar.
+It does not install plugins or offer another person's Boards. Turning the
+preview off hides the launcher; saved Boards and the existing sidebar actions
+remain available.
+
 ## Create and edit
 
 Choose **+** beside **Personal Boards**, name the Board, and open it. Start with

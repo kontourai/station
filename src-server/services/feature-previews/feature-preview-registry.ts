@@ -106,6 +106,12 @@ export class FeaturePreviewRegistry {
       description: 'Show member names and presence in shared Task rooms.',
     });
     this.rememberConsumer({
+      id: 'apps-library',
+      label: 'Apps library',
+      description:
+        'Browse, search and personalize your Boards in an app launcher.',
+    });
+    this.rememberConsumer({
       id: 'chat-apps',
       label: 'Chat apps',
       description:
