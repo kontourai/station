@@ -795,6 +795,7 @@ for (const width of [390, 1440]) {
       );
       expect(preview).toBeDefined();
       let slug: string | undefined;
+      let returnSlug: string | undefined;
       const openLibrary = async () => {
         if (width === 390)
           await page
@@ -1002,6 +1003,14 @@ for (const width of [390, 1440]) {
 
         const raceSlug = `response-race-${width}-${colorScheme}-${Date.now()}`;
         const raceName = `Response race ${width} ${colorScheme}`;
+        returnSlug = `response-return-${width}-${colorScheme}-${Date.now()}`;
+        expect(
+          (
+            await authenticatedRequest.post(`${API}/api/me/layouts`, {
+              data: { slug: returnSlug, name: 'Return destination' },
+            })
+          ).status(),
+        ).toBe(201);
         slug = raceSlug;
         expect(
           (
@@ -1010,7 +1019,8 @@ for (const width of [390, 1440]) {
             })
           ).status(),
         ).toBe(201);
-        await page.goto('/activity');
+        await page.goto(`/boards/${returnSlug}`);
+        await expect(page).toHaveURL(new RegExp(`/boards/${returnSlug}$`));
         await openLibrary();
         await library
           .getByRole('button', { name: `Open ${raceName}`, exact: true })
@@ -1049,17 +1059,24 @@ for (const width of [390, 1440]) {
             ).status(),
           ).toBe(404);
           await page.goBack();
-          await expect(page).toHaveURL(/\/activity$/);
+          await expect(page).toHaveURL(new RegExp(`/boards/${returnSlug}$`));
           release();
           await expect(confirm).toBeHidden();
           await expect(library).toBeVisible();
-          await expect(page).toHaveURL(/\/activity$/);
+          await expect(page).toHaveURL(new RegExp(`/boards/${returnSlug}$`));
           await expect(
             library.getByRole('button', {
               name: `Open ${raceName}`,
               exact: true,
             }),
           ).toHaveCount(0);
+          expect(
+            (
+              await authenticatedRequest.get(
+                `${API}/api/me/layouts/${returnSlug}`,
+              )
+            ).status(),
+          ).toBe(200);
           slug = undefined;
         } finally {
           release();
@@ -1069,6 +1086,12 @@ for (const width of [390, 1440]) {
         if (slug) {
           const cleanup = await authenticatedRequest.delete(
             `${API}/api/me/layouts/${slug}`,
+          );
+          expect([200, 404]).toContain(cleanup.status());
+        }
+        if (returnSlug) {
+          const cleanup = await authenticatedRequest.delete(
+            `${API}/api/me/layouts/${returnSlug}`,
           );
           expect([200, 404]).toContain(cleanup.status());
         }
