@@ -524,7 +524,7 @@ purgeId }`, where `purgeId` is a UUID retained for retries. A changed revision
 returns 409 `STALE_REVISION` without erasing; fetch a new preview and confirm
 again. Success returns the Corpus receipt, or `null` if recovery completed but
 the original receipt could not be retained. A 503 can mean cleanup is pending;
-inspect the target before retrying with the same ID.
+retry with the same `purgeId`. If it still fails, restart Station.
 
 Unknown identity, hosted access, Project membership and delegation do not grant
 memory access. With the preview off, direct memory requests return the standard
