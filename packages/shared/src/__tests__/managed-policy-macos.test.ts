@@ -11,6 +11,7 @@ import {
   systemManagedPolicySources,
 } from '../managed-policy.js';
 import {
+  binaryPlistKeyScanProblem,
   duplicatePlistKeyPath,
   MACOS_MANAGED_PREFERENCES_PATH,
   managedPreferencesDocument,
@@ -426,5 +427,223 @@ describe('duplicatePlistKeyPath', () => {
         ),
       ]),
     ).toThrow('duplicate key limits');
+  });
+});
+
+/**
+ * A `bplist00` writer for the shapes these tests need: dicts, arrays, ASCII
+ * strings and booleans. Objects are written in order; `ref` is an index.
+ */
+type BplistObject =
+  | { dict: Array<[number, number]> }
+  | { array: number[] }
+  | { string: string }
+  | { utf16: string }
+  | { bool: boolean }
+  | { int: number };
+
+function bplist(objects: BplistObject[], top = 0): Buffer {
+  const lengthBytes = (marker: number, count: number) =>
+    count < 15
+      ? Buffer.from([marker | count])
+      : Buffer.from([marker | 0x0f, 0x10, count]);
+  const bodies = objects.map((object) => {
+    if ('dict' in object)
+      return Buffer.concat([
+        lengthBytes(0xd0, object.dict.length),
+        Buffer.from(object.dict.map(([key]) => key)),
+        Buffer.from(object.dict.map(([, value]) => value)),
+      ]);
+    if ('array' in object)
+      return Buffer.concat([
+        lengthBytes(0xa0, object.array.length),
+        Buffer.from(object.array),
+      ]);
+    if ('string' in object)
+      return Buffer.concat([
+        lengthBytes(0x50, object.string.length),
+        Buffer.from(object.string, 'latin1'),
+      ]);
+    if ('utf16' in object) {
+      const raw = Buffer.from(object.utf16, 'utf16le');
+      raw.swap16();
+      return Buffer.concat([lengthBytes(0x60, object.utf16.length), raw]);
+    }
+    if ('int' in object) return Buffer.from([0x10, object.int]);
+    return Buffer.from([object.bool ? 0x09 : 0x08]);
+  });
+  const offsets: number[] = [];
+  let at = 8;
+  for (const body of bodies) {
+    offsets.push(at);
+    at += body.length;
+  }
+  const trailer = Buffer.alloc(32);
+  trailer[6] = 1; // offset size
+  trailer[7] = 1; // object reference size
+  trailer.writeBigUInt64BE(BigInt(objects.length), 8);
+  trailer.writeBigUInt64BE(BigInt(top), 16);
+  trailer.writeBigUInt64BE(BigInt(at), 24);
+  return Buffer.concat([
+    Buffer.from('bplist00'),
+    ...bodies,
+    Buffer.from(offsets),
+    trailer,
+  ]);
+}
+
+// #4515 fix round 2: duplicate validation covers every encoding plutil
+// accepts, before conversion merges the keys.
+describe('every property list encoding is scanned for a repeated key', () => {
+  // { schemaVersion: 1, organization: "Acme", limits: { telemetry: false },
+  //   limits: {} } in binary: the second limits would erase the first.
+  const duplicateLimits = bplist([
+    /* 0 */ {
+      dict: [
+        [1, 2],
+        [3, 4],
+        [5, 6],
+        [5, 8],
+      ],
+    },
+    /* 1 */ { string: 'schemaVersion' },
+    /* 2 */ { int: 1 },
+    /* 3 */ { string: 'organization' },
+    /* 4 */ { string: 'Acme' },
+    /* 5 */ { string: 'limits' },
+    /* 6 */ { dict: [[7, 9]] },
+    /* 7 */ { string: 'telemetry' },
+    /* 8 */ { dict: [] },
+    /* 9 */ { bool: false },
+  ]);
+
+  test('a binary dict that repeats a key is found, at any depth, ASCII or UTF-16', () => {
+    expect(binaryPlistKeyScanProblem(duplicateLimits)).toBe(
+      'it repeats the key limits',
+    );
+    const nested = bplist([
+      { dict: [[1, 2]] },
+      { string: 'limits' },
+      {
+        dict: [
+          [3, 4],
+          [5, 4],
+        ],
+      },
+      { string: 'telemetry' },
+      { bool: false },
+      { utf16: 'telemetry' },
+    ]);
+    expect(binaryPlistKeyScanProblem(nested)).toBe(
+      'it repeats the key limits.telemetry',
+    );
+    const inArray = bplist([
+      { array: [1] },
+      {
+        dict: [
+          [2, 3],
+          [2, 3],
+        ],
+      },
+      { string: 'x' },
+      { bool: true },
+    ]);
+    expect(binaryPlistKeyScanProblem(inArray)).toBe('it repeats the key x');
+  });
+
+  test('distinct keys pass, and what the scan cannot read is refused', () => {
+    expect(
+      binaryPlistKeyScanProblem(
+        bplist([
+          {
+            dict: [
+              [1, 2],
+              [3, 2],
+            ],
+          },
+          { string: 'a' },
+          { bool: true },
+          { string: 'b' },
+        ]),
+      ),
+    ).toBeNull();
+    // A key that is not a string.
+    expect(
+      binaryPlistKeyScanProblem(bplist([{ dict: [[1, 1]] }, { bool: true }])),
+    ).not.toBeNull();
+    // A cycle: the dict holds itself.
+    expect(
+      binaryPlistKeyScanProblem(bplist([{ dict: [[1, 0]] }, { string: 'a' }])),
+    ).not.toBeNull();
+    // A truncated table.
+    expect(
+      binaryPlistKeyScanProblem(duplicateLimits.subarray(0, 30)),
+    ).not.toBeNull();
+  });
+
+  test.skipIf(!hasPlutil)(
+    'plutil accepts the binary duplicate without a word and keeps one of the two, which is why the scan must run first',
+    () => {
+      const path = join(makeTempDir('station-bplist-plutil-'), 'p.plist');
+      writeFileSync(path, duplicateLimits);
+      const json = JSON.parse(
+        execFileSync(PLUTIL, ['-convert', 'json', '-o', '-', path], {
+          encoding: 'utf8',
+        }),
+      );
+      // No error, and one `limits` silently gone: which one depends on the
+      // order in the file (here the first is kept), so neither is safe.
+      expect(Object.keys(json).sort()).toEqual([
+        'limits',
+        'organization',
+        'schemaVersion',
+      ]);
+      expect([{}, { telemetry: false }]).toContainEqual(json.limits);
+    },
+  );
+
+  test("the reviewer's binary profile with two limits keys is refused as invalid", () => {
+    const path = join(makeTempDir('station-policy-bplist-'), 'p.plist');
+    writeFileSync(path, duplicateLimits);
+    const load = () =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(
+          path,
+          null,
+          hasPlutil
+            ? plutilConverter()
+            : jsonConverter({
+                schemaVersion: 1,
+                organization: 'Acme',
+                limits: {},
+              }),
+        ),
+      ]);
+    expect(load).toThrow(ManagedPolicyInvalidError);
+    expect(load).toThrow('duplicate key limits');
+  });
+
+  test("the reviewer's JSON-form profile is refused: it is not what macOS writes", () => {
+    const path = join(makeTempDir('station-policy-jsonform-'), 'p.plist');
+    writeFileSync(
+      path,
+      '{"schemaVersion":1,"organization":"Acme","limits":{"engines":{"allowed":[]}},"limits":{}}',
+    );
+    const load = () =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(
+          path,
+          null,
+          hasPlutil
+            ? plutilConverter()
+            : jsonConverter({
+                schemaVersion: 1,
+                organization: 'Acme',
+                limits: {},
+              }),
+        ),
+      ]);
+    expect(load).toThrow(ManagedPolicyInvalidError);
+    expect(load).toThrow('it is not an XML or binary property list');
   });
 });

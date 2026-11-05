@@ -40,6 +40,7 @@ import {
   WINDOWS_POLICY_SUBKEY,
 } from './managed-policy-controls.js';
 import {
+  binaryPlistKeyScanProblem,
   MACOS_MANAGED_PREFERENCES_PATH,
   managedPreferencesDocument,
   type PlistConverter,
@@ -495,10 +496,18 @@ export function macosProfileSource(
     read: () => {
       const bytes = readManagedPolicyFileBytes(path, ownership ?? undefined);
       if (bytes === undefined) return undefined;
-      if (!bytes.subarray(0, 8).equals(Buffer.from('bplist00'))) {
-        // #4515: fails closed on markup the scan cannot read, so a key in a
-        // form it does not recognize cannot hide a duplicate.
-        const problem = plistKeyScanProblem(bytes.toString('utf8'));
+      {
+        // #4515: every encoding plutil would accept is scanned for a repeated
+        // key before conversion merges it: binary through its object table,
+        // XML through the strict tokenizer. Anything else (JSON-form,
+        // old-style text) is not what macOS writes and is refused.
+        const binary = bytes.subarray(0, 8).equals(Buffer.from('bplist00'));
+        const text = binary ? '' : bytes.toString('utf8');
+        const problem = binary
+          ? binaryPlistKeyScanProblem(bytes)
+          : /^\uFEFF?\s*</.test(text)
+            ? plistKeyScanProblem(text)
+            : 'it is not an XML or binary property list';
         if (problem !== null) {
           const duplicate = problem.startsWith('it repeats the key ')
             ? problem.slice('it repeats the key '.length)

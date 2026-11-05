@@ -197,6 +197,136 @@ export function plistKeyScanProblem(xml: string): string | null {
   return null;
 }
 
+/** How deep a binary property list may nest before the scan refuses it. */
+const BINARY_PLIST_MAX_DEPTH = 64;
+
+/**
+ * Why a binary property list (`bplist00`) cannot be trusted as a policy, or
+ * null: the dotted path of a key repeated within one dict, or a structure
+ * this scan cannot read. plutil keeps the last of two equal keys here too, so
+ * the object table is read before conversion: from the top object, every
+ * dict's keys are decoded (ASCII or UTF-16 strings) and compared. Anything
+ * the scan cannot read (a bad trailer, offset or reference, a key that is not
+ * a string, a cycle, nesting past {@link BINARY_PLIST_MAX_DEPTH}) refuses the
+ * profile rather than being passed on.
+ */
+export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
+  const unreadable = 'it is a binary property list Station cannot read';
+  if (
+    bytes.length < 40 ||
+    !bytes.subarray(0, 8).equals(Buffer.from('bplist00'))
+  )
+    return unreadable;
+  const trailer = bytes.subarray(bytes.length - 32);
+  const offsetSize = trailer[6];
+  const refSize = trailer[7];
+  const objectCount = Number(trailer.readBigUInt64BE(8));
+  const topObject = Number(trailer.readBigUInt64BE(16));
+  const tableOffset = Number(trailer.readBigUInt64BE(24));
+  const end = bytes.length - 32;
+  if (
+    offsetSize < 1 ||
+    offsetSize > 8 ||
+    refSize < 1 ||
+    refSize > 8 ||
+    objectCount < 1 ||
+    topObject >= objectCount ||
+    tableOffset < 8 ||
+    tableOffset + objectCount * offsetSize > end
+  )
+    return unreadable;
+  const readUint = (at: number, size: number): number | null => {
+    if (at < 0 || at + size > end) return null;
+    let value = 0;
+    for (let i = 0; i < size; i += 1) value = value * 256 + bytes[at + i];
+    return Number.isSafeInteger(value) ? value : null;
+  };
+  const offsetOf = (ref: number): number | null => {
+    if (ref < 0 || ref >= objectCount) return null;
+    const offset = readUint(tableOffset + ref * offsetSize, offsetSize);
+    return offset === null || offset < 8 || offset >= tableOffset
+      ? null
+      : offset;
+  };
+  /** A container's element count and where its references start. */
+  const lengthOf = (at: number): { count: number; start: number } | null => {
+    const low = bytes[at] & 0x0f;
+    if (low !== 0x0f) return { count: low, start: at + 1 };
+    const marker = bytes[at + 1];
+    if (marker === undefined || marker >> 4 !== 0x1) return null;
+    const size = 1 << (marker & 0x0f);
+    const count = readUint(at + 2, size);
+    return count === null ? null : { count, start: at + 2 + size };
+  };
+  const stringAt = (ref: number): string | null => {
+    const at = offsetOf(ref);
+    if (at === null) return null;
+    const kind = bytes[at] >> 4;
+    if (kind !== 0x5 && kind !== 0x6) return null;
+    const length = lengthOf(at);
+    if (length === null) return null;
+    const byteLength = kind === 0x5 ? length.count : length.count * 2;
+    if (length.start + byteLength > end) return null;
+    const raw = bytes.subarray(length.start, length.start + byteLength);
+    if (kind === 0x5) return raw.toString('latin1');
+    const swapped = Buffer.from(raw);
+    swapped.swap16();
+    return swapped.toString('utf16le');
+  };
+  const refsAt = (start: number, count: number): number[] | null => {
+    const refs: number[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const ref = readUint(start + i * refSize, refSize);
+      if (ref === null) return null;
+      refs.push(ref);
+    }
+    return refs;
+  };
+  const visiting = new Set<number>();
+  const walk = (ref: number, path: string, depth: number): string | null => {
+    if (depth > BINARY_PLIST_MAX_DEPTH || visiting.has(ref)) return unreadable;
+    const at = offsetOf(ref);
+    if (at === null) return unreadable;
+    const kind = bytes[at] >> 4;
+    if (kind !== 0xa && kind !== 0xc && kind !== 0xd) return null;
+    const length = lengthOf(at);
+    if (length === null) return unreadable;
+    visiting.add(ref);
+    try {
+      if (kind !== 0xd) {
+        const refs = refsAt(length.start, length.count);
+        if (refs === null) return unreadable;
+        for (const child of refs) {
+          const problem = walk(child, path, depth + 1);
+          if (problem) return problem;
+        }
+        return null;
+      }
+      const keys = refsAt(length.start, length.count);
+      const values = refsAt(
+        length.start + length.count * refSize,
+        length.count,
+      );
+      if (keys === null || values === null) return unreadable;
+      const seen = new Set<string>();
+      for (let i = 0; i < keys.length; i += 1) {
+        const name = stringAt(keys[i]);
+        if (name === null)
+          return 'a binary property list holds a key that is not a string';
+        const keyPath = path ? `${path}.${name}` : name;
+        if (seen.has(name)) return `it repeats the key ${keyPath}`;
+        seen.add(name);
+        const problem = walk(values[i], keyPath, depth + 1);
+        if (problem) return problem;
+      }
+      return null;
+    } finally {
+      visiting.delete(ref);
+    }
+  };
+  return walk(topObject, '', 0);
+}
+
 /**
  * The dotted path of the first key repeated within one `<dict>` of an XML
  * property list, or null (see {@link plistKeyScanProblem}, which also

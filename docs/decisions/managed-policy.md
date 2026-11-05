@@ -177,11 +177,14 @@ metadata keys macOS writes beside the payload's keys are dropped by exact
 name; the `Forced[0].mcx_preference_settings` wrapper is unwrapped only in
 its exact single-entry form, so anything beside it reaches the parser and is
 refused. A property list cannot hold `null`, so `station policy templates`
-refuses to make a profile from a policy that uses one. plutil keeps the last
-of two equal keys, so an XML plist is scanned for a key repeated within one
-`<dict>` before conversion and refused with `duplicate key <path>`, as a file
-is. A binary plist is not scanned: conversion has already merged its keys, and
-the tools that write binary plists cannot repeat one.
+refuses to make a profile from a policy that uses one. plutil accepts two
+equal keys in one dict and silently keeps one of them, so before conversion
+every encoding it would read is scanned for a key repeated within one dict and
+refused with `duplicate key <path>`, as a file is. An XML plist goes through a
+strict tokenizer that refuses any markup it cannot read rather than skipping
+it; a binary plist (what macOS writes) through its object table, refusing a
+structure it cannot read. Any other encoding plutil reads (JSON, old-style
+text) is not what macOS writes and is refused.
 
 **Windows registry (#4524).** Station reads `HKLM\SOFTWARE\Policies\Kontour\Station`
 in the 64-bit view (`KEY_WOW64_64KEY`) through the Win32 API in its own
