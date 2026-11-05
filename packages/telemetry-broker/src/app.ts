@@ -11,6 +11,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { receiverAdmission } from './admission.js';
 import { BrokerError } from './broker-error.js';
 import { clientAddressPolicy } from './client-address.js';
+import { brokerErrorStatus } from './lite-core.js';
 import { registerLiteRoutes } from './lite-routes.js';
 import { createPrivateUsageRoutes } from './private-usage-routes.js';
 import { PrivateUsageError } from './private-usage-store.js';
@@ -298,23 +299,11 @@ export function createProductBroker(
               ? 507
               : 503,
       );
-    if (error instanceof BrokerError) {
-      const status =
-        error.code === 'source_unauthorized'
-          ? 401
-          : error.code === 'event_conflict' || error.code === 'source_conflict'
-            ? 409
-            : error.code === 'storage_limit'
-              ? 507
-              : error.code === 'query_limit'
-                ? 422
-                : error.code === 'invalid_cursor' ||
-                    error.code === 'invalid_source' ||
-                    error.code === 'invalid_daily_ping'
-                  ? 400
-                  : 503;
-      return c.json({ error: error.code }, status);
-    }
+    if (error instanceof BrokerError)
+      return c.json(
+        { error: error.code },
+        brokerErrorStatus(error.code) as 400 | 401 | 409 | 422 | 503 | 507,
+      );
     return c.json({ error: 'storage_unavailable' }, 503);
   });
   return app;

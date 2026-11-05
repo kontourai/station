@@ -7647,7 +7647,10 @@ export class EventStore {
    * transcript deltas; SQL removes large input/output fields before JS sees
    * them. Keep optional usage fields absent rather than manufacturing nulls.
    */
-  listUsageEventPayloads(threadId: string): CanonicalRuntimeEvent[] {
+  listUsageEventPayloads(
+    threadId: string,
+    clock: 'provider' | 'observation' = 'provider',
+  ): CanonicalRuntimeEvent[] {
     const rows = this.readStatement(
       `SELECT CASE
          WHEN method = 'turn.started' THEN json_remove(payload, '$.prompt', '$.attachments', '$.metadata')
@@ -7656,7 +7659,7 @@ export class EventStore {
          WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated') THEN payload
          ELSE json_object('eventId', id, 'threadId', thread_id,
            'provider', provider, 'method', method, 'createdAt', created_at)
-         END AS payload
+         END AS payload, observed_at
        FROM orchestration_events
        WHERE thread_id = ? AND (
          method IN ('session.started', 'session.configured', 'turn.started',
@@ -7664,9 +7667,14 @@ export class EventStore {
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1)
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? AND provider != 'station-agent' LIMIT 1))
        ORDER BY sequence ASC`,
-    ).all(threadId, threadId, threadId) as Array<{ payload: string }>;
+    ).all(threadId, threadId, threadId) as Array<{
+      payload: string;
+      observed_at: string | null;
+    }>;
     const events: CanonicalRuntimeEvent[] = rows.map((row) =>
-      JSON.parse(row.payload as string),
+      clock === 'observation'
+        ? { ...JSON.parse(row.payload), createdAt: row.observed_at ?? '' }
+        : JSON.parse(row.payload),
     );
     return events;
   }

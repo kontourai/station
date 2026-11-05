@@ -15,7 +15,8 @@ export class BrokerError extends Error {
       | 'storage_busy'
       | 'storage_timeout'
       | 'schema_incompatible'
-      | 'invalid_daily_ping',
+      | 'invalid_daily_ping'
+      | 'day_closed',
   ) {
     super(code);
   }

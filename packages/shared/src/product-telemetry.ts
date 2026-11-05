@@ -23,6 +23,7 @@ import {
   TELEMETRY_ENGINES,
   TELEMETRY_FEEDBACK_ACTIONS,
   TELEMETRY_FEEDBACK_REASONS,
+  TELEMETRY_TOKEN_BUCKETS,
   type TelemetryFeedback,
   USAGE_TELEMETRY_EVENTS,
   type UsageTelemetryEvent,
@@ -382,7 +383,7 @@ export const LITE_TELEMETRY_INVENTORY_REVISION = createHash('sha256')
 export function liteTelemetryNoticeText(
   _publisher?: 'kontour' | 'operator',
 ): string {
-  return 'Station usage sharing: Anonymous usage counts are on by default when a destination is configured. One daily count. No ID, no account, no content. Turn sharing off in Privacy & sharing, or run station telemetry set kontour off and station telemetry set operator off. Do Not Track stops all sharing. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.';
+  return 'Station usage sharing: Anonymous usage counts are on by default when a destination is configured. One daily aggregate, including coarse token buckets per engine from conversations run in Station; outside CLI use is excluded. No ID, no account, no content. Turn sharing off in Privacy & sharing, or run station telemetry set kontour off and station telemetry set operator off. Do Not Track stops all sharing. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.';
 }
 
 /** A sender must show the new notice whenever this revision changes. */
@@ -443,11 +444,7 @@ export function parseStationDailyPing(
   publicRegistryIds: readonly string[] = [],
   publicReleaseVersions: readonly string[] | 'semver' = [],
 ): StationDailyPing {
-  if (
-    !record(value) ||
-    Object.keys(value).length !== Object.keys(STATION_DAILY_FIELDS).length ||
-    !onlyKeys(value, Object.keys(STATION_DAILY_FIELDS))
-  )
+  if (!record(value) || !onlyKeys(value, Object.keys(STATION_DAILY_FIELDS)))
     throw new Error('Invalid station_daily fields');
   const scalar = (
     item: unknown,
@@ -467,7 +464,7 @@ export function parseStationDailyPing(
         item <= (max ?? 65535)
       );
     if (domain === 'uuid-v4') return productUuid(item);
-    if (domain === 'engine-count-buckets')
+    if (domain === 'engine-count-buckets' || domain === 'engine-token-buckets')
       return (
         record(item) &&
         Object.keys(item).length === 2 &&
@@ -475,7 +472,10 @@ export function parseStationDailyPing(
         typeof item.engine === 'string' &&
         TELEMETRY_ENGINES.some((engine) => engine === item.engine) &&
         typeof item.bucket === 'string' &&
-        TELEMETRY_COUNT_BUCKETS.some((bucket) => bucket === item.bucket)
+        (domain === 'engine-token-buckets'
+          ? TELEMETRY_TOKEN_BUCKETS
+          : TELEMETRY_COUNT_BUCKETS
+        ).some((bucket) => bucket === item.bucket)
       );
     if (typeof item !== 'string' || item.length > (max ?? 128)) return false;
     if (domain === 'public-release-version-or-custom')
@@ -490,6 +490,10 @@ export function parseStationDailyPing(
   };
   for (const [field, definition] of Object.entries(STATION_DAILY_FIELDS)) {
     const item = value[field];
+    if (!Object.hasOwn(value, field)) {
+      if ('optional' in definition && definition.optional) continue;
+      throw new Error(`Missing station_daily field: ${field}`);
+    }
     const limit =
       'maxLength' in definition
         ? definition.maxLength
