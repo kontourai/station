@@ -2200,7 +2200,7 @@ Starting a Session crosses two boundaries: an engine may start, and Station must
 
 **Behavior.** The Module initializes and records dispatch before launch, then starts, attaches, and binds before persisting `accepted`. For an attributed fresh start, the service binds the prepared owner for command authorization while the adapter's startup event is pending. The first turn can proceed during publication retries; durable ownership and public read access still depend on persisted events. The command check continues to refuse other callers and prefers the durable owner once available. A fault before the provider call can return `failed`; a terminal receipt persistence fault returns `failed` or `rejected` with `receiptStatus: unavailable`. After a session effect, an accepted write/readback fault returns `indeterminate`, never overwrites the accepted attempt with `failed`, and must not be retried automatically. A durable readback matching command ID, thread, command type, and accepted status turns a write-success-then-throw into `accepted`. Ordering and receipt-fault classification stay inside the module. `failed` is not a universal proof that no engine started: ordinary errors in later attachment or binding work also use that outcome. Those attachment/binding failures revoke all Session MCP credentials and attempt to stop the newly started engine. A failed or timed-out stop logs the cleanup failure, preserves ownership and the original error, and retires only a replaced adapter; unrelated Sessions on the current adapter survive. Inspect the known Session and receipt rather than inferring retry safety from that word alone.
 
-For an adapter that announces `session.started` before its start returns, acceptance also awaits that start’s durable event. Built-in adapter queues report announcements synchronously at enqueue, independently of consumer progress. The wait uses a per-thread commit signal and the five-second background publication budget. The same event-settlement hook ends the interim start owner and resolves the commit waiter: only an appended event confirms creation. A declined, abandoned or faulted announcement returns `indeterminate`; expiry does too. Failed-start cleanup settles any interim owner even if provider teardown fails, retaining the Session handle for inspection. Deferred announcements retain their existing acceptance and owner-fallback semantics. The contention, timeout, deferred-owner and failed-stop regressions live in `src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts`.
+For an adapter that announces `session.started` before its start returns, acceptance also awaits that start’s durable event. Built-in adapter queues report announcements synchronously at enqueue, independently of consumer progress, and refuse a second active iterator. EventStore closure revokes the service’s consumer and registry subscription; failed runtime initialization shuts down the retained orchestration service. An announced, uncommitted start returns a typed indeterminate failure immediately on consumer loss or settlement by a different service. A committed start retains accepted truth after a later stream fault. A recoverable stream fault settles only a lost announcement already pulled by that consumer; other pending starts keep waiting across its restart. The wait uses a per-thread commit signal and the five-second background publication budget. The same event-settlement hook ends the interim start owner and resolves the commit waiter: only an appended event confirms creation. A declined, abandoned or faulted announcement returns `indeterminate`; expiry does too. Failed-start cleanup settles any interim owner even if provider teardown fails, retaining the Session handle for inspection. Deferred announcements retain their existing acceptance and owner-fallback semantics. The contention, timeout, deferred-owner and failed-stop regressions live in `src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts`.
 
 **Code and evidence.** `OrchestrationService` composes receipt, session-state, launch-policy, and binding Adapters; orchestration routes and Station Control tools use the public Module. Receipt initialization, dispatch recording, accepted persistence, terminal persistence, and exact readback are total at this Interface: warning observation is best effort and cannot make `execute` reject. Evidence lives in `src-server/services/orchestration/__tests__/session-command-module.test.ts`, `orchestration-service.test.ts`, orchestration route tests, and Station Control tool tests. **Do not reintroduce:** exported callback bags, route-specific start sequencing, an untyped command string, a receipt fault that rejects `execute`, or an automatic retry of `indeterminate`.
 
@@ -4469,11 +4469,17 @@ sample; recent readers reuse it. The sampler computes busy time from two
 `os.cpus()` snapshots separated by its configured interval.
 
 `reserveEngineStart()` is a different capability: one in-memory lease per
-controller instance. It does not sample CPU. `admitEngineStartForIntent` retains
-server-derived intent labels but does not use them or CPU posture to prioritize
-work. Other Station runtimes have their own controllers; this is not the
-verification coordinator's host-wide scheduler. A competing cold start can
-receive `resource_engine_start_capacity` until the existing lease settles.
+controller instance. It does not sample CPU. An interactive start waits FIFO
+for the lease, for at most 60 seconds and up to 32 waiting starts. When the
+caller supplies an abort signal, aborting it removes that start from the queue;
+the person's `/chat` path does not currently supply one. Other starts are refused immediately with
+`resource_engine_start_capacity` while the lease is held, including while it is
+handed to a waiting person. Recovery and credential-profile restarts currently
+use this background behavior: the shared respawn seam does not distinguish a
+person from automated callers, and the credential restart does not pass its
+signal to admission. The composer has no capacity-wait status channel.
+Other Station runtimes have their own controllers; this is not the verification
+coordinator's host-wide scheduler.
 
 **Composition and limits.** [Runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
 creates the controller and supplies it to orchestration and the diagnostic route.
@@ -6586,7 +6592,9 @@ its journal live in the supervisor's workload host
 ([PtyWorkloadHost](../../src-server/services/terminal/pty-workload-host.ts), built as
 `station-pty-host.js`), and a running session is reattached after a core restart.
 [TerminalJournal](../../src-server/services/terminal/terminal-journal.ts) owns
-serialized sanitized records, bounded memory and append-only disk segments.
+serialized sanitized records, bounded memory and append-only disk segments;
+[journal privacy](../../src-server/services/terminal/terminal-journal-privacy.ts)
+keeps them private to Station's user on Windows, where file modes set no ACL.
 The [operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)
 are composed by runtime routes and disposed at runtime shutdown. They admit
 the operator in person and the operator's own paired devices
@@ -6596,7 +6604,7 @@ Project terminal close and the process projections reach TerminalSessions; no
 other terminal service or listener remains. An ACP engine's terminals are
 `command` sessions opened through
 [AcpSessionTerminals](../../src-server/services/acp/acp-session-terminals.ts)
-(pipes and an output cap, from
+(pipes, an output cap, and termination that ends what the command started, from
 [command-process.ts](../../src-server/services/terminal/command-process.ts)),
 on personal hosts only, through `openAgentCommand`: only for a host-confined
 session in its own thread binding (#2497). `restart` keeps a session's id and starts a new

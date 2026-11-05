@@ -939,7 +939,11 @@ import {
   registerTerminalGateway,
   TerminalGateway,
 } from '../../services/terminal/terminal-gateway.js';
-import { resolveTerminalRetention } from '../../services/terminal/terminal-retention.js';
+import { TerminalJournalPrivacy } from '../../services/terminal/terminal-journal-privacy.js';
+import {
+  defaultTerminalJournalDirectory,
+  resolveTerminalRetention,
+} from '../../services/terminal/terminal-retention.js';
 import { TerminalRunRequests } from '../../services/terminal/terminal-runs.js';
 import {
   confineTerminalDirectory,
@@ -7259,7 +7263,8 @@ export function configureRuntimeRoutes(
   const scopedTerminalSummary = (record: {
     terminalId: string;
     projectId: string;
-    cwd: string;
+    /** Absent when the caller may only observe the terminal. */
+    cwd?: string;
     status: string;
     pid: number | null;
     exitCode?: number | null;
@@ -7274,7 +7279,7 @@ export function configureRuntimeRoutes(
         .find((project) => project.id === record.projectId)?.slug ??
       record.projectId,
     terminalId: record.terminalId,
-    cwd: record.cwd,
+    cwd: record.cwd ?? null,
     status:
       record.status === 'starting' || record.status === 'running'
         ? record.status
@@ -11216,6 +11221,12 @@ export function configureRuntimeRoutes(
       },
       async () =>
         (await context.getUsageTelemetry?.()?.canSaveAuthorFull()) ?? false,
+      (directory) =>
+        new TerminalJournalPrivacy(
+          defaultTerminalJournalDirectory(
+            context.configLoader.getProjectHomeDir(),
+          ),
+        ).problem(directory),
     ),
   );
   context.app.route(

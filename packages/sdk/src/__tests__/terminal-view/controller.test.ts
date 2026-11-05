@@ -381,3 +381,124 @@ describe('TerminalController', () => {
     controller.dispose();
   });
 });
+
+describe('output credit to the engine worker (#3994)', () => {
+  async function controllerWith(
+    createWorker: () => EnginePort,
+    session: TerminalViewSession,
+  ) {
+    const root = document.createElement('div');
+    root.getBoundingClientRect = () => DOMRect.fromRect(rect);
+    const canvas = document.createElement('canvas');
+    const input = document.createElement('textarea');
+    root.append(canvas, input);
+    document.body.append(root);
+    const controller = new TerminalController(
+      { root, canvas, input },
+      {
+        font: { family: 'monospace', size: 13, lineHeight: 1.2 },
+        screenReader: false,
+        reducedMotion: true,
+        createWorker,
+        createRenderer: () => new FakeRenderer(),
+        measureCell,
+      },
+    );
+    controller.setSession(session);
+    await controller.start();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().status).toBe('ready'),
+    );
+    return controller;
+  }
+
+  it('settles a view’s output only after its worker parsed it', async () => {
+    // The real engine, with its `written` answers held back.
+    const held: MessageEvent[] = [];
+    let release = () => {};
+    const createWorker = () => {
+      const port = inThreadPort();
+      let deliver: EnginePort['onmessage'] = null;
+      Object.defineProperty(port, 'onmessage', {
+        get: () => deliver,
+        set: (next: EnginePort['onmessage']) => {
+          release = () => {
+            for (const event of held.splice(0)) next?.(event);
+          };
+          deliver = (event: MessageEvent) => {
+            if ((event.data as { type?: string }).type === 'written')
+              held.push(event);
+            else next?.(event);
+          };
+        },
+      });
+      return port;
+    };
+    const { session, output } = fakeSession();
+    const controller = await controllerWith(createWorker, session);
+    let settled = false;
+    const consumed = output('parsed later') as unknown;
+    expect(consumed).toBeInstanceOf(Promise);
+    void (consumed as Promise<void>).then(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(held.length).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settled).toBe(false);
+    release();
+    await vi.waitFor(() => expect(settled).toBe(true));
+    controller.dispose();
+  });
+
+  it('bounds output posted to a worker that never parses it, and replays instead of dropping it', async () => {
+    let postedBytes = 0;
+    let resets = 0;
+    const stalled = (): EnginePort => {
+      const port: EnginePort = {
+        onmessage: null,
+        onerror: null,
+        postMessage: (message) => {
+          const request = message as { type: string; bytes?: Uint8Array };
+          if (request.type === 'init')
+            queueMicrotask(() =>
+              port.onmessage?.(
+                new MessageEvent('message', { data: { type: 'ready' } }),
+              ),
+            );
+          if (request.type === 'write')
+            postedBytes += request.bytes?.byteLength ?? 0;
+          if (request.type === 'reset') resets++;
+        },
+        terminate: () => undefined,
+      };
+      return port;
+    };
+    // A session that ignores the view's credit and floods it.
+    let subscriptions = 0;
+    let listener: TerminalViewSessionListener | null = null;
+    const session = {
+      state: 'ready' as const,
+      readOnly: false,
+      subscribe(next: TerminalViewSessionListener) {
+        subscriptions++;
+        listener = next;
+        return () => {
+          if (listener === next) listener = null;
+        };
+      },
+      write: () => true,
+      resize: () => undefined,
+    } satisfies TerminalViewSession;
+    const controller = await controllerWith(stalled, session);
+    const chunk = new Uint8Array(2048).fill(0x61);
+    for (let i = 0; i < 8192; i++)
+      (listener as TerminalViewSessionListener | null)?.output(chunk, 'live');
+    // 16 MiB offered; the worker was never given more than its bound.
+    expect(postedBytes).toBeLessThanOrEqual(4 * 1024 * 1024);
+    await vi.waitFor(() => expect(controller.resyncs).toBeGreaterThan(0));
+    // Recovery: the screen starts over and the session replays into it.
+    expect(resets).toBeGreaterThan(0);
+    expect(subscriptions).toBeGreaterThan(1);
+    controller.dispose();
+  });
+});

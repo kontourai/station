@@ -374,6 +374,41 @@ test('revoking the source before dispatch refuses the retained intent without cr
   expect(w.ledger.listDeliveries()[0]?.outcome).toBe('refused');
 });
 
+test('Task dispatch reports retryable unavailable instead of waiting for engine capacity', async () => {
+  const w = await world();
+  const task = await w.graph.createTask({
+    projectId: 'project',
+    agentId: FIXTURE_TASK_AGENT,
+    title: 'Capacity-constrained task',
+  });
+  const held = w.controller.reserveEngineStart();
+  let queued!: () => void;
+  const queuedSignal = new Promise<'queued'>((resolve) => {
+    queued = () => resolve('queued');
+  });
+  const wait = w.controller.waitForEngineStart.bind(w.controller);
+  vi.spyOn(w.controller, 'waitForEngineStart').mockImplementation((signal) => {
+    const result = wait(signal);
+    queued();
+    return result;
+  });
+  const dispatch = w.dispatcher.dispatch(task.id, {
+    ownerUserId: 'test-owner',
+    fullAccessGrant: null,
+    agentId: FIXTURE_TASK_AGENT,
+    provider: 'claude',
+  });
+  try {
+    expect(await Promise.race([dispatch, queuedSignal])).toMatchObject({
+      kind: 'unavailable',
+      retryable: true,
+    });
+  } finally {
+    held.release();
+    await dispatch;
+  }
+});
+
 test('actual engine-start capacity refusal retains one pending intent/Task and consumes no attempt until admitted', async () => {
   const w = await world();
   const intentId = w.ledger.listActionIntents()[0]!.intentId;

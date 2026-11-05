@@ -191,6 +191,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Agent terminal runs and package scripts as real command sessions, in
   // private homes; no ports or host state.
   'src-server/services/terminal/__tests__/terminal-runs.process.test.ts',
+  // Reads real journal ACLs through PowerShell and icacls (Windows), in
+  // private temp folders; no ports or host state.
+  'src-server/services/terminal/__tests__/terminal-journal-privacy.process.test.ts',
+  // Command processes and the children they start, ended by pid or group
+  // (taskkill or POSIX group signals); no ports or host state.
+  'src-server/services/terminal/__tests__/command-process.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -316,6 +322,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/__tests__/managed-policy-startup.process.test.ts',
   // #4516: runs `station policy check` as a CLI child on private fixtures.
   'packages/cli/src/__tests__/policy-command.test.ts',
+  // #4517: runs offline `station config set` and `station registry` as CLI
+  // children on private homes with an injected managed policy.
+  'packages/cli/src/__tests__/managed-settings-offline.test.ts',
   // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.
   'packages/shared/src/__tests__/managed-policy.test.ts',
   'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',
@@ -1420,6 +1429,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
   // Mounted Coding tool navigation and sticky controls own a Chromium instance.
   'src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx',
+  // Mounted local restart notice recovery owns a Chromium instance.
+  'src-ui/src/__tests__/local-restart-notice.browser.test.tsx',
   // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
   'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // Owns Chromium and a local HTTP fixture for strict-durability IndexedDB custody.

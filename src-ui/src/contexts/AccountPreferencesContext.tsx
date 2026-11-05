@@ -8,6 +8,7 @@ import type { useHostRequestAuthorityScope } from './ApiBaseContext';
 interface PreferenceState {
   status: 'loading' | 'account' | 'device' | 'error';
   saving: boolean;
+  retrying: boolean;
   waitingForConnection: boolean;
   error: boolean;
   conflict: boolean;
@@ -19,6 +20,7 @@ interface PreferenceState {
 export const AccountPreferencesContext = createContext<PreferenceState>({
   status: 'device',
   saving: false,
+  retrying: false,
   waitingForConnection: false,
   error: false,
   conflict: false,

@@ -9,6 +9,7 @@ import {
 // a contract decision, even when the replacement is another valid kind.
 const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
   [
+    ['async_event_queue_consumer_conflict', 'conflict', false],
     ['foreground_invocation_unavailable', 'conflict', false],
     ['delegation_attempt_capacity', 'busy', true],
     ['create_request_capacity', 'busy', true],
@@ -107,6 +108,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['resource_engine_start_capacity', 'busy', true],
     ['session-reattach-conflict', 'conflict', false],
     ['session_ended', 'session_gone', false],
+    ['managed_setting_locked', 'permission_denied', false],
     ['session_recovery_failed', 'unavailable', true],
     ['session_start_in_flight', 'busy', true],
     ['transcript-line-skipped', 'warning', false],
