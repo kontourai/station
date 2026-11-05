@@ -874,7 +874,7 @@ export function JoinDevicePairingPanel({
          */}
         <p className="pairing-wait__instruction">
           On <strong>{target}</strong>, approve <strong>“{deviceName}”</strong>{' '}
-          to connect this browser.
+          to connect {hostAppName ? 'this device' : 'this browser'}.
         </p>
         <span className="pairing-wait__timer" aria-live="off">
           {requestExpiryLabel(pending.expiresAt, now)}

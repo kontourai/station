@@ -826,6 +826,9 @@ describe('device pairing panels', () => {
     expect(
       screen.getByText('station environment access approve request-direct'),
     ).toBeTruthy();
+    expect(
+      document.querySelector('.pairing-wait__instruction')?.textContent,
+    ).toMatch(/to connect this browser\.$/);
     // station#1711 — a custom instance's STATION_HOME/STATION_PORT/--api-base
     // sentence is a documentation concern, not a modal concern; deleted from
     // this screen entirely.
@@ -948,6 +951,44 @@ describe('device pairing panels', () => {
     );
     expect(document.activeElement).toBe(fallback);
     expect(execCommand).not.toHaveBeenCalled();
+  });
+
+  test('the native waiting screen asks to connect this device, not a browser', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        response(
+          {
+            environmentId: 'environment-native-wait',
+            offerId: 'offer-native-wait',
+            proof: 'proof-native-wait',
+            requestId: 'request-native-wait',
+            expiresAt: Date.now() + 60_000,
+          },
+          202,
+        ),
+      )
+      // The approval never arrives in this test: it stays on the waiting screen.
+      .mockImplementation(() => new Promise<Response>(() => {}));
+    render(
+      <JoinDevicePairingPanel
+        initialMode="direct"
+        originIsStation={false}
+        hostAppName="Station"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Station server address'), {
+      target: { value: 'https://remote.example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    await waitFor(() =>
+      expect(document.querySelector('.pairing-wait__instruction')).toBeTruthy(),
+    );
+    const instruction =
+      document.querySelector('.pairing-wait__instruction')?.textContent ?? '';
+    expect(instruction).toMatch(/to connect this device\.$/);
+    expect(instruction).not.toMatch(/browser/);
   });
 
   test('native request-access collects a host address first and targets the entered host', async () => {
