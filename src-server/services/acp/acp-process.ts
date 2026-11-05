@@ -32,7 +32,10 @@ import {
   augmentedSpawnEnv,
   findCliBinaryAsync,
 } from '../../providers/auth/cli-auth.js';
-import { managedEngineLaunch } from '../../security/managed-engine-limits.js';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEngineLaunch,
+} from '../../security/managed-engine-limits.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 import { createACPClientApp } from './acp-bridge-client.js';
@@ -52,6 +55,11 @@ export type AsyncProcessIdentityProbe = (
 ) => Promise<ExactProcessIdentityProbe>;
 
 export interface ACPProcessOptions {
+  /**
+   * #4520: the connection this process runs, when the caller has it, so a
+   * public-registry agent the managed policy stops is refused here too.
+   */
+  connection?: { publicRegistry?: unknown };
   command: string;
   args?: string[];
   cwd: string;
@@ -411,6 +419,11 @@ export class ACPProcess extends EventEmitter {
   async start(): Promise<InitializeResult> {
     if (this.destroyed) throw new Error('ACPProcess already destroyed');
     if (this.proc) throw new Error('ACPProcess already started');
+
+    // #4520: every ACP launch (sessions, availability and startup probes,
+    // sign-in) starts here, so an engine the managed policy does not allow
+    // is refused before anything is looked up or spawned.
+    assertEngineAllowedByManagedPolicy('acp', this.opts.connection);
 
     // #4520: a managed policy's pinned binary and arguments. A locked pin
     // replaces the connection's own; this is every ACP launch (sessions,

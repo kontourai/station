@@ -320,6 +320,9 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       request.disableHostDiscovery === true &&
       engineIdForAdapter(adapter) !== 'station';
     let probePartial = false;
+    // #4520: an engine the managed policy does not allow is never probed or
+    // asked for its models: both can start the engine's program.
+    const managedAllowed = engineAllowedByManagedPolicy(adapter.provider);
     const prerequisites = hostDiscoveryDisabled
       ? [
           {
@@ -330,7 +333,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
             category: 'required' as const,
           },
         ]
-      : request.includePrerequisites === false
+      : request.includePrerequisites === false || !managedAllowed
         ? []
         : await this.prerequisites(
             adapter,
@@ -343,9 +346,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     const settings = runtimeSettingsFor(appConfig, engineIdValue);
     // #4520: an engine the managed policy does not allow reads as disabled
     // to every client; its threads are kept and run nothing.
-    const enabled =
-      (settings.enabled ?? true) &&
-      engineAllowedByManagedPolicy(adapter.provider);
+    const enabled = (settings.enabled ?? true) && managedAllowed;
     const readiness = resolveRuntimeAdapterReadiness({
       adapter,
       engineId: engineIdValue,
@@ -354,7 +355,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     });
     let liveCatalog: ProviderAdapterModelCatalog | undefined;
     let liveDiscoveryFailed = false;
-    if (!hostDiscoveryDisabled) {
+    if (!hostDiscoveryDisabled && managedAllowed) {
       try {
         const discovery = adapter.listModelCatalog
           ? adapter.listModelCatalog({

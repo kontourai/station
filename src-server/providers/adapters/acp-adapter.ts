@@ -1297,6 +1297,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         args: config.args,
         cwd,
         launchEnv,
+        connection: config,
         ...(tmpDir ? { tmpDir } : {}),
         credentialEnv: () => engineCredentialEnvFor(config),
         // #3957: not offered, because OpenCode's own tools already write

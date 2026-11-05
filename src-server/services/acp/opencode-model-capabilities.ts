@@ -28,7 +28,10 @@ import {
   augmentedSpawnEnv,
   findCliBinaryAsync,
 } from '../../providers/auth/cli-auth.js';
-import { managedEngineLaunch } from '../../security/managed-engine-limits.js';
+import {
+  engineAllowedByManagedPolicy,
+  managedEngineLaunch,
+} from '../../security/managed-engine-limits.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 
 const OPENCODE_LISTING_TIMEOUT_MS = 8_000;
@@ -39,6 +42,8 @@ const OPENCODE_CAPABILITIES_TTL_MS = 60 * 60_000;
 const OPENCODE_CAPABILITIES_FAILURE_TTL_MS = 15 * 60_000;
 
 export type OpenCodeListingFailure =
+  /** #4520: the managed policy does not allow ACP engines to run. */
+  | 'managed-policy'
   | 'not-installed'
   | 'spawn-failed'
   | 'timeout'
@@ -148,6 +153,10 @@ export async function runOpenCodeModelListing(
   command: string,
   options: OpenCodeListingOptions,
 ): Promise<OpenCodeListingResult> {
+  // #4520: a listing runs the engine, so an engine the managed policy does
+  // not allow is never listed (nothing is resolved or spawned).
+  if (!engineAllowedByManagedPolicy('acp'))
+    return { ok: false, reason: 'managed-policy' };
   // #4520: a listing runs the engine too, so it uses a managed policy's
   // pinned binary and environment. Pinned arguments belong to an agent
   // session (`acp-process.ts`), not to the `models` subcommand.

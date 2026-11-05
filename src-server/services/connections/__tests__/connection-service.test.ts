@@ -3083,6 +3083,74 @@ describe('ConnectionService', () => {
     expect(unregister).toHaveBeenCalledWith('claude');
   });
 
+  // #4515 fix round 1: listing the engines (what Connections shows) must not
+  // start a program the managed policy does not allow: the prerequisite
+  // probe and the model listing can both run the engine's binary.
+  test('#4520: with no engine allowed, listing the engines probes and lists nothing', async () => {
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      limits: { engines: { allowed: [] } },
+    });
+    if (!parsed.ok) throw new Error('fixture policy refused');
+    installManagedEngineLimits({
+      document: parsed.document,
+      summary: summarizeManagedPolicy(parsed.document),
+    });
+    try {
+      const spies = ['claude', 'codex'].map((provider) => {
+        const adapter = {
+          provider,
+          metadata: {
+            displayName: `${provider} runtime`,
+            description: `${provider} runtime`,
+            capabilities: ['agent-runtime'] as const,
+            connectionId: provider,
+            engineId: provider,
+            builtin: true,
+          },
+          getPrerequisites: vi.fn().mockResolvedValue([]),
+          listModelCatalog: vi.fn().mockResolvedValue({
+            source: 'live',
+            models: [{ id: 'm', name: 'M' }],
+          }),
+          listModels: vi.fn().mockResolvedValue([{ id: 'm', name: 'M' }]),
+        };
+        setProviderAdapterRegistrationProvenance(adapter as any, 'builtin');
+        return adapter;
+      });
+      const service = createConnectionServiceForTest(
+        {
+          listProviderConnections: vi.fn(() => []),
+          saveProviderConnection: vi.fn(),
+          deleteProviderConnection: vi.fn(),
+          checkHealth: vi.fn().mockResolvedValue(true),
+        } as any,
+        () => spies as any,
+        async () => [],
+        () => ({ connections: [] }),
+        async () => ({ defaultModel: '', agentConnections: {} }) as any,
+        vi.fn(),
+      );
+      const rows = await service.listRuntimeConnections();
+      expect(rows.map((row) => row.id).sort()).toEqual(['claude', 'codex']);
+      for (const adapter of spies) {
+        expect(
+          adapter.getPrerequisites,
+          adapter.provider,
+        ).not.toHaveBeenCalled();
+        expect(
+          adapter.listModelCatalog,
+          adapter.provider,
+        ).not.toHaveBeenCalled();
+        expect(adapter.listModels, adapter.provider).not.toHaveBeenCalled();
+      }
+      for (const row of rows) expect(row.enabled, row.id).toBe(false);
+    } finally {
+      installManagedEngineLimits(null);
+    }
+  });
+
   test('#4520: refuses to set up a runtime connection for an engine the managed policy does not allow', async () => {
     const parsed = parseManagedPolicyDocument({
       schemaVersion: 1,
