@@ -14,7 +14,7 @@ import { loadInstalledManagedPolicy } from '@kontourai/station-shared/managed-po
 import { isPackagedReleaseChannel } from '@kontourai/station-shared/prebuilt-archive';
 
 /** The installer variable that sends every download to the mirror. */
-export const INSTALLER_MIRROR_ENV = 'STATION_INSTALL_MIRROR_URL';
+const INSTALLER_MIRROR_ENV = 'STATION_INSTALL_MIRROR_URL';
 
 /**
  * The machine's update limit, or null when no policy limits updates.
@@ -27,7 +27,7 @@ export function installedManagedUpdates(
   return loadInstalledManagedPolicy({ env })?.document.limits?.updates ?? null;
 }
 
-export class ManagedUpdateRefusedError extends Error {
+class ManagedUpdateRefusedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ManagedUpdateRefusedError';

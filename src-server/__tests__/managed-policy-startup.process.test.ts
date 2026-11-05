@@ -19,6 +19,11 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import {
+  EVERY_KEY_FEED_URL,
+  EVERY_KEY_POLICY,
+  EVERY_KEY_SUMMARY_LIMITS,
+} from '../../packages/contracts/src/__tests__/managed-policy-every-key.fixture.js';
 import { localLabEnvironment } from '../../scripts/lib/local-collaboration-process.mjs';
 import {
   captureOwnedProcessOutput,
@@ -26,11 +31,6 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from '../../scripts/lib/owned-process.mjs';
-import {
-  EVERY_KEY_FEED_URL,
-  EVERY_KEY_POLICY,
-  EVERY_KEY_SUMMARY_LIMITS,
-} from '../../packages/contracts/src/__tests__/managed-policy-every-key.fixture.js';
 import { trackTempDirs } from '../__test-utils__/temp-dirs.js';
 
 const repoRoot = resolve(import.meta.dirname, '../..');

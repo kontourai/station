@@ -42,8 +42,8 @@ import {
 } from 'node:path';
 import {
   MANAGED_POLICY_INVALID_MARKER,
-  managedRemoteClientsDenial,
   type ManagedPolicyUpdatesLimit,
+  managedRemoteClientsDenial,
   managedUpdatesRefusal,
 } from '@kontourai/station-contracts/managed-policy';
 import {
