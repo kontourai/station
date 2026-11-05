@@ -39,6 +39,10 @@ function render(ui: ReactElement) {
 }
 
 const native = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
+vi.mock('../../../build-info', async (importActual) => ({
+  ...(await importActual<typeof import('../../../build-info')>()),
+  readClientReleaseVersion: () => '0.1.11-nightly.20261105.1',
+}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: native.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: native.listen }));
 vi.mock('../../../platform/PlatformProfileContext', () => ({
@@ -171,6 +175,7 @@ beforeEach(() => {
   profile.isDesktop = true;
   profile.isMobile = false;
   profile.isDevBuild = false;
+  profile.channel = 'beta';
   context.kind = 'installed-local-service';
   serverState.progress = { state: 'idle' };
   status.stagedUpdates = true;
@@ -656,4 +661,22 @@ test('development desktop versions never trigger the automatic upgrade dialog', 
   expect(localStorage.getItem('station.release-notes.last-version')).toBe(
     '0.1.10',
   );
+});
+
+test('mobile keeps its installed version and channel when no app update is available', async () => {
+  profile.isDesktop = false;
+  profile.isMobile = true;
+  profile.channel = 'nightly';
+  render(<UpdatesControl onNavigate={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
+  const panel = await screen.findByRole('dialog', { name: 'Updates' });
+  expect(
+    within(panel).getByRole('heading', { name: 'Station app · nightly' }),
+  ).toBeTruthy();
+  expect(within(panel).getByText('0.1.11-nightly.20261105.1')).toBeTruthy();
+  expect(
+    within(panel).queryByRole('button', {
+      name: 'Check for desktop app updates',
+    }),
+  ).toBeNull();
 });

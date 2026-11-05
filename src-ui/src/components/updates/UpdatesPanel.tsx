@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef } from 'react';
+import { readClientReleaseVersion } from '../../build-info';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConnectedServerUpdates } from '../../views/settings/ConnectedServerUpdates';
 import { DesktopUpdateCheck } from '../../views/settings/DesktopUpdateCheck';
 import { settingsDeepLinkUrl } from '../../views/settings/settings-deep-link';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
+import { StatusSummary } from '../StatusSummary';
 import { ChangelogPreference } from './ChangelogPreference';
 import { ReleaseHistory, ReleaseNotes } from './ReleaseNotes';
 import { type UpdateTarget, useUpdateNotices } from './updatesEvents';
@@ -27,6 +29,12 @@ export function UpdatesPanel({
 }) {
   const profile = usePlatformProfile();
   const notices = useUpdateNotices();
+  const appUpdate = notices.find(
+    (notice) =>
+      notice.target === 'desktop' &&
+      notice.updateAvailable &&
+      notice.releaseVersion,
+  );
   const desktopRef = useRef<HTMLElement>(null);
   const serverRef = useRef<HTMLElement>(null);
   const id = useId();
@@ -100,7 +108,23 @@ export function UpdatesPanel({
             tabIndex={-1}
             aria-labelledby={`${id}-desktop`}
           >
-            {!profile.isDesktop && <h3 id={`${id}-desktop`}>Station app</h3>}
+            {!profile.isDesktop && (
+              <StatusSummary
+                headingId={`${id}-desktop`}
+                title={
+                  profile.channel
+                    ? `Station app · ${profile.channel}`
+                    : 'Station app'
+                }
+                current={readClientReleaseVersion() ?? 'Version unavailable'}
+                target={appUpdate?.releaseVersion}
+                badge={
+                  appUpdate
+                    ? { label: 'Update available', tone: 'caution' }
+                    : null
+                }
+              />
+            )}
             {noticesFor('desktop')}
             {profile.isDesktop && (
               <DesktopUpdateCheck

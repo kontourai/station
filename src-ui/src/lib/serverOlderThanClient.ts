@@ -82,6 +82,13 @@ export function deriveServerOlderOffer(
   ) {
     return NONE;
   }
+  if (
+    isArchiveInstall(status) &&
+    status.releaseCheck === 'verified' &&
+    !status.updateAvailable &&
+    status.latestVersion
+  )
+    return NONE;
   const versions: OfferVersions = { client: clientVersion, server };
   const manual = (remedy: string | null): ServerOlderOffer => ({
     kind: 'manual',
@@ -115,7 +122,7 @@ export function deriveServerOlderOffer(
     status.applyMethod === 'service-update' &&
     status.releaseCheck === 'verified'
   ) {
-    if (!status.updateAvailable || !status.latestVersion) {
+    if (!status.latestVersion) {
       return NONE;
     }
     if (!facts.identityMatches) {

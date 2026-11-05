@@ -104,6 +104,11 @@ const ERROR_LEADS = {
   download: 'The download did not complete.',
   install: 'The update did not install, and Station did not restart.',
 } as const;
+const ERROR_BADGE_LABELS = {
+  check: 'Check failed',
+  download: 'Download failed',
+  install: 'Install failed',
+} as const;
 
 /**
  * The desktop app's update controls in Settings and Updates (#3851): the native
@@ -189,12 +194,7 @@ export function DesktopUpdateCheck({
         badge={
           error
             ? {
-                label:
-                  error.context === 'check'
-                    ? 'Check failed'
-                    : error.context === 'download'
-                      ? 'Download failed'
-                      : 'Install failed',
+                label: ERROR_BADGE_LABELS[error.context],
                 tone: 'negative',
               }
             : PHASE_BADGES[phase.status]
