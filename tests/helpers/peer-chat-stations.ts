@@ -475,7 +475,6 @@ export async function addDirectReceiver(page: Page, receiver: LiveStation) {
     {
       endpoint: receiver.api,
       scope: pairingScopePresetString('standard'),
-      kind: 'device',
       approval: 'on-request',
     },
   );
