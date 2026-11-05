@@ -28,9 +28,25 @@ export function useInboxGroups(
   items: HomeWorkItem[],
   now: number,
   workFacts?: WorkFactsById,
-  includeDismissed = false,
+  query = '',
 ): MobileActivityGroup[] {
-  const { visible, dismissed } = useInboxDismissals(items, workFacts);
+  const term = query.trim().toLocaleLowerCase();
+  const matchingItems = useMemo(
+    () =>
+      term
+        ? items.filter((item) =>
+            [
+              item.title,
+              item.projectLabel,
+              item.agentLabel,
+              item.environmentLabel,
+            ].some((value) => value?.toLocaleLowerCase().includes(term)),
+          )
+        : items,
+    [items, term],
+  );
+  const includeDismissed = Boolean(term);
+  const { visible, dismissed } = useInboxDismissals(matchingItems, workFacts);
   const state = useConversationWorkState();
   const resolution = useMemo(
     () => (state.supported ? new Set(Object.keys(state.settled)) : undefined),

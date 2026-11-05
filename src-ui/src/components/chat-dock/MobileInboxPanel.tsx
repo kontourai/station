@@ -142,26 +142,7 @@ export function MobileInboxPanel({
   }, [onClose]);
 
   const scope = useInboxScope(tasks, now, workFacts);
-  const matchingItems = useMemo(() => {
-    const term = query.trim().toLocaleLowerCase();
-    return term
-      ? scope.items.filter((item) =>
-          [
-            item.title,
-            item.projectLabel,
-            item.agentLabel,
-            item.environmentLabel,
-          ].some((value) => value?.toLocaleLowerCase().includes(term)),
-        )
-      : scope.items;
-  }, [query, scope.items]);
-  const groups = useInboxGroups(
-    matchingItems,
-    now,
-    workFacts,
-    Boolean(query.trim()),
-  );
-  const visibleGroups = groups;
+  const groups = useInboxGroups(scope.items, now, workFacts, query);
   const hasVisibleItems = groups.some((group) => group.items.length > 0);
 
   useLayoutEffect(() => {
@@ -284,7 +265,7 @@ export function MobileInboxPanel({
         )}
         <InboxGroupList
           swipeActions={swipeActions}
-          groups={visibleGroups}
+          groups={groups}
           idPrefix="mobile-task-switcher"
           activeChatSessionId={activeChatSessionId}
           openChatIds={openMembership}

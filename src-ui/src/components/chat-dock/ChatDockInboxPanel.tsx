@@ -157,25 +157,7 @@ function ChatDockInboxPanelImpl({
   // inbox toggle's Needs-you count reads, so the two cannot disagree.
   const scope = useInboxScope(items, now, workFacts);
   const [query, setQuery] = useState('');
-  const matchingItems = useMemo(() => {
-    const term = query.trim().toLocaleLowerCase();
-    return term
-      ? scope.items.filter((item) =>
-          [
-            item.title,
-            item.projectLabel,
-            item.agentLabel,
-            item.environmentLabel,
-          ].some((value) => value?.toLocaleLowerCase().includes(term)),
-        )
-      : scope.items;
-  }, [query, scope.items]);
-  const groups = useInboxGroups(
-    matchingItems,
-    now,
-    workFacts,
-    Boolean(query.trim()),
-  );
+  const groups = useInboxGroups(scope.items, now, workFacts, query);
   const dismissals = useInboxDismissActions(items, workFacts);
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
