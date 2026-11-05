@@ -417,14 +417,17 @@ export function useProjectTaskRoomStream(
     };
     const invalidateHistory = () => {
       const queryKey = projectTaskRoomQueries.history(taskId).queryKey;
-      void client.invalidateQueries({
-        queryKey,
-        // Presence snapshots must not silently retry a failed admitted page.
-        refetchType:
-          client.getQueryState(queryKey)?.status === 'error'
-            ? 'none'
-            : 'active',
-      });
+      void client.invalidateQueries(
+        {
+          queryKey,
+          // Presence snapshots must not silently retry a failed admitted page.
+          refetchType:
+            client.getQueryState(queryKey)?.status === 'error'
+              ? 'none'
+              : 'active',
+        },
+        { cancelRefetch: false },
+      );
     };
     const recoverDocument = (
       gap: { kind: 'gap'; floor: string } | { kind: 'unavailable' } = {

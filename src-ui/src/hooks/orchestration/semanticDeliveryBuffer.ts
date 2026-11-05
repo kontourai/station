@@ -127,7 +127,7 @@ export class SemanticDeliveryBuffer {
     const key = this.key(apiBase, event.threadId, station);
     if (!isDelta(event)) {
       this.flushKey(key);
-      this.dispatch(event, apiBase, provenance);
+      this.emit(event, apiBase, provenance, station);
       return;
     }
 
@@ -135,7 +135,7 @@ export class SemanticDeliveryBuffer {
       // A setting change must reveal already-held text before the first event
       // delivered under the newly selected mode.
       this.flushKey(key);
-      this.dispatch(event, apiBase, provenance);
+      this.emit(event, apiBase, provenance, station);
       return;
     }
 
@@ -144,7 +144,8 @@ export class SemanticDeliveryBuffer {
       if (this.pending.size >= SEMANTIC_DELIVERY_MAX_THREADS) this.flushAll();
       held = {
         apiBase,
-        owner: this.ownerOf(event.threadId),
+        owner: this.ownerOf(event.threadId, station),
+        station,
         segments: [],
         chars: 0,
         events: 0,
@@ -159,7 +160,8 @@ export class SemanticDeliveryBuffer {
       this.flushAll();
       held = {
         apiBase,
-        owner: this.ownerOf(event.threadId),
+        owner: this.ownerOf(event.threadId, station),
+        station,
         segments: [],
         chars: 0,
         events: 0,
@@ -178,7 +180,8 @@ export class SemanticDeliveryBuffer {
       this.flushKey(key);
       held = {
         apiBase,
-        owner: this.ownerOf(event.threadId),
+        owner: this.ownerOf(event.threadId, station),
+        station,
         segments: [],
         chars: 0,
         events: 0,
@@ -187,7 +190,7 @@ export class SemanticDeliveryBuffer {
     }
     if (event.delta.length > SEMANTIC_DELIVERY_SPILL_CHARS) {
       this.pending.delete(key);
-      this.dispatch(event, apiBase, provenance);
+      this.emit(event, apiBase, provenance, station);
       return;
     }
 
