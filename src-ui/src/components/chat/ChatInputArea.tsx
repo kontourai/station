@@ -698,9 +698,12 @@ export function ChatInputArea({
   // Home and the sidebar said something else about the same session. The
   // catalog's option name survives in `aliasLabel`, which is what the
   // accessible label and title carry.
+  // With no model reported, the pill says "Model" and the accessible name
+  // keeps "Model & effort": the longer word was cut to "Model & eff…" on a
+  // phone, beside a caption that already names the engine.
   const modelLabel = effectiveModelId
     ? modelIdentityLabel(effectiveModelId, availableModels)
-    : aliasLabel;
+    : 'Model';
   const modelSource =
     currentModelSource ??
     defaultModelSource ??

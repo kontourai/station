@@ -1561,6 +1561,15 @@ button:hover {
      `.dock-slot__body` hide in the desktop block below. */
 }
 
+/* `DockShell` sets this only on a collapsed phone bar while a software
+   keyboard types into another surface: the bar would otherwise ride on top of
+   the keyboard. `visibility` also takes it out of the tab order and the
+   accessibility tree for that interval. */
+.chat-dock[data-keyboard-hidden] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .chat-dock__file-drop-overlay {
   position: absolute;
   inset: 0;
@@ -6490,8 +6499,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      second line that the clip removes, so the app name is either shown in full
      or not at all - a text-overflow ellipsis here is what produced "S...". The
      logo stays (it is the home link) and the toolbar stays one row. The
-     connection chip is a fixed 44px dot (chat.css), so the lockup is the one
-     member of the row that gives up width. Both children are 22px tall and
+     connection chip is a 44px dot, or a dot and a Station name capped at
+     120px when healthy (chat.css), so the lockup is the one member of the row
+     that gives up width. Both children are 22px tall and
      share one line, so nothing of the wrapped line peeks into the clip. */
   .app-toolbar__lockup {
     display: flex;
@@ -6592,8 +6602,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      action cluster stays on-screen at <=390px because the lockup is the one
      member of the row that gives up width. */
 
-  /* Phone connection chrome is a touchable status dot. Its full accessible
-     name and long-press hint are owned by HeaderActions; chat.css sizes it. */
+  /* Phone connection chrome is a touchable status dot, with the Station's
+     short name beside it when healthy. Its full accessible name and
+     long-press hint are owned by HeaderActions; chat.css sizes it. */
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
     display: none;

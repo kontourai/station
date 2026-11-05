@@ -494,6 +494,7 @@ export function HeaderActions({
             activeConnectionId: activeConnection?.id,
             activeStatus: connState,
             activeStatusLabel: connStateLabel,
+            activeDisplayName: connIdentity,
             onSelect: async (connection) => {
               await setActiveConnection(connection.id);
             },

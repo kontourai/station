@@ -754,7 +754,9 @@ layer is open (`RegionChromeBar` `onBackToChat`; the iOS app has no
 swipe-back) — returns to Chat: Chat reselected, its maximize and visibility
 restored, and the tab the layer minted removed (a phone has no tab strip, so
 a tab left behind Chat would be one nobody can see or close;
-`restorePhonePaneLayer`). A minted pane the layer moved out of another
+`restorePhonePaneLayer`). Where a wide touch device does show a tab strip,
+the strip omits Chat's tab while the layer is open: "‹ Chat" is the way back,
+and a second Chat control beside it named the same move. A minted pane the layer moved out of another
 (hidden) dock region goes back to its tab slot there on Back, "‹ Chat" or a
 dismissal. (A pane held in `main` never opens a layer, so a layer pane's
 origin is always a dock region.) Opening another pane while a layer is open

@@ -178,7 +178,13 @@ at the surface or workspace boundary that needs geometry, then size descendants
 from `--responsive-visual-viewport-height`. It combines Visual Viewport readings
 with the Android inset projection and falls back to window dimensions. The
 separate document publisher, installed by `main.tsx`, exposes
-`--visual-viewport-bottom-inset` for fixed siblings. Every call, and the SDK
+`--visual-viewport-bottom-inset` for fixed siblings; a fixed bottom sheet that
+is not a `ResponsiveDialogSurface` (the phone notifications sheet) docks at that
+inset, not at `bottom: 0`, so iOS Safari's floating toolbar does not cover it.
+[useSoftKeyboardTarget](../../src-ui/src/hooks/useSoftKeyboardTarget.ts) derives
+an open software keyboard from a focused text entry plus a keyboard-sized
+inset; the collapsed phone dock bar hides while it types into another surface.
+Every call, and the SDK
 and Connect modals, reads one per-window store
 (`@kontourai/station-shared/visual-viewport`) that reads the geometry once per
 frame, so another call adds a re-render rather than more listeners. Still read
