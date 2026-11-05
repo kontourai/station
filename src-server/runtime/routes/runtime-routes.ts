@@ -12835,10 +12835,6 @@ export function configureDevicePairingPublicRoutes(
   if (options.uiBootstrapToken)
     uiBootstrapTokens.set('launcher', options.uiBootstrapToken);
   const startupIdentity = options.startupIdentity?.();
-  // This id is server-owned and stable for this launcher's lifetime. A
-  // browser cannot choose a replacement domain merely by replaying a link,
-  // while a preserved HttpOnly session remains the cross-restart identity.
-  const uiBootstrapClientInstanceId = randomUUID();
   const failureLimiter =
     options.failureLimiter ?? new PairingFailureLimiter({ now: options.now });
   const attemptBudget = new BoundedAttemptBudget();
@@ -13244,6 +13240,13 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
     }
 
+    // Each redemption pairs a NEW browser, so it gets its own server-chosen
+    // instance id. `exchange` revokes every active device sharing the id
+    // (`same-client-replacement`), so one id per server lifetime made each
+    // link silently sign out every browser an earlier link signed in: a
+    // phone and a desktop could not both stay signed in. A browser that
+    // already holds a session took the branch above and keeps its device.
+    const uiBootstrapClientInstanceId = randomUUID();
     let bootstrapOfferId: string | undefined;
     try {
       const offer = pairing.createOffer({
