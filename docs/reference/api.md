@@ -6394,7 +6394,10 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   for explicit recovery; a subsequent request returns the mapped session, including
   its ended state, without spawning another shell.
 - `GET` lists that Project/binding's session records. Pass `bindingKey` in the
-  query for a non-default binding.
+  query for a non-default binding. A record carries its launch directory
+  (`cwd`) and a read its process id (`pid`) only for a caller who may operate
+  the terminal; an observer gets neither (`pid: null`). Where its history is
+  stored is never returned.
 - `GET /:terminalId?bindingKey=project&fromSeq=0` reads a snapshot and numbered
   journal records. Replay admits at most 64 KiB of journal payload and applies
   the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,
@@ -6487,7 +6490,9 @@ and act for the verified caller's own conversation:
   owner, and is confined to it (403 `terminal_run_directory_refused`). A chat
   outside a Project is refused (409 `terminal_run_needs_project`), as is one
   with no recorded owner (409 `terminal_run_owner_required`), and a fourth
-  waiting request (409 `terminal_run_limit_reached`). It answers
+  waiting request (409 `terminal_run_limit_reached`). Across all chats, at
+  most 64 requests wait at once and 512 are retained; past either, a request
+  is refused (429 `terminal_run_capacity_reached`). It answers
   `{runId, state: "needs_approval", command, cwd, …}` at once.
 - `GET /:runId?waitSeconds=&fromSeq=` reads one of the conversation's runs.
   `waitSeconds` (0–50) waits for its state to change first. Once it started,

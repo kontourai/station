@@ -329,6 +329,8 @@ export interface InitializeRuntimeDeps {
     framework: IAgentFramework;
     modelCatalog: BedrockModelCatalog;
   }) => void;
+  /** Transfers cleanup custody before initialization can subscribe or fail. */
+  onOrchestrationServiceCreated?: (service: OrchestrationService) => void;
   /** Publishes services captured by route registration before VoltAgent calls configureFullApp. */
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
@@ -867,6 +869,7 @@ export async function initializeRuntime(
     >,
     logger,
   });
+  deps.onOrchestrationServiceCreated?.(orchestrationService);
   if (
     deps.skillService.withSkillExperience &&
     deps.skillService.listSkillExperiences &&

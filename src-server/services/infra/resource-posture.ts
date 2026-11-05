@@ -11,12 +11,15 @@ import { ProviderRefusalError } from '../../providers/provider-failure.js';
  */
 
 import { cpus } from 'node:os';
+import { abortError, throwIfAborted } from '../../utils/bounded-async.js';
 import { sleep } from '../../utils/sleep.js';
 
 const RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT = 85;
 const RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT = 95;
 const RUNTIME_RESOURCE_POSTURE_CACHE_MS = 2_000;
 const RUNTIME_RESOURCE_POSTURE_SAMPLE_GAP_MS = 500;
+const ENGINE_START_WAIT_TIMEOUT_MS = 60_000;
+const ENGINE_START_MAX_WAITERS = 32;
 
 type CpuSnapshot = ReturnType<typeof cpus>;
 type CpuTimes = { idle: number; total: number; cpuCount: number };
@@ -59,8 +62,7 @@ export interface RuntimeResourcePostureProbe {
 export interface RuntimeResourcePostureController
   extends RuntimeResourcePostureProbe {
   reserveEngineStart(): RuntimeEngineStartLease;
-  /** FIFO startup admission for a supervised group; unrelated starts still refuse immediately. */
-  waitForEngineStart(signal: AbortSignal): Promise<RuntimeEngineStartLease>;
+  waitForEngineStart(signal?: AbortSignal): Promise<RuntimeEngineStartLease>;
 }
 
 export interface RuntimeEngineStartLease {
@@ -198,12 +200,8 @@ export function createRuntimeResourcePostureController(
   let refreshedAt: number | undefined;
   let inFlight: Promise<RuntimeResourcePosture> | undefined;
   let engineStartReserved = false;
-  const waiters: {
-    signal: AbortSignal;
-    resolve(lease: RuntimeEngineStartLease): void;
-    reject(reason: unknown): void;
-    onAbort(): void;
-  }[] = [];
+  const waiters: Array<(lease: RuntimeEngineStartLease) => void> = [];
+
   const lease = (): RuntimeEngineStartLease => {
     engineStartReserved = true;
     let released = false;
@@ -211,23 +209,11 @@ export function createRuntimeResourcePostureController(
       release() {
         if (released) return;
         released = true;
-        engineStartReserved = false;
-        drain();
+        const next = waiters.shift();
+        if (next) next(lease());
+        else engineStartReserved = false;
       },
     });
-  };
-  const drain = () => {
-    if (engineStartReserved) return;
-    while (waiters.length) {
-      const next = waiters.shift()!;
-      next.signal.removeEventListener('abort', next.onAbort);
-      if (next.signal.aborted) {
-        next.reject(next.signal.reason);
-        continue;
-      }
-      next.resolve(lease());
-      return;
-    }
   };
 
   const withAge = (
@@ -267,31 +253,39 @@ export function createRuntimeResourcePostureController(
       return inFlight;
     },
     reserveEngineStart() {
-      if (engineStartReserved || waiters.length)
-        throw new ConcurrentEngineStartCapacityError();
+      if (engineStartReserved) throw new ConcurrentEngineStartCapacityError();
       return lease();
     },
-    waitForEngineStart(signal) {
-      if (signal.aborted) return Promise.reject(signal.reason);
-      if (!engineStartReserved && !waiters.length)
-        return Promise.resolve(lease());
-      if (waiters.length >= 128)
-        return Promise.reject(new ConcurrentEngineStartCapacityError());
-      return new Promise((resolve, reject) => {
-        const waiter = {
-          signal,
-          resolve,
-          reject,
-          onAbort() {
-            const index = waiters.indexOf(waiter);
-            if (index !== -1) waiters.splice(index, 1);
-            signal.removeEventListener('abort', waiter.onAbort);
-            reject(signal.reason);
-            drain();
-          },
+    async waitForEngineStart(signal) {
+      throwIfAborted(signal);
+      if (!engineStartReserved) return lease();
+      if (waiters.length >= ENGINE_START_MAX_WAITERS)
+        throw new ConcurrentEngineStartCapacityError();
+      return await new Promise<RuntimeEngineStartLease>((resolve, reject) => {
+        const cleanup = () => {
+          clearTimeout(timer);
+          signal?.removeEventListener('abort', abort);
         };
-        signal.addEventListener('abort', waiter.onAbort, { once: true });
-        waiters.push(waiter);
+        const remove = () => {
+          const index = waiters.indexOf(accept);
+          if (index >= 0) waiters.splice(index, 1);
+          cleanup();
+        };
+        const abort = () => {
+          remove();
+          reject(abortError(signal));
+        };
+        const accept = (next: RuntimeEngineStartLease) => {
+          cleanup();
+          resolve(next);
+        };
+        const timer = setTimeout(() => {
+          remove();
+          reject(new ConcurrentEngineStartCapacityError());
+        }, ENGINE_START_WAIT_TIMEOUT_MS);
+        timer.unref?.();
+        waiters.push(accept);
+        signal?.addEventListener('abort', abort, { once: true });
       });
     },
   };
@@ -310,17 +304,22 @@ export function createEnvironmentRuntimeResourcePostureProbe(
 export async function admitEngineStartForIntent(
   probe: RuntimeResourcePostureProbe | undefined,
   _logger: unknown,
-  _intent: RuntimeEngineStartIntent,
-  input: { binding: string; waitForCapacity?: AbortSignal },
+  intent: RuntimeEngineStartIntent,
+  input: {
+    binding: string;
+    signal?: AbortSignal;
+    waitForCapacity?: AbortSignal;
+  },
 ): Promise<RuntimeEngineStartLease | undefined> {
   const controller = probe as
     | Partial<RuntimeResourcePostureController>
     | undefined;
   if (
-    input.waitForCapacity &&
-    typeof controller?.waitForEngineStart === 'function'
+    (input.waitForCapacity || intent === 'interactive_user') &&
+    controller?.waitForEngineStart
   )
-    return controller.waitForEngineStart(input.waitForCapacity);
+    return controller.waitForEngineStart(input.waitForCapacity ?? input.signal);
+
   return typeof controller?.reserveEngineStart === 'function'
     ? controller.reserveEngineStart()
     : undefined;

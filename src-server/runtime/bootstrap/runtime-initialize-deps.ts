@@ -174,6 +174,7 @@ interface RuntimeInitializationContext {
     framework: IAgentFramework;
     modelCatalog: BedrockModelCatalog;
   }) => void;
+  onOrchestrationServiceCreated?: (service: OrchestrationService) => void;
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
     nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
@@ -252,6 +253,7 @@ export function createRuntimeInitializationDeps(
     runStartupMigrations: context.runStartupMigrations,
     startHealthChecks: context.startHealthChecks,
     onCoreConfigReady: context.onCoreConfigReady,
+    onOrchestrationServiceCreated: context.onOrchestrationServiceCreated,
     onRouteServicesReady: context.onRouteServicesReady,
     onVoltAgentCreated: context.onVoltAgentCreated,
     onVoiceWebSocketAttached: context.onVoiceWebSocketAttached,

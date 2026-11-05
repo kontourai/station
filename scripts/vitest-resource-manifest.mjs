@@ -217,6 +217,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Agent terminal runs and package scripts as real command sessions, in
   // private homes; no ports or host state.
   'src-server/services/terminal/__tests__/terminal-runs.process.test.ts',
+  // Reads real journal ACLs through PowerShell and icacls (Windows), in
+  // private temp folders; no ports or host state.
+  'src-server/services/terminal/__tests__/terminal-journal-privacy.process.test.ts',
+  // Command processes and the children they start, ended by pid or group
+  // (taskkill or POSIX group signals); no ports or host state.
+  'src-server/services/terminal/__tests__/command-process.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.

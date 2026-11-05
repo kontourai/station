@@ -1021,6 +1021,10 @@ entry. The receiver's `not_offered`, `unavailable`, `authority_changed` and
 Lazy materialization preserves a typed start refusal's closed code and rejected
 receipt just as an explicit start does. A refusal does not revoke work that was
 already accepted under an earlier admission.
+`async_event_queue_consumer_conflict` identifies an internal queue-ownership
+invariant violation, not a provider or caller error. Its `conflict` kind is
+non-retryable.
+
 
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
@@ -1051,6 +1055,8 @@ already accepted under an earlier admission.
 | `receiver_execution_unavailable` | `permission_denied` | `false` |
 | `receiver_execution_authority_changed` | `permission_denied` | `false` |
 | `receiver_execution_consent_stale` | `permission_denied` | `false` |
+| `async_event_queue_consumer_conflict` | `conflict` | `false` |
+
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
 | `create_request_capacity` | `busy` | `true` |

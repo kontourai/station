@@ -28,7 +28,14 @@ For a new Session that announces `session.started` before its adapter start
 returns, an accepted start awaits that event’s durable commit. Built-in adapter
 queues report the announcement synchronously at enqueue, so an earlier event
 blocking the consumer cannot bypass the wait. A per-thread commit signal yields
-while publication retries. If the announcement settles
+while publication retries. Each built-in adapter queue permits one active consumer.
+Closing its EventStore or abandoning runtime initialization revokes that service’s
+consumer and registry subscription. Permanent loss of the consumer or settlement by another
+service ends the wait immediately with a typed indeterminate error. A recoverable
+stream fault settles only an announcement already pulled and lost; other pending
+starts keep waiting for the replacement consumer. A start already committed
+retains accepted truth after a later stream fault.
+If the announcement settles
 without a durable append, or five seconds pass without confirmation, the command
 returns `indeterminate`, attempts provider cleanup, and retains no in-memory
 start-owner send authority. Event settlement and failed-start cleanup share the

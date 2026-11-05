@@ -2675,6 +2675,7 @@ export class EventStore {
   private isolatedTranscriptReads?: IsolatedTranscriptReads;
   private transcriptReadClose?: Promise<unknown>;
   private storeClosed = false;
+  private readonly closingListeners = new Set<() => void>();
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
   private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
@@ -18177,9 +18178,23 @@ export class EventStore {
     };
   }
 
+  get isClosed(): boolean {
+    return this.storeClosed || this.messageSearchBackfillClosed;
+  }
+
+  onClosing(listener: () => void): () => void {
+    if (this.isClosed) listener();
+    else this.closingListeners.add(listener);
+    return () => {
+      this.closingListeners.delete(listener);
+    };
+  }
+
   close(): OperationalEventSubscriptionCloseOutcome {
-    this.packageMcpAdmissionJournal?.closeAdmission();
     this.messageSearchBackfillClosed = true;
+    for (const listener of this.closingListeners) listener();
+    this.closingListeners.clear();
+    this.packageMcpAdmissionJournal?.closeAdmission();
     if (this.storeClosed) return { kind: 'closed' };
     if (
       this.isolatedTranscriptReads &&

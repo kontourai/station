@@ -4052,6 +4052,7 @@ export class TaskGraphService {
                   }
                 : undefined,
               {
+                resourceAdmissionIntent: 'queued_background',
                 roomExecutionBinding: {
                   projectId: reservation.task.projectId,
                   taskId: reservation.task.id,
