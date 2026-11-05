@@ -13,6 +13,10 @@ import {
 import { createRuntimeModelSelection } from '../../runtime/plugins/runtime-provider-resolution.js';
 import { guardRuntimeGenerationTools } from '../../runtime/tools/runtime-generation-tools.js';
 import type { ITool, RuntimeContext } from '../../runtime/types.js';
+import {
+  managedEngineRefusalBody,
+  managedEngineRefusalFor,
+} from '../../security/managed-engine-limits.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
@@ -95,6 +99,19 @@ export function createInvokeRoutes(
   } = {},
 ) {
   const app = new Hono();
+
+  // #4515: each of these runs Station's own agent. Refused before a run is
+  // recorded: a refusal inside the run would read as "may have started".
+  for (const path of [
+    '/agents/:slug/invoke',
+    '/agents/:slug/invoke/stream',
+    '/invoke',
+  ])
+    app.post(path, async (c, next) => {
+      const refusal = managedEngineRefusalFor('station');
+      if (refusal) return c.json(managedEngineRefusalBody(refusal), 403);
+      await next();
+    });
 
   // POST /agents/:slug/invoke — silent agent invocation
   app.post('/agents/:slug/invoke', validate(invokeSchema), async (c) => {

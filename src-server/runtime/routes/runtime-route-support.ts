@@ -13,6 +13,7 @@ import { getNotificationProviders } from '../../providers/registries/registry.js
 import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { readBootHistory } from '../../routes/system/boot-history.js';
+import { isManagedEngineRefusal } from '../../security/managed-engine-limits.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import {
   ApprovalInboxNotificationProvider,
@@ -134,6 +135,12 @@ export function createScheduledTurnAdapter(
         );
         return { kind: 'completed' as const, output: result.text ?? '' };
       } catch (error) {
+        // #4515: refused by the managed policy before the model was called.
+        if (isManagedEngineRefusal(error))
+          return {
+            kind: 'definitely-not-invoked' as const,
+            error: errorMessage(error),
+          };
         return {
           kind: 'indeterminate' as const,
           error:

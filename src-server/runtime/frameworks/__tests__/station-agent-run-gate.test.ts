@@ -28,6 +28,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { installManagedEngineLimits } from '../../../security/managed-engine-limits.js';
+import { createScheduledTurnAdapter } from '../../routes/runtime-route-support.js';
 import { StrandsFramework } from '../strands-adapter.js';
 import { VoltAgentFramework } from '../voltagent-adapter.js';
 
@@ -152,6 +153,34 @@ describe('VoltAgent registered Agent', () => {
     expect(model.doStreamCalls).toHaveLength(0);
     install(['station-agent']);
     expect((await raw.generateText('hello')).text).toBe('ok');
+  });
+});
+
+describe('a scheduled job', () => {
+  // The scheduler runs the registered agent; a refusal there happened before
+  // the model was called, so the run is reported as not invoked, never as
+  // "may have started".
+  test('is reported as not invoked, and the model is not called', async () => {
+    install(['claude']);
+    const model = voltModel();
+    const agent = await new VoltAgentFramework().createTempAgent({
+      purpose: 'agent-run',
+      name: 'default',
+      instructions: 'Hi.',
+      model,
+    });
+    const adapter = createScheduledTurnAdapter(new Map([['default', agent]]));
+    const outcome = await adapter.invoke({
+      agentSlug: 'station',
+      prompt: 'run',
+      principal: { jobId: 'job-1', runId: 'run-1' },
+      signal: new AbortController().signal,
+    } as never);
+    expect(outcome).toEqual({
+      kind: 'definitely-not-invoked',
+      error: expect.stringMatching(refused),
+    });
+    expect(model.doGenerateCalls).toHaveLength(0);
   });
 });
 
