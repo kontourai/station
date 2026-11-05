@@ -895,7 +895,11 @@ export function readReviewState(root, { history = true } = {}) {
   return history ? withReviewHistory(root, state) : state;
 }
 
-/** Add history to one freshly read state without loading its files again. */
+/**
+ * Add history to one freshly read state without loading its files again.
+ * @param {string} root
+ * @param {ReturnType<typeof compileReviewState>} state
+ */
 export function withReviewHistory(root, state) {
   if (state.ledger.layoutVersion === 3)
     deriveReviewHistory(root, state, () =>
