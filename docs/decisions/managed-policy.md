@@ -717,10 +717,13 @@ second time the same way to stand in for the `lstat` identity, as libuv's own
 point or a directory, and an identity Windows cannot report refuses the
 policy. Only the macOS and Linux behavior is executed in tests; the Windows
 path is compile-checked only. The desktop shell does not yet apply the
-Windows owner and ACL rule the server applies to the policy file (#4524);
-`C:\Program Files` is writable only by administrators by default, so a default
-install is covered, and a policy folder whose ACL was loosened is
-[#4599](https://github.com/kontourai/station/issues/4599).
+Windows owner and ACL rule the server applies to the policy file (#4524;
+[#4599](https://github.com/kontourai/station/issues/4599)), so on Windows it
+does not trust the file at all: an installed policy file turns its updates
+off, unread, the same way device management does (below). `C:\Program Files`
+is writable only by administrators by default, but a policy folder whose ACL
+was loosened would otherwise let another user set the desktop's update
+source.
 
 **Device management turns desktop updates off.** The shell reads only the
 policy file; it does not parse a macOS configuration profile (#4523) or the

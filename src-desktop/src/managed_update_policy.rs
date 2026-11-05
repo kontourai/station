@@ -39,6 +39,10 @@
 //! desktop updates off rather than mirrored; the guide tells administrators to
 //! install the policy as the file to route desktop updates to a mirror.
 //!
+//! On Windows the server holds the policy file to its owner and ACL rule
+//! (#4524), which the shell cannot yet (#4599). Until it can, an installed
+//! policy file there turns the shell's updates off the same way, unread.
+//!
 //! This module depends only on `std`, `serde`, `serde_json`, `url` and (on
 //! unix) `libc`, or (on Windows) `windows-sys`, so its tests compile and run
 //! standalone (`rustc --test` or a scratch crate) without building the
@@ -71,6 +75,10 @@ pub const WINDOWS_POLICY_SUBKEY: &str = "SOFTWARE\\Policies\\Kontour\\Station";
 
 /// The sentence the window shows when device management delivers the policy.
 pub const DEVICE_MANAGED_SENTENCE: &str = "Station's update policy comes from your organization's device management; desktop updates are managed there";
+
+/// The sentence the window shows on Windows while a policy file is installed
+/// that the shell cannot yet hold to the server's owner and ACL rule (#4599).
+pub const UNCHECKED_POLICY_FILE_SENTENCE: &str = "Station's update policy comes from your organization's policy file; desktop updates are managed there";
 
 /// Larger than any real policy; a bigger file is refused, as on the server.
 const MAX_POLICY_BYTES: u64 = 1024 * 1024;
@@ -107,6 +115,9 @@ pub enum InstalledPolicy {
     /// Device management (a configuration profile or the Policies registry
     /// key) delivers a policy, which the shell does not read.
     DeviceManaged,
+    /// Windows: a policy file is installed, and the shell does not yet check
+    /// its owner and ACL as the server does (#4599), so it does not read it.
+    UncheckedPolicyFile,
 }
 
 /// Where the updater may look, decided once at startup.
@@ -143,22 +154,37 @@ pub fn load_installed(test_override: Option<&str>) -> InstalledPolicy {
     };
     load_with_device_management(
         device_managed_policy_present(),
+        cfg!(windows),
         Path::new(system_policy_path()),
         Some(&system),
         test_override,
     )
 }
 
-/// `load_from`, unless device management delivers the policy: then the
-/// shell stops at that, whatever the file says.
+/// `load_from`, unless device management delivers the policy, or (when
+/// `unchecked_file`, on Windows) a system policy file is installed: then the
+/// shell stops at that, whatever the file says, and never parses it. On
+/// Windows the server holds the file to its owner and ACL rule (#4524) and
+/// the shell cannot yet (#4599), so the shell trusts nothing in it. Anything
+/// at the path counts, and an error other than "not found" counts too.
 fn load_with_device_management(
     device_managed: bool,
+    unchecked_file: bool,
     system: &Path,
     ownership: Option<&Ownership>,
     test_override: Option<&str>,
 ) -> InstalledPolicy {
     if device_managed {
         return InstalledPolicy::DeviceManaged;
+    }
+    if unchecked_file {
+        match std::fs::symlink_metadata(system) {
+            Ok(_) => return InstalledPolicy::UncheckedPolicyFile,
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return InstalledPolicy::UncheckedPolicyFile
+            }
+            Err(_) => {}
+        }
     }
     load_from(system, ownership, test_override)
 }
@@ -814,6 +840,9 @@ pub fn route(policy: &InstalledPolicy, channel: &str, endpoints: &[String]) -> U
         InstalledPolicy::DeviceManaged => {
             return UpdateRoute::Refused(DEVICE_MANAGED_SENTENCE.into())
         }
+        InstalledPolicy::UncheckedPolicyFile => {
+            return UpdateRoute::Refused(UNCHECKED_POLICY_FILE_SENTENCE.into())
+        }
         InstalledPolicy::Limited(limit) => limit,
     };
     if limit.off {
@@ -935,7 +964,7 @@ mod tests {
         )
         .unwrap();
         let device_managed = macos_profile_present(&root_with_profile("device-managed-root"));
-        let policy = load_with_device_management(device_managed, &system, None, None);
+        let policy = load_with_device_management(device_managed, false, &system, None, None);
         assert_eq!(policy, InstalledPolicy::DeviceManaged);
         let route = route(&policy, "stable", &[STABLE.to_string()]);
         assert_eq!(
@@ -946,14 +975,56 @@ mod tests {
         assert!(!download_allowed(&route, "https://mirror.example/station/stable-desktop/latest.json"));
         // Without device management the same file is read as before.
         assert!(matches!(
-            load_with_device_management(false, &system, None, None),
+            load_with_device_management(false, false, &system, None, None),
             InstalledPolicy::Limited(_)
         ));
         // And with neither, there is no policy.
         assert_eq!(
-            load_with_device_management(false, &dir.join("absent.json"), None, None),
+            load_with_device_management(false, false, &dir.join("absent.json"), None, None),
             InstalledPolicy::Unlimited
         );
+    }
+
+    #[test]
+    fn on_windows_an_installed_policy_file_turns_desktop_updates_off_unread() {
+        // A usable file that names a mirror; on Windows the shell reads none
+        // of it until it can check the file's owner and ACL (#4599).
+        let dir = scratch("unchecked-policy-file");
+        let system = dir.join("policy.json");
+        std::fs::write(
+            &system,
+            r#"{"schemaVersion":1,"organization":"Acme","limits":{"updates":{"feedUrl":"https://mirror.example/station"}}}"#,
+        )
+        .unwrap();
+        let policy = load_with_device_management(false, true, &system, None, None);
+        assert_eq!(policy, InstalledPolicy::UncheckedPolicyFile);
+        let route = route(&policy, "stable", &[STABLE.to_string()]);
+        assert_eq!(
+            route,
+            UpdateRoute::Refused(UNCHECKED_POLICY_FILE_SENTENCE.into())
+        );
+        assert!(!download_allowed(&route, STABLE));
+        // Not parsed: a file that is not even JSON reads the same way.
+        std::fs::write(&system, b"not json").unwrap();
+        assert_eq!(
+            load_with_device_management(false, true, &system, None, None),
+            InstalledPolicy::UncheckedPolicyFile
+        );
+        // Without a file there, the shell reads as before (here: no policy).
+        assert_eq!(
+            load_with_device_management(false, true, &dir.join("absent.json"), None, None),
+            InstalledPolicy::Unlimited
+        );
+        // Elsewhere the same file is read as before.
+        std::fs::write(
+            &system,
+            r#"{"schemaVersion":1,"organization":"Acme","limits":{"updates":{"mode":"off"}}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            load_with_device_management(false, false, &system, None, None),
+            InstalledPolicy::Limited(UpdatesLimit { off: true, .. })
+        ));
     }
 
     #[cfg(windows)]
