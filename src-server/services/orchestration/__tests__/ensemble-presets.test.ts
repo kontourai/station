@@ -389,7 +389,10 @@ describe('Ensemble file preparation', () => {
     const reopened = await loadEnsemblePreset(fixture.path);
     expect(reopened.json).toBe(fixture.json);
     expect(reopened.sha256).toBe(fixture.input.expectedPresetHash);
-    expect(reopened).toEqual(first);
+    expect(reopened.path).toBe(first.path);
+    expect(reopened.preset).toEqual(first.preset);
+    expect(() => reopened.assertCurrent()).not.toThrow();
+    expect(() => first.assertCurrent()).not.toThrow();
     const plan = await prepareEnsemble(fixture.input, fixture.host);
     expect(plan.stationmaster).toBe('lead');
     expect(plan.source.sha256).toBe(first.sha256);
@@ -442,10 +445,10 @@ describe('Ensemble file preparation', () => {
       ],
     ]);
     expect(plan.members[0].brief).toBe(
-      `  Task\r\n\n\n  Plan\r\n\n\n\n\n🙂\n\n${plan.roster}`,
+      `  Task\r\n\n\n  Plan\r\n\n\n\n\n🙂\n\nYour Ensemble member assignment:\n{"id":"lead","codename":"Rune","role":"coordinate","stationmaster":true}\n\n${plan.roster}`,
     );
     expect(plan.members[1].brief).toBe(
-      `  Task\r\n\n\nReview independently.\n\n${plan.roster}`,
+      `  Task\r\n\n\nReview independently.\n\nYour Ensemble member assignment:\n{"id":"review","codename":"Flux","role":"review","stationmaster":false}\n\n${plan.roster}`,
     );
     expect(JSON.stringify(plan)).not.toContain('host-only');
     expect(() =>

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type BigIntStats, constants } from 'node:fs';
+import { type BigIntStats, constants, lstatSync, realpathSync } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import {
@@ -27,6 +27,8 @@ export interface EnsemblePresetFile {
   readonly json: string;
   readonly sha256: string;
   readonly preset: EnsemblePreset;
+  /** Recheck the loaded file identity after later awaited observations. */
+  assertCurrent(): void;
 }
 
 function hash(bytes: string | Buffer): string {
@@ -111,6 +113,18 @@ export async function loadEnsemblePreset(
       json,
       sha256: hash(bytes),
       preset: parseEnsemblePreset(json),
+      assertCurrent() {
+        if (
+          realpathSync(path) !== path ||
+          !sameFile(expected, lstatSync(path, { bigint: true }))
+        )
+          throw new Error('Ensemble: preset file identity changed');
+        for (const ancestor of ancestors) {
+          const current = lstatSync(ancestor.path, { bigint: true });
+          if (!current.isDirectory() || !sameEntry(ancestor.stat, current))
+            throw new Error('Ensemble: preset file identity changed');
+        }
+      },
     });
   } finally {
     await file.close();

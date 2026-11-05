@@ -4,6 +4,7 @@ import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AgentMetadata } from '@kontourai/station-contracts/agent';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
 import {
   ENSEMBLE_INSPECTION_LIMITS,
   type EnsembleInspection,
@@ -35,7 +36,13 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-async function fixture({ observeProject = true } = {}) {
+async function fixture({
+  observeProject = true,
+  readGroup,
+}: {
+  observeProject?: boolean;
+  readGroup?: (groupId: string) => Promise<CliSessionGroupView>;
+} = {}) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = await realpath(temp('ensemble-inspection-'));
   const home = join(root, 'home');
@@ -231,7 +238,11 @@ async function fixture({ observeProject = true } = {}) {
   });
   app.route(
     '/api/orchestration/ensembles',
-    createEnsembleInspectionRoutes(service, resolvePrincipal),
+    createEnsembleInspectionRoutes(
+      service,
+      resolvePrincipal,
+      readGroup ? () => readGroup : undefined,
+    ),
   );
   const hash = (await presets.loadEnsemblePreset(path)).sha256;
   const request = (body: unknown, token = local.credential) =>
@@ -1070,3 +1081,77 @@ test('ordinary standalone inspection declares no recorded-group reader and refus
   expect(await bound.text()).not.toContain('SECRET_ROLE');
   for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
 });
+
+test.each(['preset', 'knowledge'] as const)(
+  'bound inspection refuses %s changes during its final awaited group read',
+  async (changed) => {
+    let reads = 0;
+    const f = await fixture({
+      readGroup: async () => {
+        if (++reads === 2) {
+          if (changed === 'preset')
+            await writeFile(
+              f.path,
+              f.bytes.replace('SECRET_ROLE', 'CHANGED_ROLE'),
+            );
+          else
+            await f.storage.saveKnowledgeStoreRoot({
+              id: 'root:late',
+              scope: { kind: 'project', projectSlug: 'project' },
+              adapterId: 'kit-default-store',
+              storeRoot: 'UNREAD_STORE',
+              displayName: 'Late root',
+              createdAt: '2026-11-05T00:00:00Z',
+            });
+        }
+        return group;
+      },
+    });
+    const group: CliSessionGroupView = {
+      version: 'station.cli-session-group/v1',
+      groupId: 'recorded',
+      revision: 1,
+      supervision: 'not-running',
+      cancelled: false,
+      deadlineAt: Date.now() + 60000,
+      maxConcurrent: 1,
+      maxDispatches: 1,
+      dispatchCount: 0,
+      guarantees: {
+        authority: 'station-session',
+        portableFlowLineage: 'unbound',
+        dollarCap: 'unavailable',
+        tokenCap: 'unavailable',
+        physicalAttemptCap: 'unavailable',
+        deadline: 'stop-admission-and-request-interruption',
+      },
+      flow: null,
+      acceptance: 'unassessed',
+      preset: {
+        presetId: f.preset.id,
+        name: f.preset.name,
+        sha256: f.input.expectedPresetHash,
+        stationmaster: f.preset.stationmaster,
+        members: f.preset.members.map((m) => ({
+          seatId: m.id,
+          codename: m.codename,
+          color: m.color,
+          role: m.role,
+        })),
+      },
+      members: [{ seatId: 'lead', needs: [], state: 'pending' }],
+    };
+    const response = await f.request({
+      path: f.path,
+      expectedPresetHash: f.input.expectedPresetHash,
+      bindings: {},
+      groupId: group.groupId,
+    });
+    expect(reads).toBe(2);
+    expect(response.status, await response.clone().text()).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: 'ensemble_inspection_stale',
+    });
+    for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
+  },
+);

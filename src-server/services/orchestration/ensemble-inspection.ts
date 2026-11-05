@@ -180,8 +180,20 @@ export class EnsembleInspectionService {
         input.verifyAuthentication)
     )
       throw new EnsembleInspectionRefusal('ensemble_inspection_invalid');
+    const readRecordedGroup = async (groupId: string) => {
+      try {
+        return await readGroup!(groupId);
+      } catch (error) {
+        if (
+          error instanceof CliSessionGroupUnavailable &&
+          error.code === 'group_snapshot_changed'
+        )
+          throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
+        throw error;
+      }
+    };
     const group = input.groupId
-      ? structuredClone(await readGroup!(input.groupId))
+      ? structuredClone(await readRecordedGroup(input.groupId))
       : undefined;
     if (group && (!Number.isSafeInteger(group.revision) || group.revision < 0))
       throw new EnsembleInspectionRefusal('ensemble_inspection_unavailable');
@@ -926,11 +938,6 @@ export class EnsembleInspectionService {
     )
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
     try {
-      if (
-        knowledgeRoots &&
-        this.owners.observeKnowledgeRoots?.().digest !== knowledgeRoots.digest
-      )
-        throw new Error('Knowledge registry changed');
       fence();
     } catch {
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
@@ -946,11 +953,17 @@ export class EnsembleInspectionService {
     }
     if (
       group &&
-      JSON.stringify(await readGroup!(group.groupId)) !== groupSnapshot
+      JSON.stringify(await readRecordedGroup(group.groupId)) !== groupSnapshot
     )
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
     current();
     try {
+      if ('assertCurrent' in source) source.assertCurrent();
+      if (
+        knowledgeRoots &&
+        this.owners.observeKnowledgeRoots?.().digest !== knowledgeRoots.digest
+      )
+        throw new Error('Knowledge registry changed');
       fence();
     } catch {
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');

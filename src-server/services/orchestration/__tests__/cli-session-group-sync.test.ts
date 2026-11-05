@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import * as Flow from '@kontourai/flow';
 import { expect, test, vi } from 'vitest';
 import { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -7,6 +8,11 @@ import {
   type CliSessionGroupHost,
   CliSessionGroups,
 } from '../cli-session-group.js';
+
+vi.mock('@kontourai/flow', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@kontourai/flow')>();
+  return { ...actual, loadRun: vi.fn(actual.loadRun) };
+});
 
 const temporary = trackTempDirs();
 
@@ -266,4 +272,33 @@ test('unsupported retained members refuse before any reserved sync attempt or pr
     members: [{ status: 'pending', attempts: 0 }],
   });
   expect(f.host.sync).not.toHaveBeenCalled();
+});
+
+test('a current group view refuses a stored revision changed while its Flow read awaited', async () => {
+  const f = await fixture();
+  const actual =
+    await vi.importActual<typeof import('@kontourai/flow')>('@kontourai/flow');
+  const before = f.readDisk().revision;
+  let changed = false;
+  vi.mocked(Flow.loadRun).mockImplementation(async (...args) => {
+    const run = await actual.loadRun(...args);
+    if (!changed) {
+      changed = true;
+      await f.groups.cancel(f.group.groupId, 'owner', f.host);
+    }
+    return run;
+  });
+  try {
+    await expect(
+      f.groups.view(f.group.groupId, 'owner', undefined, {
+        requireCurrent: true,
+      }),
+    ).rejects.toMatchObject({ code: 'group_snapshot_changed' });
+    expect(changed).toBe(true);
+    expect((await f.groups.view(f.group.groupId, 'owner')).revision).toBe(
+      before + 1,
+    );
+  } finally {
+    vi.mocked(Flow.loadRun).mockImplementation(actual.loadRun);
+  }
 });

@@ -752,8 +752,15 @@ export class CliSessionGroups<T> {
     groupId: string,
     owner: string,
     authorizeInspection?: () => void,
+    options?: { requireCurrent: boolean },
   ): Promise<CliSessionGroupView> {
-    return this.#view(groupId, owner, authorizeInspection);
+    return this.#view(
+      groupId,
+      owner,
+      authorizeInspection,
+      undefined,
+      options?.requireCurrent,
+    );
   }
 
   async #view(
@@ -761,6 +768,7 @@ export class CliSessionGroups<T> {
     owner: string,
     authorizeInspection?: () => void,
     syncSelection?: { operationId: string; replayed: boolean },
+    requireCurrent = false,
   ): Promise<CliSessionGroupView> {
     const record = this.read(groupId, owner, authorizeInspection);
     const contextSync =
@@ -775,6 +783,12 @@ export class CliSessionGroups<T> {
       ? await loadRun(groupId, join(this.root, groupId))
       : null;
     authorizeInspection?.();
+    if (
+      requireCurrent &&
+      canonicalJson(this.read(groupId, owner, authorizeInspection)) !==
+        canonicalJson(record)
+    )
+      throw new CliSessionGroupUnavailable('group_snapshot_changed');
     const supervising = this.active.has(groupId) && !syncSelection?.replayed;
     return {
       version: 'station.cli-session-group/v1',

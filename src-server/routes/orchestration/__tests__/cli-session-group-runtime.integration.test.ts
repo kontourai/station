@@ -3,6 +3,7 @@ import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
+import * as Flow from '@kontourai/flow';
 import {
   agentId,
   engineConnectionId,
@@ -91,6 +92,11 @@ import {
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 type StationControlReply = ReturnType<typeof JSONRPCResponseSchema.parse>;
+
+vi.mock('@kontourai/flow', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@kontourai/flow')>();
+  return { ...actual, loadRun: vi.fn(actual.loadRun) };
+});
 
 const temporary = trackTempDirs();
 const cleanup: (() => Promise<void>)[] = [];
@@ -2241,6 +2247,33 @@ test('bound inspection joins only the authorized recorded preset group and prese
   }
   expect(JSON.stringify(data)).not.toContain('Private synced context');
   expect(f.adapter.turns).toHaveLength(6);
+  const actualFlow =
+    await vi.importActual<typeof import('@kontourai/flow')>('@kontourai/flow');
+  let groupReads = 0;
+  vi.mocked(Flow.loadRun).mockImplementation(async (...args) => {
+    const run = await actualFlow.loadRun(...args);
+    if (++groupReads === 2) {
+      const cancelled = await f.app.request(
+        `/api/orchestration/session-groups/${group.groupId}/cancel`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${local.credential}` },
+        },
+      );
+      expect(cancelled.status).toBe(200);
+    }
+    return run;
+  });
+  try {
+    const raced = await inspect();
+    expect(groupReads).toBeGreaterThanOrEqual(2);
+    expect(raced.status, await raced.clone().text()).toBe(409);
+    expect(await raced.json()).toMatchObject({
+      code: 'ensemble_inspection_stale',
+    });
+  } finally {
+    vi.mocked(Flow.loadRun).mockImplementation(actualFlow.loadRun);
+  }
   const canRead = vi
     .spyOn(f.service, 'canUserReadSession')
     .mockReturnValue(false);

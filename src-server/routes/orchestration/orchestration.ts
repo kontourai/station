@@ -4955,6 +4955,7 @@ export function createOrchestrationRoutes(
                   groupId,
                   authority.owner,
                   authority.authorizeInspection,
+                  { requireCurrent: true },
                 );
                 authority.assertReadable(group);
                 authority.assertCurrent();
