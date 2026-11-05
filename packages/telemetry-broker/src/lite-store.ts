@@ -1,27 +1,28 @@
-import {
-  createHash,
-  createHmac,
-  randomBytes,
-  timingSafeEqual,
-} from 'node:crypto';
-import type {
-  StationDailyPing,
-  TelemetryFeedback,
-  TelemetryPublisherId,
-} from '@kontourai/station-contracts/product-telemetry';
-import { TELEMETRY_CHANNELS } from '@kontourai/station-contracts/product-telemetry';
-import {
-  parseStationDailyPing,
-  parseTelemetryFeedback,
-} from '@kontourai/station-shared/product-telemetry';
+import { createHash, randomBytes } from 'node:crypto';
+import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import type { QueryResultRow } from 'pg';
 import { BrokerError } from './broker-error.js';
-import { noisyCount } from './noisy-count.js';
+import {
+  admitLiteObservation,
+  exactLiteView,
+  finalizationFailureCode,
+  isPublisherId,
+  LITE_EXACT_ROW_LIMIT,
+  LITE_PAGE_CELLS,
+  LITE_PUBLISHER_CATALOG_LIMIT,
+  LITE_SOURCE_LIMIT,
+  type LiteFinalizationFailure,
+  parseLiteSource,
+  parsePublicationCursor,
+  publicationCursorSigner,
+  publicationPage,
+  publishedWeekCells,
+  verifyPublicationCursor,
+} from './lite-core.js';
 import {
   PUBLIC_COUNT_EPSILON,
   PUBLIC_FIELDS,
   PUBLIC_SENSITIVITY,
-  publicDomain,
 } from './public-domain.js';
 
 interface LiteSqlClient {
@@ -121,6 +122,19 @@ INSERT INTO station_telemetry.lite_publication_fence VALUES(true,'active');
 `;
 const PUBLICATION_FENCE_DIGEST = createHash('sha256')
   .update(PUBLICATION_FENCE_SCHEMA)
+  .digest('hex');
+// Owner decision (2026-11-04): a source names the product, and the ping's
+// own channel selects the ring, so one baked-in URL serves every ring.
+// Existing single-channel sources become one-element lists.
+const SOURCE_CHANNELS_SCHEMA = `
+ALTER TABLE station_telemetry.lite_sources ADD COLUMN channels jsonb;
+UPDATE station_telemetry.lite_sources SET channels=jsonb_build_array(channel);
+ALTER TABLE station_telemetry.lite_sources ALTER COLUMN channels SET NOT NULL;
+ALTER TABLE station_telemetry.lite_sources ADD CHECK (jsonb_typeof(channels)='array' AND jsonb_array_length(channels)>0);
+ALTER TABLE station_telemetry.lite_sources DROP COLUMN channel;
+`;
+const SOURCE_CHANNELS_DIGEST = createHash('sha256')
+  .update(SOURCE_CHANNELS_SCHEMA)
   .digest('hex');
 const PUBLICATION_SUPPRESSED =
   'publication permanently suppressed; history unreconciled';
@@ -264,6 +278,17 @@ export async function migrateLite(client: LiteSqlClient): Promise<void> {
     );
   } else if (fence.rows[0].digest !== PUBLICATION_FENCE_DIGEST)
     throw new BrokerError('schema_incompatible');
+  const sourceChannels = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=10',
+  );
+  if (!sourceChannels.rows.length) {
+    await client.query(SOURCE_CHANNELS_SCHEMA);
+    await client.query(
+      'INSERT INTO station_telemetry.migrations VALUES(10,$1)',
+      [SOURCE_CHANNELS_DIGEST],
+    );
+  } else if (sourceChannels.rows[0].digest !== SOURCE_CHANNELS_DIGEST)
+    throw new BrokerError('schema_incompatible');
 }
 
 export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
@@ -292,7 +317,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     'lite_publication_fence|singleton:boolean:true,state:text:true',
     'lite_publications|week:date:true,publisher:text:true',
     'lite_published|week:date:true,publisher:text:true,dimension:text:true,value:text:true,estimate:bigint:true',
-    'lite_sources|id:text:true,publisher:text:true,channel:text:true,registry_ids:jsonb:true,release_versions:jsonb:true,enabled:boolean:true,version_policy:text:true',
+    'lite_sources|id:text:true,publisher:text:true,registry_ids:jsonb:true,release_versions:jsonb:true,enabled:boolean:true,version_policy:text:true,channels:jsonb:true',
     'publisher_keys|publisher:text:true,credential_hash:bytea:true',
   ];
   if (
@@ -339,6 +364,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
         'lite_published|CHECK ((estimate >= 0))',
         'lite_published|FOREIGN KEY (week, publisher) REFERENCES station_telemetry.lite_publications(week, publisher)',
         'lite_published|PRIMARY KEY (week, publisher, dimension, value)',
+        "lite_sources|CHECK (((jsonb_typeof(channels) = 'array'::text) AND (jsonb_array_length(channels) > 0)))",
         "lite_sources|CHECK ((version_policy = ANY (ARRAY['catalog'::text, 'semver'::text])))",
         'lite_sources|PRIMARY KEY (id)',
         'publisher_keys|CHECK ((octet_length(credential_hash) = 32))',
@@ -404,6 +430,11 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
   );
   if (fenceMarker.rows[0]?.digest !== PUBLICATION_FENCE_DIGEST)
     throw new BrokerError('schema_incompatible');
+  const channelsMarker = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=10',
+  );
+  if (channelsMarker.rows[0]?.digest !== SOURCE_CHANNELS_DIGEST)
+    throw new BrokerError('schema_incompatible');
   await publicationSuppressed(client);
   const secret = await client.query(
     'SELECT octet_length(secret) AS length FROM station_telemetry.lite_noise_key WHERE singleton',
@@ -424,30 +455,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     throw new BrokerError('schema_incompatible');
 }
 
-function publisherId(value: unknown): value is TelemetryPublisherId {
-  return (
-    typeof value === 'string' &&
-    value.length <= 128 &&
-    (value === 'kontour' ||
-      value === 'operator' ||
-      /^publisher:\S{1,118}$/u.test(value))
-  );
-}
 const hash = (value: string) => createHash('sha256').update(value).digest();
-function catalog(
-  value: unknown,
-  limit: number,
-  maxLength: number,
-): value is string[] {
-  return (
-    Array.isArray(value) &&
-    value.length <= limit &&
-    value.every(
-      (v) => typeof v === 'string' && v.length > 0 && v.length <= maxLength,
-    ) &&
-    new Set(value).size === value.length
-  );
-}
 type Transaction = <T>(
   operation: (client: LiteSqlClient) => Promise<T>,
 ) => Promise<T>;
@@ -497,33 +505,7 @@ export class LiteRepository {
   ) {}
 
   async createSource(value: unknown): Promise<void> {
-    if (!value || typeof value !== 'object' || Array.isArray(value))
-      throw new BrokerError('invalid_source');
-    const v = value as Record<string, unknown>;
-    if (
-      (Object.keys(v).length !== 5 && Object.keys(v).length !== 6) ||
-      Object.keys(v).some(
-        (k) =>
-          ![
-            'id',
-            'publisher',
-            'channel',
-            'registryIds',
-            'releaseVersions',
-            'versionPolicy',
-          ].includes(k),
-      ) ||
-      typeof v.id !== 'string' ||
-      !/^[a-z0-9][a-z0-9._-]{0,79}$/.test(v.id) ||
-      !publisherId(v.publisher) ||
-      ![...TELEMETRY_CHANNELS, 'unknown'].some((c) => c === v.channel) ||
-      !catalog(v.registryIds, 1000, 128) ||
-      !catalog(v.releaseVersions, 1000, 64) ||
-      (v.versionPolicy !== undefined &&
-        v.versionPolicy !== 'catalog' &&
-        v.versionPolicy !== 'semver')
-    )
-      throw new BrokerError('invalid_source');
+    const v = parseLiteSource(value);
     await this.transaction(async (client) => {
       await this.admission(client);
       const catalogs = await client.query<{ versions: number; ids: number }>(
@@ -541,24 +523,24 @@ export class LiteRepository {
         ],
       );
       if (
-        Number(catalogs.rows[0].versions) > 1000 ||
-        Number(catalogs.rows[0].ids) > 1000
+        Number(catalogs.rows[0].versions) > LITE_PUBLISHER_CATALOG_LIMIT ||
+        Number(catalogs.rows[0].ids) > LITE_PUBLISHER_CATALOG_LIMIT
       )
         throw new BrokerError('invalid_source');
       const bounds = await client.query(
         'SELECT count(*) AS count FROM station_telemetry.lite_sources',
       );
-      if (Number(bounds.rows[0].count) >= 10000)
+      if (Number(bounds.rows[0].count) >= LITE_SOURCE_LIMIT)
         throw new BrokerError('storage_limit');
       const result = await client.query(
-        'INSERT INTO station_telemetry.lite_sources(id,publisher,channel,registry_ids,release_versions,version_policy) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
+        'INSERT INTO station_telemetry.lite_sources(id,publisher,channels,registry_ids,release_versions,version_policy) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
         [
           v.id,
           v.publisher,
-          v.channel,
+          JSON.stringify(v.channels),
           JSON.stringify(v.registryIds),
           JSON.stringify(v.releaseVersions),
-          v.versionPolicy ?? 'catalog',
+          v.versionPolicy,
         ],
       );
       if (!result.rowCount) throw new BrokerError('source_conflict');
@@ -580,7 +562,7 @@ export class LiteRepository {
     credentialHash: unknown,
   ): Promise<void> {
     if (
-      !publisherId(publisher) ||
+      !isPublisherId(publisher) ||
       typeof credentialHash !== 'string' ||
       !/^[0-9a-f]{64}$/.test(credentialHash)
     )
@@ -591,7 +573,10 @@ export class LiteRepository {
         'SELECT count(*) AS count, bool_or(publisher=$1) AS replacing FROM station_telemetry.publisher_keys',
         [publisher],
       );
-      if (Number(count.rows[0].count) >= 10000 && !count.rows[0].replacing)
+      if (
+        Number(count.rows[0].count) >= LITE_SOURCE_LIMIT &&
+        !count.rows[0].replacing
+      )
         throw new BrokerError('storage_limit');
       await client.query(
         'INSERT INTO station_telemetry.publisher_keys VALUES($1,$2) ON CONFLICT(publisher) DO UPDATE SET credential_hash=excluded.credential_hash',
@@ -634,25 +619,25 @@ export class LiteRepository {
       await this.admission(client);
       const source = await client.query<{
         publisher: TelemetryPublisherId;
-        channel: string;
+        channels: string[];
         registry_ids: string[];
         release_versions: string[];
         version_policy: 'catalog' | 'semver';
       }>(
-        'SELECT publisher,channel,registry_ids,release_versions,version_policy FROM station_telemetry.lite_sources WHERE id=$1 AND enabled FOR UPDATE',
+        'SELECT publisher,channels,registry_ids,release_versions,version_policy FROM station_telemetry.lite_sources WHERE id=$1 AND enabled FOR UPDATE',
         [sourceId],
       );
       const config = source.rows[0];
       if (!config) throw new BrokerError('source_unauthorized');
-      if (value && typeof value === 'object' && 'action' in value) {
-        let feedback: TelemetryFeedback;
-        try {
-          feedback = parseTelemetryFeedback(value);
-        } catch {
-          throw new BrokerError('invalid_daily_ping');
-        }
-        if (feedback.publisher !== config.publisher)
-          throw new BrokerError('invalid_daily_ping');
+      const observation = admitLiteObservation(value, {
+        publisher: config.publisher,
+        channels: config.channels,
+        registryIds: config.registry_ids,
+        releaseVersions: config.release_versions,
+        versionPolicy: config.version_policy,
+      });
+      if (observation.kind === 'feedback') {
+        const { feedback } = observation;
         await client.query(
           "SELECT pg_advisory_xact_lock_shared(hashtext('station.lite.day'),hashtext($1))",
           [clientKey.day],
@@ -688,36 +673,10 @@ export class LiteRepository {
         }
         return { accepted: true };
       }
-      let ping: StationDailyPing;
-      try {
-        ping = parseStationDailyPing(
-          value,
-          config.registry_ids,
-          config.version_policy === 'semver'
-            ? 'semver'
-            : config.release_versions,
-        );
-      } catch {
-        throw new BrokerError('invalid_daily_ping');
-      }
-      if (ping.channel !== config.channel)
-        throw new BrokerError('invalid_daily_ping');
-      ping = {
-        ...ping,
-        event_id: ping.event_id.toLowerCase(),
-        engine_connect_failures: ping.engine_connect_failures.map(
-          ({ engine, bucket }) => ({ engine, bucket }),
-        ),
-      };
-      ping.surfaces_today.sort();
-      ping.engines_used_today.sort();
-      ping.public_plugins_enabled.sort();
-      ping.engine_connect_failures.sort((a, b) =>
-        a.engine.localeCompare(b.engine),
-      );
+      const { ping, json } = observation;
       const prior = await client.query<{ same: boolean }>(
         'SELECT ping=$3::jsonb AS same FROM station_telemetry.lite_pings WHERE source_id=$1 AND event_id=$2',
-        [sourceId, ping.event_id, JSON.stringify(ping)],
+        [sourceId, ping.event_id, json],
       );
       if (prior.rows.length) {
         if (!prior.rows[0].same) throw new BrokerError('event_conflict');
@@ -735,7 +694,7 @@ export class LiteRepository {
       // Assign arrival day after admission. A midnight waiter must retry with the new salt.
       const inserted = await client.query<{ day: string }>(
         "INSERT INTO station_telemetry.lite_pings(source_id,event_id,ping) VALUES($1,$2,$3) RETURNING to_char(received_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
-        [sourceId, ping.event_id, JSON.stringify(ping)],
+        [sourceId, ping.event_id, json],
       );
       const day = inserted.rows[0].day;
       if (clientKey.day !== day || !/^[0-9a-f]{64}$/.test(clientKey.hash))
@@ -743,11 +702,7 @@ export class LiteRepository {
       await client.query(
         'UPDATE station_telemetry.lite_capacity SET pings=pings+1 WHERE singleton',
       );
-      const contributions: Record<string, string[]> = Object.create(null);
-      for (const [dimension, value] of marginals(ping)) {
-        contributions[dimension] ??= [];
-        contributions[dimension].push(value);
-      }
+      const { contributions } = observation;
       await client.query(
         'UPDATE station_telemetry.lite_pings SET client_hash=$3,contributions=$4 WHERE source_id=$1 AND event_id=$2',
         [
@@ -766,12 +721,7 @@ export class LiteRepository {
       return { accepted: true };
     });
   }
-  private finalizationFailures: {
-    period: string;
-    publisher: string;
-    stage: 'daily' | 'weekly';
-    code: string;
-  }[] = [];
+  private finalizationFailures: LiteFinalizationFailure[] = [];
   private omittedFailures = 0;
   private recordFailure(
     period: string,
@@ -780,16 +730,7 @@ export class LiteRepository {
     error: unknown,
   ) {
     // Never expose SQL messages, which can contain contributor or rejected data.
-    const code =
-      error instanceof BrokerError
-        ? error.code
-        : error &&
-            typeof error === 'object' &&
-            'code' in error &&
-            typeof error.code === 'string' &&
-            /^[0-9A-Z]{5}$/.test(error.code)
-          ? error.code
-          : 'job_failed';
+    const code = finalizationFailureCode(error);
     if (this.finalizationFailures.length < 100)
       this.finalizationFailures.push({ period, publisher, stage, code });
     else this.omittedFailures++;
@@ -955,8 +896,9 @@ export class LiteRepository {
             registry_ids: string[];
             release_versions: string[];
             version_policy: string;
+            channels: string[];
           }>(
-            'SELECT registry_ids,release_versions,version_policy FROM station_telemetry.lite_sources WHERE publisher=$1 ORDER BY id',
+            'SELECT registry_ids,release_versions,version_policy,channels FROM station_telemetry.lite_sources WHERE publisher=$1 ORDER BY id',
             [publisher],
           );
           const counts = await client.query<{
@@ -979,27 +921,23 @@ export class LiteRepository {
           const secret = await client.query<{ secret: Buffer }>(
             'SELECT secret FROM station_telemetry.lite_noise_key WHERE singleton',
           );
-          const domain = publicDomain(config.rows);
+          const cells = publishedWeekCells(
+            secret.rows[0].secret,
+            publisher,
+            week,
+            config.rows,
+            totals,
+          );
           // Bounded insert batches; every coordinate, including true zero, is released exactly once.
-          for (let offset = 0; offset < domain.length; offset += 200) {
-            const cells = domain
-              .slice(offset, offset + 200)
-              .map(([dimension, value]) => ({
-                dimension,
-                value,
-                estimate: noisyCount(
-                  secret.rows[0].secret,
-                  publisher,
-                  week,
-                  dimension,
-                  value,
-                  totals.get(JSON.stringify([dimension, value])) ?? 0,
-                ),
-              }));
+          for (let offset = 0; offset < cells.length; offset += 200) {
             await client.query(
               `INSERT INTO station_telemetry.lite_published
           SELECT $1::date,$2,dimension,value,estimate FROM jsonb_to_recordset($3::jsonb) AS c(dimension text,value text,estimate bigint)`,
-              [week, publisher, JSON.stringify(cells)],
+              [
+                week,
+                publisher,
+                JSON.stringify(cells.slice(offset, offset + 200)),
+              ],
             );
           }
           return true;
@@ -1038,7 +976,7 @@ export class LiteRepository {
         };
       if (key !== undefined && !this.hasCredential(publisher, key))
         throw new BrokerError('source_unauthorized');
-      const after = parseCursor(cursor);
+      const after = parsePublicationCursor(cursor);
       if (key !== undefined) {
         const authority = await client.query(
           'SELECT publisher FROM station_telemetry.publisher_keys WHERE publisher=$1 AND credential_hash=$2 FOR SHARE',
@@ -1053,22 +991,8 @@ export class LiteRepository {
       }>(
         "SELECT secret,to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day FROM station_telemetry.lite_noise_key WHERE singleton",
       );
-      const sign = (payload: string) =>
-        createHmac('sha256', keys[0].secret)
-          .update(
-            JSON.stringify(['station-lite-cursor-v1', publisher, payload]),
-          )
-          .digest();
-      if (cursor) {
-        const [payload, signature] = cursor.split('.');
-        const supplied = Buffer.from(signature, 'base64url');
-        if (
-          supplied.length !== 32 ||
-          supplied.toString('base64url') !== signature ||
-          !timingSafeEqual(sign(payload), supplied)
-        )
-          throw new BrokerError('invalid_cursor');
-      }
+      const sign = publicationCursorSigner(keys[0].secret, publisher);
+      verifyPublicationCursor(cursor, sign);
       const rows = await client.query<{
         week: string;
         dimension: string;
@@ -1080,7 +1004,7 @@ export class LiteRepository {
         WHERE publisher=$1 AND week>=date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date-28
         AND week<date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date
         AND ($2::date IS NULL OR (week,dimension,value)>($2::date,$3,$4))
-        ORDER BY week,dimension,value LIMIT 201`,
+        ORDER BY week,dimension,value LIMIT ${LITE_PAGE_CELLS + 1}`,
         [publisher, ...(after ?? [null, null, null])],
       );
       const bounds = await client.query<{ coordinates: number }>(
@@ -1091,34 +1015,13 @@ export class LiteRepository {
         ) weeks`,
         [publisher],
       );
-      const cells = rows.rows
-        .slice(0, 200)
-        .map((row) => ({ ...row, estimate: Number(row.estimate) }));
-      const last = cells.at(-1);
-      return {
-        scope: 'weekly-fixed-domain-marginals',
+      return publicationPage({
         publisher,
-        privacyUnit: 'distinct-daily-network-key-per-value',
-        countUnit: 'network-days',
         databaseDay: keys[0].day,
-        epsilonPerCount: PUBLIC_COUNT_EPSILON,
-        epsilonPerAddedPing: PUBLIC_SENSITIVITY * PUBLIC_COUNT_EPSILON,
-        maximumPublicCoordinatesPerWeek: bounds.rows[0].coordinates,
-        maximumNetworkWeekEpsilon:
-          7 * bounds.rows[0].coordinates * PUBLIC_COUNT_EPSILON,
-        weekBasis: 'ISO-8601-UTC-receiver-arrival',
-        deliveryCoverage: 'unknown',
-        cells,
-        nextCursor:
-          rows.rows.length > 200 && last
-            ? (() => {
-                const payload = Buffer.from(
-                  JSON.stringify([last.week, last.dimension, last.value]),
-                ).toString('base64url');
-                return `${payload}.${sign(payload).toString('base64url')}`;
-              })()
-            : null,
-      };
+        rows: rows.rows,
+        maximumCoordinates: bounds.rows[0].coordinates,
+        sign,
+      });
     });
   }
   async exact(period: 'daily' | 'weekly') {
@@ -1128,93 +1031,23 @@ export class LiteRepository {
         publisher,dimension,value,sum(pings)::text AS pings,sum(clients)::text AS contributors
         FROM station_telemetry.lite_marginals WHERE finalized AND day >= ${period === 'daily' ? "(statement_timestamp() AT TIME ZONE 'UTC')::date-30" : "date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date-28"}
         AND day < ${period === 'daily' ? "(statement_timestamp() AT TIME ZONE 'UTC')::date" : "date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date"}
-        GROUP BY 1,publisher,dimension,value ORDER BY 1,publisher,dimension,value LIMIT 10001`);
+        GROUP BY 1,publisher,dimension,value ORDER BY 1,publisher,dimension,value LIMIT ${LITE_EXACT_ROW_LIMIT + 1}`);
       const feedback = await client.query(
         `SELECT to_char(${period === 'daily' ? 'day' : "date_trunc('week',day)"},'YYYY-MM-DD') AS period,
         publisher,action,reason,count(*)::text AS count FROM station_telemetry.lite_feedback
         WHERE day >= (statement_timestamp() AT TIME ZONE 'UTC')::date-($1::integer-1)
-        GROUP BY 1,publisher,action,reason ORDER BY 1,publisher,action,reason LIMIT 10001`,
+        GROUP BY 1,publisher,action,reason ORDER BY 1,publisher,action,reason LIMIT ${LITE_EXACT_ROW_LIMIT + 1}`,
         [this.retentionDays],
       );
-      if (rows.rows.length > 10000 || feedback.rows.length > 10000)
-        throw new BrokerError('query_limit');
-      return {
-        feedback: feedback.rows,
-        feedbackWindow: `retained-${this.retentionDays}-UTC-days-including-current`,
-        scope: 'operator-exact-marginals',
-        finalizationDiagnostics: {
-          failures: [...this.finalizationFailures],
-          omittedFailures: this.omittedFailures,
-          lifetime: 'latest-pass-this-process',
-        },
+      return exactLiteView({
         period,
-        contributorUnit:
-          period === 'daily'
-            ? 'distinct-daily-network-keys'
-            : 'sum-of-distinct-daily-network-keys',
-        window:
-          period === 'daily'
-            ? 'last-30-closed-UTC-days'
-            : 'last-4-closed-ISO-weeks',
         marginals: rows.rows,
-      };
+        feedback: feedback.rows,
+        retentionDays: this.retentionDays,
+        failures: this.finalizationFailures,
+        omittedFailures: this.omittedFailures,
+        lifetime: 'latest-pass-this-process',
+      });
     });
-  }
-}
-
-function marginals(ping: StationDailyPing): [string, string][] {
-  const { event: _event, event_id: _id, ...fields } = ping;
-  const bucketCount = (count: number) =>
-    count === 0
-      ? '0'
-      : count === 1
-        ? '1'
-        : count <= 5
-          ? '2-5'
-          : count <= 20
-            ? '6-20'
-            : '21+';
-  return Object.entries(fields).flatMap(([dimension, value]) => {
-    const values =
-      typeof value === 'number'
-        ? [bucketCount(value)]
-        : Array.isArray(value)
-          ? value.length
-            ? value.map((v) =>
-                typeof v === 'object' ? `${v.engine}:${v.bucket}` : String(v),
-              )
-            : ['none']
-          : [String(value)];
-    return values.map((value): [string, string] => [dimension, value]);
-  });
-}
-
-function parseCursor(cursor?: string): [string, string, string] | undefined {
-  if (cursor === undefined) return;
-  try {
-    if (
-      cursor.length > 1024 ||
-      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(cursor)
-    )
-      throw new Error();
-    const v: unknown = JSON.parse(
-      Buffer.from(cursor.split('.')[0], 'base64url').toString(),
-    );
-    if (
-      !Array.isArray(v) ||
-      v.length !== 3 ||
-      !v.every((x) => typeof x === 'string') ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(v[0]) ||
-      !Number.isFinite(Date.parse(v[0])) ||
-      v[0].startsWith('0000') ||
-      new Date(v[0]).toISOString().slice(0, 10) !== v[0] ||
-      new Date(v[0]).getUTCDay() !== 1 ||
-      !PUBLIC_FIELDS.includes(v[1]) ||
-      v[2].length > 128
-    )
-      throw new Error();
-    return [v[0], v[1], v[2]];
-  } catch {
-    throw new BrokerError('invalid_cursor');
   }
 }

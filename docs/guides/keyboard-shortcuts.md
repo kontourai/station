@@ -4,7 +4,7 @@ Open **Settings → Keyboard shortcuts** to search Station commands by their
 plain-language names.
 
 - Select a shortcut, then press the new key combination.
-- If the editor finds another registered command using it, Station explains the conflict before
+- If a new binding or restored default belongs to another registered command, Station explains the conflict before
   saving. Choose **Replace** to clear the old command and move the shortcut, or
   **Cancel** to leave both unchanged.
 - **Clear** removes a shortcut. **Restore default** returns the command to its
@@ -93,9 +93,9 @@ stack's Back/Forward chords decline inside editors that own those keys
 (CodeMirror, the terminal, a contenteditable editor) and when there is
 nowhere to go; in plain text fields they are the stack's Back and Forward.
 
-The editor's replacement dialog considers the first matching enabled command.
-It does not analyze all conditional overlaps or guarantee that restoring a
-default leaves every chord conflict-free. The catalog also depends on which
+The editor's replacement dialog considers the first matching enabled command,
+including when restoring a default. It does not analyze all conditional overlaps
+or guarantee that every chord is conflict-free. The catalog also depends on which
 components have registered their commands in the current view.
 
 Custom bindings containing Space currently store a key name that does not match

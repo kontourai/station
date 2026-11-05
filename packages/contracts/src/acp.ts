@@ -679,3 +679,33 @@ export const ACPStatus = {
 } as const;
 
 export type ACPStatusValue = (typeof ACPStatus)[keyof typeof ACPStatus];
+
+/**
+ * #2569: advertised ACP session mode ids known to skip the agent's own
+ * permission prompts: the ACP equivalent of approval `never`. ACP's
+ * `SessionMode` carries no semantics of its own, so this is an explicit list
+ * of what real agents advertise, checked against their source:
+ *
+ * - `bypassPermissions`: claude-code-acp (`src/session-mode.ts`, "Accepts all
+ *   permissions"; it also declares `_meta.kind: "full_access"`).
+ * - `full-access`: codex-acp (`src/thread.rs`, the no-sandbox
+ *   `PermissionProfile::Disabled` preset).
+ * - `yolo`: gemini-cli (`packages/cli/src/acp/acpUtils.ts`, "Auto-approves
+ *   all tools").
+ *
+ * Deliberately not guessed from other names; the server also classifies a
+ * mode an agent declares with `_meta.kind: "full_access"`.
+ */
+export const KNOWN_FULL_ACCESS_ACP_MODE_IDS: readonly string[] = [
+  'bypassPermissions',
+  'full-access',
+  'yolo',
+];
+
+/** Whether `value` names a mode on {@link KNOWN_FULL_ACCESS_ACP_MODE_IDS}. */
+export function isKnownFullAccessAcpModeId(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    KNOWN_FULL_ACCESS_ACP_MODE_IDS.includes(value.trim())
+  );
+}

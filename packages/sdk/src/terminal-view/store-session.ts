@@ -46,6 +46,7 @@ export function toTerminalViewSession(
       // and its queries must not be answered again.
       let catchingUp = true;
       const unsubscribe = session.subscribe({
+        // The store credits the host only once the view has parsed it.
         output: (data) =>
           listener.output(
             data,

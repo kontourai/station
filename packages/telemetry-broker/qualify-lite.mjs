@@ -112,7 +112,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey, privateBase) {
             {
               id,
               publisher: pub,
-              channel: 'stable',
+              channels: ['stable'],
               registryIds: [
                 'public.plugin',
                 ...Array.from({ length: 21 }, (_, i) => `public.${i}`),

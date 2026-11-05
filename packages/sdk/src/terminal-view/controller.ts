@@ -35,6 +35,13 @@ import { WebGl2Renderer } from './render/webgl2-renderer';
 import type { TerminalViewSession, TerminalViewSessionState } from './session';
 import { observeThemeChanges, readTerminalTheme } from './theme';
 
+/**
+ * Output a view may have posted to its worker and not yet seen parsed. A
+ * store session waits for each parse, so it stays near one credit window;
+ * this bounds a session that does not wait.
+ */
+const MAX_PENDING_WORKER_BYTES = 4 * 1024 * 1024;
+
 export interface ControllerSnapshot {
   status: 'loading' | 'ready' | 'error';
   /** Why the engine could not start or stopped; shown with a retry. */
@@ -138,6 +145,14 @@ export class TerminalController {
   private previousLines: string[] = [];
   private mirrorTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  private writeId = 0;
+  /** Output posted to the worker and not yet parsed, oldest first. */
+  private pendingWrites: { id: number; bytes: number; resolve: () => void }[] =
+    [];
+  private pendingWorkerBytes = 0;
+  private resyncing = false;
+  /** Times the screen was rebuilt from replay after output fell behind. */
+  resyncs = 0;
   private resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -209,7 +224,13 @@ export class TerminalController {
           this.update({ title: clean });
           this.options.onTitle?.(clean);
         },
-        error: (message) => this.update({ status: 'error', failure: message }),
+        error: (message) => {
+          // A stopped engine parses nothing more; it must not hold credit.
+          this.releaseWrites();
+          this.update({ status: 'error', failure: message });
+        },
+        written: (id) => this.written(id),
+        overflow: () => this.resync(),
       });
       this.engine.send({
         type: 'init',
@@ -265,6 +286,7 @@ export class TerminalController {
 
   dispose(): void {
     this.disposed = true;
+    this.releaseWrites();
     this.unsubscribeSession?.();
     for (const cleanup of this.cleanups.splice(0)) cleanup();
     if (this.rafHandle) cancelAnimationFrame(this.rafHandle);
@@ -295,16 +317,7 @@ export class TerminalController {
     if (this.drawn) this.engine?.send({ type: 'reset' });
     this.drawn = false;
     this.unsubscribeSession = session.subscribe({
-      output: (bytes, kind) => {
-        // The session owns these bytes: it hands the same array to every view
-        // of the session and keeps it for views that subscribe later.
-        // Transferring it would detach it under them, so the worker gets a copy.
-        const owned = bytes.slice();
-        this.drawn = true;
-        this.engine?.send({ type: 'write', bytes: owned, mode: kind }, [
-          owned.buffer,
-        ]);
-      },
+      output: (bytes, kind) => this.toEngine(bytes, kind),
       reset: () => this.engine?.send({ type: 'reset' }),
       state: (state, detail) => {
         this.update({ session: state });
@@ -316,6 +329,73 @@ export class TerminalController {
     });
     if (this.size && this.measured && !session.readOnly)
       session.resize(this.size.cols, this.size.rows);
+  }
+
+  /**
+   * Posts output to the worker. The promise settles once the worker parsed
+   * it, which is when the session may credit the host for it, so a fast
+   * program waits for the emulator instead of queueing in front of it.
+   * Output past `MAX_PENDING_WORKER_BYTES` (a session that does not wait)
+   * is not dropped silently: the view resets and replays what the session
+   * retains.
+   */
+  private toEngine(
+    bytes: Uint8Array,
+    kind: 'replay' | 'live',
+  ): Promise<void> | undefined {
+    const engine = this.engine;
+    if (!engine || this.resyncing || this.disposed) return undefined;
+    if (this.pendingWorkerBytes + bytes.byteLength > MAX_PENDING_WORKER_BYTES) {
+      this.resync();
+      return undefined;
+    }
+    // The session owns these bytes: it hands the same array to every view
+    // of the session and keeps it for views that subscribe later.
+    // Transferring it would detach it under them, so the worker gets a copy.
+    const owned = bytes.slice();
+    this.drawn = true;
+    const id = ++this.writeId;
+    return new Promise((resolve) => {
+      this.pendingWrites.push({ id, bytes: owned.byteLength, resolve });
+      this.pendingWorkerBytes += owned.byteLength;
+      engine.send({ type: 'write', id, bytes: owned, mode: kind }, [
+        owned.buffer,
+      ]);
+    });
+  }
+
+  private written(id: number): void {
+    while (this.pendingWrites.length && this.pendingWrites[0]!.id <= id) {
+      const write = this.pendingWrites.shift()!;
+      this.pendingWorkerBytes -= write.bytes;
+      write.resolve();
+    }
+  }
+
+  private releaseWrites(): void {
+    for (const write of this.pendingWrites.splice(0)) write.resolve();
+    this.pendingWorkerBytes = 0;
+  }
+
+  /**
+   * The worker fell behind its bound or dropped output: start this view's
+   * screen over from the session's retained output (as a reattach does)
+   * instead of rendering a stream with a gap in it.
+   */
+  private resync(): void {
+    if (this.resyncing) return;
+    this.resyncing = true;
+    this.releaseWrites();
+    // Not from inside the session's delivery: resubscribing there would
+    // hand this view the chunk being delivered twice.
+    queueMicrotask(() => {
+      this.resyncing = false;
+      const session = this.session;
+      if (!session || this.disposed || !this.engine) return;
+      this.resyncs++;
+      this.drawn = true;
+      this.attachSession(session);
+    });
   }
 
   private toSession(bytes: Uint8Array, source: 'input' | 'reply'): void {
@@ -615,16 +695,20 @@ export class TerminalController {
       input.value = '';
     });
     // Soft keyboards often report key 229/Unidentified and deliver text here.
+    // The keyboard's own edit is left to happen: an Android keyboard tracks
+    // what it believes the field holds, and when its insertions were
+    // cancelled it later deletes from an empty field, which fires no event
+    // and loses the Backspace (#3994). The field is emptied when a line is
+    // sent, which the keyboard does see.
     on(input, 'beforeinput', (event: InputEvent) => {
       if (this.composing || event.isComposing) return;
       if (event.inputType === 'insertText' && event.data) {
-        event.preventDefault();
         this.sendText(event.data);
       } else if (event.inputType === 'insertLineBreak') {
         event.preventDefault();
         this.sendText('\r');
+        input.value = '';
       } else if (event.inputType === 'deleteContentBackward') {
-        event.preventDefault();
         this.sendKey('Backspace', 'Backspace');
       }
     });
@@ -682,6 +766,9 @@ export class TerminalController {
     }
     this.typed();
     this.engine?.send({ type: 'key', input: key });
+    // The line is sent: start the keyboard's view of the field afresh.
+    if (key.code === 'Enter' || key.code === 'NumpadEnter')
+      this.elements.input.value = '';
   }
 
   private runViewAction(action: NonNullable<ViewKeyAction>): void {

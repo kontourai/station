@@ -60,6 +60,7 @@ import { z } from 'zod/v3';
 import {
   ManagedSettingLockedError,
   managedSettingRefusalBody,
+  projectUpdatesWithoutLockedFields,
 } from '../../domain/managed-settings.js';
 import {
   FileStorageAlreadyExistsError,
@@ -77,6 +78,10 @@ import {
   mayGrantFullAccess,
   WORKING_DIRECTORY_NOT_GRANTED_CODE,
 } from '../../security/coding-authority.js';
+import {
+  managedApprovalCeilingRefusalBody,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -962,6 +967,16 @@ export function createProjectRoutes(
     'Starting new chats at full access needs full-access permission. No changes were saved.';
 
   /**
+   * The 403 for a refused full-access default. #4518: under a managed
+   * ceiling below full access no grant could help, so it is the managed one.
+   */
+  function fullAccessDefaultRefusal(c: Context) {
+    return managedCeilingRefuses('never')
+      ? c.json(managedApprovalCeilingRefusalBody(), 403)
+      : c.json({ success: false, error: FULL_ACCESS_DEFAULT_REFUSAL }, 403);
+  }
+
+  /**
    * #2412 review: a Project's working directory is what every coding route
    * is confined to, so whoever may set it decides where the coding routes
    * read, edit and run. Setting it (create) or changing it (update) is
@@ -1183,11 +1198,18 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
-      if (body.defaultApprovalMode === 'never' && !mayRaiseFullAccessDefault(c))
-        return c.json(
-          { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
-          403,
-        );
+      if (
+        body.defaultApprovalMode === 'never' &&
+        !mayRaiseFullAccessDefault(c)
+      ) {
+        // A lock on the approval default (#4517) outranks the ceiling and
+        // grant refusals (#4518), as on update, where the service checks
+        // locks first: no value is accepted, so the ceiling's "the broadest
+        // allowed is …" would point at a value that is refused too. Throws
+        // `ManagedSettingLockedError` when the field is locked.
+        projectUpdatesWithoutLockedFields(body);
+        return fullAccessDefaultRefusal(c);
+      }
       if (body.starterLayoutId !== undefined && !body.creationRequestId)
         return c.json(
           {
@@ -1496,10 +1518,7 @@ export function createProjectRoutes(
       return c.json({ success: true, data: updated });
     } catch (error: unknown) {
       if (error instanceof ProjectFullAccessDefaultRefusal)
-        return c.json(
-          { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
-          403,
-        );
+        return fullAccessDefaultRefusal(c);
       if (error instanceof ManagedSettingLockedError)
         return c.json(managedSettingRefusalBody(error), 403);
       return c.json(

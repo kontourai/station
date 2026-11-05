@@ -661,6 +661,7 @@ import {
 } from '../../services/access/personal-token-store.js';
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
+import { AGENT_TERMINAL_UNBOUND_PROJECT } from '../../services/acp/acp-session-terminals.js';
 import {
   ENGINE_SIGN_IN_TERMINAL_SCOPE,
   EngineSignInService,
@@ -938,7 +939,11 @@ import {
   registerTerminalGateway,
   TerminalGateway,
 } from '../../services/terminal/terminal-gateway.js';
-import { resolveTerminalRetention } from '../../services/terminal/terminal-retention.js';
+import { TerminalJournalPrivacy } from '../../services/terminal/terminal-journal-privacy.js';
+import {
+  defaultTerminalJournalDirectory,
+  resolveTerminalRetention,
+} from '../../services/terminal/terminal-retention.js';
 import { TerminalRunRequests } from '../../services/terminal/terminal-runs.js';
 import {
   confineTerminalDirectory,
@@ -954,6 +959,8 @@ import {
   type WorkItemObserver,
 } from '../../services/work-item-providers/github-work-item-observer.js';
 import { LocalWorkItemProvider } from '../../services/work-item-providers/local-work-item-provider.js';
+import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
+import type { TaskFollowUpWake } from '../../services/work-item-providers/task-follow-up-wake.js';
 import {
   checkpointCaptureOps,
   clientCompatHandshakes,
@@ -1241,6 +1248,11 @@ export interface ConfigureRuntimeRoutesContext {
    * route-local GitHub observer.
    */
   workItemObserver?: WorkItemObserver;
+  /**
+   * The runtime's Task follow-up store (#4508): the poller writes it and the
+   * Task brief reads it. Absent: no follow-ups are polled or shown.
+   */
+  taskFollowUps?: TaskFollowUpStoreHolder;
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
@@ -1653,6 +1665,10 @@ export function configureRuntimeRoutes(
 ): ConfigureRuntimeRoutesResult {
   let contextEfficiency: ReturnType<typeof composeContextEfficiencyRuntime>;
   let durableTaskQuestionWake: TaskQuestionWake | undefined;
+  /** #4508: assigned once the support services compose the follow-up wake. */
+  let durableTaskFollowUpWake:
+    | Pick<TaskFollowUpWake, 'placementRefusal'>
+    | undefined;
   // Shared by the operator grant routes and diagnostics admission.
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
@@ -3396,6 +3412,7 @@ export function configureRuntimeRoutes(
       localProjectIdFor(context.projectService, identity),
     roomRuntime: () => projectTaskRoomRuntime,
     workItemObserver,
+    ...(context.taskFollowUps ? { followUps: context.taskFollowUps } : {}),
     logger: context.logger,
   });
   context.orchestrationService.bindMandatoryTaskContextVerifier(
@@ -6844,6 +6861,11 @@ export function configureRuntimeRoutes(
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,
           userId: input.payload.actor.userId,
+        }) ??
+        durableTaskFollowUpWake?.placementRefusal({
+          conversationId: input.conversationId,
+          clientTurnId: input.clientTurnId,
+          userId: input.payload.actor.userId,
         }),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
@@ -7258,7 +7280,8 @@ export function configureRuntimeRoutes(
   const scopedTerminalSummary = (record: {
     terminalId: string;
     projectId: string;
-    cwd: string;
+    /** Absent when the caller may only observe the terminal. */
+    cwd?: string;
     status: string;
     pid: number | null;
     exitCode?: number | null;
@@ -7273,7 +7296,7 @@ export function configureRuntimeRoutes(
         .find((project) => project.id === record.projectId)?.slug ??
       record.projectId,
     terminalId: record.terminalId,
-    cwd: record.cwd,
+    cwd: record.cwd ?? null,
     status:
       record.status === 'starting' || record.status === 'running'
         ? record.status
@@ -9564,6 +9587,13 @@ export function configureRuntimeRoutes(
     authorityFor: conversationReadAuthorityForRequest,
     projects: context.projectService,
   });
+  // A chat's directory read as its recorded owner: for a server-side read
+  // with no request (an agent's terminal run, a restore after restart).
+  const ownerSessionDirectory = orchestrationSessionWorkspaceDirectory({
+    sessions: context.orchestrationService,
+    authorityFor: (ownerId: string) => readAuthorityForExecution(ownerId),
+    projects: context.projectService,
+  });
   // Commands agents ask to run (#3994); absent on a host with no terminals.
   let terminalRuns: TerminalRunRequests | undefined;
   /**
@@ -9668,12 +9698,40 @@ export function configureRuntimeRoutes(
             env: { PATH: await resolveAugmentedPath() },
           };
         },
-        // A shell that ended because its host restarted reopens only while
-        // its Project still exists; the session re-checks its directory.
-        restorable: async (scope) =>
-          context.storageAdapter
-            .listProjects()
-            .some((item) => item.id === scope.projectId),
+        // #492: a shell that ended because its host restarted reopens only
+        // inside its binding as it resolves now: the Project's directory, or
+        // a chat's directory read as that chat's recorded owner (no request
+        // exists at startup). The session refuses a directory outside it.
+        restoreRoot: (scope) =>
+          terminalBindingRoot(scope, async (slug, thread) => {
+            const ownerId =
+              context.orchestrationService.sessionRecordedOwnerId(thread);
+            if (!ownerId)
+              throw new TerminalSessionRefusal(
+                'its chat has no recorded owner',
+              );
+            return ownerSessionDirectory(ownerId, slug, thread);
+          }).catch((error: unknown) => {
+            if (!(error instanceof TerminalSessionRefusal)) throw error;
+            throw new TerminalSessionRefusal(
+              error.message === 'Project not found'
+                ? 'its Project no longer exists'
+                : error.message === 'Terminal binding unavailable'
+                  ? "its chat's directory is no longer available"
+                  : error.message,
+            );
+          }),
+        // #2497: the service has required a host-confined session in its
+        // own thread binding; its Project must also still exist.
+        authorizeAgentCommand: async (_execution, scope) => {
+          if (
+            scope.projectId !== AGENT_TERMINAL_UNBOUND_PROJECT &&
+            !context.storageAdapter
+              .listProjects()
+              .some((item) => item.id === scope.projectId)
+          )
+            throw new TerminalSessionRefusal('Project not found');
+        },
         // A package script by name or an approved agent command; the
         // executable is found here, never taken from a request.
         resolveCommand: async (_request, _scope, program, cwd) =>
@@ -9788,11 +9846,6 @@ export function configureRuntimeRoutes(
       }),
     );
   }
-  const ownerSessionDirectory = orchestrationSessionWorkspaceDirectory({
-    sessions: context.orchestrationService,
-    authorityFor: (ownerId: string) => readAuthorityForExecution(ownerId),
-    projects: context.projectService,
-  });
   context.app.route(
     '/api/orchestration/station-control/terminal-runs',
     createAgentTerminalRunRoutes({
@@ -11185,6 +11238,12 @@ export function configureRuntimeRoutes(
       },
       async () =>
         (await context.getUsageTelemetry?.()?.canSaveAuthorFull()) ?? false,
+      (directory) =>
+        new TerminalJournalPrivacy(
+          defaultTerminalJournalDirectory(
+            context.configLoader.getProjectHomeDir(),
+          ),
+        ).problem(directory),
     ),
   );
   context.app.route(
@@ -11589,6 +11648,7 @@ export function configureRuntimeRoutes(
     pushSigningKeyStore,
     pushGatewayAvailable,
     agentActivityPublisher,
+    taskFollowUpWake,
   } = configureRuntimeSupportServices(context, flowRunService, {
     threadInbox: () => threadInbox,
     focus: focusPresence,
@@ -11608,6 +11668,7 @@ export function configureRuntimeRoutes(
       ),
   });
   automationActions = runtimeAutomationActions;
+  durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
   contextEfficiency?.start();
   const nativeInvocationRunReader =

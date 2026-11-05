@@ -3,10 +3,15 @@ import {
   toolPolicyDeliveryExplanation,
   toolPolicyDeliveryLabel,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  clampApprovalModeToCeiling,
+  managedApprovalCeiling,
+} from '@kontourai/station-contracts/managed-policy-status';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import { useRef, useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
+import { useManagedPolicySummary } from '../../contexts/ManagedPolicyContext';
 import {
   type ApprovalMode,
   approvalModeChipLabel,
@@ -124,6 +129,7 @@ export function ApprovalModeChip({
   onChange,
 }: ApprovalModeChipProps) {
   const account = useAccountPreferences();
+  const policySummary = useManagedPolicySummary();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   if (!approvalModeKnobSupported(engineConnectionId)) {
@@ -163,9 +169,16 @@ export function ApprovalModeChip({
   // dead after session.configured (station#1933). Without an override, the
   // adapter's durable receipt is the authority — do not invent Ask/Never;
   // inherit the engine config (station#1950).
+  // #4518: an inherited default above the machine's managed ceiling starts
+  // the chat at the ceiling, so that is what the chip shows. A pick is shown
+  // as picked: one above the ceiling is refused by the server, never lowered.
   const displayedMode = isOverride
     ? effective.mode
-    : (appliedMode ?? effective.mode);
+    : (appliedMode ??
+      clampApprovalModeToCeiling(
+        effective.mode,
+        managedApprovalCeiling(policySummary),
+      ));
   const reviewerDisclosure =
     engineConnectionId === 'codex' &&
     (displayedMode === 'ask' || displayedMode === 'auto')
@@ -226,7 +239,9 @@ export function ApprovalModeChip({
           : effective.mode === 'connection-default' &&
               engineConnectionId === 'codex'
             ? "Codex's own settings"
-            : effective.label;
+            : displayedMode === effective.mode
+              ? effective.label
+              : approvalModeLabel(displayedMode);
   const chipText = isPendingApply
     ? `${approvalModeChipLabel('never')} · pending`
     : isPendingRestrict || isRefused
@@ -239,7 +254,7 @@ export function ApprovalModeChip({
             ? `${approvalModeChipLabel(appliedMode)} · kept`
             : 'Own settings'
           : agentDefaultShown
-            ? `${approvalModeChipLabel(effective.mode)} (agent default)`
+            ? `${approvalModeChipLabel(displayedMode)} (agent default)`
             : approvalModeChipLabel(displayedMode);
   const notAppliedNote =
     notApplied && isApprovalMode(sessionOverride)
@@ -249,7 +264,7 @@ export function ApprovalModeChip({
     isOverride
       ? selectedLabel
       : agentDefaultShown
-        ? `${chipText} — ${approvalModeLabel(effective.mode)}`
+        ? `${chipText} — ${approvalModeLabel(displayedMode)}`
         : (notApplied && appliedMode) || chipText === selectedLabel
           ? // #4390: the inherited mode's short and full names are both
             // "Default"; never announce "Default — Default".

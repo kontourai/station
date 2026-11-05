@@ -1388,6 +1388,10 @@ export {
   useUpdateFeaturePreviewMutation,
 } from './query-domains/featurePreviews.js';
 export {
+  fetchManagedPolicyStatus,
+  useManagedPolicyStatusQuery,
+} from './query-domains/managedPolicy.js';
+export {
   fetchNotificationPreferences,
   type NotificationPreferencesPatch,
   NotificationPreferencesRequestError,

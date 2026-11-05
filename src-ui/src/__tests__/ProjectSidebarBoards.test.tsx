@@ -45,7 +45,8 @@ const regionModel = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock('../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => regionModel.value,
 }));
-vi.mock('../build-info', () => ({
+vi.mock('../build-info', async (importActual) => ({
+  ...(await importActual<typeof import('../build-info')>()),
   buildInfo: { version: '0.1.2', commit: 'test' },
 }));
 

@@ -7,6 +7,7 @@ import {
   type ManagedPolicySourceDescriptor,
   type ManagedPolicyStatus,
   type ManagedPolicySummary,
+  managedApprovalModeName,
   managedSettingsSchemaError,
   parseManagedPolicyStatus,
   summarizeManagedPolicy,
@@ -34,6 +35,21 @@ import {
 const USAGE =
   'Usage: station policy check <file> [--json] | station policy show [--json]';
 const MANAGED_POLICY_ROUTE = '/api/settings/managed-policy';
+
+/**
+ * #4518: each limit the policy enforces, by name and value, e.g.
+ * "Approval ceiling: Ask first (maxApprovalMode: ask)".
+ */
+function describeLimits(limits: ManagedPolicySummary['limits']): string[] {
+  const lines: string[] = [];
+  if (limits.maxApprovalMode)
+    lines.push(
+      `    Approval ceiling: ${managedApprovalModeName(limits.maxApprovalMode)} (maxApprovalMode: ${limits.maxApprovalMode})${
+        limits.maxApprovalMode === 'never' ? ', restricts nothing' : ''
+      }`,
+    );
+  return lines.length === 0 ? ['  Limits: none'] : ['  Limits:', ...lines];
+}
 
 const SETTING_VALUE_DISPLAY_MAX_CHARS = 80;
 
@@ -74,12 +90,11 @@ function describeEffect(
   document: ManagedPolicyDocument,
   summary: ManagedPolicySummary,
 ): string[] {
-  const limits = Object.keys(document.limits ?? {}).length;
   return [
     `  Organization: ${summary.organization} (users see "Managed by ${summary.organization}")`,
     `  Support link: ${summary.supportUrl ?? 'none'}`,
     ...describeSettings(document),
-    `  Limits: ${limits === 0 ? 'none' : limits}`,
+    ...describeLimits(summary.limits),
   ];
 }
 
@@ -278,6 +293,8 @@ async function runShow(args: string[], json: boolean): Promise<void> {
     );
     console.log(`  Organization: ${installed.summary.organization}`);
     console.log(`  Support link: ${installed.summary.supportUrl ?? 'none'}`);
+    for (const line of describeLimits(installed.summary.limits))
+      console.log(line);
     console.log(`  Fingerprint: ${installed.digest}`);
   }
 

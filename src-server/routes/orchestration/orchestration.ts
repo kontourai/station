@@ -246,6 +246,9 @@ import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
+  managedApprovalCeilingFailure,
+  refuseAboveManagedCeiling,
+  refuseUngrantedCarriedFullAccess,
   refuseUngrantedFullAccess,
   refuseUngrantedPick,
   requestedApprovalMode,
@@ -2760,10 +2763,15 @@ export function createOrchestrationRoutes(
       if (postureRefused) return postureRefused;
       // #2436: full access needs the operator in person or a granted device,
       // whether the send carries it as a pick or asks for it on the options.
-      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+      // #4518: a pick above the managed ceiling is refused; a posture carried
+      // on the options is a default, lowered where it applies.
+      const ceilingRefused = refuseAboveManagedCeiling(c, [
         body.setApprovalMode,
-        requestedApprovalMode(body.target.model?.options),
       ]);
+      if (ceilingRefused) return ceilingRefused;
+      const fullAccessRefused =
+        refuseUngrantedFullAccess(c, [body.setApprovalMode]) ??
+        refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
       if (fullAccessRefused) return fullAccessRefused;
       const directoryRefused = refuseUngrantedDirectoryWorkspace(
         c,
@@ -3123,6 +3131,8 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      const ceilingFailure = managedApprovalCeilingFailure(c, error);
+      if (ceilingFailure) return ceilingFailure;
       if (error instanceof CreateRequestCapacityError)
         return c.json(
           {
@@ -3346,10 +3356,15 @@ export function createOrchestrationRoutes(
           },
         ]);
         if (postureRefused) return postureRefused;
-        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        // #4518: as on `/chat`, a pick above the managed ceiling is refused.
+        const ceilingRefused = refuseAboveManagedCeiling(c, [
           (body as { setApprovalMode?: unknown }).setApprovalMode,
-          requestedApprovalMode(body.target.model?.options),
         ]);
+        if (ceilingRefused) return ceilingRefused;
+        const fullAccessRefused =
+          refuseUngrantedFullAccess(c, [
+            (body as { setApprovalMode?: unknown }).setApprovalMode,
+          ]) ?? refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
         if (fullAccessRefused) return fullAccessRefused;
         const directoryRefused = refuseUngrantedDirectoryWorkspace(
           c,
@@ -3952,10 +3967,14 @@ export function createOrchestrationRoutes(
           },
         ]);
         if (postureRefused) return postureRefused;
-        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        // #4518: as on `/chat`, a pick above the managed ceiling is refused.
+        const ceilingRefused = refuseAboveManagedCeiling(c, [
           body.setApprovalMode,
-          requestedApprovalMode(body.model?.options),
         ]);
+        if (ceilingRefused) return ceilingRefused;
+        const fullAccessRefused =
+          refuseUngrantedFullAccess(c, [body.setApprovalMode]) ??
+          refuseUngrantedCarriedFullAccess(c, body.model?.options);
         if (fullAccessRefused) return fullAccessRefused;
         // #2377 slice C2a: a follow-up stays in the caller's scope.
         const scopeRefused = refuseOutOfScopeDispatch(
@@ -4029,6 +4048,8 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        const ceilingFailure = managedApprovalCeilingFailure(c, error);
+        if (ceilingFailure) return ceilingFailure;
         if (error instanceof ConversationTurnQueuedError)
           return queuedFollowUpResponse(
             c,
@@ -4133,12 +4154,11 @@ export function createOrchestrationRoutes(
         },
       ]);
       if (postureRefused) return postureRefused;
-      const fullAccessRefused = refuseUngrantedFullAccess(c, [
-        requestedApprovalMode(
-          (body as { target?: { model?: { options?: unknown } } }).target?.model
-            ?.options,
-        ),
-      ]);
+      const fullAccessRefused = refuseUngrantedCarriedFullAccess(
+        c,
+        (body as { target?: { model?: { options?: unknown } } }).target?.model
+          ?.options,
+      );
       if (fullAccessRefused) return fullAccessRefused;
       const directoryRefused = refuseUngrantedDirectoryWorkspace(
         c,
@@ -4513,6 +4533,8 @@ export function createOrchestrationRoutes(
       );
       return c.json({ success: true, data });
     } catch (error) {
+      const ceilingFailure = managedApprovalCeilingFailure(c, error);
+      if (ceilingFailure) return ceilingFailure;
       if (
         error instanceof DelegationFileRefusal ||
         error instanceof AttachmentStageError
@@ -4928,11 +4950,10 @@ export function createOrchestrationRoutes(
           },
         ]);
         if (postureRefused) return postureRefused;
-        const fullAccessRefused = refuseUngrantedFullAccess(c, [
-          requestedApprovalMode(
-            (getBody(c) as { modelOptions?: unknown }).modelOptions,
-          ),
-        ]);
+        const fullAccessRefused = refuseUngrantedCarriedFullAccess(
+          c,
+          (getBody(c) as { modelOptions?: unknown }).modelOptions,
+        );
         if (fullAccessRefused) return fullAccessRefused;
         // #2377 slice C2a: a follow-up to a task stays in the caller's scope.
         const scopeRefused = refuseOutOfScopeDispatch(
@@ -5113,6 +5134,8 @@ export function createOrchestrationRoutes(
             setTimeout(roomAdmission.releasePublication, 0);
         }
       } catch (error) {
+        const ceilingFailure = managedApprovalCeilingFailure(c, error);
+        if (ceilingFailure) return ceilingFailure;
         // #484 phase A: a portable continuation refused for lack of a
         // current offer admission is a 403, like the create-path refusal.
         // Same wrapped-code mapping as the create path.

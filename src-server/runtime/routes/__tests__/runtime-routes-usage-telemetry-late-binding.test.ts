@@ -15,7 +15,11 @@
  */
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
-import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  LITE_TELEMETRY_INVENTORY_REVISION,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+} from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -193,6 +197,21 @@ function configurationRuntime(
 }
 
 const makeTempDir = trackTempDirs();
+// The routes open the home's project room databases; on Windows an open
+// SQLite file keeps its home from being removed (EPERM). Registered after the
+// tracker, so it runs before the homes are removed.
+const openRoutes: { projectRoomRuntime: { close(): Promise<void> } }[] = [];
+afterEach(async () => {
+  for (const routes of openRoutes.splice(0))
+    await routes.projectRoomRuntime.close();
+});
+function configureRuntimeRoutes(
+  context: Parameters<typeof configureRuntimeRoutesProduction>[0],
+) {
+  const result = configureRuntimeRoutesProduction(context);
+  openRoutes.push(result);
+  return result;
+}
 
 const disclosure: Awaited<ReturnType<UsageTelemetryService['disclosure']>> = {
   acknowledged: false,
@@ -222,7 +241,7 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
     // Exactly the production lifecycle: `configureRuntimeRoutes` runs first
     // and the service does not exist yet.
     let usageTelemetry: UsageTelemetryService | undefined;
-    const result = configureRuntimeRoutesProduction(
+    const result = configureRuntimeRoutes(
       runtimeContext(app, homeDir, {
         usageTelemetry: undefined,
         getUsageTelemetry: () => usageTelemetry,
@@ -504,7 +523,7 @@ describe('persisted telemetry configuration during Agent activation', () => {
       const app = new Hono();
       bindOperatorPrincipal(app);
       let live: UsageTelemetryService | undefined;
-      const mounted = configureRuntimeRoutesProduction(
+      const mounted = configureRuntimeRoutes(
         runtimeContext(app, homeDir, {
           configLoader: loader,
           usageTelemetry: undefined,
@@ -1059,7 +1078,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
     }
     const app = new Hono();
     bindOperatorPrincipal(app);
-    const mounted = configureRuntimeRoutesProduction(
+    const mounted = configureRuntimeRoutes(
       runtimeContext(app, homeDir, {
         configLoader: loader,
         usageTelemetry: undefined,
@@ -1322,4 +1341,83 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         diagnosticFailure.message += `\nAfter cleanup: ${JSON.stringify(checkpoint())}`;
     }
   });
+});
+
+test('runtime telemetry construction carries daily accounting through to the emitted Lite ping', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime('2026-10-12T12:00:00Z');
+  vi.stubEnv('DO_NOT_TRACK', '0');
+  const home = makeTempDir('runtime-daily-accounting-');
+  const loader = new ConfigLoader({ projectHomeDir: home, watchFiles: false });
+  const config = {
+    defaultModel: '',
+    invokeModel: '',
+    structureModel: '',
+    productTelemetryEndpoint: 'https://receiver.test/lite',
+    telemetryTier: { operator: 'lite', kontour: 'off' },
+  } satisfies AppConfig;
+  const payloads: unknown[] = [];
+  vi.stubGlobal('fetch', async (_url: unknown, init: RequestInit) => {
+    payloads.push(JSON.parse(String(init.body)));
+    return new Response('{}');
+  });
+  const runtime = configurationRuntime(
+    loader,
+    { debug() {}, info() {}, warn() {}, error() {} },
+    config,
+  );
+  runtime.buildProvenanceSnapshot = null;
+  runtime.orchestrationEventStore = {
+    createPackageMcpAdmissionJournal: () => ({
+      selectedInstallations: () => ({ state: 'observed', installations: [] }),
+    }),
+  };
+  runtime.environmentSecurityService = {
+    devicePairing: { listDevices: () => [] },
+  };
+  let sourceRevision = 1;
+  const readDailyUsage = vi.fn((day: string, _scope: unknown) => [
+    {
+      sourceEventId: 'runtime-turn',
+      provider: 'claude',
+      messages: 0,
+      inputTokens: day === '2026-10-12' ? 10_000 * sourceRevision : 0,
+    },
+  ]);
+  runtime.orchestrationService = {
+    setUsageTelemetry() {},
+    listDailyUsage: readDailyUsage,
+  };
+  runtime.eventBus = new EventBus();
+  try {
+    await loader.loadAppConfig();
+    await loader.updateAppConfig(config);
+    await runtime.initializeUsageTelemetry();
+    await runtime.usageTelemetry.recordLiteNotice(
+      'operator',
+      LITE_TELEMETRY_INVENTORY_REVISION,
+    );
+    await runtime.usageTelemetry.track('engine_turn', {
+      engine: 'claude',
+      outcome: 'completed',
+    });
+    sourceRevision = 2;
+    vi.setSystemTime('2026-10-13T12:00:00Z');
+    await runtime.usageTelemetry.flushDaily();
+    expect(readDailyUsage).toHaveBeenCalledWith(
+      '2026-10-12',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).toMatchObject({
+      engine_tokens_today: [{ engine: 'claude', bucket: '10k-100k' }],
+    });
+  } finally {
+    await runtime.usageTelemetry?.shutdown();
+    loader.dispose();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  }
 });

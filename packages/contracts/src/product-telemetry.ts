@@ -122,6 +122,13 @@ export const TELEMETRY_SETUP_STEPS = [
   'pairing',
   'finish',
 ] as const;
+export const TELEMETRY_TOKEN_BUCKETS = [
+  '1-10k',
+  '10k-100k',
+  '100k-1M',
+  '1M-10M',
+  '10M+',
+] as const;
 export const TELEMETRY_COUNT_BUCKETS = ['0', '1', '2-3', '4+'] as const;
 export const TELEMETRY_SETTING_CATEGORIES = [
   'appearance',
@@ -211,6 +218,14 @@ export const STATION_DAILY_FIELDS = {
   home_replaced: { domain: 'boolean' },
   layouts_customized: { domain: 'boolean-or-unknown' },
   setup_abandoned_step: { domain: TELEMETRY_SETUP_STEPS },
+  engine_tokens_today: {
+    domain: 'engine-token-buckets',
+    meaning:
+      'Reported tokens from conversations run in Station; outside CLI use excluded. Declared disjoint cache components included; resumed cumulative jumps withheld; empty or unavailable omitted.',
+    buckets: TELEMETRY_TOKEN_BUCKETS,
+    arrayMax: 8,
+    optional: true,
+  },
   engine_connect_failures: { domain: 'engine-count-buckets', arrayMax: 8 },
   safe_mode_entered: { domain: 'count', max: 65535 },
   plugin_disabled_after_crash: { domain: 'count', max: 65535 },
@@ -229,14 +244,27 @@ type DailyDomain<D> = D extends readonly string[]
               engine: (typeof TELEMETRY_ENGINES)[number];
               bucket: (typeof TELEMETRY_COUNT_BUCKETS)[number];
             }
-          : string;
+          : D extends 'engine-token-buckets'
+            ? {
+                engine: (typeof TELEMETRY_ENGINES)[number];
+                bucket: (typeof TELEMETRY_TOKEN_BUCKETS)[number];
+              }
+            : string;
 type DailyField<F extends { domain: unknown }> = F extends { arrayMax: number }
   ? DailyDomain<F['domain']>[]
   : DailyDomain<F['domain']>;
 export type StationDailyPing = {
-  [K in keyof typeof STATION_DAILY_FIELDS]: DailyField<
-    (typeof STATION_DAILY_FIELDS)[K]
-  >;
+  [K in keyof typeof STATION_DAILY_FIELDS as (typeof STATION_DAILY_FIELDS)[K] extends {
+    optional: true;
+  }
+    ? never
+    : K]: DailyField<(typeof STATION_DAILY_FIELDS)[K]>;
+} & {
+  [K in keyof typeof STATION_DAILY_FIELDS as (typeof STATION_DAILY_FIELDS)[K] extends {
+    optional: true;
+  }
+    ? K
+    : never]?: DailyField<(typeof STATION_DAILY_FIELDS)[K]>;
 };
 export interface TelemetryLiteNoticeReceipt {
   publisher: TelemetryPublisherId;

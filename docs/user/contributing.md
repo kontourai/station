@@ -1,5 +1,8 @@
 # Contributing to Station
 
+Help make Station a coding workspace people choose for themselves and can
+grow into shared project work. Useful contributions improve coding, remote
+continuity, review, scoped collaboration, or public plugin capabilities.
 Use the route that best protects people and keeps a proposed change useful.
 The [repository contribution guide](https://github.com/kontourai/station/blob/main/CONTRIBUTING.md)
 owns the current development and verification instructions.
@@ -23,8 +26,11 @@ excerpt that explains the problem.
 If you submit a pull request, explain the user outcome, the related issue and
 closure condition, the evidence you obtained, anything `NOT_VERIFIED`, the
 risk and rollback plan, and what you personally inspected. If AI tools helped,
-identify the tools and material areas, then personally inspect the submitted
-change; do not disclose prompts or private context.
+identify the tools and material areas, list any agent sessions (resumable
+session identifiers, models, session count, and token totals where the tool
+records them), end agent-made commits with an `Agent-Session:` trailer, then
+personally inspect the submitted change; do not disclose prompts, transcripts,
+or private context.
 
 ## External forks
 

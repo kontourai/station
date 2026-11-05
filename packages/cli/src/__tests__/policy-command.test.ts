@@ -73,6 +73,7 @@ describe('station policy check', () => {
       'Organization: Acme (users see "Managed by Acme")',
     );
     expect(result.stdout).toMatch(/Fingerprint: sha256:[0-9a-f]{64}/);
+    expect(result.stdout).toContain('Limits: none');
 
     const json = check(path, '--json');
     expect(json.status).toBe(0);
@@ -80,6 +81,60 @@ describe('station policy check', () => {
       valid: true,
       path,
       summary: { organization: 'Acme', lockedSettings: [], limits: {} },
+    });
+  }, 120_000);
+
+  test('names the approval ceiling and its value', () => {
+    const path = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { maxApprovalMode: 'ask' },
+      }),
+    );
+    const result = check(path);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      'Limits:\n    Approval ceiling: Ask first (maxApprovalMode: ask)\n',
+    );
+    expect(result.stdout).not.toContain('Limits: 1');
+  }, 120_000);
+
+  // #4517 + #4518 merged: one policy with settings and a limit prints both.
+  test('prints the locked settings and the approval ceiling of one policy', () => {
+    const path = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        settings: {
+          defaultMaxTurns: { value: 40, locked: true },
+          checkoutStaleAfterDays: { value: 9, locked: false },
+          defaultApprovalMode: { value: 'ask', locked: true },
+        },
+        limits: { maxApprovalMode: 'auto' },
+      }),
+    );
+    const result = check(path);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Managed settings: 3');
+    expect(result.stdout).toMatch(/defaultMaxTurns \([^)]+\): locked to 40;/);
+    expect(result.stdout).toMatch(
+      /defaultApprovalMode \([^)]+\): locked to "ask";/,
+    );
+    expect(result.stdout).toMatch(
+      /checkoutStaleAfterDays \([^)]+\): defaults to 9 where nothing closer is set/,
+    );
+    expect(result.stdout).toContain(
+      'Limits:\n    Approval ceiling: Auto (maxApprovalMode: auto)\n',
+    );
+
+    const json = check(path, '--json');
+    expect(json.status, json.stderr).toBe(0);
+    expect(JSON.parse(json.stdout).summary).toEqual({
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: ['defaultApprovalMode', 'defaultMaxTurns'],
+      limits: { maxApprovalMode: 'auto' },
     });
   }, 120_000);
 
