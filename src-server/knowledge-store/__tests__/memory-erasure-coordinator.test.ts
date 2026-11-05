@@ -15,11 +15,11 @@ import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { SqliteVecIndexProvider } from '../../knowledge-index/sqlite-vec-index-provider.js';
 import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-index-routes.js';
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
-import { FakeNeo4jDriver } from './fake-neo4j-driver.js';
 import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
-import { syncRootToNeo4j } from '../neo4j-graph-sync.js';
 import { MemoryErasureCoordinator } from '../memory-erasure-coordinator.js';
 import { MemoryRootManager } from '../memory-root.js';
+import { syncRootToNeo4j } from '../neo4j-graph-sync.js';
+import { FakeNeo4jDriver } from './fake-neo4j-driver.js';
 
 const makeTempDir = trackTempDirs();
 const owner = sessionReadAuthorityFromRequest(
