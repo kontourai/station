@@ -6,8 +6,7 @@
  * sentence before any credential is read or any request is sent, and writes
  * that would set the engine up are refused.
  */
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   parseManagedPolicyDocument,
@@ -16,6 +15,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { agentConnectionFixture } from '../../../../tests/helpers/connection-fixtures.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 // Every child process the route starts; the Keychain read is
 // `/usr/bin/security` (other children, such as `ps` for process identity,
@@ -36,6 +36,8 @@ const { installManagedEngineLimits } = await import(
   '../../../security/managed-engine-limits.js'
 );
 const { createAppHomeRoutes } = await import('../app-home.js');
+
+const makeTempDir = trackTempDirs();
 
 const keychainReads = () =>
   execFile.mock.calls.filter(([command]) => command === '/usr/bin/security');
@@ -61,7 +63,7 @@ describe('a disallowed engine account at the app-home routes', () => {
   let app: ReturnType<typeof createAppHomeRoutes>;
 
   beforeEach(async () => {
-    home = await mkdtemp(join(tmpdir(), 'managed-account-usage-'));
+    home = makeTempDir('managed-account-usage-');
     // A signed-in Claude account in the connection's config folder.
     await writeFile(
       join(home, '.credentials.json'),
@@ -98,7 +100,6 @@ describe('a disallowed engine account at the app-home routes', () => {
   afterEach(async () => {
     install(null);
     globalThis.fetch = originalFetch;
-    await rm(home, { recursive: true, force: true });
   });
 
   test('with no engine allowed, usage reports unavailable with no credential read and no request', async () => {
@@ -165,7 +166,7 @@ describe('the credential seams every caller reaches', () => {
     const { detectClaudeAuthState } = await import(
       '../../../providers/auth/claude-auth.js'
     );
-    const dir = await mkdtemp(join(tmpdir(), 'managed-codex-auth-'));
+    const dir = makeTempDir('managed-codex-auth-');
     try {
       await writeFile(
         join(dir, 'auth.json'),
@@ -195,7 +196,7 @@ describe('the credential seams every caller reaches', () => {
       install(['codex']);
       expect(await detectCodexAuthState(dir)).toBe('authenticated');
     } finally {
-      await rm(dir, { recursive: true, force: true });
+      install(null);
     }
   });
 });
