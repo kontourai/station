@@ -337,13 +337,16 @@ cancellation, **Choose another Station** returns to destination selection.
 A saved peer
 credential establishes permission, not observed reachability or Project readiness.
 
-Tap the connection dot on a phone, or the connection name on desktop, to
+Tap the Station chip (its dot, and on a healthy connection its name) on a
+phone, or the connection name on desktop, to
 choose a Station, or press **Switch Station** (⌘⇧S, Ctrl+Shift+S elsewhere)
 once two are saved. The current Station comes first with a checkmark and its
 live status; the rest follow most recently used first, and focus starts on the
 previous one, so the shortcut and Enter flip back. With five or more Stations,
-type to filter; Enter switches to the first match. Holding the phone's dot
-shows its saved name without switching or opening the chooser.
+type to filter; Enter switches to the first match. The current Station's row
+uses the name the chip shows. Holding the phone's chip shows the full name
+without switching or opening the chooser. On a phone the chooser offers
+**Connect another device** where a computer offers **Pair phone**.
 
 Opening the chooser checks whether each other Station answers its public
 handshake, from this device, without credentials. A green dot means it
