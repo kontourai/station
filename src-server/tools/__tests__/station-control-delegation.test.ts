@@ -9,6 +9,7 @@ import { viewedContentPreimage } from '@kontourai/station-contracts/runtime-even
 import type {
   CanonicalRuntimeEvent,
   TokenUsageUpdatedEvent,
+  TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -260,7 +261,7 @@ function localService() {
     sessionDispatchFacts: vi.fn((_threadId: string) => ({
       taskBound: false,
       delegatedChild: false,
-      priorOrigin: () => 'interactive' as const,
+      priorOrigin: (): TurnDispatchOrigin => 'interactive',
     })),
     getProviderAdapter: vi.fn(() => ({
       metadata: {
@@ -2313,7 +2314,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     service.sessionDispatchFacts.mockImplementation(() => ({
       taskBound: false,
       delegatedChild: true,
-      priorOrigin: () => 'delegation' as const,
+      priorOrigin: (): TurnDispatchOrigin => 'delegation',
     }));
     const { executeExecutionTargetMessage } = await import(
       '../station-control-delegation.js'

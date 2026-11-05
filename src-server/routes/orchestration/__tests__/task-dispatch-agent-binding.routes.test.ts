@@ -612,7 +612,7 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
     const originsOf = (threadId: string) =>
       eventStore
         .listEventsByMethods(threadId, ['turn.started'])
-        .map((event) => event.payload as Record<string, unknown>);
+        .map((event) => event.payload as unknown as Record<string, unknown>);
     const idle = (threadId: string) =>
       vi.waitFor(() => expect(service.hasActiveTurn(threadId)).toBe(false));
 
