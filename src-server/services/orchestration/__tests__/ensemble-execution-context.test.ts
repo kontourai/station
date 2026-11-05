@@ -49,7 +49,10 @@ import {
   EnsembleExecutionContext,
 } from '../ensemble-execution-context.js';
 import { EnsembleInspectionService } from '../ensemble-inspection.js';
-import { authenticateEnsembleSessionGroup } from '../ensemble-session-group-authentication.js';
+import {
+  authenticateEnsembleSessionGroup,
+  type EnsembleSessionAuthenticationObserver,
+} from '../ensemble-session-group-authentication.js';
 import { EventBus } from '../event-bus.js';
 
 const { execFile, nativeSpawn, nativeQuery } = vi.hoisted(() => ({
@@ -530,6 +533,7 @@ async function authenticateFixture(
   f: Awaited<ReturnType<typeof fixture>>,
   signal = new AbortController().signal,
   seats: readonly string[] = ['lead'],
+  onObservation?: EnsembleSessionAuthenticationObserver,
 ) {
   return authenticateEnsembleSessionGroup(
     {
@@ -553,6 +557,7 @@ async function authenticateFixture(
     f.inventory,
     'fixture-principal',
     () => {},
+    onObservation,
   );
 }
 
@@ -583,25 +588,28 @@ describe('production Ensemble preparation authentication', () => {
         if (released) reply();
         else held.push(reply);
       });
-      let firstReturned: () => void = () => {};
-      const firstObservation = new Promise<void>((resolve) => {
-        firstReturned = resolve;
+      let refused: () => void = () => {};
+      const firstRefusal = new Promise<void>((resolve) => {
+        refused = resolve;
       });
       const observations: Promise<unknown>[] = [];
       const observe = f.adapter.observeExecutionAuthentication.bind(f.adapter);
       vi.spyOn(f.adapter, 'observeExecutionAuthentication').mockImplementation(
         (input) => {
-          const read = observe(input).finally(firstReturned);
+          const read = observe(input);
           observations.push(read);
           return read;
         },
       );
       let helperSettled = false;
-      const settled = authenticateFixture(f, new AbortController().signal, [
-        'lead',
-        'check',
-        'join',
-      ]).then(
+      const settled = authenticateFixture(
+        f,
+        new AbortController().signal,
+        ['lead', 'check', 'join'],
+        (observation) => {
+          if (observation.state === 'unauthenticated') refused();
+        },
+      ).then(
         (value) => {
           helperSettled = true;
           return { status: 'fulfilled' as const, value };
@@ -620,7 +628,7 @@ describe('production Ensemble preparation authentication', () => {
           const first = held.shift();
           if (!first) throw new Error('Missing first authentication gate');
           first();
-          await firstObservation;
+          await firstRefusal;
           await new Promise<void>((resolve) => setImmediate(resolve));
           expect(helperSettled).toBe(false);
         }
