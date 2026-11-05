@@ -1439,8 +1439,11 @@ its successor; ordinary unmarked handoffs retain their existing behavior.
 Durable attempts, cancellation and reconnect reconciliation remain separate
 work. A resource binding can supply
 its checked directory without a legacy Project working directory. The receiver
-retains its Project and Station workspace-isolation policy: portable worktree
-execution currently refuses before provisioning or provider effects instead of
+uses the effective Project and Station workspace-isolation settings.
+[Managed policy locks](../guides/managed-policy.md) take precedence over stored
+Project overrides. Admission rechecks the effective settings after waits and
+refuses drift or an unreadable policy. Portable worktree execution currently
+refuses before provisioning or provider effects instead of
 silently selecting a shared checkout. Admission-backed worktree provisioning
 remains required work in #483/#484. Consult the live issues for
 qualification evidence; API and service tests do not prove two physical machines
