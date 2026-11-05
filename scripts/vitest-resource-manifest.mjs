@@ -300,6 +300,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4524: validates the generated ADMX/ADML against Microsoft's schema with
   // xmllint (single-shot spawns, no wall-clock assertion).
   'packages/shared/src/__tests__/managed-policy-templates.test.ts',
+  // #4515: runs the real `station start` CLI with an invalid managed policy
+  // on free ports and probes the server and UI ports while it runs.
+  'packages/cli/src/__tests__/start-managed-policy-invalid.process.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.

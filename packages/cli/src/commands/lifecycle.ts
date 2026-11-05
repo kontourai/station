@@ -200,7 +200,12 @@ export {
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
 
-import { loadInstalledManagedPolicy } from '@kontourai/station-shared/managed-policy';
+import {
+  type LoadedManagedPolicy,
+  loadInstalledManagedPolicy,
+  ManagedPolicyInvalidError,
+} from '@kontourai/station-shared/managed-policy';
+import { loadInstalledManagedPolicyChecked } from './app-config-schema.js';
 
 const SERVER_ENTRY_FILENAME = 'command-station.js';
 
@@ -4791,15 +4796,25 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   }
   // Watch mode serves the UI from Vite, which Station documents as
   // loopback-only (development.md), so it defaults to and requires loopback.
+  // #4515: a managed policy Station cannot enforce refuses the start here,
+  // before a server or UI host is spawned, with the loader `station policy
+  // check` uses (settings schema included). Leaving it to the server left
+  // the UI host listening, on every interface by default, for the whole
+  // refused start.
+  let installedPolicy: LoadedManagedPolicy | null;
+  try {
+    installedPolicy = loadInstalledManagedPolicyChecked();
+  } catch (error) {
+    if (!(error instanceof ManagedPolicyInvalidError)) throw error;
+    // The marker line, as the server prints it: the desktop sidecar and the
+    // failed-start report key on a line that starts with it.
+    console.error(error.message);
+    process.exitCode = 1;
+    return;
+  }
   // #4519: under a managed policy without `remote` clients, the server
   // refuses a non-loopback host, so default to loopback and say why here.
-  // An unloadable policy is left to the server, which reports it.
-  let remoteLimit: ReturnType<typeof installedRemoteClientsLimit> = null;
-  try {
-    remoteLimit = installedRemoteClientsLimit();
-  } catch {
-    remoteLimit = null;
-  }
+  const remoteLimit = installedRemoteClientsLimit(() => installedPolicy);
   const host = normalizeLifecycleHost(
     opts.host ?? (watch || remoteLimit ? '127.0.0.1' : undefined),
   );

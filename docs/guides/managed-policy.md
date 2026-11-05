@@ -850,7 +850,7 @@ listens and writes one line that starts with `STATION_MANAGED_POLICY_INVALID`.
 The line names the file and the reason, for example:
 
 ```text
-STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /etc/station/policy.json: it does not match the policy schema (limits.engines: this limit is not supported by this version of Station). Station will not start until an administrator fixes or removes it.
+STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /etc/station/policy.json: it does not match the policy schema (limits.maxApprovalMode: this limit is not supported by this version of Station). Station will not start until an administrator fixes or removes it.
 ```
 
 Station refuses to start when:
@@ -879,10 +879,10 @@ Station refuses to start when:
   profile, or a file and the registry key.
 
 The desktop app shows that the organization's policy cannot be used and does
-not retry; restarting cannot fix it. `station start` prints the same line as
-the last server error. Its process supervisor does not yet recognize the
-refusal, so it retries a few times (about 30 seconds) before it gives up
-(#4536).
+not retry; restarting cannot fix it. `station start` checks the policy the
+way `station policy check` does before it starts anything: it prints the same
+line and exits `1` without starting a server or the UI, so nothing listens
+while the policy is unusable.
 Fix or remove the policy, then start Station again.
 
 ## What clients see
