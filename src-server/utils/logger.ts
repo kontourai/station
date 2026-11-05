@@ -114,7 +114,9 @@ export function isLogLevelAtLeast(level: LogLevel, minimum: LogLevel): boolean {
   return LOG_LEVEL_ORDER.indexOf(level) >= LOG_LEVEL_ORDER.indexOf(minimum);
 }
 
-function isConfigurableLogLevel(value: unknown): value is ConfigurableLogLevel {
+export function isConfigurableLogLevel(
+  value: unknown,
+): value is ConfigurableLogLevel {
   return (
     typeof value === 'string' &&
     (CONFIGURABLE_LOG_LEVELS as readonly string[]).includes(value)
@@ -456,8 +458,32 @@ export function invalidEnvLogLevelValue(): string | undefined {
   return isConfigurableLogLevel(raw) ? undefined : raw;
 }
 
-/** Precedence: `STATION_LOG_LEVEL` env (validated) > `configured` > `'info'`. */
+/**
+ * The level the machine's managed policy locks `logLevel` to (#4517), or
+ * undefined. A lock outranks everything, `STATION_LOG_LEVEL` included, so it
+ * is held here rather than in `AppConfig`: loggers resolve their level from
+ * the environment before any config is read.
+ */
+let managedLogLevelLock: ConfigurableLogLevel | undefined;
+
+/**
+ * Install the managed policy's `logLevel` lock (undefined clears it) and
+ * apply it to every logger already created, which resolved their level
+ * before the policy loaded.
+ */
+export function setManagedLogLevelLock(
+  level: ConfigurableLogLevel | undefined,
+): void {
+  managedLogLevelLock = level;
+  if (level) setGlobalLogLevel(level);
+}
+
+/**
+ * Precedence: managed lock > `STATION_LOG_LEVEL` env (validated) >
+ * `configured` > `'info'`.
+ */
 export function resolveLogLevel(configured?: string): ConfigurableLogLevel {
+  if (managedLogLevelLock) return managedLogLevelLock;
   const envLevel = envLogLevelOverride();
   if (envLevel) return envLevel;
   if (isConfigurableLogLevel(configured)) return configured;
@@ -480,6 +506,12 @@ export function logStartupLogLevelDiagnostics(
       { value: invalid, configured: configured ?? 'info' },
     );
   }
+  if (managedLogLevelLock) {
+    logger.info('The managed policy locks the log level', {
+      level: managedLogLevelLock,
+    });
+    return;
+  }
   const envLevel = envLogLevelOverride();
   if (envLevel) {
     logger.info('STATION_LOG_LEVEL environment variable pins the log level', {
@@ -500,6 +532,10 @@ export function applyConfiguredLogLevel(
   configured: ConfigurableLogLevel | undefined,
   logger: Pick<Logger, 'info'>,
 ): void {
+  if (managedLogLevelLock) {
+    setGlobalLogLevel(managedLogLevelLock);
+    return;
+  }
   if (!configured) return;
   const envLevel = envLogLevelOverride();
   if (envLevel) {
