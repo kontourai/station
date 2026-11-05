@@ -1060,7 +1060,7 @@ describe('BrowserPane address bar', () => {
     );
   });
 
-  test('Fit to this pane fits again on entering and leaving full screen; a preset does not follow', async () => {
+  test('Match this pane fits again on entering and leaving full screen; a preset does not follow', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
       function (this: HTMLElement) {
         // The pane's stage, and the live view's own stage in full screen.
@@ -1096,7 +1096,7 @@ describe('BrowserPane address bar', () => {
       const menu = await screen.findByRole('menu', { name: 'Viewport' });
       fireEvent.click(within(menu).getByRole('menuitemradio', { name }));
     };
-    await choose('Fit to this pane');
+    await choose('Match this pane');
     await waitFor(() => expect(viewports()).toHaveLength(1));
     expect(viewports()[0]).toMatchObject({ width: 800, height: 500 });
     await act(async () => {

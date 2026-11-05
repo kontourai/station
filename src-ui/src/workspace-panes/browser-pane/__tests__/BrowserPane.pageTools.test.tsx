@@ -721,7 +721,7 @@ describe('the toolbar', () => {
       within(menu)
         .getAllByRole('group')
         .map((group) => group.getAttribute('aria-label')),
-    ).toEqual(['Capture', 'View', 'Inspect', 'Session', null]);
+    ).toEqual(['Capture', 'View for everyone watching', 'Inspect', 'Session', null]);
     const items = within(menu).getAllByRole('menuitem');
     expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
       'Screenshot',
