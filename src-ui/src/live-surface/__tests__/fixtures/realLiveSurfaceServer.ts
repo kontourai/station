@@ -57,6 +57,8 @@ export async function realLiveSurfaceServer(
     epochCause?: boolean;
     /** The server's replacement window for a closed viewer stream. */
     viewerGraceMs?: number;
+    /** How often a quiet stream gets a state record (the hub's default). */
+    heartbeatMs?: number;
   } = {},
 ) {
   const [
@@ -74,6 +76,9 @@ export async function realLiveSurfaceServer(
   ]);
   const registry = new LiveSurfaceRegistry({
     viewerGraceMs: options.viewerGraceMs ?? 50,
+    ...(options.heartbeatMs
+      ? { hub: { heartbeatMs: options.heartbeatMs } }
+      : {}),
   });
   const producer = new producerModule.SyntheticLiveSurfaceProducer(SURFACE, {
     backpressure: false,

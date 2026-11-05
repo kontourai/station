@@ -585,7 +585,9 @@ test('R6-3: a release the producer failed to perform is not confirmed; the viewe
 });
 
 test('R6-4: many release calls make one request at a time, and an obligation still unconfirmed after many failures resumes on reconnect', async () => {
-  server = await realLiveSurfaceServer();
+  // No heartbeat: nothing from the host prompts a retry, so every try below
+  // is the worker's own.
+  server = await realLiveSurfaceServer({ heartbeatMs: 60_000 });
   let inflight = 0;
   let maxInflight = 0;
   // One more failure than the old six-try limit allowed.
