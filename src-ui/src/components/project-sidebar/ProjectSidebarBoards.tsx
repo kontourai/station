@@ -6,14 +6,7 @@ import {
   useUpdatePersonalLayoutMutation,
 } from '@kontourai/station-sdk';
 import type { ReactNode, RefObject } from 'react';
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { boardPath } from '../../app-shell/board-route';
 import { boardSlugFromName, nextBoardSlug } from '../../app-shell/board-slug';
 import { useProjects } from '../../contexts/ProjectsContext';
@@ -22,6 +15,7 @@ import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags
 import { regionLabel } from '../../regions/region-model';
 import { Button } from '../Button';
 import { DashboardGlyph } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import { ErrorState, SkeletonBlock } from '../state';
 import { NEW_BOARD_REQUEST_EVENT } from './new-board-events';
 import { useSidebarPillRegions } from './pill-region-open';
@@ -29,11 +23,10 @@ import { sidebarLayoutPaneId } from './pill-region-placement';
 import { SidebarPopover } from './SidebarPopover';
 import './ProjectSidebarBoards.css';
 
-const AppsLibrary = lazy(() =>
+const loadAppsLibrary = () =>
   import('../../views/apps/AppsLibrary').then((module) => ({
     default: module.AppsLibrary,
-  })),
-);
+  }));
 
 /**
  * The panel's **Boards** section (#2062; design record D3 in
@@ -542,19 +535,21 @@ export function ProjectSidebarBoards({
   };
 
   const library = appsEnabled && libraryOpen && (
-    <Suspense fallback={<SkeletonBlock label="Opening Apps" />}>
-      <AppsLibrary
-        returnFocusTarget={collapsed ? navigatorTriggerRef.current : undefined}
-        onClose={() => setLibraryOpen(false)}
-        onOpen={(slug) => {
+    <LazyBoundary
+      load={loadAppsLibrary}
+      pending={<SkeletonBlock label="Opening Apps" />}
+      componentProps={{
+        returnFocusTarget: collapsed ? navigatorTriggerRef.current : undefined,
+        onClose: () => setLibraryOpen(false),
+        onOpen: (slug) => {
           setLibraryOpen(false);
           openBoard(slug);
-        }}
-        onDeleted={(slug) => {
+        },
+        onDeleted: (slug) => {
           if (activePath === boardPath(slug)) navigate('/');
-        }}
-      />
-    </Suspense>
+        },
+      }}
+    />
   );
 
   const content = (

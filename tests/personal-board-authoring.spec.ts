@@ -881,10 +881,18 @@ for (const width of [390, 1440]) {
         await library
           .getByRole('button', { name: `Edit ${name} details`, exact: true })
           .click();
-        const edit = page.getByRole('dialog', {
-          name: 'Edit app details',
-          exact: true,
+        const edit = page.getByRole('dialog').filter({
+          has: page.getByRole('heading', {
+            name: 'Edit app details',
+            exact: true,
+          }),
         });
+        await expect(edit).toHaveAttribute(
+          'aria-labelledby',
+          (await edit
+            .getByRole('heading', { name: 'Edit app details', exact: true })
+            .getAttribute('id')) ?? '',
+        );
         await edit
           .getByLabel('Description', { exact: true })
           .fill('Release watch, ready to open.');
