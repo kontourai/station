@@ -102,7 +102,9 @@
   gap: var(--space-2, 8px);
   left: var(--space-2, 8px);
   position: absolute;
-  right: var(--space-2, 8px);
+  /* Clear of the live view's 44px Full screen button in the bottom-right
+     corner (LiveSurfaceCanvas.css), so a notice never sits under it. */
+  right: calc(var(--k-space-1) + 44px + var(--space-2, 8px));
   z-index: 1;
 }
 
