@@ -1052,3 +1052,36 @@ describe('key strings are bounded by the object area', () => {
     60_000,
   );
 });
+
+// #4515 round 6 review (F1): references are charged in bytes, count *
+// refSize. Here two containers overlap with 2-byte references: B's header is
+// A's first two reference slots, so B's references are A's. Charged in
+// bytes they exceed the object area; counted as references they would not.
+test('overlapping containers with 2-byte references are refused by the byte charge', () => {
+  const n = 100;
+  // index 0: [1, 2]; 1: A, n refs; 2: B, inside A; everything else: the leaf.
+  // A's first two refs are B's header: 0xaf11 (the leaf) and n - 2 (B's
+  // count, also the leaf), then n - 2 refs to the leaf that B shares.
+  const leaf = 3;
+  const a = wideArray([
+    0xaf11,
+    n - 2,
+    ...Array.from({ length: n - 2 }, () => leaf),
+  ]);
+  const top = wideArray([1, 2]);
+  const area = Buffer.concat([top, a, Buffer.from([0x09])]);
+  const aAt = 8 + top.length;
+  const leafAt = 8 + area.length - 1;
+  const offsets = Array.from({ length: 0xaf11 + 1 }, () => leafAt);
+  offsets[0] = 8;
+  offsets[1] = aAt;
+  offsets[2] = aAt + 4;
+  const bytes = rawBplist({ area, offsets, refSize: 2, top: 0 });
+  // Pinned: references counted alone fit the area; in bytes they do not.
+  const references = 2 + n + (n - 2);
+  expect(references).toBeLessThanOrEqual(area.length);
+  expect(references * 2).toBeGreaterThan(area.length);
+  expect(binaryPlistKeyScanProblem(bytes)).toBe(
+    'it is a binary property list Station cannot read',
+  );
+});
