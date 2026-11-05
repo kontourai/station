@@ -292,7 +292,13 @@ On Windows the operation ends the shell's process tree with `taskkill /T /F`
 before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
-stop (#3994). A tree `taskkill` could not end is reported. `taskkill` follows
+stop (#3994). After a successful `taskkill` both hosts wait for the exit as
+after a natural one and never call node-pty's `kill()`. Once its shell has gone,
+that call lists the console's processes through a helper that cannot attach,
+and five seconds later signals the old shell pid, which Windows may have
+reused (on a loaded runner, a later shell's console host, which failed its
+CreateProcess with error 87). `kill()` remains the fallback for a tree
+`taskkill` could not end, which is reported. `taskkill` follows
 parent links, so a descendant whose parent already exited is not found
 (from its documented behavior; not exercised here).
 The real PTY tests qualify macOS cleanup of the tested descendants and, on
@@ -1025,13 +1031,15 @@ verification.
   restored shell's divider and earlier output were erased from the rendered
   terminal by the new ConPTY's first frame, which clears the screen and
   paints from its top-left. On Windows the divider is now followed by a
-  screenful of line feeds, so both move into scrollback first.
+  screenful of line feeds, so both move into scrollback first. And on a
+  loaded host, close followed `taskkill` with node-pty's `kill()` when the
+  exit event was late, which signalled the dead shell's pid five seconds on
+  (see the same section); the adapter and supervisor-host suites hold the
+  exit back past the old grace and fail if `kill()` is called.
 
   Known on ConPTY, not fixed: the journal does not record resizes, so
   replaying a resize repaint at another size can overwrite a scrolled row in
-  the rendered terminal (the journal still holds it); and node-pty 1.1's own
-  console-list helper prints `AttachConsole failed` when asked to end a
-  console that is already gone.
+  the rendered terminal (the journal still holds it).
 - Fault injection for each isolation check and for the query stripping.
 - Listener isolation (#3994): each store session notifies only its own
   subscribers and output never enters React state; the
