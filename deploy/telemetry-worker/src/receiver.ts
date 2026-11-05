@@ -101,8 +101,12 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS lite_published (
     week TEXT NOT NULL, publisher TEXT NOT NULL, dimension TEXT NOT NULL, value TEXT NOT NULL,
     estimate INTEGER NOT NULL CHECK (estimate >= 0), PRIMARY KEY (week, publisher, dimension, value))`,
-  // Days whose salt has been erased. Only days that actually had a salt
-  // close, so a forward clock jump cannot close days that never happened.
+  // `closed_through`: every UTC day at or before it refuses arrivals.
+  `CREATE TABLE IF NOT EXISTS lite_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+  // Days whose salt was erased: days that really had arrivals. A week is
+  // published only if it holds one. Like lite_finalized (one row per
+  // publisher per day), this is about one row per day and is never pruned:
+  // pruning would let an old day reopen after a long clock jump.
   `CREATE TABLE IF NOT EXISTS lite_closed_days (day TEXT PRIMARY KEY)`,
   // One row per finalized publisher/day: finalization happens once.
   `CREATE TABLE IF NOT EXISTS lite_finalized (day TEXT NOT NULL, publisher TEXT NOT NULL, PRIMARY KEY (day, publisher))`,
@@ -154,15 +158,27 @@ export class LiteReceiverStore {
     );
   }
 
-  /** A day whose salt was erased, or that any publisher has finalized. */
+  /** The latest UTC day that refuses arrivals, or ''. Only ever increases. */
+  private closedThrough(): string {
+    const row = one(
+      this.exec(`SELECT value FROM lite_meta WHERE key = 'closed_through'`),
+    );
+    return row ? text(row.value) : '';
+  }
+
+  private closeThrough(day: string): void {
+    this.exec(
+      `INSERT INTO lite_meta VALUES ('closed_through', ?)
+       ON CONFLICT (key) DO UPDATE SET value = max(value, excluded.value)`,
+      day,
+    );
+  }
+
+  /** At or before the watermark, or finalized by any publisher. */
   private isClosed(day: string): boolean {
+    if (day <= this.closedThrough()) return true;
     return !!one(
-      this.exec(
-        `SELECT 1 FROM lite_closed_days WHERE day = ?
-         UNION ALL SELECT 1 FROM lite_finalized WHERE day = ? LIMIT 1`,
-        day,
-        day,
-      ),
+      this.exec(`SELECT 1 FROM lite_finalized WHERE day = ? LIMIT 1`, day),
     );
   }
 
@@ -180,12 +196,12 @@ export class LiteReceiverStore {
    * is deleted in the same step, so a closed day's salt is gone by the
    * next day's first request even if the maintenance alarm has not run.
    *
-   * A day closes when its salt is erased (or it is finalized). An arrival
-   * for a closed day (the clock stepped back) is refused with `day_closed`:
-   * accepting it would mint a second salt for that day, giving one network
-   * two contributor keys, after its marginals were already final. A day
-   * that never had a salt is not closed, so after a forward clock jump is
-   * corrected, the real days in between still accept pings.
+   * The Worker trusts the platform clock. A day closes once a later day has
+   * begun or maintenance has passed it (the `closed_through` watermark), or
+   * once it is finalized. An arrival for a closed day is refused with
+   * `day_closed`: accepting it could mint a second salt for that day, giving
+   * one network two contributor keys after its marginals were final. A
+   * clock fault therefore costs refused pings, never corrupted counts.
    */
   private saltFor(day: string): Buffer {
     if (this.isClosed(day)) throw new BrokerError('day_closed');
@@ -195,6 +211,7 @@ export class LiteReceiverStore {
     if (existing) return Buffer.from(text(existing.salt), 'hex');
     const salt = randomBytes(32);
     this.storage.transactionSync(() => {
+      this.closeThrough(addUtcDays(day, -1));
       this.eraseSalts('day <> ?', day);
       this.exec(
         `INSERT INTO lite_salts VALUES (?, ?)`,
@@ -357,9 +374,12 @@ export class LiteReceiverStore {
   maintain(now: number): void {
     const today = utcDay(now);
     const failures: LiteFinalizationFailure[] = [];
-    this.storage.transactionSync(() => this.eraseSalts('day < ?', today));
-    // Closed days include any whose salt is gone even if they lie ahead of
-    // today (a corrected forward clock jump): their keys are not kept waiting.
+    this.storage.transactionSync(() => {
+      this.closeThrough(addUtcDays(today, -1));
+      this.eraseSalts('day < ?', today);
+    });
+    // Any day whose salt is gone is finalized, even one ahead of today after
+    // a clock fault, so its contributor keys are not kept waiting.
     const pending = this.exec(
       `SELECT DISTINCT p.day AS day, s.publisher AS publisher
        FROM lite_pings p JOIN lite_sources s ON s.id = p.source_id
@@ -486,6 +506,19 @@ export class LiteReceiverStore {
               ),
             );
             if (unfinished) return;
+            // Never publish a week with no real day: after a forward clock
+            // jump, the skipped weeks have no arrivals and must not freeze as
+            // noise-only publications.
+            if (
+              !one(
+                this.exec(
+                  `SELECT 1 FROM lite_closed_days WHERE day >= ? AND day < ? LIMIT 1`,
+                  week,
+                  end,
+                ),
+              )
+            )
+              return;
             this.exec(
               `INSERT INTO lite_publications VALUES (?, ?)`,
               week,
@@ -493,7 +526,7 @@ export class LiteReceiverStore {
             );
             // Catalogs are operator configuration, never observed values.
             const catalogs = this.exec(
-              `SELECT registry_ids, release_versions, version_policy
+              `SELECT registry_ids, release_versions, version_policy, channels
                FROM lite_sources WHERE publisher = ? ORDER BY id`,
               publisher,
             ).map((row) => ({
@@ -502,6 +535,7 @@ export class LiteReceiverStore {
                 text(row.release_versions),
               ) as string[],
               version_policy: text(row.version_policy),
+              channels: JSON.parse(text(row.channels)) as string[],
             }));
             const totals = new Map(
               this.exec(
@@ -563,10 +597,6 @@ export class LiteReceiverStore {
         if (!deleted) break;
       }
     }
-    // The finalization journal and closed-day records keep the same window
-    // as the rows they describe.
-    this.exec(`DELETE FROM lite_finalized WHERE day < ?`, cutoff);
-    this.exec(`DELETE FROM lite_closed_days WHERE day < ?`, cutoff);
   }
 
   publicAggregates(cursor: string | undefined, now: number) {

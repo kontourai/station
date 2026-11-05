@@ -7,19 +7,23 @@
 // (about +140 per empty cell at the published noise scale), and a sum of six
 // channels would report hundreds of network-days that never happened.
 //
-// One predicate, aboveNoise, decides every number the page shows: the
-// headline, chart columns, bars and table cells. A cell at or below the
-// single-cell noise bound is shown as "within noise", never as a value.
-// Naming a leader compares two noisy cells, so it uses the wider bound for
-// their difference. All of this is post-processing of the published output,
-// so the privacy guarantee is unchanged.
+// One rule decides every number the page shows: a card (the weekly chart,
+// or one dimension's bars) shows a cell only above that card's threshold;
+// anything else reads "within noise". Naming a leader compares two noisy
+// cells, so it uses a bound for their difference. All of this is
+// post-processing of the published output, so the privacy guarantee is
+// unchanged.
 //
-// The bounds. Each cell carries two-sided geometric noise with
-// alpha = exp(-epsilon); at epsilon = 1/280 this is closely approximated by a
-// Laplace distribution with scale b = 1/epsilon = 280.
-// - One cell: P(|X| > t) = exp(-t/b), so 95% of the noise lies within
-//   t = b ln 20, about 839 network-days.
-// - The difference of two independent cells is the difference of two
+// The thresholds. Each cell carries two-sided geometric noise X with
+// alpha = exp(-epsilon): P(X >= k) = alpha^k / (1 + alpha) for k >= 1.
+// - A card with m candidate cells (weeks for the chart, a dimension's
+//   values otherwise) shows a false bar for a true zero only if some cell's
+//   noise exceeds the threshold t. By the union (Bonferroni) bound that
+//   chance is at most m alpha^t / (1 + alpha); setting it to 5% gives
+//   t = ln(m / (0.05 (1 + alpha))) / epsilon. At epsilon = 1/280 that is
+//   about 645 for one cell, 1,033 for four and 1,692 for 42.
+// - At epsilon = 1/280 the noise is closely approximated by a Laplace
+//   distribution with scale b = 1/epsilon = 280. The difference of two
 //   independent Laplace(b) variables, whose tail is
 //   P(|X - Y| > t) = (1 + t/(2b)) exp(-t/b). Solving for 5% gives
 //   t = u b with (1 + u/2) exp(-u) = 0.05, so u is about 4.11 and t is about
@@ -36,7 +40,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 <p class="muted" id="status" role="status">Loading…</p>
 <div id="tiles" class="tiles"></div>
 <div id="charts" class="grid"></div>
-<p class="muted">Estimates with privacy noise added, not counts of people. Small values are unreliable.</p>
+<p class="muted">Estimates with privacy noise added, not counts of people. Each card shows a value only when noise alone would produce a false one less than 5% of the time.</p>
 </main></body></html>`;
 
 const PAGE_JS = `
@@ -59,9 +63,12 @@ const PAGE_JS = `
   }
   function render(data) {
     var cells = data.cells;
-    var bound = data.epsilon > 0 ? Math.log(20) / data.epsilon : Infinity;
+    var alpha = Math.exp(-data.epsilon);
+    // The card threshold for m candidate cells (see the module comment).
+    function threshold(m) {
+      return data.epsilon > 0 && m > 0 ? Math.log(m / (0.05 * (1 + alpha))) / data.epsilon : Infinity;
+    }
     var leadBound = data.epsilon > 0 ? differenceTail95() / data.epsilon : Infinity;
-    function aboveNoise(estimate) { return estimate > bound; }
     tiles.replaceChildren(); charts.replaceChildren();
     var weeks = Array.from(new Set(cells.map(function (c) { return c.week; }))).sort();
     if (!weeks.length) { status.textContent = 'No week has been published yet.'; return; }
@@ -74,9 +81,13 @@ const PAGE_JS = `
       var found = values(week, dimension).filter(function (c) { return c.value === value; })[0];
       return found ? found.estimate : 0;
     }
-    function shown(estimate) { return aboveNoise(estimate) ? '≈ ' + C.compact(estimate) : 'Too few to show'; }
-    // One cell, never a sum: networks whose ping that day was their first of the ISO week.
+    // One cell per week, never a sum: networks whose ping that day was their
+    // first of the ISO week. The headline is the chart's latest week, so it
+    // uses the chart's threshold.
     var active = weeks.map(function (w) { return cell(w, 'first_active_this_week', 'true'); });
+    var weekBound = threshold(weeks.length);
+    function aboveNoise(estimate) { return estimate > weekBound; }
+    function shown(estimate) { return aboveNoise(estimate) ? '≈ ' + C.compact(estimate) : 'Too few to show'; }
     var current = active[active.length - 1], prior = active.length > 1 ? active[active.length - 2] : null;
     var hero = C.stat(tiles, 'Weekly active networks, week of ' + C.shortDay(latest), shown(current),
       prior !== null && aboveNoise(prior) ? 'Previous week ≈ ' + C.compact(prior) : '', true);
@@ -85,7 +96,7 @@ const PAGE_JS = `
       var ranked = values(latest, dimension).filter(function (c) { return c.value !== 'none'; })
         .sort(function (a, b) { return b.estimate - a.estimate; });
       var top = ranked[0], next = ranked[1] ? ranked[1].estimate : 0;
-      if (top && aboveNoise(top.estimate) && top.estimate - next > leadBound)
+      if (top && top.estimate > threshold(ranked.length) && top.estimate - next > leadBound)
         C.stat(tiles, label, top.value, '≈ ' + C.compact(top.estimate) + ' network-days');
     }
     leader('Most used harness', 'engines_used_today');
@@ -101,9 +112,10 @@ const PAGE_JS = `
       if (!values(latest, dimension).length) return;
       var listed = values(latest, dimension).filter(function (c) { return c.value !== 'none'; })
         .sort(function (a, b) { return b.estimate - a.estimate || (a.value < b.value ? -1 : 1); });
-      var rows = listed.filter(function (c) { return aboveNoise(c.estimate); })
+      var cardBound = threshold(listed.length);
+      var rows = listed.filter(function (c) { return c.estimate > cardBound; })
         .map(function (c) { return { label: c.value, value: c.estimate }; });
-      var quiet = listed.filter(function (c) { return !aboveNoise(c.estimate); });
+      var quiet = listed.filter(function (c) { return !(c.estimate > cardBound); });
       var card = C.card(charts, LABELS[dimension], 'Week of ' + C.shortDay(latest) + ' · each bar is its own estimate', 'third');
       C.barList(card.body, rows, { unit: 'network-days', folded: quiet.length });
       C.table(card.body, ['Value', 'Estimate'], rows.map(function (r) { return [r.label, C.full(r.value)]; })

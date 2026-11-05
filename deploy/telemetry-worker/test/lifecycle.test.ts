@@ -97,33 +97,78 @@ test('closing a day erases its salt and every contributor key', async () => {
   expect(receiver.storage.alarmAt()).toBe(nextMaintenance(Date.now()));
 });
 
-test('a forward clock jump closes only days that had a salt', async () => {
+// The Worker trusts the platform clock. These guards only make a clock
+// fault harmless to the data: one salt per day, one finalization per day,
+// no published week without a real day. Refused pings are the accepted cost.
+
+test('a backward step into a day with no traffic is refused and keeps the real day open', async () => {
   at('2026-11-04T10:00:00Z');
   const receiver = fakeReceiver();
   const env = testEnv(receiver);
   await provision(env);
   expect((await post(env, LITE, ping(), { ip: '192.0.2.1' })).status).toBe(202);
-  // The clock jumps two months ahead, takes a ping and runs maintenance.
+  at('2026-11-02T10:00:00Z');
+  const refused = await post(env, LITE, ping(), { ip: '192.0.2.2' });
+  expect(refused.status).toBe(422);
+  expect(await refused.json()).toEqual({ error: 'day_closed' });
+  at('2026-11-04T11:00:00Z');
+  expect((await post(env, LITE, ping(), { ip: '192.0.2.3' })).status).toBe(202);
+  expect(receiver.rows('SELECT day FROM lite_salts')).toEqual([
+    { day: '2026-11-04' },
+  ]);
+});
+
+test('a forward jump refuses the skipped days, keeps one salt per day and publishes no week without a real day', async () => {
+  at('2026-11-04T10:00:00Z');
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  await provision(env);
+  expect((await post(env, LITE, ping(), { ip: '192.0.2.1' })).status).toBe(202);
   at('2027-01-04T10:00:00Z');
   expect((await post(env, LITE, ping(), { ip: '192.0.2.2' })).status).toBe(202);
+  const jumpedSalt = receiver.rows(
+    "SELECT salt FROM lite_salts WHERE day = '2027-01-04'",
+  );
   at('2027-01-04T11:00:05Z');
   await receiver.object.alarm();
-  // Corrected: the real next day was never opened, so it accepts pings. The
-  // day whose salt was erased stays closed.
+  // The four weeks before 2027-01-04 had no real day: nothing is published.
+  expect(receiver.rows('SELECT week FROM lite_publications')).toEqual([]);
+  // Corrected: every day up to the jumped one is refused until real time
+  // reaches it; then the jumped day's one salt is still the day's salt.
   at('2026-11-05T10:00:00Z');
-  expect((await post(env, LITE, ping(), { ip: '192.0.2.3' })).status).toBe(202);
-  at('2026-11-04T12:00:00Z');
-  expect((await post(env, LITE, ping(), { ip: '192.0.2.4' })).status).toBe(422);
-  // The jumped day's salt is gone again, and its pings are finalized rather
-  // than left holding contributor keys until 2027.
-  at('2026-11-06T00:30:00Z');
+  const refused = await post(env, LITE, ping(), { ip: '192.0.2.3' });
+  expect(refused.status).toBe(422);
+  expect(await refused.json()).toEqual({ error: 'day_closed' });
+  at('2027-01-04T12:00:00Z');
+  expect((await post(env, LITE, ping(), { ip: '192.0.2.4' })).status).toBe(202);
+  expect(receiver.rows('SELECT day, salt FROM lite_salts')).toEqual([
+    { day: '2027-01-04', salt: jumpedSalt[0].salt },
+  ]);
+});
+
+test('an old finalized day stays closed after a jump past raw retention', async () => {
+  at('2026-08-01T10:00:00Z');
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  await provision(env);
+  expect((await post(env, LITE, ping())).status).toBe(202);
+  at('2026-08-02T00:30:00Z');
   await receiver.object.alarm();
-  expect(receiver.rows('SELECT day FROM lite_salts')).toEqual([]);
+  const finalized = receiver.rows(
+    "SELECT dimension, value, pings FROM lite_marginals WHERE day = '2026-08-01' ORDER BY dimension, value",
+  );
+  at('2026-12-01T00:30:00Z');
+  await receiver.object.alarm();
+  at('2026-08-01T12:00:00Z');
+  expect((await post(env, LITE, ping())).status).toBe(422);
+  expect(
+    receiver.rows("SELECT day FROM lite_finalized WHERE day = '2026-08-01'"),
+  ).toEqual([{ day: '2026-08-01' }]);
   expect(
     receiver.rows(
-      'SELECT count(*) AS n FROM lite_pings WHERE client_hash IS NOT NULL',
+      "SELECT dimension, value, pings FROM lite_marginals WHERE day = '2026-08-01' ORDER BY dimension, value",
     ),
-  ).toEqual([{ n: 0 }]);
+  ).toEqual(finalized);
 });
 
 test('a clock that steps back cannot reopen or refinalize a closed day', async () => {
@@ -245,14 +290,15 @@ test('the alarm applies 90-day retention and keeps its own schedule', async () =
   expect(receiver.rows('SELECT rows FROM lite_capacity')).toEqual([
     { rows: 1 },
   ]);
-  // Finalized history outlives raw retention; the finalization journal and
-  // closed-day records follow the rows they journal.
+  // Finalized history outlives raw retention, and so do the finalization
+  // journal and closed-day records: they are what keeps an old day closed.
   expect(
     receiver.rows(
       "SELECT count(*) AS n FROM lite_marginals WHERE day = '2026-08-01'",
     )[0].n,
   ).toBeGreaterThan(0);
-  expect(receiver.rows('SELECT day FROM lite_finalized')).toEqual([
+  expect(receiver.rows('SELECT day FROM lite_finalized ORDER BY day')).toEqual([
+    { day: '2026-08-01' },
     { day: '2026-10-29' },
   ]);
   expect(receiver.storage.alarmAt()).toBe(Date.parse('2026-10-30T04:00:05Z'));
@@ -261,10 +307,13 @@ test('the alarm applies 90-day retention and keeps its own schedule', async () =
 test('a closed week is published once over the fixed domain, and cursors are authenticated', async () => {
   const receiver = fakeReceiver();
   const env = testEnv(receiver);
-  // Monday 2026-10-26 starts the week.
-  at('2026-10-26T09:00:00Z');
+  // A ping on the Monday of each of the four weeks before 2026-11-02.
+  at('2026-10-05T09:00:00Z');
   await provision(env);
-  await post(env, LITE, ping());
+  for (const day of ['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26']) {
+    at(`${day}T09:00:00Z`);
+    expect((await post(env, LITE, ping())).status).toBe(202);
+  }
   at('2026-11-02T00:10:00Z');
   await receiver.object.alarm();
   const first = await call(env, '/v1/public/aggregates');
@@ -295,6 +344,11 @@ test('a closed week is published once over the fixed domain, and cursors are aut
   expect(
     week.some((c) => c.dimension === 'version' && c.value === '1.2.3'),
   ).toBe(true);
+  // Channel cells come from the source's provisioned channels: structural
+  // zeros such as `unknown` or `dev` are not published.
+  expect(
+    week.filter((c) => c.dimension === 'channel').map((c) => c.value),
+  ).toEqual(['nightly', 'preview', 'stable']);
   const published = receiver.rows(
     'SELECT * FROM lite_published ORDER BY dimension, value',
   );

@@ -1556,3 +1556,15 @@ test('schema 10 keeps single-channel sources as one-element lists, and a source 
   expect(refused.status).toBe(400);
   expect(await refused.json()).toEqual({ error: 'invalid_daily_ping' });
 });
+
+test("published channel cells are the publisher's provisioned channels", async () => {
+  await send('198.51.100.70');
+  await closeDay();
+  await lite.finalize();
+  const channels = (await readAll())
+    .filter((cell) => cell.week === closedWeek && cell.dimension === 'channel')
+    .map((cell) => cell.value);
+  // The kontour source lists only `stable`: no `unknown`, `dev` or other
+  // structural-zero channel cells are released.
+  expect(channels).toEqual(['stable']);
+});

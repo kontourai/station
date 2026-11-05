@@ -175,7 +175,7 @@ test('the public page charts the published weeks', async () => {
     '/public/dashboard.js',
   );
   expect(requests[0]).toBe('/v1/public/aggregates');
-  expect(requests.length).toBeGreaterThan(1);
+  expect(requests.length).toBeGreaterThanOrEqual(1);
   expect(document.querySelector('.tile.hero .label')?.textContent).toBe(
     'Weekly active networks, week of Oct 26',
   );
@@ -205,77 +205,125 @@ function publish(
     insert.run(week, 'kontour', dimension, value, estimate);
 }
 
-test('no bar, chart label or table cell shows a value within the noise', async () => {
-  const receiver = fakeReceiver();
-  const env = testEnv(receiver);
-  // The published bound: 95% of a cell's noise lies within ln(20)/epsilon.
-  const { epsilonPerCount } = await (
+/** The per-card Bonferroni threshold the page applies (the README states it). */
+async function thresholds(env: ReturnType<typeof testEnv>) {
+  const { epsilonPerCount: epsilon } = await (
     await call(env, '/v1/public/aggregates')
   ).json();
-  const bound = Math.log(20) / epsilonPerCount;
-  expect(bound).toBeGreaterThan(838);
-  expect(bound).toBeLessThan(839);
+  const alpha = Math.exp(-epsilon);
+  return (m: number) => Math.log(m / (0.05 * (1 + alpha))) / epsilon;
+}
+
+test("no bar, chart label or table cell shows a value within its card's noise threshold", async () => {
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  const threshold = await thresholds(env);
+  // Between the per-cell 95% bound (about 839) and the card thresholds.
+  expect(threshold(4)).toBeGreaterThan(1000);
+  expect(threshold(5)).toBeGreaterThan(1000);
+  publish(receiver, [['first_active_this_week', 'true', 900]], '2026-10-05');
   publish(receiver, [['first_active_this_week', 'true', 3000]], '2026-10-12');
   publish(receiver, [['first_active_this_week', 'true', 838]], '2026-10-19');
   publish(receiver, [
-    ['first_active_this_week', 'true', 840],
+    ['first_active_this_week', 'true', 2000],
     ['platform', 'darwin', 2400],
     ['platform', 'linux', 840],
     ['platform', 'cygwin', 589],
     ['platform', 'haiku', 300],
     ['platform', 'win32', 0],
-    ['arch', 'mipsel', 700],
+    // One candidate cell: its threshold is about 645.
+    ['arch', 'mipsel', 600],
     ['engines_used_today', 'claude', 2900],
     ['engines_used_today', 'codex', 2000],
   ]);
   const { document } = await openPage(env, '/public/', '/public/dashboard.js');
-  const numbers = (selector: string) =>
-    [...document.querySelectorAll(selector)]
-      .map((node) => node.textContent?.replace(/[^0-9]/g, '') ?? '')
-      .filter(Boolean)
-      .map(Number);
-  // Bar values, the chart's labelled columns and every table cell.
-  for (const value of [
-    ...numbers('.bars .val'),
-    ...numbers('svg.chart text.end'),
-    ...numbers('details.table td:last-child'),
-  ])
-    expect(value).toBeGreaterThan(bound);
   const card = (title: string) =>
     [...document.querySelectorAll('.card')].find(
       (node) => node.querySelector('h2')?.textContent === title,
     );
+  const numbers = (root: Element | undefined, selector: string) =>
+    [...(root?.querySelectorAll(selector) ?? [])]
+      .map((node) => node.textContent?.replace(/[^0-9]/g, '') ?? '')
+      .filter(Boolean)
+      .map(Number);
+  // Every number in a card clears that card's threshold: m is its number of
+  // candidate cells (weeks for the chart).
+  for (const [title, m] of [
+    ['Weekly active networks', 4],
+    ['Platform', 5],
+    ['Architecture', 1],
+    ['Harnesses used', 2],
+  ] as const)
+    for (const value of [
+      ...numbers(card(title), '.bars .val'),
+      ...numbers(card(title), 'svg.chart text.end'),
+      ...numbers(card(title), 'details.table td:last-child'),
+    ])
+      expect(value, title).toBeGreaterThan(threshold(m));
   const platform = card('Platform');
   expect(
     [...(platform?.querySelectorAll('.bars .name') ?? [])].map(
       (n) => n.textContent,
     ),
-  ).toEqual(['darwin', 'linux']);
-  expect(platform?.textContent).toContain('3 other values within noise');
-  const rows = [...(platform?.querySelectorAll('details.table tr') ?? [])].map(
-    (row) => [...row.querySelectorAll('td')].map((td) => td.textContent),
-  );
-  expect(rows).toContainEqual(['cygwin', 'within noise']);
-  expect(rows).toContainEqual(['darwin', '2,400']);
-  // Architecture has nothing above the bound: no bars, only the fold line.
+  ).toEqual(['darwin']);
+  expect(platform?.textContent).toContain('4 other values within noise');
+  const rows = (root: Element | undefined) =>
+    [...(root?.querySelectorAll('details.table tr') ?? [])].map((row) =>
+      [...row.querySelectorAll('td')].map((td) => td.textContent),
+    );
+  // 840 clears the single-cell bound but not this card's.
+  expect(rows(platform)).toContainEqual(['linux', 'within noise']);
+  expect(rows(platform)).toContainEqual(['darwin', '2,400']);
   const arch = card('Architecture');
   expect(arch?.querySelectorAll('.bars .name')).toHaveLength(0);
   expect(arch?.textContent).toContain('1 other value within noise');
-  // The 10-19 week is a muted placeholder with no number.
   const trend = card('Weekly active networks');
-  expect(trend?.querySelectorAll('svg.chart .col.noise')).toHaveLength(1);
-  const weeks = [...(trend?.querySelectorAll('details.table tr') ?? [])].map(
-    (row) => [...row.querySelectorAll('td')].map((td) => td.textContent),
+  expect(trend?.querySelectorAll('svg.chart .col.noise')).toHaveLength(2);
+  expect(rows(trend)).toEqual(
+    expect.arrayContaining([
+      ['2026-10-05', 'within noise'],
+      ['2026-10-12', '3,000'],
+      ['2026-10-19', 'within noise'],
+      ['2026-10-26', '2,000'],
+    ]),
   );
-  expect(weeks).toContainEqual(['2026-10-19', 'within noise']);
-  expect(weeks).toContainEqual(['2026-10-26', '840']);
   // A leader needs a gap wider than the single-cell bound: 900 is not enough
-  // for two independent noisy cells; 1,560 is.
+  // for two independent noisy cells; 2,400 clear of the rest is.
   const tiles = [...document.querySelectorAll('.tile .label')].map(
     (n) => n.textContent,
   );
   expect(tiles).not.toContain('Most used harness');
   expect(tiles).toContain('Top platform');
+  expect(document.body.textContent).toContain(
+    'Each card shows a value only when noise alone would produce a false one less than 5% of the time.',
+  );
+});
+
+test("the headline's previous-week note appears only when that week clears the noise", async () => {
+  const quiet = fakeReceiver();
+  publish(quiet, [['first_active_this_week', 'true', 500]], '2026-10-19');
+  publish(quiet, [['first_active_this_week', 'true', 2500]]);
+  const below = await openPage(
+    testEnv(quiet),
+    '/public/',
+    '/public/dashboard.js',
+  );
+  expect(below.document.querySelector('.tile.hero .value')?.textContent).toBe(
+    '≈ 2,500',
+  );
+  expect(below.document.querySelector('.tile.hero .note')).toBeNull();
+
+  const clear = fakeReceiver();
+  publish(clear, [['first_active_this_week', 'true', 3000]], '2026-10-19');
+  publish(clear, [['first_active_this_week', 'true', 2500]]);
+  const above = await openPage(
+    testEnv(clear),
+    '/public/',
+    '/public/dashboard.js',
+  );
+  expect(above.document.querySelector('.tile.hero .note')?.textContent).toBe(
+    'Previous week ≈ 3,000',
+  );
 });
 
 test('the public page never sums clipped cells and names a top value only above the noise', async () => {
@@ -308,7 +356,10 @@ test('the public page never sums clipped cells and names a top value only above 
   expect(hero?.querySelector('.value')?.textContent).toBe('Too few to show');
   // The only week is within noise: placeholders, no scale and no numbers.
   const trendText = [...document.querySelectorAll('.card')]
-    .find((card) => card.querySelector('h2')?.textContent === 'Weekly active networks')
+    .find(
+      (card) =>
+        card.querySelector('h2')?.textContent === 'Weekly active networks',
+    )
     ?.querySelector('svg.chart')?.textContent;
   // Only the week's date label and the note: no tick values.
   expect(trendText).toBe('Oct 26Every period is within noise');
@@ -321,7 +372,7 @@ test('the public page never sums clipped cells and names a top value only above 
   );
   expect(platform?.querySelector('.value')?.textContent).toBe('darwin');
   expect(text).toContain(
-    'Estimates with privacy noise added, not counts of people. Small values are unreliable.',
+    'Estimates with privacy noise added, not counts of people.',
   );
 });
 

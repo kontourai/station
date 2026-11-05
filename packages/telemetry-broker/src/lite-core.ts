@@ -420,6 +420,7 @@ interface LitePublicationCatalog {
   registry_ids: string[];
   release_versions: string[];
   version_policy?: string;
+  channels: string[];
 }
 
 /**

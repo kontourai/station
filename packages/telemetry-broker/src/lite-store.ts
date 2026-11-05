@@ -896,8 +896,9 @@ export class LiteRepository {
             registry_ids: string[];
             release_versions: string[];
             version_policy: string;
+            channels: string[];
           }>(
-            'SELECT registry_ids,release_versions,version_policy FROM station_telemetry.lite_sources WHERE publisher=$1 ORDER BY id',
+            'SELECT registry_ids,release_versions,version_policy,channels FROM station_telemetry.lite_sources WHERE publisher=$1 ORDER BY id',
             [publisher],
           );
           const counts = await client.query<{
