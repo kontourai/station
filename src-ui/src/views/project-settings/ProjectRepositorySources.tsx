@@ -1,4 +1,6 @@
 import {
+  type ProjectRepoResource,
+  type ProjectResolutionView,
   type ResourceResolutionResult,
   selectPrimaryResource,
 } from '@kontourai/station-contracts/project-identity';
@@ -106,114 +108,176 @@ export function ProjectRepositorySources({
         />
       ) : (
         <ul className="project-repositories__list">
-          {manifest.repos.map((repo) => {
-            const remote =
-              repo.kind === 'git' ? repo.canonicalRemote : undefined;
-            const forge = remote ? forgeForHost(remote.split('/')[0]) : null;
-            const resource =
-              view?.posture === 'backing'
-                ? view.resources.find((row) => row.resourceId === repo.id)
-                : undefined;
-            const status =
-              view?.posture === 'not-backing'
-                ? 'No working copy on this Station'
-                : resource
-                  ? AVAILABILITY[resource.state]
-                  : 'Availability unknown';
-            return (
-              <li key={repo.id} className="project-repositories__card">
-                <div className="project-repositories__heading">
-                  <div className="project-repositories__identity">
-                    {forge && (
-                      <ForgeMark
-                        forge={forge}
-                        className="project-repositories__mark"
-                      />
-                    )}
-                    <strong>
-                      {repo.label ||
-                        remote?.split('/').slice(1).join('/') ||
-                        'Local folder'}
-                    </strong>
-                  </div>
-                  <Badge
-                    value={status}
-                    tone={resource?.state === 'bound' ? 'positive' : 'neutral'}
-                  />
-                </div>
-                <span className="project-sources__hint">
-                  {remote ?? 'Local-only resource'}
-                </span>
-                <div className="project-repositories__roles">
-                  {primary?.ok && primary.resource.id === repo.id && (
-                    <Badge value="Primary resource" />
-                  )}
-                  {startingId === repo.id && (
-                    <Badge value="Agent starting resource" />
-                  )}
-                </div>
-                <details className="project-sources__diagnostics">
-                  <summary>
-                    Details for {repo.label || remote || 'local folder'}
-                  </summary>
-                  <dl className="project-repositories__details">
-                    <dt>Working copy via</dt>
-                    <dd>{stationName}</dd>
-                    {resource?.state === 'bound' && (
-                      <>
-                        <dt>Verified path</dt>
-                        <dd>
-                          <code>{resource.path}</code>
-                        </dd>
-                      </>
-                    )}
-                    {resource && 'unverifiedPath' in resource && (
-                      <>
-                        <dt>Directory found — identity not verified</dt>
-                        <dd>
-                          <code>{resource.unverifiedPath}</code>
-                        </dd>
-                      </>
-                    )}
-                    {resource?.state === 'missing' && (
-                      <>
-                        <dt>Declared path — not found</dt>
-                        <dd>
-                          <code>{resource.declaredPath}</code>
-                        </dd>
-                      </>
-                    )}
-                    {resource && 'reason' in resource && (
-                      <>
-                        <dt>Availability detail</dt>
-                        <dd>{resource.reason}</dd>
-                      </>
-                    )}
-                    {view?.posture === 'unreadable' && (
-                      <>
-                        <dt>Availability detail</dt>
-                        <dd>{view.reason}</dd>
-                      </>
-                    )}
-                    {startingId === repo.id && (
-                      <>
-                        <dt>Starting directory within resource</dt>
-                        <dd>
-                          <code>{manifest.executionRoot?.path ?? '.'}</code>
-                        </dd>
-                      </>
-                    )}
-                    <dt>Resource identity</dt>
-                    <dd>
-                      <code>{repo.id}</code>
-                    </dd>
-                  </dl>
-                </details>
-              </li>
-            );
-          })}
+          {manifest.repos.map((repo) => (
+            <RepositorySourceCard
+              key={repo.id}
+              repo={repo}
+              view={view}
+              stationName={stationName}
+              primary={primary?.ok === true && primary.resource.id === repo.id}
+              startingDirectory={
+                startingId === repo.id
+                  ? (manifest.executionRoot?.path ?? '.')
+                  : undefined
+              }
+            />
+          ))}
         </ul>
       )}
     </section>
   );
+}
+
+function RepositorySourceCard({
+  repo,
+  view,
+  stationName,
+  primary,
+  startingDirectory,
+}: {
+  repo: ProjectRepoResource;
+  view: ProjectResolutionView | undefined;
+  stationName: string;
+  primary: boolean;
+  startingDirectory: string | undefined;
+}) {
+  const remote = repo.kind === 'git' ? repo.canonicalRemote : undefined;
+  const forge = remote ? forgeForHost(remote.split('/')[0]) : null;
+  const resource =
+    view?.posture === 'backing'
+      ? view.resources.find((row) => row.resourceId === repo.id)
+      : undefined;
+  const status =
+    view?.posture === 'not-backing'
+      ? 'No working copy on this Station'
+      : resource
+        ? AVAILABILITY[resource.state]
+        : 'Availability unknown';
+  return (
+    <li className="project-repositories__card">
+      <div className="project-repositories__heading">
+        <div className="project-repositories__identity">
+          {forge && (
+            <ForgeMark forge={forge} className="project-repositories__mark" />
+          )}
+          <strong>
+            {repo.label ||
+              remote?.split('/').slice(1).join('/') ||
+              'Local folder'}
+          </strong>
+        </div>
+        <Badge
+          value={status}
+          tone={resource?.state === 'bound' ? 'positive' : 'neutral'}
+        />
+      </div>
+      <span className="project-sources__hint">
+        {remote ?? 'Local-only resource'}
+      </span>
+      <div className="project-repositories__roles">
+        {primary && <Badge value="Primary resource" />}
+        {startingDirectory !== undefined && (
+          <Badge value="Agent starting resource" />
+        )}
+      </div>
+      <details className="project-sources__diagnostics">
+        <summary>Details for {repo.label || remote || 'local folder'}</summary>
+        <RepositoryMappingDetails
+          repo={repo}
+          resource={resource}
+          stationName={stationName}
+          startingDirectory={startingDirectory}
+          unreadableReason={
+            view?.posture === 'unreadable' ? view.reason : undefined
+          }
+        />
+      </details>
+    </li>
+  );
+}
+
+function RepositoryMappingDetails({
+  repo,
+  resource,
+  stationName,
+  startingDirectory,
+  unreadableReason,
+}: {
+  repo: ProjectRepoResource;
+  resource: ResourceResolutionResult | undefined;
+  stationName: string;
+  startingDirectory: string | undefined;
+  unreadableReason: string | undefined;
+}) {
+  return (
+    <dl className="project-repositories__details">
+      <dt>Working copy via</dt>
+      <dd>{stationName}</dd>
+      <ResourceLocation resource={resource} />
+      {resource && 'reason' in resource && (
+        <>
+          <dt>Availability detail</dt>
+          <dd>{resource.reason}</dd>
+        </>
+      )}
+      {unreadableReason && (
+        <>
+          <dt>Availability detail</dt>
+          <dd>{unreadableReason}</dd>
+        </>
+      )}
+      {startingDirectory !== undefined && (
+        <>
+          <dt>Starting directory within resource</dt>
+          <dd>
+            <code>{startingDirectory}</code>
+          </dd>
+        </>
+      )}
+      <dt>Resource identity</dt>
+      <dd>
+        <code>{repo.id}</code>
+      </dd>
+    </dl>
+  );
+}
+
+function ResourceLocation({
+  resource,
+}: {
+  resource: ResourceResolutionResult | undefined;
+}) {
+  if (!resource) return null;
+  switch (resource.state) {
+    case 'bound':
+      return (
+        <>
+          <dt>Verified path</dt>
+          <dd>
+            <code>{resource.path}</code>
+          </dd>
+        </>
+      );
+    case 'stale':
+    case 'drifted':
+      return (
+        <>
+          <dt>Directory found — identity not verified</dt>
+          <dd>
+            <code>{resource.unverifiedPath}</code>
+          </dd>
+        </>
+      );
+    case 'missing':
+      return (
+        <>
+          <dt>Declared path — not found</dt>
+          <dd>
+            <code>{resource.declaredPath}</code>
+          </dd>
+        </>
+      );
+    default:
+      return null;
+  }
 }
