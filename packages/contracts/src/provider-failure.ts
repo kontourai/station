@@ -9,6 +9,7 @@ import {
   EXECUTION_ENGINE_CHANGED_CODE,
 } from './execution-target.js';
 import { AUTH_RATE_LIMITED_ERROR_CODE } from './http.js';
+import { MANAGED_POLICY_APPROVAL_CEILING_CODE } from './managed-policy.js';
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
@@ -208,6 +209,8 @@ export const PROVIDER_FAILURE_KINDS = {
   [MUSE_APPROVAL_MODE_NOT_APPLIED_CODE]: 'warning',
   [ACP_APPROVAL_TAKEOVER_FAILED_CODE]: 'warning',
   [ACP_APPROVAL_GOVERNANCE_REFUSED_CODE]: 'permission_denied',
+  // #4518: a posture above the machine's managed approval ceiling.
+  [MANAGED_POLICY_APPROVAL_CEILING_CODE]: 'permission_denied',
   [MUSE_SERVE_HOST_EXITED_CODE]: 'engine_crashed',
   [MUSE_SERVE_STOP_UNCONFIRMED_CODE]: 'warning',
   [PROVIDER_TURN_IN_PROGRESS_CODE]: 'busy',

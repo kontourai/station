@@ -320,6 +320,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // #4518: boots the source Station with an injected approval ceiling and
+  // drives its routes over HTTP; private homes, ephemeral port.
+  'src-server/__tests__/managed-approval-ceiling.process.test.ts',
   // #4516: runs `station policy check` as a CLI child on private fixtures.
   'packages/cli/src/__tests__/policy-command.test.ts',
   // #4517: runs offline `station config set` and `station registry` as CLI
@@ -1427,6 +1430,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/components/chat-dock/__tests__/ChatDockFailureStack.geometry.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
+  // Owns Chromium to render the approval pickers under a managed ceiling (#4518).
+  'src-ui/src/__tests__/approval-ceiling-pickers.browser.test.tsx',
+  // Owns Chromium to render the composer approval sheet under a managed ceiling (#4518).
+  'src-ui/src/__tests__/composer-mode-sheet-managed.browser.test.tsx',
   // Mounted Coding tool navigation and sticky controls own a Chromium instance.
   'src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx',
   // Mounted local restart notice recovery owns a Chromium instance.

@@ -239,7 +239,12 @@ The person's personal per-engine approval default is queued for a chat's
 first send as before (with its account namespace, so offline replay and
 account switches behave as they did). In a Project chat it travels on `/chat`
 as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint rather than a
-pick; outside a Project there is no Project layer and it goes as a carried pick. For a new conversation of a person's own chat the server
+pick; outside a Project there is no Project layer and it goes as a carried pick,
+except when the Station reports a managed
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling): then
+it goes as the hint everywhere, so the server lowers it as a default instead of
+refusing it as a pick. A recorded hint's `session.approval-mode-set` event is
+marked `source: "personal-default"`. For a new conversation of a person's own chat the server
 records it as the conversation's decision only when nothing above it decides,
 so the order is: explicit pick, Agent default, Project layer, personal
 default, Station default. A `never` hint that would apply is refused (403
@@ -3890,16 +3895,42 @@ With one:
       "organization": "Example Corp",
       "supportUrl": "https://help.example.com/station",
       "lockedSettings": [],
-      "limits": {}
+      "limits": { "maxApprovalMode": "auto" }
     }
   }
 }
 ```
 
-`source.kind` is `file`, or `test-override` for an isolated test instance. The
-summary never contains a setting value. There is no error state: a server that
+`source.kind` is `file`, or `test-override` for an isolated test instance.
+`limits` holds `maxApprovalMode` (`ask`, `auto` or `never`) when the policy
+sets the [approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
+and is `{}` otherwise. The summary never contains a setting value. There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
-`station policy show` reports as a server too old to report a policy.
+`station policy show` reports as a server too old to report a policy, and
+which the UI reads as no policy.
+
+### Refusals by the approval-mode ceiling
+
+Under a ceiling, a request that picks an approval mode above it, or changes
+this Station's default to one, is refused before it has any effect:
+
+```json
+{
+  "success": false,
+  "code": "managed-policy-approval-ceiling",
+  "error": "Example Corp's policy manages approval modes: the broadest allowed is Auto. For help, visit https://help.example.com/station"
+}
+```
+
+with status `403`. That covers `POST /api/orchestration/commands`
+(`setApprovalMode`), a `setApprovalMode` carried on `/chat`,
+`/chat/:id/continue` or a handoff, `PUT /config/app`
+(`defaultApprovalMode`), any explicit full-access default written to a
+project or Agent, adding a plugin Agent's tool grant, and a known ACP
+full-access `mode` on a request's options. A mode carried on a request's
+options as a default (`approvalMode`, `never` included) is lowered to the
+ceiling, not refused. A turn on a chat whose recorded pick is above the ceiling is refused with the
+same `code` and message as a turn refusal (`permission_denied`).
 
 ## Branding
 

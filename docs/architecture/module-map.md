@@ -5199,8 +5199,10 @@ factories describe backend responses; types do not make a fake backend real.
 [fixture-audit.ts](../../tests/helpers/fixture-audit.ts) fails teardown for requests
 sent through `rejectUnexpectedFixtureRequest` when a spec uses its extended
 `test` fixture. It is not a global interceptor for every Playwright spec. Its
-explicit focus-presence POST exception returns the real route's empty 204;
-journeys about focus must model that route themselves.
+explicit exceptions return the real routes' answers for requests every mounted
+App makes: the focus-presence POST's empty 204, and the managed-policy status GET's
+no-policy body (`{ state: 'none' }`, #4518). Journeys about focus or a managed
+policy must model those routes themselves.
 
 **Profiling.** [Journey instrumentation](../../tests/helpers/journey-profile.ts)
 uses Chromium CDP, React commit observation, storage and DOM counters without a

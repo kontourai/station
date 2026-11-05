@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { AcpSessionModeChip } from '../components/badges/AcpSessionModeChip';
+import { ManagedPolicyContext } from '../contexts/ManagedPolicyContext';
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -80,5 +81,54 @@ describe('AcpSessionModeChip', () => {
     await screen.findByRole('radiogroup', { name: 'Session mode' });
     fireEvent.click(screen.getByRole('radio', { name: /Plan/ }));
     expect(onChange).toHaveBeenCalledWith('plan');
+  });
+});
+
+/** #4518: a recognized ACP full-access mode is above a ceiling below Full access. */
+describe('AcpSessionModeChip under a managed ceiling of Auto', () => {
+  test('a known full-access mode is disabled and marked Managed; others stay offered', async () => {
+    const onChange = vi.fn();
+    render(
+      <ManagedPolicyContext.Provider
+        value={{
+          organization: 'Acme',
+          supportUrl: null,
+          lockedSettings: [],
+          limits: { maxApprovalMode: 'auto' },
+        }}
+      >
+        <AcpSessionModeChip
+          modes={[
+            { id: 'default', name: 'Default' },
+            { id: 'bypassPermissions', name: 'Bypass Permissions' },
+          ]}
+          currentModeId="default"
+          onChange={onChange}
+        />
+      </ManagedPolicyContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Session mode: Default\./ }),
+    );
+    const group = await screen.findByRole('radiogroup', {
+      name: 'Session mode',
+    });
+    const bypass = within(group).getByRole('radio', {
+      name: /Bypass Permissions/,
+    }) as HTMLInputElement;
+    expect(bypass.disabled).toBe(true);
+    expect(within(group).getByText('Managed')).toBeTruthy();
+    expect(
+      (
+        within(group).getByRole('radio', {
+          name: /^Default/,
+        }) as HTMLInputElement
+      ).disabled,
+    ).toBe(false);
+    fireEvent.click(bypass);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Acme's policy manages approval modes/),
+    ).toBeTruthy();
   });
 });
