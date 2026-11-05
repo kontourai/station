@@ -201,14 +201,27 @@ export function plistKeyScanProblem(xml: string): string | null {
 const BINARY_PLIST_MAX_DEPTH = 64;
 
 /**
+ * #4515: the scan's work bound. Each object is expanded once (a finished
+ * one is remembered), so a scan visits each reference once; a profile is
+ * refused when its references would take more than this many visits per
+ * object, plus a fixed allowance. A real policy references few objects
+ * more than once; the bound keeps a crafted one from making startup slow.
+ */
+export const BINARY_PLIST_VISITS_PER_OBJECT = 4;
+export const BINARY_PLIST_VISIT_ALLOWANCE = 256;
+
+/**
  * Why a binary property list (`bplist00`) cannot be trusted as a policy, or
  * null: the dotted path of a key repeated within one dict, or a structure
  * this scan cannot read. plutil keeps the last of two equal keys here too, so
  * the object table is read before conversion: from the top object, every
  * dict's keys are decoded (ASCII or UTF-16 strings) and compared. Anything
  * the scan cannot read (a bad trailer, offset or reference, a key that is not
- * a string, a cycle, nesting past {@link BINARY_PLIST_MAX_DEPTH}) refuses the
- * profile rather than being passed on.
+ * a string, a cycle, nesting past {@link BINARY_PLIST_MAX_DEPTH}, more
+ * reference visits than {@link BINARY_PLIST_VISITS_PER_OBJECT} per object
+ * plus {@link BINARY_PLIST_VISIT_ALLOWANCE}) refuses the profile rather than
+ * being passed on. An object reached twice (shared, not a cycle) is scanned
+ * once: its keys are its own, whatever path reaches it.
  */
 export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
   const unreadable = 'it is a binary property list Station cannot read';
@@ -283,7 +296,16 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
     return refs;
   };
   const visiting = new Set<number>();
+  // A finished object had no problem (a problem ends the scan), so it is
+  // never scanned again: shared references stay linear, not exponential.
+  const clean = new Set<number>();
+  const budget =
+    objectCount * BINARY_PLIST_VISITS_PER_OBJECT + BINARY_PLIST_VISIT_ALLOWANCE;
+  let visits = 0;
   const walk = (ref: number, path: string, depth: number): string | null => {
+    visits += 1;
+    if (visits > budget) return unreadable;
+    if (clean.has(ref)) return null;
     if (depth > BINARY_PLIST_MAX_DEPTH || visiting.has(ref)) return unreadable;
     const at = offsetOf(ref);
     if (at === null) return unreadable;
@@ -300,6 +322,7 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
           const problem = walk(child, path, depth + 1);
           if (problem) return problem;
         }
+        clean.add(ref);
         return null;
       }
       const keys = refsAt(length.start, length.count);
@@ -319,6 +342,7 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
         const problem = walk(values[i], keyPath, depth + 1);
         if (problem) return problem;
       }
+      clean.add(ref);
       return null;
     } finally {
       visiting.delete(ref);

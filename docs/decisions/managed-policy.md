@@ -187,7 +187,10 @@ every encoding it would read is scanned for a key repeated within one dict and
 refused with `duplicate key <path>`, as a file is. An XML plist goes through a
 strict tokenizer that refuses any markup it cannot read rather than skipping
 it; a binary plist (what macOS writes) through its object table, refusing a
-structure it cannot read. Any other encoding plutil reads (JSON, old-style
+structure it cannot read. Each object is scanned once, however many
+references share it, and a profile whose references need more than four
+visits per object (plus 256) is refused, so a crafted profile cannot make
+startup slow. Any other encoding plutil reads (JSON, old-style
 text) is not what macOS writes and is refused.
 
 **Windows registry (#4524).** Station reads `HKLM\SOFTWARE\Policies\Kontour\Station`

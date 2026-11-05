@@ -11,6 +11,8 @@ import {
   systemManagedPolicySources,
 } from '../managed-policy.js';
 import {
+  BINARY_PLIST_VISIT_ALLOWANCE,
+  BINARY_PLIST_VISITS_PER_OBJECT,
   binaryPlistKeyScanProblem,
   duplicatePlistKeyPath,
   MACOS_MANAGED_PREFERENCES_PATH,
@@ -645,5 +647,69 @@ describe('every property list encoding is scanned for a repeated key', () => {
       ]);
     expect(load).toThrow(ManagedPolicyInvalidError);
     expect(load).toThrow('it is not an XML or binary property list');
+  });
+});
+
+// #4515 fix round 3: shared references in a binary plist must not make the
+// startup scan exponential. The reviewer's 273-byte profile: 34 nested arrays,
+// each referencing the next twice (under the size and depth bounds), ran past
+// 12 seconds and had to be killed.
+describe('a binary plist that shares references is scanned in bounded work', () => {
+  const shared = (levels: number) =>
+    bplist([
+      ...Array.from({ length: levels }, (_, i) => ({ array: [i + 1, i + 1] })),
+      { bool: true },
+    ]);
+
+  test("the reviewer's 34-level shape finishes in well under a second", () => {
+    const bytes = shared(34);
+    // The reported structure (34 arrays, each referencing the next twice:
+    // 2^34 paths), in this builder's narrowest encoding.
+    expect(bytes.length).toBeLessThan(1024);
+    const started = performance.now();
+    expect(binaryPlistKeyScanProblem(bytes)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(500);
+  }, 5_000);
+
+  test('a profile whose references exceed the visit budget is refused', () => {
+    // Pinned beside the constants under test.
+    expect(BINARY_PLIST_VISITS_PER_OBJECT).toBe(4);
+    expect(BINARY_PLIST_VISIT_ALLOWANCE).toBe(256);
+    // 20 arrays of 200 references to one string: 22 objects (a budget of
+    // 344 visits) and 4021 visits, each array expanded only once.
+    const top = { array: Array.from({ length: 20 }, (_, i) => i + 1) };
+    const arrays = Array.from({ length: 20 }, () => ({
+      array: Array.from({ length: 200 }, () => 21),
+    }));
+    const bytes = bplist([top, ...arrays, { string: 'x' }]);
+    expect(binaryPlistKeyScanProblem(bytes)).toBe(
+      'it is a binary property list Station cannot read',
+    );
+    // At the profile source, before conversion: the invalid-policy error,
+    // and the converter is never asked.
+    const path = join(makeTempDir('station-policy-budget-'), 'p.plist');
+    writeFileSync(path, bytes);
+    let converted = false;
+    const load = () =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(path, null, () => {
+          converted = true;
+          return { ok: true, json: '{}' };
+        }),
+      ]);
+    expect(load).toThrow(ManagedPolicyInvalidError);
+    expect(load).toThrow('it is a binary property list Station cannot read');
+    expect(converted).toBe(false);
+    // Just inside the budget: one array of 200 references to one string
+    // (3 objects, 268 allowed, 201 visits) is read.
+    expect(
+      binaryPlistKeyScanProblem(
+        bplist([
+          { array: [1] },
+          { array: Array.from({ length: 200 }, () => 2) },
+          { string: 'x' },
+        ]),
+      ),
+    ).toBeNull();
   });
 });
