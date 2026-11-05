@@ -189,8 +189,16 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
 
   test('retries both failed scheduler reads and returns to the job list after recovery', async () => {
     bothQueriesFail(await transportErrorFor());
-    const jobsRequest = Promise.withResolvers<void>();
-    const statusRequest = Promise.withResolvers<void>();
+    let resolveJobs!: () => void;
+    const jobsPromise = new Promise<void>((resolve) => {
+      resolveJobs = resolve;
+    });
+    const jobsRequest = { promise: jobsPromise, resolve: resolveJobs };
+    let resolveStatus!: () => void;
+    const statusPromise = new Promise<void>((resolve) => {
+      resolveStatus = resolve;
+    });
+    const statusRequest = { promise: statusPromise, resolve: resolveStatus };
     retryQueries.jobs.mockReturnValue(jobsRequest.promise);
     retryQueries.status.mockReturnValue(statusRequest.promise);
     const { rerender } = render(<ScheduleView />);
