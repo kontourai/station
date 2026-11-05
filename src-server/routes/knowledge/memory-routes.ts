@@ -8,11 +8,16 @@ import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy'
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
+import {
+  MemoryErasureCoordinator,
+  MemoryErasureError,
+} from '../../knowledge-store/memory-erasure-coordinator.js';
 import type { MemoryRootManager } from '../../knowledge-store/memory-root.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 
 interface MemoryRouteDeps {
   manager: MemoryRootManager;
+  erasure?: MemoryErasureCoordinator;
   enabled: () => boolean;
   authority: (
     request: Request,
@@ -252,6 +257,102 @@ export function createMemoryRoutes(deps: MemoryRouteDeps) {
     } catch {
       return c.json(
         { success: false, error: 'Private memory is unavailable.' },
+        503,
+      );
+    }
+  });
+
+  app.post('/memory/erase', async (c) => {
+    const caller = deps.authority(c.req.raw, 'create');
+    if (!caller)
+      return c.json(
+        { success: false, error: 'Private memory access denied.' },
+        403,
+      );
+    if (!deps.erasure)
+      return c.json(
+        { success: false, error: 'Memory erasure is unavailable.' },
+        503,
+      );
+    const raw = await readBoundedRequestBody(c.req.raw, 8192);
+    if (raw.status !== 'ok')
+      return c.json(
+        { success: false, error: 'Invalid erasure request.' },
+        raw.status === 'too-large' ? 413 : 400,
+      );
+    let input: unknown;
+    try {
+      input = JSON.parse(raw.body);
+    } catch {
+      return c.json({ success: false, error: 'Invalid erasure request.' }, 400);
+    }
+    const parsed = z
+      .object({
+        kind: z.enum(['record', 'proposal']),
+        id: z.string().min(1).max(200),
+        revision: z.string().min(1).max(512),
+        purgeId: z.string().uuid(),
+      })
+      .strict()
+      .safeParse(input);
+    if (!parsed.success || !isSafePathSegment(parsed.data.id))
+      return c.json({ success: false, error: 'Invalid erasure request.' }, 400);
+    try {
+      const root = await deps.manager.findRoot(
+        caller.scope,
+        caller.assertCurrent,
+      );
+      if (!root || !(await deps.mayReadRoot(c.req.raw, root)))
+        return c.json(
+          { success: false, error: 'Private memory not found.' },
+          404,
+        );
+      const { kind, id, revision, purgeId } = parsed.data;
+      const receipt = await deps.erasure.erase(
+        caller.scope,
+        root,
+        caller.assertCurrent,
+        kind,
+        id,
+        revision,
+        purgeId,
+      );
+      return deps.guardReadResponse(
+        c.req.raw,
+        [root],
+        c.json({ success: true, data: { receipt } }),
+      );
+    } catch (error) {
+      if (
+        error instanceof MemoryErasureError &&
+        error.code === 'STALE_REVISION'
+      )
+        return c.json(
+          {
+            success: false,
+            code: error.code,
+            error: 'Memory changed. Review the effects again.',
+          },
+          409,
+        );
+      if (
+        error instanceof MemoryErasureError &&
+        error.code === 'REQUEST_KEY_CONFLICT'
+      )
+        return c.json(
+          {
+            success: false,
+            code: error.code,
+            error: 'This erasure request conflicts with an earlier request.',
+          },
+          409,
+        );
+      return c.json(
+        {
+          success: false,
+          code: 'ERASURE_UNAVAILABLE',
+          error: 'Erasure could not be confirmed. Check before trying again.',
+        },
         503,
       );
     }

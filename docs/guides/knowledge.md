@@ -134,8 +134,8 @@ Project membership and delegation do not grant access to this root.
 `requestKey`, and `GET /api/knowledge/memory/proposals` is the explicit proposal
 query. Reusing a key for different input is refused. Pending proposals are not
 records and are not indexed or returned by ordinary Knowledge search. Ordinary
-record mutation routes cannot write directly into this root. Review decisions,
-distillation and erasure are separate work and are not provided by this preview.
+record mutation routes cannot write directly into this root. Review decisions
+and distillation are separate work and are not provided by this preview.
 Optional `provenance.source_refs` identify transcript sources for attribution;
 they neither grant transcript access nor serve as review evidence. Station checks
 the Corpus adapter binding when opening a root and before cached reads, but does
@@ -145,15 +145,23 @@ binding is tracked in [corpus#61](https://github.com/kontourai/corpus/issues/61)
 Proposals submitted through this preview are attributed to the operator; Corpus
 refuses that same person as an approver, including through a future review route.
 Corpus permits the proposer to reject a proposal, but rejection retains its
-content. The preview provides no decision or erasure route; proposal content
-remains in the store until erased through a separately authorized flow.
+content. The preview provides no review-decision route.
 With the preview enabled, **My knowledge store** lists proposals for lookup and
 can look up a record or proposal by ID. The preview identifies the target; affected claims are
 unavailable until a producer-authored Surface bundle exists ([surface#360](https://github.com/kontourai/surface/issues/360)).
 The lookup shows Corpus's preview of affected records and proposals. Records
 that survive or link to erased records may still contain the erased content.
-Erasure remains unavailable until index cleanup and recovery are fenced
-([#4593](https://github.com/kontourai/station/issues/4593)).
+The host operator can confirm permanent erasure after reviewing these effects.
+Station returns a receipt after cleanup. If a request's outcome is unknown,
+check the target before trying again.
+
+If another tool writes to this store outside Station during a purge, a copy of
+the erased text can remain in the search index file until the next cleanup pass.
+It is never shown in results. The separate atomic publication contract is tracked
+in [corpus#74](https://github.com/kontourai/corpus/issues/74). An interrupted
+Corpus erasure can leave its before-images in a transaction journal until recovery
+([corpus#73](https://github.com/kontourai/corpus/issues/73)). Backups and filesystem
+snapshots have their own retention.
 Agent-backed proposals and human review are separate future work.
 
 ## `./station knowledge reindex` — (re)build the index

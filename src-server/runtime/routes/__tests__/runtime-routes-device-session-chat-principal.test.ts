@@ -4148,6 +4148,40 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           ),
         ).toBe(false);
       }
+      const previewResponse = await request(
+        `/api/knowledge/memory/erasure-preview?kind=proposal&id=${id}`,
+        { headers },
+      );
+      expect(previewResponse.status).toBe(200);
+      const revision = (
+        (await previewResponse.json()) as {
+          data: { impact: { revision: string } };
+        }
+      ).data.impact.revision;
+      const erasureBody = JSON.stringify({
+        kind: 'proposal',
+        id,
+        revision,
+        purgeId: '23b89919-bbc4-400f-9a54-6632980bc817',
+      });
+      for (const auth of [pairedHeaders, peerHeaders]) {
+        const refused = await request('/api/knowledge/memory/erase', {
+          method: 'POST',
+          headers: auth,
+          body: erasureBody,
+        });
+        expect(refused.status).toBe(403);
+      }
+      const erased = await request('/api/knowledge/memory/erase', {
+        method: 'POST',
+        headers,
+        body: erasureBody,
+      });
+      expect(erased.status, await erased.clone().text()).toBe(200);
+      expect(await erased.json()).toMatchObject({
+        success: true,
+        data: { receipt: { kind: 'proposal', result: { proposalId: id } } },
+      });
       await featurePreviews.setEnabled('private-memory', false);
       const disabledRecord = await request(
         `/api/knowledge/roots/${root.id}/records?type=raw`,

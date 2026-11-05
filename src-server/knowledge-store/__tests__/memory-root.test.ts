@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { SqliteVecIndexProvider } from '../../knowledge-index/sqlite-vec-index-provider.js';
+import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-index-routes.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
 import { MEMORY_ADAPTER_ID, MemoryRootManager } from '../memory-root.js';
@@ -27,6 +28,78 @@ const current = () => {};
 afterEach(() => vi.unstubAllEnvs());
 
 describe('private memory root', () => {
+  test('drops a hit purged by another Corpus writer after search assembly', async () => {
+    const home = makeTempDir('station-memory-delivery-purge-');
+    vi.stubEnv('STATION_HOME', home);
+    const persistence = new FileStorageAdapter(home);
+    const store = new KnowledgeStoreProvider(persistence);
+    const manager = new MemoryRootManager(store, persistence, home, () => true);
+    const root = await manager.ensureRoot(owner, current);
+    const proposal = await manager.propose(
+      owner,
+      root,
+      current,
+      {
+        type: 'raw',
+        title: 'Private',
+        body: 'Private body',
+        category: 'memory',
+        provenance: { agent: 'source' },
+      },
+      { agent: 'source', proposal: 'evidence' },
+      'agent:source',
+      'source',
+    );
+    const id = await manager.applyCreate(owner, root, current, proposal);
+    const index = new SqliteVecIndexProvider({
+      dbPath: join(home, 'index.db'),
+    });
+    const embedder = {
+      id: 'test',
+      displayName: 'test',
+      dimensions: () => 3,
+      embed: async (texts: string[]) => texts.map(() => [1, 0, 0]),
+    };
+    try {
+      await index.rebuildRoot(root.id, {
+        store,
+        embedder,
+        withRootRevision: manager.rebuildFence(owner, root, current),
+      });
+      const app = createKnowledgeIndexRoutes({
+        store,
+        indexProvider: index,
+        dataDir: home,
+        getEmbedder: () => embedder,
+      });
+      const pending = await app.request('/index/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'Private body' }),
+      });
+      expect(pending.status).toBe(200);
+      const external = new KitDefaultStoreAdapter({
+        storeRoot: root.storeRoot,
+        coordinationDirectory: join(
+          home,
+          'coordination',
+          'knowledge-file-transactions',
+        ),
+        lock: acquireFileMutationLockAsync,
+        coordinationIdentity: () => () => {},
+        allowPurge: true,
+      });
+      const preview = await external.previewPurge([id]);
+      await external.purge(
+        [id],
+        { agent: 'owner', rationale: 'test erasure' },
+        { expectedRevision: preview.revision },
+      );
+      expect(await pending.json()).toMatchObject({ success: true, data: [] });
+    } finally {
+      index.close();
+    }
+  });
   test('refuses index publication when a Station write changes the captured Corpus revision', async () => {
     const home = makeTempDir('station-memory-rebuild-fence-');
     vi.stubEnv('STATION_HOME', home);

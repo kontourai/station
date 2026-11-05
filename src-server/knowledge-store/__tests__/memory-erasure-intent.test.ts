@@ -8,10 +8,12 @@ test('a recorded erasure intent survives reopening under the same idempotency ke
   const home = makeTempDir('memory-erasure-intent-');
   const intent = {
     version: 1 as const,
+    operation: 'purge' as const,
     purgeId: 'purge-1',
     rootId: 'root-1',
     ownerId: 'human:owner',
     registrationId: 'registration-1',
+    binding: 'binding-1',
     targetKind: 'record' as const,
     targetId: 'record-1',
     revision: 'rev1:confirmed',

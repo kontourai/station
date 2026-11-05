@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { MemoryErasurePreview } from '../MemoryErasurePreview';
@@ -108,7 +109,7 @@ test('shows the Corpus proposal impact without inventing record effects', async 
   ).toBeTruthy();
   expect(screen.getByText('Proposal to erase: proposal-1')).toBeTruthy();
   expect(screen.queryByText(/survivors|referrers/i)).toBeNull();
-  expect(screen.queryByRole('button', { name: /^(erase|purge)$/i })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Erase memory' })).toBeTruthy();
 });
 
 test('disabled preview renders nothing and makes no request', async () => {
@@ -234,7 +235,127 @@ test('does not display the previous authority’s result after switching account
     </QueryClientProvider>,
   );
   expect(screen.queryByText('Owner result')).toBeNull();
-  expect(await screen.findByText('Other result')).toBeTruthy();
+  expect(screen.queryByText('Other result')).toBeNull();
+  await waitFor(() =>
+    expect((screen.getByLabelText('ID') as HTMLInputElement).value).toBe(''),
+  );
+});
+
+test('requires confirmation of the plan and renders the returned receipt', async () => {
+  const emptyImpact = {
+    purged: ['record-1'],
+    cascaded: ['record-2'],
+    survivors: [],
+    referrers: [],
+    alreadyPurged: [],
+    proposalsRejected: [],
+    proposalsScrubbed: [],
+    proposalsBlocked: [],
+  };
+  const fetcher = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/memory/erase') && init?.method === 'POST')
+        return reply({
+          success: true,
+          data: {
+            receipt: {
+              kind: 'record',
+              result: { ...emptyImpact, cascaded: ['record-4'] },
+            },
+          },
+        });
+      if (String(input).includes('erasure-preview'))
+        return reply({
+          success: true,
+          data: {
+            kind: 'record',
+            id: 'record-1',
+            title: 'A memory',
+            impact: { ...emptyImpact, revision: 'revision-1' },
+          },
+        });
+      return reply({ success: true, data: [] });
+    },
+  );
+  vi.stubGlobal('fetch', fetcher);
+  mount();
+  fireEvent.change(screen.getByLabelText('ID'), {
+    target: { value: 'record-1' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Erase memory' }));
+  const dialog = screen.getByRole('alertdialog');
+  expect(within(dialog).getByText(/cannot be undone/)).toBeTruthy();
+  expect(within(dialog).getByText(/record-2/)).toBeTruthy();
+  expect(
+    fetcher.mock.calls.filter(([url]) => String(url).endsWith('/memory/erase')),
+  ).toHaveLength(0);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Erase permanently' }),
+  );
+  const receipt = await screen.findByRole('region', {
+    name: 'Erasure receipt',
+  });
+  expect(within(receipt).getByText('record-4')).toBeTruthy();
+  expect(within(receipt).queryByText('record-2')).toBeNull();
+});
+
+test('stale confirmation refreshes the preview and requires confirmation again', async () => {
+  let revision = 'revision-1';
+  const fetcher = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/memory/erase') && init?.method === 'POST') {
+        revision = 'revision-2';
+        return reply({ success: false, code: 'STALE_REVISION' }, 409);
+      }
+      if (String(input).includes('erasure-preview'))
+        return reply({
+          success: true,
+          data: {
+            kind: 'proposal',
+            id: 'proposal-1',
+            title: 'A memory',
+            impact: {
+              proposalId: 'proposal-1',
+              alreadyErased: false,
+              state: 'pending',
+              revision,
+            },
+          },
+        });
+      return reply({
+        success: true,
+        data: [{ id: 'proposal-1', candidate: { title: 'A memory' } }],
+      });
+    },
+  );
+  vi.stubGlobal('fetch', fetcher);
+  mount();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Look up proposal' }),
+  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Erase memory' }));
+  fireEvent.click(
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Erase permanently',
+    }),
+  );
+  expect(
+    await screen.findByText(
+      'Memory changed. Review the updated effects and confirm again.',
+    ),
+  ).toBeTruthy();
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        String(url).includes('erasure-preview'),
+      ).length,
+    ).toBeGreaterThan(1),
+  );
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(
+    fetcher.mock.calls.filter(([url]) => String(url).endsWith('/memory/erase')),
+  ).toHaveLength(1);
 });
 
 test('explains an unavailable store and a missing target without offering retry', async () => {

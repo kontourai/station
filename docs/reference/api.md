@@ -518,12 +518,17 @@ query. Pending proposals do not appear in ordinary record lists or search.
 
 `GET /api/knowledge/memory/erasure-preview?kind=record|proposal&id=<id>`
 returns the target's `{ kind, id, title, impact }` without changing it. The
-impact and revision come from Corpus's purge preview; Station does not yet
-expose erasure.
+impact and revision come from Corpus's purge preview. The host operator may
+confirm with `POST /api/knowledge/memory/erase` using `{ kind, id, revision,
+purgeId }`, where `purgeId` is a UUID retained for retries. A changed revision
+returns 409 `STALE_REVISION` without erasing; fetch a new preview and confirm
+again. Success returns the Corpus receipt, or `null` if recovery completed but
+the original receipt could not be retained. A 503 can mean cleanup is pending;
+inspect the target before retrying with the same ID.
 
 Unknown identity, hosted access, Project membership and delegation do not grant
 memory access. With the preview off, direct memory requests return the standard
-`feature_preview_disabled` 404. Review, application and erasure are not exposed
+`feature_preview_disabled` 404. Review and application are not exposed
 by these routes. See [Private memory](../guides/knowledge.md#private-memory-preview).
 
 ## Project knowledge source identity

@@ -1,11 +1,15 @@
 import {
   getJson,
+  mutateJson,
   useApiQuery,
   useFeaturePreviewsQuery,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { useMutation } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod/v3';
 import { Button } from '../../components/Button';
+import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 
@@ -61,6 +65,47 @@ class MemoryLookupError extends Error {
   }
 }
 
+class MemoryErasureRequestError extends Error {
+  constructor(readonly kind: 'stale' | 'unsupported' | 'uncertain') {
+    super(kind);
+  }
+}
+
+const receiptSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('record'), result: recordImpactSchema }),
+  z.object({
+    kind: z.literal('proposal'),
+    result: z.object({
+      proposalId: z.string(),
+      alreadyErased: z.boolean(),
+      record: recordImpactSchema.optional(),
+    }),
+  }),
+]);
+
+function impactSummary(data: z.infer<typeof responseSchema>['data']): string {
+  const impact = data.kind === 'record' ? data.impact : data.impact.record;
+  const parts =
+    data.kind === 'proposal' ? [`Proposal to erase: ${data.id}`] : [];
+  if (impact) {
+    const groups = [
+      ['Records to erase', impact.purged],
+      ['Dependent records to erase', impact.cascaded],
+      ['Records to review', impact.survivors],
+      ['Records that link to erased records', impact.referrers],
+      ['Already erased records', impact.alreadyPurged],
+      ['Proposals to reject', impact.proposalsRejected],
+      ['Proposals to clear', impact.proposalsScrubbed],
+      ['Proposals blocked from approval', impact.proposalsBlocked],
+    ] as const;
+    for (const [label, ids] of groups)
+      if (ids.length) parts.push(`${label}: ${ids.join(', ')}`);
+    if (impact.survivors.length || impact.referrers.length)
+      parts.push('Records to review may still contain erased content.');
+  }
+  return `This erasure cannot be undone. ${parts.join('; ')}`;
+}
+
 function RecordImpact({
   impact,
 }: {
@@ -104,8 +149,30 @@ export function MemoryErasurePreview() {
   const [target, setTarget] = useState<{
     kind: 'record' | 'proposal';
     id: string;
+    scopeIdentity: string;
   } | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    purgeId: string;
+    scopeIdentity: string;
+    revision: string;
+  } | null>(null);
+  const [notice, setNotice] = useState('');
+  const [receipt, setReceipt] = useState<
+    | { scopeIdentity: string; value: z.infer<typeof receiptSchema> | null }
+    | undefined
+  >(undefined);
   const scopeKey = [scope?.apiBase ?? null, scope?.authorityKey ?? null];
+  const scopeIdentity = JSON.stringify(scopeKey);
+  const previousScope = useRef(scopeIdentity);
+  useEffect(() => {
+    if (previousScope.current === scopeIdentity) return;
+    previousScope.current = scopeIdentity;
+    setTarget(null);
+    setId('');
+    setConfirmation(null);
+    setReceipt(undefined);
+    setNotice('');
+  }, [scopeIdentity]);
   const proposals = useApiQuery(
     ['memory', 'proposals', ...scopeKey],
     async (signal) => {
@@ -161,13 +228,68 @@ export function MemoryErasurePreview() {
       return result;
     },
     {
-      enabled: Boolean(enabled && scope && target),
+      enabled: Boolean(
+        enabled && scope && target && target.scopeIdentity === scopeIdentity,
+      ),
       retry: false,
       staleTime: 0,
       gcTime: 0,
       cancelWhenInactive: true,
     },
   );
+  const erase = useMutation({
+    mutationFn: async (input: {
+      kind: 'record' | 'proposal';
+      id: string;
+      revision: string;
+      purgeId: string;
+    }) => {
+      if (!scope || !scope.isCurrent())
+        throw new MemoryErasureRequestError('uncertain');
+      const response = await mutateJson(
+        `${scope.apiBase}/api/knowledge/memory/erase`,
+        'POST',
+        { requestScope: scope },
+        input,
+      );
+      if (response.status === 409) {
+        const body = await response.json().catch(() => null);
+        if (body?.code === 'STALE_REVISION')
+          throw new MemoryErasureRequestError('stale');
+      }
+      if (response.status === 404)
+        throw new MemoryErasureRequestError('unsupported');
+      if (!response.ok) throw new MemoryErasureRequestError('uncertain');
+      const body = z
+        .object({
+          success: z.literal(true),
+          data: z.object({ receipt: receiptSchema.nullable() }),
+        })
+        .parse(await response.json());
+      if (!scope.isCurrent()) throw new MemoryErasureRequestError('uncertain');
+      return { scopeIdentity, value: body.data.receipt };
+    },
+    onSuccess: (result) => {
+      setReceipt(result);
+      setConfirmation(null);
+      setTarget(null);
+      setId('');
+      setNotice('');
+      void proposals.refetch();
+    },
+    onError: (error) => {
+      if (
+        error instanceof MemoryErasureRequestError &&
+        error.kind === 'stale'
+      ) {
+        setConfirmation(null);
+        setNotice(
+          'Memory changed. Review the updated effects and confirm again.',
+        );
+        void preview.refetch();
+      }
+    },
+  });
   if (!scope || !enabled || !scope.isCurrent()) return null;
   const listMissing =
     proposals.error instanceof MemoryLookupError &&
@@ -178,7 +300,7 @@ export function MemoryErasurePreview() {
   return (
     <section aria-label="Look up a memory" className="knowledge-memory-preview">
       <h3>Look up a memory</h3>
-      <p>Erasing memories isn’t available yet.</p>
+      <p>Review what erasure affects before you confirm.</p>
       <h4>Proposals</h4>
       {proposals.isFetching && (
         <SkeletonBlock count={1} label="Loading proposals" />
@@ -214,7 +336,11 @@ export function MemoryErasurePreview() {
                   onClick={() => {
                     setKind('proposal');
                     setId(proposal.id);
-                    setTarget({ kind: 'proposal', id: proposal.id });
+                    setTarget({
+                      kind: 'proposal',
+                      id: proposal.id,
+                      scopeIdentity,
+                    });
                   }}
                 >
                   Look up proposal
@@ -254,7 +380,7 @@ export function MemoryErasurePreview() {
         </label>
         <Button
           disabled={!id.trim() || preview.isFetching}
-          onClick={() => setTarget({ kind, id: id.trim() })}
+          onClick={() => setTarget({ kind, id: id.trim(), scopeIdentity })}
         >
           Look up
         </Button>
@@ -263,6 +389,7 @@ export function MemoryErasurePreview() {
         <SkeletonBlock count={1} label="Looking up memory" />
       )}
       {targetMissing && <p>That ID doesn’t match a memory or proposal.</p>}
+      {notice && <p>{notice}</p>}
       {preview.isError && !targetMissing && (
         <ErrorState
           title="Couldn’t load memory"
@@ -296,8 +423,74 @@ export function MemoryErasurePreview() {
           ) : (
             <RecordImpact impact={preview.data.impact} />
           )}
+          <Button
+            onClick={() => {
+              setNotice('');
+              setReceipt(undefined);
+              erase.reset();
+              setConfirmation({
+                purgeId: randomCorrelationId(),
+                scopeIdentity,
+                revision: preview.data.impact.revision,
+              });
+            }}
+          >
+            Erase memory
+          </Button>
         </div>
       )}
+      {receipt !== undefined && receipt.scopeIdentity === scopeIdentity && (
+        <section aria-label="Erasure receipt">
+          <h4>Erasure complete</h4>
+          {receipt.value === null ? (
+            <p>Receipt details are unavailable after recovery.</p>
+          ) : receipt.value.kind === 'proposal' ? (
+            <>
+              <p>Proposal erased: {receipt.value.result.proposalId}</p>
+              {receipt.value.result.record && (
+                <RecordImpact impact={receipt.value.result.record} />
+              )}
+            </>
+          ) : (
+            <RecordImpact impact={receipt.value.result} />
+          )}
+        </section>
+      )}
+      {confirmation &&
+        confirmation.scopeIdentity === scopeIdentity &&
+        preview.data &&
+        preview.data.impact.revision === confirmation.revision &&
+        target &&
+        target.scopeIdentity === scopeIdentity && (
+          <ConfirmModal
+            isOpen
+            title="Erase this memory?"
+            message={impactSummary(preview.data)}
+            confirmLabel="Erase permanently"
+            variant="danger"
+            role="alertdialog"
+            pending={erase.isPending}
+            error={
+              erase.error instanceof MemoryErasureRequestError &&
+              erase.error.kind === 'unsupported'
+                ? 'This Station cannot erase memories yet. Update it and try again.'
+                : erase.error
+                  ? 'Erasure could not be confirmed. Check before trying again.'
+                  : null
+            }
+            onCancel={() => {
+              if (!erase.isPending) setConfirmation(null);
+            }}
+            onConfirm={() =>
+              erase.mutate({
+                kind: target.kind,
+                id: target.id,
+                revision: confirmation.revision,
+                purgeId: confirmation.purgeId,
+              })
+            }
+          />
+        )}
     </section>
   );
 }

@@ -86,6 +86,10 @@ interface KnowledgeIndexRouteDeps {
     request: Request,
     root: KnowledgeStoreRoot,
   ) => Parameters<KnowledgeIndexProvider['rebuildRoot']>[1]['withRootRevision'];
+  runAsReader?: <T>(
+    request: Request,
+    operation: () => Promise<T>,
+  ) => Promise<T>;
 }
 
 interface RebuildRootReport {
@@ -556,19 +560,23 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         scanLimitReached,
       };
       let deliveredResults: KnowledgeSearchResult[] | undefined;
-      const stillCurrent = async (hit: KnowledgeSearchResult) => {
-        const root = await deps.store.getRoot(hit.rootId);
-        if (
-          !root ||
-          deps.previewDisabledForRoot?.(hit.rootId) ||
-          (deps.mayReadHitRoot && !(await deps.mayReadHitRoot(c.req.raw, root)))
-        )
-          return null;
-        const adapter = await deps.store.adapterFor(hit.rootId);
-        const record = await adapter.get(hit.recordId);
-        return record && chunkKnowledgeText(record.body).includes(hit.excerpt)
-          ? record
-          : null;
+      const stillCurrent = (hit: KnowledgeSearchResult) => {
+        const read = async () => {
+          const root = await deps.store.getRoot(hit.rootId);
+          if (
+            !root ||
+            deps.previewDisabledForRoot?.(hit.rootId) ||
+            (deps.mayReadHitRoot &&
+              !(await deps.mayReadHitRoot(c.req.raw, root)))
+          )
+            return null;
+          const adapter = await deps.store.adapterFor(hit.rootId);
+          const record = await adapter.get(hit.recordId);
+          return record && chunkKnowledgeText(record.body).includes(hit.excerpt)
+            ? record
+            : null;
+        };
+        return deps.runAsReader ? deps.runAsReader(c.req.raw, read) : read();
       };
       // The response body can wait after assembly. Re-read each record when
       // the transport pulls it so an erased or changed excerpt is withheld.

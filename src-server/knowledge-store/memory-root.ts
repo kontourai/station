@@ -11,6 +11,7 @@ import {
 import type { KnowledgeIndexProvider } from '@kontourai/station-contracts/knowledge-index';
 import type {
   KitRecord,
+  KitRecordType,
   KnowledgeStoreAdapter,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
@@ -140,10 +141,15 @@ export class MemoryRootManager {
     return authority.userId;
   }
 
-  private corpus(path: string): KitDefaultStoreAdapter {
-    if (!this.enabled()) throw new Error('Private memory is unavailable.');
+  private corpus(
+    path: string,
+    mode: 'read' | 'erase' | 'recovery' = 'read',
+  ): KitDefaultStoreAdapter {
+    if (!this.enabled() && mode !== 'recovery')
+      throw new Error('Private memory is unavailable.');
     assertExistingPathInside(this.home, path, 'Private memory root');
-    const existing = this.adapters.get(path);
+    const cacheKey = JSON.stringify([path, mode]);
+    const existing = this.adapters.get(cacheKey);
     if (existing) {
       assertAdapterBoundTo(existing, path);
       return existing;
@@ -158,7 +164,10 @@ export class MemoryRootManager {
       ),
       lock: acquireFileMutationLockAsync,
       coordinationIdentity: () => {
-        if (!this.enabled() || resolve(resolveHomeDir()) !== home)
+        if (
+          (!this.enabled() && mode !== 'recovery') ||
+          resolve(resolveHomeDir()) !== home
+        )
           throw new Error(
             'Station home changed or private memory is unavailable.',
           );
@@ -169,7 +178,7 @@ export class MemoryRootManager {
         return () => {
           const current = lstatSync(home);
           if (
-            !this.enabled() ||
+            (!this.enabled() && mode !== 'recovery') ||
             resolve(resolveHomeDir()) !== home ||
             !current.isDirectory() ||
             current.isSymbolicLink() ||
@@ -181,9 +190,10 @@ export class MemoryRootManager {
           assertKnowledgeWriteAuthority(path);
         };
       },
+      allowPurge: mode === 'erase',
     });
     assertAdapterBoundTo(adapter, path);
-    this.adapters.set(path, adapter);
+    this.adapters.set(cacheKey, adapter);
     return adapter;
   }
 
@@ -296,6 +306,7 @@ export class MemoryRootManager {
     root: KnowledgeStoreRoot,
     assertCurrent: () => void,
     operation: (adapter: KitDefaultStoreAdapter) => Promise<T>,
+    mode: 'read' | 'erase' = 'read',
   ): Promise<T> {
     const owner = this.requireOwner(authority);
     const hash = createHash('sha256').update(owner).digest('hex');
@@ -311,8 +322,88 @@ export class MemoryRootManager {
           this.requireOwner(authority);
           assertCurrent();
         },
-        () => operation(this.corpus(root.storeRoot)),
+        () => operation(this.corpus(root.storeRoot, mode)),
       );
+    });
+  }
+
+  withErasure<T>(
+    authority: SessionReadAuthority,
+    root: KnowledgeStoreRoot,
+    assertCurrent: () => void,
+    operation: (adapter: KitDefaultStoreAdapter) => Promise<T>,
+  ): Promise<T> {
+    return this.withOwner(authority, root, assertCurrent, operation, 'erase');
+  }
+
+  private async withRecovery<T>(
+    root: KnowledgeStoreRoot,
+    operation: (adapter: KitDefaultStoreAdapter) => Promise<T>,
+  ): Promise<T> {
+    if (!this.isMemoryRoot(root) || !this.persistence.withKnowledgeStoreRoot)
+      throw new Error('Private memory recovery is unavailable.');
+    return this.persistence.withKnowledgeStoreRoot(root, () =>
+      withKnowledgeWriteAuthority(
+        root.storeRoot,
+        () => {
+          if (!this.isMemoryRoot(root))
+            throw new Error('Private memory root changed.');
+        },
+        () => operation(this.corpus(root.storeRoot, 'recovery')),
+      ),
+    );
+  }
+
+  async recoveryTargetErased(
+    root: KnowledgeStoreRoot,
+    kind: 'record' | 'proposal',
+    id: string,
+  ): Promise<boolean> {
+    return this.withRecovery(root, async (adapter) => {
+      if (kind === 'proposal')
+        return Boolean((await adapter.getProposal(id))?.erasure);
+      return (await adapter.get(id))?.status === 'purged';
+    });
+  }
+
+  async withRecoveryStatus<T>(
+    root: KnowledgeStoreRoot,
+    kind: 'record' | 'proposal',
+    id: string,
+    expectedBinding: string,
+    operation: (erased: boolean) => Promise<T>,
+  ): Promise<T> {
+    return this.withRecovery(root, async (adapter) => {
+      if (adapter.rootBinding() !== expectedBinding)
+        throw new Error('Private memory binding changed before recovery.');
+      const erased =
+        kind === 'proposal'
+          ? Boolean((await adapter.getProposal(id))?.erasure)
+          : (await adapter.get(id))?.status === 'purged';
+      return operation(erased);
+    });
+  }
+
+  async withRecoveryTombstones<T>(
+    root: KnowledgeStoreRoot,
+    operation: (ids: string[], binding: string) => Promise<T>,
+  ): Promise<T> {
+    return this.withRecovery(root, async (adapter) => {
+      const types: KitRecordType[] = [
+        'raw',
+        'compiled',
+        'concept',
+        'snapshot',
+        'person',
+      ];
+      const ids: string[] = [];
+      for (const type of types) {
+        for (const record of await adapter.listByType(type, {
+          includeHistory: true,
+        }))
+          if (record.status === 'purged') ids.push(record.id);
+      }
+      return operation(ids, adapter.rootBinding());
     });
   }
 

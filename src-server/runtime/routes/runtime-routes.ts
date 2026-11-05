@@ -386,6 +386,7 @@ import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapt
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
+import { MemoryErasureCoordinator } from '../../knowledge-store/memory-erasure-coordinator.js';
 import {
   MEMORY_ADAPTER_ID,
   MemoryRootManager,
@@ -10843,7 +10844,7 @@ export function configureRuntimeRoutes(
         id: 'private-memory',
         label: 'Private memory',
         description:
-          'Use a private memory store. It can contain personal information. Create it through the API; review and erasure are not available yet.',
+          'Use a private memory store. It can contain personal information. Create it through the API; review is not available yet.',
       })
     : undefined;
   const memoryEnabled = () =>
@@ -11005,10 +11006,41 @@ export function configureRuntimeRoutes(
       }
       return validateDelivery ? validateDelivery() : true;
     });
+  const knowledgeIndexRegistry = new KnowledgeIndexAdapterRegistry();
+  const knowledgeIndexProvider = knowledgeIndexRegistry.get('sqlite-vec');
+  if (!knowledgeIndexProvider) {
+    throw new Error(
+      "KnowledgeIndexAdapterRegistry did not pre-register the built-in 'sqlite-vec' provider",
+    );
+  }
+  const memoryErasure = isPersonalHost
+    ? new MemoryErasureCoordinator(
+        context.configLoader.getProjectHomeDir(),
+        context.knowledgeStoreProvider,
+        memoryRootManager,
+        knowledgeIndexProvider,
+      )
+    : undefined;
+  const memoryRecovery = memoryErasure?.recoverAll().then(
+    () => true,
+    () => false,
+  );
+  context.app.use('/api/knowledge/*', async (c, next) => {
+    if (memoryRecovery && !(await memoryRecovery))
+      return c.json(
+        {
+          success: false,
+          error: 'Memory recovery is unavailable. Restart Station to retry.',
+        },
+        503,
+      );
+    await next();
+  });
   context.app.route(
     '/api/knowledge',
     createMemoryRoutes({
       manager: memoryRootManager,
+      erasure: memoryErasure,
       enabled: memoryEnabled,
       authority: (request, action) => {
         const scope = currentRequestReadAuthority();
@@ -11069,13 +11101,6 @@ export function configureRuntimeRoutes(
   // only, mounted alongside the cross-project knowledge routes above at the same
   // `/api/knowledge` base (distinct sub-paths, no collision:
   // `/index/rebuild`, `/migrate` vs. `/status`, `/search`).
-  const knowledgeIndexRegistry = new KnowledgeIndexAdapterRegistry();
-  const knowledgeIndexProvider = knowledgeIndexRegistry.get('sqlite-vec');
-  if (!knowledgeIndexProvider) {
-    throw new Error(
-      "KnowledgeIndexAdapterRegistry did not pre-register the built-in 'sqlite-vec' provider",
-    );
-  }
   context.app.route(
     '/api/knowledge',
     createKnowledgeIndexRoutes({
@@ -11098,6 +11123,12 @@ export function configureRuntimeRoutes(
           )
             throw new Error('Private memory authority ended.');
         });
+      },
+      runAsReader: (request, operation) => {
+        const authority = knowledgeReadAuthorities.get(request);
+        return authority
+          ? runWithRequestReadAuthority(authority, operation)
+          : runWithoutRequestReadAuthority(operation);
       },
       // #2377 slice B: a station-control agent's hits follow its session
       // owner's access to each root. Every other caller is unchanged.
