@@ -1,8 +1,10 @@
 # Contributing to Station
 
-Station is the agent workspace where work ships with receipts. Start with the
-path that matches the change instead of treating every request as a pull
-request.
+Station is a coding workspace that grows with you: useful for an individual
+developer, extensible through plugins, and growing into scoped shared work.
+Contributions should help people finish, understand, or review real project
+work. The [constitution](docs/strategy/constitution.md) owns the product direction.
+Start with the path that matches the change.
 
 ## Choose a path
 

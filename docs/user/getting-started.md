@@ -1,6 +1,10 @@
 # Getting Started
 
-Station is a local-first workspace for agent work. This guide covers the ways
+Station is an open-source, local-first coding workspace that grows with you.
+Start with your own agents and projects, follow the work from paired devices,
+and extend the experience through plugins. For involving teammates, read the
+[sharing setup and current limits](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md).
+This guide covers the ways
 to run Station today, a verified macOS/Linux install when its release ring is
 published, first launch, connection setup, and routine lifecycle.
 

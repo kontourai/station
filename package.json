@@ -1,7 +1,7 @@
 {
   "name": "@kontourai/station-core",
   "version": "0.1.11",
-  "description": "Station - local-first AI agent workspace platform",
+  "description": "Station - an open-source coding workspace that grows with you",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.25.0",

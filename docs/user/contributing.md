@@ -1,5 +1,8 @@
 # Contributing to Station
 
+Help make Station a coding workspace people choose for themselves and can
+grow into shared project work. Useful contributions improve coding, remote
+continuity, review, scoped collaboration, or public plugin capabilities.
 Use the route that best protects people and keeps a proposed change useful.
 The [repository contribution guide](https://github.com/kontourai/station/blob/main/CONTRIBUTING.md)
 owns the current development and verification instructions.

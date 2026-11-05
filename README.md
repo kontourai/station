@@ -1,15 +1,16 @@
 # Station
 
-**The agent workspace where work ships with receipts.**
+**A coding workspace that grows with you.**
 
 [![Docs](https://img.shields.io/badge/docs-kontourai.github.io-blue)](https://kontourai.github.io/station/)
 [![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Station is Kontour's open-source, local-first workspace for agent work. Bring
-your agents, projects, and devices together, hand a Task to the agent you
-choose, and keep execution history, files, review evidence, and receipts beside
-the work. A completed run and a passed review are separate facts.
+Station is Kontour's open-source, local-first coding workspace for individual
+developers and small teams. Work with the agents you choose, keep project
+context, changes, and checks together, and follow the work from your computer
+or phone. Start with the included experience and extend it with plugins as your
+workflow grows. A completed run and a passed review are separate facts.
 
 [Product site](https://station.kontourai.io) ·
 [Documentation](https://kontourai.github.io/station/docs/) ·
@@ -24,11 +25,8 @@ the work. A completed run and a passed review are separate facts.
 
 ## Why Station
 
-Station brings several parts of agent work into one workspace:
+Start with your own coding work, then involve others within a defined scope:
 
-- **Evidence beside the work** — inspect gate results, missing evidence,
-  review receipts, and exceptions where the configured workflow provides them.
-  Creating or completing a Task does not by itself prove a gate passed.
 - **Supported engines, one workspace** — run Station agents on a local or
   hosted model, or connect supported agent CLIs and compatible custom engines
   as External agents. Each engine keeps its own behavior and tool loop;
@@ -40,6 +38,9 @@ Station brings several parts of agent work into one workspace:
 - **Your devices, your Station** — pair a phone, tablet, or laptop to your
   Station with scoped, revocable access, and delegate work to another
   computer you own over SSH.
+- **Evidence beside the work** — inspect gate results, missing evidence,
+  review receipts, and exceptions where the configured workflow provides them.
+  Creating or completing a Task does not by itself prove a gate passed.
 - **Local-first ownership** — Station data lives under `~/.station` by
   default. Networked features have separate settings and destinations;
   review those boundaries under [Data and privacy](#data-and-privacy).
@@ -47,6 +48,23 @@ Station brings several parts of agent work into one workspace:
   SDK and plugin APIs. Add layouts, agents, tools, knowledge, connections, skills,
   and work surfaces to shape the workspace around your work. Start with the
   included experience and extend it with your own plugins.
+
+## Grow into shared work
+
+Station's direction is to grow from a useful personal coding workspace into
+shared Project and Task work: plans, decisions, knowledge, review, and results
+that another person or agent can understand and contribute to. Project
+invitations and roles provide scoped access. The separate collaborator browser
+entry currently reads shared Tasks; editing and agent execution through that
+entry remain unavailable. Review and member-presence UI include Feature
+Previews. Read [sharing setup and current limits](docs/guides/deployment-authentication.md)
+before inviting someone; paired devices alone do not prove a complete team
+workflow.
+
+Plugins support personal customization and purpose-built team work surfaces
+through the public SDK. Shared inference, contributed compute, and enterprise
+deployment each need their own supported contracts and qualification; plugin
+support does not establish them. See [integrating Station](docs/guides/integrating-station.md).
 
 ## What people use it for
 

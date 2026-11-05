@@ -2,28 +2,56 @@
 
 > This document defines what Station is, what it believes, and what it will not compromise on. It is the identity layer that persists even as features, priorities, and competitors change. Changes to this document require human approval.
 
-*Last updated: 2026-08-27*
-*Origin: Station began as a personal side project — exploring what a UI-based workspace could be with the power of a CLI underneath — and grew into an agentic testing ground as MCP, ACP, and the surrounding standards emerged. This constitution reframes that foundation around Kontour's trust primitives.*
+*Positioning updated: 2026-11-04, following the owner's personal-first coding,
+collaboration, remote-continuity, and extensibility direction.*
+*Origin: Station began as a personal workspace with the power of a CLI underneath.
+Its direction joins that everyday usefulness with durable shared work and
+Kontour's evidence infrastructure.*
 
 ---
 
 ## Mission
 
-**Station is the agent workspace where work ships with receipts.**
+**Station is an open-source coding workspace that grows with you.**
 
-It is Kontour's reference agent workspace: the interactive surface where agentic work is run, observed, evidence-gated, and proven. Every other Kontour product makes AI work inspectable after the fact — Station is where that work *happens*, with the inspection built into the room.
+People choose it for their own coding work: use preferred agents, keep project
+context and results together, inspect changes and checks, and continue from a
+computer or phone. As their work grows, they should be able to invite teammates
+into selected Projects and Tasks with clear control over participation and
+resources. Plugins let individuals and organizations shape the workspace around
+their work through public extension contracts.
 
-It is not a chat wrapper. It is not an IDE. It is not another agent workbench competing on features. It is the place where "the agent says it's done" becomes "the run's gates passed, and here is the evidence."
+Plans, conversations, decisions, changes, and checks belong with the work so the
+next person or agent can understand and contribute without reconstructing the
+whole conversation. Evidence and receipts help people decide what to accept.
+A completed turn, Task status, passed review, and passed gate remain separate
+facts. Configured workflows supply the gates and evidence they actually own.
+
+This is product direction, not a declaration that every journey is qualified.
+Current implementation and operating limits belong in the owning guides and
+release evidence. In particular, paired devices do not prove two-person
+collaboration, and plugin support does not establish enterprise readiness.
 
 ---
 
 ## Why Station exists (the founding bet)
 
-The agent-workbench category is saturated — flexible UIs, multi-provider chat, MCP integration are commodities being absorbed by the harness vendors themselves. Competing there on features is unwinnable.
+An individual developer must find Station useful before asking anyone else to
+join. Coding, remote access, continuity, recovery, and review must form a
+coherent everyday experience. A useful Task or result then gives an invitation
+a purpose: clarify a plan, review a change, contribute a decision, or continue
+work together.
 
-What no workbench offers is **trust infrastructure**: enterprises cannot adopt agents without audit trails, and every tool's answer to "is this work actually done?" is usually the agent's own confidence. Kontour built the substrate that answers this — Surface (claims + evidence), Flow (evidence-gated process), Veritas (repo standards + merge readiness), Survey (review chains), Flow Agents (process discipline). What Kontour lacked was a workspace it controls end-to-end.
+The product hypothesis is that keeping context, attributable activity, and
+review evidence together reduces the effort of coordinating agent-assisted
+work. Test that with complete personal and two-person coding journeys. Do not
+advertise reduced review effort, fewer defects, or lower inference cost without
+measuring those outcomes.
 
-Station is both halves joined: a workspace foundation built up through years of hands-on exploration, repositioned on Kontour's primitives. The moat is not the UI — UIs are copyable. The moat is the evidence substrate underneath it, which a competitor would have to rebuild from scratch to follow.
+Kontour's published primitives provide claims and evidence, process gates,
+repository readiness, and review contracts. Station makes those capabilities
+useful where people and agents do the work, while each primitive retains its
+own semantics and remains independently adoptable.
 
 ---
 
@@ -31,17 +59,26 @@ Station is both halves joined: a workspace foundation built up through years of 
 
 ### 1. Evidence over confidence
 
-An agent's claim of completion is an assertion, not a fact. Work in Station ends in one of three states: gates passed with fresh evidence, an exception explicitly accepted by a human, or `NOT_VERIFIED` stated plainly. There is no fourth state where confident prose substitutes for receipts. This is the Kontour ethos (assert → observe → resolve) applied to live agent sessions.
+An agent's claim of completion is an assertion. A verification claim requires
+the corresponding current evidence and verdict; a recorded exception must keep
+its authority and missing evidence visible. If a claim has not been checked,
+state `NOT_VERIFIED`. Ordinary chat and Task lifecycle state do not become
+verification claims. Confident prose never substitutes for receipts.
 
 ### 2. Primitives stay portable; Station is a consumer, not the authority
 
 Surface, Flow, Veritas, Survey, and Flow Agents are standalone products with public contracts. Station consumes them through those contracts — the same npm packages, MCP servers, and file formats available to anyone. Station never forks a primitive, never holds privileged APIs into one, and never becomes the place where a primitive's semantics live. If Station needs a capability a primitive lacks, the capability is proposed upstream where every consumer benefits. The inverse also holds: when a Station subsystem proves itself as a portable primitive, it is extracted into its own product (see Belief 6).
 
-### 3. Plugins are the product, core is the foundation
+### 3. A useful workspace, extended through public contracts
 
-A founding belief, sharpened by the pivot. The core provides runtime, streaming, routing, and a provider registry with zero domain logic. Vertical surfaces — a gated coding workspace, a Survey review workbench, a release-readiness console — are plugins built on the SDK. The flagship plugins are now evidence-shaped: the proof that "any vertical is a plugin" comes from shipping Kontour's own verticals as plugins first.
+The included coding experience must be useful on its own. Core owns work
+identity, execution, continuity, authorization, and composition. Plugins add
+layouts, agents, tools, knowledge, connections, skills, and purpose-built work
+surfaces through the public SDK. They can tailor a personal workflow or an
+organization's experience. Supported extension points and their limits belong
+in the plugin guide; describe built-in-to-plugin migration at its actual scope.
 
-### 4. Any engine, one gate
+### 4. Engine choice with explicit capabilities
 
 Station agents and External agents run through one orchestration layer with a unified event model (`CanonicalRuntimeEvent`). Process discipline applies at the common lifecycle seam while deeper prompt and tool enforcement follows the engine boundary Station actually owns. Station declares that depth instead of presenting every engine as uniformly controllable.
 
@@ -77,15 +114,21 @@ Where standards exist (MCP for tools, ACP for agent communication, OpenTelemetry
 
 ---
 
-## What Station Is NOT
+## Product Boundaries
 
-- **Not another agent workbench.** Chat, layouts, and multi-provider support are table stakes Station inherits, not the value proposition. The value is the trust layer no workbench has.
+- **A focused coding entry.** Coding is the first complete journey to qualify.
+  Broader agent work grows through the same work and extension contracts.
 
 - **Not the authority over Kontour primitives.** Like Console, Station renders and exercises the primitives without owning their semantics. Flow's gate verdicts, Veritas's readiness derivations, and Surface's trust state are computed by those products.
 
-- **Not a replacement for Claude Code, Codex, or Kiro.** Those agent apps remain first-class Flow Agents targets and first-class engines *inside* Station. Station is where their work gets orchestrated and gated, not a bid to replace them.
+- **Preferred agents remain useful.** Supported engines retain their own tool
+  loops. Station adds context, continuity, coordination, and configured evidence
+  workflows; it declares the control it actually has over each engine.
 
-- **Not an IDE.** Station can host IDE-like layouts, but it is a platform. The gated coding layout is one vertical among many.
+- **Collaboration follows work.** Shared plans, decisions, review, and results
+  serve a Project or Task. Participation, execution permission, credentials,
+  and offered compute are separate choices. Access to a shared result does
+  not imply control over the agent that produced it.
 
 - **Not locked to any model provider, and not a closed ecosystem.** Providers for Bedrock, Claude Code, Codex, Ollama, and command-backed engines; MIT-licensed plugins by convention; portable configuration.
 
@@ -93,10 +136,22 @@ Where standards exist (MCP for tools, ACP for agent communication, OpenTelemetry
 
 ## Target Users
 
-1. **Kontour itself (first and always).** Station is dogfooded on Kontour's own repos. If shipping Kontour changes through evidence-gated Station runs doesn't feel indispensable to us, we have no business selling it to anyone else.
+1. **Individual developers working with coding agents.** Earn everyday use with
+   a reliable coding and review experience, project continuity, and useful
+   remote access. No team setup is required to get value.
 
-2. **Teams shipping agent-authored work under standards.** They already feel the pain Flow and Veritas address; Station gives them the one workspace where agents run *inside* the discipline instead of being chased by it.
+2. **Small teams growing from that experience.** Invite people into selected
+   work, share Project and Task knowledge, discuss and review outputs, and
+   grant access to resources deliberately. Qualify a real two-person journey
+   before presenting its complete delivery loop as supported.
 
-3. **Enterprises adopting agents under compliance pressure.** White-label providers, SSO, local-first data, and audit-ready run reports make Station deployable where "the agent did something, we think" is disqualifying.
+3. **Organizations adapting Station to their workflows.** Extensibility,
+   self-operation, and explicit controls support adoption. Enterprise identity,
+   managed policy, shared inference, isolation, and operating guarantees each
+   require their own supported contracts and evidence.
 
-The plugin system is what serves all three: Kontour dogfoods with the default set, teams add shared plugins, enterprises replace providers entirely.
+Kontour dogfoods the same public experience. The reference journey is a real
+coding Task: start, delegate, leave and return, inspect changes and checks,
+resolve what needs a person, and retain the accepted result. A teammate should
+be able to contribute within a defined scope. Reusing reviewed discoveries is
+distinct from automatic recall or unqualified reuse of an old agent answer.

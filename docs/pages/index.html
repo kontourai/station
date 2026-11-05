@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Station | The agent workspace where work ships with receipts</title>
+    <title>Station | A coding workspace that grows with you</title>
     <meta
       name="description"
-      content="Station is Kontour's open-source, local-first agent workspace. Bring your agents, projects, and devices together and keep gates, evidence, and receipts beside the work."
+      content="Station is an open-source coding workspace that grows with you. Work with your agents across devices, keep context and checks together, and extend the workspace with plugins."
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -27,11 +27,11 @@
       <section class="hero">
         <div class="hero-copy">
           <p class="eyebrow">Open source · local-first · by Kontour</p>
-          <h1>The agent workspace where work ships with receipts.</h1>
+          <h1>A coding workspace that grows with you.</h1>
           <p class="lede">
-            Bring your agents, projects, and devices together. Hand a Task to
-            the agent you choose, and keep the gates, evidence, and receipts
-            beside the work so "done" means proven rather than asserted.
+            Work with your preferred coding agents from your computer or phone.
+            Keep plans, conversations, changes, and checks together. Start with
+            your own projects and extend the workspace as your work grows.
           </p>
           <div class="hero-actions">
             <a class="button primary" href="./docs/user/getting-started.html">Get started</a>
@@ -39,9 +39,9 @@
             <a class="button secondary" href="https://station.kontourai.io">Product tour</a>
           </div>
           <p class="status-line">
-            Active development under Apache-2.0. Run from source on macOS or
-            Linux, or try the macOS Nightly desktop build. A verified installer
-            ships with the first stable release.
+            Active development under Apache-2.0. Try a Nightly server or desktop
+            build, or run from source. Nightly is a testing channel; follow the
+            setup guide for supported platforms and current limits.
           </p>
         </div>
         <div class="hero-panel" aria-label="Platform capability summary">
@@ -72,17 +72,17 @@
         <div class="feature-grid">
           <article>
             <h3>Supported engines, one workspace</h3>
-            <p>Run Station agents on a local or hosted model, or connect supported agent CLIs and compatible custom engines as External agents. Each engine keeps its own behavior and tool loop; Station supplies the context, the gates, and the record.</p>
+            <p>Run Station agents on a local or hosted model, or connect supported agent CLIs and compatible custom engines. Each engine keeps its own tool loop; Station brings project context, execution history, and configured workflow evidence together.</p>
             <a href="./docs/user/concepts.html">Understand agents and connections</a>
           </article>
           <article>
             <h3>Work that outlives a chat</h3>
-            <p>Projects, Tasks, Sessions, changed files, artifacts, and receipts stay linked. Reopen a Task later with its workspace binding and evidence intact.</p>
+            <p>Projects, Tasks, Sessions, changed files, artifacts, and receipts stay linked. Reopen a Task with its recorded workspace binding, then check the workspace's current availability.</p>
             <a href="./docs/user/concepts.html">Understand Projects, Tasks, and Sessions</a>
           </article>
           <article>
-            <h3>See why work can advance</h3>
-            <p>Gate outcomes, missing evidence, route-backs, exceptions, and readiness stay visible beside the work they describe. A confident answer is never mistaken for a verified outcome.</p>
+            <h3>Review what happened</h3>
+            <p>Configured workflows can keep gate outcomes, missing evidence, route-backs, exceptions, and receipts beside the work. Completing a Task does not by itself establish that a review or gate passed.</p>
             <a href="./docs/user/concepts.html">Understand gates and receipts</a>
           </article>
           <article>
@@ -97,10 +97,23 @@
           </article>
           <article>
             <h3>Built to extend</h3>
-            <p>Plugins add layouts, agents, tools, knowledge, connections, skills, and purpose-built work surfaces on the same SDK the core uses.</p>
+            <p>Start with the included experience. Plugins add layouts, agents, tools, knowledge, connections, skills, and purpose-built work surfaces through the public SDK, for personal workflows or team-specific needs.</p>
             <a href="https://github.com/kontourai/station/blob/main/docs/guides/plugins.md">Read the plugin guide</a>
           </article>
         </div>
+      </section>
+
+      <section class="section" aria-labelledby="shared-work-title">
+        <div class="section-heading">
+          <p class="eyebrow">Grow into shared work</p>
+          <h2 id="shared-work-title">Bring others into selected work.</h2>
+        </div>
+        <p>Project invitations and roles provide scoped access. The separate
+          collaborator browser entry currently reads shared Tasks; editing and
+          agent execution through that entry remain unavailable. Review and
+          member-presence UI include Feature Previews. Paired-device access
+          alone does not establish a complete team workflow.</p>
+        <p><a href="https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md">Read sharing setup and current limits</a>.</p>
       </section>
 
       <section id="use-cases" class="section">
@@ -161,8 +174,8 @@
       <section id="get-station" class="section">
         <div class="section-heading">
           <p class="eyebrow">Get Station</p>
-          <h2>Two ways to run it today.</h2>
-          <p class="section-note">Station is open source and under active development. A signed stable release ring has not been published yet, so the verified installer is not available yet.</p>
+          <h2>Choose how to try Station.</h2>
+          <p class="section-note">Station is open source and under active development. Nightly is a testing channel; the setup guide owns platform requirements and release availability.</p>
         </div>
         <div class="feature-grid">
           <article>
@@ -172,12 +185,12 @@
           </article>
           <article>
             <h3>Nightly desktop build</h3>
-            <p>macOS on Apple silicon. A rolling pre-release published from the main branch for testers. It installs alongside a stable Station and updates through its own channel. Not a stable release.</p>
+            <p>A rolling desktop pre-release for macOS Apple silicon and Windows x64. Check the setup guide for signing, runtime requirements, and platform limitations.</p>
             <a href="https://github.com/kontourai/station/releases/tag/nightly-desktop">Nightly desktop pre-release</a>
           </article>
           <article>
-            <h3>Coming: verified installer</h3>
-            <p>Arrives with the first stable release. The bootstrap verifies the release's build attestation and checksum before installing, and upgrades in place when run again. Not available until a signed release ring is published.</p>
+            <h3>Nightly server install</h3>
+            <p>Install a signed Nightly server archive using the documented installer. Follow the setup guide for macOS, Linux, or Windows PowerShell, verification, updates, and removal.</p>
             <a href="./docs/user/getting-started.html">Read the install guide</a>
           </article>
         </div>
@@ -233,7 +246,7 @@
 
       <section class="section cta">
         <h2>Start with one connection and one project.</h2>
-        <p>Run Station, connect a model or an engine, open a project, and keep the first Task's evidence with the work from the beginning.</p>
+        <p>Run Station, connect an agent, open a project, and keep context, changes, and checks together as you work.</p>
         <a class="button primary" href="./docs/user/getting-started.html">Get started</a>
       </section>
     </main>
