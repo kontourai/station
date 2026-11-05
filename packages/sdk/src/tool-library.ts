@@ -55,9 +55,8 @@ function key(client: ToolLibraryClient, path: string) {
   return [
     'tool-library',
     client.apiBase,
-    client.options?.requestScope?.authorityKey ??
-      client.principalId ??
-      'unbound',
+    client.options?.requestScope?.authorityKey ?? 'unbound',
+    client.principalId ?? 'unbound',
     path,
   ] as const;
 }
@@ -69,6 +68,7 @@ export function useLibraryQuery<T>(
   return useQuery({
     queryKey: key(client, path),
     queryFn: ({ signal }) => readToolLibrary<T>(client, path, signal),
+    placeholderData: undefined,
     enabled,
     gcTime: 0,
     staleTime: 0,

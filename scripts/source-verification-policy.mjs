@@ -322,7 +322,7 @@ export async function reconcileSourceVerification({
       throw new Error('Unsupported reconciliation event');
 
     const metadataWorkflows = new Map();
-    const trustedCancelledMetadata = async (run, liveBase) => {
+    const trustedCancelledMetadata = async (run, mainSha) => {
       if (
         run.status !== 'completed' ||
         run.conclusion !== 'cancelled' ||
@@ -340,8 +340,8 @@ export async function reconcileSourceVerification({
       );
       if (refs.length !== 1) return false;
       const revision = refs[0].sha;
-      if (revision !== liveBase) {
-        const comparison = await request(`compare/${revision}...${liveBase}`);
+      if (revision !== mainSha) {
+        const comparison = await request(`compare/${revision}...${mainSha}`);
         if (
           !['ahead', 'identical'].includes(comparison.status) ||
           comparison.merge_base_commit?.sha !== revision
@@ -368,6 +368,14 @@ export async function reconcileSourceVerification({
     };
 
     const snapshot = async () => {
+      const main = await request('git/ref/heads/main');
+      if (
+        main?.ref !== 'refs/heads/main' ||
+        main.object?.type !== 'commit' ||
+        !SHA.test(main.object?.sha ?? '')
+      )
+        throw new Error('Untrusted main reference');
+      const mainSha = main.object.sha;
       const associated = await pages(`commits/${sha}/pulls`);
       const owners = associated.filter(
         (pr) =>
@@ -454,7 +462,7 @@ export async function reconcileSourceVerification({
             'jobs',
           );
           const verifiedMetadata =
-            compatibleBase && (await trustedCancelledMetadata(run, liveBase));
+            compatibleBase && (await trustedCancelledMetadata(run, mainSha));
           const classified = sourceVerdict(
             jobs,
             owner.head.repo.id !== repo.id,
@@ -506,6 +514,7 @@ export async function reconcileSourceVerification({
                 run.run_attempt,
                 run.run_started_at,
               ]),
+              mainSha,
             ]),
           };
         const run = summary;
@@ -539,6 +548,7 @@ export async function reconcileSourceVerification({
           owners.map(ownerIdentity).sort(),
           attempts.map((run) => [run.id, run.run_attempt, run.run_started_at]),
           examined,
+          mainSha,
         ]),
       };
     };
