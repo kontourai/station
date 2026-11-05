@@ -515,12 +515,12 @@ test.each([false, true])(
         .querySelector('circle[pathLength]')
         ?.getAttribute('stroke-dashoffset'),
     ).toBe('58');
-    if (downloading.phase.status !== 'downloading')
-      throw new Error('wrong fixture');
+    const phase = downloading.phase;
+    if (phase.status !== 'downloading') throw new Error('wrong fixture');
     act(() =>
       fake.emit({
         ...downloading,
-        phase: { ...downloading.phase, totalBytes: null },
+        phase: { ...phase, totalBytes: null },
       }),
     );
     expect(ring.hasAttribute('aria-valuenow')).toBe(false);
