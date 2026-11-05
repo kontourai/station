@@ -224,20 +224,35 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(transport).not.toHaveBeenCalled();
   });
 
-  it('received: left alone and reported, so the caller asks again later', async () => {
-    const second = await killedMidSend();
-    expect(
-      await second.outboundDispatch.reconcile(lookupAnswering('received')),
-    ).toEqual({ received: 1, lookupFailed: 0 });
-    const [row] = await second.outboundDispatch.snapshot();
-    expect(row).toMatchObject({
-      status: 'invoking',
-      deliveryCheck: { outcome: 'received' },
-    });
-    const transport = vi.fn();
-    await second.outboundDispatch.flush(transport);
-    expect(transport).not.toHaveBeenCalled();
-  });
+  it.each(['received', 'queued'] as const)(
+    '%s resets consecutive lookup failures while preserving the send fence',
+    async (outcome) => {
+      const second = await killedMidSend();
+      const failedLookup = async () => {
+        throw new Error('Temporary lookup failure');
+      };
+      await second.outboundDispatch.reconcile(failedLookup);
+      await second.outboundDispatch.reconcile(failedLookup);
+      expect(
+        await second.outboundDispatch.reconcile(lookupAnswering(outcome)),
+      ).toEqual({ received: 1, lookupFailed: 0 });
+      const [row] = await second.outboundDispatch.snapshot();
+      expect(row).toMatchObject({
+        status: 'invoking',
+      });
+      expect(row?.deliveryLookupFailures).toBeUndefined();
+      if (outcome === 'received')
+        expect(row?.deliveryCheck?.outcome).toBe('received');
+      await second.outboundDispatch.reconcile(failedLookup);
+      await second.outboundDispatch.reconcile(failedLookup);
+      expect((await second.outboundDispatch.snapshot())[0]?.status).toBe(
+        'invoking',
+      );
+      const transport = vi.fn();
+      await second.outboundDispatch.flush(transport);
+      expect(transport).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(['indeterminate', 'expired', 'unknown'] as const)(
     '%s: kept as possible-effect evidence, never resent',

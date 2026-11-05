@@ -319,7 +319,7 @@ export function OutboundQueuedMessages({
               </span>
             ) : null}
             {turn.status === 'may-have-started' && turn.lastError ? (
-              <span className="queued-messages__label" role="status">
+              <span className="queued-message__delivery-note" role="status">
                 {turn.lastError} Your message is saved here and will not be
                 resent automatically.
               </span>
@@ -525,7 +525,11 @@ function RecheckDeliveryButton({ clientTurnId }: { clientTurnId: string }) {
       >
         {busy ? 'Refreshing delivery…' : 'Refresh delivery'}
       </button>
-      {result ? <span role="status">{result}</span> : null}
+      {result ? (
+        <span className="queued-message__delivery-note" role="status">
+          {result}
+        </span>
+      ) : null}
     </>
   );
 }
