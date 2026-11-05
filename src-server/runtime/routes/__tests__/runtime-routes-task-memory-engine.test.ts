@@ -43,18 +43,36 @@ import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 const support = vi.hoisted(() => ({
   notificationService: undefined as unknown,
+  /** What the production composition hands the support services. */
+  options: undefined as
+    | {
+        threadInbox?: () =>
+          | { submit(input: unknown): { outcome: string } }
+          | undefined;
+      }
+    | undefined,
+  /** The follow-up wake the support services would compose (#4508). */
+  taskFollowUpWake: undefined as unknown,
 }));
 
 vi.mock('../runtime-route-support.js', () => {
   const stub = new Proxy({}, { get: () => () => undefined });
   return {
-    configureRuntimeSupportServices: () => ({
-      schedulerService: stub,
-      notificationService: support.notificationService,
-      attentionProjection: stub,
-      webPushService: stub,
-      webPushEnabled: false,
-    }),
+    configureRuntimeSupportServices: (
+      _context: unknown,
+      _flowRunService: unknown,
+      options: typeof support.options,
+    ) => {
+      support.options = options;
+      return {
+        schedulerService: stub,
+        notificationService: support.notificationService,
+        attentionProjection: stub,
+        webPushService: stub,
+        webPushEnabled: false,
+        taskFollowUpWake: support.taskFollowUpWake,
+      };
+    },
     createRuntimeSystemRouteDeps: () => stub,
   };
 });
@@ -764,5 +782,75 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     expect(e.stored(taskId).records).toMatchObject([
       { key: 'scope', version: 2, state: 'answered' },
     ]);
+  });
+
+  test("the production inbox asks the Task follow-up wake's placement re-check before placing a queued tf- wake (#4508)", async () => {
+    const asked: unknown[] = [];
+    let refuse = true;
+    support.taskFollowUpWake = {
+      placementRefusal: (input: { clientTurnId: string }) => {
+        asked.push(input);
+        return refuse && input.clientTurnId.startsWith('tf-')
+          ? {
+              reasonCode: 'task_follow_up_source_changed',
+              reason: 'test refusal',
+            }
+          : undefined;
+      },
+    };
+    try {
+      const e = await setup();
+      const { sessionId } = await e.dispatchedTask();
+      const conversation =
+        e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+      const inbox = support.options?.threadInbox?.();
+      expect(inbox).toBeDefined();
+      const submit = (clientTurnId: string) =>
+        inbox!.submit({
+          conversationId: conversation,
+          clientTurnId,
+          payload: {
+            message: 'New activity on the followed items.',
+            actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+          },
+        });
+      const entry = (key: string) =>
+        e.store
+          .threadInboxStore()
+          .list(conversation)
+          .find((stored) => stored.key === key);
+      const key = `tf-${'0'.repeat(40)}`;
+      expect(submit(key).outcome).toBe('queued');
+      // At placement the inbox asks the follow-up wake, which refuses: the
+      // entry settles refused and no turn is started.
+      await vi.waitFor(() => expect(entry(key)?.state).toBe('refused'), {
+        timeout: 10_000,
+      });
+      // Refused by the follow-up wake, not by any other placement rule.
+      expect(JSON.parse(String(entry(key)?.outcome))).toMatchObject({
+        reasonCode: 'task_follow_up_source_changed',
+      });
+      expect(asked).toContainEqual(
+        expect.objectContaining({
+          clientTurnId: key,
+          conversationId: conversation,
+          userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        }),
+      );
+      // The control: a wake the re-check passes is not refused by it.
+      refuse = false;
+      const passing = `tf-${'1'.repeat(40)}`;
+      expect(submit(passing).outcome).toBe('queued');
+      await vi.waitFor(
+        () =>
+          expect(asked).toContainEqual(
+            expect.objectContaining({ clientTurnId: passing }),
+          ),
+        { timeout: 10_000 },
+      );
+      expect(entry(passing)?.state).not.toBe('refused');
+    } finally {
+      support.taskFollowUpWake = undefined;
+    }
   });
 });

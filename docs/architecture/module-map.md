@@ -136,7 +136,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/share/` | Answer share permalinks: token-hashed records, projection and revocation | [Answer share permalinks](../design/answer-share-permalinks.md) |
 | `src-server/services/tailscale/` | This Station's public tailnet origin, asked of Tailscale rather than taken from a request | [Remote access threat model](../security/remote-access-threat-model.md) |
 | `src-server/services/webhooks/` | Inbound webhook HMAC authorization, replay ledger and audit store for `POST /api/webhooks/inbound`, configured in `<home>/security/inbound-webhooks.json` | [Route](../../src-server/routes/webhooks/inbound-webhooks.ts) |
-| `src-server/services/work-item-providers/` | Local and flow-agents work-item provider backends behind one provider seam | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) |
+| `src-server/services/work-item-providers/` | Local and flow-agents work-item provider backends behind one provider seam; GitHub tracker reads and Task follow-up polling (#4508) | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) |
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
 | `packages/board-pane/` | The Console Board as an in-process Workspace Pane over published contracts | [README](../../packages/board-pane/README.md) |
@@ -4220,6 +4220,28 @@ New managed paths use Project IDs so a replacement slug cannot reuse its
 predecessor's default storage. Legacy upload/migration stays in Project knowledge;
 Sources owns registration and attachment.
 
+An internally registered author-private root carries its owner in the registry
+and root identity. In personal mode, root and record reads admit that owner or
+an approved personal-account device; delegation peers and unknown callers are
+refused. Search rechecks the root and request authority at response delivery.
+Hosted access and the local source-observation path refuse this classification.
+Only an operator credential or home-possession authority, never an agent, may
+mutate the root through the Knowledge routes.
+Project Task learning and automatic Project tool discovery exclude it.
+Existing roots without the policy retain their prior access rules.
+
+The default-off Private memory preview registers a per-owner `corpus-private-memory`
+root through the same registry. Its adapter validates the exact private
+registration on each access and exposes ordinary record reads only; create
+proposals use the explicit memory route. The registry and adapter reject paths
+that alias another author-private root, with authorization and path identity
+rechecked at response delivery. Corpus receives Station's coordination lock and
+home-identity check; ordinary access does not enable purge. Pending proposals
+are not records and do not enter the index. This does not provide review,
+distillation or erasure. [Memory tests](../../src-server/knowledge-store/__tests__/memory-root.test.ts)
+and [route tests](../../src-server/routes/knowledge/__tests__/memory.routes.test.ts)
+exercise local fixtures; they do not qualify a live model provider.
+
 The separate [Neo4j graph routes](../../src-server/routes/knowledge/neo4j-graph-routes.ts)
 require current access to the exact registered root. Graph and shortest-path
 reads require view access. Sync requires edit access for writable roots;
@@ -6048,7 +6070,7 @@ conversation nor grants execution.
 
 **Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
 
-**Start Task from a tracker item (#4003, in delivery).** `POST /api/tasks/from-work-item` takes a `github:owner/repo#N` ref that the Project's board lists (the runtime re-reads the board through `WorkItemProviderService`; a ref the board does not list is refused before the open-Task lookup and before the tracker is read). `parseGitHubWorkItemRef` lowercases owner and repository, and refs compare by `workItemRefKey`. `TaskGraphService.createTaskForWorkItem` returns the item's open Task, in any Project, with `existing: true` (another Project's as `{id, projectId}` only), checked under the store's mutation lock; otherwise it records the Task with `sourceProvider: 'github'`, the ref, `workItemObservedAt` and `workItemProvenance: 'project-board'`. Every create that names a work item keeps one open Task per item under that lock (`TaskWorkItemTakenError`, `409` from `POST /api/tasks`): across Projects only for board-checked GitHub refs, within the Project (compared through `localProjectIdFor`) for every other ref, and `POST /api/tasks` takes a `github:` ref only when the board lists it, recording the same provenance. Dispatch, `get_task_brief` and the Task header read the tracker only for a ref with that provenance. The room runtime seeds the Task document from [`work-item-task-brief.ts`](../../src-server/services/work-item-providers/work-item-task-brief.ts): the issue body and its last three comments, quoted so tracker headings never become document headings, plus a link back, cut to 3,000 characters with a visible marker (the room refused a single-batch document of about 3,650 characters). `GET /api/tasks/:taskId/work-item` re-reads the item for the Task header, with comments created after `workItemObservedAt`; the header reads it when the Task opens and nothing polls. Both routes are personal-only, and no Station Control tool names them. Reads go through the runtime's one [`GitHubWorkItemObserver`](../../src-server/services/work-item-providers/github-work-item-observer.ts) (the `workItemObserver` route context): the host's `gh` login, started in an empty directory with prompts off, a deadline, a caller's abort signal, an output bound and `--hostname github.com`, with an observed answer kept 30 s per ref and comments-since mark. GitHub Enterprise hosts and pull requests are `unsupported`. Evidence: `github-work-item-observer.test.ts` (a fake `gh` at the process seam), `task-from-work-item.routes.test.ts`, `work-item-ref.test.ts`, and the `ProjectTasksSection` and `TaskWorkspaceView` UI tests. See [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
+**Start Task from a tracker item (#4003, in delivery).** `POST /api/tasks/from-work-item` takes a `github:owner/repo#N` ref that the Project's board lists (the runtime re-reads the board through `WorkItemProviderService`; a ref the board does not list is refused before the open-Task lookup and before the tracker is read). `parseGitHubWorkItemRef` lowercases owner and repository, and refs compare by `workItemRefKey`. `TaskGraphService.createTaskForWorkItem` returns the item's open Task, in any Project, with `existing: true` (another Project's as `{id, projectId}` only), checked under the store's mutation lock; otherwise it records the Task with `sourceProvider: 'github'`, the ref, `workItemObservedAt` and `workItemProvenance: 'project-board'`. Every create that names a work item keeps one open Task per item under that lock (`TaskWorkItemTakenError`, `409` from `POST /api/tasks`): across Projects only for board-checked GitHub refs, within the Project (compared through `localProjectIdFor`) for every other ref, and `POST /api/tasks` takes a `github:` ref only when the board lists it, recording the same provenance. Dispatch, `get_task_brief` and the Task header read the tracker only for a ref with that provenance. The room runtime seeds the Task document from [`work-item-task-brief.ts`](../../src-server/services/work-item-providers/work-item-task-brief.ts): the issue body and its last three comments, quoted so tracker headings never become document headings, plus a link back, cut to 3,000 characters with a visible marker (the room refused a single-batch document of about 3,650 characters). `GET /api/tasks/:taskId/work-item` re-reads the item for the Task header, with comments created after `workItemObservedAt`; the header reads it when the Task opens and nothing polls. Both routes are personal-only, and no Station Control tool names them. Reads go through the runtime's one [`GitHubWorkItemObserver`](../../src-server/services/work-item-providers/github-work-item-observer.ts) (the `workItemObserver` route context): the host's `gh` login, started in an empty directory with prompts off, a deadline, a caller's abort signal, an output bound and `--hostname github.com`, with an observed answer kept 30 s per ref and comments-since mark. GitHub Enterprise hosts and pull requests are `unsupported`. **Task tracker follow-ups (#4508, preview `task-tracker-follow-ups`).** [`TaskFollowUpPoller`](../../src-server/services/work-item-providers/task-follow-up-poller.ts) is started, not awaited, on each built-in scheduler `automationPoller` tick (composed in `runtime-route-support.ts`, not in hosted mode), on its own single flight with a 60-second deadline and a 15-minute backoff when `gh` is missing, signed out or rate limited. It reads each eligible Task's primary item and the kept pull requests in that item's repository through [`GhGitHubFollowUpReader`](../../src-server/services/work-item-providers/github-follow-up-reader.ts) (`gh api graphql`, keyset cursors), and records into [`TaskFollowUpStore`](../../src-server/services/work-item-providers/task-follow-up-store.ts), the runtime's one `taskFollowUps` holder that `composeTaskBriefSource` also reads for the brief's "Tracker follow-ups" section. [`TaskFollowUpWake`](../../src-server/services/work-item-providers/task-follow-up-wake.ts), composed beside the poller, sends a Task's lead one conversation-inbox entry (`tf-` key) for the items the poller marked to wake (members' comments and reviews, failing checks), through the same durable inbox path as the Task question lead wake; `configureRuntimeRoutes` chains its placement re-check into `ThreadInboxDelivery`. Evidence: `task-follow-ups.test.ts`. Evidence: `github-work-item-observer.test.ts` (a fake `gh` at the process seam), `task-from-work-item.routes.test.ts`, `work-item-ref.test.ts`, and the `ProjectTasksSection` and `TaskWorkspaceView` UI tests. See [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
 **Task memory and the Task brief (#4003, in delivery).** Task memory is the judgment layer above the facts the event store derives. [`task-memory-store.ts`](../../src-server/services/orchestration/task-memory-store.ts) (`EventStore.taskMemoryStore()`, migration [`020-task-memory.ts`](../../src-server/domain/migrations/020-task-memory.ts)) keeps every revision of one bounded Task summary and every version of keyed decisions, questions and dead ends, in two append-only tables whose CHECKs and triggers hold the shape. Each write runs in one `BEGIN IMMEDIATE` transaction with the caller's authority re-check, the base-revision or record-state read, the live-record cap and the insert; bounds are refusals, never cuts. Shapes, defaults and refusal wording are the [`task-memory` contract](../../packages/contracts/src/task-memory.ts). `ProjectTaskRoomRuntime` owns authority: a Session writes the Task its immutable room execution binding names while it is that Task's lead or a recorded independent request, through `task_summary_update` and `task_record` ([tools](../../src-server/tools/station-control-task-memory-tools.ts), [routes](../../src-server/routes/orchestration/task-memory.ts)); a person reads and writes through the room's request authority (`/api/tasks/:taskId/room/memory`, `…/summary`, `…/summary/revisions`, `…/records`). Neither reaches Task status or the Task document. [`task-brief.ts`](../../src-server/services/projects/task-brief.ts) renders everything agents, people or a tracker wrote as quoted lines under a label naming who wrote it, and composes the digest-pinned brief from the Task, the observed work item, the summary, standing records, open questions, recent dead ends, a line per Session from the session digest facts ([`readSessionDigestHead`](../../src-server/services/orchestration/session-digest.ts), the same fold as `get_session_digest`) with each Session's active Task-scoped claims (`listActiveClaims({ projectId, taskId })` from [`work-claims.ts`](../../src-server/services/orchestration/work-claims.ts)), and counted omissions; [`task-brief-source.ts`](../../src-server/services/projects/task-brief-source.ts) gathers it for dispatch and for `get_task_brief`, whose `include` option lists every record or the summary history. `GET /api/tasks` adds `openQuestionCount`, which the Home and inbox Task fold (`taskLifecycleLabel`, `buildWorkFacts`) turns into "Task · Needs answer" in Needs you. The Task workspace shows it in [`TaskMemoryPanel`](../../src-ui/src/views/task-workspace/TaskMemoryPanel.tsx). Evidence: `task-memory-store.test.ts`, `project-task-room-task-memory.test.ts`, `runtime-routes-task-memory-engine.test.ts` (the real Station Control MCP connection), `task-brief.test.ts`, `task-brief-dispatch.test.ts`, `TaskMemoryPanel.test.tsx` and `work-status.test.ts`. **Learning (layer 4):** when a Task is done, [`task-learning.ts`](../../src-server/services/projects/task-learning.ts) derives promotion candidates from its active standing decisions and dead ends, reads "promoted" back from the Project's knowledge stores, and promotes one, as a person edited it, with one `create` through the store's adapter under an id derived from the Task incarnation and record version. Before that write it inserts an append-only row naming the chosen store (`task_learning_promotions`, migration [`022-task-learning-promotions.ts`](../../src-server/domain/migrations/022-task-learning-promotions.ts)), so a version is written once across the Project's stores. Dismissals are kept in `task_learning_dismissals` (migration [`021-task-learning-dismissals.ts`](../../src-server/domain/migrations/021-task-learning-dismissals.ts)). Its [routes](../../src-server/routes/orchestration/task-learning.ts) (`/api/tasks/:taskId/room/memory/learning`, `…/promote`, `…/dismiss`) take the room's request authority through `ProjectTaskRoomRuntime.personTaskLearningAccess`, and no Station Control tool names them; the Task workspace shows them in [`TaskLearningPanel`](../../src-ui/src/views/task-workspace/TaskLearningPanel.tsx). Evidence: `runtime-routes-task-learning.test.ts` (closing, candidates, promotion with provenance, idempotency, search after reindex, dismissal, agent refusal, no store), `task-learning-promotion.test.ts` (two concurrent promotions into two stores write one record), `task-memory-store.test.ts` and `TaskLearningPanel.test.tsx`.
 
@@ -6237,8 +6259,10 @@ factories describe backend responses; types do not make a fake backend real.
 [fixture-audit.ts](../../tests/helpers/fixture-audit.ts) fails teardown for requests
 sent through `rejectUnexpectedFixtureRequest` when a spec uses its extended
 `test` fixture. It is not a global interceptor for every Playwright spec. Its
-explicit focus-presence POST exception returns the real route's empty 204;
-journeys about focus must model that route themselves.
+explicit exceptions return the real routes' answers for requests every mounted
+App makes: the focus-presence POST's empty 204, and the managed-policy status GET's
+no-policy body (`{ state: 'none' }`, #4518). Journeys about focus or a managed
+policy must model those routes themselves.
 
 **Profiling.** [Journey instrumentation](../../tests/helpers/journey-profile.ts)
 uses Chromium CDP, React commit observation, storage and DOM counters without a
@@ -7188,7 +7212,8 @@ reads do not expose private source incident detail or establish delivery coverag
 
 The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
 accepts the foundation's strict `station_daily` contract through public source
-IDs mapped to publisher/channel pairs, without installation credentials.
+IDs mapped to a publisher and its allowed channels, without installation
+credentials. The ping's channel must be one the source lists.
 [Lite storage](../../packages/telemetry-broker/src/lite-store.ts) atomically
 deduplicates raw pings and records bounded contribution arrays and dimension
 jobs. Closed-day finalization uses grouped SQL in separately committed dimension
@@ -7206,8 +7231,8 @@ days including the current partial period. Public and publisher APIs exclude it.
 
 Public and publisher views release only four closed ISO UTC weeks over ten
 profile/adoption fields, excluding counters/friction. The fixed public domain
-contains enum values and each publisher's operator-configured public versions
-and registry IDs, including zero-count values. There is no true k pre-filter.
+contains enum values and each publisher's operator-configured public versions,
+registry IDs and channels, including zero-count values. There is no true k pre-filter.
 Published counts sum distinct daily contributor keys per value (network-days),
 so NAT undercounts installations. Sensitivity is 40 per added/removed ping;
 ε=1/280 per count gives ε≤1/7 per added ping. A network contributing at most 40
@@ -7225,6 +7250,20 @@ refusal without storage; known product and publisher keys have per-credential
 post-auth budgets and storage rechecks. A snapshot stale beyond 60 seconds
 returns 503. See the [receiver guide](../../packages/telemetry-broker/README.md#lite-observations)
 for composition, fixed domains, key/publication custody and low-volume utility.
+
+[Lite core](../../packages/telemetry-broker/src/lite-core.ts) holds the
+storage-independent Lite rules: validation glue, normalization and marginals
+driven by `STATION_DAILY_FIELDS`, daily network keys, source parsing,
+publication cells, cursors and response shapes. It is shared with the
+[Cloudflare Worker receiver](../../deploy/telemetry-worker/README.md), whose
+[SQLite Durable Object](../../deploy/telemetry-worker/src/receiver.ts) stores
+the open day's salt, erases closed days' salts and contributor keys from live
+storage (Durable Object point-in-time recovery can still restore them for 30
+days; restoring is forbidden by policy), refuses arrivals for closed days,
+finalizes each day once, and adds an exact per-day insights view for its owner
+dashboard.
+Each receiver keeps only its storage adapter. The Worker implements the Lite
+and public routes, not the Full-tier, private-usage or publisher routes.
 
 **Composition and limits.** The
 [Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private
@@ -7644,7 +7683,8 @@ other terminal service or listener remains. An ACP engine's terminals are
 [AcpSessionTerminals](../../src-server/services/acp/acp-session-terminals.ts)
 (pipes, an output cap, and termination that ends what the command started, from
 [command-process.ts](../../src-server/services/terminal/command-process.ts)),
-on personal hosts only. `restart` keeps a session's id and starts a new
+on personal hosts only, through `openAgentCommand`: only for a host-confined
+session in its own thread binding (#2497). `restart` keeps a session's id and starts a new
 journal segment. Deleting a Project ends its running sessions through
 `endProject`, wired into the Project routes as `endProjectTerminals`.
 A person's command sessions run a Project package script by
@@ -7660,7 +7700,9 @@ are read before each open and usage read: history on or off, the journal
 directory (ended journals move there), maximum age and the per-terminal and
 total sizes; agent command sessions are retained in a separate 16-record pool
 that never expires a user shell. On start, a shell that ended only because its host went away
-reopens under the same id below a "restored after restart" divider; one the
+reopens under the same id below a "restored after restart" divider, only
+inside its binding as it resolves then (#492; otherwise it stays ended with a
+recorded `restoreRefused` reason); one the
 supervisor reattached, or that ended by itself, is not restored. Shell records
 carry a stable `ordinal`, and an `adopt` open answers with the binding's
 running shell, so concurrent opens of an empty binding share one. The

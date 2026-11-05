@@ -821,6 +821,7 @@ publisher's choice through its authenticated configuration API:
 
 ```sh
 station telemetry status
+station telemetry set kontour anonymous
 station telemetry set kontour off
 station telemetry set operator full
 station telemetry outbox --publisher operator
@@ -830,12 +831,17 @@ station telemetry outbox --publisher publisher:<registry-digest>/writer
 
 Plugin publishers default Off. Choose Lite or Full explicitly after reviewing the opt-in prompt; a notice receipt does not enable sending. Plugin Lite contains plugin-chosen counts which can encode identifiers.
 
-Status prints each destination's plain sharing label with its `off`, `lite` or
-`full` configuration value. Do Not Track and pending review use readable
-explanations. Kontour Detailed saving requires its own current acknowledgement when its build
+For `kontour` and `operator`, `anonymous` is an alias for `lite`; both inputs
+save `lite`. Plugin publishers accept `off|lite|full`, never `anonymous`.
+
+Status prints each destination's plain sharing label, with built-in Lite shown
+as `Anonymous usage counts (anonymous)`. Plugin Lite remains
+`Plugin usage counts (lite)`. Off and Full retain `off` and `full` in parentheses.
+Do Not Track and pending review use readable explanations. Kontour Detailed saving requires its own current acknowledgement when its build
 destination is configured. The CLI does not create that acknowledgement. The normal target and credential flags apply; `--json`
-prints the status object. Full remains Lite until the current disclosure has
-been acknowledged. DNT forces Off. Changing one publisher preserves the other.
+prints the unchanged status object with `lite` tier values. Stored configuration
+and `STATION_TELEMETRY_TIER` still use `off|lite|full`. Full remains Lite until the
+current disclosure has been acknowledged. DNT forces Off. Changing one publisher preserves the other.
 Operator environment-limited status also explains that restoring Full delivery requires an
 explicit config choice (`station telemetry set operator full`) and acknowledgement
 in Settings; a legacy environment true plus a receipt no longer enables Full.

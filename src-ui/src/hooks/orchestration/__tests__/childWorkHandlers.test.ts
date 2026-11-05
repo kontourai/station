@@ -19,18 +19,25 @@ let handleExtensionNotificationEvent: Extension['handleExtensionNotificationEven
 const threadId = 'thread-cw-1';
 let seq = 0;
 
-function tuple(type: 'task/registry' | 'task/settled', payload: unknown) {
+function tuple(
+  type: 'task/registry' | 'task/settled',
+  payload: unknown,
+  apiBase?: string,
+) {
   seq += 1;
-  handleExtensionNotificationEvent({
-    eventId: `evt-${seq}`,
-    provider: 'claude',
-    threadId,
-    createdAt: `2026-09-23T00:00:${String(seq).padStart(2, '0')}.000Z`,
-    method: 'extension.notification',
-    namespace: 'claude-code',
-    type,
-    payload,
-  });
+  handleExtensionNotificationEvent(
+    {
+      eventId: `evt-${seq}`,
+      provider: 'claude',
+      threadId,
+      createdAt: `2026-09-23T00:00:${String(seq).padStart(2, '0')}.000Z`,
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type,
+      payload,
+    },
+    apiBase,
+  );
 }
 
 const chat = () => activeChatsStore.getSnapshot()[threadId];
@@ -610,28 +617,36 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
   });
 
   describe("D2: a rebound chat does not keep a former session's children", () => {
+    const apiBase = 'http://api';
     const former = `${threadId}:session:x`;
     const current = `${threadId}:session:y`;
     const reportFrom = (reporter: string, active: unknown[]) =>
-      handleExtensionNotificationEvent({
-        eventId: `reg-${reporter}-${active.length}`,
-        provider: 'claude',
-        threadId: reporter,
-        createdAt: '2026-09-23T00:02:00.000Z',
-        method: 'extension.notification',
-        namespace: 'claude-code',
-        type: 'task/registry',
-        payload: { active },
-      });
+      handleExtensionNotificationEvent(
+        {
+          eventId: `reg-${reporter}-${active.length}`,
+          provider: 'claude',
+          threadId: reporter,
+          createdAt: '2026-09-23T00:02:00.000Z',
+          method: 'extension.notification',
+          namespace: 'claude-code',
+          type: 'task/registry',
+          payload: { active },
+        },
+        apiBase,
+      );
 
     beforeEach(() => {
       // The root session (the chat key itself) has a genuinely running
       // backgrounded child alongside the continuation — R1 must keep it.
-      tuple('task/registry', {
-        active: [
-          { taskId: 'root-bg', description: 'Root', backgrounded: true },
-        ],
-      });
+      tuple(
+        'task/registry',
+        {
+          active: [
+            { taskId: 'root-bg', description: 'Root', backgrounded: true },
+          ],
+        },
+        apiBase,
+      );
       activeChatsStore.updateChat(threadId, { currentSessionId: former });
       reportFrom(former, [{ taskId: 'x-task', description: 'Former' }]);
       expect(chat()?.backgroundTasks?.map((task) => task.taskId)).toEqual([
@@ -650,24 +665,27 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
       const { applyOrchestrationSnapshot } = await import(
         '../snapshotHandlers'
       );
-      applyOrchestrationSnapshot({
-        sessions: [
-          { provider: 'claude', threadId, status: 'ready' },
-          {
-            provider: 'claude',
-            threadId: former,
-            status: 'ready',
-            hasActiveTurn: false,
-            childWork: {
-              children: {
-                observability: 'reported',
-                running: [],
-                observedAt: '2026-09-23T00:03:00.000Z',
+      applyOrchestrationSnapshot(
+        {
+          sessions: [
+            { provider: 'claude', threadId, status: 'ready' },
+            {
+              provider: 'claude',
+              threadId: former,
+              status: 'ready',
+              hasActiveTurn: false,
+              childWork: {
+                children: {
+                  observability: 'reported',
+                  running: [],
+                  observedAt: '2026-09-23T00:03:00.000Z',
+                },
               },
             },
-          },
-        ],
-      });
+          ],
+        },
+        { apiBase },
+      );
       expect(chat()?.backgroundTasks?.map((task) => task.taskId)).toEqual([
         'root-bg',
       ]);
@@ -675,7 +693,7 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
 
     test("the former session's exit clears its child even though it no longer has a chat", async () => {
       const { handleOrchestrationEvent } = await import('../eventHandlers');
-      handleOrchestrationEvent('http://api', {
+      handleOrchestrationEvent(apiBase, {
         provider: 'claude',
         threadId: former,
         createdAt: '2026-09-23T00:03:00.000Z',
@@ -690,9 +708,12 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
       const { applyOrchestrationSnapshot } = await import(
         '../snapshotHandlers'
       );
-      applyOrchestrationSnapshot({
-        sessions: [{ provider: 'claude', threadId, status: 'ready' }],
-      });
+      applyOrchestrationSnapshot(
+        {
+          sessions: [{ provider: 'claude', threadId, status: 'ready' }],
+        },
+        { apiBase },
+      );
       expect(chat()?.backgroundTasks?.map((task) => task.taskId)).toEqual([
         'root-bg',
       ]);

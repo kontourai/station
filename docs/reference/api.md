@@ -248,7 +248,12 @@ The person's personal per-engine approval default is queued for a chat's
 first send as before (with its account namespace, so offline replay and
 account switches behave as they did). In a Project chat it travels on `/chat`
 as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint rather than a
-pick; outside a Project there is no Project layer and it goes as a carried pick. For a new conversation of a person's own chat the server
+pick; outside a Project there is no Project layer and it goes as a carried pick,
+except when the Station reports a managed
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling): then
+it goes as the hint everywhere, so the server lowers it as a default instead of
+refusing it as a pick. A recorded hint's `session.approval-mode-set` event is
+marked `source: "personal-default"`. For a new conversation of a person's own chat the server
 records it as the conversation's decision only when nothing above it decides,
 so the order is: explicit pick, Agent default, Project layer, personal
 default, Station default. A `never` hint that would apply is refused (403
@@ -508,6 +513,26 @@ and `canCheckHostPaths` for the current request. It is a UI observation, not a
 grant; mutation routes enforce their own policy. Account-bound readers may query
 it and receive false for these operator capabilities. Missing or failed reads
 keep management controls unavailable until a successful refresh.
+
+## Private memory preview
+
+With the default-off `private-memory` Feature Preview enabled on a personal
+Station, `POST /api/knowledge/memory/root` lets the host operator register their
+author-private memory root. `POST /api/knowledge/memory/proposals` takes
+`{requestKey, candidate, evidence}` and stages a Corpus create proposal; the
+body is limited to 1 MiB. Matching retries return the same proposal ID, while
+a conflicting key returns 409 with `REQUEST_KEY_CONFLICT`. `GET
+/api/knowledge/memory/proposals` is the explicit owner-authorized proposal
+query. Pending proposals do not appear in ordinary record lists or search.
+
+`GET /api/knowledge/memory/erasure-preview?kind=record|proposal&id=<id>`
+returns the target's `{ kind, id, title }` without changing it. It does not
+calculate a cascade or expose erasure.
+
+Unknown identity, hosted access, Project membership and delegation do not grant
+memory access. With the preview off, direct memory requests return the standard
+`feature_preview_disabled` 404. Review, application and erasure are not exposed
+by these routes. See [Private memory](../guides/knowledge.md#private-memory-preview).
 
 ## Project knowledge source identity
 
@@ -4615,16 +4640,42 @@ With one:
       "organization": "Example Corp",
       "supportUrl": "https://help.example.com/station",
       "lockedSettings": [],
-      "limits": {}
+      "limits": { "maxApprovalMode": "auto" }
     }
   }
 }
 ```
 
-`source.kind` is `file`, or `test-override` for an isolated test instance. The
-summary never contains a setting value. There is no error state: a server that
+`source.kind` is `file`, or `test-override` for an isolated test instance.
+`limits` holds `maxApprovalMode` (`ask`, `auto` or `never`) when the policy
+sets the [approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
+and is `{}` otherwise. The summary never contains a setting value. There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
-`station policy show` reports as a server too old to report a policy.
+`station policy show` reports as a server too old to report a policy, and
+which the UI reads as no policy.
+
+### Refusals by the approval-mode ceiling
+
+Under a ceiling, a request that picks an approval mode above it, or changes
+this Station's default to one, is refused before it has any effect:
+
+```json
+{
+  "success": false,
+  "code": "managed-policy-approval-ceiling",
+  "error": "Example Corp's policy manages approval modes: the broadest allowed is Auto. For help, visit https://help.example.com/station"
+}
+```
+
+with status `403`. That covers `POST /api/orchestration/commands`
+(`setApprovalMode`), a `setApprovalMode` carried on `/chat`,
+`/chat/:id/continue` or a handoff, `PUT /config/app`
+(`defaultApprovalMode`), any explicit full-access default written to a
+project or Agent, adding a plugin Agent's tool grant, and a known ACP
+full-access `mode` on a request's options. A mode carried on a request's
+options as a default (`approvalMode`, `never` included) is lowered to the
+ceiling, not refused. A turn on a chat whose recorded pick is above the ceiling is refused with the
+same `code` and message as a turn refusal (`permission_denied`).
 
 ## Branding
 
@@ -6467,7 +6518,9 @@ with the same pid and its whole journal, by the next core generation after a
 restart or handoff (see [Shell host](../design/terminal.md#shell-host)). A shell
 that ended because its host restarted reopens on start under the same id, in its
 directory, after a "restored after restart" divider, without re-running anything
-(`restoredAt` is set). History persistence, location, maximum age and the
+(`restoredAt` is set). It reopens only while that directory lies inside its
+binding as the binding resolves then; otherwise it stays ended and its record
+carries `restoreRefused: { reason, at }`, with the reason also in its output. History persistence, location, maximum age and the
 per-terminal and total sizes are the `terminalHistory*`
 [settings](config.md); see [Journal](../design/terminal.md#journal).
 

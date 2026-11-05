@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { normalize } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BACKLOG_POLICY } from '../backlog-priority-policy.mjs';
 import {
@@ -21,7 +22,7 @@ function findingsWith(
   const read = ((path: unknown, encoding: unknown) => {
     const target = String(path);
     const entry = Object.entries(patches).find(([relative]) =>
-      target.endsWith(relative),
+      target.endsWith(normalize(relative)),
     );
     return entry ? entry[1] : readFileSync(target, encoding as BufferEncoding);
   }) as unknown as typeof readFileSync;
@@ -37,7 +38,8 @@ describe('a module a workflow runs in-process must be a trust root', () => {
   function findingsForWorkflow(source: string) {
     const read = ((path: unknown, encoding: unknown) => {
       const target = String(path);
-      if (target.endsWith('.github/workflows/synthetic.yml')) return source;
+      if (target.endsWith(normalize('.github/workflows/synthetic.yml')))
+        return source;
       return readFileSync(target, encoding as BufferEncoding);
     }) as unknown as typeof readFileSync;
     const list = (() => ['synthetic.yml']) as unknown as typeof readdirSync;
@@ -251,7 +253,7 @@ describe('public contribution surfaces', () => {
 
   it('rejects a required solution and laundered feature priority field', () => {
     const feature =
-      `${readFileSync('.github/ISSUE_TEMPLATE/feature-request.yml', 'utf8')}
+      `${readFileSync('.github/ISSUE_TEMPLATE/feature-request.yml', 'utf8').replaceAll('\r\n', '\n')}
   - type: input
     id: priority
     attributes:
@@ -371,10 +373,20 @@ describe('public contribution surfaces', () => {
   it('rejects incomplete PR evidence and prompt disclosure', () => {
     const template = readFileSync('.github/pull_request_template.md', 'utf8')
       .replace('## Risk and rollback', '## Risk')
-      .replace('Personal inspection performed:', 'Prompt used:');
+      .replace('Personal inspection performed:', 'Prompt used:')
+      .replace('### Agent sessions', '### Sessions')
+      .replace('<!-- agent-sessions:v1 -->', '')
+      .replace('<!-- /agent-sessions:v1 -->', '');
     const findings = findingsWith({
       '.github/pull_request_template.md': template,
     });
+    expect(findings).toContain("PR template is missing '### Agent sessions'.");
+    expect(findings).toContain(
+      "PR template is missing '<!-- agent-sessions:v1 -->'.",
+    );
+    expect(findings).toContain(
+      "PR template is missing '<!-- /agent-sessions:v1 -->'.",
+    );
     expect(findings).toContain(
       "PR template is missing '## Risk and rollback'.",
     );
@@ -437,6 +449,16 @@ npm run full:regression
     );
   });
 
+  it('requires CONTRIBUTING to name the Agent-Session commit trailer', () => {
+    const contributing = readFileSync('CONTRIBUTING.md', 'utf8').replace(
+      '`Agent-Session:` trailer',
+      'session note',
+    );
+    expect(findingsWith({ 'CONTRIBUTING.md': contributing })).toContain(
+      "CONTRIBUTING must state '`Agent-Session:` trailer'.",
+    );
+  });
+
   it('rejects broad, unexpected, and missing CODEOWNERS roots', () => {
     const codeowners = `${readFileSync('.github/CODEOWNERS', 'utf8')}
 * @briananderson1222
@@ -457,17 +479,16 @@ README.md @briananderson1222
   });
 
   it('rejects a trust root that no longer exists and duplicate public admission', () => {
-    const manifest = readFileSync(
-      'docs/pages/public-docs.json',
-      'utf8',
-    ).replace(
-      '{\n      "source": "user/contributing.md",\n      "section": "Contribute"\n    }',
-      '{\n      "source": "user/contributing.md",\n      "section": "Contribute"\n    },\n    {\n      "source": "user/contributing.md",\n      "section": "Contribute"\n    }',
-    );
+    const manifest = readFileSync('docs/pages/public-docs.json', 'utf8')
+      .replaceAll('\r\n', '\n')
+      .replace(
+        '{\n      "source": "user/contributing.md",\n      "section": "Contribute"\n    }',
+        '{\n      "source": "user/contributing.md",\n      "section": "Contribute"\n    },\n    {\n      "source": "user/contributing.md",\n      "section": "Contribute"\n    }',
+      );
     const findings = findingsWith(
       { 'docs/pages/public-docs.json': manifest },
       (path) =>
-        !String(path).endsWith('scripts/native-update-feed.mjs') &&
+        !String(path).endsWith(normalize('scripts/native-update-feed.mjs')) &&
         existsSync(path),
     );
     expect(findings).toContain(

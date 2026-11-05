@@ -254,6 +254,11 @@ function deltaReporter(delta: ChildWorkDelta): string {
 }
 
 export const childWorkGlobalStore = {
+  /** Presence lets chat-side projections follow this owner's bounded partition lifetime. */
+  hasPartition(apiBase: string): boolean {
+    return Object.hasOwn(partitions, apiBase);
+  },
+
   retainPartition(apiBase: string): () => void {
     retainedPartitions.set(apiBase, (retainedPartitions.get(apiBase) ?? 0) + 1);
     let released = false;

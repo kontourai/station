@@ -246,12 +246,16 @@ import {
 } from '../../security/coding-authority.js';
 import {
   type ConfinementProvider,
-  ConfinementRefusedError,
   noMechanismConfinementRecord,
   readConfinementRecord,
   resolveConfinement,
 } from '../../security/confinement/confinement-provider.js';
 import { seatbeltConfinementProvider } from '../../security/confinement/seatbelt.js';
+import {
+  clampToManagedCeiling,
+  ManagedApprovalCeilingRefusedError,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -3119,29 +3123,38 @@ export class OrchestrationService {
       },
       readUsageRevision: (threadId) =>
         this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
-      listUsageEventPayloads: (threadId) =>
-        this.options.eventStore?.listUsageEventPayloads(threadId) ?? [],
+      listUsageEventPayloads: (threadId, clock) =>
+        this.options.eventStore?.listUsageEventPayloads(threadId, clock) ?? [],
       listUsageReceiptEvents: (input) =>
         this.options.eventStore?.listUsageReceiptEvents(input) ?? [],
       listUsageCoverageEvents: (input) =>
         this.options.eventStore?.listUsageCoverageEvents(input) ?? [],
       searchConversationMessages: (input) =>
         this.options.eventStore?.searchConversationMessages(input) ?? [],
-      readSessionThreadIds: (authority) => {
+      readSessionThreadIds: (authority, stationOwnedOnly = false) => {
         if (authority === INTERNAL_SESSION_READ_SCOPE) {
-          return (this.options.eventStore?.readSessions() ?? []).map(
-            (persisted) => persisted.threadId,
-          );
+          return (this.options.eventStore?.readSessions() ?? [])
+            .filter(
+              (session) =>
+                !stationOwnedOnly || session.controlMode === 'station-owned',
+            )
+            .map((persisted) => persisted.threadId);
         }
         if (!isSessionReadAuthority(authority)) return [];
-        return (
+        const ids =
           this.options.eventStore?.readUsageSessionThreadIds({
             ownerUserId: authority.userId,
             ...(authority.mode === 'hosted' && authority.tenantExecutionContext
               ? { tenantId: authority.tenantExecutionContext.tenantId }
               : {}),
-          }) ?? []
-        );
+          }) ?? [];
+        return stationOwnedOnly
+          ? ids.filter(
+              (id) =>
+                this.options.eventStore?.readSessionByThread(id)
+                  ?.controlMode === 'station-owned',
+            )
+          : ids;
       },
       requireTenantExecutionContext: () =>
         this.options.requireTenantExecutionContext?.() === true,
@@ -7320,6 +7333,11 @@ export class OrchestrationService {
   listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {
     this.initialize();
     return this.transcriptReads.listSessionUsage(authority);
+  }
+
+  listDailyUsage(day: string, authority: SessionReadScope) {
+    this.initialize();
+    return this.transcriptReads.listDailyUsage(day, authority);
   }
 
   listUsageReceipts(
@@ -11853,11 +11871,15 @@ export class OrchestrationService {
           // the engine is never switched to acceptEdits with no decision to
           // undo it. With it, the standing decision is kept: any decision
           // recorded while the engine takes the answer wins.
+          // #4518: under a managed ceiling below Auto the answer would switch
+          // the engine to acceptEdits past the ceiling, so it is downgraded
+          // to the one-call accept too.
           const editModeAnswer = this.isEditModeSessionAnswer(
             command,
             adapter.provider,
           )
-            ? context?.approvalModeAuthority === true
+            ? context?.approvalModeAuthority === true &&
+              !managedCeilingRefuses('auto')
               ? { standing: this.approvalPosture.decision(command.threadId) }
               : 'downgrade'
             : undefined;
@@ -12093,7 +12115,10 @@ export class OrchestrationService {
           error instanceof SessionStartRefusedError ||
           error instanceof TurnIdempotencySettledError ||
           // #2494: a respawn refused for its confinement started nothing.
-          error instanceof ConfinementRefusedError
+          // #4518: so did any start the adapter settled as refused (the
+          // managed approval ceiling, a model the engine did not offer),
+          // reached here when a send lazily starts a dormant session.
+          error instanceof SessionStartRefusedError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -12148,7 +12173,10 @@ export class OrchestrationService {
           error instanceof TurnSubmissionUnsupportedError ||
           // #2494: the closed confinement refusal codes are a public
           // contract (`CONFINEMENT_REFUSAL_CODES`), not retryable as sent.
-          error instanceof ConfinementRefusedError
+          // #4518: every start refusal's code is a closed
+          // `ProviderFailureCode`, which the start route already forwards;
+          // a send that starts the session lazily forwards it the same way.
+          error instanceof SessionStartRefusedError
           ? error.code
           : error instanceof SendTurnRefusedError &&
               'code' in error &&
@@ -14814,7 +14842,15 @@ export class OrchestrationService {
     principal?: PrincipalRef;
     /** #1796: set only by `resetFullAccessGrantedBy`. */
     revocation?: SessionApprovalModeSetEvent['revocation'];
+    /** #4518: set only by `recordPersonalApprovalDefault`. */
+    source?: SessionApprovalModeSetEvent['source'];
   }): SetApprovalModeResult {
+    // #4518: no decision above the machine's managed approval ceiling is
+    // recorded, whichever path records it (the command route, a pick carried
+    // on a send, a delegated or agent-tool pick). The routes refuse first
+    // with the same message; this is the one writer, so it holds for all.
+    if (managedCeilingRefuses(input.approvalMode))
+      throw new ManagedApprovalCeilingRefusedError();
     const standing = this.approvalPosture.supersedingDecision(
       input.threadId,
       input.approvalMode,
@@ -14841,6 +14877,7 @@ export class OrchestrationService {
           approvalMode: input.approvalMode,
           ...(input.principal ? { principal: input.principal } : {}),
           ...(input.revocation ? { revocation: input.revocation } : {}),
+          ...(input.source ? { source: input.source } : {}),
         },
         input.clientOrigin,
       ),
@@ -15341,6 +15378,19 @@ export class OrchestrationService {
     | { outcome: 'refused-full-access' }
     | { outcome: 'recorded'; result: SetApprovalModeResult }
   > {
+    // #4518: a saved personal default is a default, so one above the managed
+    // ceiling starts the chat at the ceiling rather than refusing it. It is
+    // recorded marked `personal-default`, never as a pick: `ApprovalPosture`
+    // lowers such a decision to the ceiling in force at each start and turn,
+    // so a later, tighter policy lowers this chat instead of refusing it for
+    // a choice nobody made. What is recorded is the default as it applies
+    // now: a `never` needs a full-access grant, which nobody holds under the
+    // ceiling, so it is recorded at the ceiling and stays there if the policy
+    // is later removed.
+    input = {
+      ...input,
+      approvalMode: clampToManagedCeiling(input.approvalMode),
+    };
     if (
       input.approvalMode === 'connection-default' ||
       !this.approvalKnobForThread(
@@ -15373,6 +15423,7 @@ export class OrchestrationService {
         provider: input.provider,
         approvalMode: input.approvalMode,
         basedOnSequence: null,
+        source: 'personal-default',
         ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
         ...(input.principal ? { principal: input.principal } : {}),
       }),

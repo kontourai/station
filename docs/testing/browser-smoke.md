@@ -11,7 +11,7 @@ temporary home, and dynamically allocated loopback API/UI ports, keeping it
 separate from an always-on dogfood environment on the same host.
 
 The normative manifest is
-[`PR_BROWSER_SMOKE_CONTRACT`](../../tests/e2e-manifest.mjs). Its eight selected
+[`PR_BROWSER_SMOKE_CONTRACT`](../../tests/e2e-manifest.mjs). Its nine selected
 specs cover these journeys:
 
 | Spec | Journey |
@@ -24,6 +24,7 @@ specs cover these journeys:
 | `cross-runtime-chat-switching` | Deterministic provider continuity and mobile layout containment, including the required 320/390/412-pixel Inbox observations |
 | `pr-smoke-live-chat-send` | A real orchestration HTTP dispatch and rendered reply from a local Ollama-compatible fixture server |
 | `chat-inventory-drilldown-mobile` | At 390x844, a real chat started from Home opens the phone dock on its own; the header keeps Chat actions and New chat in one row of 44px targets at 320 and 390 pixels; Chat inventory opens from the Chat actions sheet and the chat's authored input is drilled into, read back through the exact input read, and measured for overflow, chip width, and 44px targets; the reader carries one "Chat inventory" title, at 390 and 1440, with its header clear of its content (#4176) |
+| `terminal-mobile-keyboard` | In Pixel 7 emulation, the Coding terminal takes a phone soft keyboard's input as Gboard sends it (IME text commits, and Send and Backspace with no key code) into a real shell, which runs the command without the deleted characters; a shell shown again after a second shell's tab redraws its screen; a long touch selects a word without stopping the terminal and its menu offers Add to chat (#3994) |
 
 The live-chat send journey tests Station's request and rendering path; the fixture returns
 fixed text and does not run a model or contact a provider. A phone-sized browser

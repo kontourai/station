@@ -872,7 +872,9 @@
 
     "src-server/services/orchestration/__tests__/ensemble-execution-context.test.ts",
 
-    "src-server/routes/orchestration/__tests__/cli-session-group-runtime.integration.test.ts"
+    "src-server/routes/orchestration/__tests__/cli-session-group-runtime.integration.test.ts",
+
+    "packages/sdk/src/release-notes-query.ts"
   ],
 
   "checks": [

@@ -308,7 +308,17 @@
 
     "src-ui/src/views/activity/__tests__/ActivityList.test.tsx",
 
-    "src-ui/src/views/SessionsView.css"
+    "src-ui/src/views/SessionsView.css",
+
+    "docs/guides/deployment-authentication.md",
+
+    "docs/guides/plugins.md",
+
+    "src-ui/src/contexts/background-tasks-store.ts",
+
+    "src-ui/src/hooks/orchestration/childWorkHandlers.ts",
+
+    "src-ui/src/utils/child-work-display.ts"
   ],
 
   "checks": [

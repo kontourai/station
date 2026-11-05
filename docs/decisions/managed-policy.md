@@ -9,6 +9,8 @@ evidence:
     ref: https://github.com/kontourai/station/issues/4516
   - kind: issue
     ref: https://github.com/kontourai/station/issues/4517
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/4518
 ---
 
 # Managed policy
@@ -70,9 +72,9 @@ may be a restriction from a newer release. Ignoring it would leave the machine
 looking managed while that restriction is not enforced.
 
 **Keys that later slices own are refused until their enforcement lands.**
-Version 1 reserves `limits` (#4518–#4522). This build accepts `limits` only as
-an empty object. Any limit key gets a "not supported by this version of
-Station" error. If Station accepted a key before it enforced that key, the
+Version 1 reserves `limits` (#4518–#4522). This build accepts `limits` with
+only `maxApprovalMode` (#4518). Any other limit key gets a "not supported by
+this version of Station" error. If Station accepted a key before it enforced that key, the
 administrator would see the machine as managed while nothing was managed. Each
 enforcement slice adds its key to the parser in the same change that enforces
 it. `settings` entries are enforced since #4517; see
@@ -273,8 +275,159 @@ Project refusals carry the same 403 body as `/config/app` (`code`, `key`, and
 the organization's sentence with its support link), composed from the loaded
 policy rather than from the caught message, which the project route redacts.
 
+## Approval-mode ceiling
+
+`limits.maxApprovalMode` (#4518) caps the broadest approval posture any run
+may use, whoever starts it. The [guide](../guides/managed-policy.md#approval-mode-ceiling)
+covers what administrators see. These are the decisions behind it.
+
+**Order.** `ask` < `auto` < `never`, where `never` is full access
+(`APPROVAL_MODE_BREADTH_ORDER` in `@kontourai/station-contracts/provider`).
+It is the order the server's compare-and-set already ranked postures by
+(`approval-posture.ts`, which now reads the same constant), and the order the
+adapters map to: Claude `default` < `acceptEdits` < `bypassPermissions`,
+Codex `untrusted` < `on-request` < `never` with `danger-full-access`. A
+ceiling of `never` restricts nothing.
+
+**`connection-default` is resolved, never ranked.** It is not accepted as a
+ceiling. As a pick or a default it resolves to the posture it stands for (the
+Agent's or Station's default), which is then compared. Where it would leave
+the engine on its own settings, which Station cannot read and which can be
+broader than any ceiling (a Claude settings `defaultMode`, a Codex
+`approval_policy`), Station sends Ask instead, at every start and at a turn
+on an engine this process applied nothing to. Ask, not the ceiling: the
+engine's own default may be stricter, and the policy only narrows.
+
+**A choice is refused; a default is lowered.** A pick (at a chat's start or
+later) and a change of this Station's default above the ceiling are refused
+with `managedApprovalCeilingDenial`, code `managed-policy-approval-ceiling`.
+Lowering a pick would record a posture nobody chose. A default (Agent,
+project, Station, a person's saved default, an automation rule's or a
+delegation's carried mode) is lowered where it applies, so a new chat whose
+default is above the ceiling starts at the ceiling. A default saved before the
+policy is kept and resendable, so installing a policy does not break the
+Settings page, and it applies in full again if the policy is removed. An
+Agent's or project's `never` default is refused on write, by the full-access
+rule below. For an Agent the rule reads its own default, not the inherited
+one: writing an explicit `never` is refused even where it already inherits
+`never` from this Station, a `never` it saved before the policy may be resent
+unchanged, and clearing its own default to inherit a stored `never` is
+allowed, because the inherited value is lowered where it applies.
+
+A posture carried on a start's or turn's options (the default channel: a
+client's default, the CLI's `--approval-mode`) is a default too, so a carried
+`never` is lowered, not refused. A known ACP full-access mode id on the
+options is not lowered by anything, so it is still refused.
+
+A person's saved personal default is recorded on the new chat as its
+decision (so later sessions keep it), marked `source: "personal-default"` on
+the `session.approval-mode-set` event. It is recorded as it applies at that
+moment, lowered to the ceiling (a `never` needs a grant nobody holds under a
+ceiling). `ApprovalPosture.resolve` applies a marked decision as a default:
+lowered to the ceiling in force at each start and turn, never refused. So a
+later, tighter policy lowers that chat instead of stopping it for a pick
+nobody made.
+
+**A recorded pick above the ceiling stops the chat.** `ApprovalPosture.resolve`
+reads the conversation's recorded decision at every start, restart and turn,
+on every path that sends one. A concrete decision above the ceiling throws
+`ManagedApprovalCeilingRefusedError` (a `SendTurnRefusedError`,
+`permission_denied`) before the engine is touched. Lowering the mode records
+a new decision, and the next turn proceeds.
+
+**No full-access grant exists under a ceiling below `never`.**
+`mayGrantFullAccess` returns false for everyone, the operator included, and
+every `FullAccessGrant` is minted from it. No session starts or stands as
+`host`, even with a `host` stamp or a `never` recorded before the policy: that
+stamp would let Claude spawn holding the bypass grant. An "Auto-accept file
+edits for this session" answer under a ceiling of `ask` is downgraded to a
+single accept, as it is for a caller without `setApprovalMode` authority.
+
+Everything else gated on that authority is closed too. A plugin-owned
+Agent's `autoApprove` and `unattendedAutoApprove` grants cannot be added to
+or widened while the ceiling is below `never`. Revoking needs no full-access
+authority, with or without a ceiling: an empty list, `null`, or a subset of
+the current grants (compared as exact patterns) is allowed under the normal
+Agent mutation authority.
+
+**One holder, installed by the entrypoint.** The ceiling is process state
+(`security/managed-approval-ceiling.ts`), installed right after the policy
+loads and before the runtime is built. The gates are reached from many
+compositions; a holder none of them can be built without is harder to miss
+than an option each must pass.
+
+**A managed default above the ceiling is refused at load.** The parser
+reads `settings.defaultApprovalMode.value` from the raw document and refuses a
+concrete value broader than `maxApprovalMode`, locked or not, whatever the
+settings parser accepts. A valid managed setting raises no other problem, so
+that refusal is the one the administrator sees.
+
+**A lock and the ceiling bound different things.** A lock on
+`defaultApprovalMode` fixes the Station default and hides the project
+override; the values it does not cover (see
+[Managed settings](#managed-settings)) are lowered to the ceiling where they
+apply. A project write that sets the approval default while it is locked is
+refused as locked (`managed_setting_locked`) even when the value is also
+above the ceiling: the lock accepts no value, so the ceiling's "the broadest
+allowed is …" would name a value that is refused too.
+
+### Gates
+
+| Where a run's posture is chosen or changed | How |
+| --- | --- |
+| `POST /api/orchestration/commands` `setApprovalMode` | refused (route, then the decision writer) |
+| A pick carried on `/chat`, `/chat/:id/continue` or a handoff | refused (route) |
+| `OrchestrationService.recordApprovalModeDecision`, the one decision writer (agent tools, delegated picks) | refused |
+| Every session start, restart and turn (`ApprovalPosture.resolve`) | a recorded pick above: refused; defaults and carried modes: lowered; nothing: Ask |
+| Station default (`PUT /config/app`; read through `resolveStationDefaultApprovalMode`) | change refused; stored value lowered where it applies |
+| Agent and project defaults | an explicit `never` refused on write (an Agent's own, whatever it inherits); lower values and inherited ones lowered where they apply |
+| A posture carried on a start's or turn's options | lowered, `never` included; a known ACP full-access mode id refused |
+| A person's saved default (`recordPersonalApprovalDefault`) | recorded marked `personal-default`, lowered to the ceiling in force at every start and turn |
+| A plugin-owned Agent's tool grants | adding or widening refused; revoking allowed |
+| Muse Code on `muse exec` (serve disabled or failed) | session refused under `ask`: exec runs at Auto |
+| Automation rules and scheduled starts (`automation-actions-runtime.ts`) | carried mode lowered |
+| Inbound webhook starts (`webhook-turn-starter.ts`) | defaults lowered, else Ask |
+| Delegations and agent-started runs | defaults and carried modes lowered |
+| `mayGrantFullAccess` / `fullAccessGrantFor` | no grant |
+| Start confinement | never `host` |
+| Session-wide edit approval | downgraded to a single accept under `ask` |
+| The approval picker and chip | modes above disabled; inherited mode shown lowered |
+
+### Limitations
+
+The ceiling decides what Station asks the engine for. It is not a sandbox,
+and engines still enforce their own approvals.
+
+- **Engines without a Station-set approval control are not capped**: engines
+  with no approval mode (Ollama, Bedrock, Station's own runtime) and ACP
+  engines whose approval rules Station does not set at launch. Known ACP
+  full-access mode ids are refused through `mayGrantFullAccess`; others are
+  not recognized.
+- **Muse Code's `muse exec` cannot run stricter than Auto.** Exec has no
+  channel to answer an approval, so it always runs `--approval-mode never`
+  inside Muse's sandbox, which is Auto in Station's terms. Under a ceiling of
+  `ask`, a Muse session that would run on exec (serve disabled, or a
+  `muse serve` start that failed) is refused when it starts, rather than
+  falling back past the ceiling. Under `auto` the fallback is within the
+  ceiling and still runs.
+- **Launch configuration is the user's.** The `claude` and `codex`
+  executables are resolved on the `PATH` Station runs with, so a wrapper can
+  add its own flags. An engine connection's `env` map and `configHome` point
+  the engine at user-written configuration (Claude allow rules and hooks, a
+  Codex config home). An ACP connection's command and arguments are
+  user-defined. Variables in Station's own environment reach engines too.
+  Administrator ownership of launch configuration is #4520. This slice closes
+  only the cheap, clearly correct part: Station always sends an explicit mode
+  under a ceiling, so an engine's configured default mode cannot widen it.
+- **A settings-file allow rule** (Claude's user or workspace
+  `.claude/settings.json`) still lets a call run without a prompt in Ask, as
+  it does without a policy (#1545).
+- **Clients show the ceiling from a read** of
+  `GET /api/settings/managed-policy`. Until it is read, or if it cannot be,
+  the picker disables nothing and the server's refusal carries the message.
+
 ## Status of later slices
 
-Limits, the macOS profile, the Windows registry, and `station policy templates`
-are tracked by #4518–#4524. Until each one lands, its keys are refused, as
-described above.
+The remaining limits, the macOS profile, the Windows registry, and
+`station policy templates` are tracked by #4519–#4524. Until each one lands,
+its keys are refused, as described above.

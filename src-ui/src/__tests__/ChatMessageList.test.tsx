@@ -71,6 +71,48 @@ import { CHAT_READER_RESTORE_EVENT } from '../components/chat/chatScrollAnchor';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 describe('ChatMessageList', () => {
+  test('only the current Station completion notices appear in the transcript', () => {
+    const key = JSON.stringify(['engine-subagent', 'reporter', 'child']);
+    render(
+      <ChatMessageList
+        activeSession={{
+          ...resizeSession(),
+          messages: [
+            {
+              role: 'system',
+              content: 'Current Station result',
+              childWorkKey: JSON.stringify([
+                'station-child-work-notice-v1',
+                'http://localhost:3242',
+                key,
+              ]),
+            },
+            {
+              role: 'system',
+              content: 'Other Station result',
+              childWorkKey: JSON.stringify([
+                'station-child-work-notice-v1',
+                'http://other.test',
+                key,
+              ]),
+            },
+            {
+              role: 'system',
+              content: 'Legacy completion notice',
+              childWorkKey: key,
+            },
+          ],
+        }}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+      />,
+    );
+    expect(screen.getByText('Current Station result')).toBeTruthy();
+    expect(screen.getByText('Legacy completion notice')).toBeTruthy();
+    expect(screen.queryByText('Other Station result')).toBeNull();
+  });
+
   function resizeSession() {
     return {
       id: 'resize-session',

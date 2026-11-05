@@ -1,0 +1,10 @@
+{
+  "name": "station-telemetry-worker",
+  "private": true,
+  "type": "module",
+  "description": "Receives Station's Lite usage telemetry on Cloudflare. Deployed by Kontour; not part of the Station workspace.",
+  "scripts": {
+    "test": "cd ../.. && npm run test:focused -- deploy/telemetry-worker/test/*.test.ts",
+    "deploy": "npx --yes wrangler@4 deploy"
+  }
+}

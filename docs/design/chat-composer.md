@@ -369,8 +369,9 @@ The implementation is shared by both Inbox presentations; Home and
 sidebar hosts retain their own actions.
 When Continue holds Home's only item of work, Recent work is not shown and
 View Activity sits beside the Continue heading.
-Home's Recent work rows are the same row: a decorative mark before the Project
-name is the Project's chosen icon, or, without one, a dot in its sidebar colour
+Home's Recent work rows use a recorded Directory label when no Project label
+is available and a working folder is known. For a Project, the decorative mark
+before its name is its chosen icon, or, without one, a dot in its sidebar colour
 (the name stays plain text); a row read from another Station draws no mark,
 since its slug names that Station's Project. The hover card's Project row
 repeats that mark, and its Git section reads the row's local session folder, as

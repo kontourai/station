@@ -26,6 +26,13 @@
       "for": "Resolve consent-bound intents and render current operating state."
     },
     {
+      "product": "corpus",
+      "via": [
+        "@kontourai/corpus-store"
+      ],
+      "for": "Store private memory records and create proposals through Corpus contracts."
+    },
+    {
       "product": "datum",
       "via": [
         "@kontourai/datum"

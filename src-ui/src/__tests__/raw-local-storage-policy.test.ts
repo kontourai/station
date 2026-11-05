@@ -28,6 +28,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station.background-tasks.sections', // Ephemeral panel disclosure state.
   'station.agents-pane.scope', // Ephemeral Agents pane scope (this conversation / all), view state not a setting.
   'station.chatDock.snap', // Ephemeral dock geometry/snap state.
+  'station.release-notes.last-version', // Last observed installed app version; one-time presentation bookkeeping, not a preference.
   'station.dockFirstRunSeen', // One-time affordance marker.
   // archive#3122's `station.home.variant` used to sit here. It was written by
   // one deletable module and read by nothing else, exactly so that retiring

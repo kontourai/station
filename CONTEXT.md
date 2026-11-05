@@ -1,8 +1,10 @@
 # Station Context
 
-Station is a local-first workspace for agent work. It connects Projects,
-Tasks, agent Sessions, files, and evidence. It also hosts integrations with
-Kontour's process, review, and governance products.
+Station is an open-source workspace for running coding agents and reviewing their work.
+Individual developers and small teams are its primary audience. It connects
+Projects, Tasks, agent Sessions, files, and evidence, with scoped sharing and
+public plugin contracts. The [constitution](docs/strategy/constitution.md) owns
+product direction; the guides below own current capabilities and limits.
 
 This page explains the main boundaries. Use the [glossary](docs/glossary.md)
 for names, the [system overview](docs/architecture.md) for flows, and the

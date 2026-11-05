@@ -276,7 +276,9 @@
 
     "src-ui/src/views/activity/__tests__/ActivityList.test.tsx",
 
-    "src-ui/src/views/SessionsView.css"
+    "src-ui/src/views/SessionsView.css",
+
+    "packages/cli/src/__tests__/telemetry-command.test.ts"
   ],
 
   "checks": [

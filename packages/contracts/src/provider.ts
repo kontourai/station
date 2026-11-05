@@ -629,6 +629,33 @@ export function isApprovalMode(value: unknown): value is ApprovalMode {
   );
 }
 
+/** A posture an engine runs in: every mode except the `connection-default` sentinel. */
+export type ConcreteApprovalMode = Exclude<ApprovalMode, 'connection-default'>;
+
+/**
+ * The concrete postures from strictest to broadest: `ask` < `auto` <
+ * `never` (full access). The server's compare-and-set
+ * (`approval-posture.ts`) and the managed approval ceiling (#4518) both rank
+ * by this order. `connection-default` has no place in it: what it means
+ * depends on defaults that can change, so a caller resolves it first.
+ */
+export const APPROVAL_MODE_BREADTH_ORDER: readonly ConcreteApprovalMode[] = [
+  'ask',
+  'auto',
+  'never',
+];
+
+export function isConcreteApprovalMode(
+  value: unknown,
+): value is ConcreteApprovalMode {
+  return isApprovalMode(value) && value !== 'connection-default';
+}
+
+/** The position of `mode` in {@link APPROVAL_MODE_BREADTH_ORDER}; higher is broader. */
+export function approvalModeBreadth(mode: ConcreteApprovalMode): number {
+  return APPROVAL_MODE_BREADTH_ORDER.indexOf(mode);
+}
+
 /**
  * Reads a validated `approvalMode` out of a `modelOptions` bag, ignoring
  * unrecognized/absent values rather than throwing — callers treat the

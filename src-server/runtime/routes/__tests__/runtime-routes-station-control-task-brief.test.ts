@@ -23,6 +23,10 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
 import * as fakeGh from '../../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
 import { GitHubWorkItemObserver } from '../../../services/work-item-providers/github-work-item-observer.js';
+import {
+  TaskFollowUpStoreHolder,
+  taskFollowUpStorePath,
+} from '../../../services/work-item-providers/task-follow-up-store.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
@@ -135,6 +139,31 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
       fakeGh.comment(1, '2026-10-20T04:00:00Z', 'Already seen at dispatch.'),
       fakeGh.comment(2, '2026-10-20T06:00:00Z', 'Posted after the dispatch.'),
     ]);
+    // #4508: what the follow-up poller recorded for the bound Task.
+    const followUps = new TaskFollowUpStoreHolder(() =>
+      taskFollowUpStorePath(homeDir),
+    );
+    followUps.forWrite()!.recordPage(
+      { taskId: 'task-bound', taskCreatedAt: '2026-10-20T00:00:00.000Z' },
+      'github:owner/repo#7',
+      {
+        items: [
+          {
+            kind: 'comment',
+            githubId: '901',
+            author: 'member-reviewer',
+            actorClass: 'member',
+            association: 'MEMBER',
+            occurredAt: '2026-10-20T07:00:00Z',
+            excerpt: 'Please rebase.',
+            truncated: false,
+          },
+        ],
+        cursors: {},
+      },
+      '2026-10-20T07:01:00Z',
+    );
+    closers.push(async () => followUps.close());
     const service = new NotificationService(new EventBus(), homeDir, 999_999);
     closers.push(() => service.shutdown());
     support.notificationService = service;
@@ -165,6 +194,7 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
       metricsLog: [],
       monitoringEvents: [],
       workItemObserver: new GitHubWorkItemObserver({ command: gh }),
+      taskFollowUps: followUps,
       orchestrationEventStore: deepStub({
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
@@ -387,6 +417,10 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
       );
       expect(json.data.text).not.toContain('Already seen at dispatch.');
       expect(json.data.text).not.toContain('linked item not re-read');
+      // #4508: the runtime's follow-up store, through this route's brief.
+      expect(json.data.text).toContain(
+        '- Comment on github:owner/repo#7 by member-reviewer (member, MEMBER) at 2026-10-20T07:00:00Z\n> Please rebase.',
+      );
       expect(json.data.text).toContain('## Tracker guidance');
       expect(json.data.text).toContain(
         '## Task summary (revision 3, by session op-sibling-bound at 2026-10-20T05:00:00Z)\nQuoted, written by agents and people on this Task:\n> Read the bound Task only.',

@@ -4,9 +4,11 @@ import type {
 } from '@kontourai/station-contracts/project-chat-defaults';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
+import { ManagedApprovalCeilingNote } from '../../components/managed/ManagedApprovalCeilingNote';
 import { PageRow } from '../../components/PageRow';
 import { PageSection } from '../../components/PageSection';
 import { useAgents } from '../../contexts/AgentsContext';
+import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import { approvalModeLabel } from '../../utils/approvalMode';
 import { runtimeCatalogVisibleModels } from '../../utils/execution';
 import { modelDisplayLabel } from '../../utils/modelCapabilities';
@@ -44,6 +46,7 @@ export function NewChatDefaultsSection({
   projectModelSet: boolean;
 }) {
   const agents = useAgents();
+  const { aboveCeiling } = useManagedApprovalCeiling();
   const { data: engineConnections = [] } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
@@ -163,12 +166,23 @@ export function NewChatDefaultsSection({
                 ? 'Follow the Station approval default'
                 : `Use the Station approval default (currently: ${stationApprovalLabel})`}
             </option>
-            <option value="ask">{approvalModeLabel('ask')}</option>
-            <option value="auto">{approvalModeLabel('auto')}</option>
-            <option value="never">{approvalModeLabel('never')}</option>
+            {(['ask', 'auto', 'never'] as const).map((mode) => {
+              // #4518: above the managed ceiling, a mode is not offered unless
+              // it is the saved value (resent unchanged on an unrelated save).
+              const managed =
+                aboveCeiling(mode) && mode !== form.defaultApprovalMode;
+              return (
+                <option key={mode} value={mode} disabled={managed}>
+                  {managed
+                    ? `${approvalModeLabel(mode)} (Managed)`
+                    : approvalModeLabel(mode)}
+                </option>
+              );
+            })}
           </select>
         }
       />
+      <ManagedApprovalCeilingNote className="editor-hint" />
     </PageSection>
   );
 }

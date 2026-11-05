@@ -18,6 +18,7 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import { currentUnattendedPrincipal } from '../../../runtime/agents/unattended-principal-context.js';
 import { createAutomationActionsRuntime } from '../../../runtime/automation-actions-runtime.js';
+import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
 import { createRuntimeResourcePostureController } from '../../infra/resource-posture.js';
 import { EventBus } from '../../orchestration/event-bus.js';
@@ -55,7 +56,9 @@ class RecordingAdapter extends GateTestAdapter {
     principal: ReturnType<typeof currentUnattendedPrincipal>;
     invocationId?: string;
   }[] = [];
+  readonly starts: ProviderSessionStartInput[] = [];
   override async startSession(input: ProviderSessionStartInput) {
+    this.starts.push(input);
     const session = await super.startSession(input);
     this.events.push({
       method: 'session.started',
@@ -96,6 +99,8 @@ async function world(
   options: {
     episode?: boolean;
     turnPreparation?: { entered(): void; wait: Promise<void> };
+    /** The rule action's posture (`dispatch-task` `approvalMode`). */
+    approvalMode?: 'ask' | 'auto';
   } = {},
 ) {
   const home = makeTempDir('automation-actions-');
@@ -124,6 +129,7 @@ async function world(
       agentId: FIXTURE_TASK_AGENT,
       instructions: 'Investigate the failure.',
       budget: { maxTurns: 1, maxTokens: 20000, maxWallRuntimeMs: 60000 },
+      ...(options.approvalMode ? { approvalMode: options.approvalMode } : {}),
     },
   });
   const draft = store.read();
@@ -579,4 +585,37 @@ test('controller recovery enforces retained Automation authority before polling 
     ).toBe('refused'),
   );
   expect(w.adapter.sends).toEqual([]);
+});
+
+/**
+ * #4518: an automation rule's posture is a default, so under the machine's
+ * managed approval ceiling its run starts at the ceiling. Driven through the
+ * real automation runtime, Task dispatcher and `OrchestrationService`.
+ */
+test('an Auto automation rule starts its engine at a managed ceiling of Ask', async () => {
+  const w = await world({ approvalMode: 'auto' });
+  installManagedApprovalCeiling({
+    summary: {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: { maxApprovalMode: 'ask' },
+    },
+  });
+  cleanup.push(async () => installManagedApprovalCeiling(null));
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(w.adapter.starts.length).toBeGreaterThan(0);
+  expect(
+    w.adapter.starts.map((start) => start.modelOptions?.approvalMode),
+  ).toEqual(w.adapter.starts.map(() => 'ask'));
+});
+
+test('control: without a ceiling the same Auto rule starts at Auto', async () => {
+  const w = await world({ approvalMode: 'auto' });
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(w.adapter.starts[0]?.modelOptions?.approvalMode).toBe('auto');
 });

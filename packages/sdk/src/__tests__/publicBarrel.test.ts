@@ -38,6 +38,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'diffComments',
   'featurePreviews',
   'ensembles',
+  'managedPolicy',
   'integrationStatus',
   'workloadBudgets',
   'terminalHistory',

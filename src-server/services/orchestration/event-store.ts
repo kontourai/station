@@ -7647,7 +7647,10 @@ export class EventStore {
    * transcript deltas; SQL removes large input/output fields before JS sees
    * them. Keep optional usage fields absent rather than manufacturing nulls.
    */
-  listUsageEventPayloads(threadId: string): CanonicalRuntimeEvent[] {
+  listUsageEventPayloads(
+    threadId: string,
+    clock: 'provider' | 'observation' = 'provider',
+  ): CanonicalRuntimeEvent[] {
     const rows = this.readStatement(
       `SELECT CASE
          WHEN method = 'turn.started' THEN json_remove(payload, '$.prompt', '$.attachments', '$.metadata')
@@ -7656,7 +7659,7 @@ export class EventStore {
          WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated') THEN payload
          ELSE json_object('eventId', id, 'threadId', thread_id,
            'provider', provider, 'method', method, 'createdAt', created_at)
-         END AS payload
+         END AS payload, observed_at
        FROM orchestration_events
        WHERE thread_id = ? AND (
          method IN ('session.started', 'session.configured', 'turn.started',
@@ -7664,9 +7667,14 @@ export class EventStore {
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1)
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? AND provider != 'station-agent' LIMIT 1))
        ORDER BY sequence ASC`,
-    ).all(threadId, threadId, threadId) as Array<{ payload: string }>;
+    ).all(threadId, threadId, threadId) as Array<{
+      payload: string;
+      observed_at: string | null;
+    }>;
     const events: CanonicalRuntimeEvent[] = rows.map((row) =>
-      JSON.parse(row.payload as string),
+      clock === 'observation'
+        ? { ...JSON.parse(row.payload), createdAt: row.observed_at ?? '' }
+        : JSON.parse(row.payload),
     );
     return events;
   }
@@ -9028,11 +9036,14 @@ export class EventStore {
         globalSequence: number;
         /** #1796: who recorded it (`clientOrigin.actor`); absent on older events. */
         actor?: unknown;
+        /** #4518: `personal-default` when it records a saved default, not a pick. */
+        source?: unknown;
       }
     | undefined {
     const statement = this.db.prepare(
       `SELECT thread_id, json_extract(payload, '$.approvalMode') AS approval_mode, global_sequence,
-              json_extract(payload, '$.clientOrigin.actor') AS actor
+              json_extract(payload, '$.clientOrigin.actor') AS actor,
+              json_extract(payload, '$.source') AS source
        FROM orchestration_events
        WHERE thread_id = ? AND method = 'session.approval-mode-set'
        ORDER BY sequence DESC
@@ -9044,6 +9055,7 @@ export class EventStore {
           approvalMode: unknown;
           globalSequence: number;
           actor?: unknown;
+          source?: unknown;
         }
       | undefined;
     for (const threadId of new Set(threadIds)) {
@@ -9053,6 +9065,7 @@ export class EventStore {
             approval_mode: unknown;
             global_sequence: number;
             actor: string | null;
+            source: unknown;
           }
         | undefined;
       if (!row) continue;
@@ -9064,6 +9077,7 @@ export class EventStore {
           ...(typeof row.actor === 'string'
             ? { actor: parseJsonOrUndefined(row.actor) }
             : {}),
+          ...(row.source != null ? { source: row.source } : {}),
         };
       }
     }

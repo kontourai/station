@@ -1186,8 +1186,23 @@ describe('Home, the dock and Activity agree on one item', () => {
             within(root).getByText(directory, { exact: true }),
           ).toBeTruthy();
         expect(meta.querySelector('[data-segment="project"]')).toBeNull();
+        for (const root of [home, dock, sheet])
+          expect(
+            within(root).getByRole('button', {
+              name: (name) => name.includes(directory),
+            }),
+          ).toBeTruthy();
       } else {
         expect(meta.querySelector('[data-segment="directory"]')).toBeNull();
+        if (projectSlug)
+          for (const root of [home, dock, sheet]) {
+            expect(
+              within(root).getByRole('button', {
+                name: (name) => name.includes(`, ${projectSlug}`),
+              }),
+            ).toBeTruthy();
+            expect(within(root).queryByText(/^Directory ·/)).toBeNull();
+          }
         expect(
           meta.querySelector('[data-segment="project"]')?.textContent,
         ).toBe(projectSlug);

@@ -111,7 +111,7 @@ export async function qualifyResilience(
   await store.lite.createSource({
     id: scaleSource,
     publisher,
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: ['public.plugin'],
     releaseVersions: ['1.2.3'],
   });
@@ -192,7 +192,7 @@ export async function qualifyResilience(
   await store.lite.createSource({
     id: erasureSource,
     publisher: erasurePublisher,
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: ['public.plugin'],
     releaseVersions: ['1.2.3'],
   });

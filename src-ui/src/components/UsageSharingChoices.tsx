@@ -186,9 +186,10 @@ export function UsageSharingIncluded(
       )}
       {daily ? (
         <p>
-          App version and device categories, grouped feature use and
-          customization, and counts of setup or connection trouble. No
-          installation identity, account or content.
+          App and device categories, feature use, customization, setup and
+          connection trouble, plus coarse tokens per engine from conversations
+          run in Station (outside CLI use is excluded). No identity, account or
+          content.
         </p>
       ) : (
         <>
@@ -362,7 +363,7 @@ export function UsageSharingChoices({
                 {tier === 'off'
                   ? 'No automatic usage sharing.'
                   : tier === 'lite'
-                    ? 'One daily count. No ID, no account, no content.'
+                    ? 'Daily counts, plus coarse tokens per engine from conversations run in Station. No ID, account or content.'
                     : 'Feature use. Monthly code. No account or content.'}
               </small>
             </span>

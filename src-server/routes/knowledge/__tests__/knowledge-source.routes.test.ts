@@ -174,6 +174,29 @@ test('Unicode registration identity is a bounded header precondition and CORS al
     'x-station-knowledge-root-identity',
   );
 });
+test('author-private roots refuse local source observation even with the exact current identity', async () => {
+  const f = await fixture();
+  const privateRoot = {
+    ...f.root,
+    readPolicy: {
+      kind: 'author-private' as const,
+      ownerId: 'human:someone-else',
+    },
+  };
+  await f.persistence.saveKnowledgeStoreRoot(privateRoot);
+  expect(knowledgeRootIncarnationKey(privateRoot)).not.toBe(
+    knowledgeRootIncarnationKey(f.root),
+  );
+  const response = await f.app.request(f.path, {
+    headers: f.headers(
+      'local-fixture',
+      knowledgeRootIncarnationKey(privateRoot),
+    ),
+  });
+  expect(((await response.json()) as any).data).toEqual({
+    state: 'restricted',
+  });
+});
 test('oversized source is unavailable without repair', async () => {
   const f = await fixture();
   const path = join(f.rootPath, 'records', `${f.recordId}.md`);

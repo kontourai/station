@@ -23,6 +23,7 @@ import { useToolApproval } from '../../hooks/useToolApproval';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import type { SavedAnswerQuote } from '../../utils/answer-quotes';
+import { visibleChildWorkNoticeKey } from '../../utils/child-work-display';
 import { isTurnStreamLive } from '../../utils/execution';
 import { isShallowEqual } from '../../utils/isShallowEqual';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
@@ -566,12 +567,14 @@ function ChatMessageListComponent({
       if (child.spawn?.standalone || inLoadedRow || inStreamingRow)
         represented.add(key);
     }
-    const visible = loaded.filter(
-      (message) =>
-        !message.childWorkKey || !represented.has(message.childWorkKey),
-    );
+    const visible = loaded.filter((message) => {
+      const key = message.childWorkKey
+        ? visibleChildWorkNoticeKey(message.childWorkKey, apiBase)
+        : undefined;
+      return key !== null && (!key || !represented.has(key));
+    });
     return visible.length === loaded.length ? loaded : visible;
-  }, [activeSession, suppressStreamingRow, transcriptChildren]);
+  }, [activeSession, apiBase, suppressStreamingRow, transcriptChildren]);
   // archive#3300: the turn fold, not the session flags — a settled turn must
   // not reconstruct its own streaming row after resume. See the doc comment
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong

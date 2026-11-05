@@ -12,6 +12,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import type { StationConfinement } from '@kontourai/station-contracts/provider';
 import type { TerminalLaunchProfile } from '@kontourai/station-contracts/terminal-transport';
 import { z } from 'zod/v3';
 import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
@@ -148,6 +149,15 @@ const recordSchema = scopeSchema
     endedAt: z.number().optional(),
     /** When a shell was reopened after its host restarted. */
     restoredAt: z.number().optional(),
+    /**
+     * Why a shell that ended with its host was not reopened (#492): its
+     * binding no longer resolves, or resolves somewhere its directory is not.
+     * The same reason is written to its journal, below its earlier output.
+     */
+    restoreRefused: z
+      .object({ reason: z.string().min(1), at: z.number() })
+      .strict()
+      .optional(),
     /** Ended because its in-process host stopped with the core, not by itself. */
     hostStopped: z.literal(true).optional(),
   })
@@ -194,6 +204,11 @@ function sessionView(
     ...(record.persist !== undefined && { persist: record.persist }),
     ...(record.endedAt !== undefined && { endedAt: record.endedAt }),
     ...(record.restoredAt !== undefined && { restoredAt: record.restoredAt }),
+    // An authored reason with no host path, also written to the journal an
+    // observer may read, so observe authority is enough (#492).
+    ...(record.restoreRefused && {
+      restoreRefused: { ...record.restoreRefused },
+    }),
     ...(record.hostStopped && { hostStopped: record.hostStopped }),
     ...(operate && { cwd: record.cwd }),
   };
@@ -220,6 +235,39 @@ type SessionJournal = Pick<
 >;
 
 export class TerminalSessionRefusal extends Error {}
+
+/**
+ * #2497: the authority an agent's own terminal command (an ACP
+ * `terminal/create`) runs under: the agent session it came from and that
+ * session's server-derived execution confinement (#2493), never anything the
+ * engine sent.
+ */
+export interface AgentCommandExecution {
+  threadId: string;
+  /** The session's current confinement; absent is `workspace`. */
+  confinement: StationConfinement | undefined;
+}
+
+/**
+ * #2497: why an agent's terminal command may not run on this host, or
+ * undefined when it may. An agent command runs as Station's own OS user with
+ * no sandbox: Station has no confinement provider for it (an ACP engine has
+ * no process sandbox, `acp-approval-mode.ts`). So only a `host` session, one
+ * a caller who may grant full access started, runs one; a `workspace`
+ * session's command is refused rather than run unconfined.
+ */
+export function agentHostCommandRefusal(
+  confinement: StationConfinement | undefined,
+): string | undefined {
+  return confinement === 'host'
+    ? undefined
+    : 'Station runs an agent terminal command on this computer only in a chat started with full access. This chat is confined to its workspace and Station has no sandbox for agent terminal commands, so the command did not run. Ask the person to run it.';
+}
+
+/** Written below a shell's earlier output when it is not reopened (#492). */
+function terminalRestoreRefusedNote(reason: string): string {
+  return `\r\n\x1b[2m── not restored after restart: ${reason} ──\x1b[0m\r\n`;
+}
 
 /**
  * A command session's program cannot run, with an authored reason: its
@@ -249,10 +297,23 @@ interface TerminalSessionAuthority<Principal> {
     scope: TerminalSessionScope,
   ): Promise<string>;
   /**
-   * Whether a shell that ended because its host restarted may be reopened in
-   * its binding. Absent: none is, and such shells stay ended.
+   * #492: the CURRENT root of a binding whose shell ended because its host
+   * restarted, resolved under the authority that binding was recorded with
+   * (its Project; for a thread, the chat's recorded owner), never a principal
+   * of the moment. Throws `TerminalSessionRefusal` with the reason it cannot
+   * be resolved; the shell then stays ended with that reason. Absent: no
+   * shell is reopened.
    */
-  restorable?(scope: TerminalSessionScope): Promise<boolean>;
+  restoreRoot?(scope: TerminalSessionScope): Promise<string>;
+  /**
+   * #2497: host checks for an agent's own terminal command in `scope`, after
+   * the service has required a host-confined session. Throws
+   * `TerminalSessionRefusal` to refuse. Absent: no agent command runs.
+   */
+  authorizeAgentCommand?(
+    execution: AgentCommandExecution,
+    scope: TerminalSessionScope,
+  ): Promise<void>;
   /** Resolves a command session's program in `cwd`; throws to refuse it. */
   resolveCommand?(
     principal: Principal,
@@ -543,7 +604,59 @@ export class TerminalSessions<Principal> {
       outputCapBytes?: number;
     },
   ): Promise<{ terminalId: string; exited: Promise<TerminalExit> }> {
+    return this.launchInternal(scope, input);
+  }
+
+  /**
+   * An agent's own terminal command (#2497): the engine chose the program,
+   * so unlike `openInternal` it runs only under the agent session's
+   * execution authority. The session must be host-confined
+   * (`agentHostCommandRefusal`), `scope` must be its own thread binding, and
+   * the host's `authorizeAgentCommand` must allow it; all of it is checked
+   * before anything is recorded and again immediately before the spawn. The
+   * caller confines `cwd` to the session's directory.
+   */
+  openAgentCommand(
+    execution: AgentCommandExecution,
+    scope: TerminalSessionScope,
+    input: {
+      cwd: string;
+      launch: ShellLaunch;
+      outputCapBytes?: number;
+    },
+  ): Promise<{ terminalId: string; exited: Promise<TerminalExit> }> {
+    const authorize = async () => {
+      const refusal = agentHostCommandRefusal(execution.confinement);
+      if (refusal) throw new TerminalSessionRefusal(refusal);
+      if (scope.bindingKey !== `thread:${execution.threadId}`)
+        throw new TerminalSessionRefusal(
+          "An agent's terminal command runs only in its own chat's binding",
+        );
+      if (!this.authority.authorizeAgentCommand)
+        throw new TerminalSessionRefusal('Agent terminal commands unavailable');
+      await this.authority.authorizeAgentCommand(execution, scope);
+    };
+    return this.launchInternal(
+      scope,
+      { ...input, cols: 80, rows: 24, kind: 'command' },
+      authorize,
+    );
+  }
+
+  private launchInternal(
+    scope: TerminalSessionScope,
+    input: {
+      cwd: string;
+      cols: number;
+      rows: number;
+      launch: ShellLaunch;
+      kind?: 'command';
+      outputCapBytes?: number;
+    },
+    authorize?: () => Promise<void>,
+  ): Promise<{ terminalId: string; exited: Promise<TerminalExit> }> {
     return this.serialize(async () => {
+      await authorize?.();
       await this.ready;
       if (this.disposed)
         throw new TerminalSessionRefusal('Terminal sessions stopped');
@@ -578,6 +691,9 @@ export class TerminalSessions<Principal> {
       try {
         const journal = await this.journal(record);
         await journal.flush();
+        // The authority can change while the record is written (a turn
+        // re-confines the session): checked again at the launch seam.
+        await authorize?.();
         const proc = await this.host.spawn({
           terminalId: record.terminalId,
           cwd,
@@ -1414,19 +1530,39 @@ export class TerminalSessions<Principal> {
    */
   private async restore(record: SessionRecord): Promise<void> {
     if (
-      !this.authority.restorable ||
+      !this.authority.restoreRoot ||
       record.journalUnavailable ||
-      (record.legacy && !record.legacy.imported) ||
-      !(await this.authority.restorable(record))
+      (record.legacy && !record.legacy.imported)
     )
       return;
+    // #492: the directory must still be inside the binding as it resolves
+    // NOW, so a Project or chat that moved never reopens a shell where it
+    // used to be.
+    let root: string;
+    try {
+      root = await this.authority.restoreRoot(record);
+    } catch (error) {
+      return this.refuseRestore(
+        record,
+        error instanceof TerminalSessionRefusal
+          ? error.message
+          : 'its Project or chat could not be resolved',
+      );
+    }
     let cwd: string;
     try {
-      cwd = await realpath(record.cwd);
-      if (cwd !== record.cwd || !(await stat(cwd)).isDirectory()) return;
-    } catch {
-      return;
+      cwd = (await confineTerminalDirectory(root, () => record.cwd)).cwd;
+      if (!(await stat(cwd)).isDirectory()) throw new Error('not a directory');
+    } catch (error) {
+      return this.refuseRestore(
+        record,
+        error instanceof TerminalSessionRefusal
+          ? 'its directory is no longer inside its Project or chat'
+          : 'its directory is no longer available',
+      );
     }
+    if (cwd !== record.cwd)
+      return this.refuseRestore(record, 'its directory has moved');
     const journal = await this.journal(record);
     await journal.append(TERMINAL_RESTORED_DIVIDER);
     await journal.flush();
@@ -1442,7 +1578,28 @@ export class TerminalSessions<Principal> {
     delete record.exitCode;
     delete record.endedAt;
     delete record.hostStopped;
+    delete record.restoreRefused;
     record.restoredAt = Date.now();
+    await this.persist();
+  }
+
+  /**
+   * A shell that stays ended (#492): the reason is recorded on it and written
+   * below its earlier output, so its tab says why. It is not tried again.
+   */
+  private async refuseRestore(
+    record: SessionRecord,
+    reason: string,
+  ): Promise<void> {
+    logger.info('Terminal not restored after restart', {
+      terminalId: record.terminalId,
+      reason,
+    });
+    const journal = await this.journal(record);
+    await journal.append(terminalRestoreRefusedNote(reason));
+    await journal.flush();
+    delete record.hostStopped;
+    record.restoreRefused = { reason, at: Date.now() };
     await this.persist();
   }
 

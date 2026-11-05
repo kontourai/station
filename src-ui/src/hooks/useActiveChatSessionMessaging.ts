@@ -45,6 +45,7 @@ import {
   type ChatUIState,
 } from '../contexts/active-chats-store';
 import { conversationOpenPhase } from '../contexts/conversation-open-policy';
+import { useManagedApprovalCeiling } from '../contexts/ManagedPolicyContext';
 import {
   type ObservedAgentCatalog,
   observedEngine,
@@ -368,6 +369,7 @@ export function useSendMessage(
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
   const accountPreferences = useAccountPreferences();
+  const managedCeiling = useManagedApprovalCeiling().ceiling;
   const inboxRequestScope = accountPreferences.requestScope;
   const {
     namespace: experienceNamespace,
@@ -1140,21 +1142,32 @@ export function useSendMessage(
         // the Project's answer. Outside a Project, or to a Station whose
         // chat-defaults read answered 404 (it may predate the hint), there is
         // no Project layer and it goes as the pick it always was.
-        const carriedAsHint =
+        // #4518: except under a managed approval ceiling. As a pick, a saved
+        // default above the ceiling would be refused, and one within it
+        // recorded as a choice the next, tighter policy refuses. A Station
+        // that reports a ceiling postdates the hint, so the hint goes
+        // everywhere and the server lowers it as the default it is.
+        const asHintUnderCeiling =
+          managedCeiling !== undefined &&
           carriedApprovalPick !== undefined &&
           carriedApprovalPick !== 'connection-default' &&
-          currentState?.queuedApprovalDefaultNamespace !== undefined &&
-          !!currentState.projectSlug &&
-          !(
-            accountPreferences.requestScope &&
-            queryClient.getQueryData(
-              projectChatDefaultsQueryKey(
-                accountPreferences.requestScope,
-                experienceNamespace ?? undefined,
-                currentState.projectSlug,
-              ),
-            ) === null
-          );
+          currentState?.queuedApprovalDefaultNamespace !== undefined;
+        const carriedAsHint =
+          asHintUnderCeiling ||
+          (carriedApprovalPick !== undefined &&
+            carriedApprovalPick !== 'connection-default' &&
+            currentState?.queuedApprovalDefaultNamespace !== undefined &&
+            !!currentState.projectSlug &&
+            !(
+              accountPreferences.requestScope &&
+              queryClient.getQueryData(
+                projectChatDefaultsQueryKey(
+                  accountPreferences.requestScope,
+                  experienceNamespace ?? undefined,
+                  currentState.projectSlug,
+                ),
+              ) === null
+            ));
         const dispatchInput = {
           apiBase,
           sessionId,
@@ -1994,6 +2007,7 @@ export function useSendMessage(
       accountPreferences.requestScope,
       accountPreferences.status,
       accountPreferences.saving,
+      managedCeiling,
       experienceNamespace,
       experienceAuthorityStatus,
       inboxRequestScope,
