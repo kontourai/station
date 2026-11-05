@@ -238,15 +238,15 @@ describe('managed policy at real server startup', () => {
       reason: 'schemaVersion: 2 is newer than this version of Station',
     },
     {
-      name: 'a limits key this build does not enforce',
+      name: 'a limits key this build does not know',
       body: JSON.stringify({
         schemaVersion: 1,
         organization: 'Acme',
-        // Reserved for #4518; when it is enforced, no reserved key remains.
-        limits: { maxApprovalMode: 'auto' },
+        // Every planned limit is enforced (#4515): no reserved key remains.
+        limits: { retentionDays: 30 },
       }),
       reason:
-        'limits.maxApprovalMode: this limit is not supported by this version of Station',
+        'limits.retentionDays: unknown limit; this version of Station refuses keys it cannot enforce',
     },
     {
       name: 'a schema mismatch (organization is not a string)',

@@ -12,16 +12,19 @@
  *
  * The parser accepts only what this build enforces. A key it does not know
  * may be a restriction from a newer release, and a key it knows but does not
- * yet enforce (every `limits` key, until each enforcement slice lands) would
+ * yet enforce (a `limits` key whose enforcement slice has not landed) would
  * make the machine look managed when it is not. Both are rejected with a
  * problem that names the key. `settings` entries (#4517) are enforced: each
  * key is a registered Station setting and each value is checked against
  * that setting's registry definition (see {@link managedSettingsProblems}).
- * The capability switches (`telemetry`, `webhookAutomations`, `registries`;
- * #4521), `clients` (#4519), `updates` (#4522) and `engines` (#4520, in
- * `./managed-policy-engines.js`) are enforced; each enforced limit is one
- * entry in `MANAGED_POLICY_LIMIT_SLICES`
- * (`./managed-policy-status.js`).
+ * `maxApprovalMode` (#4518), the capability switches (`telemetry`,
+ * `webhookAutomations`, `registries`; #4521), `clients` (#4519), `updates`
+ * (#4522) and `engines` (#4520, in `./managed-policy-engines.js`) are
+ * enforced; each enforced limit is one entry in `MANAGED_POLICY_LIMIT_SLICES`
+ * below, and its client reader is one entry in
+ * `MANAGED_POLICY_SUMMARY_LIMIT_READERS` (`./managed-policy-status.js`). A
+ * managed `settings.defaultApprovalMode` broader than `maxApprovalMode` is
+ * refused.
  *
  * `limits.updates` (#4522) also owns the update-source helpers every update
  * surface shares: the refusal sentence, and the mapping from a default
@@ -37,6 +40,7 @@ import {
   summarizeManagedEngineLimits,
 } from './managed-policy-engines.js';
 import {
+  approvalModeExceedsCeiling,
   MANAGED_POLICY_CAPABILITY_LIMIT_KEYS,
   MANAGED_POLICY_CLIENT_KINDS,
   type ManagedPolicyClientKind,
@@ -48,6 +52,7 @@ import {
   type ManagedPolicyUpdatesSummary,
   normalizeManagedRegistryUrl,
 } from './managed-policy-status.js';
+import { isConcreteApprovalMode } from './provider.js';
 import { ownMember } from './record-guard.js';
 import {
   APP_SETTINGS_REGISTRY,
@@ -90,11 +95,10 @@ export interface ManagedPolicyDocument {
 /**
  * Limit keys the managed-policy plan reserves for later releases. A reserved
  * key gets a "not supported by this version" problem instead of "unknown",
- * so an administrator learns to upgrade rather than to fix a typo.
+ * so an administrator learns to upgrade rather than to fix a typo. Every
+ * planned limit is enforced now (#4515), so none is reserved.
  */
-export const MANAGED_POLICY_RESERVED_LIMIT_KEYS: readonly string[] = [
-  'maxApprovalMode',
-];
+export const MANAGED_POLICY_RESERVED_LIMIT_KEYS: readonly string[] = [];
 
 const DOCUMENT_KEYS = [
   'schemaVersion',
@@ -609,6 +613,7 @@ export function parseManagedPolicyDocument(
     ...managedSettingsProblems(settings),
     ...reservedMapProblems('limits', limits, limitProblem),
     ...managedPolicyLimitProblems(limits),
+    ...managedDefaultAboveCeilingProblems(settings, limits),
   );
 
   if (problems.length > 0) return { ok: false, problems };
@@ -757,6 +762,7 @@ export function managedUpdateServerManifestUrl(
 
 /** Limit keys this build enforces. */
 export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
+  'maxApprovalMode',
   ...MANAGED_POLICY_CAPABILITY_LIMIT_KEYS,
   'clients',
   'updates',
@@ -1112,6 +1118,61 @@ function updatesSliceSummary(
 }
 
 /**
+ * #4518: `limits.maxApprovalMode` in a document: a concrete posture only.
+ */
+function maxApprovalModeSliceProblems(
+  limits: Record<string, unknown>,
+): ManagedPolicyProblem[] {
+  const ceiling = ownMember(limits, 'maxApprovalMode');
+  if (ceiling === undefined || isConcreteApprovalMode(ceiling)) return [];
+  return [
+    {
+      path: 'limits.maxApprovalMode',
+      message:
+        ceiling === 'connection-default'
+          ? 'must be a posture ("ask", "auto" or "never"); "connection-default" depends on each engine\'s own settings'
+          : 'must be "ask", "auto" or "never"',
+    },
+  ];
+}
+
+function maxApprovalModeSliceAccepted(
+  limits: Record<string, unknown>,
+): ManagedPolicyLimits {
+  const ceiling = ownMember(limits, 'maxApprovalMode');
+  return isConcreteApprovalMode(ceiling) ? { maxApprovalMode: ceiling } : {};
+}
+
+/**
+ * #4518: a managed default approval mode (`settings.defaultApprovalMode`,
+ * the setting #4517 manages) broader than `limits.maxApprovalMode` is
+ * refused at load: it could never apply, and Station would have to pick
+ * between the administrator's two answers. Read from the raw document, so
+ * the check holds whatever the settings parser accepts. A
+ * `connection-default` value is not refused: under a ceiling it resolves to
+ * Ask (see the managed policy decision record).
+ */
+function managedDefaultAboveCeilingProblems(
+  settings: unknown,
+  limits: unknown,
+): ManagedPolicyProblem[] {
+  if (!isRecord(settings) || !isRecord(limits)) return [];
+  const ceiling = ownMember(limits, 'maxApprovalMode');
+  const entry = ownMember(settings, 'defaultApprovalMode');
+  if (!isConcreteApprovalMode(ceiling) || !isRecord(entry)) return [];
+  const value = ownMember(entry, 'value');
+  if (!isConcreteApprovalMode(value)) return [];
+  return approvalModeExceedsCeiling(value, ceiling)
+    ? [
+        {
+          path: 'settings.defaultApprovalMode.value',
+          message: `"${value}" is broader than limits.maxApprovalMode ("${ceiling}")`,
+        },
+      ]
+    : [];
+}
+
+/**
  * One limit slice in a policy document: the problems with its keys, its
  * accepted value copied out of a `limits` object that passed, and, when
  * clients see something else, its projection for the summary (without it
@@ -1133,6 +1194,10 @@ interface ManagedPolicyLimitSlice {
  * every other slice's restriction.
  */
 const MANAGED_POLICY_LIMIT_SLICES: readonly ManagedPolicyLimitSlice[] = [
+  {
+    problems: maxApprovalModeSliceProblems,
+    accepted: maxApprovalModeSliceAccepted,
+  },
   { problems: capabilityLimitProblems, accepted: capabilityLimitsOf },
   { problems: clientsLimitProblems, accepted: acceptedClientsLimit },
   {

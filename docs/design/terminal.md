@@ -250,6 +250,21 @@ session. A pool only expires its own ended records, so a busy agent can never
 expire a person's shell history, and commands get no shell number and are
 never restored.
 
+Stopping a command, or its output cap, ends what it started, not only the
+command: [termination](../../src-server/services/terminal/command-process.ts)
+resolves once none of it remains, and fails otherwise. On POSIX the command
+leads its own process group, signaled SIGTERM then SIGKILL; after the leader
+exits, the group is checked continuously while termination runs and signaled
+only right after a check shows members, and once seen empty it is never
+signaled again, so a reused group id is not. On Windows the command itself is
+ended at once (Node still holds its handle, so its pid names no other process),
+without waiting on a process-table read; then each process proven to
+descend from the command (parent pid plus birth order, the owned-process
+sweep's rule) is ended by pid until the process table shows none; a
+descendant whose parent had already exited before the stop cannot be proven
+and is not reached. A command that exits by itself leaves background children
+it started running, as before.
+
 When a slot is needed, the oldest ended or failed record in the same pool,
 eligible for the caller's operate authority, expires: its journal and cache entry are discarded
 and its metadata is removed. Live/stopping sessions are pinned. Closed/failed
@@ -348,6 +363,13 @@ no screen-reader signal, so the mode follows the host's setting or an explicit
 Settings › Appearance › Terminal screen reader mode (`terminalScreenReader`),
 off by default and restored by Restore device defaults. Shell-integration
 marks, images and ligatures remain deferred.
+
+Output reaches the worker under the socket's credit: the SDK store
+acknowledges output only after each view's worker reports it parsed, so a
+flooding program waits for the emulator instead of queueing in front of it.
+A view holds at most 4 MiB it has not seen parsed, and the worker at most
+4 MiB before it starts; past either bound the view resets and replays the
+session's retained output instead of rendering a stream with a gap.
 
 A view handed a different session while mounted (Reconnect terminal, a
 read-only change) resets its emulator to a fresh terminal (RIS plus
@@ -633,6 +655,21 @@ its range, a relative location and a total below the per-terminal size are
 refused with the setting's name, not clamped; an agent cannot move the
 location. Defaults are starting points to tune once real usage is measured.
 
+Journals are private to the user Station runs as. On POSIX their directories
+are 0700 and files 0600. On Windows those modes set no ACL, and a journal
+would inherit its location's (on a non-system drive or a shared folder this
+commonly admits Authenticated Users or Users), so before anything is written
+the [journal privacy](../../src-server/services/terminal/terminal-journal-privacy.ts)
+establishes the protected current-user DACL Station uses for its other
+private files. A location Station owns (the default, or one it created) is
+protected once and its journals inherit that; an existing folder the person
+chose keeps its own ACL and each journal directory in it is protected
+instead, and so is a journal moved there. A location where this cannot be
+established (a drive without Windows permissions) is refused when it is
+chosen in Settings, and a terminal is refused rather than journaled there.
+The [privacy suite](../../src-server/services/terminal/__tests__/terminal-journal-privacy.process.test.ts)
+reads the real DACLs on Windows.
+
 ### Transport
 
 One authenticated WebSocket per client at `/api/terminal/socket` on the main
@@ -857,7 +894,9 @@ is the sample plugin.
   person, under their terminal authority, and is refused if its directory no
   longer resolves to the one shown. `terminal_read` follows a run's state and
   pages its output by sequence. An unanswered request expires after ten
-  minutes, at most three wait per chat, and requests live in memory. Reading a
+  minutes, at most three wait per chat and 64 across all chats (expired ones
+  are swept before another is admitted), at most 512 are retained, and
+  requests live in memory. Reading a
   terminal the person shares with the thread is not implemented; an agent
   reads only its own runs.
 - **Add to chat.** The terminal menu's Add to chat puts the selection in the
@@ -873,7 +912,7 @@ is the sample plugin.
 | `port + 1` WebSocket, `GET /api/system/terminal-port`, SDK `fetchTerminalPort` | Removed ([decision](../decisions/terminal-same-origin-only.md)) |
 | `DELETE /api/projects/:slug/terminals/:terminalId` | Kept, backed by the new session store; the server rejects an id whose session is not in `:slug` |
 | Project-scoped terminal ids | Mapped once to new instance-unique ids when their history and stored tabs are imported |
-| `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept |
+| `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept, except `cwd` is null for a caller who may only observe |
 | `POST /api/coding/exec` fallback | Kept for hosts without node-pty |
 | `PAIRING_SCOPE_TERMINAL_OPERATE` | Kept; `terminal:observe` added |
 | `terminalShell` setting, `TerminalCapability`, system-status `terminal` | Kept |

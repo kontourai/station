@@ -1170,7 +1170,12 @@ non-operator members is a separate program and is not widened here.
   sessions the caller may observe and clearing only those it may operate. The
   usage answer names the history directory, a host path the operator already
   sees in Settings. Moving that directory is a settings write an agent is
-  refused; it must be absolute. A shell reopened after its host restarted is a
+  refused; it must be absolute. Journals are private to the user Station runs
+  as: on Windows, where file modes set no ACL, each is created under a
+  protected current-user DACL, and a location where one cannot be established
+  is refused in Settings and for new terminals. A session list or journal read
+  under `terminal:observe` alone omits the launch directory and process id,
+  and no read returns where history is stored. A shell reopened after its host restarted is a
   login shell in its recorded directory, only while its Project exists; no
   command, agent or server-owned launch is replayed. `adopt` on the existing
   open route grants nothing new: it returns a running shell in the same
@@ -1179,6 +1184,8 @@ non-operator members is a separate program and is not widened here.
   needs `terminal:observe`; running one needs `terminal:operate` and runs only
   a name the binding's `package.json` declares, through a package manager the
   server finds. An agent's `terminal_run` records a request and runs nothing.
+  At most three requests wait per chat and 64 across all chats; past that a
+  request is refused rather than queued.
   `POST /api/terminal/runs/:runId/approve` needs `terminal:operate`, the same
   operator test and sending to the conversation, refuses personal tokens and
   any request that may be an agent's, and starts that one command once as the

@@ -51,6 +51,7 @@ import {
   parkUnderSupervisor,
   type SupervisorLink,
 } from './runtime/bootstrap/supervisor-link.js';
+import { installManagedApprovalCeiling } from './security/managed-approval-ceiling.js';
 import { installManagedCapabilityLimits } from './security/managed-capability-limits.js';
 import { installManagedEngineLimits } from './security/managed-engine-limits.js';
 import {
@@ -280,6 +281,9 @@ async function main() {
   // #4520: the engine allow list and pinned launch fields, before any engine
   // is started.
   installManagedEngineLimits(managedPolicy);
+  // #4518: the approval ceiling every gate reads, installed before anything
+  // that can start or change a run is built.
+  installManagedApprovalCeiling(managedPolicy);
   if (managedPolicy) {
     logger.info('Managed policy loaded', {
       source: managedPolicy.source,

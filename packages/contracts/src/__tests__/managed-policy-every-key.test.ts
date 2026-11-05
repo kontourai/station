@@ -28,11 +28,12 @@ describe('a policy that sets every enforced key at once', () => {
     expect(Object.keys(EVERY_KEY_LIMITS).sort()).toEqual(
       [...MANAGED_POLICY_ENFORCED_LIMIT_KEYS].sort(),
     );
-    // Pinned independently of the constant under test: the keys the four
-    // landed slices enforce (#4521, #4519, #4522).
+    // Pinned independently of the constant under test: the keys the landed
+    // slices enforce (#4518, #4521, #4519, #4522, #4520).
     expect(Object.keys(EVERY_KEY_LIMITS).sort()).toEqual([
       'clients',
       'engines',
+      'maxApprovalMode',
       'registries',
       'telemetry',
       'updates',
@@ -92,6 +93,11 @@ describe('a policy that sets every enforced key at once', () => {
         limits: EVERY_KEY_SUMMARY_LIMITS,
         engines: EVERY_KEY_ENGINE_SUMMARY,
       },
+    });
+    // Pinned beside the fixture-derived expectation (#4518): the ceiling a
+    // client reads is the one the document set.
+    expect(status?.state === 'loaded' && status.summary.limits).toMatchObject({
+      maxApprovalMode: 'auto',
     });
   });
 

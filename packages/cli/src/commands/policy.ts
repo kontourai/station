@@ -9,6 +9,7 @@ import {
   type ManagedPolicySourceDescriptor,
   type ManagedPolicyStatus,
   type ManagedPolicySummary,
+  managedApprovalModeName,
   managedSettingsSchemaError,
   parseManagedPolicyStatus,
   summarizeManagedPolicy,
@@ -45,6 +46,31 @@ const USAGE =
 /** The profile's document when no `--policy` is given; it names no real organization. */
 const PLACEHOLDER_ORGANIZATION = 'Example Organization';
 const MANAGED_POLICY_ROUTE = '/api/settings/managed-policy';
+
+/**
+ * #4518: each limit the policy enforces, by name and value, e.g.
+ * "Approval ceiling: Ask first (maxApprovalMode: ask)".
+ */
+/**
+ * The names of the limits a policy sets, never their values (a value can name
+ * an internal endpoint: a mirror, a gateway), as `summary.engines` lists
+ * field names. The approval ceiling (#4518), which clients see anyway, is
+ * spelled out below.
+ */
+function describeLimits(
+  names: readonly string[],
+  limits: ManagedPolicySummary['limits'],
+): string[] {
+  if (names.length === 0) return ['  Limits: none'];
+  const lines = [`  Limits: ${names.join(', ')}`];
+  if (limits.maxApprovalMode)
+    lines.push(
+      `    Approval ceiling: ${managedApprovalModeName(limits.maxApprovalMode)} (maxApprovalMode: ${limits.maxApprovalMode})${
+        limits.maxApprovalMode === 'never' ? ', restricts nothing' : ''
+      }`,
+    );
+  return lines;
+}
 
 const SETTING_VALUE_DISPLAY_MAX_CHARS = 80;
 
@@ -85,14 +111,11 @@ function describeEffect(
   document: ManagedPolicyDocument,
   summary: ManagedPolicySummary,
 ): string[] {
-  // Names only, as `summary.engines` lists field names: a limit's value can
-  // name an internal endpoint (a mirror, a gateway).
-  const limits = Object.keys(document.limits ?? {});
   return [
     `  Organization: ${summary.organization} (users see "Managed by ${summary.organization}")`,
     `  Support link: ${summary.supportUrl ?? 'none'}`,
     ...describeSettings(document),
-    `  Limits: ${limits.length === 0 ? 'none' : limits.join(', ')}`,
+    ...describeLimits(Object.keys(document.limits ?? {}), summary.limits),
   ];
 }
 
@@ -300,6 +323,15 @@ async function runShow(args: string[], json: boolean): Promise<void> {
     );
     console.log(`  Organization: ${installed.summary.organization}`);
     console.log(`  Support link: ${installed.summary.supportUrl ?? 'none'}`);
+    // The summary carries engines beside `limits` (#4520).
+    for (const line of describeLimits(
+      [
+        ...Object.keys(installed.summary.limits),
+        ...(installed.summary.engines ? ['engines'] : []),
+      ],
+      installed.summary.limits,
+    ))
+      console.log(line);
     console.log(`  Fingerprint: ${installed.digest}`);
   }
 

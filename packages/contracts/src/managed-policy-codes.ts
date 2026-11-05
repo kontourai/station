@@ -39,3 +39,12 @@ export const MANAGED_POLICY_UPDATES_REFUSED_CODE =
  */
 export const MANAGED_POLICY_ENGINE_REFUSED_CODE =
   'managed-policy-engine-refused' as const;
+
+/**
+ * #4518: the refusal code for an approval posture broader than the managed
+ * ceiling: a pick, a turn on a thread recorded above it, or a raised
+ * default. Clients key on it to show the managed message instead of
+ * offering a retry.
+ */
+export const MANAGED_POLICY_APPROVAL_CEILING_CODE =
+  'managed-policy-approval-ceiling' as const;

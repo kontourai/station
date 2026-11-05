@@ -6,6 +6,7 @@ import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
  * Config Routes - app configuration management
  */
 
+import { normalize } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -58,6 +59,7 @@ import {
   isOperatorInPersonNotAgent,
   mayGrantFullAccess,
 } from '../../security/coding-authority.js';
+import { managedCeilingRefuses } from '../../security/managed-approval-ceiling.js';
 import {
   managedCapabilityRefusalBody,
   telemetryAllowedByManagedPolicy,
@@ -81,10 +83,14 @@ import {
 import { defaultTerminalShell } from '../../services/terminal/terminal-shells.js';
 import { configOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
-import { fullAccessRefusal } from '../orchestration/approval-authority.js';
+import {
+  fullAccessRefusal,
+  managedApprovalCeilingRefusal,
+} from '../orchestration/approval-authority.js';
 
 /** Thrown inside the serialized config mutation; mapped to the 403 below. */
 const FULL_ACCESS_DEFAULT_NOT_GRANTED = 'FULL_ACCESS_DEFAULT_NOT_GRANTED';
+const DEFAULT_ABOVE_MANAGED_CEILING = 'DEFAULT_ABOVE_MANAGED_CEILING';
 
 import {
   COMMAND_NOT_GRANTED_CODE,
@@ -295,6 +301,11 @@ export function createConfigRoutes(
     reason?: TelemetryFeedbackReason,
   ) => Promise<void>,
   canSaveAuthorFull?: () => Promise<boolean>,
+  // #3994: why terminal history can't be kept private in a directory, or
+  // null. Production probes the location (Windows ACLs); absent, no probe.
+  terminalHistoryLocationProblem?: (
+    directory: string,
+  ) => Promise<string | null>,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -854,6 +865,27 @@ export function createConfigRoutes(
             403,
           );
         }
+        const directory =
+          typeof merged.terminalHistoryDirectory === 'string'
+            ? merged.terminalHistoryDirectory.trim()
+            : '';
+        if (
+          directory &&
+          terminalHistoryLocationProblem &&
+          changesAny(body as object, current, ['terminalHistoryDirectory'])
+        ) {
+          const location = await terminalHistoryLocationProblem(
+            normalize(directory),
+          );
+          if (location)
+            return c.json(
+              {
+                success: false,
+                error: `terminalHistoryDirectory: ${location} No settings were saved.`,
+              },
+              400,
+            );
+        }
       }
 
       // `agentConnections` is a composite that replaces the stored value
@@ -1014,6 +1046,17 @@ export function createConfigRoutes(
           // cannot land after the operator lowered it. Resending a `never`
           // that still stands (Settings round-trips the whole config) is
           // not a raise.
+          // #4518: a change of the Station default to a posture above the
+          // machine's managed ceiling is refused. Resending the value that
+          // stands is not a change: a default saved before the policy took
+          // effect stays saved, and is lowered to the ceiling where it
+          // applies (`ApprovalPosture`).
+          if (
+            managedCeilingRefuses(accepted.defaultApprovalMode) &&
+            accepted.defaultApprovalMode !== current.defaultApprovalMode
+          ) {
+            throw new Error(DEFAULT_ABOVE_MANAGED_CEILING);
+          }
           if (
             accepted.defaultApprovalMode === 'never' &&
             current.defaultApprovalMode !== 'never' &&
@@ -1102,6 +1145,14 @@ export function createConfigRoutes(
           },
           403,
         );
+      }
+      if (
+        error instanceof Error &&
+        error.message === DEFAULT_ABOVE_MANAGED_CEILING
+      ) {
+        configOps.add(1, { op: 'update_app_default_above_managed_ceiling' });
+        logRefusal('default_above_managed_ceiling');
+        return managedApprovalCeilingRefusal(c);
       }
       if (
         error instanceof Error &&

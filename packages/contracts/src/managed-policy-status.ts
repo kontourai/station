@@ -2,8 +2,8 @@
  * The browser-facing half of the managed policy contract (#4515): the limit
  * and summary types, the value-free summary's status envelope and boundary
  * parser with one reader per limit (`MANAGED_POLICY_SUMMARY_LIMIT_READERS`),
- * the denial and "Managed by" text helpers, the refusal codes, and the
- * predicates clients use. Nothing here imports the settings registries or
+ * the denial and "Managed by" text helpers, the refusal codes, the
+ * approval-ceiling helpers (#4518), and the predicates clients use. Nothing here imports the settings registries or
  * the document checks the policy parser needs, so the UI's first-load bundle
  * does not carry them.
  * `@kontourai/station-contracts/managed-policy` re-exports all of it.
@@ -13,6 +13,12 @@ import {
   type ManagedPolicyEngineSummary,
   parseManagedEngineSummary,
 } from './managed-policy-engines.js';
+import {
+  type ApprovalMode,
+  approvalModeBreadth,
+  type ConcreteApprovalMode,
+  isConcreteApprovalMode,
+} from './provider.js';
 import { isRecord, ownMember } from './record-guard.js';
 
 export * from './managed-policy-codes.js';
@@ -39,6 +45,11 @@ export interface ManagedPolicyUpdatesLimit {
  * to {@link MANAGED_POLICY_ENFORCED_LIMIT_KEYS} together.
  */
 export interface ManagedPolicyLimits {
+  /**
+   * #4518: the broadest approval posture any run may use, whoever starts it.
+   * A concrete mode only: `connection-default` is not a posture.
+   */
+  maxApprovalMode?: ConcreteApprovalMode;
   /** #4521: `false` turns off usage data and OTel export. */
   telemetry?: false;
   /** #4521: `false` stops inbound webhook automations from running. */
@@ -283,6 +294,13 @@ function registriesSummaryReader(
   return result;
 }
 
+function maxApprovalModeSummaryReader(
+  value: unknown,
+): ConcreteApprovalMode | undefined | null {
+  if (value === undefined) return undefined;
+  return isConcreteApprovalMode(value) ? value : null;
+}
+
 function clientsSummaryReader(
   value: unknown,
 ): ManagedPolicyClientKind[] | undefined | null {
@@ -309,6 +327,7 @@ export const MANAGED_POLICY_SUMMARY_LIMIT_READERS: {
     ManagedPolicySummaryLimits[K]
   >;
 } = {
+  maxApprovalMode: maxApprovalModeSummaryReader,
   telemetry: offOnlyReader,
   webhookAutomations: offOnlyReader,
   registries: registriesSummaryReader,
@@ -348,7 +367,93 @@ export function managedPolicyDenial(
   const help = summary.supportUrl
     ? ` For help, visit ${summary.supportUrl}`
     : ' Contact your administrator for help.';
-  return `${summary.organization}'s policy manages ${subject}.${help}`;
+  return `${managedPolicyStatement(summary, subject)}${help}`;
+}
+
+/**
+ * The first sentence of {@link managedPolicyDenial}, without the help
+ * sentence, for a surface that offers the support link as a link.
+ */
+export function managedPolicyStatement(
+  summary: Pick<ManagedPolicySummary, 'organization'>,
+  subject: string,
+): string {
+  return `${summary.organization}'s policy manages ${subject}.`;
+}
+
+// ---------------------------------------------------------------------------
+// #4518: the approval-mode ceiling (`limits.maxApprovalMode`).
+// ---------------------------------------------------------------------------
+
+/** The approval picker's words for each posture (`APPROVAL_MODE_OPTIONS`). */
+const APPROVAL_MODE_NAMES: Readonly<Record<ConcreteApprovalMode, string>> = {
+  ask: 'Ask first',
+  auto: 'Auto',
+  never: 'Full access',
+};
+
+/** The approval picker's name for `mode`, e.g. "Ask first" for `ask`. */
+export function managedApprovalModeName(mode: ConcreteApprovalMode): string {
+  return APPROVAL_MODE_NAMES[mode];
+}
+
+/**
+ * The ceiling a summary enforces, or `undefined` when it restricts nothing:
+ * no `maxApprovalMode`, or `never`, the broadest posture there is.
+ */
+export function managedApprovalCeiling(
+  summary: Pick<ManagedPolicySummary, 'limits'> | null | undefined,
+): ConcreteApprovalMode | undefined {
+  const ceiling = summary?.limits.maxApprovalMode;
+  return ceiling && ceiling !== 'never' ? ceiling : undefined;
+}
+
+/** Whether `mode` is broader than `ceiling`; nothing exceeds an absent ceiling. */
+export function approvalModeExceedsCeiling(
+  mode: ConcreteApprovalMode,
+  ceiling: ConcreteApprovalMode | undefined,
+): boolean {
+  return (
+    ceiling !== undefined &&
+    approvalModeBreadth(mode) > approvalModeBreadth(ceiling)
+  );
+}
+
+/**
+ * `mode`, lowered to `ceiling` when it is broader. `connection-default` is
+ * returned unchanged: it is not a posture, so the caller resolves it to the
+ * posture it stands for and clamps that.
+ */
+export function clampApprovalModeToCeiling<M extends ApprovalMode>(
+  mode: M,
+  ceiling: ConcreteApprovalMode | undefined,
+): M | ConcreteApprovalMode {
+  if (!isConcreteApprovalMode(mode) || ceiling === undefined) return mode;
+  return approvalModeExceedsCeiling(mode, ceiling) ? ceiling : mode;
+}
+
+/**
+ * The one sentence every surface uses to refuse a posture above the
+ * ceiling, e.g. "Acme's policy manages approval modes: the broadest allowed
+ * is Auto. For help, visit https://…".
+ */
+export function managedApprovalCeilingDenial(
+  summary: ManagedPolicySummary,
+  ceiling: ConcreteApprovalMode,
+): string {
+  return managedPolicyDenial(summary, approvalCeilingSubject(ceiling));
+}
+
+/** {@link managedApprovalCeilingDenial} without its help sentence. */
+export function managedApprovalCeilingStatement(
+  summary: Pick<ManagedPolicySummary, 'organization'>,
+  ceiling: ConcreteApprovalMode,
+): string {
+  return managedPolicyStatement(summary, approvalCeilingSubject(ceiling));
+}
+
+function approvalCeilingSubject(ceiling: ConcreteApprovalMode): string {
+  return `approval modes: the broadest allowed is ${APPROVAL_MODE_NAMES[ceiling]}`;
 }
 
 // ---------------------------------------------------------------------------

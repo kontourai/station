@@ -80,9 +80,9 @@ describe('station policy check', () => {
     expect(text.stdout).toContain(`Policy ${path} is valid.`);
     // #4515: the names of the limits it sets, never their values.
     expect(text.stdout).toContain(
-      '  Limits: telemetry, webhookAutomations, registries, clients, updates, engines',
+      '  Limits: maxApprovalMode, telemetry, webhookAutomations, registries, clients, updates, engines\n    Approval ceiling: Auto (maxApprovalMode: auto)\n',
     );
-    expect(Object.keys(EVERY_KEY_POLICY.limits)).toHaveLength(6);
+    expect(Object.keys(EVERY_KEY_POLICY.limits)).toHaveLength(7);
     expect(text.stdout).toContain('defaultMaxTurns');
     expect(text.stdout).not.toContain(EVERY_KEY_FEED_URL);
     expect(text.stdout).not.toContain(EVERY_KEY_ENGINE_GATEWAY);
@@ -113,6 +113,7 @@ describe('station policy check', () => {
       'Organization: Acme (users see "Managed by Acme")',
     );
     expect(result.stdout).toMatch(/Fingerprint: sha256:[0-9a-f]{64}/);
+    expect(result.stdout).toContain('Limits: none');
 
     const json = check(path, '--json');
     expect(json.status).toBe(0);
@@ -120,6 +121,60 @@ describe('station policy check', () => {
       valid: true,
       path,
       summary: { organization: 'Acme', lockedSettings: [], limits: {} },
+    });
+  }, 120_000);
+
+  test('names the approval ceiling and its value', () => {
+    const path = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { maxApprovalMode: 'ask' },
+      }),
+    );
+    const result = check(path);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      'Limits: maxApprovalMode\n    Approval ceiling: Ask first (maxApprovalMode: ask)\n',
+    );
+    expect(result.stdout).not.toContain('Limits: 1');
+  }, 120_000);
+
+  // #4517 + #4518 merged: one policy with settings and a limit prints both.
+  test('prints the locked settings and the approval ceiling of one policy', () => {
+    const path = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        settings: {
+          defaultMaxTurns: { value: 40, locked: true },
+          checkoutStaleAfterDays: { value: 9, locked: false },
+          defaultApprovalMode: { value: 'ask', locked: true },
+        },
+        limits: { maxApprovalMode: 'auto' },
+      }),
+    );
+    const result = check(path);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Managed settings: 3');
+    expect(result.stdout).toMatch(/defaultMaxTurns \([^)]+\): locked to 40;/);
+    expect(result.stdout).toMatch(
+      /defaultApprovalMode \([^)]+\): locked to "ask";/,
+    );
+    expect(result.stdout).toMatch(
+      /checkoutStaleAfterDays \([^)]+\): defaults to 9 where nothing closer is set/,
+    );
+    expect(result.stdout).toContain(
+      'Limits: maxApprovalMode\n    Approval ceiling: Auto (maxApprovalMode: auto)\n',
+    );
+
+    const json = check(path, '--json');
+    expect(json.status, json.stderr).toBe(0);
+    expect(JSON.parse(json.stdout).summary).toEqual({
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: ['defaultApprovalMode', 'defaultMaxTurns'],
+      limits: { maxApprovalMode: 'auto' },
     });
   }, 120_000);
 
@@ -223,15 +278,14 @@ describe('station policy check', () => {
       'schemaVersion: must be 1',
     ],
     [
-      'an unsupported limit',
+      'an unknown limit',
       JSON.stringify({
         schemaVersion: 1,
         organization: 'A',
-        // A key the plan reserves and no slice enforces yet (#4518). When
-        // it is enforced no reserved key remains: drop this case then.
-        limits: { maxApprovalMode: 'auto' },
+        // Every planned limit is enforced (#4515): no reserved key remains.
+        limits: { retentionDays: 30 },
       }),
-      'limits.maxApprovalMode: this limit is not supported by this version of Station',
+      'limits.retentionDays: unknown limit; this version of Station refuses keys it cannot enforce',
     ],
     [
       'an unknown setting',

@@ -13,6 +13,8 @@ export const EVERY_KEY_FEED_URL = 'https://mirror.example/station/t0ken/';
 export const EVERY_KEY_ENGINE_GATEWAY = 'https://gateway.example/acme-t0ken';
 
 export const EVERY_KEY_LIMITS = {
+  // #4518: an approval ceiling that restricts (`never` would restrict nothing).
+  maxApprovalMode: 'auto',
   // #4521: the capability switches.
   telemetry: false,
   webhookAutomations: false,

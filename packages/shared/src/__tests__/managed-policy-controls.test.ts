@@ -283,34 +283,6 @@ describe('the control table and the contract', () => {
     );
   });
 
-  test('a value for a limit this build does not enforce still fails closed', () => {
-    // `maxApprovalMode` (#4518) is still reserved here; when it is enforced,
-    // point this at a key that is still reserved (or delete the test once
-    // none is).
-    expect(MANAGED_POLICY_RESERVED_LIMIT_KEYS).toContain('maxApprovalMode');
-    const input = registryPolicyInput(
-      key(
-        sz('Organization', 'Acme'),
-        dword('ApprovalCeiling', 1),
-        sz('MaxApprovalMode', 'auto'),
-      ),
-    );
-    expect(input).toEqual({
-      kind: 'value',
-      value: {
-        schemaVersion: 1,
-        organization: 'Acme',
-        limits: { maxApprovalMode: 'auto' },
-      },
-    });
-    expect(() =>
-      decodeManagedPolicy(
-        WINDOWS_POLICY_KEY,
-        input as { kind: 'value'; value: unknown },
-      ),
-    ).toThrow('not supported by this version');
-  });
-
   test('later-slice controls map to the document paths their issues define', () => {
     const input = registryPolicyInput(
       key(

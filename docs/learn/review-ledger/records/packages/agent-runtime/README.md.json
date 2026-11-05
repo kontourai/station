@@ -142,7 +142,9 @@
 
     "packages/agent-runtime/src/__tests__/turn-retention-fixture.ts",
 
-    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts"
+    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-prefix-process.fixture.ts"
   ],
 
   "checks": []

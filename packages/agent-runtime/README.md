@@ -345,7 +345,7 @@ Native frame-group keys also retain their full 32-byte hash in a tagged binary
 encoding. Arbitrary caller IDs use lossless JSON-string encoding. The reader
 rejects noncanonical group encodings before reconstructing frame identities.
 
-Permanent local process probes SIGKILL the owner after 5, 130, 300, 389 and 1300 displayed deltas. They check exact saved text/control prefixes, stable identities and zero provider redispatch. They do not establish power-loss or whole-operating-system crash qualification.
+Permanent local process probes SIGKILL the owner after 5, 130, 300, 389 and 1300 displayed deltas. The first four retain individual frame commits and acknowledgements. The 1300-delta probe uses 50-delta publication batches through the same atomic frame-batch contract as foreground projection, with every text/control frame committed before display. It retains all 2600 frame identities and positions and the same 30-second deadline. Interleaved groups are packed once per bounded projection batch instead of rebuilding their growing blocks for every frame. These probes check exact saved text/control prefixes, stable identities and zero provider redispatch. They do not establish power-loss or whole-operating-system crash qualification.
 
 
 Writer-12 text fragments use binary compressed native wires, with content-defined boundaries from 4 to 16 Ki UTF-16 units. The logical wire digest and length remain unchanged. Migration validates each legacy TEXT chunk before rewriting its physical bytes. Frame blocks fill existing tails across transaction boundaries; the public foreground transaction limit remains 64 KiB. Vacuum follows SQLite's constant-time freelist metadata, including pages freed during effect completion.

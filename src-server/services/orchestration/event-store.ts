@@ -2675,6 +2675,7 @@ export class EventStore {
   private isolatedTranscriptReads?: IsolatedTranscriptReads;
   private transcriptReadClose?: Promise<unknown>;
   private storeClosed = false;
+  private readonly closingListeners = new Set<() => void>();
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
   private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
@@ -9027,11 +9028,14 @@ export class EventStore {
         globalSequence: number;
         /** #1796: who recorded it (`clientOrigin.actor`); absent on older events. */
         actor?: unknown;
+        /** #4518: `personal-default` when it records a saved default, not a pick. */
+        source?: unknown;
       }
     | undefined {
     const statement = this.db.prepare(
       `SELECT thread_id, json_extract(payload, '$.approvalMode') AS approval_mode, global_sequence,
-              json_extract(payload, '$.clientOrigin.actor') AS actor
+              json_extract(payload, '$.clientOrigin.actor') AS actor,
+              json_extract(payload, '$.source') AS source
        FROM orchestration_events
        WHERE thread_id = ? AND method = 'session.approval-mode-set'
        ORDER BY sequence DESC
@@ -9043,6 +9047,7 @@ export class EventStore {
           approvalMode: unknown;
           globalSequence: number;
           actor?: unknown;
+          source?: unknown;
         }
       | undefined;
     for (const threadId of new Set(threadIds)) {
@@ -9052,6 +9057,7 @@ export class EventStore {
             approval_mode: unknown;
             global_sequence: number;
             actor: string | null;
+            source: unknown;
           }
         | undefined;
       if (!row) continue;
@@ -9063,6 +9069,7 @@ export class EventStore {
           ...(typeof row.actor === 'string'
             ? { actor: parseJsonOrUndefined(row.actor) }
             : {}),
+          ...(row.source != null ? { source: row.source } : {}),
         };
       }
     }
@@ -18096,9 +18103,23 @@ export class EventStore {
     };
   }
 
+  get isClosed(): boolean {
+    return this.storeClosed || this.messageSearchBackfillClosed;
+  }
+
+  onClosing(listener: () => void): () => void {
+    if (this.isClosed) listener();
+    else this.closingListeners.add(listener);
+    return () => {
+      this.closingListeners.delete(listener);
+    };
+  }
+
   close(): OperationalEventSubscriptionCloseOutcome {
-    this.packageMcpAdmissionJournal?.closeAdmission();
     this.messageSearchBackfillClosed = true;
+    for (const listener of this.closingListeners) listener();
+    this.closingListeners.clear();
+    this.packageMcpAdmissionJournal?.closeAdmission();
     if (this.storeClosed) return { kind: 'closed' };
     if (
       this.isolatedTranscriptReads &&

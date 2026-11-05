@@ -31,6 +31,7 @@ import { capturePluginAgentInvocation } from '../../../domain/config-loader-agen
 import { PLUGIN_AGENT_OWNER_FILE } from '../../../domain/plugin-agent-ownership.js';
 import { createAgentHooks } from '../../../runtime/agents/agent-hooks.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import { AgentService } from '../../../services/agents/agent-service.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
@@ -47,7 +48,14 @@ afterEach(() => {
 const SLUG = 'plugin-builder';
 const PLUGIN = 'builder-plugin';
 
-async function fixture(declared: string | undefined) {
+type MutationRunner = (
+  operation: (begin: () => void) => Promise<unknown>,
+) => Promise<unknown>;
+
+async function fixture(
+  declared: string | undefined,
+  runner: MutationRunner = async (operation) => operation(() => undefined),
+) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = mkdtempSync(join(tmpdir(), 'station-plugin-agent-posture-'));
   roots.push(root);
@@ -160,8 +168,7 @@ async function fixture(declared: string | undefined) {
     createAgentRoutes(
       agentService,
       { listSkills: () => [] } as never,
-      (async (operation: (begin: () => void) => Promise<unknown>) =>
-        operation(() => undefined)) as never,
+      runner as never,
       () => undefined,
     ),
   );
@@ -350,4 +357,143 @@ test('plugin tool grants require operator authority and survive replacement into
   expect(
     (await f.configLoader.loadAgent(SLUG)).tools?.unattendedAutoApprove,
   ).toBeUndefined();
+});
+
+/**
+ * #4518: revoking a plugin Agent's tool grant only narrows what runs without
+ * a prompt, so it needs the normal mutation authority, not full access. Under
+ * a managed ceiling below full access, where nobody holds that authority,
+ * removal and a subset still go through; an addition is refused.
+ */
+test('plugin tool grants: removal and a subset need no full-access authority, under a ceiling too; an addition does', async () => {
+  const f = await fixture('ask');
+  expect(
+    (
+      await f.put(f.operator.credential, {
+        tools: { autoApprove: ['a', 'b'], unattendedAutoApprove: ['danger'] },
+      })
+    ).status,
+  ).toBe(200);
+  const grants = async () => (await f.configLoader.loadAgent(SLUG)).tools;
+
+  // Without a ceiling, a device holding no full-access grant may narrow.
+  const delegate = f.pair('Delegate', 'delegation');
+  expect(
+    (await f.put(delegate.credential, { tools: { autoApprove: ['a'] } }))
+      .status,
+  ).toBe(200);
+  expect((await grants())?.autoApprove).toEqual(['a']);
+  expect(
+    (await f.put(delegate.credential, { tools: { autoApprove: ['a', 'c'] } }))
+      .status,
+  ).toBe(403);
+
+  installManagedApprovalCeiling({
+    summary: {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: { maxApprovalMode: 'auto' },
+    },
+  });
+  try {
+    // An addition is refused for the operator too, and writes nothing.
+    const added = await f.put(f.operator.credential, {
+      tools: { autoApprove: ['a', 'z'] },
+    });
+    expect(added.status).toBe(403);
+    expect(added.body.code).toBe('managed-policy-approval-ceiling');
+    expect((await grants())?.autoApprove).toEqual(['a']);
+    // A subset, an empty list and `null` all go through.
+    expect(
+      (
+        await f.put(f.operator.credential, {
+          tools: { unattendedAutoApprove: [] },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await grants())?.unattendedAutoApprove).toEqual([]);
+    expect(
+      (await f.put(f.operator.credential, { tools: { autoApprove: ['a'] } }))
+        .status,
+    ).toBe(200);
+    expect(
+      (await f.put(delegate.credential, { tools: { autoApprove: null } }))
+        .status,
+    ).toBe(200);
+    expect((await grants())?.autoApprove ?? []).toEqual([]);
+  } finally {
+    installManagedApprovalCeiling(null);
+  }
+});
+
+/**
+ * #4570 review: grants are re-checked inside the serialized mutation, so a
+ * "subset" validated against grants that a queued revoke then removes cannot
+ * restore them. The runner serializes in arrival order and, while `hold` is
+ * set, keeps every operation waiting until both requests have passed their
+ * early check against the old grants.
+ */
+test('a stale subset queued behind a revoke cannot restore the revoked grants', async () => {
+  let hold: Promise<void> | null = null;
+  let arrivals = 0;
+  const waiters: Array<() => void> = [];
+  let tail: Promise<unknown> = Promise.resolve();
+  const runner: MutationRunner = (operation) => {
+    arrivals += 1;
+    for (const wake of waiters.splice(0)) wake();
+    const gate = hold;
+    const run = tail.then(async () => {
+      if (gate) await gate;
+      return operation(() => undefined);
+    });
+    tail = run.catch(() => undefined);
+    return run;
+  };
+  const arrivedAt = (count: number) =>
+    new Promise<void>((resolve) => {
+      const check = () =>
+        arrivals >= count ? resolve() : void waiters.push(check);
+      check();
+    });
+
+  const f = await fixture('ask', runner);
+  expect(
+    (await f.put(f.operator.credential, { tools: { autoApprove: ['danger'] } }))
+      .status,
+  ).toBe(200);
+  const grants = async () => (await f.configLoader.loadAgent(SLUG)).tools;
+
+  installManagedApprovalCeiling({
+    summary: {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: { maxApprovalMode: 'auto' },
+    },
+  });
+  try {
+    let open!: () => void;
+    hold = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const before = arrivals;
+    // The revoke reaches the queue first; the stale resend passes its early
+    // check against ["danger"] (a subset) and queues behind it.
+    const revoke = f.put(f.operator.credential, { tools: { autoApprove: [] } });
+    await arrivedAt(before + 1);
+    const stale = f.put(f.operator.credential, {
+      tools: { autoApprove: ['danger'] },
+    });
+    await arrivedAt(before + 2);
+    hold = null;
+    open();
+    const [revoked, restored] = await Promise.all([revoke, stale]);
+    expect(revoked.status).toBe(200);
+    expect(restored.status).toBe(403);
+    expect(restored.body.code).toBe('managed-policy-approval-ceiling');
+    expect((await grants())?.autoApprove ?? []).toEqual([]);
+  } finally {
+    installManagedApprovalCeiling(null);
+  }
 });

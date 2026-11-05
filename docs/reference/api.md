@@ -239,7 +239,12 @@ The person's personal per-engine approval default is queued for a chat's
 first send as before (with its account namespace, so offline replay and
 account switches behave as they did). In a Project chat it travels on `/chat`
 as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint rather than a
-pick; outside a Project there is no Project layer and it goes as a carried pick. For a new conversation of a person's own chat the server
+pick; outside a Project there is no Project layer and it goes as a carried pick,
+except when the Station reports a managed
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling): then
+it goes as the hint everywhere, so the server lowers it as a default instead of
+refusing it as a pick. A recorded hint's `session.approval-mode-set` event is
+marked `source: "personal-default"`. For a new conversation of a person's own chat the server
 records it as the conversation's decision only when nothing above it decides,
 so the order is: explicit pick, Agent default, Project layer, personal
 default, Station default. A `never` hint that would apply is refused (403
@@ -3895,14 +3900,16 @@ With one:
       "organization": "Example Corp",
       "supportUrl": "https://help.example.com/station",
       "lockedSettings": [],
-      "limits": {}
+      "limits": { "maxApprovalMode": "auto" }
     }
   }
 }
 ```
 
 `source.kind` is `file`, or `test-override` for an isolated test instance. The
-summary never contains a setting value. A policy with `limits.updates` reports
+summary never contains a setting value. `limits` holds `maxApprovalMode`
+(`ask`, `auto` or `never`) when the policy sets the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling). A policy with `limits.updates` reports
 `"limits": {"updates": {"mode": "auto" | "off", "mirror": <boolean>,
 "allowNightly": <boolean>}}`; `mirror` says a feed is set, and the feed URL
 itself is never returned. The
@@ -3916,7 +3923,31 @@ value; `summary.limits` then omits `engines`. Routes refuse an engine the
 policy does not allow with `403` and code `managed-policy-engine-refused`.
 There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
-`station policy show` reports as a server too old to report a policy.
+`station policy show` reports as a server too old to report a policy, and
+which the UI reads as no policy.
+
+### Refusals by the approval-mode ceiling
+
+Under a ceiling, a request that picks an approval mode above it, or changes
+this Station's default to one, is refused before it has any effect:
+
+```json
+{
+  "success": false,
+  "code": "managed-policy-approval-ceiling",
+  "error": "Example Corp's policy manages approval modes: the broadest allowed is Auto. For help, visit https://help.example.com/station"
+}
+```
+
+with status `403`. That covers `POST /api/orchestration/commands`
+(`setApprovalMode`), a `setApprovalMode` carried on `/chat`,
+`/chat/:id/continue` or a handoff, `PUT /config/app`
+(`defaultApprovalMode`), any explicit full-access default written to a
+project or Agent, adding a plugin Agent's tool grant, and a known ACP
+full-access `mode` on a request's options. A mode carried on a request's
+options as a default (`approvalMode`, `never` included) is lowered to the
+ceiling, not refused. A turn on a chat whose recorded pick is above the ceiling is refused with the
+same `code` and message as a turn refusal (`permission_denied`).
 
 `summary.limits` carries `clients` when the policy sets it, for example
 `{ "clients": ["desktop", "local-browser"] }`. Without `remote` in that list
@@ -5738,7 +5769,10 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   for explicit recovery; a subsequent request returns the mapped session, including
   its ended state, without spawning another shell.
 - `GET` lists that Project/binding's session records. Pass `bindingKey` in the
-  query for a non-default binding.
+  query for a non-default binding. A record carries its launch directory
+  (`cwd`) and a read its process id (`pid`) only for a caller who may operate
+  the terminal; an observer gets neither (`pid: null`). Where its history is
+  stored is never returned.
 - `GET /:terminalId?bindingKey=project&fromSeq=0` reads a snapshot and numbered
   journal records. Replay admits at most 64 KiB of journal payload and applies
   the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,
@@ -5831,7 +5865,9 @@ and act for the verified caller's own conversation:
   owner, and is confined to it (403 `terminal_run_directory_refused`). A chat
   outside a Project is refused (409 `terminal_run_needs_project`), as is one
   with no recorded owner (409 `terminal_run_owner_required`), and a fourth
-  waiting request (409 `terminal_run_limit_reached`). It answers
+  waiting request (409 `terminal_run_limit_reached`). Across all chats, at
+  most 64 requests wait at once and 512 are retained; past either, a request
+  is refused (429 `terminal_run_capacity_reached`). It answers
   `{runId, state: "needs_approval", command, cwd, …}` at once.
 - `GET /:runId?waitSeconds=&fromSeq=` reads one of the conversation's runs.
   `waitSeconds` (0–50) waits for its state to change first. Once it started,
@@ -6175,7 +6211,8 @@ HTTP security is absent, and it does not allow every localhost port. Origin
 admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).
 
-The preflight allow-list includes `X-Station-Client-Protocol`. Cross-origin
+The preflight allow-list includes `If-Match` for revisioned writes, including
+account preference saves. It also includes `X-Station-Client-Protocol`. Cross-origin
 browser callers send it only after observing
 `compatibility.capabilities.clientProtocolHeader >= 1` on that host's public
 handshake. The UI forgets the prior origin observation before re-handshaking;

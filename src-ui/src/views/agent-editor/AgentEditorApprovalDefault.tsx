@@ -1,5 +1,7 @@
 import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 import { InfoTip } from '../../components/InfoTip';
+import { ManagedApprovalCeilingNote } from '../../components/managed/ManagedApprovalCeilingNote';
+import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import { useACPConnections } from '../../hooks/useACPConnections';
 import {
   APPROVAL_MODE_OPTIONS,
@@ -26,6 +28,7 @@ export function AgentEditorApprovalDefault({
   locked,
 }: Pick<AgentEditorFormProps, 'form' | 'setForm' | 'locked'>) {
   const { data: acpConnections = [] } = useACPConnections();
+  const { aboveCeiling, ceiling } = useManagedApprovalCeiling();
   const connectionId = form.execution.agentConnectionId;
   // #3290: an ACP connection has the knob only when Station sets its
   // engine's approval rules, read from its command, never its id.
@@ -57,7 +60,12 @@ export function AgentEditorApprovalDefault({
         value={value}
         disabled={locked}
         aria-describedby={
-          value === 'never' ? 'ae-approval-default-hint' : undefined
+          [
+            value === 'never' ? 'ae-approval-default-hint' : undefined,
+            ceiling ? 'ae-approval-default-managed' : undefined,
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined
         }
         onChange={(event) =>
           setForm((current) => ({
@@ -74,12 +82,21 @@ export function AgentEditorApprovalDefault({
         <option value="">Use this Station&apos;s default</option>
         {APPROVAL_MODE_OPTIONS.filter(
           (option) => option.value !== 'connection-default',
-        ).map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
+        ).map((option) => {
+          // #4518: a mode above the managed ceiling is refused on save; one
+          // already saved stays selectable so an unrelated edit can resend it.
+          const managed = aboveCeiling(option.value) && option.value !== value;
+          return (
+            <option key={option.value} value={option.value} disabled={managed}>
+              {managed ? `${option.label} (Managed)` : option.label}
+            </option>
+          );
+        })}
       </select>
+      <ManagedApprovalCeilingNote
+        className="editor-hint"
+        id="ae-approval-default-managed"
+      />
       {value === 'never' && (
         <span className="editor-hint" id="ae-approval-default-hint">
           Every chat with this agent starts at full access: approval prompts are

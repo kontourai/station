@@ -34,6 +34,10 @@ import { ApprovalGovernanceRefusedError } from '../../../providers/adapter-shape
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
+import {
+  installManagedApprovalCeiling,
+  ManagedApprovalCeilingRefusedError,
+} from '../../../security/managed-approval-ceiling.js';
 import { ApprovalPosture } from '../approval-posture.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -1282,5 +1286,106 @@ describe('#2898: a confinement change re-applies the engine mode on Muse', () =>
     expect(await resolve('turn', 'workspace')).toEqual({
       approvalMode: 'auto',
     });
+  });
+});
+
+/**
+ * #4518: `ApprovalPosture` under the machine's managed approval ceiling, at
+ * the class itself: the store's decision and the defaults are its inputs.
+ */
+describe('#4518: ApprovalPosture under a managed approval ceiling of Auto', () => {
+  beforeEach(() =>
+    installManagedApprovalCeiling({
+      summary: {
+        organization: 'Acme',
+        supportUrl: null,
+        lockedSettings: [],
+        limits: { maxApprovalMode: 'auto' },
+      },
+    }),
+  );
+  afterEach(() => installManagedApprovalCeiling(null));
+
+  const posture = (
+    decision: ApprovalMode | undefined,
+    defaults: { station?: ApprovalMode; agent?: ApprovalMode } = {},
+  ) =>
+    new ApprovalPosture({
+      store: {
+        latestApprovalModeDecision: () =>
+          decision
+            ? { threadId: 'thread', approvalMode: decision, globalSequence: 1 }
+            : undefined,
+        conversationForSession: () => undefined,
+        conversationSessions: () => [],
+      },
+      resolveStationDefault: async () => defaults.station,
+      resolveAgentDefault: async () => defaults.agent,
+    });
+  const resolve = (
+    p: ApprovalPosture,
+    phase: 'start' | 'turn',
+    agentSlug?: string,
+  ) =>
+    p.resolve({
+      threadId: 'thread',
+      provider: 'codex',
+      phase,
+      confinement: 'workspace',
+      ...(agentSlug ? { agentSlug } : {}),
+    });
+
+  test('a recorded pick above the ceiling refuses the turn and a restart', async () => {
+    const p = posture('never');
+    await expect(resolve(p, 'turn')).rejects.toBeInstanceOf(
+      ManagedApprovalCeilingRefusedError,
+    );
+    await expect(resolve(p, 'start')).rejects.toBeInstanceOf(
+      ManagedApprovalCeilingRefusedError,
+    );
+  });
+
+  test('a recorded Default resolves to its default, lowered to the ceiling', async () => {
+    expect(
+      await resolve(
+        posture('connection-default', { station: 'never' }),
+        'turn',
+      ),
+    ).toEqual({ approvalMode: 'auto' });
+  });
+
+  test("an Agent's full-access default starts at the ceiling", async () => {
+    expect(
+      await resolve(posture(undefined, { agent: 'never' }), 'start', 'agent'),
+    ).toEqual({ approvalMode: 'auto' });
+  });
+
+  test('a Default pick on a host-stamped session no longer reaches full access', async () => {
+    const reaches = (p: ApprovalPosture) =>
+      p.pickReachesFullAccess({
+        threadId: 'thread',
+        pick: 'connection-default',
+        startOf: () => ({ stamp: 'host' }),
+      });
+    expect(await reaches(posture(undefined, { station: 'never' }))).toBe(false);
+    installManagedApprovalCeiling(null);
+    // Control: the same pick without the ceiling does.
+    expect(await reaches(posture(undefined, { station: 'never' }))).toBe(true);
+  });
+
+  test('a turn on an engine this process applied nothing to sends Ask once; a start always does', async () => {
+    const p = posture(undefined);
+    expect(await resolve(p, 'turn')).toEqual({ approvalMode: 'ask' });
+    // The engine now runs what Station applied: nothing more is sent.
+    expect(await resolve(p, 'turn')).toBeUndefined();
+    expect(await resolve(p, 'start')).toEqual({ approvalMode: 'ask' });
+  });
+
+  test('no session is host under the ceiling, even with a grant or a host stamp', () => {
+    const p = posture(undefined);
+    expect(p.startConfinement('thread', fullAccessGrantForTesting())).toBe(
+      'workspace',
+    );
+    expect(p.standingConfinement('thread', 'host')).toBe('workspace');
   });
 });
