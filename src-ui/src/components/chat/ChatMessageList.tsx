@@ -1794,6 +1794,7 @@ function ChatMessageListComponent({
           />
           <div
             className="chat-messages"
+            data-turn-navigation={turnNavigation || undefined}
             data-answer-width={chatAnswerWidth}
             ref={messagesContainerRef}
             role="log"

@@ -669,7 +669,8 @@ message row starts a turn.
   call, and interrupted turns, are not marked.
 - **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
   They appear on hover or keyboard focus on desktop and retain 44px targets on
-  narrow screens. **Browse turns** remains in the conversation overflow. The browser pages indexed turn summaries independently
+  narrow screens, with a reserved gutter so they do not cover message text.
+  **Browse turns** remains in the conversation overflow. The browser pages indexed turn summaries independently
   of transcript bodies; selecting a turn loads older bounded history pages until
   its complete prompt/body window is available, then reveals it. Each request
   is bounded to 64 pages; a retry continues from the retained cursor. Switching

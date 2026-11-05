@@ -248,7 +248,7 @@ test('Previous and Next turn step from the turn in view and keep focus', async (
   }
 });
 
-test('a phone keeps turn steps and return-to-latest touch-sized', async () => {
+test('phone turn steps stay clear of message text and keep touch-sized controls', async () => {
   const { browser, page, errors } = await turnRailBrowserFixture(PHONE);
   try {
     await page.waitForSelector('.chat-messages');
@@ -264,10 +264,18 @@ test('a phone keeps turn steps and return-to-latest touch-sized', async () => {
     expect(await page.getByRole('button', { name: 'Next turn' }).count()).toBe(
       1,
     );
+    const textEdge = await page
+      .locator('.message')
+      .evaluateAll((messages) =>
+        Math.max(
+          ...messages.map((message) => message.getBoundingClientRect().right),
+        ),
+      );
     for (const name of ['Previous turn', 'Next turn']) {
       const step = await page.getByRole('button', { name }).boundingBox();
       expect(step!.width).toBeGreaterThanOrEqual(44);
       expect(step!.height).toBeGreaterThanOrEqual(44);
+      expect(textEdge).toBeLessThanOrEqual(step!.x);
     }
     await page.getByRole('button', { name: 'Browse turns' }).click();
     const browserDialog = page.getByRole('dialog', { name: 'Browse turns' });

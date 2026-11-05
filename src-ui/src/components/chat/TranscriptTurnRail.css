@@ -250,6 +250,10 @@
 }
 
 @media (pointer: coarse), (max-width: 767px) {
+  .chat-messages[data-turn-navigation] {
+    padding-right: calc(var(--chat-message-gutter) + 44px);
+  }
+
   .transcript-turn-rail-host {
     --transcript-turn-step-size: 44px;
   }
