@@ -9,13 +9,40 @@ import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 
+const recordImpactSchema = z.object({
+  purged: z.array(z.string()),
+  cascaded: z.array(z.string()),
+  survivors: z.array(z.string()),
+  referrers: z.array(z.string()),
+  alreadyPurged: z.array(z.string()),
+  proposalsRejected: z.array(z.string()),
+  proposalsScrubbed: z.array(z.string()),
+  proposalsBlocked: z.array(z.string()),
+});
+const proposalImpactSchema = z.object({
+  proposalId: z.string(),
+  alreadyErased: z.boolean(),
+  state: z.enum(['pending', 'applied', 'rejected']),
+  recordId: z.string().optional(),
+  record: recordImpactSchema.optional(),
+  revision: z.string().min(1),
+});
 const responseSchema = z.object({
   success: z.literal(true),
-  data: z.object({
-    kind: z.enum(['record', 'proposal']),
-    id: z.string(),
-    title: z.string(),
-  }),
+  data: z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('record'),
+      id: z.string(),
+      title: z.string(),
+      impact: recordImpactSchema.extend({ revision: z.string().min(1) }),
+    }),
+    z.object({
+      kind: z.literal('proposal'),
+      id: z.string(),
+      title: z.string(),
+      impact: proposalImpactSchema,
+    }),
+  ]),
 });
 const proposalListSchema = z.object({
   success: z.literal(true),
@@ -32,6 +59,38 @@ class MemoryLookupError extends Error {
   constructor(readonly kind: 'not-found' | 'unavailable') {
     super(kind);
   }
+}
+
+function RecordImpact({
+  impact,
+}: {
+  impact: z.infer<typeof recordImpactSchema>;
+}) {
+  const groups = [
+    ['Records to erase', impact.purged],
+    ['Dependent records to erase', impact.cascaded],
+    ['Records to review', impact.survivors],
+    ['Records that link to erased records', impact.referrers],
+    ['Already erased records', impact.alreadyPurged],
+    ['Proposals to reject', impact.proposalsRejected],
+    ['Proposals to clear', impact.proposalsScrubbed],
+    ['Proposals blocked from approval', impact.proposalsBlocked],
+  ] as const;
+  return (
+    <>
+      <dl>
+        {groups.map(([label, ids]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{ids.length ? ids.join(', ') : 'None'}</dd>
+          </div>
+        ))}
+      </dl>
+      {(impact.survivors.length > 0 || impact.referrers.length > 0) && (
+        <p>Records to review may still contain erased content.</p>
+      )}
+    </>
+  );
 }
 
 export function MemoryErasurePreview() {
@@ -92,6 +151,12 @@ export function MemoryErasurePreview() {
         throw new MemoryLookupError('not-found');
       if (!response.ok) throw new MemoryLookupError('unavailable');
       const result = responseSchema.parse(await response.json()).data;
+      if (
+        result.kind !== target.kind ||
+        result.id !== target.id ||
+        (result.kind === 'proposal' && result.impact.proposalId !== result.id)
+      )
+        throw new MemoryLookupError('unavailable');
       if (!scope.isCurrent()) throw new MemoryLookupError('unavailable');
       return result;
     },
@@ -217,12 +282,20 @@ export function MemoryErasurePreview() {
             </a>
           </p>
           <p>Station can’t yet show which answers depend on this memory.</p>
-          <p>
-            Station can’t yet show what else erasing this would remove.{' '}
-            <a href="https://github.com/kontourai/station/issues/4593">
-              About erasure
-            </a>
-          </p>
+          <h4>Erasure effects</h4>
+          {preview.data.kind === 'proposal' ? (
+            <>
+              <p>Proposal to erase: {preview.data.impact.proposalId}</p>
+              {preview.data.impact.recordId && (
+                <p>Created record: {preview.data.impact.recordId}</p>
+              )}
+              {preview.data.impact.record && (
+                <RecordImpact impact={preview.data.impact.record} />
+              )}
+            </>
+          ) : (
+            <RecordImpact impact={preview.data.impact} />
+          )}
         </div>
       )}
     </section>

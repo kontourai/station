@@ -81,6 +81,8 @@ export interface KnowledgeIndexProvider {
 
   upsert(entries: KnowledgeIndexEntry[]): Promise<void>;
   removeByRecord(rootId: string, recordIds: string[]): Promise<void>;
+  /** Idempotently remove erased records and compact persistent index storage. The caller retains and replays the erasure intent. */
+  removeErasedRecords?(rootId: string, recordIds: string[]): Promise<void>;
   removeRoot(rootId: string): Promise<void>; // drop a root's partition — cheap, index-only
 
   search(

@@ -114,7 +114,17 @@ test('memory routes require the preview and owner, and expose proposals only exp
   );
   expect(await preview.json()).toEqual({
     success: true,
-    data: { kind: 'proposal', id, title: 'Proposed' },
+    data: {
+      kind: 'proposal',
+      id,
+      title: 'Proposed',
+      impact: expect.objectContaining({
+        proposalId: id,
+        state: 'pending',
+        alreadyErased: false,
+        revision: expect.any(String),
+      }),
+    },
   });
   allowRead = false;
   expect(

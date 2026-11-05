@@ -24,6 +24,76 @@ const current = () => {};
 afterEach(() => vi.unstubAllEnvs());
 
 describe('private memory root', () => {
+  test('previews Corpus effects for an applied proposal and dependent record', async () => {
+    const home = makeTempDir('station-memory-impact-');
+    vi.stubEnv('STATION_HOME', home);
+    const persistence = new FileStorageAdapter(home);
+    const store = new KnowledgeStoreProvider(persistence);
+    const manager = new MemoryRootManager(store, persistence, home, () => true);
+    const root = await manager.ensureRoot(owner, current);
+    const evidence = { agent: 'source', proposal: 'evidence' };
+    const candidate = {
+      type: 'raw' as const,
+      title: 'Source',
+      body: 'source text',
+      category: 'memory',
+      provenance: { agent: 'source' },
+    };
+    const sourceProposal = await manager.propose(
+      owner,
+      root,
+      current,
+      candidate,
+      evidence,
+      'agent:source',
+      'source',
+    );
+    const sourceId = await manager.applyCreate(
+      owner,
+      root,
+      current,
+      sourceProposal,
+    );
+    const dependentProposal = await manager.propose(
+      owner,
+      root,
+      current,
+      {
+        ...candidate,
+        title: 'Dependent',
+        provenance: { agent: 'source', source_ids: [sourceId] },
+      },
+      evidence,
+      'agent:source',
+      'dependent',
+    );
+    const dependentId = await manager.applyCreate(
+      owner,
+      root,
+      current,
+      dependentProposal,
+    );
+    const preview = await manager.previewErasureTarget(
+      owner,
+      root,
+      current,
+      'proposal',
+      sourceProposal,
+    );
+    expect(preview).toMatchObject({
+      kind: 'proposal',
+      id: sourceProposal,
+      impact: {
+        state: 'applied',
+        recordId: sourceId,
+        revision: expect.any(String),
+        record: { purged: [sourceId], cascaded: [dependentId] },
+      },
+    });
+    expect(
+      await (await store.adapterFor(root.id)).get(dependentId),
+    ).not.toBeNull();
+  });
   test('refuses a root whose Corpus binding has disappeared', async () => {
     const home = makeTempDir('station-memory-binding-');
     vi.stubEnv('STATION_HOME', home);
@@ -108,6 +178,11 @@ describe('private memory root', () => {
       kind: 'record',
       id: recordId,
       title: candidate.title,
+      impact: expect.objectContaining({
+        purged: [recordId],
+        cascaded: [],
+        revision: expect.any(String),
+      }),
     });
     expect(
       await manager.previewErasureTarget(

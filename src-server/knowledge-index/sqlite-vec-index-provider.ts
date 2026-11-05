@@ -169,6 +169,14 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
     // file does not wait out `busy_timeout`. Still advisory — the mode is
     // persistent in the file header, so a later uncontended open converts it.
     applyWalJournalMode(db, { store: 'knowledge index' });
+    db.exec('PRAGMA secure_delete = ON');
+    const secureDelete = db.prepare('PRAGMA secure_delete').get() as
+      | { secure_delete: number }
+      | undefined;
+    if (secureDelete?.secure_delete !== 1) {
+      db.close();
+      throw new Error('Knowledge index secure deletion is unavailable.');
+    }
     db.exec(
       `CREATE TABLE IF NOT EXISTS ${META_TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
     );
@@ -360,6 +368,27 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
         .run(rootId, ...recordIds);
     }
     knowledgeIndexOps.add(1, { op: 'removeByRecord', rootId });
+  }
+
+  async removeErasedRecords(
+    rootId: string,
+    recordIds: string[],
+  ): Promise<void> {
+    const db = this.open();
+    if (recordIds.length > 0 && this.tableExists(VEC_TABLE)) {
+      const placeholders = recordIds.map(() => '?').join(', ');
+      db.prepare(
+        `DELETE FROM ${VEC_TABLE} WHERE store = ? AND recordId IN (${placeholders})`,
+      ).run(rootId, ...recordIds);
+    }
+    // Older index pages can predate secure_delete; rewrite them before settling
+    // the caller's durable cleanup intent. Checkpoint also removes old WAL frames.
+    db.exec('VACUUM');
+    const checkpoint = db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get() as
+      | { busy: number }
+      | undefined;
+    if (!checkpoint || checkpoint.busy !== 0)
+      throw new Error('Knowledge index cleanup is waiting for readers.');
   }
 
   async removeRoot(rootId: string): Promise<void> {

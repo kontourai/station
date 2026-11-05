@@ -73,14 +73,24 @@ function reply(data: unknown, status = 200) {
   });
 }
 
-test('starts from proposals and shows only the target and unavailable impact', async () => {
+test('shows the Corpus proposal impact without inventing record effects', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) =>
       String(input).includes('erasure-preview')
         ? reply({
             success: true,
-            data: { kind: 'proposal', id: 'proposal-1', title: 'A memory' },
+            data: {
+              kind: 'proposal',
+              id: 'proposal-1',
+              title: 'A memory',
+              impact: {
+                proposalId: 'proposal-1',
+                alreadyErased: false,
+                state: 'pending',
+                revision: 'revision-1',
+              },
+            },
           })
         : reply({
             success: true,
@@ -96,6 +106,7 @@ test('starts from proposals and shows only the target and unavailable impact', a
   expect(
     screen.getByText(/Claims affected \(from Surface\): unavailable/),
   ).toBeTruthy();
+  expect(screen.getByText('Proposal to erase: proposal-1')).toBeTruthy();
   expect(screen.queryByText(/survivors|referrers/i)).toBeNull();
   expect(screen.queryByRole('button', { name: /^(erase|purge)$/i })).toBeNull();
 });
@@ -107,6 +118,80 @@ test('disabled preview renders nothing and makes no request', async () => {
   const { container } = mount();
   await waitFor(() => expect(container.textContent).toBe(''));
   expect(fetcher).not.toHaveBeenCalled();
+});
+
+test('shows returned record effects and warns that survivors may retain content', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) =>
+      String(input).includes('erasure-preview')
+        ? reply({
+            success: true,
+            data: {
+              kind: 'record',
+              id: 'record-1',
+              title: 'A memory',
+              impact: {
+                revision: 'revision-1',
+                purged: ['record-1'],
+                cascaded: ['record-2'],
+                survivors: ['record-3'],
+                referrers: [],
+                alreadyPurged: [],
+                proposalsRejected: [],
+                proposalsScrubbed: [],
+                proposalsBlocked: ['proposal-2'],
+              },
+            },
+          })
+        : reply({ success: true, data: [] }),
+    ),
+  );
+  mount();
+  fireEvent.change(screen.getByLabelText('ID'), {
+    target: { value: 'record-1' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+  expect(await screen.findByText('record-2')).toBeTruthy();
+  expect(screen.getByText('record-3')).toBeTruthy();
+  expect(screen.getByText('proposal-2')).toBeTruthy();
+  expect(
+    screen.getByText('Records to review may still contain erased content.'),
+  ).toBeTruthy();
+  expect(screen.queryByText('revision-1')).toBeNull();
+});
+
+test('refuses an impact response for a different target', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) =>
+      String(input).includes('erasure-preview')
+        ? reply({
+            success: true,
+            data: {
+              kind: 'proposal',
+              id: 'proposal-1',
+              title: 'Wrong target',
+              impact: {
+                proposalId: 'proposal-2',
+                alreadyErased: false,
+                state: 'pending',
+                revision: 'revision-1',
+              },
+            },
+          })
+        : reply({
+            success: true,
+            data: [{ id: 'proposal-1', candidate: { title: 'Proposal' } }],
+          }),
+    ),
+  );
+  mount();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Look up proposal' }),
+  );
+  expect(await screen.findByText('Couldn’t load memory')).toBeTruthy();
+  expect(screen.queryByText('Wrong target')).toBeNull();
 });
 
 test('does not display the previous authority’s result after switching accounts', async () => {
@@ -123,6 +208,12 @@ test('does not display the previous authority’s result after switching account
                 state.authorityKey === 'owner'
                   ? 'Owner result'
                   : 'Other result',
+              impact: {
+                proposalId: 'proposal-1',
+                alreadyErased: false,
+                state: 'pending',
+                revision: 'revision-1',
+              },
             },
           })
         : reply({

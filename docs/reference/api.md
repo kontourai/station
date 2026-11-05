@@ -517,8 +517,9 @@ a conflicting key returns 409 with `REQUEST_KEY_CONFLICT`. `GET
 query. Pending proposals do not appear in ordinary record lists or search.
 
 `GET /api/knowledge/memory/erasure-preview?kind=record|proposal&id=<id>`
-returns the target's `{ kind, id, title }` without changing it. It does not
-calculate a cascade or expose erasure.
+returns the target's `{ kind, id, title, impact }` without changing it. The
+impact and revision come from Corpus's purge preview; Station does not yet
+expose erasure.
 
 Unknown identity, hosted access, Project membership and delegation do not grant
 memory access. With the preview off, direct memory requests return the standard

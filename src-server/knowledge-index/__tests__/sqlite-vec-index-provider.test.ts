@@ -1,6 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type {
   IEmbeddingProvider,
   KnowledgeIndexEntry,
@@ -151,6 +152,60 @@ describe('SqliteVecIndexProvider', () => {
     const hits = await provider.search([1, 0, 0], { topK: 5 });
     expect(hits.map((h) => h.recordId)).toEqual(['rec-2']);
   });
+
+  test('erasure cleanup removes indexed text from database and WAL bytes', async () => {
+    const secret = 'erasure-byte-probe-4c8e70b2-only-this-record';
+    const oldSecret = 'legacy-free-page-probe-89e44d9a';
+    const dbPath = join(dir, 'index.db');
+    await provider.upsert([
+      entry('root:a', 'rec-1', 0, [1, 0, 0], secret),
+      entry('root:a', 'rec-2', 0, [0, 1, 0], 'kept record'),
+    ]);
+    provider.close();
+    expect(readFileSync(dbPath).includes(secret)).toBe(true);
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(
+      'PRAGMA secure_delete=OFF; CREATE TABLE legacy_probe (text TEXT)',
+    );
+    legacy.prepare('INSERT INTO legacy_probe VALUES (?)').run(oldSecret);
+    legacy.exec('DELETE FROM legacy_probe; PRAGMA wal_checkpoint(TRUNCATE)');
+    legacy.close();
+    expect(readFileSync(dbPath).includes(oldSecret)).toBe(true);
+
+    await provider.removeErasedRecords('root:a', ['rec-1']);
+    await provider.removeErasedRecords('root:a', ['rec-1']);
+    expect((await provider.stats('root:a')).chunks).toBe(1);
+    for (const path of [dbPath, `${dbPath}-wal`]) {
+      if (existsSync(path)) {
+        const bytes = readFileSync(path);
+        expect(bytes.includes(secret)).toBe(false);
+        expect(bytes.includes(oldSecret)).toBe(false);
+      }
+    }
+    const hits = await provider.search([0, 1, 0], { topK: 5 });
+    expect(hits.map((hit) => hit.recordId)).toEqual(['rec-2']);
+  });
+
+  test('erasure cleanup refuses to settle while an older reader retains WAL frames', async () => {
+    const dbPath = join(dir, 'index.db');
+    await provider.upsert([entry('root:a', 'rec-1', 0, [1, 0, 0])]);
+    provider.close();
+    const reader = new DatabaseSync(dbPath);
+    try {
+      reader.exec('BEGIN');
+      reader.prepare('SELECT COUNT(*) FROM index_meta').get();
+      await expect(
+        provider.removeErasedRecords('root:a', ['rec-1']),
+      ).rejects.toThrow('Knowledge index cleanup is waiting for readers.');
+    } finally {
+      reader.exec('ROLLBACK');
+      reader.close();
+    }
+    await expect(
+      provider.removeErasedRecords('root:a', ['rec-1']),
+    ).resolves.toBeUndefined();
+    expect((await provider.stats('root:a')).chunks).toBe(0);
+  }, 15_000);
 
   test('removeRoot drops only that root partition — zero cross-store leakage', async () => {
     await provider.upsert([

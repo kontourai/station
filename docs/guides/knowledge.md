@@ -150,7 +150,8 @@ remains in the store until erased through a separately authorized flow.
 With the preview enabled, **My knowledge store** lists proposals for lookup and
 can look up a record or proposal by ID. The preview identifies the target; affected claims are
 unavailable until a producer-authored Surface bundle exists ([surface#360](https://github.com/kontourai/surface/issues/360)).
-Corpus provides a cascade preview, but Station does not show it yet.
+The lookup shows Corpus's preview of affected records and proposals. Records
+that survive or link to erased records may still contain the erased content.
 Erasure remains unavailable until index cleanup and recovery are fenced
 ([#4593](https://github.com/kontourai/station/issues/4593)).
 Agent-backed proposals and human review are separate future work.

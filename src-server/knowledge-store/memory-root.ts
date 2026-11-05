@@ -336,12 +336,26 @@ export class MemoryRootManager {
       if (kind === 'proposal') {
         const proposal = await adapter.getProposal(id);
         if (!proposal || proposal.erasure) return null;
-        return { kind, id: proposal.id, title: proposal.candidate.title };
+        const before = await adapter.previewPurgeProposal(proposal.id);
+        const current = await adapter.getProposal(proposal.id);
+        const impact = await adapter.previewPurgeProposal(proposal.id);
+        if (!current || current.erasure || before.revision !== impact.revision)
+          throw new Error('Private memory changed during preview.');
+        return { kind, id: current.id, title: current.candidate.title, impact };
       }
       const record = await adapter.get(id);
       if (!record || record.status === 'purged' || record.id !== id)
         return null;
-      return { kind, id: record.id, title: record.title };
+      const before = await adapter.previewPurge([record.id]);
+      const current = await adapter.get(record.id);
+      const impact = await adapter.previewPurge([record.id]);
+      if (
+        !current ||
+        current.status === 'purged' ||
+        before.revision !== impact.revision
+      )
+        throw new Error('Private memory changed during preview.');
+      return { kind, id: current.id, title: current.title, impact };
     });
   }
 
