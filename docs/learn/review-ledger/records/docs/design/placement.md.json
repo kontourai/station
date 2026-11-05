@@ -202,7 +202,9 @@
 
     "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
 
-    "src-ui/src/platform/native/mainWindow.ts"
+    "src-ui/src/platform/native/mainWindow.ts",
+
+    "src-ui/src/components/chat-dock/useInboxGroups.ts"
   ],
 
   "checks": [

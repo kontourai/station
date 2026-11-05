@@ -284,7 +284,9 @@
 
     "src-ui/src/__tests__/ConversationHandoffDialog.test.tsx",
 
-    "src-ui/src/components/chat-start/__tests__/StartStationControl.test.tsx"
+    "src-ui/src/components/chat-start/__tests__/StartStationControl.test.tsx",
+
+    "src-ui/src/components/chat-dock/useInboxGroups.ts"
   ],
 
   "checks": [
