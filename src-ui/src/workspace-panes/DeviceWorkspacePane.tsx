@@ -55,6 +55,8 @@ import {
 import {
   registerDevicePanePromotion,
   requestFloat,
+  requestFloatInNextChat,
+  useFloatAwaitingChat,
   useFloatHostAvailable,
 } from '../float-over-chat/floatStore';
 import { useAnnounceShownSource } from '../float-over-chat/shownSources';
@@ -1062,18 +1064,18 @@ function DeviceStage({
   // one the person is viewing it from), and says so in the chat if it
   // cannot show it there.
   const floatOverChat = () => {
-    requestFloat(
-      {
-        kind: 'device',
-        hostId: session.hostId,
-        platform,
-        deviceId: session.deviceId,
-        surfaceId: session.surfaceId,
-        projectSlug,
-        name: session.name,
-      },
-      onClose,
-    );
+    const source = {
+      kind: 'device',
+      hostId: session.hostId,
+      platform,
+      deviceId: session.deviceId,
+      surfaceId: session.surfaceId,
+      projectSlug,
+      name: session.name,
+    } as const;
+    // No chat to take it (a phone shows one pane at a time): it floats in
+    // the next chat the person opens, and this pane lets go then.
+    if (!requestFloat(source, onClose)) requestFloatInNextChat(source, onClose);
   };
   const canvas = (
     <LiveSurfaceCanvas
@@ -1378,6 +1380,7 @@ function DeviceToolbar({
 }) {
   const { surface, inputReady, sendInput } = api;
   const narrow = useNarrowViewport();
+  const floatAwaitingChat = useFloatAwaitingChat();
   const live = surface.status === 'live';
   useEffect(() => onStreamLive(live), [live, onStreamLive]);
   const press = (button: LiveSurfaceDeviceButton) =>
@@ -1466,9 +1469,10 @@ function DeviceToolbar({
       id: 'float',
       label: floatAvailable
         ? 'Float over chat'
-        : 'Float over chat (open a chat first)',
+        : floatAwaitingChat
+          ? 'Floats in the next chat you open'
+          : 'Float in the next chat you open',
       glyph: <FloatGlyph />,
-      disabled: !floatAvailable,
       onSelect: onFloat,
     },
     {

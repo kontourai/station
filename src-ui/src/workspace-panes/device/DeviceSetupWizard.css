@@ -18,15 +18,21 @@
   padding: 0;
 }
 
+/* Where the person is in setup: plain text (step names with a separator),
+   not bordered chips that read as clickable tabs. */
 .device-setup__step-label {
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-2, 8px);
+  color: var(--k-text-muted);
   font-size: 0.8125rem;
-  padding: var(--space-1, 4px) var(--space-2, 8px);
+}
+
+.device-setup__step-label:not(:last-child)::after {
+  color: var(--k-text-faint);
+  content: "›";
+  margin-inline-start: var(--k-space-2);
 }
 
 .device-setup__step-label--current {
-  border-color: var(--accent-primary);
+  color: var(--k-text);
   font-weight: 600;
 }
 
