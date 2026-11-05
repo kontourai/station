@@ -148,8 +148,9 @@ pre-launch state lacks a current record. The server records its log notice
 asynchronously; HTTP readiness does not imply it is already written. Unattended
 services retain the notice in their logs. Logged and visibly rendered notices
 are distinct presentation paths. `station telemetry status` uses the same display
-labels, with `off|lite|full` shown in parentheses; accepted command values remain
-unchanged.
+labels, with `off|anonymous|full` shown in parentheses for built-in publishers.
+Plugin Lite remains `Plugin usage counts (lite)` because plugin-chosen counts can
+encode identifiers. `--json` retains the server's `off|lite|full` values.
 
 Desktop sidecars (`STATION_STDOUT_HANDSHAKE=1`) defer to the single UI choice.
 Until it records the shown revision with `POST /api/usage-telemetry/lite-notices`,
@@ -183,9 +184,12 @@ inventory change requires a new acknowledgement.
 
 Use `station telemetry status` to read effective tiers and reasons (`DNT`,
 `policy`, `default`, `user`, `disclosure`, `environment`) from a running Station. Use
-`station telemetry set operator off` or `station telemetry set kontour lite`
-to save a single publisher choice. Requesting Full without its receipt remains
-Lite. These commands support the normal target/credential flags. The status API also
+`station telemetry set operator off` or `station telemetry set kontour anonymous`
+to save a single publisher choice. For `kontour` and `operator` only, `anonymous`
+is an input alias for `lite`; `lite` remains accepted and is the stored value.
+Plugin publishers accept `off|lite|full`, never `anonymous`.
+`STATION_TELEMETRY_TIER` also retains `off|lite|full`. Requesting Full without its
+receipt remains Lite. These commands support the normal target/credential flags. The status API also
 returns the exact Lite field catalog alongside its revision so a notice consumer
 can display the server inventory rather than an older bundled copy. Use `station telemetry outbox` or
 `station telemetry outbox --publisher operator` to inspect the bounded ledger.
