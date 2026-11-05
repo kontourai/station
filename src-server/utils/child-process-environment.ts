@@ -66,7 +66,7 @@ export function scrubBootInternalSecrets(
  * `base`. Without that, an inherited `HTTPS_PROXY` would beat an
  * `https_proxy` a managed policy locked (#4515).
  */
-export function layerEnvironment(
+function layerEnvironment(
   base: NodeJS.ProcessEnv,
   extra: NodeJS.ProcessEnv | undefined,
   platform: NodeJS.Platform = process.platform,
