@@ -202,6 +202,9 @@ function CopyCommandButton({
 }
 
 /** A Station address is a URL: URL keyboard, no autocapitalize or autocorrect. */
+/** The inline button styles carry no disabled look; a disabled action must read as one. */
+const DISABLED_BTN_STYLE = { opacity: 0.45, cursor: 'not-allowed' } as const;
+
 // `inputMode`, not `type="url"`: a bare host such as `station.local` is a
 // valid entry that URL constraint validation would refuse.
 const STATION_ADDRESS_INPUT_PROPS = {
@@ -1097,7 +1100,11 @@ export function JoinDevicePairingPanel({
             type="button"
             onClick={beginDirect}
             disabled={requestingAccess || !httpConsent.allowed}
-            style={primaryBtnStyle}
+            style={
+              requestingAccess || !httpConsent.allowed
+                ? { ...primaryBtnStyle, ...DISABLED_BTN_STYLE }
+                : primaryBtnStyle
+            }
           >
             {requestingAccess
               ? 'Sending request…'
@@ -1198,7 +1205,15 @@ export function JoinDevicePairingPanel({
               {error}
             </div>
           )}
-          <button type="submit" disabled={!manualReady} style={primaryBtnStyle}>
+          <button
+            type="submit"
+            disabled={!manualReady}
+            style={
+              manualReady
+                ? primaryBtnStyle
+                : { ...primaryBtnStyle, ...DISABLED_BTN_STYLE }
+            }
+          >
             Connect
           </button>
           <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
