@@ -274,10 +274,54 @@ export async function observeNativeAuthenticationFiles(input: {
           throw new Error('ensemble_auth_store_unsupported');
     }
   };
-  const codexConfigurations: ReturnType<typeof parseToml>[] = [];
+  const codexConfigurations: Array<{
+    selectedProfile: boolean;
+    strictSupported: boolean;
+    defaultSupported: boolean;
+  }> = [];
+  const supportsCodexConfiguration = (
+    settings: Record<string, unknown>,
+    allowDormant: boolean,
+  ): boolean => {
+    const walk = (value: unknown): boolean => {
+      if (!value || typeof value !== 'object') return true;
+      for (const [key, child] of Object.entries(value)) {
+        if (
+          value === settings &&
+          allowDormant &&
+          (key === 'profiles' || key === 'model_providers')
+        ) {
+          if (
+            !child ||
+            typeof child !== 'object' ||
+            Array.isArray(child) ||
+            (key === 'model_providers' && Object.hasOwn(child, 'openai'))
+          )
+            return false;
+          continue;
+        }
+        if (
+          (key === 'cli_auth_credentials_store' && child !== 'file') ||
+          /credential.*(helper|provider)|auth.*helper|^include$|^imports$/i.test(
+            key,
+          ) ||
+          (key === 'model_provider' && child !== 'openai') ||
+          key === 'model_providers' ||
+          !walk(child)
+        )
+          return false;
+      }
+      return true;
+    };
+    return walk(settings);
+  };
   const validateCodex = (text: string) => {
     const settings = parseToml(text);
-    codexConfigurations.push(settings);
+    codexConfigurations.push({
+      selectedProfile: settings.profile !== undefined,
+      strictSupported: supportsCodexConfiguration(settings, false),
+      defaultSupported: supportsCodexConfiguration(settings, true),
+    });
     if (settings.profile !== undefined) {
       if (
         typeof settings.profile !== 'string' ||
@@ -345,40 +389,14 @@ export async function observeNativeAuthenticationFiles(input: {
   // A selection in any witnessed layer can activate declarations in another.
   // With no selected profile, native launch arguments cannot select one either.
   const selectedProfile = codexConfigurations.some(
-    (settings) => settings.profile !== undefined,
+    (settings) => settings.selectedProfile,
   );
-  for (const settings of codexConfigurations) {
-    const walk = (value: unknown) => {
-      if (!value || typeof value !== 'object') return;
-      for (const [key, child] of Object.entries(value)) {
-        if (
-          value === settings &&
-          !selectedProfile &&
-          (key === 'profiles' || key === 'model_providers')
-        ) {
-          if (
-            !child ||
-            typeof child !== 'object' ||
-            Array.isArray(child) ||
-            (key === 'model_providers' && Object.hasOwn(child, 'openai'))
-          )
-            throw new Error('ensemble_auth_store_unsupported');
-          continue;
-        }
-        if (
-          (key === 'cli_auth_credentials_store' && child !== 'file') ||
-          /credential.*(helper|provider)|auth.*helper|^include$|^imports$/i.test(
-            key,
-          ) ||
-          (key === 'model_provider' && child !== 'openai') ||
-          key === 'model_providers'
-        )
-          throw new Error('ensemble_auth_store_unsupported');
-        walk(child);
-      }
-    };
-    walk(settings);
-  }
+  if (
+    codexConfigurations.some((settings) =>
+      selectedProfile ? !settings.strictSupported : !settings.defaultSupported,
+    )
+  )
+    throw new Error('ensemble_auth_store_unsupported');
   return () => {
     for (const assertCurrent of witnesses) assertCurrent();
   };
