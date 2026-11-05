@@ -4541,7 +4541,7 @@ screenshots and hashes are retained under
 Visual inspection exposed a remaining omission: Activity row metadata named
 Project attribution but omitted the directory fallback. `250550ad507a` shares
 compact CWD formatting with Home and adds Directory context only when no
-Project label exists. Unix and Windows roots retain their root labels. A typed
+Project label exists. POSIX and Windows drive roots retain their root labels. A typed
 mounted regression compares Activity, Home, dock and mobile sheet: old code
 failed four directory cases with 26 controls passing. The candidate passed
 292 focused tests, UI types and fixture guards. Removing the Activity segment
