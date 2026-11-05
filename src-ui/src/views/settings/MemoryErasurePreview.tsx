@@ -195,12 +195,12 @@ export function MemoryErasurePreview() {
         </Button>
       </div>
       {preview.isFetching && (
-        <SkeletonBlock count={1} label="Loading preview" />
+        <SkeletonBlock count={1} label="Looking up memory" />
       )}
       {targetMissing && <p>That ID doesn’t match a memory or proposal.</p>}
       {preview.isError && !targetMissing && (
         <ErrorState
-          title="Couldn’t load preview"
+          title="Couldn’t load memory"
           action={<Button onClick={() => void preview.refetch()}>Retry</Button>}
         />
       )}
@@ -219,8 +219,8 @@ export function MemoryErasurePreview() {
           <p>Station can’t yet show which answers depend on this memory.</p>
           <p>
             Station can’t yet show what else erasing this would remove.{' '}
-            <a href="https://github.com/kontourai/corpus/issues/69">
-              About cascade preview
+            <a href="https://github.com/kontourai/station/issues/4593">
+              About erasure
             </a>
           </p>
         </div>

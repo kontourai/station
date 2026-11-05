@@ -507,7 +507,7 @@ Station, `POST /api/knowledge/memory/root` lets the host operator register their
 author-private memory root. `POST /api/knowledge/memory/proposals` takes
 `{requestKey, candidate, evidence}` and stages a Corpus create proposal; the
 body is limited to 1 MiB. Matching retries return the same proposal ID, while
-a conflicting key returns409 with `REQUEST_KEY_CONFLICT`. `GET
+a conflicting key returns 409 with `REQUEST_KEY_CONFLICT`. `GET
 /api/knowledge/memory/proposals` is the explicit owner-authorized proposal
 query. Pending proposals do not appear in ordinary record lists or search.
 
