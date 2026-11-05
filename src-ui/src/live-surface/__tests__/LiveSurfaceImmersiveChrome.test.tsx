@@ -110,6 +110,10 @@ describe('the compact (phone-width) bar', () => {
     await flush();
     const bar = screen.getByRole('toolbar', { name: /full screen controls/ });
     expect(bar.classList.contains('live-surface-controls--compact')).toBe(true);
+    // The bar's row is kept clear above the picture (see the stylesheet).
+    expect(bar.closest('.live-surface')?.hasAttribute('data-compact')).toBe(
+      true,
+    );
     expect(within(bar).getByText('You').className).toContain(
       'live-surface-controls__chip',
     );

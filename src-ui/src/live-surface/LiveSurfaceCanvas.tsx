@@ -26,6 +26,7 @@ import { Button } from '../components/Button';
 import { ExpandGlyph, MoreGlyph } from '../components/icons/Glyph';
 import { Empty, ErrorState } from '../components/state';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
+import { useNarrowViewport } from '../hooks/useNarrowViewport';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { AgentActionOverlay } from './AgentActionOverlay';
 import {
@@ -1360,6 +1361,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   };
 
   const touchPointer = useCoarsePointer();
+  const narrowViewport = useNarrowViewport();
   const controller = controllerLine(surface, touchPointer);
   const { onControlState } = props;
   const { status, claimControl, releaseControl, keepControlAlive } = surface;
@@ -1512,6 +1514,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       className="live-surface"
       ref={containerRef}
       data-immersive={immersive ? '' : undefined}
+      data-compact={immersive && narrowViewport ? '' : undefined}
       // Immersive owns Escape (it leaves full screen): the app's own Escape
       // shortcuts, such as "Go up one level", yield while it is active.
       data-escape-owner={immersive ? '' : undefined}

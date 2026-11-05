@@ -487,12 +487,11 @@
   padding-top: var(--k-space-1);
 }
 
-/* At phone width the bar's one row is kept clear above the picture, so the
-   picture is centred in the space under it rather than under the bar. */
-@media (max-width: 479px) {
-  .live-surface[data-immersive] {
-    padding-top: calc(env(safe-area-inset-top, 0px) + 60px);
-  }
+/* With the compact bar (phone width; the component decides) its one row is
+   kept clear above the picture, so the picture is centred in the space
+   under it rather than under the bar. */
+.live-surface[data-immersive][data-compact] {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 60px);
 }
 
 /* A browser's address in the compact row: it takes the spare width and
