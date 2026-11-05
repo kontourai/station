@@ -1,0 +1,13 @@
+{
+  "revision": "0cb1b286d67351eb389b7e9fd57f7aac423f7b88",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed Ensemble inspection request/response against the strict route, EnsembleInspectionService and shared native authentication composition at 0cb1b286d673. Explicit verifyAuthentication requires current local operator access; ordinary inspection does not probe; the final awaited environment read is followed by private witness checks. No execution admission is returned. Existing unavailable topology and entitlement limits remain. Prior controlled 120-test receipt is diagnostic, not live/provider acceptance.","inputs":["docs/reference/api.md","packages/contracts/src/ensemble.ts","src-server/routes/orchestration/ensemble-inspection.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/__tests__/ensemble-execution-context.test.ts","src-server/services/orchestration/ensemble-inspection.ts","src-server/services/orchestration/ensemble-session-group-authentication.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed inspectEnsemble optional authenticationCheck against packages/sdk/src/client/ensembles.ts: older missing cell accepted, available closed to one key, unavailable closed to state/detail with nonblank 256-character bound. Explicit opt-in, current authority and no native continuation match the server. Package publication and live/native acceptance remain unverified.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/__tests__/ensemble-execution-context.test.ts","src-server/services/orchestration/ensemble-session-group-authentication.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed Ensemble contract table against packages/contracts/src/ensemble.ts and the runtime composition delta. The optional sign-in request and availability cell describe observations only, grant no authentication or execution authority, and do not change report-group or CLI group qualification limits.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed Check engine sign-in journey against EnsembleCliGroupForm and EnsembleInspectionService: offered only for current supported receiver draft, explicit true opt-in, edit clears observations, local operator access required, no save or start. Running reauthenticates. Controlled component visuals and tests do not establish live engine or whole-epic acceptance.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}
