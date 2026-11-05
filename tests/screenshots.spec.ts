@@ -2679,13 +2679,13 @@ function taskCapabilityScreens(): Screen[] {
   );
 }
 
-function appsLibraryScreens(): Screen[] {
+function appsLibraryScreens(details = false): Screen[] {
   return (['dark', 'light'] as const).flatMap((theme) =>
     [DESKTOP, MOBILE].map((viewport): Screen => {
       let cleanups: (() => Promise<void>)[] = [];
       return {
-        name: `apps-library-${theme}-${viewport.width === 390 ? 'mobile' : 'desktop'}`,
-        title: `Apps library — ${theme}, ${viewport.width}px`,
+        name: `apps-${details ? 'details' : 'library'}-${theme}-${viewport.width === 390 ? 'mobile' : 'desktop'}`,
+        title: `Apps ${details ? 'details' : 'library'} — ${theme}, ${viewport.width}px`,
         path: '/',
         viewport,
         beforeGoto: async (page) => {
@@ -2762,6 +2762,16 @@ function appsLibraryScreens(): Screen[] {
           await expect(
             library.getByRole('region', { name: 'Plugin layouts' }),
           ).toBeVisible();
+          if (details) {
+            await library
+              .getByRole('button', { name: 'Edit Morning brief details' })
+              .click();
+            await expect(
+              page
+                .getByRole('dialog', { name: 'Edit app details' })
+                .getByRole('textbox', { name: 'Description', exact: true }),
+            ).toHaveValue('Decisions, active Tasks and recent work.');
+          }
         },
         cleanup: async () => {
           for (const cleanup of cleanups) await cleanup();
@@ -2774,6 +2784,7 @@ function appsLibraryScreens(): Screen[] {
 
 const SCREENS: Screen[] = [
   ...appsLibraryScreens(),
+  ...appsLibraryScreens(true),
   ...telemetryConsentScreens(),
   ...[DESKTOP, MOBILE].map((viewport): Screen => {
     const slug = 'gallery-project-retry-board';

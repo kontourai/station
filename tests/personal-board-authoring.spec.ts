@@ -824,6 +824,9 @@ for (const width of [390, 1440]) {
         await dismissSetupLauncher(page);
         await openLibrary();
         const library = page.getByRole('dialog', { name: 'Apps', exact: true });
+        await expect(
+          library.getByText('Make room for your work', { exact: true }),
+        ).toBeVisible();
         await page.screenshot({
           path: testInfo.outputPath('apps-library-before-create.png'),
           fullPage: true,
@@ -838,7 +841,7 @@ for (const width of [390, 1440]) {
         await details.getByLabel('Name', { exact: true }).fill(name);
         await details.getByLabel('Icon', { exact: true }).fill('🌿');
         await details
-          .getByLabel('Description', { exact: true })
+          .getByRole('textbox', { name: 'Description', exact: true })
           .fill('Release decisions and useful links.');
         const createdResponse = page.waitForResponse(
           (response) =>
@@ -881,28 +884,30 @@ for (const width of [390, 1440]) {
         await library
           .getByRole('button', { name: `Edit ${name} details`, exact: true })
           .click();
-        const edit = page.getByRole('dialog').filter({
-          has: page.getByRole('heading', {
-            name: 'Edit app details',
-            exact: true,
-          }),
+        const edit = page.getByRole('dialog', {
+          name: 'Edit app details',
+          exact: true,
         });
-        await expect(edit).toHaveAttribute(
-          'aria-labelledby',
-          (await edit
-            .getByRole('heading', { name: 'Edit app details', exact: true })
-            .getAttribute('id')) ?? '',
-        );
         await edit
-          .getByLabel('Description', { exact: true })
+          .getByRole('textbox', { name: 'Description', exact: true })
           .fill('Release watch, ready to open.');
+        if (width === 1440 && colorScheme === 'light') {
+          await page.setViewportSize({ width: 390, height: 900 });
+          await expect(
+            edit.getByRole('textbox', { name: 'Description', exact: true }),
+          ).toHaveValue('Release watch, ready to open.');
+          await page.setViewportSize({ width, height: 900 });
+          await expect(
+            edit.getByRole('textbox', { name: 'Description', exact: true }),
+          ).toHaveValue('Release watch, ready to open.');
+        }
         await edit
           .getByRole('button', { name: 'Save details', exact: true })
           .click();
         await expect(launch).toContainText('Release watch, ready to open.');
         await launch.click();
         await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
-        await page.reload();
+        await page.goto(`/boards/${slug}${width === 390 ? '/' : ''}`);
         await openLibrary();
         await library.getByLabel('Search apps').fill(name);
         await expect(

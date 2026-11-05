@@ -169,6 +169,9 @@ test('edits metadata without replacing the layout config or changing its address
   fireEvent.change(screen.getByLabelText('Name'), {
     target: { value: 'Release desk' },
   });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), {
+    target: { value: 'Release watch' },
+  });
   fireEvent.click(screen.getByRole('button', { name: 'Save details' }));
   await screen.findByRole('button', { name: 'Open Release desk' });
   expect(requests.find((entry) => entry.method === 'PUT')).toEqual({
@@ -177,7 +180,7 @@ test('edits metadata without replacing the layout config or changing its address
     body: {
       name: 'Release desk',
       icon: '🌿',
-      description: 'Morning decisions',
+      description: 'Release watch',
     },
   });
   expect(open).not.toHaveBeenCalled();

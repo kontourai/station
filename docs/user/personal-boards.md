@@ -16,7 +16,8 @@ and plugin. **Your Boards** lists records without a plugin source; **Plugin
 layouts** lists records with a plugin source. Each tile shows the saved icon,
 name and description. Open a tile to use its existing Board or Layout tabs.
 **Details** edits its name, icon and description without replacing its sections
-or panes. **Delete** asks for confirmation; deleting the open Board returns the
+or panes. Your details draft stays open when the window switches between phone
+and desktop layouts. **Delete** asks for confirmation; deleting the open Board returns the
 underlying page to Home.
 
 **New Board** asks for a name before creation, then opens the existing editor

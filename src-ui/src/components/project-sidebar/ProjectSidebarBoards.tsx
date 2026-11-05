@@ -7,7 +7,7 @@ import {
 } from '@kontourai/station-sdk';
 import type { ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { boardPath } from '../../app-shell/board-route';
+import { boardPath, parseBoardPath } from '../../app-shell/board-route';
 import { boardSlugFromName, nextBoardSlug } from '../../app-shell/board-slug';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
@@ -546,7 +546,7 @@ export function ProjectSidebarBoards({
           openBoard(slug);
         },
         onDeleted: (slug) => {
-          if (activePath === boardPath(slug)) navigate('/');
+          if (parseBoardPath(activePath) === slug) navigate('/');
         },
       }}
     />
