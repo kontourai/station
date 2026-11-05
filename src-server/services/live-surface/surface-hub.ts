@@ -3,14 +3,11 @@ import {
   LIVE_SURFACE_RECORD_MAX_BODY_BYTES,
   LIVE_SURFACE_STREAM_PARAM_BOUNDS,
   type LiveSurfaceAgentAction,
-  type LiveSurfaceControlLease,
-  type LiveSurfaceEpochCause,
   type LiveSurfaceFrameHeader,
   type LiveSurfaceProducerStatus,
   type LiveSurfaceRecord,
   type LiveSurfaceStreamParams,
   type LiveSurfaceStreamState,
-  type LiveSurfaceViewerId,
   type LiveSurfaceViewerIdentity,
   parseLiveSurfaceAgentActions,
   parseLiveSurfaceFrameHeader,
@@ -21,12 +18,6 @@ import type {
   LiveSurfaceProducer,
 } from './producer.js';
 
-/** A viewer's own id and the lease with its epoch's cause, read together. */
-export type LiveSurfaceViewerAttestation = () => {
-  viewerId: LiveSurfaceViewerId;
-  lease: LiveSurfaceControlLease;
-  epochCause: LiveSurfaceEpochCause;
-};
 /**
  * Fan-out of one producer to N viewers (#90).
  *
@@ -168,8 +159,6 @@ class HubViewer implements LiveSurfaceViewer {
     readonly freshOnly: boolean,
     readonly attachedAt: number,
     readonly attachedAfter: number,
-    /** This viewer's id and the lease attested for it (it asked). */
-    readonly attest?: LiveSurfaceViewerAttestation,
   ) {}
 
   /**
@@ -265,7 +254,7 @@ class HubViewer implements LiveSurfaceViewer {
       this.busy = true;
       return {
         kind: 'state',
-        state: this.hub.state(this.identity, this.agentActions, this.attest),
+        state: this.hub.state(this.identity, this.agentActions),
       };
     }
     const frame = this.codec === 'h264' ? this.videoQueue.shift() : this.slot;
@@ -327,11 +316,8 @@ export class LiveSurfaceHub {
   private keyframeTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly unsubscribeLease: () => void;
   private readonly unsubscribeStatus: () => void;
-  private inputHealth: () => {
-    wedged: boolean;
-    wedgedSince: number | null;
-    releaseStuck?: boolean;
-  } = () => ({ wedged: false, wedgedSince: null });
+  private inputHealth: () => { wedged: boolean; wedgedSince: number | null } =
+    () => ({ wedged: false, wedgedSince: null });
 
   constructor(
     readonly producer: LiveSurfaceProducer,
@@ -375,8 +361,6 @@ export class LiveSurfaceHub {
       codec?: LiveSurfaceViewerCodec;
       /** Ignore cached and queued images captured before this viewer attached. */
       freshOnly?: boolean;
-      /** This viewer's own id and attested lease, for its state records. */
-      attest?: LiveSurfaceViewerAttestation;
     },
   ): LiveSurfaceViewer {
     if (this.disposed) throw new Error('live surface hub is disposed');
@@ -390,7 +374,6 @@ export class LiveSurfaceHub {
       options?.freshOnly === true,
       this.now(),
       this.frameArrival,
-      options?.attest,
     );
     if (options?.freshOnly) viewer.skipFrame = this.pending;
     if (
@@ -464,18 +447,15 @@ export class LiveSurfaceHub {
   state(
     viewer?: LiveSurfaceViewerIdentity,
     agentActions?: () => boolean,
-    attest?: LiveSurfaceViewerAttestation,
   ): LiveSurfaceStreamState {
     const health = this.inputHealth();
     let includeActions = false;
     try {
       includeActions = agentActions?.() === true;
     } catch {}
-    // One read for the lease and what caused it, so they always agree.
-    const attested = attest?.();
     return {
       surfaceId: this.surfaceId,
-      lease: attested?.lease ?? this.lease.snapshot(),
+      lease: this.lease.snapshot(),
       effectiveParams: this.effectiveParams(),
       ...(viewer ? { viewer: { ...viewer } } : {}),
       wedged: health.wedged,
@@ -488,13 +468,6 @@ export class LiveSurfaceHub {
               events: structuredClone(this.agentActions),
             },
           }
-        : {}),
-      ...(attested
-        ? { viewerId: attested.viewerId, epochCause: attested.epochCause }
-        : {}),
-      // Opted-in viewers only: an older one's strict parser knows no such key.
-      ...(attested && health.releaseStuck
-        ? { releaseStuck: true as const }
         : {}),
     };
   }
@@ -555,11 +528,7 @@ export class LiveSurfaceHub {
 
   /** Where the input side reports whether it is wedged (the registry). */
   setInputHealth(
-    probe: () => {
-      wedged: boolean;
-      wedgedSince: number | null;
-      releaseStuck?: boolean;
-    },
+    probe: () => { wedged: boolean; wedgedSince: number | null },
   ): void {
     this.inputHealth = probe;
   }

@@ -441,11 +441,6 @@ export class DeviceSessionService {
       entry.unregister = this.options.surfaces.register(
         producer as LiveSurfaceProducer,
         {
-          // The device's next session releases what this one still held,
-          // before it takes any input.
-          heldScope: `device:${key(device.platform, device.deviceId)}`,
-          // A key that may be stuck ends the session: Reconnect resets it.
-          onReleaseStuck: () => void this.end(sessionId, 'input-stuck'),
           authorize: (
             principal: string,
             _surfaceId: string,

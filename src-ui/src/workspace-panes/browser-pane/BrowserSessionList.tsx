@@ -59,7 +59,6 @@ const ACTION_TEXT: Record<string, string> = {
   'host-exited': 'stopped the session: the browser exited',
   'server-stopped': 'stopped the session when Station stopped',
   'server-restarted': 'stopped the session when Station restarted',
-  'input-stuck': 'stopped the session: a key may have been stuck',
   'history-navigated': 'moved through history to',
   reloaded: 'reloaded',
   'viewport-changed': 'changed the viewport',

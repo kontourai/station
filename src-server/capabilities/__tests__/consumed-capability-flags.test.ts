@@ -1,17 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { LiveSurfaceRecordDecoder } from '@kontourai/station-contracts/live-surface';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readStreamUntil } from '../../__test-utils__/sse-helpers.js';
-import { SyntheticLiveSurfaceProducer } from '../../__test-utils__/synthetic-live-surface-producer.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { RecipientStore } from '../../analytics/recipient-store.js';
 import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
-import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -27,7 +24,6 @@ import {
 } from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
 import { TroubleshootService } from '../../services/infra/troubleshoot-service.js';
-import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import {
@@ -366,60 +362,6 @@ const CONSUMED_FLAGS: Record<
     });
     return response.status === 200;
   },
-  // GET /frames?epochCause=1 issues the stream its viewer id, and a claim
-  // naming it is answered `self`; live surfaces are served in every mode.
-  liveSurfaceEpochCause: async () => {
-    const registry = new LiveSurfaceRegistry();
-    registry.register(new SyntheticLiveSurfaceProducer('browser:flag-probe'), {
-      authorize: () => true,
-    });
-    const routes = new Hono().route(
-      '/api/live-surfaces',
-      createLiveSurfaceRoutes(registry, {
-        isRequestPrincipalCurrent: () => true,
-        resolveHumanCaller: () => ({
-          principal: 'human:local:operator',
-          device: 'device:probe',
-        }),
-        principalRecheckMs: 0,
-      }),
-    );
-    const abort = new AbortController();
-    try {
-      // The stream is issued its viewer id; a claim naming it is its own.
-      const frames = await routes.request(
-        '/api/live-surfaces/browser%3Aflag-probe/frames?epochCause=1',
-        { signal: abort.signal },
-      );
-      if (frames.status !== 200 || !frames.body) return false;
-      const reader = frames.body.getReader();
-      const decoder = new LiveSurfaceRecordDecoder();
-      let viewerId: string | undefined;
-      while (!viewerId) {
-        const chunk = await reader.read();
-        if (chunk.done) return false;
-        for (const record of decoder.push(chunk.value))
-          if (record.kind === 'state') viewerId = record.state.viewerId;
-        if (!viewerId) return false;
-      }
-      const response = await routes.request(
-        '/api/live-surfaces/browser%3Aflag-probe/lease',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'claim', viewerId }),
-        },
-      );
-      const body = (await response.json()) as {
-        data?: { epochCause?: string };
-      };
-      await reader.cancel();
-      return response.status === 200 && body.data?.epochCause === 'self';
-    } finally {
-      abort.abort();
-      await registry.dispose();
-    }
-  },
   // GET /events honours Last-Event-ID: a cursor inside the gap replays the
   // missed event instead of sending a fresh snapshot.
   eventStreamResume: async (deployment) => {
@@ -496,7 +438,6 @@ describe('consumed capability flags match what their routes serve', () => {
     sessionEventWindow: { personal: true, hosted: true },
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },
-    liveSurfaceEpochCause: { personal: true, hosted: true },
     sessionPersonReads: { personal: true, hosted: true },
     webPushNotifications: { personal: true, hosted: false },
     connectionRoutes: { personal: true, hosted: false },

@@ -9,7 +9,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   dispatchHumanInput,
   LiveSurfaceRegistry,
-  releaseHumanPressed,
 } from '../../live-surface/registry.js';
 import {
   type DeviceHostActions,
@@ -1622,17 +1621,7 @@ describe('foldables through the live-surface registry', () => {
   });
 });
 
-describe('held input through the registry: the device releases only what it delivered', () => {
-  const human = {
-    kind: 'human',
-    principal: 'human:a',
-    device: 'a',
-  } as const;
-  const other = {
-    kind: 'human',
-    principal: 'human:b',
-    device: 'b',
-  } as const;
+describe('device cancel: releases what it is given, and forgets a release only once delivered', () => {
   const key = (type: 'down' | 'up', name: string, code: string) =>
     ({ kind: 'key', type, key: name, code }) as const;
   /** HID usages down on the simulator, replayed from what it received. */
@@ -1657,68 +1646,44 @@ describe('held input through the registry: the device releases only what it deli
       return true;
     };
   };
-  async function surface() {
-    const h = track(harness());
-    const socket = await openInput(h);
-    const registry = new LiveSurfaceRegistry({ dispatchTimeoutMs: 200 });
-    registry.register(h.producer, { authorize: () => true });
-    const entry = registry.get(h.producer.surfaceId)!;
-    return { socket, registry, entry };
-  }
-  const typed = (socket: FakeSocket) =>
-    (socket.packets() as [number, { type: string; usage: number }][]).filter(
-      ([tag, body]) => tag === 0x06 && body.usage !== 225,
-    ).length;
-
-  test('a key release the device never got stays held; the registry releases it before anyone types (round 8, item 1)', async () => {
-    const { socket, registry, entry } = await surface();
-    await dispatchHumanInput(entry, human, 0, [
-      key('down', 'Shift', 'ShiftLeft'),
-    ]);
-    expect(remoteKeys(socket)).toEqual([225]);
-    refuseKeyUps(socket, 1);
-    expect(
-      await dispatchHumanInput(entry, human, 1, [
-        key('up', 'Shift', 'ShiftLeft'),
-      ]),
-    ).toMatchObject({ ok: false, code: 'dispatch-failed' });
-    await until(() => remoteKeys(socket).length === 0, 'shift released');
-    const answer = await dispatchHumanInput(entry, other, 1, [
-      key('down', 'a', 'KeyA'),
-      key('up', 'a', 'KeyA'),
-    ]);
-    expect(answer.ok).toBe(true);
-    expect(remoteKeys(socket)).toEqual([]);
-    await registry.dispose();
+  const held = (keys: { key: string; code: string }[]) => ({
+    buttons: [],
+    keys,
+    pointer: { x: 0, y: 0 },
+    pointerType: 'mouse' as const,
+    buttonPointerTypes: {},
   });
 
-  test('a cancel that fails for one of two keys is not success: both are released before another controller types (round 8, item 1)', async () => {
-    const { socket, registry, entry } = await surface();
-    await dispatchHumanInput(entry, human, 0, [
-      key('down', 'Shift', 'ShiftLeft'),
-      key('down', 'Control', 'ControlLeft'),
-    ]);
-    expect(remoteKeys(socket).sort()).toEqual([224, 225]);
+  test('a key release the device never got is still released by a cancel that names it', async () => {
+    const h = track(harness());
+    const socket = await openInput(h);
+    await h.producer.dispatch(key('down', 'Shift', 'ShiftLeft'));
+    expect(remoteKeys(socket)).toEqual([225]);
     refuseKeyUps(socket, 1);
-    expect(await releaseHumanPressed(entry, human)).toMatchObject({
-      ok: false,
-      code: 'release-pending',
-    });
-    const before = typed(socket);
-    // Typing while a release is owed is refused, and reaches nothing.
-    expect(
-      await dispatchHumanInput(entry, other, 1, [{ kind: 'text', text: 'a' }]),
-    ).toMatchObject({ ok: false, code: 'release-pending' });
-    expect(typed(socket)).toBe(before);
-    await until(() => remoteKeys(socket).length === 0, 'keys released');
-    const epoch = entry.lease.snapshot().epoch;
-    expect(
-      (
-        await dispatchHumanInput(entry, other, epoch, [
-          { kind: 'text', text: 'a' },
-        ])
-      ).ok,
-    ).toBe(true);
-    await registry.dispose();
+    await expect(
+      h.producer.dispatch(key('up', 'Shift', 'ShiftLeft')),
+    ).rejects.toThrow();
+    expect(remoteKeys(socket)).toEqual([225]);
+    await h.producer.cancelHeldInput(
+      held([{ key: 'Shift', code: 'ShiftLeft' }]),
+    );
+    expect(remoteKeys(socket)).toEqual([]);
+  });
+
+  test('a cancel that fails for one of two keys fails, and a second cancel releases both', async () => {
+    const h = track(harness());
+    const socket = await openInput(h);
+    await h.producer.dispatch(key('down', 'Shift', 'ShiftLeft'));
+    await h.producer.dispatch(key('down', 'Control', 'ControlLeft'));
+    refuseKeyUps(socket, 1);
+    const both = held([
+      { key: 'Shift', code: 'ShiftLeft' },
+      { key: 'Control', code: 'ControlLeft' },
+    ]);
+    await expect(h.producer.cancelHeldInput(both)).rejects.toThrow();
+    // Every release was tried: only the refused one is still down.
+    expect(remoteKeys(socket)).toEqual([225]);
+    await h.producer.cancelHeldInput(both);
+    expect(remoteKeys(socket)).toEqual([]);
   });
 });

@@ -354,8 +354,6 @@ const INPUT_NOTICE_TEXT: Record<
     'Control changed before your input arrived, so it was not sent.',
   'input-failed': 'Your last input may not have reached the page. Check it.',
   'page-dialog': 'The page is showing a dialog. Answer it to continue.',
-  'release-stuck':
-    'A key may be stuck on this page. Reload or reopen the session.',
   'host-busy': 'The host is busy, so nothing was sent.',
 };
 
@@ -374,11 +372,7 @@ function InputNotice(props: {
   const notice = props.surface.inputNotice;
   if (!notice) return null;
   const title = INPUT_NOTICE_TEXT[notice];
-  if (
-    notice === 'input-failed' ||
-    notice === 'host-busy' ||
-    notice === 'release-stuck'
-  )
+  if (notice === 'input-failed' || notice === 'host-busy')
     return (
       <ErrorState
         variant="compact"
@@ -837,8 +831,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     shiftKey: boolean;
   }
 
-  /** `lineage`: the control lineage the press was made in (see `sendInput`). */
-  const sendPress = (press: Press, lineage?: number) => {
+  const sendPress = (press: Press) => {
     const { point } = press;
     const at = now();
     const last = lastDownRef.current;
@@ -866,7 +859,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     }
     const modifiers = modifiersOf(press);
     if (modifiers) input.modifiers = modifiers;
-    sendInput([input], lineage === undefined ? undefined : { lineage });
+    sendInput([input]);
   };
 
   // ---- touch: pinch zoom, and presses held back until they are not one ----
@@ -884,8 +877,6 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const zoomPointersRef = useRef(new Set<number>());
   const pendingPressRef = useRef<{
     press: Press;
-    /** The control lineage at the finger's down: it goes out only in it. */
-    lineage: number;
     timer: ReturnType<typeof setTimeout>;
   } | null>(null);
   const lastTouchDownRef = useRef<{ at: number; x: number; y: number } | null>(
@@ -910,7 +901,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     clearTimeout(pending.timer);
     pendingPressRef.current = null;
     if (!mayPressRef.current()) return;
-    sendPressRef.current(pending.press, pending.lineage);
+    sendPressRef.current(pending.press);
   };
   const flushPendingPressRef = useRef(flushPendingPress);
   flushPendingPressRef.current = flushPendingPress;
@@ -1056,7 +1047,6 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     dropPendingPress();
     pendingPressRef.current = {
       press,
-      lineage: surface.controlLineage(),
       timer: setTimeout(
         () => flushPendingPressRef.current(),
         TOUCH_PRESS_HOLD_MS,
@@ -1128,15 +1118,6 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       heldRef.current.clear();
       return;
     }
-    // A host that releases presses itself does it (it knows what landed);
-    // on an older host this viewer sends its own releases.
-    if (
-      (heldRef.current.size > 0 || keys.length > 0) &&
-      current.releasePressed()
-    ) {
-      heldRef.current.clear();
-      return;
-    }
     releaseHeld();
     if (keys.length > 0)
       sendInput(
@@ -1145,15 +1126,6 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   };
   const releaseEverythingRef = useRef(releaseEverything);
   releaseEverythingRef.current = releaseEverything;
-  // Going away with something pressed: the host releases it (it also does
-  // when this viewer's stream closes, which unmounting ends).
-  useEffect(
-    () => () => {
-      if (heldRef.current.size > 0 || heldKeysRef.current.size > 0)
-        surfaceRef.current.releasePressed();
-    },
-    [],
-  );
   useEffect(() => {
     const onHidden = () => {
       if (document.visibilityState === 'hidden') releaseEverythingRef.current();

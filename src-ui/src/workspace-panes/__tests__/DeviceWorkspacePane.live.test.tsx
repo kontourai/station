@@ -1480,37 +1480,6 @@ describe('the device toolbar', () => {
     expect(screen.queryByText('That device is not open here')).toBeNull();
   });
 
-  test('a session ended because a key may be stuck says so and offers Reconnect (round 8, item 4)', async () => {
-    const plan: Parameters<typeof stubDeviceFetch>[0] = {
-      inventory: readyInventory([IOS_DEVICE]),
-    };
-    const log = stubDeviceFetch(plan);
-    renderInQueryClient(<DeviceWorkspacePane />);
-    await openFirst('Open iPhone 17 Pro');
-    await waitFor(() => expect(log.streams.length).toBeGreaterThan(0));
-    const stream = log.streams.at(-1)!;
-    const surfaceId = decodeURIComponent(
-      new URL(stream.url).pathname.split('/').at(-2)!,
-    );
-    // The host says a release kept failing, then ends the session.
-    const record = stateRecord(surfaceId, { inputChannel: 'connected' });
-    if (record.kind !== 'state') throw new Error('a state record');
-    await stream.push({
-      ...record,
-      state: { ...record.state, releaseStuck: true },
-    });
-    plan.framesStatus = 404;
-    await stream.end();
-    expect(
-      await screen.findByText(
-        'A key may have been stuck on the device. Reconnect to reset it.',
-        {},
-        { timeout: 5_000 },
-      ),
-    ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
-  });
-
   test('a session that is gone offers Reconnect', async () => {
     stubDeviceFetch({
       inventory: readyInventory([IOS_DEVICE]),

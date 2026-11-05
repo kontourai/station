@@ -10,9 +10,6 @@ import { expect, test, vi } from 'vitest';
 import { createLiveSurfaceStreamAdmission } from '../liveSurfaceStreamAdmission';
 import { liveSurfaceH264Declines, useLiveSurface } from '../useLiveSurface';
 
-/** The public handshake the hook asks about epoch causality. */
-const HANDSHAKE = '/.well-known/station/v1';
-
 test('does not send queued input to a different surface after an old request settles', async () => {
   let resolveInput!: (response: Response) => void;
   const inputReply = new Promise<Response>((resolve) => {
@@ -23,8 +20,6 @@ test('does not send queued input to a different surface after an old request set
   const transport = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      // An older host: no live-surface epoch causality advertised.
-      if (url.endsWith(HANDSHAKE)) return new Response(null, { status: 404 });
       if (url.endsWith('/frames')) return new Response(new ReadableStream());
       requests.push(url);
       bodies.push(String(init?.body));
@@ -80,8 +75,6 @@ test('past the per-origin cap a viewer waits as queued, without a request, until
   const opened: string[] = [];
   const transport = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).endsWith(HANDSHAKE))
-        return new Response(null, { status: 404 });
       opened.push(new URL(String(input)).pathname.split('/')[3]!);
       return new Response(
         new ReadableStream({
@@ -146,8 +139,6 @@ test('after the hub switches a viewer to images, reconnects and a reopened pane 
     body: new Uint8Array([seq]),
   });
   const transport = vi.fn(async (input: RequestInfo | URL) => {
-    if (String(input).endsWith(HANDSHAKE))
-      return new Response(null, { status: 404 });
     urls.push(String(input));
     // The first stream: H.264, then the hub's downgrade to images, then it
     // ends (a dropped connection).

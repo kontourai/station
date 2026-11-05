@@ -100,8 +100,6 @@ interface OpenStream {
   push(record: LiveSurfaceRecord): Promise<void>;
   /** Raw bytes, e.g. part of a large frame still in transit. */
   pushBytes(bytes: Uint8Array): Promise<void>;
-  /** Queue a record without settling it: it is read on the stream's own turn. */
-  enqueue(record: LiveSurfaceRecord): void;
   close(): Promise<void>;
   signal: AbortSignal | undefined;
   url: string;
@@ -145,7 +143,6 @@ function harness(
             signal: init?.signal ?? undefined,
             push: async () => {},
             pushBytes: async () => {},
-            enqueue: () => {},
             close: async () => {},
           });
           return Response.json(options.framesBody ?? { success: false }, {
@@ -171,9 +168,6 @@ function harness(
               controller.enqueue(encodeLiveSurfaceRecord(record));
               await new Promise((resolve) => setTimeout(resolve, 0));
             });
-          },
-          enqueue: (record) => {
-            controller.enqueue(encodeLiveSurfaceRecord(record));
           },
           pushBytes: async (bytes) => {
             await act(async () => {
@@ -1436,34 +1430,6 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     expect(screen.queryByText(/may not have reached the page/)).toBeNull();
   });
 
-  test('input refused release-stuck says a key may be stuck and how to reset it, and offers no Retry (round 8, item 4)', async () => {
-    const h = harness({
-      inputReply: (body) =>
-        Response.json(
-          {
-            success: false,
-            data: {
-              ok: false,
-              code: 'release-stuck',
-              accepted: 0,
-              lease: lease(body.epoch + 1, MY_HOLD),
-            },
-          },
-          { status: 409 },
-        ),
-    });
-    await renderLive(h);
-    pressOnce();
-    await flush();
-    await flush();
-    expect(
-      screen.getByText(
-        'A key may be stuck on this page. Reload or reopen the session.',
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-  });
-
   test('the busy notice clears by itself when nothing newer answers', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
@@ -1568,165 +1534,6 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     );
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(h.inputs).toHaveLength(1);
-  });
-
-  const AGENT_HOLD = {
-    kind: 'agent',
-    principal: 'agent:coder',
-    sessionId: 's',
-  } as const;
-  const keyboardInput = () =>
-    screen.getByLabelText('Keyboard input for Browser: example.com');
-  /** Every text the page was sent, with the epoch it went at. */
-  const sentText = (h: ReturnType<typeof harness>) =>
-    h.inputs.flatMap((batch) =>
-      (batch.events as { kind: string; text?: string }[])
-        .filter((event) => event.kind === 'text')
-        .map((event) => ({ epoch: batch.epoch, text: event.text })),
-    );
-
-  test('Retry pressed while a change of control is already queued never sends the kept input at the newer epoch', async () => {
-    const h = busyOnce();
-    const stream = await renderLive(h);
-    fireEvent.input(keyboardInput(), { target: { value: 'PAY' } });
-    await flush();
-    expect(sentText(h)).toEqual([{ epoch: 0, text: 'PAY' }]);
-    // The agent's takeover is already on the stream when the person taps
-    // Retry; the stream reads it on its own turn.
-    await act(async () => {
-      stream.enqueue(stateRecord(lease(2, AGENT_HOLD)));
-      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    });
-    await flush();
-    expect(sentText(h).filter((sent) => sent.epoch !== 0)).toEqual([]);
-  });
-
-  test('a busy answer that arrives after control changed hands offers no Retry', async () => {
-    let answer!: (reply: Response) => void;
-    const h = harness({
-      inputReply: () =>
-        new Promise<Response>((resolve) => {
-          answer = resolve;
-        }),
-    });
-    const stream = await renderLive(h);
-    fireEvent.input(keyboardInput(), { target: { value: 'PAY' } });
-    await flush();
-    expect(h.inputs).toHaveLength(1);
-    await stream.push(stateRecord(lease(2, AGENT_HOLD)));
-    answer(busy());
-    await flush();
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-    expect(screen.queryByText(/The host is busy/)).toBeNull();
-    expect(h.inputs).toHaveLength(1);
-  });
-
-  test('a busy drag longer than one batch is kept whole: its release keeps Retry, and Retry sends the gesture once', async () => {
-    const h = busyOnce();
-    await renderLive(h);
-    pressOnce();
-    await flush();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
-    const canvas = screen.getByTestId('live-surface-canvas');
-    for (let step = 1; step <= 80; step += 1)
-      fireEvent.pointerMove(canvas, {
-        clientX: 10 + step,
-        clientY: 10,
-        pointerId: 1,
-      });
-    fireEvent.pointerUp(canvas, {
-      clientX: 90,
-      clientY: 10,
-      button: 0,
-      pointerId: 1,
-    });
-    await flush();
-    expect(h.inputs).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    await flush();
-    expect(h.inputs).toHaveLength(2);
-    expect(
-      h.inputs[1]!.events.map((event) => (event as { type: string }).type),
-    ).toEqual(['down', 'move', 'up']);
-  });
-
-  test('input queued behind an answer that is discarded (control changed meanwhile) still goes, with no further input', async () => {
-    let answer!: (reply: Response) => void;
-    let call = 0;
-    const h = harness({
-      inputReply: (body) => {
-        call += 1;
-        if (call === 1)
-          return new Promise<Response>((resolve) => {
-            answer = resolve;
-          });
-        return {
-          success: true,
-          data: {
-            ok: true,
-            accepted: body.events.length,
-            lease: lease(body.epoch + 1, MY_HOLD),
-          },
-        };
-      },
-    });
-    const stream = await renderLive(h);
-    fireEvent.input(keyboardInput(), { target: { value: 'old' } });
-    await flush();
-    await stream.push(stateRecord(lease(2, AGENT_HOLD)));
-    // Typed after the agent took over: new input, in the new lineage.
-    fireEvent.input(keyboardInput(), { target: { value: 'new' } });
-    await flush();
-    expect(h.inputs).toHaveLength(1);
-    answer(busy());
-    await flush();
-    await flush();
-    expect(sentText(h)).toEqual([
-      { epoch: 0, text: 'old' },
-      { epoch: 2, text: 'new' },
-    ]);
-  });
-
-  test("this viewer's own takeover keeps typing queued behind it, even when the stream reports it before the answer", async () => {
-    let answer!: (reply: Response) => void;
-    let call = 0;
-    const h = harness({
-      inputReply: (body) => {
-        call += 1;
-        if (call === 1)
-          return new Promise<Response>((resolve) => {
-            answer = resolve;
-          });
-        return {
-          success: true,
-          data: {
-            ok: true,
-            accepted: body.events.length,
-            lease: lease(body.epoch, MY_HOLD),
-          },
-        };
-      },
-    });
-    const stream = await renderLive(h, lease(1, AGENT_HOLD));
-    fireEvent.input(keyboardInput(), { target: { value: 'a' } });
-    await flush();
-    fireEvent.input(keyboardInput(), { target: { value: 'b' } });
-    await flush();
-    // The takeover is on the stream first; the answer follows.
-    await stream.push(stateRecord(lease(2, MY_HOLD)));
-    answer(
-      Response.json({
-        success: true,
-        data: { ok: true, accepted: 1, lease: lease(2, MY_HOLD) },
-      }),
-    );
-    await flush();
-    await flush();
-    expect(sentText(h)).toEqual([
-      { epoch: 1, text: 'a' },
-      { epoch: 2, text: 'b' },
-    ]);
   });
 
   test('Retry is not offered once this viewer may no longer send input', async () => {

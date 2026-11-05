@@ -162,8 +162,6 @@ export interface DeviceFetchPlan {
 export interface OpenFrameStream {
   url: string;
   push(record: LiveSurfaceRecord): Promise<void>;
-  /** The server ends the stream (the viewer reconnects). */
-  end(): Promise<void>;
 }
 
 export interface DeviceFetchLog {
@@ -365,12 +363,6 @@ export function stubDeviceFetch(plan: DeviceFetchPlan = {}): DeviceFetchLog {
           push: async (record) => {
             await act(async () => {
               controller.enqueue(encodeLiveSurfaceRecord(record));
-              await new Promise((resolve) => setTimeout(resolve, 0));
-            });
-          },
-          end: async () => {
-            await act(async () => {
-              controller.close();
               await new Promise((resolve) => setTimeout(resolve, 0));
             });
           },

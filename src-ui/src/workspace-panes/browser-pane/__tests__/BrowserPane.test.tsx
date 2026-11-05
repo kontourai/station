@@ -809,26 +809,6 @@ describe('BrowserPane honest states', () => {
     expect(calls.some((c) => c.path.endsWith('/reopen'))).toBe(true);
   });
 
-  test('a session stopped because a key may be stuck says so and offers Reopen (round 8, item 4)', async () => {
-    renderPane({
-      'GET /api/browser/projects/alpha/access': ADMIN_ACCESS,
-      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
-        sessionView({
-          state: 'needs-reopen',
-          endReason: 'input-stuck',
-          surfaceId: undefined,
-        }),
-      ),
-    });
-    expect(await screen.findByText('The browser stopped')).toBeTruthy();
-    expect(
-      screen.getByText(
-        'A key may have been stuck on the page. Reopen to reset it.',
-      ),
-    ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Reopen' })).toBeTruthy();
-  });
-
   test('a session that no longer exists offers a new one and attaches to it', async () => {
     const { onAttach, calls } = renderPane({
       'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,

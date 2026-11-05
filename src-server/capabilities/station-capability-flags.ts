@@ -41,11 +41,6 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // resume handling is unconditional (harmless to old clients), so this is
   // always true rather than gated on any runtime config.
   eventStreamResume: true,
-  // Live-surface epoch causality and host-released presses (#90):
-  // src-server/routes/live-surface.ts accepts `requestId`, `epochCause=1`
-  // and `release-pressed`; the lease records which request caused each
-  // epoch. Served wherever live surfaces are.
-  liveSurfaceEpochCause: true,
   // Versioned, bounded history windows for a single orchestration session.
   sessionEventWindow: true,
   // Exact authored-input reads behind Session inventory rows (#4129):

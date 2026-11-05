@@ -87,7 +87,6 @@ export interface BrowserLiveSurfacesOptions {
     | 'noteInput'
     | 'recordControlChange'
     | 'recordDialogAnswer'
-    | 'markInputStuck'
   >;
   surfaces: Pick<LiveSurfaceRegistry, 'register' | 'get'>;
   authorizeProject: BrowserProjectAuthorizer;
@@ -390,10 +389,6 @@ export class BrowserLiveSurfaces {
     let unregister: () => Promise<void>;
     try {
       unregister = this.options.surfaces.register(producer, {
-        // A reopened page releases what this one still held first.
-        heldScope: id,
-        onReleaseStuck: () =>
-          void this.options.sessions.markInputStuck(id, generation),
         onExplicitControl: ({ action, human, fence }) => {
           if (action === 'release') {
             recordControl('control-released', human);

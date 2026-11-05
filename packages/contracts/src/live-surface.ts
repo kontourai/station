@@ -247,76 +247,6 @@ export interface LiveSurfaceControlLease {
   fence?: number;
 }
 
-/**
- * The server-issued id of one viewer of a surface (#90). Minted when the
- * viewer's frames stream opens and told only to that stream (its own state
- * records), never to any other viewer. The viewer sends it with its claims,
- * input and `release-pressed`, so the server can say which viewer caused an
- * epoch. The server accepts it only from the controller it was issued to:
- * someone else presenting it is treated as presenting none.
- */
-export type LiveSurfaceViewerId = string;
-
-export function isLiveSurfaceViewerId(
-  value: unknown,
-): value is LiveSurfaceViewerId {
-  return typeof value === 'string' && /^[A-Za-z0-9_-]{32,64}$/.test(value);
-}
-
-/**
- * Where a batch sits in one viewer's own input order (#90): `sender` is a
- * random id the viewer picks once (same shape as a viewer id), and `seq`
- * counts up with every batch it sends. The server records it on each press,
- * so a `release-pressed` naming `through` releases only what that sender
- * pressed in batches up to `seq`: never a later press of the same key,
- * whatever order the requests arrive in, and however often one is retried.
- */
-export interface LiveSurfaceInputOrder {
-  sender: string;
-  seq: number;
-}
-
-export function parseLiveSurfaceInputOrder(
-  value: unknown,
-): LiveSurfaceInputOrder | null {
-  const record = plainRecord(value);
-  if (!record || !onlyKeys(record, ['sender', 'seq'])) return null;
-  if (!isLiveSurfaceViewerId(record.sender)) return null;
-  if (!intInRange(record.seq, 0, Number.MAX_SAFE_INTEGER)) return null;
-  return { sender: record.sender, seq: record.seq as number };
-}
-
-/**
- * What caused the current epoch, from the point of view of the viewer it is
- * told to: `self` (a claim or input from this very viewer handed control
- * off), `agent` (an agent's claim), or `other` (anything else: another
- * viewer, including another tab of the same person and device, or a request
- * that named no viewer). A renewal by the controller already holding the
- * lease creates no epoch and changes no cause.
- */
-export type LiveSurfaceEpochCause = 'self' | 'other' | 'agent';
-
-/**
- * Frames query key: `epochCause=1` asks for this stream's `viewerId` and the
- * `epochCause` of each state record. Only a host advertising the
- * `liveSurfaceEpochCause` capability accepts it; an older host refuses
- * unknown keys.
- */
-export const LIVE_SURFACE_EPOCH_CAUSE_QUERY_KEY = 'epochCause';
-
-/**
- * Frames request header: a replacement stream (a reconnect, or new stream
- * params) presents the viewer id it already holds, so it stays the same
- * viewer. Only honoured for the controller it was issued to.
- */
-export const LIVE_SURFACE_VIEWER_HEADER = 'x-live-surface-viewer';
-
-function parseEpochCause(value: unknown): LiveSurfaceEpochCause | undefined {
-  return value === 'self' || value === 'other' || value === 'agent'
-    ? value
-    : undefined;
-}
-
 export interface LiveSurfaceStreamParams {
   maxFps: number;
   quality: number;
@@ -392,32 +322,15 @@ export type LiveSurfaceLeaseRefusalCode =
   /** The surface was unregistered; its lease accepts no further claims. */
   | 'surface-closed'
   /** The caller is not the current holder (release/renew/dispatch). */
-  | 'not-holder'
-  /**
-   * A release of what was pressed is owed and not yet confirmed (an attempt
-   * in flight, a failed cancel, a wedge). The host keeps trying it itself;
-   * input is refused with this code until it succeeds, so nobody types
-   * through a stuck key or button.
-   */
-  | 'release-pending'
-  /**
-   * That release has kept failing: a key or button may be stuck on the
-   * surface. Input stays refused; the surface needs a reset (reload or
-   * reopen the session), which releases it before input is taken again.
-   */
-  | 'release-stuck';
+  | 'not-holder';
 
-export type LiveSurfaceLeaseResult = (
+export type LiveSurfaceLeaseResult =
   | { ok: true; lease: LiveSurfaceControlLease }
   | {
       ok: false;
       code: LiveSurfaceLeaseRefusalCode;
       lease: LiveSurfaceControlLease;
-    }
-) & {
-  /** What caused `lease.epoch`, for the claim's viewer; only when it named one. */
-  epochCause?: LiveSurfaceEpochCause;
-};
+    };
 
 export type LiveSurfaceInputRefusalCode =
   | LiveSurfaceLeaseRefusalCode
@@ -440,7 +353,7 @@ export type LiveSurfaceInputRefusalCode =
    */
   | 'page-dialog-open';
 
-export type LiveSurfaceInputResult = (
+export type LiveSurfaceInputResult =
   | { ok: true; accepted: number; lease: LiveSurfaceControlLease }
   | {
       ok: false;
@@ -448,11 +361,7 @@ export type LiveSurfaceInputResult = (
       /** Events that were dispatched before the refusal (0 when none). */
       accepted: number;
       lease: LiveSurfaceControlLease;
-    }
-) & {
-  /** What caused `lease.epoch`, for the batch's viewer; only when it named one. */
-  epochCause?: LiveSurfaceEpochCause;
-};
+    };
 
 /**
  * What a principal asks to do with a surface. Each is authorized separately
@@ -703,26 +612,14 @@ export interface LiveSurfaceInputBatch {
   /** The lease epoch the viewer last observed (frame header or state record). */
   epoch: number;
   events: LiveSurfaceInput[];
-  /** The sending viewer (see `LiveSurfaceViewerId`). */
-  viewerId?: LiveSurfaceViewerId;
-  /** This batch's place in its sender's order (see `LiveSurfaceInputOrder`). */
-  order?: LiveSurfaceInputOrder;
 }
 
 export function parseLiveSurfaceInputBatch(
   value: unknown,
 ): LiveSurfaceInputBatch | null {
   const record = plainRecord(value);
-  if (!record || !onlyKeys(record, ['epoch', 'events', 'viewerId', 'order']))
-    return null;
+  if (!record || !onlyKeys(record, ['epoch', 'events'])) return null;
   if (!isLiveSurfaceEpoch(record.epoch)) return null;
-  if (record.viewerId !== undefined && !isLiveSurfaceViewerId(record.viewerId))
-    return null;
-  const order =
-    record.order === undefined
-      ? undefined
-      : parseLiveSurfaceInputOrder(record.order);
-  if (order === null) return null;
   if (
     !Array.isArray(record.events) ||
     record.events.length === 0 ||
@@ -735,14 +632,7 @@ export function parseLiveSurfaceInputBatch(
     if (!parsed) return null;
     events.push(parsed);
   }
-  return {
-    epoch: record.epoch as number,
-    events,
-    ...(record.viewerId === undefined
-      ? {}
-      : { viewerId: record.viewerId as string }),
-    ...(order ? { order } : {}),
-  };
+  return { epoch: record.epoch as number, events };
 }
 
 /**
@@ -752,21 +642,7 @@ export function parseLiveSurfaceInputBatch(
  * a request body.
  */
 export type LiveSurfaceLeaseRequest =
-  | { action: 'claim'; viewerId?: LiveSurfaceViewerId }
-  /**
-   * Release what the caller has pressed on the surface (buttons, keys,
-   * touches), without completing it. Not fenced: it touches only the
-   * caller's own presses, and only those its sender pressed in batches up
-   * to `through.seq` (a press sent with no order counts as covered), so no
-   * late or retried request ever releases a newer press. A viewer sends it when it can no longer see
-   * its own releases (blur, a hidden page, unmount) or after a batch whose
-   * effect is unknown; the host owns the release from then on.
-   */
-  | {
-      action: 'release-pressed';
-      viewerId?: LiveSurfaceViewerId;
-      through: LiveSurfaceInputOrder;
-    }
+  | { action: 'claim' }
   | { action: 'release'; epoch: number }
   /**
    * Keep the caller's OWN current hold alive while a person is shown
@@ -781,26 +657,8 @@ export function parseLiveSurfaceLeaseRequest(
 ): LiveSurfaceLeaseRequest | null {
   const record = plainRecord(value);
   if (!record) return null;
-  if (record.action === 'claim' && onlyKeys(record, ['action', 'viewerId'])) {
-    if (record.viewerId === undefined) return { action: 'claim' };
-    if (!isLiveSurfaceViewerId(record.viewerId)) return null;
-    return { action: 'claim', viewerId: record.viewerId };
-  }
-  if (
-    record.action === 'release-pressed' &&
-    onlyKeys(record, ['action', 'viewerId', 'through']) &&
-    (record.viewerId === undefined || isLiveSurfaceViewerId(record.viewerId))
-  ) {
-    const through = parseLiveSurfaceInputOrder(record.through);
-    if (!through) return null;
-    return {
-      action: 'release-pressed',
-      ...(record.viewerId === undefined
-        ? {}
-        : { viewerId: record.viewerId as string }),
-      through,
-    };
-  }
+  if (record.action === 'claim' && onlyKeys(record, ['action']))
+    return { action: 'claim' };
   if (
     record.action === 'release' &&
     onlyKeys(record, ['action', 'epoch']) &&
@@ -1050,19 +908,6 @@ export interface LiveSurfaceStreamState {
    * host (a device on the Station's own machine is `local`; D13).
    */
   hostId?: string;
-  /**
-   * This stream's own viewer id, and what caused `lease.epoch` for it (see
-   * `LiveSurfaceEpochCause`). Present only on a stream opened with
-   * `epochCause=1`, so an older viewer never sees either key.
-   */
-  viewerId?: LiveSurfaceViewerId;
-  epochCause?: LiveSurfaceEpochCause;
-  /**
-   * A release of what was pressed has kept failing, so a key or button may
-   * be stuck and input is refused `release-stuck` until the surface is
-   * reset. Present (true) only then, and only on an `epochCause=1` stream.
-   */
-  releaseStuck?: true;
   /** Negotiated only: recent, bounded agent actions and the server's clock. */
   agentActions?: { now: number; events: LiveSurfaceAgentAction[] };
 }
@@ -1310,12 +1155,8 @@ export function parseLiveSurfaceStreamState(
       'fold',
       'hostId',
       'agentActions',
-      'viewerId',
-      'epochCause',
-      'releaseStuck',
     ]) ||
     (record.wedged !== undefined && typeof record.wedged !== 'boolean') ||
-    (record.releaseStuck !== undefined && record.releaseStuck !== true) ||
     (record.wedgedSince !== undefined &&
       record.wedgedSince !== null &&
       !intInRange(record.wedgedSince, 0, Number.MAX_SAFE_INTEGER)) ||
@@ -1332,13 +1173,6 @@ export function parseLiveSurfaceStreamState(
       ? undefined
       : parseLiveSurfaceAgentActions(record.agentActions);
   if (agentActions === null) return null;
-  const epochCause =
-    record.epochCause === undefined
-      ? undefined
-      : parseEpochCause(record.epochCause);
-  if (record.epochCause !== undefined && epochCause === undefined) return null;
-  if (record.viewerId !== undefined && !isLiveSurfaceViewerId(record.viewerId))
-    return null;
   let viewer: LiveSurfaceViewerIdentity | undefined;
   if (record.viewer !== undefined) {
     const identity = plainRecord(record.viewer);
@@ -1362,19 +1196,7 @@ export function parseLiveSurfaceStreamState(
       : { wedgedSince: record.wedgedSince as number | null }),
     ...producerStatus,
     ...(agentActions ? { agentActions } : {}),
-    ...(record.viewerId === undefined
-      ? {}
-      : { viewerId: record.viewerId as string }),
-    ...(epochCause === undefined ? {} : { epochCause }),
-    ...(record.releaseStuck === true ? { releaseStuck: true as const } : {}),
   };
-}
-
-/** The `epochCause` of an input or lease answer, when it carries a valid one. */
-export function parseLiveSurfaceEpochCause(
-  value: unknown,
-): LiveSurfaceEpochCause | undefined {
-  return parseEpochCause(value);
 }
 
 // ---------------------------------------------------------------------------

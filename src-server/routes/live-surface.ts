@@ -1,12 +1,9 @@
 import {
   encodeLiveSurfaceRecord,
   isLiveSurfaceId,
-  isLiveSurfaceViewerId,
-  LIVE_SURFACE_EPOCH_CAUSE_QUERY_KEY,
   LIVE_SURFACE_FRAMES_CONTENT_TYPE,
   LIVE_SURFACE_INPUT_MAX_BODY_BYTES,
   LIVE_SURFACE_LEASE_MAX_BODY_BYTES,
-  LIVE_SURFACE_VIEWER_HEADER,
   type LiveSurfaceAction,
   type LiveSurfaceInputResult,
   type LiveSurfaceLeaseResult,
@@ -20,8 +17,6 @@ import { type Context, Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type { HumanController } from '../services/live-surface/control-lease.js';
 import {
-  attachHumanViewer,
-  attestedLease,
   claimHumanControl,
   dispatchHumanInput,
   keepHumanControlAlive,
@@ -29,7 +24,6 @@ import {
   type LiveSurfaceEntry,
   type LiveSurfaceRegistry,
   releaseHumanControl,
-  releaseHumanPressed,
 } from '../services/live-surface/registry.js';
 
 /**
@@ -128,7 +122,6 @@ const KNOWN_FRAMES_QUERY_KEYS: ReadonlySet<string> = new Set([
   AUTHORIZATION_CONTEXT_QUERY_KEY,
   CODEC_QUERY_KEY,
   AGENT_ACTIONS_QUERY_KEY,
-  LIVE_SURFACE_EPOCH_CAUSE_QUERY_KEY,
 ]);
 
 function failure(
@@ -241,8 +234,7 @@ export function createLiveSurfaceRoutes(
         (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
           key !== AUTHORIZATION_CONTEXT_QUERY_KEY &&
           key !== CODEC_QUERY_KEY &&
-          key !== AGENT_ACTIONS_QUERY_KEY &&
-          key !== LIVE_SURFACE_EPOCH_CAUSE_QUERY_KEY) ||
+          key !== AGENT_ACTIONS_QUERY_KEY) ||
         (c.req.queries(key)?.length ?? 0) > 1,
     );
     if (refusedKey !== undefined)
@@ -265,41 +257,14 @@ export function createLiveSurfaceRoutes(
     const codec = c.req.query(CODEC_QUERY_KEY);
     if (codec !== undefined && codec !== 'h264')
       return failure(c, 'invalid-request', 400, CODEC_QUERY_KEY);
-    const epochCause = c.req.query(LIVE_SURFACE_EPOCH_CAUSE_QUERY_KEY);
-    if (epochCause !== undefined && epochCause !== '1')
-      return failure(
-        c,
-        'invalid-request',
-        400,
-        LIVE_SURFACE_EPOCH_CAUSE_QUERY_KEY,
-      );
 
     const request = c.req.raw;
-    // While this stream is open its controller can see, and release, what it
-    // pressed. A replacement stream presents the viewer id it holds and
-    // stays that viewer; the id is told only to this stream.
-    const presented = c.req.header(LIVE_SURFACE_VIEWER_HEADER);
-    const control = attachHumanViewer(
-      entry,
-      human,
-      epochCause === '1' && isLiveSurfaceViewerId(presented)
-        ? presented
-        : undefined,
-    );
     const viewer = entry.hub.attach(
       parsed.params,
       { principal: human.principal, device: human.device },
       {
         ...(agentActions === '1'
           ? { agentActions: () => options.agentActionsEnabled?.() === true }
-          : {}),
-        ...(epochCause === '1'
-          ? {
-              attest: () => ({
-                viewerId: control.viewerId,
-                ...attestedLease(entry, control.viewerId),
-              }),
-            }
           : {}),
         codec:
           codec === 'h264' &&
@@ -312,7 +277,6 @@ export function createLiveSurfaceRoutes(
     const end = () => {
       abort.abort();
       viewer.close();
-      control.close();
     };
     request.signal?.addEventListener('abort', end, { once: true });
     let lastCheckAt = now();
@@ -414,8 +378,6 @@ export function createLiveSurfaceRoutes(
       human,
       batch.epoch,
       batch.events,
-      batch.viewerId,
-      batch.order,
     );
     return c.json(
       { success: result.ok, data: result },
@@ -445,17 +407,10 @@ export function createLiveSurfaceRoutes(
       return failure(c, 'access-denied', 403);
     const result: LiveSurfaceLeaseResult =
       request.action === 'claim'
-        ? claimHumanControl(found.value, human, request.viewerId)
+        ? claimHumanControl(found.value, human)
         : request.action === 'keep-alive'
           ? keepHumanControlAlive(found.value, human, request.epoch)
-          : request.action === 'release-pressed'
-            ? await releaseHumanPressed(
-                found.value,
-                human,
-                request.viewerId,
-                request.through,
-              )
-            : releaseHumanControl(found.value, human, request.epoch);
+          : releaseHumanControl(found.value, human, request.epoch);
     return c.json({ success: result.ok, data: result }, result.ok ? 200 : 409);
   });
 
