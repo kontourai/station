@@ -14,6 +14,7 @@ import {
   type LiveSurfaceEpochCause,
   type LiveSurfaceFrameHeader,
   type LiveSurfaceInput,
+  type LiveSurfaceInputOrder,
   type LiveSurfaceInputResult,
   type LiveSurfaceLeaseResult,
   type LiveSurfaceProducerStatus,
@@ -24,6 +25,7 @@ import {
   parseLiveSurfaceEpochCause,
 } from '@kontourai/station-contracts/live-surface';
 import { authenticatedFetch, hasCapability } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type RefObject,
   useCallback,
@@ -533,6 +535,16 @@ export function useLiveSurface(
   const RELEASED_BY_HOST = -1;
   /** Press generations a release request is on its way for. */
   const releasingRef = useRef(new Set<number>());
+  /**
+   * This viewer's own input order (`LiveSurfaceInputOrder`): a sender id
+   * picked once, and the `seq` of the last batch sent. A release names the
+   * last `seq`, so the host releases only presses sent up to then.
+   */
+  const senderRef = useRef<string | null>(null);
+  senderRef.current ??= randomCorrelationId();
+  const seqRef = useRef(0);
+  /** A release asked for while input was still queued ahead of it. */
+  const deferredReleaseRef = useRef<{ force: boolean } | null>(null);
   /** False once the view unmounted: nothing is sent again after that. */
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -1014,6 +1026,7 @@ export function useLiveSurface(
     presentViewerIdRef.current = null;
     publishedLeaseRef.current = null;
     latestStreamLeaseRef.current = null;
+    deferredReleaseRef.current = null;
     targetAbortRef.current.abort();
     targetAbortRef.current = new AbortController();
     epochRef.current = 0;
@@ -1084,13 +1097,21 @@ export function useLiveSurface(
       queueRef.current = queueRef.current.filter(current);
       setInputNotice('control-changed');
     }
-    if (queueRef.current.length === 0) return;
+    if (queueRef.current.length === 0) {
+      releaseDeferredRef.current();
+      return;
+    }
     const batch: LiveSurfaceInput[] = [];
     let body = '';
     const batchEpoch = epochRef.current;
-    // Only a host that attests epoch causes takes a viewer id.
-    const viewerId =
-      epochCauseRef.current === true ? viewerIdRef.current : null;
+    // Only a host that attests epoch causes takes a viewer id and an order.
+    const attests = epochCauseRef.current === true;
+    const viewerId = attests ? viewerIdRef.current : null;
+    // Only while a stream confirmed this viewer, like its id: a host that
+    // may have been replaced is sent neither.
+    const order = viewerId
+      ? { sender: senderRef.current!, seq: seqRef.current + 1 }
+      : null;
     while (
       queueRef.current.length > 0 &&
       batch.length < LIVE_SURFACE_INPUT_MAX_EVENTS
@@ -1099,6 +1120,7 @@ export function useLiveSurface(
         epoch: batchEpoch,
         events: [...batch, queueRef.current[0]!.event],
         ...(viewerId ? { viewerId } : {}),
+        ...(order ? { order } : {}),
       });
       if (
         encoder.encode(candidate).byteLength > LIVE_SURFACE_INPUT_MAX_BODY_BYTES
@@ -1112,6 +1134,7 @@ export function useLiveSurface(
       queueRef.current.shift();
       return;
     }
+    if (order) seqRef.current = order.seq;
     inFlightRef.current = true;
     const generation = targetGenerationRef.current;
     try {
@@ -1231,6 +1254,7 @@ export function useLiveSurface(
         inFlightRef.current = false;
         reconcile();
         if (queueRef.current.length > 0) scheduleFlushRef.current();
+        else releaseDeferredRef.current();
       }
     }
   }, [adoptLease, showHostBusy, keepUndelivered, reconcile]);
@@ -1352,18 +1376,30 @@ export function useLiveSurface(
   const controlLineage = useCallback(() => lineageRef.current, []);
 
   /**
-   * Ask the host to release whatever this viewer's controller holds. False
-   * on a host without that (the caller then sends its own releases). The
-   * host owns the release from the moment it answers: it keeps trying a
-   * failed cancel itself and refuses input until it succeeds, so an answer
-   * of any kind ends this viewer's part, and the presses it asked about are
-   * treated as released. Only a request that got no answer is sent again,
-   * after a capped pause, while this view is mounted on the same target and
-   * those presses are still this control's. `force` asks even when this
-   * viewer knows of nothing pressed (after a batch whose effect is unknown).
+   * Ask the host to release what this viewer pressed. False on a host
+   * without that (the caller then sends its own releases). The request names
+   * the last batch this viewer sent (`through`), and goes only once the
+   * input queued ahead of it has been sent, so the host releases exactly the
+   * presses sent up to then: never a later press, however late the request
+   * arrives or how often it is retried. The host owns the release from the
+   * moment it answers (it keeps trying a failed cancel itself and refuses
+   * input until it succeeds), so an answer of any kind ends this viewer's
+   * part, and the presses it asked about are treated as released. Only a
+   * request that got no answer is sent again, after a capped pause, while
+   * this view is still mounted on the same target and control. `force` asks
+   * even when this viewer knows of nothing pressed (after a batch whose
+   * effect is unknown).
    */
   const releasePressed = useCallback((options?: { force?: boolean }) => {
     if (epochCauseRef.current !== true) return false;
+    const force = options?.force === true;
+    if (queueRef.current.length > 0) {
+      deferredReleaseRef.current = {
+        force: force || deferredReleaseRef.current?.force === true,
+      };
+      scheduleFlushRef.current();
+      return true;
+    }
     const lineage = lineageRef.current;
     const asked = new Map<string, number>();
     for (const [id, pressed] of pressedRef.current)
@@ -1372,15 +1408,33 @@ export function useLiveSurface(
         !releasingRef.current.has(pressed.generation)
       )
         asked.set(id, pressed.generation);
-    if (asked.size === 0 && !options?.force) return true;
-    void requestReleaseRef.current(asked, lineage);
+    if (asked.size === 0 && !force) return true;
+    void requestReleaseRef.current(asked, lineage, {
+      sender: senderRef.current!,
+      seq: seqRef.current,
+    });
     return true;
   }, []);
+  const releaseDeferredRef = useRef(() => {});
+  releaseDeferredRef.current = () => {
+    const deferred = deferredReleaseRef.current;
+    if (!deferred) return;
+    deferredReleaseRef.current = null;
+    releasePressedRef.current(deferred);
+  };
   const requestReleaseRef = useRef(
-    async (_asked: Map<string, number>, _lineage: number) => {},
+    async (
+      _asked: Map<string, number>,
+      _lineage: number,
+      _through: LiveSurfaceInputOrder,
+    ) => {},
   );
-  requestReleaseRef.current = async (asked, lineage) => {
+  requestReleaseRef.current = async (asked, lineage, through) => {
     const target = targetGenerationRef.current;
+    const stillWanted = () =>
+      mountedRef.current &&
+      target === targetGenerationRef.current &&
+      lineage === lineageRef.current;
     for (const generation of asked.values())
       releasingRef.current.add(generation);
     try {
@@ -1397,6 +1451,7 @@ export function useLiveSurface(
                   body: JSON.stringify({
                     action: 'release-pressed',
                     ...(viewerId ? { viewerId } : {}),
+                    through,
                   }),
                   signal,
                   keepalive: true,
@@ -1426,12 +1481,7 @@ export function useLiveSurface(
         } catch {
           // No answer: the host may never have heard; asked again below.
         }
-        if (
-          !mountedRef.current ||
-          target !== targetGenerationRef.current ||
-          lineage !== lineageRef.current
-        )
-          return;
+        if (!stillWanted()) return;
         await new Promise((resolve) =>
           setTimeout(
             resolve,
@@ -1441,6 +1491,9 @@ export function useLiveSurface(
             ),
           ),
         );
+        // Checked again after the pause: nothing goes for a view that
+        // unmounted, changed target or lost control meanwhile.
+        if (!stillWanted()) return;
       }
     } finally {
       for (const generation of asked.values())

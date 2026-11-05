@@ -351,8 +351,6 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   } | null = null;
   /** The raw-unit point a touch is held at, or null. */
   private touchDown: UnitPoint | null = null;
-  /** Keys pressed and not released (for a cancel). */
-  private readonly heldKeys = new Map<string, { key: string; code: string }>();
 
   private run: VideoRun | null = null;
   private runGeneration = 0;
@@ -508,7 +506,6 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
       if (this.inputSocket !== socket) return;
       this.inputSocket = null;
       this.touchDown = null;
-      this.heldKeys.clear();
       this.failHingeReplies('device input disconnected');
       this.inputFailed(generation);
     };
@@ -1388,10 +1385,10 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     await this.bounded((signal) => this.dispatchNow(input, context, signal));
   }
 
-  async cancelHeldInput(_held: LiveSurfaceHeldInput): Promise<void> {
+  async cancelHeldInput(held: LiveSurfaceHeldInput): Promise<void> {
     // The registry runs a cancel at a handoff on behalf of NO controller:
     // it is not fenced, and must not be.
-    await this.bounded(() => this.cancelNow());
+    await this.bounded(() => this.cancelNow(held));
   }
 
   /**
@@ -1557,17 +1554,16 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         }
         if (!this.touchDown) return;
         const point = await this.toRawUnit(input);
-        this.touchDown = null;
+        // Still down until the lift is delivered: a failed lift is
+        // cancelled later, never forgotten.
         await this.touch('up', point, guard);
+        this.touchDown = null;
         return;
       }
-      case 'key': {
-        const id = input.code || input.key;
-        if (input.type === 'down') this.heldKeys.set(id, input);
-        else this.heldKeys.delete(id);
+      case 'key':
+        // What is held is the registry's account (`cancelHeldInput`).
         await this.sendKey(input.type, input.key, input.code, guard);
         return;
-      }
       case 'text':
         await this.sendText(input.text, guard);
         return;
@@ -1690,23 +1686,36 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   }
 
   /**
-   * End what the previous controller held WITHOUT completing it. The hub has
-   * no touch-cancel, so a held touch slides a short way parallel to the
+   * End what the registry says is held WITHOUT completing it (`held` is the
+   * registry's account, the authority on what to release). The hub has no
+   * touch-cancel, so a held touch slides a short way parallel to the
    * nearest edge and lifts there (`cancelSlidePath`): never a tap where it
-   * was pressed, and not an edge swipe. Held keys are released.
+   * was pressed, and not an edge swipe. Each held key is released. Every
+   * release is tried, a lift is forgotten only once delivered, and the
+   * cancel fails if any release was not, so the registry tries again (sending a release
+   * twice is harmless; never sending it leaves the key down).
    */
-  private async cancelNow(): Promise<void> {
+  private async cancelNow(held: LiveSurfaceHeldInput): Promise<void> {
+    const failures: unknown[] = [];
     const press = this.touchDown;
-    this.touchDown = null;
-    if (press) {
-      const path = cancelSlidePath(press);
-      for (const point of path) await this.touch('move', point, undefined);
-      await this.touch('up', path[path.length - 1]!, undefined);
+    if (press && held.buttons.includes('left')) {
+      try {
+        const path = cancelSlidePath(press);
+        for (const point of path) await this.touch('move', point, undefined);
+        await this.touch('up', path[path.length - 1]!, undefined);
+        this.touchDown = null;
+      } catch (error) {
+        failures.push(error);
+      }
     }
-    const keys = [...this.heldKeys.values()];
-    this.heldKeys.clear();
-    for (const { key, code } of keys)
-      await this.sendKey('up', key, code, undefined);
+    for (const { key, code } of held.keys) {
+      try {
+        await this.sendKey('up', key, code, undefined);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) throw failures[0];
   }
 
   // ---- lifecycle ------------------------------------------------------------

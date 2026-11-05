@@ -5,6 +5,7 @@ import type {
   LiveSurfaceController,
   LiveSurfaceEpochCause,
   LiveSurfaceInput,
+  LiveSurfaceInputOrder,
   LiveSurfaceInputResult,
   LiveSurfacePointerButton,
   LiveSurfacePointerType,
@@ -213,21 +214,37 @@ class PressedInput {
   /**
    * Each held button: the pointer type its down was dispatched as, the
    * controller that dispatched it (so one controller's stuck press never
-   * keeps a different holder live), and whether it is to be released.
+   * keeps a different holder live), the place in its sender's input order
+   * of the batch that pressed it, and whether it is to be released.
    */
   private readonly buttons = new Map<
     LiveSurfacePointerButton,
-    { pointerType: LiveSurfacePointerType; owner: string; releasing: boolean }
+    {
+      pointerType: LiveSurfacePointerType;
+      owner: string;
+      order?: LiveSurfaceInputOrder;
+      releasing: boolean;
+    }
   >();
   private readonly keys = new Map<
     string,
-    { key: string; code: string; owner: string; releasing: boolean }
+    {
+      key: string;
+      code: string;
+      owner: string;
+      order?: LiveSurfaceInputOrder;
+      releasing: boolean;
+    }
   >();
   private pointer = { x: 0, y: 0 };
   private pointerType: LiveSurfacePointerType = 'mouse';
 
   /** An event about to be sent: a press is held from now on. */
-  sent(event: LiveSurfaceInput, controller: LiveSurfaceController): void {
+  sent(
+    event: LiveSurfaceInput,
+    controller: LiveSurfaceController,
+    order?: LiveSurfaceInputOrder,
+  ): void {
     const owner = controllerKey(controller);
     if (event.kind === 'pointer') {
       this.pointer = { x: event.x, y: event.y };
@@ -241,6 +258,7 @@ class PressedInput {
         pointerType:
           (event.kind === 'pointer' ? event.pointerType : undefined) ?? 'mouse',
         owner,
+        ...(order ? { order } : {}),
         releasing: false,
       });
     else if (event.kind === 'key')
@@ -248,6 +266,7 @@ class PressedInput {
         key: event.key,
         code: event.code,
         owner,
+        ...(order ? { order } : {}),
         releasing: false,
       });
   }
@@ -273,10 +292,24 @@ class PressedInput {
   }
 
   /** Mark what `controller` (or, without one, anyone) holds for release. */
-  markForRelease(controller?: LiveSurfaceController): void {
+  markForRelease(
+    controller?: LiveSurfaceController,
+    /** Only what this sender pressed in batches up to this `seq`. */
+    through?: LiveSurfaceInputOrder,
+  ): void {
     const owner = controller ? controllerKey(controller) : null;
-    for (const held of [...this.buttons.values(), ...this.keys.values()])
-      if (owner === null || held.owner === owner) held.releasing = true;
+    for (const held of [...this.buttons.values(), ...this.keys.values()]) {
+      if (owner !== null && held.owner !== owner) continue;
+      // A press sent with no order (before its viewer's stream confirmed
+      // it) is released by any release from its controller.
+      if (
+        through &&
+        held.order &&
+        (held.order.sender !== through.sender || held.order.seq > through.seq)
+      )
+        continue;
+      held.releasing = true;
+    }
   }
 
   /** Whether a release is still owed: input waits until it is not. */
@@ -771,6 +804,7 @@ async function dispatchFenced(
   controller: LiveSurfaceController,
   fence: number,
   events: readonly LiveSurfaceInput[],
+  order?: LiveSurfaceInputOrder,
 ): Promise<LiveSurfaceInputResult> {
   const own = internalsOf(entry);
   let accepted = 0;
@@ -785,7 +819,7 @@ async function dispatchFenced(
     if (owed) return { ...owed, accepted };
     // Recorded as SENT: an event in flight at a takeover, or one that times
     // out and lands later, is still accounted for by the cancel.
-    own.pressed.sent(event, controller);
+    own.pressed.sent(event, controller, order);
     const outcome = await dispatchWithTimeout(
       entry,
       () =>
@@ -840,20 +874,26 @@ export async function dispatchHumanInput(
   events: readonly LiveSurfaceInput[],
   /** The sending viewer, as it presented itself (validated here). */
   presentedViewerId?: LiveSurfaceViewerId,
+  /** The batch's place in its sender's order, recorded on its presses. */
+  order?: LiveSurfaceInputOrder,
 ): Promise<LiveSurfaceInputResult> {
   const own = internalsOf(entry);
   const viewerId = viewerOf(entry, human, presentedViewerId);
   const withCause = (result: LiveSurfaceInputResult): LiveSurfaceInputResult =>
     presentedViewerId === undefined ? result : attest(entry, viewerId, result);
-  const unsupported =
-    refuseUnsupported(entry, events) ?? wedged(entry) ?? releasePending(entry);
+  const unsupported = refuseUnsupported(entry, events) ?? wedged(entry);
   if (unsupported) return withCause(unsupported);
+  // A release owed from before this request (not the one its own claim
+  // starts at a handoff, which runs ahead of this batch on the chain).
+  const owed = releasePending(entry);
   const claim = own.lease.claimForHumanInput(human, observedEpoch, viewerId);
+  // A stale view is told so first; a current one waits for that release.
   if (!claim.ok) return withCause({ ...claim, accepted: 0 });
+  if (owed) return withCause({ ...owed, lease: entry.lease.snapshot() });
   const fence = claim.lease.fence ?? 0;
   return withCause(
     await enqueue(entry, () =>
-      dispatchFenced(entry, { ...human }, fence, events),
+      dispatchFenced(entry, { ...human }, fence, events, order),
     ),
   );
 }
@@ -861,7 +901,9 @@ export async function dispatchHumanInput(
 /**
  * Release what this human controller has pressed on the surface, never
  * completing it (#90 B). Not fenced: it touches only the caller's own
- * presses, which are safe to release at any epoch. Answered ok once nothing
+ * presses, which are safe to release at any epoch; with `through`, only
+ * those its sender pressed in batches up to that `seq`, so a retried or
+ * late request never releases a newer press. Answered ok once nothing
  * is owed; `release-pending` when the release is not yet confirmed (an
  * attempt already in flight, a failed try, a wedge), which the server keeps
  * trying itself: the caller never needs to ask again.
@@ -871,6 +913,8 @@ export async function releaseHumanPressed(
   human: HumanController,
   /** The asking viewer: the answer then carries its attestation. */
   presentedViewerId?: LiveSurfaceViewerId,
+  /** Only what this sender pressed in batches up to this `seq`. */
+  through?: LiveSurfaceInputOrder,
 ): Promise<FencedLeaseResult & { epochCause?: LiveSurfaceEpochCause }> {
   const own = internalsOf(entry);
   const viewerId = viewerOf(entry, human, presentedViewerId);
@@ -886,7 +930,7 @@ export async function releaseHumanPressed(
   // while the server is already retrying, is answered at once.
   const inFlight = own.cleanup.attempt !== null;
   const busy = inFlight || own.cleanup.failures > 0;
-  own.pressed.markForRelease({ ...human });
+  own.pressed.markForRelease({ ...human }, through);
   // An attempt in flight has taken what it releases but not confirmed it.
   const released = busy
     ? !inFlight && !own.pressed.unresolved()
@@ -1096,8 +1140,12 @@ export async function dispatchAgentInput(
       accepted: 0,
       lease: entry.lease.snapshot(),
     };
-  const unsupported =
-    refuseUnsupported(entry, events) ?? wedged(entry) ?? releasePending(entry);
+  const unsupported = refuseUnsupported(entry, events) ?? wedged(entry);
   if (unsupported) return unsupported;
+  // A fence that is no longer current is told so before any owed release.
+  const check = entry.lease.isCurrent(fence, agent);
+  if (!check.ok) return { ...check, accepted: 0 };
+  const owed = releasePending(entry);
+  if (owed) return owed;
   return enqueue(entry, () => dispatchFenced(entry, agent, fence, events));
 }

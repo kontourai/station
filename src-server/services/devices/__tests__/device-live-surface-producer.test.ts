@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   dispatchHumanInput,
   LiveSurfaceRegistry,
+  releaseHumanPressed,
 } from '../../live-surface/registry.js';
 import {
   type DeviceHostActions,
@@ -82,6 +83,8 @@ class FakeSocket extends EventEmitter implements DeviceSocket {
   sent: (string | Uint8Array)[] = [];
   /** When false, `send` never calls back (a hung socket). */
   acks = true;
+  /** Refuse a packet before delivery (it never reaches the device). */
+  refuse: (data: string | Uint8Array) => boolean = () => false;
   constructor(readonly url: string) {
     super();
   }
@@ -89,6 +92,10 @@ class FakeSocket extends EventEmitter implements DeviceSocket {
     // Like `ws`: sending before the handshake completes throws.
     if (this.readyState === 0)
       throw new Error('WebSocket is not open: readyState 0 (CONNECTING)');
+    if (this.refuse(data)) {
+      queueMicrotask(() => callback(new Error('not delivered')));
+      return;
+    }
     this.sent.push(data);
     if (this.acks) queueMicrotask(() => callback());
   }
@@ -1611,6 +1618,107 @@ describe('foldables through the live-surface registry', () => {
     );
     expect(await result).toMatchObject({ ok: true });
     viewer.close();
+    await registry.dispose();
+  });
+});
+
+describe('held input through the registry: the device releases only what it delivered', () => {
+  const human = {
+    kind: 'human',
+    principal: 'human:a',
+    device: 'a',
+  } as const;
+  const other = {
+    kind: 'human',
+    principal: 'human:b',
+    device: 'b',
+  } as const;
+  const key = (type: 'down' | 'up', name: string, code: string) =>
+    ({ kind: 'key', type, key: name, code }) as const;
+  /** HID usages down on the simulator, replayed from what it received. */
+  const remoteKeys = (socket: FakeSocket) => {
+    const down = new Set<number>();
+    for (const packet of socket.packets() as [number, unknown][]) {
+      if (packet[0] !== 0x06) continue;
+      const body = packet[1] as { type: string; usage: number };
+      if (body.type === 'down') down.add(body.usage);
+      else down.delete(body.usage);
+    }
+    return [...down];
+  };
+  /** Refuse the next `times` key releases before they reach the device. */
+  const refuseKeyUps = (socket: FakeSocket, times: number) => {
+    let left = times;
+    socket.refuse = (data) => {
+      if (typeof data === 'string' || data[0] !== 0x06) return false;
+      const body = JSON.parse(new TextDecoder().decode(data.subarray(1)));
+      if (body.type !== 'up' || left <= 0) return false;
+      left -= 1;
+      return true;
+    };
+  };
+  async function surface() {
+    const h = track(harness());
+    const socket = await openInput(h);
+    const registry = new LiveSurfaceRegistry({ dispatchTimeoutMs: 200 });
+    registry.register(h.producer, { authorize: () => true });
+    const entry = registry.get(h.producer.surfaceId)!;
+    return { socket, registry, entry };
+  }
+  const typed = (socket: FakeSocket) =>
+    (socket.packets() as [number, { type: string; usage: number }][]).filter(
+      ([tag, body]) => tag === 0x06 && body.usage !== 225,
+    ).length;
+
+  test('a key release the device never got stays held; the registry releases it before anyone types (round 8, item 1)', async () => {
+    const { socket, registry, entry } = await surface();
+    await dispatchHumanInput(entry, human, 0, [
+      key('down', 'Shift', 'ShiftLeft'),
+    ]);
+    expect(remoteKeys(socket)).toEqual([225]);
+    refuseKeyUps(socket, 1);
+    expect(
+      await dispatchHumanInput(entry, human, 1, [
+        key('up', 'Shift', 'ShiftLeft'),
+      ]),
+    ).toMatchObject({ ok: false, code: 'dispatch-failed' });
+    await until(() => remoteKeys(socket).length === 0, 'shift released');
+    const answer = await dispatchHumanInput(entry, other, 1, [
+      key('down', 'a', 'KeyA'),
+      key('up', 'a', 'KeyA'),
+    ]);
+    expect(answer.ok).toBe(true);
+    expect(remoteKeys(socket)).toEqual([]);
+    await registry.dispose();
+  });
+
+  test('a cancel that fails for one of two keys is not success: both are released before another controller types (round 8, item 1)', async () => {
+    const { socket, registry, entry } = await surface();
+    await dispatchHumanInput(entry, human, 0, [
+      key('down', 'Shift', 'ShiftLeft'),
+      key('down', 'Control', 'ControlLeft'),
+    ]);
+    expect(remoteKeys(socket).sort()).toEqual([224, 225]);
+    refuseKeyUps(socket, 1);
+    expect(await releaseHumanPressed(entry, human)).toMatchObject({
+      ok: false,
+      code: 'release-pending',
+    });
+    const before = typed(socket);
+    // Typing while a release is owed is refused, and reaches nothing.
+    expect(
+      await dispatchHumanInput(entry, other, 1, [{ kind: 'text', text: 'a' }]),
+    ).toMatchObject({ ok: false, code: 'release-pending' });
+    expect(typed(socket)).toBe(before);
+    await until(() => remoteKeys(socket).length === 0, 'keys released');
+    const epoch = entry.lease.snapshot().epoch;
+    expect(
+      (
+        await dispatchHumanInput(entry, other, epoch, [
+          { kind: 'text', text: 'a' },
+        ])
+      ).ok,
+    ).toBe(true);
     await registry.dispose();
   });
 });

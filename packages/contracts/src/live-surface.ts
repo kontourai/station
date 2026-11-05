@@ -264,6 +264,29 @@ export function isLiveSurfaceViewerId(
 }
 
 /**
+ * Where a batch sits in one viewer's own input order (#90): `sender` is a
+ * random id the viewer picks once (same shape as a viewer id), and `seq`
+ * counts up with every batch it sends. The server records it on each press,
+ * so a `release-pressed` naming `through` releases only what that sender
+ * pressed in batches up to `seq`: never a later press of the same key,
+ * whatever order the requests arrive in, and however often one is retried.
+ */
+export interface LiveSurfaceInputOrder {
+  sender: string;
+  seq: number;
+}
+
+export function parseLiveSurfaceInputOrder(
+  value: unknown,
+): LiveSurfaceInputOrder | null {
+  const record = plainRecord(value);
+  if (!record || !onlyKeys(record, ['sender', 'seq'])) return null;
+  if (!isLiveSurfaceViewerId(record.sender)) return null;
+  if (!intInRange(record.seq, 0, Number.MAX_SAFE_INTEGER)) return null;
+  return { sender: record.sender, seq: record.seq as number };
+}
+
+/**
  * What caused the current epoch, from the point of view of the viewer it is
  * told to: `self` (a claim or input from this very viewer handed control
  * off), `agent` (an agent's claim), or `other` (anything else: another
@@ -676,17 +699,24 @@ export interface LiveSurfaceInputBatch {
   events: LiveSurfaceInput[];
   /** The sending viewer (see `LiveSurfaceViewerId`). */
   viewerId?: LiveSurfaceViewerId;
+  /** This batch's place in its sender's order (see `LiveSurfaceInputOrder`). */
+  order?: LiveSurfaceInputOrder;
 }
 
 export function parseLiveSurfaceInputBatch(
   value: unknown,
 ): LiveSurfaceInputBatch | null {
   const record = plainRecord(value);
-  if (!record || !onlyKeys(record, ['epoch', 'events', 'viewerId']))
+  if (!record || !onlyKeys(record, ['epoch', 'events', 'viewerId', 'order']))
     return null;
   if (!isLiveSurfaceEpoch(record.epoch)) return null;
   if (record.viewerId !== undefined && !isLiveSurfaceViewerId(record.viewerId))
     return null;
+  const order =
+    record.order === undefined
+      ? undefined
+      : parseLiveSurfaceInputOrder(record.order);
+  if (order === null) return null;
   if (
     !Array.isArray(record.events) ||
     record.events.length === 0 ||
@@ -705,6 +735,7 @@ export function parseLiveSurfaceInputBatch(
     ...(record.viewerId === undefined
       ? {}
       : { viewerId: record.viewerId as string }),
+    ...(order ? { order } : {}),
   };
 }
 
@@ -717,13 +748,18 @@ export function parseLiveSurfaceInputBatch(
 export type LiveSurfaceLeaseRequest =
   | { action: 'claim'; viewerId?: LiveSurfaceViewerId }
   /**
-   * Release whatever the caller has pressed on the surface (buttons, keys,
+   * Release what the caller has pressed on the surface (buttons, keys,
    * touches), without completing it. Not fenced: it touches only the
-   * caller's own presses. A viewer sends it when it can no longer see its
-   * own releases (blur, a hidden page, unmount) or after a batch whose
+   * caller's own presses and, with `through`, only those its sender pressed
+   * in batches up to that `seq`. A viewer sends it when it can no longer see
+   * its own releases (blur, a hidden page, unmount) or after a batch whose
    * effect is unknown; the host owns the release from then on.
    */
-  | { action: 'release-pressed'; viewerId?: LiveSurfaceViewerId }
+  | {
+      action: 'release-pressed';
+      viewerId?: LiveSurfaceViewerId;
+      through?: LiveSurfaceInputOrder;
+    }
   | { action: 'release'; epoch: number }
   /**
    * Keep the caller's OWN current hold alive while a person is shown
@@ -745,15 +781,22 @@ export function parseLiveSurfaceLeaseRequest(
   }
   if (
     record.action === 'release-pressed' &&
-    onlyKeys(record, ['action', 'viewerId']) &&
+    onlyKeys(record, ['action', 'viewerId', 'through']) &&
     (record.viewerId === undefined || isLiveSurfaceViewerId(record.viewerId))
-  )
+  ) {
+    const through =
+      record.through === undefined
+        ? undefined
+        : parseLiveSurfaceInputOrder(record.through);
+    if (through === null) return null;
     return {
       action: 'release-pressed',
       ...(record.viewerId === undefined
         ? {}
         : { viewerId: record.viewerId as string }),
+      ...(through ? { through } : {}),
     };
+  }
   if (
     record.action === 'release' &&
     onlyKeys(record, ['action', 'epoch']) &&

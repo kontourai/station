@@ -156,6 +156,7 @@ export async function realLiveSurfaceServer(
           (body &&
             typeof body === 'object' &&
             ('viewerId' in body ||
+              'order' in body ||
               (body as { action?: string }).action === 'release-pressed')))
       ) {
         rejected.push(url.includes('/frames') ? url : body);
