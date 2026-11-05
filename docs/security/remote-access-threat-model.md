@@ -275,8 +275,12 @@ Station's internal token or a delegated device is recorded as an agent, whose
 decision annotates and never promotes. The reviewer is derived from the request,
 and a request body that names one is refused. The brief a new Station-engine chat
 starts with holds only memory a person confirmed, and it reaches that chat's model
-provider; no brief is built for an unknown identity, a hosted request or a request
-that fails the root-access or delivery check.
+provider; no brief is built for an unknown identity, a hosted request, a request
+that fails the root-access or delivery check, or a relayed session whose recorded
+owner is someone else or missing. Only Station's own orchestration relay (internal
+token, local caller, named thread) may name a session's owner; the browser's proxy
+hop carries the token too but does not. A conversation is briefed once per run of
+the server.
 
 When the default-off experimental S3 flag is enabled, separate Knowledge leaves
 admit current Project readers to source metadata, a bounded selected-prefix page

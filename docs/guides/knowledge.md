@@ -215,6 +215,11 @@ Known limits:
   custody records Station does not hold), so a conflict is found by comparing
   claims in the same subject and property. The Kit reports these as
   `not-evaluated` ([surface#361](https://github.com/kontourai/surface/issues/361)).
+- **Who could see a source.** Station treats a memory root's owner as the only
+  person who could see the sessions its claims came from, so a claim meant for
+  anyone else is queued as widening the audience. The envelope's own record of its
+  source is ignored: it cannot be checked. Real source custody is the Surface
+  work above.
 - **Claims that name a replacement** show their supersession history, but
   Station does not yet verify a succession edge with Survey support checks.
 - **External engines.** The brief reaches Station-engine chats. Claude Code and

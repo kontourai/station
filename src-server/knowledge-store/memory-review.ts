@@ -3,7 +3,6 @@ import type { KitCreateProposal } from '@kontourai/corpus-store';
 import {
   foldMemoryText,
   type MemoryClaim,
-  type MemoryVisibility,
   memorySlotKey,
   memoryValuesEqual,
 } from '@kontourai/flow-agents/memory-claims';
@@ -95,7 +94,6 @@ interface LoadedClaim {
   proposedAt: string;
   itemName: string;
   sittingId: string | null;
-  sourceVisibility: MemoryVisibility | null;
   decision: MemoryRoutingDecision | null;
 }
 
@@ -213,6 +211,10 @@ export class MemoryReviewService {
     // A claim is routed against the claims proposed before it, so the first
     // version of a fact stays recallable as proposed and the one that
     // challenges it is what a person decides.
+    const ownerOnly = {
+      kind: 'restricted' as const,
+      audiences: [authority.userId],
+    };
     const earlier: MemoryClaim[] = [];
     for (const entry of live.claims) {
       try {
@@ -222,7 +224,10 @@ export class MemoryReviewService {
             claim: entry.claim,
             current: earlier.filter((claim) => !rejected.has(claim.id)),
             agreement: entry.agreement,
-            sourceVisibility: entry.sourceVisibility,
+            // Who could see the source: this root belongs to one person and is built from
+            // their own sessions, so that is the owner and no one else. It does not come from
+            // the envelope, where a producer (or a forged proposal) could say anything.
+            sourceVisibility: ownerOnly,
           },
           ROUTING_POLICY,
         );
@@ -295,7 +300,6 @@ export class MemoryReviewService {
         proposedAt: proposal.proposed_at,
         itemName: memoryReviewItemName(decoded.claim.id),
         sittingId: decoded.sittingId,
-        sourceVisibility: decoded.sourceVisibility,
         decision: null,
       });
     }

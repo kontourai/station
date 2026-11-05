@@ -278,7 +278,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         // caller names no owner: the memory brief then follows the request's own
         // person. A relayed turn with no recorded owner gets no brief.
         memoryBriefSession: memoryBriefSessionFor({
-          trustedRelay,
+          trustedToken: trustedRelay,
+          proxyCaller: c.req.header(INTERNAL_PROXY_CALLER_HEADER),
+          thread: relayThread,
           userId: rawOptions.userId,
           conversationId: rawOptions.conversationId,
         }),

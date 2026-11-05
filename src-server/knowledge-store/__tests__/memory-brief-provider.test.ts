@@ -148,3 +148,46 @@ test('a conversation is briefed once, however many turns the relay sends', async
       ?.entries,
   ).toBe(1);
 });
+
+test('a refused or failed attempt does not use up a conversation’s brief', async () => {
+  const h = await setup();
+  const session = { relayOwner: OWNER, conversationId: 'thread-retry' };
+  h.state.deliver = false;
+  expect(await h.provider(h.request, session)).toBeNull();
+  h.state.deliver = true;
+  h.state.allowRead = false;
+  expect(await h.provider(h.request, session)).toBeNull();
+  h.state.allowRead = true;
+  expect((await h.provider(h.request, session))?.entries).toBe(1);
+  expect(await h.provider(h.request, session)).toBeNull();
+});
+
+test('two turns arriving together brief once', async () => {
+  const h = await setup();
+  const session = { relayOwner: OWNER, conversationId: 'thread-parallel' };
+  const results = await Promise.all([
+    h.provider(h.request, session),
+    h.provider(h.request, session),
+  ]);
+  expect(results.filter((r) => r !== null)).toHaveLength(1);
+});
+
+test('a very long conversation id is accepted without being kept whole', async () => {
+  const h = await setup();
+  const huge = 'x'.repeat(1024 * 1024);
+  expect(
+    (await h.provider(h.request, { relayOwner: OWNER, conversationId: huge }))
+      ?.entries,
+  ).toBe(1);
+  expect(
+    await h.provider(h.request, { relayOwner: OWNER, conversationId: huge }),
+  ).toBeNull();
+  expect(
+    (
+      await h.provider(h.request, {
+        relayOwner: OWNER,
+        conversationId: `${huge}y`,
+      })
+    )?.entries,
+  ).toBe(1);
+});

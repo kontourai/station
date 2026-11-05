@@ -2,10 +2,7 @@ import {
   assertMemoryClaim,
   type MemoryAgreement,
   type MemoryClaim,
-  type MemoryVisibility,
-  readMemoryVisibility,
 } from '@kontourai/flow-agents/memory-claims';
-import { recomputeMemoryRouting } from '@kontourai/flow-agents/memory-routing';
 
 /**
  * A distilled claim travels in a Corpus create proposal as one JSON envelope
@@ -18,10 +15,11 @@ import { recomputeMemoryRouting } from '@kontourai/flow-agents/memory-routing';
  *   content-addressed id, so an edited body is refused;
  * - agreement must be absent or two non-negative integers.
  *
- * The routing decision stored in the envelope is not used to route. It was made
+ * The routing decision stored in the envelope is not used at all. It was made
  * against whatever the store held at proposal time, so Station routes again
- * against the store as it is now. Only its record of who could see the source is
- * kept, and only when the decision recomputes under the Kit's own rules.
+ * against the store as it is now. Nothing in the envelope says who could see the
+ * source: that comes from the root's owner (see `MemoryReviewService`), because
+ * a decision that recomputes proves only that it is self-consistent.
  */
 export const MEMORY_CLAIM_CATEGORY = 'memory.claim';
 const ENVELOPE_VERSION = '1.2';
@@ -33,33 +31,6 @@ export interface DecodedMemoryEnvelope {
   agreement: MemoryAgreement | null;
   /** The producer's run: the sitting the claim was distilled from. */
   sittingId: string | null;
-  /**
-   * Who could see the source, as the producer recorded it in the routing
-   * decision it made. `null` when absent or unverifiable, which the Kit reads
-   * as sealed, so the visibility-widening rule errs toward review.
-   */
-  sourceVisibility: MemoryVisibility | null;
-}
-
-/** The source-visibility baseline of the envelope's own routing decision, when that decision verifies. */
-function producerSourceVisibility(
-  decision: unknown,
-  claim: MemoryClaim,
-): MemoryVisibility | null {
-  try {
-    const found = decision as {
-      changeId?: unknown;
-      input?: { baselines?: { ref?: unknown; visibility?: unknown }[] };
-    } | null;
-    if (!found || found.changeId !== claim.id) return null;
-    if (!recomputeMemoryRouting(found as never).ok) return null;
-    const source = found.input?.baselines?.find(
-      (base) => base.ref === 'source',
-    );
-    return source ? (readMemoryVisibility(source.visibility) ?? null) : null;
-  } catch {
-    return null;
-  }
 }
 
 const isCount = (value: unknown): value is number =>
@@ -87,7 +58,6 @@ export function decodeMemoryEnvelope(
       agreement: (agreement ?? null) as MemoryAgreement | null,
       sittingId:
         typeof sitting?.id === 'string' && sitting.id ? sitting.id : null,
-      sourceVisibility: producerSourceVisibility(value.decision, claim),
     };
   } catch {
     return null;

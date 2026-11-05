@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { MemoryReviewService } from './memory-review.js';
@@ -27,9 +28,20 @@ export interface MemoryBriefProviderDeps {
 export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
   // A conversation is briefed once. Station's relay sends every turn as plain
   // text, so "first turn" cannot be read from the message; it is the first time
-  // this person's conversation asks. A restart forgets, and briefs a long-running
-  // conversation once more, still as labelled background.
-  const briefed = new Set<string>();
+  // this person's conversation gets a brief. A restart forgets, and briefs a
+  // long-running conversation once more, still as labelled background.
+  //
+  // `done` holds conversations whose brief was built and delivered (including an
+  // empty one); `working` holds those being built right now, so two turns cannot
+  // both brief. A refused or failed attempt is in neither, so a later turn retries.
+  // Keys are hashes, so a long caller-chosen id costs a fixed 32 bytes.
+  const done = new Set<string>();
+  const working = new Set<string>();
+  const MAX_REMEMBERED = 5000;
+  const keyOf = (userId: string, conversationId: string) =>
+    createHash('sha256')
+      .update(`${userId}\u0000${conversationId}`)
+      .digest('hex');
   return async (
     request: Request,
     session: {
@@ -47,29 +59,35 @@ export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
     if (session.relayOwner === null) return null;
     if (session.relayOwner !== undefined && session.relayOwner !== scope.userId)
       return null;
-    if (session.conversationId) {
-      const key = `${scope.userId}\u0000${session.conversationId}`;
-      if (briefed.has(key)) return null;
-      briefed.add(key);
-      if (briefed.size > 5000) {
-        const oldest = briefed.values().next().value;
-        if (oldest !== undefined) briefed.delete(oldest);
+    const key = session.conversationId
+      ? keyOf(scope.userId, session.conversationId)
+      : undefined;
+    if (key && (done.has(key) || working.has(key))) return null;
+    if (key) working.add(key);
+    try {
+      const assertCurrent = () => {
+        if (!deps.enabled() || request.signal.aborted)
+          throw new Error('Private memory authority ended.');
+      };
+      const root = await deps.manager.findRoot(scope, assertCurrent);
+      if (!root || !(await deps.mayReadRoot(request, root))) return null;
+      const brief = await deps.review.brief(scope, root, assertCurrent);
+      const guarded = await deps.guardReadResponse(
+        request,
+        [root],
+        new Response(null, { status: 200 }),
+      );
+      if (!guarded.ok) return null;
+      if (key) {
+        done.add(key);
+        if (done.size > MAX_REMEMBERED) {
+          const oldest = done.values().next().value;
+          if (oldest !== undefined) done.delete(oldest);
+        }
       }
+      return { text: brief.text, entries: brief.entries.length };
+    } finally {
+      if (key) working.delete(key);
     }
-    const assertCurrent = () => {
-      if (!deps.enabled() || request.signal.aborted)
-        throw new Error('Private memory authority ended.');
-    };
-    const root = await deps.manager.findRoot(scope, assertCurrent);
-    if (!root || !(await deps.mayReadRoot(request, root))) return null;
-    const brief = await deps.review.brief(scope, root, assertCurrent);
-    const guarded = await deps.guardReadResponse(
-      request,
-      [root],
-      new Response(null, { status: 200 }),
-    );
-    return guarded.ok
-      ? { text: brief.text, entries: brief.entries.length }
-      : null;
   };
 }

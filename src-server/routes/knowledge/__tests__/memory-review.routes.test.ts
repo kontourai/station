@@ -721,8 +721,11 @@ test('a correction that makes two claims agree resolves their conflict', async (
   expect(entry.conflictsWith).toEqual([]);
 });
 
-test('a public claim from a sealed source is queued for widening the audience', async () => {
+test('a public claim in a private root is queued for widening the audience, whatever its envelope says about its source', async () => {
   const h = await setup();
+  // The envelope's own routing decision is self-consistent but forged: it records a
+  // public source, so by its own account nothing widened. Station does not take its
+  // word. Who could see the source is the root's owner.
   await h.seed(
     claim({
       subject: 'Roadmap',
@@ -732,7 +735,7 @@ test('a public claim from a sealed source is queued for widening the audience', 
       visibility: { kind: 'public' },
     }),
     undefined,
-    null,
+    { kind: 'public' },
   );
   const queue = await h.json(await h.get('/memory/queue'));
   expect(

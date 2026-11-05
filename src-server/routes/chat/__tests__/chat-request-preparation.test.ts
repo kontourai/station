@@ -27,36 +27,48 @@ vi.mock('../../../providers/connection-factories.js', () => ({
 
 describe('chat-request-preparation', () => {
   describe('private memory brief session', () => {
-    test('only Station’s own relay may name the session owner; a relay with none names null', () => {
+    const relay = {
+      trustedToken: true,
+      proxyCaller: 'local',
+      thread: 'thread-1',
+    };
+
+    test('only Station’s own orchestration relay may name the session owner and thread', () => {
       expect(
         memoryBriefSessionFor({
-          trustedRelay: true,
+          ...relay,
           userId: 'human:a',
-          conversationId: 'c1',
+          conversationId: 'body-id',
         }),
-      ).toEqual({ relayOwner: 'human:a', conversationId: 'c1' });
+      ).toEqual({ relayOwner: 'human:a', conversationId: 'thread-1' });
+      // A relay that recorded no owner names null: no brief.
       expect(
         memoryBriefSessionFor({
-          trustedRelay: true,
+          ...relay,
           userId: undefined,
-          conversationId: 'c1',
+          conversationId: 'x',
         }),
-      ).toEqual({ relayOwner: null, conversationId: 'c1' });
+      ).toEqual({ relayOwner: null, conversationId: 'thread-1' });
       expect(
-        memoryBriefSessionFor({
-          trustedRelay: true,
-          userId: '',
-          conversationId: undefined,
-        }),
-      ).toEqual({ relayOwner: null });
-      // A direct caller's body cannot name an owner: it is ignored, not trusted.
-      expect(
-        memoryBriefSessionFor({
-          trustedRelay: false,
-          userId: 'human:someone',
-          conversationId: 'c2',
-        }),
-      ).toEqual({ relayOwner: undefined, conversationId: 'c2' });
+        memoryBriefSessionFor({ ...relay, userId: '', conversationId: 'x' }),
+      ).toEqual({ relayOwner: null, conversationId: 'thread-1' });
+    });
+
+    test('the browser proxy carries the token but is not the relay: its body names no owner', () => {
+      for (const caller of [
+        { trustedToken: true, proxyCaller: 'remote', thread: undefined },
+        { trustedToken: true, proxyCaller: 'remote', thread: 'thread-1' },
+        { trustedToken: true, proxyCaller: 'local', thread: undefined },
+        { trustedToken: false, proxyCaller: 'local', thread: 'thread-1' },
+      ]) {
+        expect(
+          memoryBriefSessionFor({
+            ...caller,
+            userId: 'human:someone',
+            conversationId: 'c2',
+          }),
+        ).toEqual({ relayOwner: undefined, conversationId: 'c2' });
+      }
     });
   });
 

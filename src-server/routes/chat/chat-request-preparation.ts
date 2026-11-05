@@ -293,25 +293,35 @@ export async function prepareChatRequest(
 }
 
 /**
- * Who a turn's memory brief belongs to. Station's own relay is trusted to name
- * the session's owner (it records it when the session starts); a direct caller
- * names none, so the brief follows the request's own person. A relayed turn with
- * no recorded owner gets no brief.
+ * Who a turn's memory brief belongs to, and which conversation it is for.
+ * Station's own orchestration relay is trusted to name the session's owner (it
+ * records it when the session starts) and its thread. A relayed turn with no
+ * recorded owner gets no brief.
  */
 export function memoryBriefSessionFor(input: {
-  trustedRelay: boolean;
+  /** The request carried Station's internal token. */
+  trustedToken: boolean;
+  /** The internal caller marker: `local` for Station's own relay, `remote` for the browser's proxy hop. */
+  proxyCaller: string | undefined;
+  /** The orchestration thread the relay says it is relaying for. */
+  thread: string | undefined;
   userId: unknown;
   conversationId: unknown;
 }): { relayOwner: string | null | undefined; conversationId?: string } {
+  // Only Station's own orchestration relay names its session: the internal token,
+  // a local caller, and the thread it relays for. The UI proxy carries the token
+  // too, but marks its caller `remote` and names no thread, so its body is just
+  // a body and the brief follows the request's own person.
+  const verifiedRelay =
+    input.trustedToken && input.proxyCaller === 'local' && !!input.thread;
+  const conversationId = verifiedRelay ? input.thread : input.conversationId;
   return {
-    relayOwner: input.trustedRelay
+    relayOwner: verifiedRelay
       ? typeof input.userId === 'string' && input.userId
         ? input.userId
         : null
       : undefined,
-    ...(typeof input.conversationId === 'string'
-      ? { conversationId: input.conversationId }
-      : {}),
+    ...(typeof conversationId === 'string' ? { conversationId } : {}),
   };
 }
 
