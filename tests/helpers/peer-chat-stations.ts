@@ -239,6 +239,7 @@ export const test = mergeTests(authenticatedTest, auditedTest).extend<{
         mkdirSync(fixtureUserHome, { recursive: true });
         const stationEnvironment: NodeJS.ProcessEnv = {
           ...environment,
+          ALLOWED_ORIGINS: `${source.ui},${receiver.ui}`,
           HOME: fixtureUserHome,
           USERPROFILE: fixtureUserHome,
           APPDATA: join(fixtureUserHome, 'appdata'),
