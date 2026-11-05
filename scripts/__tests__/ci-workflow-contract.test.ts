@@ -3281,7 +3281,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
     );
   });
 
-  it('starts the simulator booting before the build without trusting that boot', () => {
+  it('preboots after dependency verification and keeps runtime smoke authoritative', () => {
     const document = load(ios) as {
       jobs: Record<
         string,
@@ -3302,6 +3302,9 @@ describe('iOS verification proves packaged runtime readiness', () => {
     const xcode = steps.findIndex((step) =>
       String(step.run ?? '').includes('xcode-select -s'),
     );
+    const dependencies = steps.findIndex((step) =>
+      String(step.run ?? '').includes('npm run dependencies:ci'),
+    );
     const build = steps.findIndex((step) =>
       String(step.run ?? '').includes('npx tauri ios build'),
     );
@@ -3312,6 +3315,8 @@ describe('iOS verification proves packaged runtime readiness', () => {
     // the build it overlaps, and before the smoke that waits on it.
     expect(xcode).toBeGreaterThan(-1);
     expect(preboot).toBeGreaterThan(xcode);
+    expect(dependencies).toBeGreaterThan(-1);
+    expect(preboot).toBeGreaterThan(dependencies);
     expect(preboot).toBeLessThan(build);
     expect(build).toBeLessThan(smoke);
     // A failed pre-boot must not fail the job on its own: the smoke's own

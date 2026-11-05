@@ -134,7 +134,7 @@ describe('station-control work claims (#3413 B)', () => {
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
+  async function setup({ maxRequestsPerSocket = 0 } = {}) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-work-claims-');
     const storage = new FileStorageAdapter(home);
@@ -315,6 +315,9 @@ describe('station-control work claims (#3413 B)', () => {
       { fetch: app.fetch, hostname: '127.0.0.1', port: 0 },
       (info) => resolvePort((info as AddressInfo).port),
     );
+    if (!('maxRequestsPerSocket' in server))
+      throw new Error('Work-claim fixture requires an HTTP/1 server');
+    server.maxRequestsPerSocket = maxRequestsPerSocket;
     closers.unshift(
       () => new Promise<void>((resolve) => server.close(() => resolve())),
     );
@@ -897,7 +900,10 @@ describe('station-control work claims (#3413 B)', () => {
     });
 
     test("other people's and unknown Sessions' claims never push a person's UI read past its bound (review F7)", async () => {
-      const { tool, store, p1, uiClaims } = await setup();
+      // Synchronous seeding may outlive an idle socket; use a fresh connection.
+      const { tool, store, p1, uiClaims } = await setup({
+        maxRequestsPerSocket: 1,
+      });
       await claim(tool, bound('a-caller'), { workItemRef: '#mine' });
       // More than WORK_CLAIM_LIST_MAX (500) unexpired claims this person may
       // not see: another person's live Session, and a Session Station has no
