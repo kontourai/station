@@ -199,6 +199,12 @@ function externalImports(pkg: PackageInfo): Map<string, string> {
 }
 
 describe('publish surface', () => {
+  // Packing reads the built CLI bundle. A shard that runs this suite without
+  // the repo-scan runner has none unless another suite happened to build it.
+  beforeAll(() => {
+    ensureCliBundle();
+  }, 180_000);
+
   it('has at least one publishable and one private package', () => {
     expect(publishable.length).toBeGreaterThan(0);
     expect(privateNames.size).toBeGreaterThan(0);
@@ -363,11 +369,6 @@ describe('publish surface', () => {
 
   describe('@kontourai/station-cli (bundled entrypoint)', () => {
     const cli = byName.get('@kontourai/station-cli');
-    // A shard that runs this suite without the repo-scan runner has no CLI
-    // bundle unless another suite happened to build it first.
-    beforeAll(() => {
-      ensureCliBundle();
-    }, 180_000);
 
     it('is publishable and ships a pre-bundled entrypoint, not raw source', async () => {
       expect(cli).toBeDefined();
