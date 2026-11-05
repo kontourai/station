@@ -3905,7 +3905,10 @@ With one:
 summary never contains a setting value. A policy with `limits.updates` reports
 `"limits": {"updates": {"mode": "auto" | "off", "mirror": <boolean>,
 "allowNightly": <boolean>}}`; `mirror` says a feed is set, and the feed URL
-itself is never returned. There is no error state: a server that
+itself is never returned. The
+[capability switches](../guides/managed-policy.md#capability-switches) appear
+as set (`"telemetry": false`, `"webhookAutomations": false`, and
+`"registries"` with its `allowedUrls` and switches). There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
 `station policy show` reports as a server too old to report a policy.
 

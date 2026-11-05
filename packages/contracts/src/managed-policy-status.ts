@@ -8,19 +8,9 @@
  * does not carry them.
  * `@kontourai/station-contracts/managed-policy` re-exports all of it.
  */
-export * from './managed-policy-codes.js';
+import { isRecord, ownMember } from './record-guard.js';
 
-/**
- * The same check as `isRecord` in `./contract-validation.js`, kept local:
- * that module imports the task graph contract, which would follow this one
- * into the UI's first-load bundle.
- */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
+export * from './managed-policy-codes.js';
 
 /**
  * #4522: how Station on this machine updates itself. Every key is optional;
@@ -226,7 +216,7 @@ function registriesSummaryReader(
   if (value === undefined) return undefined;
   if (!isRecord(value)) return null;
   const result: ManagedPolicyRegistryLimits = {};
-  const allowedUrls = ownLimitValue(value, 'allowedUrls');
+  const allowedUrls = ownMember(value, 'allowedUrls');
   if (allowedUrls !== undefined) {
     // Each entry must still read as an https URL: a client compares
     // locations against it, and an http registry can be altered in transit.
@@ -246,7 +236,7 @@ function registriesSummaryReader(
     'defaultSkillRegistries',
     'acpRegistryInstalls',
   ] as const) {
-    const off = offOnlyReader(ownLimitValue(value, key));
+    const off = offOnlyReader(ownMember(value, key));
     if (off === null) return null;
     if (off === false) result[key] = false;
   }
@@ -294,7 +284,7 @@ function managedPolicySummaryLimitsOf(
   for (const [key, read] of Object.entries(
     MANAGED_POLICY_SUMMARY_LIMIT_READERS,
   ) as Array<[string, SummaryLimitReader<unknown>]>) {
-    const value = read(ownLimitValue(limits, key));
+    const value = read(ownMember(limits, key));
     if (value === null) return null;
     if (value !== undefined) result[key] = value;
   }
@@ -327,11 +317,6 @@ export function managedPolicyDenial(
 // restricts and any other value is refused, so a policy can never force
 // telemetry, webhooks or a registry on.
 // ---------------------------------------------------------------------------
-
-/** `record[key]` when it is the record's own member (no `Object.hasOwn`: ES2020). */
-function ownLimitValue(record: Record<string, unknown>, key: string): unknown {
-  return Object.getOwnPropertyDescriptor(record, key)?.value;
-}
 
 /**
  * A registry location as the allow list compares it: an http(s) URL with no

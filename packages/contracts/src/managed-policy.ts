@@ -42,6 +42,7 @@ import {
   type ManagedPolicyUpdatesSummary,
   normalizeManagedRegistryUrl,
 } from './managed-policy-status.js';
+import { ownMember } from './record-guard.js';
 import {
   APP_SETTINGS_REGISTRY,
   INTERNAL_APP_CONFIG_FIELDS,
@@ -797,18 +798,18 @@ function updatesLimitProblems(updates: unknown): ManagedPolicyProblem[] {
       message:
         'unknown key; this version of Station refuses keys it cannot enforce',
     }));
-  const mode = ownLimitValue(updates, 'mode');
+  const mode = ownMember(updates, 'mode');
   if (mode !== undefined && mode !== 'auto' && mode !== 'off')
     problems.push({
       path: 'limits.updates.mode',
       message: 'must be "auto" or "off"',
     });
-  const feedUrl = ownLimitValue(updates, 'feedUrl');
+  const feedUrl = ownMember(updates, 'feedUrl');
   const feedProblem =
     feedUrl === undefined ? null : updateFeedUrlProblem(feedUrl);
   if (feedProblem)
     problems.push({ path: 'limits.updates.feedUrl', message: feedProblem });
-  const allowNightly = ownLimitValue(updates, 'allowNightly');
+  const allowNightly = ownMember(updates, 'allowNightly');
   if (allowNightly !== undefined && typeof allowNightly !== 'boolean')
     problems.push({
       path: 'limits.updates.allowNightly',
@@ -822,11 +823,11 @@ function parsedUpdatesLimit(
   updates: Record<string, unknown>,
 ): ManagedPolicyUpdatesLimit {
   const parsed: ManagedPolicyUpdatesLimit = {};
-  const mode = ownLimitValue(updates, 'mode');
+  const mode = ownMember(updates, 'mode');
   if (mode === 'auto' || mode === 'off') parsed.mode = mode;
-  const feedUrl = ownLimitValue(updates, 'feedUrl');
+  const feedUrl = ownMember(updates, 'feedUrl');
   if (typeof feedUrl === 'string') parsed.feedUrl = feedUrl;
-  const allowNightly = ownLimitValue(updates, 'allowNightly');
+  const allowNightly = ownMember(updates, 'allowNightly');
   if (typeof allowNightly === 'boolean') parsed.allowNightly = allowNightly;
   return parsed;
 }
@@ -953,7 +954,7 @@ function registryLimitProblems(value: unknown): ManagedPolicyProblem[] {
       message:
         'unknown key; this version of Station refuses keys it cannot enforce',
     }));
-  const allowedUrls = ownLimitValue(value, 'allowedUrls');
+  const allowedUrls = ownMember(value, 'allowedUrls');
   if (allowedUrls !== undefined)
     problems.push(...allowedUrlsProblems(allowedUrls));
   const switches: Array<[string, string]> = [
@@ -962,7 +963,7 @@ function registryLimitProblems(value: unknown): ManagedPolicyProblem[] {
     ['acpRegistryInstalls', 'ACP registry installs'],
   ];
   for (const [key, subject] of switches) {
-    const message = offOnlyProblem(ownLimitValue(value, key), subject);
+    const message = offOnlyProblem(ownMember(value, key), subject);
     if (message) problems.push({ path: `limits.registries.${key}`, message });
   }
   return problems;
@@ -978,10 +979,10 @@ export function capabilityLimitProblems(
     ['telemetry', 'telemetry'],
     ['webhookAutomations', 'webhook automations'],
   ] as const) {
-    const message = offOnlyProblem(ownLimitValue(limits, key), subject);
+    const message = offOnlyProblem(ownMember(limits, key), subject);
     if (message) problems.push({ path: `limits.${key}`, message });
   }
-  problems.push(...registryLimitProblems(ownLimitValue(limits, 'registries')));
+  problems.push(...registryLimitProblems(ownMember(limits, 'registries')));
   return problems;
 }
 
@@ -992,22 +993,22 @@ export function capabilityLimitProblems(
 export function capabilityLimitsOf(limits: unknown): ManagedPolicyLimits {
   if (!isRecord(limits)) return {};
   const result: ManagedPolicyLimits = {};
-  if (ownLimitValue(limits, 'telemetry') === false) result.telemetry = false;
-  if (ownLimitValue(limits, 'webhookAutomations') === false)
+  if (ownMember(limits, 'telemetry') === false) result.telemetry = false;
+  if (ownMember(limits, 'webhookAutomations') === false)
     result.webhookAutomations = false;
-  const registries = ownLimitValue(limits, 'registries');
+  const registries = ownMember(limits, 'registries');
   if (isRecord(registries)) {
     const copy: ManagedPolicyRegistryLimits = {};
-    const allowedUrls = ownLimitValue(registries, 'allowedUrls');
+    const allowedUrls = ownMember(registries, 'allowedUrls');
     if (Array.isArray(allowedUrls))
       copy.allowedUrls = allowedUrls.filter(
         (url): url is string => typeof url === 'string',
       );
-    if (ownLimitValue(registries, 'unsignedPackages') === false)
+    if (ownMember(registries, 'unsignedPackages') === false)
       copy.unsignedPackages = false;
-    if (ownLimitValue(registries, 'defaultSkillRegistries') === false)
+    if (ownMember(registries, 'defaultSkillRegistries') === false)
       copy.defaultSkillRegistries = false;
-    if (ownLimitValue(registries, 'acpRegistryInstalls') === false)
+    if (ownMember(registries, 'acpRegistryInstalls') === false)
       copy.acpRegistryInstalls = false;
     result.registries = copy;
   }
@@ -1054,7 +1055,7 @@ function clientsValueProblem(value: unknown): string | null {
 function clientsLimitProblems(
   limits: Record<string, unknown>,
 ): ManagedPolicyProblem[] {
-  const message = clientsValueProblem(ownLimitValue(limits, 'clients'));
+  const message = clientsValueProblem(ownMember(limits, 'clients'));
   return message ? [{ path: 'limits.clients', message }] : [];
 }
 
@@ -1065,7 +1066,7 @@ function clientsLimitProblems(
 function acceptedClientsLimit(
   limits: Record<string, unknown>,
 ): ManagedPolicyLimits {
-  const clients = ownLimitValue(limits, 'clients');
+  const clients = ownMember(limits, 'clients');
   return Array.isArray(clients)
     ? {
         clients: MANAGED_POLICY_CLIENT_KINDS.filter((kind) =>
@@ -1075,11 +1076,6 @@ function acceptedClientsLimit(
     : {};
 }
 
-/** `record[key]` when it is the record's own member (no `Object.hasOwn`: ES2020). */
-function ownLimitValue(record: Record<string, unknown>, key: string): unknown {
-  return Object.getOwnPropertyDescriptor(record, key)?.value;
-}
-
 /**
  * #4522: `limits.updates` in a document: its problems and its value. The
  * client projection (`feedUrl` to `mirror`) is {@link summarizeUpdatesLimit}.
@@ -1087,13 +1083,13 @@ function ownLimitValue(record: Record<string, unknown>, key: string): unknown {
 function updatesSliceProblems(
   limits: Record<string, unknown>,
 ): ManagedPolicyProblem[] {
-  return updatesLimitProblems(ownLimitValue(limits, 'updates'));
+  return updatesLimitProblems(ownMember(limits, 'updates'));
 }
 
 function updatesSliceAccepted(
   limits: Record<string, unknown>,
 ): ManagedPolicyLimits {
-  const updates = ownLimitValue(limits, 'updates');
+  const updates = ownMember(limits, 'updates');
   return isRecord(updates) ? { updates: parsedUpdatesLimit(updates) } : {};
 }
 
