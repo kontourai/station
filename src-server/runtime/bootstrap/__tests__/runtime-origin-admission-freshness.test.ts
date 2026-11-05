@@ -7,7 +7,7 @@
  * and origin policy; only the `tailscale` CLI and the clock are faked.
  */
 import { Hono } from 'hono';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createStationOriginPolicy } from '../../../security/station-browser-origins.js';
 import { createPublicIngressOriginResolver } from '../../../services/tailscale/public-ingress-origin.js';
 import { configureRuntimeRouteClassificationGate } from '../runtime-http.js';
@@ -155,6 +155,72 @@ describe('runtime origin gate: owned Serve origin admission is not stale', () =>
     // 3.5 s after the evidence was taken: not admitted on it either.
     clock.now += 999;
     expect(await request()).toBe(403);
+  });
+
+  test('the wall clock moving back never makes old evidence fresh (the default clock is monotonic)', async () => {
+    const config: Record<string, unknown> = {
+      TCP: { 443: { HTTPS: true } },
+      Web: {
+        [`${HOST}:443`]: {
+          Handlers: { '/': { Proxy: 'http://127.0.0.1:3141' } },
+        },
+      },
+    };
+    let release!: (stdout: string) => void;
+    let first = true;
+    // No injected clock: the production default.
+    const resolver = createPublicIngressOriginResolver({
+      localPorts: [3141],
+      cli: async (args: readonly string[]) => {
+        if (args[0] === 'status')
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({
+              Self: { DNSName: `${HOST}.`, Online: true },
+            }),
+          };
+        const stdout = JSON.stringify(config);
+        if (!first) return { exitCode: 0, stdout };
+        first = false;
+        return new Promise((resolve) => {
+          release = (value) => resolve({ exitCode: 0, stdout: value });
+        });
+      },
+    });
+    const pending = resolver.isOwnedOrigin(ORIGIN);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const owned = JSON.stringify(config);
+    (config.Web as Record<string, { Handlers: object }>)[
+      `${HOST}:443`
+    ]!.Handlers = {
+      '/': { Proxy: 'http://127.0.0.1:3141' },
+      '/evil': { Proxy: 'http://127.0.0.1:9000' },
+    };
+    config.AllowFunnel = { [`${HOST}:443`]: true };
+    const realNow = Date.now;
+    const wall = vi
+      .spyOn(Date, 'now')
+      .mockImplementation(() => realNow() - 60_000);
+    try {
+      // 1.1 s of real time passes while the wall clock reads 60 s earlier.
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      release(owned);
+      expect(await pending).toBe(false);
+      // Nor is that old answer served from the cache.
+      expect(await resolver.isOwnedOrigin(ORIGIN)).toBe(false);
+    } finally {
+      wall.mockRestore();
+    }
+  });
+
+  test('an injected clock that goes backwards expires trust rather than extending it', async () => {
+    const h = harness();
+    expect(await h.request()).toBe(202);
+    expect(h.calls).toHaveLength(2);
+    h.share();
+    h.clock.now -= 60_000;
+    expect(await h.request()).toBe(403);
+    expect(h.calls).toHaveLength(4);
   });
 
   test('a burst of admissions shares one daemon read', async () => {

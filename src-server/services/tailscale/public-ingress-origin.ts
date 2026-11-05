@@ -330,12 +330,20 @@ export function createPublicIngressOriginResolver(input: {
   readonly admissionTtlMs?: number;
   /** Bound on one admission lookup; a slower daemon refuses. */
   readonly admissionTimeoutMs?: number;
+  /** Monotonic milliseconds (default `performance.now`); a test seam. */
   readonly now?: () => number;
 }): PublicIngressOriginResolver {
   const ttlMs = input.ttlMs ?? 30_000;
   const admissionTtlMs = input.admissionTtlMs ?? 1_000;
   const admissionTimeoutMs = input.admissionTimeoutMs ?? 3_000;
-  const now = input.now ?? Date.now;
+  // Monotonic: ages for a trust decision must not move with the wall clock
+  // (a clock set back would make old evidence look fresh).
+  const now = input.now ?? (() => performance.now());
+  /** Within `bound` of `since`; a negative age (time went back) is not. */
+  const within = (since: number, bound: number) => {
+    const age = now() - since;
+    return age >= 0 && age < bound;
+  };
   let cachedAt = Number.NEGATIVE_INFINITY;
   let cached: IngressLookup = {};
   let inFlight: Promise<IngressLookup> | undefined;
@@ -363,7 +371,7 @@ export function createPublicIngressOriginResolver(input: {
   };
 
   const read = async (): Promise<IngressLookup> => {
-    if (now() - cachedAt < ttlMs) return cached;
+    if (within(cachedAt, ttlMs)) return cached;
     // Collapse concurrent misses so a burst of requests spawns one lookup.
     inFlight ??= lookup().finally(() => {
       inFlight = undefined;
@@ -382,7 +390,7 @@ export function createPublicIngressOriginResolver(input: {
   let admitted: readonly string[] = [];
   let admissionInFlight: Promise<readonly string[]> | undefined;
   const ownedForAdmission = async (): Promise<readonly string[]> => {
-    if (now() - admittedAt < admissionTtlMs) return admitted;
+    if (within(admittedAt, admissionTtlMs)) return admitted;
     admissionInFlight ??= (async () => {
       // Trust is bounded from when the evidence was asked for, not when it
       // arrived: a slow daemon reply describes the configuration as it was
@@ -406,7 +414,7 @@ export function createPublicIngressOriginResolver(input: {
       admittedAt = startedAt;
       // Evidence already older than the bound admits nothing (fail closed);
       // the next admission reads the daemon again.
-      admitted = now() - startedAt < admissionTtlMs ? owned : [];
+      admitted = within(startedAt, admissionTtlMs) ? owned : [];
       return admitted;
     })().finally(() => {
       admissionInFlight = undefined;
