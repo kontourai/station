@@ -860,7 +860,10 @@ describe('a binary plist whose offset table aliases or overlaps objects', () => 
     expect(performance.now() - started).toBeLessThan(500);
   }, 10_000);
 
-  test('a cycle through two indices that alias one array is refused', () => {
+  // Index-keyed cycle tracking also refuses this, one step later (or at the
+  // depth limit), with the same message, so this pins the refusal, not the
+  // offset keying (the aliasing case above pins that).
+  test('a cycle through two indices that alias one array is still refused', () => {
     // index 0: [1]; indices 1 and 2: the same array, [2].
     const area = Buffer.from([0xa1, 0x01, 0xa1, 0x02]);
     expect(
