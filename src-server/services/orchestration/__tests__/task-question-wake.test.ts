@@ -42,6 +42,7 @@ import {
   taskQuestionWakeKey,
 } from '../task-question-wake.js';
 import {
+  inboxTurnDispatchOrigin,
   ThreadInboxDelivery,
   type ThreadInboxPayload,
   type ThreadInboxStore,
@@ -510,6 +511,13 @@ describe('Task question lead wake (#4003)', () => {
       sends.filter((text) => text.includes('Station Project supervision')),
     ).toHaveLength(1);
     expect(world.inbox.list(LEAD)).toHaveLength(1);
+    // #4512: a coordinator wake, stored as one; on a Task's Session too it
+    // is not Task work for restart recovery to continue.
+    const wakePayload = JSON.parse(
+      world.store.threadInboxStore().list(LEAD)[0]!.payload,
+    );
+    expect(wakePayload.dispatchOrigin).toBe('unknown');
+    expect(inboxTurnDispatchOrigin(wakePayload, true)).toBe('unknown');
     const restarted = new ProjectSupervision({
       ...ports,
       store: world.store.projectSupervisionStore(),

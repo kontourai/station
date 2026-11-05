@@ -192,6 +192,11 @@ export interface ChatMessage {
    */
   stationMemoryContinuation?: boolean;
   /**
+   * #4512: Station's own continuation after a restart cut the turn off
+   * (unattended work it continued): written by Station, not the person.
+   */
+  stationRestartContinuation?: boolean;
+  /**
    * The interrupted-turn boundary this row reports: the restart notice, or
    * the stopped row that says "Station restarted mid-turn" in its place.
    * Continue keys its send on it.

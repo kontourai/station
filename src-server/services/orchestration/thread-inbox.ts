@@ -47,6 +47,10 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
+import {
+  TURN_DISPATCH_ORIGINS,
+  type TurnDispatchOrigin,
+} from '@kontourai/station-contracts/runtime-events';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import {
@@ -123,10 +127,75 @@ export interface ThreadInboxPayload {
   readonly inputDigest?: string;
   /** Retains the fixed replay route's resource admission class at placement. */
   readonly automaticBackground?: true;
+  /**
+   * #4512: who caused this entry's turn, as the Station sender that queued it
+   * knows (a scheduled Automation run, a person's Continue). Written only by
+   * server code, never copied from a request; see `inboxTurnDispatchOrigin`.
+   */
+  readonly dispatchOrigin?: TurnDispatchOrigin;
   readonly ambientContext?: string;
   readonly model?: ExecutionModelRequest;
   readonly actor: ThreadInboxActor;
   readonly clientOrigin?: ClientOrigin;
+}
+
+/**
+ * #4512: the `dispatchOrigin` an inbox placement records, from the entry's
+ * own server-written facts, first match wins:
+ *
+ * 1. An Automation action's entry (`serverAutomationIntentId`) is `automation`.
+ * 2. The origin the Station sender wrote on the entry (`dispatchOrigin`): a
+ *    scheduled Automation run says `automation`; a person's memory Continue
+ *    and a person's Task review send say `interactive`; an automatic memory
+ *    continuation says the dead turn's own recorded origin; coordinator and
+ *    Project supervision wakes say `unknown` (a person's coordinator is not
+ *    unattended work).
+ * 3. A person's entry (operator or paired device) is `interactive`.
+ * 4. A delegated child's result (`sender.kind` `delegation-result`, which
+ *    the server stamps) is `delegation` only when the parent Session is
+ *    itself unattended: bound to a Task, or itself a delegated child Station
+ *    derived (`parent.delegatedChild`). Delivered into anyone else's chat it
+ *    inherits that conversation's own classification (`parent.priorOrigin`:
+ *    a person's chat stays `interactive`), and without those facts it is
+ *    `unknown`.
+ * 5. Station's own entry (`internal` actor) into a Session bound to a Task
+ *    (`taskBound`: its room execution binding) is `task-dispatch`: a Task
+ *    question wake, or a check-back the agent scheduled for itself. Off a
+ *    Task's Session those are `unknown`.
+ * 6. Anything else is `unknown`.
+ */
+export function inboxTurnDispatchOrigin(
+  payload: Pick<
+    ThreadInboxPayload,
+    'serverAutomationIntentId' | 'dispatchOrigin' | 'clientOrigin'
+  >,
+  taskBound: boolean,
+  parent?: SessionDispatchFacts,
+): TurnDispatchOrigin {
+  if (payload.serverAutomationIntentId) return 'automation';
+  if (payload.dispatchOrigin) return payload.dispatchOrigin;
+  const actor = payload.clientOrigin?.actor.kind;
+  if (actor === 'operator' || actor === 'device') return 'interactive';
+  if (
+    actor === 'internal' &&
+    payload.clientOrigin?.sender?.kind === 'delegation-result'
+  )
+    return taskBound || parent?.delegatedChild
+      ? 'delegation'
+      : (parent?.priorOrigin() ?? 'unknown');
+  if (actor === 'internal' && taskBound) return 'task-dispatch';
+  return 'unknown';
+}
+
+/**
+ * #4512: what the Session that takes a turn says about who it works for,
+ * read from its own server-written record.
+ */
+export interface SessionDispatchFacts {
+  /** Started as a delegated child whose context Station derived or attested. */
+  readonly delegatedChild: boolean;
+  /** The origin of its newest turn that was not a delegated result. */
+  priorOrigin(): TurnDispatchOrigin;
 }
 
 /** JSON with object keys sorted, so equal inputs digest equally. */
@@ -200,6 +269,11 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
       : {}),
     ...(typeof value.inputDigest === 'string'
       ? { inputDigest: value.inputDigest }
+      : {}),
+    // An origin this build does not know replays as none.
+    ...(typeof value.dispatchOrigin === 'string' &&
+    (TURN_DISPATCH_ORIGINS as readonly string[]).includes(value.dispatchOrigin)
+      ? { dispatchOrigin: value.dispatchOrigin as TurnDispatchOrigin }
       : {}),
     ...(typeof value.ambientContext === 'string'
       ? { ambientContext: value.ambientContext }

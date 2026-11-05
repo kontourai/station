@@ -6,7 +6,7 @@ import {
   useAnswerSharesQuery,
   useRevokeAnswerShareMutation,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { errorText } from '../../utils/errorText';
 import './AnswerSharesSection.css';
@@ -19,9 +19,9 @@ import { settingsRow } from './settings-catalog';
  *
  * Modelled on `PairedDevicesPanel`/`PairedDeviceList`, which is the repo's
  * existing surface for "credentials I granted, and how I take them back":
- * an inline two-click confirm rather than a native dialog, a busy set so a
- * revoke in flight disables its own row, and revoked entries kept visible in
- * their own group instead of vanishing.
+ * an inline two-click confirm rather than a native dialog. Each row owns its
+ * mutation so concurrent revocations retain independent pending/error state.
+ * Revoked entries stay visible instead of vanishing.
  *
  * The list never shows a token. The server keeps only a digest, so there is
  * nothing to show and nothing to recover — a lost permalink is re-minted from
@@ -49,16 +49,18 @@ function formatDate(value: string): string {
     : 'date not recorded';
 }
 
-function ShareRow({
-  share,
-  onRevoke,
-  busy,
-}: {
-  share: AnswerShareSummary;
-  onRevoke: (share: AnswerShareSummary) => void;
-  busy: boolean;
-}) {
+function ShareRow({ share }: { share: AnswerShareSummary }) {
   const [confirming, setConfirming] = useState(false);
+  const revokeControl = useRef<HTMLButtonElement>(null);
+  const restoreRevokeFocus = useRef(false);
+  const revoke = useRevokeAnswerShareMutation();
+  const busy = revoke.isPending;
+  useLayoutEffect(() => {
+    if (!confirming && restoreRevokeFocus.current) {
+      restoreRevokeFocus.current = false;
+      revokeControl.current?.focus();
+    }
+  }, [confirming]);
   return (
     <div className="answer-shares__row">
       <div className="answer-shares__body">
@@ -71,6 +73,13 @@ function ShareRow({
           {formatDate(share.expiresAt)}
           {share.revokedAt ? ` · revoked ${formatDate(share.revokedAt)}` : ''}
         </div>
+        {revoke.isError && (
+          <ErrorState
+            variant="compact"
+            title="This share could not be revoked"
+            description={errorText(revoke.error)}
+          />
+        )}
       </div>
       {share.state !== 'revoked' && (
         <div className="answer-shares__actions">
@@ -82,7 +91,7 @@ function ShareRow({
                 disabled={busy}
                 onClick={() => {
                   setConfirming(false);
-                  onRevoke(share);
+                  revoke.mutate(share.id);
                 }}
               >
                 Confirm
@@ -91,13 +100,17 @@ function ShareRow({
                 type="button"
                 className="button"
                 disabled={busy}
-                onClick={() => setConfirming(false)}
+                onClick={() => {
+                  restoreRevokeFocus.current = true;
+                  setConfirming(false);
+                }}
               >
                 Cancel
               </button>
             </>
           ) : (
             <button
+              ref={revokeControl}
               type="button"
               className="button"
               disabled={busy}
@@ -115,8 +128,6 @@ function ShareRow({
 
 export function AnswerSharesSection() {
   const shares = useAnswerSharesQuery();
-  const revoke = useRevokeAnswerShareMutation();
-  const [busyId, setBusyId] = useState<string | null>(null);
 
   return (
     <SettingsSection icon="⚯" title="Shared answers" id="section-answer-shares">
@@ -147,14 +158,6 @@ export function AnswerSharesSection() {
           />
         )}
 
-        {revoke.isError && (
-          <ErrorState
-            variant="compact"
-            title="This share could not be revoked"
-            description={errorText(revoke.error)}
-          />
-        )}
-
         {shares.data?.length === 0 && (
           <Empty
             variant="compact"
@@ -164,17 +167,7 @@ export function AnswerSharesSection() {
         )}
 
         {shares.data?.map((share) => (
-          <ShareRow
-            key={share.id}
-            share={share}
-            busy={busyId === share.id}
-            onRevoke={(target) => {
-              setBusyId(target.id);
-              revoke.mutate(target.id, {
-                onSettled: () => setBusyId(null),
-              });
-            }}
-          />
+          <ShareRow key={share.id} share={share} />
         ))}
       </div>
     </SettingsSection>

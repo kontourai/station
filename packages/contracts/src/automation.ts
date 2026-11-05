@@ -14,7 +14,8 @@
  * the same `projectId` and `agentId` with `dispatch-task`, and a `notify`
  * rule (which names no Project or Agent) needs some source grant listing
  * `notify`. A revoked or disabled source grants nothing at run time, though
- * its rules stay stored. Sources and rules are created disabled.
+ * its rules stay stored. Sources are created disabled; rules are created in
+ * `observe` mode, which records what they would do but never acts.
  */
 
 /** Current version of every persisted Automation record in this module. */
@@ -256,12 +257,39 @@ export type AutomationEpisodePolicy = Readonly<{
   maxAttempts: number;
 }>;
 
+/**
+ * What a rule does with a matching event (#4509).
+ *
+ * - `off`: the rule is ignored, as a disabled rule always was.
+ * - `observe`: intake checks the rule's episode, concurrency, active and
+ *   hourly-start limits against current `live` load and records a per-rule
+ *   decision (`would-start` or `suppressed`) on the delivery. It never
+ *   retains a dispatchable intent, opens a real episode, claims an action or
+ *   consumes an attempt, so neither action consumer can start work for it.
+ *   The rule's own earlier `would-start`s count toward its hourly limit but
+ *   never as active work: the limits do not model what the rule would be
+ *   running had it been `live`.
+ * - `live`: the rule acts, subject to the source grant, the
+ *   `github-automation-actions` / `isolated-github-repairs` previews and the
+ *   other admission checks.
+ *
+ * Switching a rule from `observe` to `live` acts only on events that arrive
+ * afterwards; earlier observed events are never replayed.
+ */
+export const AUTOMATION_RULE_MODES = ['off', 'observe', 'live'] as const;
+
+export type AutomationRuleMode = (typeof AUTOMATION_RULE_MODES)[number];
+
 export type AutomationRule = Readonly<{
   /** Server-issued; a recreated rule is a new `automation-rule` principal. */
   id: string;
   name: string;
-  /** Created `false`; only an operator surface may enable a rule. */
-  enabled: boolean;
+  /**
+   * Created `observe`; only an operator surface may set `live`. A stored
+   * rule written before #4509 carries `enabled: boolean` instead; the
+   * server reads `false` as `off` and `true` as `live`, and writes `mode`.
+   */
+  mode: AutomationRuleMode;
   sourceId: string;
   match: AutomationMatcher;
   episode?: AutomationEpisodePolicy;
@@ -325,16 +353,68 @@ export const AUTOMATION_REFUSAL_REASONS = [
 export type AutomationRefusalReason =
   (typeof AUTOMATION_REFUSAL_REASONS)[number];
 
-/** Why a matched delivery started nothing. */
+/**
+ * Why a matched delivery started nothing. `rule-active-limit` and
+ * `concurrency-limit` are recorded only by an `observe` rule's decision: a
+ * `live` action held by those limits waits and is admitted later, so they
+ * mean "would have waited at the time of evaluation", not a refusal.
+ */
 export const AUTOMATION_SUPPRESSION_REASONS = [
   'episode-active',
   'episode-exhausted',
   'episode-indeterminate',
   'rate-limited',
+  'rule-active-limit',
+  'concurrency-limit',
 ] as const;
 
 export type AutomationSuppressionReason =
   (typeof AUTOMATION_SUPPRESSION_REASONS)[number];
+
+/**
+ * What intake decided for one matched rule on one delivery (#4509).
+ *
+ * - `would-start`: an `observe` rule passed every admission check intake can
+ *   evaluate. Only `observe` rules record it.
+ * - `suppressed`: the rule matched but would not (observe) or could not
+ *   (live) start; `reason` says why.
+ * - `intent-retained`: a `live` rule's dispatchable intent was retained for
+ *   its action consumer. Whether it then starts is decided later, by that
+ *   consumer, and is reflected in the delivery's `outcome`, not here.
+ */
+export const AUTOMATION_RULE_DECISION_OUTCOMES = [
+  'would-start',
+  'suppressed',
+  'intent-retained',
+] as const;
+
+export type AutomationRuleDecisionOutcome =
+  (typeof AUTOMATION_RULE_DECISION_OUTCOMES)[number];
+
+/**
+ * One rule's decision for one delivery, with a bounded snapshot of the
+ * action it names. Recorded for every matched `observe` or `live` rule with
+ * a `dispatch-task` or `isolated-repair` action; `notify` rules record none.
+ * It carries no instructions, event fields or payload.
+ */
+export type AutomationRuleDecision = Readonly<{
+  ruleId: string;
+  /** The rule's name when the decision was recorded. */
+  ruleName: string;
+  mode: Exclude<AutomationRuleMode, 'off'>;
+  outcome: AutomationRuleDecisionOutcome;
+  /** Present only when `outcome` is `suppressed`. */
+  reason?: AutomationSuppressionReason;
+  actionKind: Extract<
+    AutomationActionKind,
+    'dispatch-task' | 'isolated-repair'
+  >;
+  projectId: string;
+  agentId: string;
+  /** The episode this event belongs to, e.g. the first failing run id. */
+  episodeId: string;
+  decidedAt: string;
+}>;
 
 /**
  * Bounded, payload-free view of one recorded delivery, as the ledger keeps it
@@ -356,6 +436,12 @@ export type AutomationDeliveryRecord = Readonly<{
   episodeId?: string;
   taskId?: string;
   sessionId?: string;
+  /**
+   * Per-rule decisions, ordered by rule id; omitted when none was recorded.
+   * The delivery's own `ruleId`, `outcome` and `episodeId` describe one rule
+   * (a `live` rule when any matched); these describe every matched rule.
+   */
+  decisions?: readonly AutomationRuleDecision[];
 }>;
 
 export type AutomationPollOutcome =

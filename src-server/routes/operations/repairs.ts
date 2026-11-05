@@ -1,4 +1,7 @@
-import { AUTOMATION_ACTION_KINDS } from '@kontourai/station-contracts/automation';
+import {
+  AUTOMATION_ACTION_KINDS,
+  AUTOMATION_RULE_MODES,
+} from '@kontourai/station-contracts/automation';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
@@ -187,14 +190,27 @@ export function createIsolatedRepairRoutes(options: {
     });
   });
   app.post('/configuration/enable', async (c) => {
+    // A rule takes `mode` (#4509); `enabled` keeps its earlier meaning
+    // (`true` -> live, `false` -> off) for existing callers.
     const input = z
-      .object({
-        kind: z.enum(['source', 'rule']),
-        id,
-        expectedFingerprint: digest,
-        enabled: z.boolean(),
-      })
-      .strict()
+      .union([
+        z
+          .object({
+            kind: z.enum(['source', 'rule']),
+            id,
+            expectedFingerprint: digest,
+            enabled: z.boolean(),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal('rule'),
+            id,
+            expectedFingerprint: digest,
+            mode: z.enum(AUTOMATION_RULE_MODES),
+          })
+          .strict(),
+      ])
       .parse(await body(c.req.raw));
     await options.controller!.enableAutomation(
       input,

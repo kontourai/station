@@ -130,6 +130,9 @@ export const STATION_HOME_ROOTS: Readonly<
   'task-follow-ups': 'state',
   'task-graph.json': 'state',
   'task-outputs': 'state',
+  // #4507: Task-owned worktree records, apart from the task store so an
+  // older Station never reads them.
+  'task-worktrees.json': 'state',
   'terminal-history': 'state',
   // Durable terminal session identities and their bounded output journals.
   'terminal-journals': 'state',

@@ -1,6 +1,9 @@
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import type { AutomationEvent } from '@kontourai/station-contracts/automation';
+import type {
+  AutomationEvent,
+  AutomationRule,
+} from '@kontourai/station-contracts/automation';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -452,5 +455,268 @@ describe('recordAutomationEvent (observe-only)', () => {
       openedEpisodeIds: [],
     });
     expect(ledger.listEpisodes()).toEqual([]);
+  });
+});
+
+describe('recordAutomationEvent per-rule mode (#4509)', () => {
+  let directory: string;
+  let ledger: AutomationLedger;
+
+  beforeEach(() => {
+    directory = makeTempDir('automation-observe-');
+    ledger = createAutomationLedger({ directory, busyTimeoutMs: 200 });
+  });
+  afterEach(() => ledger.close());
+
+  const source = {
+    id: 'source-1',
+    kind: 'github-poll' as const,
+    name: 'source',
+    enabled: true,
+    repository: 'kontourai/station',
+    grants: [
+      {
+        projectId: 'station',
+        agentId: 'repairer',
+        actions: ['dispatch-task' as const],
+      },
+    ],
+  };
+  const dispatchRule = (
+    id: string,
+    mode: 'off' | 'observe' | 'live',
+    overrides: Partial<AutomationRule> = {},
+  ): AutomationRule => ({
+    ...QUALIFICATION_RULE,
+    id,
+    name: `rule ${id}`,
+    mode,
+    action: {
+      kind: 'dispatch-task',
+      projectId: 'station',
+      agentId: 'repairer',
+      instructions: 'Diagnose.',
+      budget: { maxTurns: 1, maxTokens: 1000, maxWallRuntimeMs: 60000 },
+    },
+    ...overrides,
+  });
+  const record = (value: AutomationEvent, rules: AutomationRule[]) =>
+    recordAutomationEvent({
+      ledger,
+      source,
+      rules,
+      event: value,
+      transportId: value.semanticKey,
+      now: NOW,
+    });
+  const decisions = () => ledger.listDeliveries()[0]?.decisions;
+
+  test('an observe rule records would-start with an action snapshot and retains nothing a consumer could claim', () => {
+    const observe = dispatchRule('rule-observe', 'observe');
+    expect(record(red(), [observe])).toMatchObject({
+      outcome: 'matched',
+      matchedRuleIds: ['rule-observe'],
+      openedEpisodeIds: [],
+    });
+    expect(decisions()).toEqual([
+      {
+        ruleId: 'rule-observe',
+        ruleName: 'rule rule-observe',
+        mode: 'observe',
+        outcome: 'would-start',
+        actionKind: 'dispatch-task',
+        projectId: 'station',
+        agentId: 'repairer',
+        episodeId: '37423043587',
+        decidedAt: new Date(NOW).toISOString(),
+      },
+    ]);
+    expect(ledger.listActionIntents()).toEqual([]);
+    expect(ledger.listEpisodes()).toEqual([]);
+    const episodeKey = automationEpisodeKey(observe, red())!;
+    expect(ledger.episode(episodeKey)).toBeUndefined();
+    expect(
+      ledger.claimAction({
+        episodeKey,
+        deliveryKey: ledger.listDeliveries()[0]!.deliveryKey,
+        now: NOW,
+      }).kind,
+    ).toBe('not-found');
+  });
+
+  test('one delivery matching an observe and a live rule records both and retains an intent only for the live one', () => {
+    const observe = dispatchRule('rule-a-observe', 'observe');
+    const live = dispatchRule('rule-b-live', 'live');
+    expect(record(red(), [observe, live]).matchedRuleIds).toEqual([
+      'rule-a-observe',
+      'rule-b-live',
+    ]);
+    const [delivery] = ledger.listDeliveries();
+    expect(delivery).toMatchObject({
+      outcome: 'matched',
+      ruleId: 'rule-b-live',
+      episodeId: '37423043587',
+    });
+    expect(
+      delivery!.decisions!.map(({ ruleId, mode, outcome }) => [
+        ruleId,
+        mode,
+        outcome,
+      ]),
+    ).toEqual([
+      ['rule-a-observe', 'observe', 'would-start'],
+      ['rule-b-live', 'live', 'intent-retained'],
+    ]);
+    expect(ledger.listActionIntents().map(({ ruleId }) => ruleId)).toEqual([
+      'rule-b-live',
+    ]);
+    expect(ledger.listEpisodes().map(({ ruleId }) => ruleId)).toEqual([
+      'rule-b-live',
+    ]);
+  });
+
+  test('an off rule passed to intake is ignored', () => {
+    expect(record(red(), [dispatchRule('rule-off', 'off')])).toMatchObject({
+      outcome: 'ignored',
+      matchedRuleIds: [],
+    });
+    expect(decisions()).toBeUndefined();
+    expect(ledger.listActionIntents()).toEqual([]);
+  });
+
+  test('a recurring failure in an observed episode is episode-active until closeOn resolves it', () => {
+    const observe = dispatchRule('rule-observe', 'observe');
+    record(red(), [observe]);
+    record(red({ id: 37423043590, updatedAt: RED_AT }), [observe]);
+    expect(decisions()).toEqual([
+      expect.objectContaining({
+        outcome: 'suppressed',
+        reason: 'episode-active',
+        episodeId: '37423043590',
+      }),
+    ]);
+    record(
+      event(
+        workflowRun({
+          id: 37423043591,
+          conclusion: 'success',
+          updatedAt: RED_AT,
+        }),
+      ),
+      [observe],
+    );
+    record(red({ id: 37423043592, updatedAt: RED_AT }), [observe]);
+    expect(decisions()).toEqual([
+      expect.objectContaining({ outcome: 'would-start' }),
+    ]);
+    expect(ledger.listActionIntents()).toEqual([]);
+    expect(ledger.listEpisodes()).toEqual([]);
+  });
+
+  test('an observe rule counts its own would-starts against maxStartsPerHour', () => {
+    const { episode: _episode, ...perDelivery } = dispatchRule(
+      'rule-observe',
+      'observe',
+      { rateLimit: { maxStartsPerHour: 1 } },
+    );
+    record(red(), [perDelivery]);
+    expect(decisions()).toEqual([
+      expect.objectContaining({ outcome: 'would-start' }),
+    ]);
+    record(red({ id: 37423043590, updatedAt: RED_AT }), [perDelivery]);
+    expect(decisions()).toEqual([
+      expect.objectContaining({
+        outcome: 'suppressed',
+        reason: 'rate-limited',
+      }),
+    ]);
+  });
+
+  test('an observe rule reads live admission state: global concurrency, its active limit and a live episode', () => {
+    const observe = dispatchRule('rule-observe', 'observe');
+    const claimProbe = (ruleId: string, key: string) => {
+      ledger.openEpisode({
+        ruleId,
+        episodeKey: key,
+        episodeId: '1',
+        maxAttempts: 1,
+        now: NOW,
+      });
+      const claim = ledger.claimAction({
+        episodeKey: key,
+        deliveryKey: 'a'.repeat(64),
+        now: NOW,
+      });
+      if (claim.kind !== 'claimed') throw new Error(claim.kind);
+      return claim.receipt;
+    };
+    const own = claimProbe('rule-observe', 'probe-own');
+    record(red(), [observe]);
+    expect(decisions()).toEqual([
+      expect.objectContaining({
+        outcome: 'suppressed',
+        reason: 'rule-active-limit',
+      }),
+    ]);
+    const other = claimProbe('rule-other', 'probe-other');
+    record(red({ id: 37423043590, updatedAt: RED_AT }), [observe]);
+    expect(decisions()).toEqual([
+      expect.objectContaining({
+        outcome: 'suppressed',
+        reason: 'concurrency-limit',
+      }),
+    ]);
+    own.release();
+    other.release();
+    // A live episode for the same key (left by the rule while it was live)
+    // suppresses the observed event as it would the live one.
+    ledger.openEpisode({
+      ruleId: 'rule-observe',
+      episodeKey: automationEpisodeKey(observe, red())!,
+      episodeId: 'earlier',
+      maxAttempts: 1,
+      now: NOW,
+    });
+    record(red({ id: 37423043592, updatedAt: RED_AT }), [observe]);
+    expect(decisions()).toEqual([
+      expect.objectContaining({
+        outcome: 'suppressed',
+        reason: 'episode-active',
+      }),
+    ]);
+    expect(ledger.listActionIntents()).toEqual([]);
+  });
+
+  test('switching to live does not replay an observed event; only a later event retains an intent', () => {
+    const observe = dispatchRule('rule-x', 'observe');
+    const first = red();
+    record(first, [observe]);
+    const live = { ...observe, mode: 'live' as const };
+    expect(record(first, [live]).outcome).toBe('duplicate');
+    expect(ledger.listActionIntents()).toEqual([]);
+    expect(ledger.listEpisodes()).toEqual([]);
+    const later = red({ id: 37423043590, updatedAt: RED_AT });
+    record(later, [live]);
+    expect(ledger.listActionIntents()).toEqual([
+      expect.objectContaining({ ruleId: 'rule-x', episodeId: '37423043590' }),
+    ]);
+  });
+
+  test('an observe rule closeOn closes the episode the rule left open while live', () => {
+    const live = dispatchRule('rule-x', 'live');
+    record(red(), [live]);
+    expect(ledger.listEpisodes()[0]?.state).toBe('open');
+    const observe = { ...live, mode: 'observe' as const };
+    record(
+      event(
+        workflowRun({
+          id: 37423043591,
+          conclusion: 'success',
+          updatedAt: RED_AT,
+        }),
+      ),
+      [observe],
+    );
+    expect(ledger.listEpisodes()[0]?.state).toBe('closed');
   });
 });

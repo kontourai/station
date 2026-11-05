@@ -140,6 +140,8 @@ describe('automatic continuation after a memory kill', () => {
       /** The killed turn's origin when it is not a continuation. */
       origin?: Record<string, unknown>;
       metadata?: Record<string, unknown>;
+      /** #4512: the origin the killed turn's start recorded. */
+      dispatchOrigin?: string;
     } = {},
   ) {
     const turnId = `${threadId}-turn`;
@@ -155,6 +157,9 @@ describe('automatic continuation after a memory kill', () => {
       ...(options.continuation
         ? { clientTurnId: options.continuation, clientOrigin: INTERNAL }
         : { clientOrigin: options.origin ?? PERSON }),
+      ...(options.dispatchOrigin
+        ? { dispatchOrigin: options.dispatchOrigin }
+        : {}),
     });
     if (options.pendingRequest)
       append(threadId, {
@@ -218,6 +223,34 @@ describe('automatic continuation after a memory kill', () => {
       if (fact.eligible) expect(fact.turnId).toBe(turnId);
     },
   );
+
+  test("#4512: a person's Continue is queued as interactive; the automatic one takes the killed turn's origin", () => {
+    const continuation = coordinator();
+    killedTurn('thread-a');
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-a',
+        actor: { userId: 'person-1' },
+      }).kind,
+    ).toBe('queued');
+    expect(submissions.at(-1)!.payload.dispatchOrigin).toBe('interactive');
+    killedTurn('thread-b');
+    continuation.observe(exited('thread-b'));
+    expect(submissions.at(-1)!.conversationId).toBe('thread-b');
+    // The killed turn recorded no origin, so its continuation says unknown,
+    // never left for the Task-binding rule to call Task work.
+    expect(submissions.at(-1)!.payload.dispatchOrigin).toBe('unknown');
+    // A person's killed turn: Station's continuation of it is still theirs;
+    // a Task-dispatched one stays Task work.
+    killedTurn('thread-c', { dispatchOrigin: 'interactive' });
+    continuation.observe(exited('thread-c'));
+    expect(submissions.at(-1)!.conversationId).toBe('thread-c');
+    expect(submissions.at(-1)!.payload.dispatchOrigin).toBe('interactive');
+    killedTurn('thread-d', { dispatchOrigin: 'task-dispatch' });
+    continuation.observe(exited('thread-d'));
+    expect(submissions.at(-1)!.conversationId).toBe('thread-d');
+    expect(submissions.at(-1)!.payload.dispatchOrigin).toBe('task-dispatch');
+  });
 
   test('continues once, with the continuation text under the dead-turn key', () => {
     const continuation = coordinator();
