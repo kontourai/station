@@ -1068,7 +1068,10 @@ verification.
   wrapped rows, a title reset after each program, a whole-screen repaint
   after a resize), so a newline-free 8 MiB stream becomes about 105,000 rows
   and the 5000-line retention keeps the newest of them; and cmd's `type`
-  never hands ConPTY a file's 8-bit C1 controls.
+  never hands ConPTY a file's 8-bit C1 controls. ConPTY may also write a title update or a
+  cursor show between two characters of one printed word, so on Windows a
+  check of printed text reads the characters with their ECMA-48 control
+  functions removed, while checks of the link filters read the bytes.
 
   Run on Windows 11 Pro 26200 (Ryzen 5 7600X, Node 24.18.0, node-pty 1.1.0,
   cmd.exe, Chromium 156): the vitest command of `test:windows:portable` (its 13
