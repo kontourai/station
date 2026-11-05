@@ -274,24 +274,10 @@ export async function observeNativeAuthenticationFiles(input: {
           throw new Error('ensemble_auth_store_unsupported');
     }
   };
+  const codexConfigurations: ReturnType<typeof parseToml>[] = [];
   const validateCodex = (text: string) => {
     const settings = parseToml(text);
-    const walk = (value: unknown) => {
-      if (!value || typeof value !== 'object') return;
-      for (const [key, child] of Object.entries(value)) {
-        if (
-          (key === 'cli_auth_credentials_store' && child !== 'file') ||
-          /credential.*(helper|provider)|auth.*helper|^include$|^imports$/i.test(
-            key,
-          ) ||
-          (key === 'model_provider' && child !== 'openai') ||
-          key === 'model_providers'
-        )
-          throw new Error('ensemble_auth_store_unsupported');
-        walk(child);
-      }
-    };
-    walk(settings);
+    codexConfigurations.push(settings);
     if (settings.profile !== undefined) {
       if (
         typeof settings.profile !== 'string' ||
@@ -356,6 +342,43 @@ export async function observeNativeAuthenticationFiles(input: {
   const witnesses: Array<() => void> = keychainCurrent ? [keychainCurrent] : [];
   for (const entry of entries.values())
     witnesses.push(await observeFile(entry));
+  // A selection in any witnessed layer can activate declarations in another.
+  // With no selected profile, native launch arguments cannot select one either.
+  const selectedProfile = codexConfigurations.some(
+    (settings) => settings.profile !== undefined,
+  );
+  for (const settings of codexConfigurations) {
+    const walk = (value: unknown) => {
+      if (!value || typeof value !== 'object') return;
+      for (const [key, child] of Object.entries(value)) {
+        if (
+          value === settings &&
+          !selectedProfile &&
+          (key === 'profiles' || key === 'model_providers')
+        ) {
+          if (
+            !child ||
+            typeof child !== 'object' ||
+            Array.isArray(child) ||
+            (key === 'model_providers' && Object.hasOwn(child, 'openai'))
+          )
+            throw new Error('ensemble_auth_store_unsupported');
+          continue;
+        }
+        if (
+          (key === 'cli_auth_credentials_store' && child !== 'file') ||
+          /credential.*(helper|provider)|auth.*helper|^include$|^imports$/i.test(
+            key,
+          ) ||
+          (key === 'model_provider' && child !== 'openai') ||
+          key === 'model_providers'
+        )
+          throw new Error('ensemble_auth_store_unsupported');
+        walk(child);
+      }
+    };
+    walk(settings);
+  }
   return () => {
     for (const assertCurrent of witnesses) assertCurrent();
   };

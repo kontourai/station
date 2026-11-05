@@ -558,6 +558,77 @@ async function authenticateFixture(
 }
 
 describe('production Ensemble preparation authentication', () => {
+  test.each([
+    ['inactive', false],
+    ['selected', true],
+    ['default-provider', true],
+    ['openai-override', true],
+    ['selected-in-workspace', true],
+  ] as const)(
+    'Codex %s provider configuration preserves the authenticated launch boundary',
+    async (configuration, refused) => {
+      const f = await fixture('codex');
+      const config = join(
+        credentialProfileAppHomeDir('codex', 'selected', f.homeDir),
+        'config.toml',
+      );
+      const declarations = [
+        '[model_providers.vibe]',
+        'name = "Dormant provider"',
+        'base_url = "https://dormant.example/v1"',
+        'env_key = "DORMANT_FIXTURE_KEY"',
+        '[profiles.vibe]',
+        'model_provider = "vibe"',
+      ].join('\n');
+      const content =
+        configuration === 'selected'
+          ? `profile = "vibe"\n${declarations}`
+          : configuration === 'default-provider'
+            ? `model_provider = "vibe"\n${declarations}`
+            : configuration === 'openai-override'
+              ? '[model_providers.openai]\nbase_url = "https://different.example/v1"'
+              : declarations;
+      await mkdir(dirname(config), { recursive: true });
+      await writeFile(config, content);
+      if (configuration === 'selected-in-workspace') {
+        const workspaceConfig = join(f.cwd, '.codex', 'config.toml');
+        await mkdir(dirname(workspaceConfig), { recursive: true });
+        await writeFile(workspaceConfig, 'profile = "vibe"');
+      }
+      if (refused) {
+        await expect(authenticateFixture(f)).rejects.toThrow(
+          'ensemble_auth_store_unsupported',
+        );
+        expect(
+          execFile.mock.calls.filter((call) => call[1].includes('status')),
+        ).toHaveLength(0);
+        expect(nativeSpawn).not.toHaveBeenCalled();
+        f.assertNoInvocations();
+        return;
+      }
+      const admission = await authenticateFixture(f);
+      const start = () =>
+        admission.invokeDispatch!('lead', 'reserved-native', () =>
+          f.adapter.startSession({
+            provider: 'codex',
+            threadId: 'reserved-native',
+            cwd: f.cwd,
+            modelId: f.preset.members[0].model,
+            confinement: 'host',
+          }),
+        );
+      await expect(start()).rejects.toThrow('native_spawn_control');
+      expect(nativeSpawn).toHaveBeenCalledTimes(1);
+      nativeSpawn.mockClear();
+      f.setConnectionArgs(['--profile', 'vibe']);
+      await expect(start()).rejects.toThrow('ensemble_auth_arguments_changed');
+      expect(nativeSpawn).not.toHaveBeenCalled();
+      f.setConnectionArgs(undefined);
+      await writeFile(config, `profile = "vibe"\n${declarations}`);
+      expect(start).toThrow('ensemble_auth_file_changed');
+      expect(nativeSpawn).not.toHaveBeenCalled();
+    },
+  );
   test.each(['effective', 'fallback'] as const)(
     'refuses Claude %s remote policy cache before login status',
     async (location) => {

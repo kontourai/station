@@ -3144,6 +3144,14 @@ actual process launch before confinement wrapping. At the `--settings` argument
 layer it permits only `fastMode` as a boolean and `disableAutoMode: "disable"`. Native bookkeeping changes do not
 invalidate an unchanged authentication projection.
 
+Codex requires a directly observed native executable; an unbound shell wrapper
+is not qualified. Dormant custom profiles and provider declarations do not
+invalidate default OpenAI authentication when no witnessed configuration layer
+selects a profile, a custom default provider, or an override of the built-in
+`openai` provider. Every configuration file remains witnessed. Activating a
+profile through another layer, changing a file after observation, or selecting
+a profile through launch arguments still refuses before effect.
+
 These checks support local file/env authentication and Claude's macOS Keychain
 namespace. The private Keychain witness retains only an in-memory equality digest,
 including explicit absence, and re-reads the item before native launch. Unavailable
