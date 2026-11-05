@@ -273,6 +273,13 @@ per-caller session reader. Registry/path management and HTTP member writes
 remain denied. No additional index, migration or host-path capability follows
 from this read allowlist.
 
+The default-off Private memory preview uses an author-private root. The
+operator creates proposals through its explicit endpoint; pending proposals are
+not records or search inputs. Project membership and delegation do not grant
+access. The owner or an approved personal-account device may read under the
+existing private-root rule; an unknown identity is refused. Disabling the
+preview retains the store and withholds it from Knowledge reads.
+
 When the default-off experimental S3 flag is enabled, separate Knowledge leaves
 admit current Project readers to source metadata, a bounded selected-prefix page
 and one ETag-pinned object. A source is an explicit operator grant to use a named

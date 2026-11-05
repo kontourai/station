@@ -5622,7 +5622,8 @@ Use the public root-key serializer, also available from
 this order: root ID, scope kind, project slug or null, adapter ID, store root,
 display name, creation timestamp, then the Project ID (or null) and issued
 registration ID when present. Legacy roots without either field keep the original
-seven-field encoding; a legacy Project-bound root has eight fields. Send its URI-encoded UTF-8 representation in
+seven-field encoding; a legacy Project-bound root has eight fields. An
+author-private root then appends the policy kind and owner ID. Send its URI-encoded UTF-8 representation in
 `x-station-knowledge-root-identity` (at most 8,192 characters after encoding). This
 metadata comparison does not detect an identically restored registration or
 provide a revision/CAS contract.
@@ -5643,6 +5644,8 @@ otherwise valid local credentials. Project/tenant record authorization and owner
 learning lifecycle intents are separate future contracts. Hosts should present
 these limits directly, without treating a source read as candidate approval,
 promotion, or effect evidence.
+The source observation policy also refuses author-private roots; their ordinary
+record reads use the root's separate owner authorization.
 
 Follow the [SDK reader](../../packages/sdk/src/client/learning-source.ts),
 [query hook](../../packages/sdk/src/query-domains/knowledgeStores.ts),

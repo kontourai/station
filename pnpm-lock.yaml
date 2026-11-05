@@ -142,6 +142,9 @@ importers:
       '@kontourai/console-ui':
         specifier: ^0.3.0
         version: 0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@kontourai/corpus-store':
+        specifier: 0.1.0-next.3
+        version: 0.1.0-next.3
       '@kontourai/dispatch':
         specifier: 0.8.0
         version: 0.8.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.64.1))(@kontourai/datum@0.8.0(playwright@1.64.1))
@@ -2367,6 +2370,11 @@ packages:
 
   '@kontourai/console@2.9.0':
     resolution: {integrity: sha512-MydX1EtRimhE5qRM/XD4mV5QDDkpLosChbyuiBJsfAWdkczu0bd13KYpWLIZT3JFlMvkJJOkuCjUGX47SkJSWg==}
+    engines: {node: '>=22'}
+    hasBin: true
+
+  '@kontourai/corpus-store@0.1.0-next.3':
+    resolution: {integrity: sha512-JDpmZly0tFuw/yYVCQeoxO16Mz69z0InFuOyY592ipdRH78EvI6cWZo+gV5OnMRAFp+wIMWxQPAJE/O4iYXUAQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -6687,6 +6695,10 @@ packages:
     resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
 
+  js-yaml@5.4.2:
+    resolution: {integrity: sha512-m+aqu+LwO1O6sIopafj8HUVl5aawITwZQe/yHpMCKjaWBaA/d07B/QdMb3529REftiU+RMMHL3Vlsw3hON7vWg==}
+    hasBin: true
+
   js-yaml@5.5.0:
     resolution: {integrity: sha512-paNr4LFIFPjeeSmwNYdrb8FafLLG/Cr2Af3GjbsHJ5CxIjH4r0c2emlmRdAtpPAieP1gRVzk6buBbVP5gBMGAg==}
     hasBin: true
@@ -10564,6 +10576,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@kontourai/corpus-store@0.1.0-next.3':
+    dependencies:
+      js-yaml: 5.4.2
+
   '@kontourai/datum@0.8.0(playwright@1.64.1)':
     dependencies:
       '@kontourai/bearing': 0.2.0(playwright@1.64.1)
@@ -12195,7 +12211,7 @@ snapshots:
 
   '@sigstore/bundle@4.0.0':
     dependencies:
-      '@sigstore/protobuf-specs': 0.5.1
+      '@sigstore/protobuf-specs': 0.5.2
     optional: true
 
   '@sigstore/bundle@5.0.0':
@@ -15298,6 +15314,10 @@ snapshots:
       esprima: 4.0.1
 
   js-yaml@4.3.2:
+    dependencies:
+      argparse: 2.0.1
+
+  js-yaml@5.4.2:
     dependencies:
       argparse: 2.0.1
 

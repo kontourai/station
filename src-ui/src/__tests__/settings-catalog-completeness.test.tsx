@@ -62,6 +62,7 @@ vi.mock('@kontourai/station-sdk', async () => {
     authenticatedFetch: vi.fn(),
     // #4519: Pairing reads the managed policy; this host has none.
     useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
+    useApiQuery: () => ({ data: undefined, isFetching: false, isError: false }),
     // #2586: the notification-delivery section. The ORDINARY case — defaults
     // in hand, nothing in flight — because the state under test here is the
     // settings catalog; without these the section fails into its own error

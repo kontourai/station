@@ -505,6 +505,26 @@ grant; mutation routes enforce their own policy. Account-bound readers may query
 it and receive false for these operator capabilities. Missing or failed reads
 keep management controls unavailable until a successful refresh.
 
+## Private memory preview
+
+With the default-off `private-memory` Feature Preview enabled on a personal
+Station, `POST /api/knowledge/memory/root` lets the host operator register their
+author-private memory root. `POST /api/knowledge/memory/proposals` takes
+`{requestKey, candidate, evidence}` and stages a Corpus create proposal; the
+body is limited to 1 MiB. Matching retries return the same proposal ID, while
+a conflicting key returns 409 with `REQUEST_KEY_CONFLICT`. `GET
+/api/knowledge/memory/proposals` is the explicit owner-authorized proposal
+query. Pending proposals do not appear in ordinary record lists or search.
+
+`GET /api/knowledge/memory/erasure-preview?kind=record|proposal&id=<id>`
+returns the target's `{ kind, id, title }` without changing it. It does not
+calculate a cascade or expose erasure.
+
+Unknown identity, hosted access, Project membership and delegation do not grant
+memory access. With the preview off, direct memory requests return the standard
+`feature_preview_disabled` 404. Review, application and erasure are not exposed
+by these routes. See [Private memory](../guides/knowledge.md#private-memory-preview).
+
 ## Project knowledge source identity
 
 New Project root registrations require `expectedProjectId`, compared with the
