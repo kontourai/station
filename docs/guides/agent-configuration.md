@@ -284,6 +284,20 @@ checks remain visible. Editing a receiver clears the offer and its observations.
 Checking sign-in neither saves nor starts the group; Run checks the roster again.
 Model entitlement, execution limits and backing API access remain separate.
 
+To inspect a previously recorded CLI session group, load the same preset from a
+path or upload, then choose **Inspect a recorded group**. If this host offers it,
+enter the exact **Recorded group ID** and choose **Inspect recorded bindings**.
+This requires current in-person operator access on a personal Station and read
+access to the referenced Sessions. Station checks the preset hash and recorded member seats;
+a changed group or preset requires a fresh inspection. Changing the source or
+Station authority clears this form and its observations.
+
+The result shows recorded Session/output references, prerequisites, Flow
+references and context-sync metadata. A reserved Session ID is not a confirmed
+Session, and a recorded reference or context receipt proves neither output
+availability nor acceptance, native/shared memory, authentication or permission
+to execute. Inspect current receiver settings separately in a receiver draft.
+
 1. Enter the configured **Project ID** and optional **Resource ID** whose source
    should be inspected.
 2. Set the deadline (1–5 minutes), concurrent report count, and explicit aggregate
