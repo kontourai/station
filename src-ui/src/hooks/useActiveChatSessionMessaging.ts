@@ -1352,7 +1352,8 @@ export function useSendMessage(
           assignConversationId(sessionId, receipt.conversationId);
         }
         updateChat(sessionId, {
-          status: 'sending',
+          // Admission does not say the turn is still running. Its terminal
+          // event may already have settled the optimistic sending state.
           abortController: undefined,
           orchestrationSessionStarted: true,
           ...(sourceStart &&

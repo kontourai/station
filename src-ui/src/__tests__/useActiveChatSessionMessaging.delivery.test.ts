@@ -80,6 +80,7 @@ import {
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { finalizeAssistantTurn } from '../hooks/orchestration/assistantTurn';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import {
   useCancelMessage,
@@ -182,6 +183,65 @@ describe('useSendMessage: durable before the request', () => {
     activeChatsStore.removeChat('peer-stop-tab');
   });
 
+  it.each(['host', 'peer'] as const)(
+    'keeps a %s turn settled when completion precedes the admission response',
+    async (route) => {
+      const connection = route === 'peer' ? peerConnection : undefined;
+      if (connection)
+        activeChatsStore.updateChat(chat, {
+          stationBinding: connection.binding,
+        });
+      sendExecutionMessageMock.mockImplementationOnce(async (_base, body) => {
+        handleTurnStartedEvent(
+          {
+            provider: 'codex',
+            threadId: chat,
+            turnId: 'provider-turn-1',
+            eventId: 'started-before-receipt',
+            createdAt: '2026-11-05T00:00:00.000Z',
+            method: 'turn.started',
+            clientTurnId: body.clientTurnId,
+            prompt: 'Finish before admission returns.',
+          },
+          activeChatsStore,
+          connection,
+        );
+        finalizeAssistantTurn(
+          chat,
+          'Completed before admission returned.',
+          { turnId: 'provider-turn-1' },
+          connection,
+        );
+        return receipt();
+      });
+      const { result } = renderHook(() => useSendMessage('http://host.test'));
+      await act(async () => {
+        await result.current(
+          chat,
+          'codex',
+          undefined,
+          'Finish before admission returns.',
+          undefined,
+          undefined,
+          'fast-turn',
+          { connection },
+        );
+      });
+      expect(activeChatsStore.getSnapshot()[chat]).toMatchObject({
+        status: 'idle',
+        orchestrationStatus: 'idle',
+        orchestrationTurnOpen: false,
+        streamingMessage: undefined,
+        currentSessionId: chat,
+      });
+      expect(activeChatsStore.getSnapshot()[chat]?.messages).toContainEqual(
+        expect.objectContaining({
+          content: 'Completed before admission returned.',
+        }),
+      );
+    },
+  );
+
   it('issues a peer send through its pinned principal and target catalog, with peer-owned durable evidence', async () => {
     activeChatsStore.updateChat(chat, {
       stationBinding: peerConnection.binding,
@@ -264,7 +324,8 @@ describe('useSendMessage: durable before the request', () => {
       );
     });
     const state = activeChatsStore.getSnapshot()[chat];
-    expect(state?.input).toBe('');
+    // A definite refusal preserves both the not-sent bubble and editable text.
+    expect(state?.input).toBe('keep this draft');
     expect(state?.sendAwaitingTurnStart).not.toBe(true);
     expect(state?.messages?.at(-1)?.deliveryNotice).toMatchObject({
       state: 'not-sent',
@@ -748,7 +809,7 @@ describe('useSendMessage: durable before the request', () => {
       expect(body.clientTurnId).toEqual(expect.any(String));
       expect(held.queuedMessages).toEqual([]);
       expect(held.pendingQueueDispatch).toBeUndefined();
-      expect(held.input).toBe('');
+      expect(held.input).toBe('wait your turn');
       expect(held.messages?.at(-1)).toMatchObject({
         role: 'user',
         content: 'wait your turn',
@@ -767,7 +828,7 @@ describe('useSendMessage: durable before the request', () => {
       await result.current(chat, 'codex', undefined, 'refuse me');
     });
     expect(await outboundDispatch.snapshot()).toEqual([]);
-    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('refuse me');
     expect(
       activeChatsStore.getSnapshot()[chat]?.messages?.at(-1),
     ).toMatchObject({
@@ -1426,7 +1487,7 @@ describe('useSendMessage: durable before the request', () => {
     expect(
       activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[body.clientTurnId],
     ).toBeUndefined();
-    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('slow session');
     expect(activeChatsStore.getSnapshot()[chat]?.queuedMessages).toEqual([]);
     expect(await outboundDispatch.snapshot()).toEqual([]);
   });
