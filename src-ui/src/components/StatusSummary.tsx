@@ -37,39 +37,43 @@ export function StatusSummary({
       : null;
   const transition = !!current && !!target && target !== current;
   return (
-    <header
-      className={`status-summary${transition ? ' status-summary--transition' : ''}`}
-    >
-      <Title id={headingId} className="status-summary__title">
-        {title}
-      </Title>
-      {badge && (
-        <span className="status-summary__badge" role="status">
-          <Badge value={badge.label} tone={badge.tone} />
-        </span>
-      )}
-      {current && (
-        <p className="status-summary__version">
-          <code>{current}</code>
-          {transition && (
-            <>
-              <span aria-hidden="true"> → </span>
-              <span className="sr-only"> to </span>
-              <code>{target}</code>
-            </>
+    <header className="status-summary">
+      <div className="status-summary__heading">
+        <Title id={headingId} className="status-summary__title">
+          {title}
+        </Title>
+        {badge && (
+          <span className="status-summary__badge" role="status">
+            <Badge value={badge.label} tone={badge.tone} />
+          </span>
+        )}
+      </div>
+      {(current || checked) && (
+        <div className="status-summary__facts">
+          {current && (
+            <p className="status-summary__version">
+              <code>{current}</code>
+              {transition && (
+                <>
+                  <span aria-hidden="true"> → </span>
+                  <span className="sr-only"> to </span>
+                  <code>{target}</code>
+                </>
+              )}
+            </p>
           )}
-        </p>
-      )}
-      {checked && (
-        <small className="status-summary__checked">
-          <span>Last checked</span>
-          <time
-            dateTime={checked.toISOString()}
-            title={checked.toLocaleString()}
-          >
-            {day ? `${day}, ${clock}` : clock}
-          </time>
-        </small>
+          {checked && (
+            <small className="status-summary__checked">
+              <span>Last checked</span>
+              <time
+                dateTime={checked.toISOString()}
+                title={checked.toLocaleString()}
+              >
+                {day ? `${day}, ${clock}` : clock}
+              </time>
+            </small>
+          )}
+        </div>
       )}
     </header>
   );
