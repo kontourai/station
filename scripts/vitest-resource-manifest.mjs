@@ -377,6 +377,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/home-reference-recovery.test.ts',
   // Owns a real loopback listener and fsync-backed source records; no child process.
   'src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts',
+  // Kills one child with an isolated home to prove erasure cleanup recovery.
+  'src-server/knowledge-store/__tests__/memory-erasure-coordinator.test.ts',
   // Actual authenticated search routes include Task/transcript worker owners.
   'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
   // Hono routes composed with the real Task and transcript worker owners.
