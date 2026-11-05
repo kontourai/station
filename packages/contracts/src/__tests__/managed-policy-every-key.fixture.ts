@@ -9,6 +9,9 @@
 /** Carries a path token, as a real mirror might; it must never reach a client. */
 export const EVERY_KEY_FEED_URL = 'https://mirror.example/station/t0ken/';
 
+/** A pinned engine environment value; it must never reach a client. */
+export const EVERY_KEY_ENGINE_GATEWAY = 'https://gateway.example/acme-t0ken';
+
 export const EVERY_KEY_LIMITS = {
   // #4521: the capability switches.
   telemetry: false,
@@ -23,6 +26,19 @@ export const EVERY_KEY_LIMITS = {
   clients: ['desktop', 'local-browser'],
   // #4522: update control, with a mirror.
   updates: { mode: 'off', feedUrl: EVERY_KEY_FEED_URL, allowNightly: false },
+  // #4520: an allow list and one locked, pinned launch.
+  engines: {
+    allowed: ['claude', 'acp'],
+    acpRegistryAgents: false,
+    instances: {
+      claude: {
+        locked: true,
+        binaryPath: '/opt/acme/bin/claude',
+        launchArgs: ['--settings', '/opt/acme/claude.json'],
+        environment: { ANTHROPIC_BASE_URL: EVERY_KEY_ENGINE_GATEWAY },
+      },
+    },
+  },
 } as const;
 
 /** #4517: one lock and one default. */
@@ -40,10 +56,29 @@ export const EVERY_KEY_POLICY = {
 } as const;
 
 /**
- * What clients see of {@link EVERY_KEY_LIMITS}: the same values, except
- * that `updates` says a mirror is set (`mirror: true`) instead of naming it.
+ * What clients see in `summary.limits` for {@link EVERY_KEY_LIMITS}: the
+ * same values, except that `updates` says a mirror is set (`mirror: true`)
+ * instead of naming it, and `engines` is summarized beside `limits`.
  */
+const { engines: _engines, ...LIMITS_WITHOUT_ENGINES } = EVERY_KEY_LIMITS;
 export const EVERY_KEY_SUMMARY_LIMITS = {
-  ...EVERY_KEY_LIMITS,
+  ...LIMITS_WITHOUT_ENGINES,
   updates: { mode: 'off', mirror: true, allowNightly: false },
+} as const;
+
+/**
+ * `summary.engines` for {@link EVERY_KEY_LIMITS}: which fields and variable
+ * names are pinned, never their values.
+ */
+export const EVERY_KEY_ENGINE_SUMMARY = {
+  allowed: ['claude', 'acp'],
+  acpRegistryAgents: false,
+  pinned: [
+    {
+      engine: 'claude',
+      locked: true,
+      fields: ['binaryPath', 'launchArgs', 'environment'],
+      environmentNames: ['ANTHROPIC_BASE_URL'],
+    },
+  ],
 } as const;

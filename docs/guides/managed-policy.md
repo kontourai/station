@@ -23,9 +23,10 @@ fail-closed startup check, `station policy check`, `station policy show` and
 [managed settings](#settings) (defaults and fixed values for Station
 settings), and these limits: three [capability switches](#capability-switches)
 (`telemetry`, `webhookAutomations` and `registries`),
-[network exposure](#network-exposure) (`clients`) and
-[update control](#update-control) (`updates`). It does **not** yet enforce any
-other limit. A policy that contains another limit key is refused with "not
+[network exposure](#network-exposure) (`clients`),
+[update control](#update-control) (`updates`) and the
+[engine limit](#engines) (`engines`). It does **not** yet enforce any other
+limit. A policy that contains another limit key is refused with "not
 supported by this version of Station". Station never accepts a key it does not
 yet enforce, so a machine never looks managed when it is not.
 
@@ -50,7 +51,7 @@ manage settings:
 | `organization` | yes | One line, 1–200 characters, no leading or trailing spaces. Users see "Managed by <organization>". |
 | `supportUrl` | no | An `https` URL of at most 2048 characters, with no user name or password. |
 | `settings` | no | Managed settings, keyed by setting. See [Settings](#settings). |
-| `limits` | no | Only the [capability switches](#capability-switches), `clients` and `updates` in this release. |
+| `limits` | no | Only the [capability switches](#capability-switches), `clients`, `updates` and [`engines`](#engines) in this release. |
 | `limits.clients` | no | A list of `"desktop"`, `"local-browser"` and `"remote"`. See [Network exposure](#network-exposure). |
 | `limits.updates` | no | How Station updates itself. See [Update control](#update-control). |
 
@@ -481,6 +482,117 @@ app removes the path from every URL in an update error before it shows or
 logs it, keeping only the scheme, host and port, and it drops the updater
 plugin's own log records, which contain request URLs.
 
+## Engines
+
+`limits.engines` says which engines may run on the machine and how the ones
+Station launches are started.
+
+```json
+{
+  "schemaVersion": 1,
+  "organization": "Example Corp",
+  "supportUrl": "https://help.example.com/station",
+  "limits": {
+    "engines": {
+      "allowed": ["claude", "codex", "station-agent"],
+      "acpRegistryAgents": false,
+      "instances": {
+        "claude": {
+          "locked": true,
+          "binaryPath": "/opt/example/bin/claude",
+          "launchArgs": ["--settings", "/opt/example/claude-settings.json"],
+          "environment": {
+            "ANTHROPIC_BASE_URL": "https://llm-gateway.example.com",
+            "CLAUDE_CONFIG_DIR": "/opt/example/claude-config"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+| Key | Rules |
+| --- | --- |
+| `allowed` | The engines that may run: any of `claude`, `codex`, `muse`, `acp` (every ACP connection) and `station-agent` (Station's own agent). Leave it out to allow every engine. An engine a plugin adds is never on the list, so an allow list turns plugin engines off. |
+| `acpRegistryAgents` | `false` stops ACP connections added from the public ACP registry from running and from being added. A custom ACP connection is still allowed while `acp` is. `true` is refused. |
+| `instances.<engine>` | How every connection of `claude`, `codex`, `muse` or `acp` is launched. `station-agent` runs inside Station and has no launch to pin. |
+
+Station refuses an unknown engine id, a repeated one, and an `instances`
+entry for an engine `allowed` leaves out.
+
+### An engine that is not allowed
+
+An engine the policy does not allow is unavailable everywhere:
+
+- Starting a chat on it, sending a turn to an existing chat on it, and setting
+  up or adding a connection for it are refused with "Example Corp's policy
+  manages which engines run on this computer: codex is not allowed." and the
+  support link. Over HTTP that is a `403` with code
+  `managed-policy-engine-refused`.
+- Its existing chats are kept. They do not run while the policy is installed,
+  and run again if it is removed.
+- Its connection reads as disabled, and the engine pages mark it "Managed by
+  Example Corp" and "Not allowed".
+
+### Pinned launch fields
+
+An `instances` entry pins up to three fields. It must pin at least one, and
+`locked` is required.
+
+| Field | Rules |
+| --- | --- |
+| `binaryPath` | The program to run, as an absolute path of at most 1024 characters. A bare name is refused: it would be looked up on a `PATH` each user controls, where a wrapper of their own could stand in for the engine. |
+| `launchArgs` | Up to 64 arguments, each at most 4096 characters. |
+| `environment` | Up to 64 variables, each value at most 32 KiB. `TMPDIR` and `STATION_*` names are refused: Station sets them for every engine. |
+
+`locked: true` makes each pinned field the administrator's; `locked: false`
+fills only what the user left unset:
+
+| | `locked: true` | `locked: false` |
+| --- | --- | --- |
+| `binaryPath` | Always the program run. | Claude, Codex and Muse: used, because the user names no program. ACP: the connection's own command is used. |
+| `launchArgs` | Claude, Codex and Muse: added after Station's own arguments. ACP: replace the connection's arguments. | Claude, Codex and Muse: added after Station's own arguments. ACP: used only when the connection has none. |
+| `environment` | Each variable overrides every other value, and the connection's own environment, config folder (`configHome`) and **Connect through** proxy are not applied. | Each variable is set only where the launch does not already set it. |
+
+The pins apply to every launch of the engine that runs it: chats, Claude's
+model discovery, ACP availability probes and sign-in, and the OpenCode model
+listing. Claude's version and sign-in checks run the pinned program. The
+Connections page's installed check for Claude, Codex and Muse still looks the
+program up by name, so with only the pinned program installed it can report
+the engine as missing even though chats run. A Claude
+launch that would not run the pinned program (for example because the path is
+missing, so the Agent SDK would fall back to its bundled copy) is refused
+rather than started. While an engine's entry is locked, a plugin cannot
+replace Station's built-in adapter for it, because a plugin runtime would not
+apply the pins.
+
+Every user on the machine can read the policy, so do not put a credential in
+`environment`. Clients never see the values: the summary names the pinned
+fields and variable names only.
+
+### What a locked launch closes, and what it does not
+
+A locked entry with an absolute `binaryPath` and a pinned `environment`
+takes the engine's launch away from the user: a wrapper earlier on `PATH`, a
+connection's environment variables and config folder, a model proxy, and an
+ACP connection's command and arguments no longer reach the engine. Under an
+approval-mode ceiling, this is what keeps a user from launching the engine
+with flags or configuration that skip its permission checks.
+
+It does not reach inside the engine:
+
+- The engine reads its own configuration in its default folder (for example
+  `~/.claude` or `~/.codex`) unless you pin the folder: set `CLAUDE_CONFIG_DIR`
+  or `CODEX_HOME` in `environment` to a folder users cannot write.
+- The engine finds the programs it runs (Node for an npm-installed CLI, the
+  tools an agent calls) on the `PATH` Station runs with. Pin `PATH` to control
+  that.
+- Station's own environment is the base every launch starts from, and a user
+  who can change how Station itself starts can change it.
+- Signing in to a Claude or Codex account runs the program by name, without
+  the pinned arguments or environment. It runs no agent.
+
 ## Where to install it
 
 | OS | Path |
@@ -634,13 +746,20 @@ Every value is in `HKLM\SOFTWARE\Policies\Kontour\Station`.
 | Setting | Values | Policy document |
 | --- | --- | --- |
 | Organization | `Organization` (`REG_SZ`), `SupportUrl` (`REG_SZ`, blank for none) | `organization`, `supportUrl` |
-| Managed settings (JSON) | `ManagedSettings` (`REG_DWORD` state), `ManagedSettingsJson` (`REG_MULTI_SZ`, lines joined) | `settings` (must be `{}` in this release) |
+| Managed settings (JSON) | `ManagedSettings` (`REG_DWORD` state), `ManagedSettingsJson` (`REG_MULTI_SZ`, lines joined) | `settings` (see [Settings](#settings)) |
 | Allow usage data and telemetry | `Telemetry` (`REG_DWORD`) | `limits.telemetry: false` when Disabled |
 | Allow webhook automations | `WebhookAutomations` (`REG_DWORD`) | `limits.webhookAutomations: false` when Disabled |
 | Allowed plugin and skill registries | `RegistryAllowList` (`REG_DWORD` state), `RegistryAllowedUrls` (`REG_MULTI_SZ`, one URL per line) | `limits.registries.allowedUrls` |
 | Allow unsigned registry packages | `RegistryUnsignedPackages` (`REG_DWORD`) | `limits.registries.unsignedPackages: false` when Disabled |
 | Allow the default skill registries | `DefaultSkillRegistries` (`REG_DWORD`) | `limits.registries.defaultSkillRegistries: false` when Disabled |
 | Allow engine installs from the ACP registry | `AcpRegistryInstalls` (`REG_DWORD`) | `limits.registries.acpRegistryInstalls: false` when Disabled |
+| Allowed clients | `Clients` (`REG_DWORD` state), `ClientDesktop`, `ClientLocalBrowser`, `ClientRemote` (`REG_DWORD` each, 1 checked) | `limits.clients`, the checked kinds |
+| Allow updates | `Updates` (`REG_DWORD`) | `limits.updates.mode: "off"` when Disabled |
+| Update mirror | `UpdateMirror` (`REG_DWORD` state), `UpdateFeedUrl` (`REG_SZ`) | `limits.updates.feedUrl` |
+| Allow the nightly channel | `NightlyChannel` (`REG_DWORD`) | `limits.updates.allowNightly: false` when Disabled |
+| Allowed engines | `AllowedEngines` (`REG_DWORD` state), `EngineClaude`, `EngineCodex`, `EngineMuse`, `EngineAcp`, `EngineStationAgent` (`REG_DWORD` each, 1 checked) | `limits.engines.allowed`, the checked engine ids |
+| Allow ACP registry agents | `AcpRegistryAgents` (`REG_DWORD`) | `limits.engines.acpRegistryAgents: false` when Disabled |
+| Engine launch configuration (JSON) | `EngineInstances` (`REG_DWORD` state), `EngineInstancesJson` (`REG_MULTI_SZ`, lines joined) | `limits.engines.instances` |
 
 The template carries a setting for every limit this release enforces. Later
 limits join it when they ship.
@@ -764,7 +883,12 @@ Authenticated clients can read `GET /api/settings/managed-policy`. It returns
 organization, the support link, the locked setting keys and the effective
 limits, including each capability switch and the registry allow list. It never
 returns a setting value or the update feed URL; for `limits.updates` it
-returns `mode`, `allowNightly` and whether a mirror is set (`mirror`).
+returns `mode`, `allowNightly` and whether a mirror is set (`mirror`). A policy
+that sets `limits.engines` adds `summary.engines`, which names the allowed
+engines, whether ACP registry agents may run, and which launch fields and
+environment variable names each engine has pinned. It never returns a launch
+value, because a launch argument or environment value can carry a gateway
+token; `summary.limits` then omits `engines`.
 
 `GET /config/app` returns the values in effect, managed ones included, and its
 per-setting provenance reports `{ "source": "managed", "locked": true | false,

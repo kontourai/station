@@ -18,8 +18,9 @@
  * key is a registered Station setting and each value is checked against
  * that setting's registry definition (see {@link managedSettingsProblems}).
  * The capability switches (`telemetry`, `webhookAutomations`, `registries`;
- * #4521), `clients` (#4519) and `updates` (#4522) are enforced; each
- * enforced limit is one entry in `MANAGED_POLICY_LIMIT_SLICES`
+ * #4521), `clients` (#4519), `updates` (#4522) and `engines` (#4520, in
+ * `./managed-policy-engines.js`) are enforced; each enforced limit is one
+ * entry in `MANAGED_POLICY_LIMIT_SLICES`
  * (`./managed-policy-status.js`).
  *
  * `limits.updates` (#4522) also owns the update-source helpers every update
@@ -30,6 +31,11 @@ import { APP_CONFIG_SEED } from './config.js';
 import { boundaryText, isRecord } from './contract-validation.js';
 import { DEVICE_SETTINGS_REGISTRY } from './device-settings.js';
 import { canonicalizeForDigest } from './fleet-routing-receipt.js';
+import {
+  engineLimitProblems,
+  engineLimitsOf,
+  summarizeManagedEngineLimits,
+} from './managed-policy-engines.js';
 import {
   MANAGED_POLICY_CAPABILITY_LIMIT_KEYS,
   MANAGED_POLICY_CLIENT_KINDS,
@@ -88,7 +94,6 @@ export interface ManagedPolicyDocument {
  */
 export const MANAGED_POLICY_RESERVED_LIMIT_KEYS: readonly string[] = [
   'maxApprovalMode',
-  'engines',
 ];
 
 const DOCUMENT_KEYS = [
@@ -671,6 +676,10 @@ export function summarizeManagedPolicy(
       .map(([path]) => path)
       .sort(),
     limits: summarizeManagedPolicyLimits(document.limits),
+    // #4520: beside `limits`, without a single launch value.
+    ...(document.limits?.engines
+      ? { engines: summarizeManagedEngineLimits(document.limits.engines) }
+      : {}),
   };
 }
 
@@ -751,6 +760,7 @@ export const MANAGED_POLICY_ENFORCED_LIMIT_KEYS: readonly string[] = [
   ...MANAGED_POLICY_CAPABILITY_LIMIT_KEYS,
   'clients',
   'updates',
+  'engines',
 ];
 
 const UPDATES_KEYS = ['mode', 'feedUrl', 'allowNightly'] as const;
@@ -1129,6 +1139,13 @@ const MANAGED_POLICY_LIMIT_SLICES: readonly ManagedPolicyLimitSlice[] = [
     problems: updatesSliceProblems,
     accepted: updatesSliceAccepted,
     summary: updatesSliceSummary,
+  },
+  {
+    problems: engineLimitProblems,
+    accepted: engineLimitsOf,
+    // #4520: clients see engines as `summary.engines` (value-free), never
+    // in `summary.limits`; `summarizeManagedPolicy` adds it.
+    summary: () => ({}),
   },
 ];
 

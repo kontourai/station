@@ -3908,7 +3908,13 @@ summary never contains a setting value. A policy with `limits.updates` reports
 itself is never returned. The
 [capability switches](../guides/managed-policy.md#capability-switches) appear
 as set (`"telemetry": false`, `"webhookAutomations": false`, and
-`"registries"` with its `allowedUrls` and switches). There is no error state: a server that
+`"registries"` with its `allowedUrls` and switches). A policy that sets
+`limits.engines` (#4520) adds `summary.engines`, which names the allowed
+engines (`null` for all), whether ACP registry agents may run, and each pinned
+engine's `locked`, pinned `fields` and `environmentNames`, never a launch
+value; `summary.limits` then omits `engines`. Routes refuse an engine the
+policy does not allow with `403` and code `managed-policy-engine-refused`.
+There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
 `station policy show` reports as a server too old to report a policy.
 

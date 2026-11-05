@@ -31,3 +31,11 @@ export const MANAGED_POLICY_REMOTE_CLIENTS_CODE =
  */
 export const MANAGED_POLICY_UPDATES_REFUSED_CODE =
   'managed-policy-updates-refused' as const;
+
+/**
+ * #4520: the refusal code for an engine the managed policy does not allow,
+ * and for a launch that cannot honor a locked pin. Clients key on it to show
+ * the managed message instead of offering a retry.
+ */
+export const MANAGED_POLICY_ENGINE_REFUSED_CODE =
+  'managed-policy-engine-refused' as const;

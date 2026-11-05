@@ -1,4 +1,5 @@
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { assertEngineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
 import { providerFailure } from '../provider-failure.js';
 /**
@@ -970,6 +971,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     const config = (await this.options.getConnections()).find(
       (candidate) => candidate.id === connectionId,
     );
+    // #4520: before the start boundary is claimed, so the refusal is
+    // definitive (see startSession for the same check on a direct start).
+    if (config) assertEngineAllowedByManagedPolicy('acp', config);
     if (!config || acpApprovalControl(config.command) !== 'station') return;
     const floor = acpApprovalFloor(
       acpAppliedApprovalMode(
@@ -1036,6 +1040,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         `Unknown ACP connection: ${connectionId ?? '(none provided)'}`,
       );
     }
+    // #4520: a connection added from the public ACP registry does not run
+    // when the managed policy sets `limits.engines.acpRegistryAgents: false`.
+    assertEngineAllowedByManagedPolicy('acp', config);
     // #3290: an engine that decides which of its actions ask is not started
     // with an approval mode it would never apply. The server sends a mode
     // only to a `station` connection, so this refuses a caller-carried one.

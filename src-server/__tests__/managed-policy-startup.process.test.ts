@@ -20,6 +20,8 @@ import {
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  EVERY_KEY_ENGINE_GATEWAY,
+  EVERY_KEY_ENGINE_SUMMARY,
   EVERY_KEY_FEED_URL,
   EVERY_KEY_POLICY,
   EVERY_KEY_SUMMARY_LIMITS,
@@ -630,11 +632,13 @@ describe('every enforced key at a real server (#4515)', () => {
     const summaryText = await summary.text();
     expect(summary.status, summaryText).toBe(200);
     expect(summaryText).not.toContain(EVERY_KEY_FEED_URL);
+    expect(summaryText).not.toContain(EVERY_KEY_ENGINE_GATEWAY);
     expect(JSON.parse(summaryText).data.summary).toEqual({
       organization: 'Acme',
       supportUrl: 'https://help.example/station',
       lockedSettings: ['defaultMaxTurns'],
       limits: EVERY_KEY_SUMMARY_LIMITS,
+      engines: EVERY_KEY_ENGINE_SUMMARY,
     });
 
     // #4522: updates are off.

@@ -8,6 +8,11 @@
  * does not carry them.
  * `@kontourai/station-contracts/managed-policy` re-exports all of it.
  */
+import {
+  type ManagedPolicyEngineLimits,
+  type ManagedPolicyEngineSummary,
+  parseManagedEngineSummary,
+} from './managed-policy-engines.js';
 import { isRecord, ownMember } from './record-guard.js';
 
 export * from './managed-policy-codes.js';
@@ -44,6 +49,8 @@ export interface ManagedPolicyLimits {
   clients?: ManagedPolicyClientKind[];
   /** #4522: how Station on this machine updates itself. */
   updates?: ManagedPolicyUpdatesLimit;
+  /** #4520: which engines may run, and how the ones Station launches start. */
+  engines?: ManagedPolicyEngineLimits;
 }
 
 /**
@@ -89,7 +96,10 @@ export interface ManagedPolicySummary {
   organization: string;
   supportUrl: string | null;
   lockedSettings: string[];
+  /** Every limit except `engines`, whose launch values are withheld. */
   limits: ManagedPolicySummaryLimits;
+  /** #4520: `limits.engines` without values; absent when the policy sets none. */
+  engines?: ManagedPolicyEngineSummary;
 }
 
 /**
@@ -106,7 +116,7 @@ export interface ManagedPolicyUpdatesSummary {
 /** The effective limits a client sees: {@link ManagedPolicyLimits} without secrets. */
 export type ManagedPolicySummaryLimits = Omit<
   ManagedPolicyLimits,
-  'updates'
+  'updates' | 'engines'
 > & {
   updates?: ManagedPolicyUpdatesSummary;
 };
@@ -182,12 +192,20 @@ export function parseManagedPolicyStatus(
     (summary.supportUrl !== null && typeof summary.supportUrl !== 'string') ||
     !Array.isArray(summary.lockedSettings) ||
     !summary.lockedSettings.every((path) => typeof path === 'string') ||
-    !isRecord(summary.limits)
+    !isRecord(summary.limits) ||
+    // #4520: engines are summarized beside `limits`, never inside it.
+    ownMember(summary.limits, 'engines') !== undefined
   ) {
     return null;
   }
   const limits = managedPolicySummaryLimitsOf(summary.limits);
   if (limits === null) return null;
+  const engineSummary = ownMember(summary, 'engines');
+  const engines =
+    engineSummary === undefined
+      ? undefined
+      : parseManagedEngineSummary(engineSummary);
+  if (engines === null) return null;
   return {
     state: 'loaded',
     source: { kind: source.kind, location: source.location },
@@ -197,6 +215,7 @@ export function parseManagedPolicyStatus(
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
       limits,
+      ...(engines ? { engines } : {}),
     },
   };
 }

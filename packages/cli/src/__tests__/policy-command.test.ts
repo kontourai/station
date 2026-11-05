@@ -16,6 +16,8 @@ import { describe, expect, test } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
+  EVERY_KEY_ENGINE_GATEWAY,
+  EVERY_KEY_ENGINE_SUMMARY,
   EVERY_KEY_FEED_URL,
   EVERY_KEY_POLICY,
   EVERY_KEY_SUMMARY_LIMITS,
@@ -87,8 +89,10 @@ describe('station policy check', () => {
     const report = JSON.parse(json.stdout);
     expect(report).toMatchObject({ valid: true, path });
     expect(report.summary.limits).toEqual(EVERY_KEY_SUMMARY_LIMITS);
+    expect(report.summary.engines).toEqual(EVERY_KEY_ENGINE_SUMMARY);
     expect(report.summary.lockedSettings).toEqual(['defaultMaxTurns']);
     expect(json.stdout).not.toContain(EVERY_KEY_FEED_URL);
+    expect(json.stdout).not.toContain(EVERY_KEY_ENGINE_GATEWAY);
   });
 
   test('exits 0 on a valid policy and prints what it does', () => {
@@ -220,10 +224,11 @@ describe('station policy check', () => {
       JSON.stringify({
         schemaVersion: 1,
         organization: 'A',
-        // A key the plan reserves and no slice enforces yet.
-        limits: { engines: false },
+        // A key the plan reserves and no slice enforces yet (#4518). When
+        // it is enforced no reserved key remains: drop this case then.
+        limits: { maxApprovalMode: 'auto' },
       }),
-      'limits.engines: this limit is not supported by this version of Station',
+      'limits.maxApprovalMode: this limit is not supported by this version of Station',
     ],
     [
       'an unknown setting',

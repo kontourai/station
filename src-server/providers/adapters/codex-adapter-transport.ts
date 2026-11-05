@@ -22,6 +22,10 @@ import {
   WORKLOAD_COMMAND_OOM_KILLED_TYPE,
   WORKLOAD_TRANSCRIPT_NAMESPACE,
 } from '@kontourai/station-shared/extension-transcript-markers';
+import {
+  managedEngineBinaryPath,
+  managedEngineLaunch,
+} from '../../security/managed-engine-limits.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   releaseOwnedChildAfterGroupExit,
@@ -1641,17 +1645,30 @@ function memoryExhaustedMessage(outcome: ChildWorkloadOutcome): string {
   return `Codex ran out of memory and was stopped, along with the commands it was running.${budget} When the chat continues, Station tells Codex which commands were interrupted and to run memory-heavy steps one at a time.`;
 }
 
-function spawnCodexProcess(
+/** Exported for the #4520 spawn-level test; the transport is its caller. */
+export function spawnCodexProcess(
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
   /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`), never env-supplied. */
   tmpDir?: string,
 ): ChildProcessWithoutNullStreams {
-  const binary = findCliBinary('codex') ?? 'codex';
-  const invocation = cliInvocation(binary, [
-    'app-server',
-    ...(extraArgs ?? []),
-  ]);
+  // #4520: a managed policy's pinned binary, arguments and environment are
+  // merged into every Codex launch (`managedEngineLaunch`).
+  const launch = managedEngineLaunch(
+    'codex',
+    {
+      command:
+        managedEngineBinaryPath('codex') ?? findCliBinary('codex') ?? 'codex',
+      args: ['app-server', ...(extraArgs ?? [])],
+      env: {
+        ...process.env,
+        PATH: resolveAugmentedPathSync(),
+        ...extraEnv,
+      } as Record<string, string | undefined>,
+    },
+    'station',
+  );
+  const invocation = cliInvocation(launch.command, [...launch.args]);
   // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
   // config overrides (codex-mcp-passthrough.ts) — appended AFTER
   // `app-server` on the spawn argv itself, never written to any config
@@ -1691,8 +1708,7 @@ function spawnCodexProcess(
     {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childProcessEnvironment({
-        PATH: resolveAugmentedPathSync(),
-        ...extraEnv,
+        ...launch.env,
         TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
       }),
     },

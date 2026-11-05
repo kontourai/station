@@ -10,12 +10,14 @@ import {
   parseManagedPolicyDocument,
   summarizeManagedPolicy,
 } from '@kontourai/station-contracts/managed-policy';
+import { MANAGED_POLICY_ENGINE_REFUSED_CODE } from '@kontourai/station-contracts/managed-policy-engines';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { BuiltinACPConnectionRegistryProvider } from '../../../providers/llm/defaults.js';
 import { installManagedCapabilityLimits } from '../../../security/managed-capability-limits.js';
+import { installManagedEngineLimits } from '../../../security/managed-engine-limits.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { PublicAgentRegistrySource } from '../../../services/acp/public-agent-registry.js';
 
@@ -491,5 +493,79 @@ describe('#4521: limits.registries.acpRegistryInstalls false', () => {
     expect(store.connections).toEqual([]);
     expect(saveACPConfig).not.toHaveBeenCalled();
     expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe('#4520: limits.engines refuses ACP connection creation', () => {
+  beforeEach(() => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: new BuiltinACPConnectionRegistryProvider(
+          () => false,
+          () => false,
+        ),
+      },
+    ];
+  });
+  afterEach(() => installManagedEngineLimits(null));
+
+  function installEngines(engines: unknown) {
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      limits: { engines },
+    });
+    if (!parsed.ok) throw new Error('fixture policy refused');
+    installManagedEngineLimits({
+      document: parsed.document,
+      summary: summarizeManagedPolicy(parsed.document),
+    });
+  }
+
+  test('an allow list without acp refuses a custom connection and a registry install', async () => {
+    installEngines({ allowed: ['claude'] });
+    const { app, store, saveACPConfig, ctx } = await fixture();
+
+    const created = await app.request('/connections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'mine', command: 'my-agent' }),
+    });
+    expect(created.status).toBe(403);
+    expect(await json(created)).toMatchObject({
+      code: MANAGED_POLICY_ENGINE_REFUSED_CODE,
+      error: expect.stringContaining(
+        "Acme's policy manages which engines run on this computer: acp is not allowed",
+      ),
+      retryable: false,
+    });
+
+    const installed = await install(app, 'stakpak', STAKPAK_CONFIRM);
+    expect(installed.status).toBe(403);
+    expect(store.connections).toEqual([]);
+    expect(saveACPConfig).not.toHaveBeenCalled();
+    expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+  });
+
+  test('acpRegistryAgents false refuses a public-registry install but not a custom connection', async () => {
+    installEngines({ acpRegistryAgents: false });
+    const { app, store } = await fixture();
+
+    const installed = await install(app, 'stakpak', STAKPAK_CONFIRM);
+    expect(installed.status).toBe(403);
+    expect(await json(installed)).toMatchObject({
+      code: MANAGED_POLICY_ENGINE_REFUSED_CODE,
+      error: expect.stringContaining('the public ACP registry'),
+    });
+    expect(store.connections).toEqual([]);
+
+    const created = await app.request('/connections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'mine', command: 'my-agent' }),
+    });
+    expect(created.status).not.toBe(403);
   });
 });

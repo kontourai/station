@@ -14,6 +14,8 @@ import {
   summarizeManagedPolicy,
 } from '../managed-policy.js';
 import {
+  EVERY_KEY_ENGINE_GATEWAY,
+  EVERY_KEY_ENGINE_SUMMARY,
   EVERY_KEY_FEED_URL,
   EVERY_KEY_LIMITS,
   EVERY_KEY_POLICY,
@@ -30,16 +32,18 @@ describe('a policy that sets every enforced key at once', () => {
     // landed slices enforce (#4521, #4519, #4522).
     expect(Object.keys(EVERY_KEY_LIMITS).sort()).toEqual([
       'clients',
+      'engines',
       'registries',
       'telemetry',
       'updates',
       'webhookAutomations',
     ]);
-    // The status decode reads the summary with one reader per limit, apart
-    // from the document slices; every enforced key needs one.
-    expect(Object.keys(MANAGED_POLICY_SUMMARY_LIMIT_READERS).sort()).toEqual(
-      [...MANAGED_POLICY_ENFORCED_LIMIT_KEYS].sort(),
-    );
+    // The status decode reads `summary.limits` with one reader per limit,
+    // apart from the document slices, and `summary.engines` (#4520) with the
+    // engine summary parser; every enforced key needs one of the two.
+    expect(
+      [...Object.keys(MANAGED_POLICY_SUMMARY_LIMIT_READERS), 'engines'].sort(),
+    ).toEqual([...MANAGED_POLICY_ENFORCED_LIMIT_KEYS].sort());
   });
 
   test('every value survives the parsed document, the summary and the status decode', () => {
@@ -57,6 +61,7 @@ describe('a policy that sets every enforced key at once', () => {
       supportUrl: 'https://help.example/station',
       lockedSettings: ['defaultMaxTurns'],
       limits: EVERY_KEY_SUMMARY_LIMITS,
+      engines: EVERY_KEY_ENGINE_SUMMARY,
     });
     const wire = JSON.stringify({
       state: 'loaded',
@@ -68,6 +73,9 @@ describe('a policy that sets every enforced key at once', () => {
     expect(wire).not.toContain(EVERY_KEY_FEED_URL);
     expect(wire).not.toContain('mirror.example');
     expect(wire).not.toContain('feedUrl');
+    // Nor a pinned engine value: names only.
+    expect(wire).not.toContain(EVERY_KEY_ENGINE_GATEWAY);
+    expect(wire).not.toContain('/opt/acme');
     expect(wire).not.toContain(
       String(EVERY_KEY_SETTINGS.checkoutStaleAfterDays.value),
     );
@@ -82,6 +90,7 @@ describe('a policy that sets every enforced key at once', () => {
         supportUrl: 'https://help.example/station',
         lockedSettings: ['defaultMaxTurns'],
         limits: EVERY_KEY_SUMMARY_LIMITS,
+        engines: EVERY_KEY_ENGINE_SUMMARY,
       },
     });
   });
@@ -98,6 +107,10 @@ describe('a policy that sets every enforced key at once', () => {
       });
     // The document shape is not a summary: `mirror` is required there.
     expect(status(EVERY_KEY_LIMITS)).toBeNull();
+    // Engines are summarized beside `limits`, never inside it (#4520).
+    expect(
+      status({ ...EVERY_KEY_SUMMARY_LIMITS, engines: EVERY_KEY_ENGINE_SUMMARY }),
+    ).toBeNull();
     // And a document must not use the summary's `mirror` key.
     expect(
       parseManagedPolicyDocument({

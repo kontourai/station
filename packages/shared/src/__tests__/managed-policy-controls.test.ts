@@ -321,8 +321,17 @@ describe('the control table and the contract', () => {
         dword('UpdateMirror', 1),
         sz('UpdateFeedUrl', 'https://mirror.acme.example/station'),
         dword('NightlyChannel', 0),
-        dword('Engines', 1),
-        multi('EnginesJson', ['{"allowed": ["codex"]}']),
+        dword('AllowedEngines', 1),
+        dword('EngineClaude', 0),
+        dword('EngineCodex', 1),
+        dword('EngineMuse', 0),
+        dword('EngineAcp', 1),
+        dword('EngineStationAgent', 0),
+        dword('AcpRegistryAgents', 0),
+        dword('EngineInstances', 1),
+        multi('EngineInstancesJson', [
+          '{"codex": {"locked": true, "binaryPath": "/opt/acme/bin/codex"}}',
+        ]),
       ),
     );
     expect(input).toEqual({
@@ -337,7 +346,13 @@ describe('the control table and the contract', () => {
             feedUrl: 'https://mirror.acme.example/station',
             allowNightly: false,
           },
-          engines: { allowed: ['codex'] },
+          engines: {
+            allowed: ['codex', 'acp'],
+            acpRegistryAgents: false,
+            instances: {
+              codex: { locked: true, binaryPath: '/opt/acme/bin/codex' },
+            },
+          },
         },
       },
     });

@@ -31,6 +31,10 @@ import {
   managedCapabilityRefusalBody,
   managedRegistryLimits,
 } from '../../security/managed-capability-limits.js';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEngineRefusalBody,
+} from '../../security/managed-engine-limits.js';
 import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
 import { forgetEngineAuthStatus } from '../../services/acp/engine-auth-status.js';
@@ -551,6 +555,18 @@ async function registerFirstHandshakeACPConnection(
   return value;
 }
 
+/** #4520: the managed 403 body for an ACP connection that may not be created. */
+function managedEngineCreationRefusal(connection: {
+  publicRegistry?: unknown;
+}) {
+  try {
+    assertEngineAllowedByManagedPolicy('acp', connection);
+    return undefined;
+  } catch (error) {
+    return managedEngineRefusalBody(error);
+  }
+}
+
 export function createACPRoutes(
   ctx: RuntimeContext,
   options: {
@@ -746,6 +762,14 @@ export function createACPRoutes(
 
           const listing =
             entry.source === 'registry' ? entry.publicRegistry : undefined;
+          // #4520: no ACP connection while the policy does not allow `acp`,
+          // and none from the public registry under `acpRegistryAgents: false`.
+          const engineRefusal = managedEngineCreationRefusal(
+            entry.source === 'registry'
+              ? { publicRegistry: listing ?? {} }
+              : {},
+          );
+          if (engineRefusal) return c.json(engineRefusal, 403);
           // #4521: `limits.registries.acpRegistryInstalls: false` refuses an
           // engine from the public registry; Station's own entries remain.
           if (
@@ -861,6 +885,9 @@ export function createACPRoutes(
   });
 
   app.post('/connections', validate(acpConnectionSchema), async (c) => {
+    // #4520: no ACP connection while the managed policy does not allow `acp`.
+    const engineRefusal = managedEngineCreationRefusal({});
+    if (engineRefusal) return c.json(engineRefusal, 403);
     // The command and folder a connection runs are chosen here.
     const commandRefused = refuseUngrantedCommandChoice(c);
     if (commandRefused) return commandRefused;

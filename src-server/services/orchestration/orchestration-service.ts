@@ -243,6 +243,10 @@ import {
 } from '../../security/confinement/confinement-provider.js';
 import { seatbeltConfinementProvider } from '../../security/confinement/seatbelt.js';
 import {
+  assertEngineAllowedByManagedPolicy,
+  isManagedEngineRefusal,
+} from '../../security/managed-engine-limits.js';
+import {
   adapterSessionStartDuration,
   adapterTurnDuration,
   attachedSessionMutationRejected,
@@ -8499,7 +8503,9 @@ export class OrchestrationService {
         error instanceof SessionReattachConflictError ||
         error instanceof ConcurrentEngineStartCapacityError ||
         // #2873: a refusal to start, with nothing run.
-        error instanceof DispatchCwdRefusedError,
+        error instanceof DispatchCwdRefusedError ||
+        // #4520: the managed policy refused the engine before it ran.
+        isManagedEngineRefusal(error),
       attachedSessionReadOnlyMessage: ATTACHED_SESSION_READ_ONLY_ERROR,
     });
   }
@@ -8959,6 +8965,13 @@ export class OrchestrationService {
             submittedInput.threadId,
             INTERNAL_SESSION_READ_SCOPE,
           );
+          // #4520: a thread on an engine the managed policy does not allow
+          // is kept but runs no turn, before any engine is started for it.
+          const turnEngine =
+            this.threadProviders.get(submittedInput.threadId) ??
+            current?.session.provider;
+          if (turnEngine !== undefined)
+            assertEngineAllowedByManagedPolicy(turnEngine);
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: submittedInput.threadId,
             threadProviders: this.threadProviders,
@@ -13742,6 +13755,9 @@ export class OrchestrationService {
     adapter: ProviderAdapterShape,
     connectionId?: string,
   ): Promise<void> {
+    // #4520: every engine start (new, recovered or child work) passes here;
+    // an engine the managed policy does not allow starts nothing.
+    assertEngineAllowedByManagedPolicy(adapter.provider);
     const prerequisites = await this.readPrerequisites(adapter, connectionId);
     const readiness = resolveRuntimeAdapterReadiness({
       adapter,

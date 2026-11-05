@@ -28,6 +28,10 @@ import {
   MANAGED_POLICY_SCHEMA_VERSION,
   type ManagedPolicyDocument,
 } from '@kontourai/station-contracts/managed-policy';
+import {
+  MANAGED_POLICY_ENGINE_IDS,
+  type ManagedPolicyEngineId,
+} from '@kontourai/station-contracts/managed-policy-engines';
 
 /** The key, relative to HKEY_LOCAL_MACHINE, as an ADMX `key` attribute. */
 export const WINDOWS_POLICY_SUBKEY = 'SOFTWARE\\Policies\\Kontour\\Station';
@@ -128,6 +132,26 @@ export type ManagedPolicyControl =
       stateValueName?: string;
       elements: readonly ManagedPolicyElement[];
     };
+
+/**
+ * #4520: the template's checkbox for each engine id the policy can name.
+ * Keyed by `ManagedPolicyEngineId`, so a new engine id without a checkbox
+ * does not compile.
+ */
+const ENGINE_LABELS: Readonly<Record<ManagedPolicyEngineId, string>> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  muse: 'Muse',
+  acp: 'ACP engines (Agent Client Protocol)',
+  'station-agent': "Station's own agent",
+};
+const ENGINE_VALUE_NAMES: Readonly<Record<ManagedPolicyEngineId, string>> = {
+  claude: 'EngineClaude',
+  codex: 'EngineCodex',
+  muse: 'EngineMuse',
+  acp: 'EngineAcp',
+  'station-agent': 'EngineStationAgent',
+};
 
 const NOT_A_SANDBOX =
   'Every user on the machine can read this policy, so do not put credentials in it.';
@@ -341,17 +365,48 @@ export const MANAGED_POLICY_CONTROLS: readonly ManagedPolicyControl[] = [
   },
   {
     kind: 'policy',
-    id: 'Engines',
-    title: 'Engines (JSON)',
-    help: `The engines that may run and their pinned launch configuration, as the "limits.engines" object of a Station policy.\n\nRun "station policy check" on a policy file holding the same object to validate it first.\n\nDisabled is not supported: Station will not start. Use Not Configured for no engine limit.\n\n${NOT_A_SANDBOX}`,
+    id: 'AllowedEngines',
+    title: 'Allowed engines',
+    help: `The only engines that may run on this machine. An engine left unchecked does not run, and neither does any plugin engine.\n\nDisabled is not supported: Station will not start. Use Not Configured to let every engine run.\n\n${NOT_A_SANDBOX}`,
     limitKey: 'engines',
-    stateValueName: 'Engines',
+    stateValueName: 'AllowedEngines',
+    elements: [
+      {
+        kind: 'checkboxes',
+        path: ['limits', 'engines', 'allowed'],
+        label: 'Allowed engines',
+        items: MANAGED_POLICY_ENGINE_IDS.map((id) => ({
+          valueName: ENGINE_VALUE_NAMES[id],
+          item: id,
+          label: ENGINE_LABELS[id],
+          defaultChecked: true,
+        })),
+      },
+    ],
+  },
+  {
+    kind: 'switch',
+    id: 'AcpRegistryAgents',
+    title: 'Allow ACP registry agents',
+    help: 'Disabled: ACP connections added from the public ACP registry do not run.\n\nEnabled or Not Configured: they run as usual.',
+    limitKey: 'engines',
+    valueName: 'AcpRegistryAgents',
+    path: ['limits', 'engines', 'acpRegistryAgents'],
+    offValue: false,
+  },
+  {
+    kind: 'policy',
+    id: 'EngineInstances',
+    title: 'Engine launch configuration (JSON)',
+    help: `How the engines Station starts are launched, as the "limits.engines.instances" object of a Station policy: for each engine, "locked" and any of "binaryPath" (absolute), "launchArgs" and "environment".\n\nRun "station policy check" on a policy file holding the same object to validate it first.\n\nDisabled is not supported: Station will not start. Use Not Configured for no pinned launch.\n\n${NOT_A_SANDBOX}`,
+    limitKey: 'engines',
+    stateValueName: 'EngineInstances',
     elements: [
       {
         kind: 'json',
-        valueName: 'EnginesJson',
-        path: ['limits', 'engines'],
-        label: 'Engines JSON',
+        valueName: 'EngineInstancesJson',
+        path: ['limits', 'engines', 'instances'],
+        label: 'Engine launch configuration JSON',
       },
     ],
   },

@@ -27,6 +27,9 @@ Claude Code and Codex engine connections can set
 Model connection. The UI exposes this as **Connect through**. The engine uses the
 current saved address/key at launch, without copying credentials or changing the
 global CLI configuration. See [proxy setup](../guides/connections.md#route-an-engine-through-a-model-proxy).
+A [managed policy](../guides/managed-policy.md#pinned-launch-fields) that locks
+the engine's environment stops `proxyConnectionId`, `env` and `configHome` from
+being applied.
 
 ## app.json
 

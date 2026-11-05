@@ -11,6 +11,7 @@ import {
 import { AUTH_RATE_LIMITED_ERROR_CODE } from './http.js';
 import {
   MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
+  MANAGED_POLICY_ENGINE_REFUSED_CODE,
   MANAGED_POLICY_REMOTE_CLIENTS_CODE,
   MANAGED_POLICY_UPDATES_REFUSED_CODE,
 } from './managed-policy-codes.js';
@@ -231,6 +232,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
   // #4517: a managed policy locks the setting a write would change.
   managed_setting_locked: 'permission_denied',
+  // #4520: an engine the managed policy does not allow, or a launch that
+  // cannot honor a locked pin.
+  [MANAGED_POLICY_ENGINE_REFUSED_CODE]: 'permission_denied',
 } as const satisfies Readonly<
   Record<string, ProviderFailureKind> &
     Record<DelegationFileRefusalCode, ProviderFailureKind>

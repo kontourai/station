@@ -40,6 +40,7 @@ import {
   environmentId,
   executionProfileAgentId,
 } from '@kontourai/station-contracts/execution-target';
+import { MANAGED_POLICY_ENGINE_REFUSED_CODE } from '@kontourai/station-contracts/managed-policy-engines';
 import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
@@ -3286,16 +3287,19 @@ export function createOrchestrationRoutes(
         },
         unreachableWorkspace
           ? 503
-          : // The caller's view of the Agent is stale: a conflict with the
-            // current binding, not malformed input.
-            errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
-              // Another attempt still holds the key: a conflict to retry,
-              // as the inbox's own in-flight refusal answers it.
-              errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
-              errorCode(error) === 'client_turn_input_conflict' ||
-              errorCode(error) === 'inbox_key_held'
-            ? 409
-            : 400,
+          : // #4520: the managed policy does not allow the engine.
+            errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE
+            ? 403
+            : // The caller's view of the Agent is stale: a conflict with the
+              // current binding, not malformed input.
+              errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
+                // Another attempt still holds the key: a conflict to retry,
+                // as the inbox's own in-flight refusal answers it.
+                errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+                errorCode(error) === 'client_turn_input_conflict' ||
+                errorCode(error) === 'inbox_key_held'
+              ? 409
+              : 400,
       );
     } finally {
       releaseDeliveryReceipt?.();
@@ -3437,7 +3441,8 @@ export function createOrchestrationRoutes(
                 }
               : {}),
           },
-          409,
+          // #4520: the managed policy does not allow the engine.
+          errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE ? 403 : 409,
         );
       }
     },
@@ -4090,13 +4095,16 @@ export function createOrchestrationRoutes(
                 }
               : {}),
           },
-          // Another attempt still holds the key: a conflict to retry, as
-          // the inbox's own in-flight refusal answers it.
-          errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
-            errorCode(error) === 'client_turn_input_conflict' ||
-            errorCode(error) === 'inbox_key_held'
-            ? 409
-            : 400,
+          // #4520: the managed policy does not allow the engine.
+          errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE
+            ? 403
+            : // Another attempt still holds the key: a conflict to retry, as
+              // the inbox's own in-flight refusal answers it.
+              errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+                errorCode(error) === 'client_turn_input_conflict' ||
+                errorCode(error) === 'inbox_key_held'
+              ? 409
+              : 400,
         );
       }
     },
@@ -7087,15 +7095,18 @@ export function createOrchestrationRoutes(
                 }
               : {}),
           },
-          error instanceof AdoptionContinuationInProgressError ||
-            indeterminate ||
-            (error instanceof OrchestrationCommandDispatchError &&
-              (error.code === 'client_turn_input_conflict' ||
-                error.code === 'request_event_changed' ||
-                error.code === 'request_verification_unavailable' ||
-                error.code === 'request_content_not_loaded'))
-            ? 409
-            : 400,
+          error instanceof OrchestrationCommandDispatchError &&
+            error.code === MANAGED_POLICY_ENGINE_REFUSED_CODE
+            ? 403
+            : error instanceof AdoptionContinuationInProgressError ||
+                indeterminate ||
+                (error instanceof OrchestrationCommandDispatchError &&
+                  (error.code === 'client_turn_input_conflict' ||
+                    error.code === 'request_event_changed' ||
+                    error.code === 'request_verification_unavailable' ||
+                    error.code === 'request_content_not_loaded'))
+              ? 409
+              : 400,
         );
       }
     },

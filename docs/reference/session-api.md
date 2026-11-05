@@ -348,6 +348,12 @@ starts the engine. If the folder no longer resolves to the admitted canonical
 path, or the directory the engine would start in belongs to another scope, the
 request returns the same typed `403` and no engine starts.
 
+On a machine whose [managed policy](../guides/managed-policy.md#engines) does
+not allow the target engine, `/chat`, its continue route and a handoff answer
+`403` with `code: "managed-policy-engine-refused"` (`kind:
+"permission_denied"`, not retryable): no Session starts and no turn reaches an
+existing Session on that engine, which is kept.
+
 An Agent that messages, interrupts, or waits on an existing Session uses
 station-control's [Session control](../guides/self-configuring-agent.md#session-control)
 tools, which call their own agent-only routes under
