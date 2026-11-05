@@ -650,7 +650,9 @@ An engine the policy does not allow is unavailable everywhere:
   usage and sign-in status as unavailable, without reading the credential
   (no Keychain, no credentials file) or calling the engine's vendor, and
   setting it up (importing an account, adding a profile, starting a sign-in)
-  is refused. Removing a profile still works.
+  is refused. For an ACP engine, its sign-in view and a new key are refused
+  and a key stored for it is never read. Removing a profile or a stored key
+  still works.
 - Station never starts its program: it is not checked for prerequisites or
   its version (at startup, for system status or for readiness), asked for its
   models, its sign-in status or how it signs in (the Accounts page), probed
