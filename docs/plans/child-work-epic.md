@@ -4509,3 +4509,52 @@ commit. The managed runner reports 99% CPU pressure and liveness scaling by four
 the product deadline remains 120 seconds. No cause or speedup is inferred from
 that load signal or from the lower identity-probe count. All broader qualification
 and the final deslop/visual pass remain open, flags stay false, and no PR is opened.
+
+## Native CLI and physical-browser qualification checkpoint
+
+At `74aca6d80445`, a fresh three-seat report-only CLI group completed through
+the initialized runtime and public SDK. Claude and Codex supplied all three
+exact raw outputs, one exact Claude question was answered, and streamed Flow
+events settled lead/check before admitting join. Flow projected completion.
+Independent read-only review narrowly approves this captured scenario. Applied
+Codex model selection is not provider model attestation; billing, token and
+physical-request caps remain unavailable. Awaited runtime cleanup completed,
+but the native receipt has no separate OS descendant census. Future harness
+instrumentation now requires substantive member events and entry/exit source
+fences; it has been prepared and syntax-checked, not used to relabel this run.
+
+At the same revision, a controlled CLI journey passed on a second physical
+Windows workstation in an isolated Chrome profile. Cookie-only pairing, live
+Running, Directory context and reported CLI origin were visible. After reload,
+Activity had one Done row in Just finished, no duplicate Running row, and the
+exact output reopened in chat. The task was completed while its retained
+Session was ready. No Retry action was needed in that run. The CLI runner and
+browser exited naturally with zero status; all coordinator-owned processes
+were terminal. This journey used one synthetic loopback model response, not a
+native engine or Tauri shell. Earlier cold opens with history transport errors
+remain retained: a captured capability probe aborted at its five-second
+deadline before any event-window read. The passing run does not resolve that
+intermittence or qualify every network/load condition. Private receipts,
+screenshots and hashes are retained under
+`.kontourai/child-work-cli-group/qualified-74aca6`.
+
+Visual inspection exposed a remaining omission: Activity row metadata named
+Project attribution but omitted the directory fallback. `250550ad507a` shares
+compact CWD formatting with Home and adds Directory context only when no
+Project label exists. Unix and Windows roots retain their root labels. A typed
+mounted regression compares Activity, Home, dock and mobile sheet: old code
+failed four directory cases with 26 controls passing. The candidate passed
+292 focused tests, UI types and fixture guards. Removing the Activity segment
+from the clean commit caused the four intended failures; exact restoration
+passed all 30 owner tests. New-head visual and documentation qualification
+remain pending.
+
+Normal merge `9983907441bd` incorporates main `10352129420f`. The two ledger
+conflicts were independent source-list additions; the canonical path-only
+merge preserved both lists. Managed `dependencies:ci` passed. The Directory
+source/test files are unchanged by that merge; merged-head integration evidence
+is still required. The original finalizer and report-input caller failures,
+portable lineage and peer/SSH obligations, topology dependencies, final source
+review and visual work remain open. The initialized cold-start test remains
+held for the durability owner's #4564 landing. Both production qualification
+flags remain false. No PR is opened.

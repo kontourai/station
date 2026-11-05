@@ -1929,6 +1929,8 @@ nothing. `--cwd=<path>` (create only) binds to an explicit directory
 instead of a project — use `--project`/`--project-path` or `--cwd`, not
 both; a follow-up selected by `--session` reuses the workspace bound at
 creation and rejects `--cwd`.
+When no Project is attributed, Home, Inbox, and Activity show a compact
+**Directory** context for the workspace.
 
 `--on=<environment>` is accepted on every sub-verb (not just `create`/
 `targets`) so a task living on a non-current SSH environment can still be
