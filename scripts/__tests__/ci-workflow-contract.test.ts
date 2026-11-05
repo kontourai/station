@@ -2981,6 +2981,16 @@ describe('CI verification workflow contracts', () => {
     expect(windowsPortable.split(/\s+/)).toContain(
       'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
     );
+    // The only real-ConPTY run of the terminal session, socket and
+    // retention suites (#3994).
+    for (const suite of [
+      'terminal-sessions',
+      'terminal-gateway',
+      'terminal-retention',
+    ])
+      expect(windowsPortable.split(/\s+/)).toContain(
+        `src-server/services/terminal/__tests__/${suite}.process.test.ts`,
+      );
     expect(windows).toContain('name: Compile desktop Rust tests');
     expect(windows).toContain(
       'cargo test --manifest-path src-desktop/Cargo.toml --no-run',
