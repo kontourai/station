@@ -266,7 +266,9 @@ Station, not completed: when control passes to someone else or lapses, when
 the viewer asks (blur, a hidden page, closing the pane, or an answer lost for
 a press or its release), and when that person has had no open view of the
 surface for about two seconds (a view reopening with a larger picture or after a dropped connection
-is the same view, and releases nothing). A second
+is the same view, and releases nothing). A release the page does not take is
+not forgotten: Station keeps trying it, and input waits until it lands (the
+person can send theirs again; an Agent is told to wait). A second
 tab of the same person on the same device shares that control; a tap made in
 one tab before the other took control is not sent into it. A timeout or
 interrupted operation does not establish that an already-sent browser effect
