@@ -143,8 +143,17 @@ export interface LiveSurfaceRegistryOptions {
   viewerGraceMs?: number;
 }
 
-/** Default replacement window for a closed viewer stream. */
-const DEFAULT_VIEWER_GRACE_MS = 5_000;
+/**
+ * Default replacement window for a closed viewer stream. A replacement
+ * stream for new stream params attaches about 1 ms after the old one closes
+ * (measured in process); a dropped connection's first reconnect comes after
+ * the viewer's 500 ms backoff plus the Station probe and the frames request,
+ * about 0.5 s plus two round trips. 2 s covers that with room for slow links.
+ * The trade-off: while a viewer is gone for good, what it held (a key, a
+ * button) stays down on the surface for up to this long before the server
+ * releases it; a longer window would let a key auto-repeat for longer.
+ */
+const DEFAULT_VIEWER_GRACE_MS = 2_000;
 
 export interface LiveSurfaceRegistration {
   /** Absent means every principal is denied every action. */

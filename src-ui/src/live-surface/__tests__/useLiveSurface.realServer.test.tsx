@@ -462,3 +462,222 @@ test('6: a replacement stream (new stream params) keeps a held key down and stay
   expect(sentViewerId(server)).toBe(before);
   view.unmount();
 });
+
+// ---- fix round 6 -----------------------------------------------------------
+
+const shiftDown: LiveSurfaceInput = {
+  kind: 'key',
+  type: 'down',
+  key: 'Shift',
+  code: 'ShiftLeft',
+};
+const shiftUp: LiveSurfaceInput = { ...shiftDown, type: 'up' };
+const isRelease = (url: string, body: unknown) =>
+  url.endsWith('/lease') &&
+  (body as { action?: string } | undefined)?.action === 'release-pressed';
+const releaseRequests = (s: Server) =>
+  s.requests.filter((request) => isRelease(request.url, request.body)).length;
+
+test('R6-1: a late answer to an earlier release never swallows the release of a later press of the same key', async () => {
+  server = await realLiveSurfaceServer();
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const a = viewer(
+    server.transport({
+      delay: (url, body) => (isRelease(url, body) ? gate : null),
+    }),
+  );
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  // The page loses focus: the host is asked to release Shift (and does;
+  // its answer is slow to come back).
+  act(() => {
+    a.result.current.releasePressed();
+  });
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]));
+  // Shift is pressed again before that answer arrives.
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  open();
+  await settle();
+  // The physical release of the new press reaches the surface.
+  act(() => a.result.current.sendInput([shiftUp]));
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]));
+  a.unmount();
+});
+
+test("R6-2: a release answered stale while this viewer's own takeover is still on its way is tried again, not abandoned", async () => {
+  server = await realLiveSurfaceServer();
+  await server.agentClaim();
+  let openStream!: () => void;
+  const streamGate = new Promise<void>((resolve) => {
+    openStream = resolve;
+  });
+  let openAnswer!: () => void;
+  const answerGate = new Promise<void>((resolve) => {
+    openAnswer = resolve;
+  });
+  let firstInput = true;
+  const a = viewer(
+    server.transport({
+      // The stream reports nothing after its first record for now, and the
+      // takeover's own answer is slow: the viewer still believes epoch 1.
+      streamGate: () => streamGate,
+      delay: (url) => {
+        if (!url.endsWith('/input') || !firstInput) return null;
+        firstInput = false;
+        return answerGate;
+      },
+    }),
+  );
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  expect(server.lease().epoch).toBe(2);
+  act(() => {
+    a.result.current.releasePressed();
+  });
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 3_000,
+  });
+  openAnswer();
+  openStream();
+  await settle();
+  expect(server.remotePressed()).toEqual([]);
+  a.unmount();
+});
+
+test('R6-3: a release the producer failed to perform is not confirmed; the viewer asks again until it is', async () => {
+  server = await realLiveSurfaceServer();
+  const a = viewer(server.transport());
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  // The surface refuses the first cancel.
+  let refuse = true;
+  server.producer.dispatchImpl = async (event) => {
+    if (event.kind === 'key' && event.type === 'up' && refuse) {
+      refuse = false;
+      // Refused: the surface never saw the key go up.
+      server!.producer.dispatched.pop();
+      throw new Error('surface refused the key up');
+    }
+  };
+  act(() => {
+    a.result.current.releasePressed();
+  });
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 3_000,
+  });
+  expect(releaseRequests(server)).toBeGreaterThanOrEqual(2);
+  a.unmount();
+});
+
+test('R6-4: many release calls make one request at a time, and an obligation still unconfirmed after many failures resumes on reconnect', async () => {
+  server = await realLiveSurfaceServer();
+  let inflight = 0;
+  let maxInflight = 0;
+  let failures = 6;
+  const base = server.transport({
+    fail: (url, body) => isRelease(url, body) && failures-- > 0,
+  });
+  const transport = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body =
+      typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+    const counted = isRelease(String(input), body);
+    if (counted) maxInflight = Math.max(maxInflight, ++inflight);
+    try {
+      return await base(input, init);
+    } finally {
+      if (counted) inflight -= 1;
+    }
+  }) as typeof base;
+  const a = viewer(transport);
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  act(() => {
+    for (let call = 0; call < 8; call += 1) a.result.current.releasePressed();
+  });
+  await waitFor(() => expect(releaseRequests(server!)).toBe(6), {
+    timeout: 9_000,
+  });
+  expect(maxInflight).toBe(1);
+  // Back in touch with the host: the obligation is tried again at once.
+  server.dropStreams();
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 5_000,
+  });
+  a.unmount();
+}, 20_000);
+
+test("R6-5: a stream reopened for new params verifies the Station before it presents this viewer's id", async () => {
+  server = await realLiveSurfaceServer();
+  const transport = server.transport();
+  const view = renderHook(
+    ({ maxWidth }) =>
+      useLiveSurface({
+        apiBase: REAL_API,
+        surfaceId: REAL_SURFACE,
+        visibilityRef: createRef<Element>(),
+        onFrame: () => {},
+        transport: transport as never,
+        params: { maxWidth },
+      }),
+    { initialProps: { maxWidth: 960 } },
+  );
+  await settle();
+  server.switchStation({
+    environmentId: '22222222-2222-4222-8222-222222222222',
+    epochCause: false,
+  });
+  view.rerender({ maxWidth: 1280 });
+  await waitFor(() => expect(view.result.current.status).toBe('live'), {
+    timeout: 5_000,
+  });
+  await settle();
+  expect(server.rejected).toEqual([]);
+  view.unmount();
+});
+
+test('R6-6: a restarted Station with the same id starts the viewer over at its epoch', async () => {
+  server = await realLiveSurfaceServer();
+  const restarted = await realLiveSurfaceServer();
+  let switched = false;
+  const before = server.transport();
+  const after = restarted.transport();
+  const transport = ((input: RequestInfo | URL, init?: RequestInit) =>
+    (switched ? after : before)(input, init)) as typeof before;
+  const a = viewer(transport);
+  await settle();
+  act(() => a.result.current.sendInput([text('before')]));
+  await waitFor(() => expect(server!.lease().epoch).toBe(1));
+  switched = true;
+  server.dropStreams();
+  await waitFor(() => expect(a.result.current.lease?.epoch).toBe(0), {
+    timeout: 5_000,
+  });
+  act(() => a.result.current.sendInput([text('after')]));
+  await waitFor(() =>
+    expect(
+      restarted.producer.dispatched
+        .filter((event) => event.kind === 'text')
+        .map((event) => (event as { text: string }).text),
+    ).toEqual(['after']),
+  );
+  a.unmount();
+  await restarted.dispose();
+});

@@ -732,19 +732,45 @@ describe('server-owned release of pressed input (#90 B)', () => {
     expect(first.ok).toBe(true);
     const epoch = entry.lease.snapshot().epoch;
     // A stale epoch, or a caller who does not hold control, releases nothing.
-    expect(releaseHumanPressed(entry, human, epoch - 1)).toMatchObject({
+    expect(await releaseHumanPressed(entry, human, epoch - 1)).toMatchObject({
       ok: false,
       code: 'stale-epoch',
     });
-    expect(releaseHumanPressed(entry, other, epoch)).toMatchObject({
+    expect(await releaseHumanPressed(entry, other, epoch)).toMatchObject({
       ok: false,
       code: 'not-holder',
     });
     await settleChain();
     expect(downOn(producer)).toEqual(['left']);
-    expect(releaseHumanPressed(entry, human, epoch).ok).toBe(true);
+    expect((await releaseHumanPressed(entry, human, epoch)).ok).toBe(true);
     await settleChain();
     expect(downOn(producer)).toEqual([]);
+  });
+
+  test('release-pressed answers ok only once the surface performed the release; a failed cancel keeps the press held and answers release-failed (round 6, item 3)', async () => {
+    const { producer, entry } = setup();
+    await dispatchHumanInput(entry, human, 0, [press('down', 5, 5)]);
+    const epoch = entry.lease.snapshot().epoch;
+    producer.dispatchImpl = async (event) => {
+      if (event.kind === 'pointer' && event.type === 'up') {
+        // The surface refused: the button never went up.
+        producer.dispatched.pop();
+        throw new Error('surface refused the release');
+      }
+    };
+    expect(await releaseHumanPressed(entry, human, epoch)).toMatchObject({
+      ok: false,
+      code: 'release-failed',
+    });
+    expect(downOn(producer)).toEqual(['left']);
+    // Still accounted for: the next try releases it.
+    producer.dispatchImpl = async () => {};
+    expect((await releaseHumanPressed(entry, human, epoch)).ok).toBe(true);
+    expect(downOn(producer)).toEqual([]);
+    // And nothing is left to release a second time.
+    const sent = producer.dispatched.length;
+    expect((await releaseHumanPressed(entry, human, epoch)).ok).toBe(true);
+    expect(producer.dispatched.length).toBe(sent);
   });
 
   test("a controller's presses are released only after its last stream has been closed for the grace window", async () => {

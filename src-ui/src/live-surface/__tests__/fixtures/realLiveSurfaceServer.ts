@@ -131,6 +131,8 @@ export async function realLiveSurfaceServer(
         fail?: (url: string, body: unknown) => boolean;
         /** Hold the server's answer back until the returned gate opens. */
         delay?: (url: string, body: unknown) => Promise<void> | null;
+        /** Hold a frames stream back after its first chunk until this opens. */
+        streamGate?: () => Promise<void> | null;
       } = {},
     ) =>
     async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -182,6 +184,8 @@ export async function realLiveSurfaceServer(
         // Relayed through a stream the test can end.
         const reader = response.body.getReader();
         let own!: ReadableStreamDefaultController<Uint8Array>;
+        let chunks = 0;
+        const streamGate = viewer.streamGate?.() ?? null;
         const relayed = new ReadableStream<Uint8Array>({
           start(controller) {
             own = controller;
@@ -189,6 +193,7 @@ export async function realLiveSurfaceServer(
           },
           async pull(controller) {
             try {
+              if (chunks++ > 0 && streamGate) await streamGate;
               const chunk = await reader.read();
               if (chunk.done) controller.close();
               else controller.enqueue(chunk.value);
