@@ -246,3 +246,39 @@ test('a disabled preview renders nothing and asks for nothing', async () => {
   await waitFor(() => expect(container.textContent).toBe(''));
   expect(calls).toEqual([]);
 });
+
+test('a correction is sent as the value the person typed, from the overflow menu', async () => {
+  const calls = host({
+    queue: () => reply({ success: true, data: QUEUE }),
+    decision: () =>
+      reply(
+        {
+          success: true,
+          data: {
+            itemId: QUEUE.items[0]?.itemId,
+            outcome: 'correct',
+            reviewerKind: 'human',
+            promoted: true,
+            reviewSeconds: null,
+          },
+        },
+        201,
+      ),
+  });
+  mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Review' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: /More ways to decide/ }),
+  );
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Correct it' }));
+  fireEvent.change(await screen.findByLabelText('What is right?'), {
+    target: { value: 'MariaDB' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
+  expect(await screen.findByText('Saved.')).toBeTruthy();
+  const posted = calls.find((call) => call.url.endsWith('/decision'));
+  expect(posted?.body).toMatchObject({
+    outcome: 'correct',
+    correctedValue: 'MariaDB',
+  });
+});

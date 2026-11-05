@@ -12,8 +12,10 @@ import {
   useApiQuery,
   useFeaturePreviewsQuery,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { Badge } from '@kontourai/ui/react';
 import { useMemo, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -116,20 +118,35 @@ function QueueCard({
         </div>
       )}
       {open && !decided && (
-        <div className="memory-review__actions">
-          <Button disabled={busy} onClick={() => onDecide('accept')}>
-            Remember the new one
-          </Button>
-          <Button disabled={busy} onClick={() => onDecide('reject')}>
-            {item.current ? 'Keep the old one' : 'Don’t remember this'}
-          </Button>
-          <Button disabled={busy} onClick={() => setCorrecting((v) => !v)}>
-            Correct it
-          </Button>
-          <Button disabled={busy} onClick={() => onDecide('hold')}>
-            Not sure
-          </Button>
-        </div>
+        <ActionRow
+          className="memory-review__choices"
+          label="Decide"
+          overflowLabel="More ways to decide"
+          primary={
+            <Button disabled={busy} onClick={() => onDecide('accept')}>
+              Remember the new one
+            </Button>
+          }
+          secondary={
+            <Button disabled={busy} onClick={() => onDecide('reject')}>
+              {item.current ? 'Keep the old one' : 'Don’t remember this'}
+            </Button>
+          }
+          overflow={[
+            {
+              key: 'correct',
+              label: 'Correct it',
+              disabled: busy,
+              onSelect: () => setCorrecting((value) => !value),
+            },
+            {
+              key: 'hold',
+              label: 'Not sure',
+              disabled: busy,
+              onSelect: () => onDecide('hold'),
+            },
+          ]}
+        />
       )}
       {open && !decided && correcting && (
         <form
@@ -223,7 +240,7 @@ export function MemoryReview() {
         ...(variables.correctedValue
           ? { correctedValue: variables.correctedValue }
           : {}),
-        requestKey: crypto.randomUUID(),
+        requestKey: randomCorrelationId(),
       });
     },
     {
@@ -266,7 +283,7 @@ export function MemoryReview() {
           {queue.isFetching && !queue.data && <SkeletonList count={2} />}
           {refused && (
             <Empty
-              label="No private memory yet"
+              label="Nothing remembered yet"
               description="Memory you collect shows up here for review."
             />
           )}

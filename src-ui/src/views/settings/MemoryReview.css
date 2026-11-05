@@ -21,13 +21,14 @@
   display: grid;
   gap: var(--k-space-3);
   padding: var(--k-space-4);
-  border: 1px solid var(--k-border, var(--border-primary));
+  border: var(--k-border-thin) solid var(--k-line);
   border-radius: var(--k-radius-md, 0.5rem);
-  background: var(--k-surface, var(--bg-primary));
+  background: var(--k-panel);
 }
 
 .memory-review__card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--k-space-3);
@@ -41,14 +42,14 @@
 }
 
 .memory-review__subject {
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
 
 .memory-review__reasons {
   margin: 0;
   padding-left: var(--k-space-4);
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
 }
 
 .memory-review__compare {
@@ -62,11 +63,11 @@
   gap: var(--k-space-1);
   margin: 0;
   padding: var(--k-space-3);
-  border-left: 3px solid var(--k-border, var(--border-primary));
+  border-left: 3px solid var(--k-line);
 }
 
 .memory-review__evidence figcaption {
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -74,11 +75,11 @@
 
 .memory-review blockquote {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   overflow-wrap: anywhere;
 }
 
-.memory-review__actions {
+.memory-review__choices {
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-space-2);
@@ -106,7 +107,7 @@
 }
 
 .memory-review__history dt {
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
 
@@ -118,18 +119,5 @@
 .memory-review__count,
 .memory-review__note {
   margin: 0;
-  color: var(--text-secondary);
-}
-
-@media (max-width: 40rem) {
-  .memory-review__actions > button,
-  .memory-review__card > button,
-  .memory-review__correct > button,
-  .memory-review__search > button {
-    min-height: 44px;
-  }
-
-  .memory-review__card-head {
-    flex-direction: column;
-  }
+  color: var(--k-text-muted);
 }
