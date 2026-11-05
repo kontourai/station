@@ -8,7 +8,7 @@ export interface MemoryBriefProviderDeps {
   review: Pick<MemoryReviewService, 'brief'>;
   enabled: () => boolean;
   /** The person asking, derived from the request, or none. */
-  authority: () => SessionReadAuthority | undefined;
+  authority: (request: Request) => SessionReadAuthority | undefined;
   isRequestCurrent: (request: Request) => boolean;
   mayReadRoot: (request: Request, root: KnowledgeStoreRoot) => Promise<boolean>;
   guardReadResponse: (
@@ -29,7 +29,7 @@ export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
     request: Request,
   ): Promise<{ text: string | null; entries: number } | null> => {
     if (!deps.enabled()) return null;
-    const scope = deps.authority();
+    const scope = deps.authority(request);
     if (!scope || scope.mode !== 'personal' || !deps.isRequestCurrent(request))
       return null;
     const assertCurrent = () => {

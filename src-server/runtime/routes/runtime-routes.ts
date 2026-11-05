@@ -7911,6 +7911,21 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest: conversationReadAuthorityForRequest,
     }),
   );
+  // The chat route binds no request authority of its own. The person asking for a
+  // brief is resolved here, from this request's principal, and kept only for the
+  // brief: nothing else on the chat route changes.
+  const memoryBriefAuthorities = new WeakMap<Request, SessionReadAuthority>();
+  context.app.use('/api/agents/:slug/chat', async (c, next) => {
+    try {
+      memoryBriefAuthorities.set(
+        c.req.raw,
+        conversationReadAuthorityForContext(c),
+      );
+    } catch {
+      // An unresolvable principal gets no brief.
+    }
+    await next();
+  });
   // Assigned where the private memory objects exist, later in this function.
   let memoryBriefProvider: RuntimeContext['memoryBrief'] | undefined;
   context.app.route(
@@ -10875,7 +10890,7 @@ export function configureRuntimeRoutes(
     manager: memoryRootManager,
     review: memoryReview,
     enabled: memoryEnabled,
-    authority: currentRequestReadAuthority,
+    authority: (request) => memoryBriefAuthorities.get(request),
     isRequestCurrent: (request) =>
       isRuntimeRequestPrincipalCurrent(
         request,
