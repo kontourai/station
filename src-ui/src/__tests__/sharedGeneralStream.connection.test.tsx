@@ -67,7 +67,10 @@ test('waits for bootstrap then shares one real transport for both event families
   const server = createServer((request, response) => {
     requests.push(request.url ?? '');
     streams.push(response);
-    response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    response.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'X-Station-General-Stream': '1',
+    });
     response.write(
       'event: station:general\ndata: {"event":"example:changed","data":"{\\"value\\":7}"}\n\n',
     );
@@ -116,7 +119,10 @@ test('registers general delivery before a child starts the shared transport on b
   const server = createServer((request, response) => {
     requests.push(request.url ?? '');
     streams.push(response);
-    response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    response.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'X-Station-General-Stream': '1',
+    });
     response.write(
       'event: station:general\ndata: {"event":"example:changed","data":"{\\"value\\":7}"}\n\n',
     );
