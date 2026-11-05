@@ -191,9 +191,9 @@ Under a ceiling:
   mode an automation rule or a delegation carries) is above the ceiling
   starts at the ceiling. A default saved before the policy was installed
   stays saved, and applies again if the policy is removed. `GET
-  /config/app` reports this Station's default as it applies (lowered to the
-  ceiling), and sending that lowered value back, as Settings does when it
-  saves, leaves the saved default as it was. A mode a client
+  /config/app`, and the response to a change, report this Station's default
+  as it applies (lowered to the ceiling). Saving a mode at or below the
+  ceiling stores it, and it then applies without the policy too. A mode a client
   sends as its default (for example `station chat --approval-mode=never`) is
   lowered the same way. Writing Full access as an Agent's own default is
   refused; an Agent that inherits Full access from this Station's saved

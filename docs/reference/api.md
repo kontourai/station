@@ -2185,9 +2185,9 @@ holds the managed values in effect, and `provenance` reports `{source:
 'managed', locked, organization, supportUrl}` for each value the policy
 supplied; it never carries the value. Under the
 [approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
-`defaultApprovalMode` is the default as it applies, lowered to the ceiling; a
-saved default above it stays saved, and a `PUT` that sends the lowered value
-back leaves it unchanged.
+`defaultApprovalMode` is the default as it applies, lowered to the ceiling
+(the `PUT` response reports it the same way); a saved default above it stays
+saved until a mode at or below the ceiling is written.
 
 ### Update App Configuration
 
