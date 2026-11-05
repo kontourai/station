@@ -140,7 +140,11 @@
 
     "src-server/services/projects/task-graph-service.ts",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx",
+
+    "src-ui/src/views/task-workspace/__tests__/TaskCapabilityPath.test.tsx"
   ],
 
   "checks": [

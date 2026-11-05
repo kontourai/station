@@ -852,6 +852,8 @@
 
     "src-server/services/orchestration/create-request-claims.ts",
 
+    "packages/sdk/src/__tests__/tool-library-query.test.tsx",
+
     "packages/sdk/src/release-notes-query.ts"
   ],
 

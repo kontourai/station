@@ -3507,6 +3507,16 @@ mounts one `ProjectTaskRoomProvider` across Overview, Conversation, Work chats, 
 Details. Overview shows status, completion criteria, subtasks, decisions, blockers and
 kept deliverables; Plan owns the autosaved document, and Work chats opens independently
 authorized canonical Conversations.
+The UI-only, default-off `task-capabilities` preview mounts
+[TaskCapabilityPath](../../src-ui/src/views/task-workspace/TaskCapabilityPath.tsx)
+only in Overview. Its links use the existing Task view selector. Opening tool
+inspection reads the SDK tool library's access projection, then the exact
+Project catalog only for a person who can manage its Agents. Reads are bound to
+the current Station authority and Task incarnation; mismatched Project or
+principal data and failed refreshes remain unavailable. Catalog setup is never
+execution admission or verification evidence. Collapsing inspection, leaving
+Overview or disabling the preview unmounts the readers. It adds no engine,
+installer, execution journal or receipt store.
 `ProjectTaskRoomProvider` joins and publishes on mount and departs on teardown;
 `TaskRoomEditorPane` stays mounted across tabs and autosaves through edit plans.
 `ProjectTaskRoomConversation` shows named, timed messages and agent threads.
