@@ -874,7 +874,11 @@
 
     "src-server/routes/orchestration/__tests__/cli-session-group-runtime.integration.test.ts",
 
-    "packages/sdk/src/release-notes-query.ts"
+    "packages/sdk/src/release-notes-query.ts",
+
+    "packages/sdk/src/client/ensembles.ts",
+
+    "src-ui/src/views/EnsembleRecordedGroupInspection.tsx"
   ],
 
   "checks": [

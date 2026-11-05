@@ -1620,7 +1620,13 @@
 
     "packages/agent-runtime/src/__tests__/turn-retention-fixture.ts",
 
-    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts"
+    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts",
+
+    "src-ui/src/views/EnsembleRecordedGroupInspection.tsx",
+
+    "src-ui/src/views/__tests__/EnsembleRecordedGroupInspection.test.tsx",
+
+    "src-server/services/orchestration/ensemble-presets.ts"
   ],
 
   "checks": [
