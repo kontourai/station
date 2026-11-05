@@ -1704,6 +1704,20 @@ a Task store that carries it is refused by Station builds that predate it.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
 
+### Child result text provenance
+
+A child result may carry `source: 'tool-return' | 'provider-summary' |
+'child-message' | 'provider-error'`. This qualifies its summary text only; a
+transcript handle or reported message does not establish a returned report.
+Absent provenance remains unknown, and provenance without summary text is
+discarded. Older consumers can ignore the optional field while retaining the
+released statuses and summary text.
+
+A structured completed tool return takes precedence over an earlier provider
+summary. Existing result handles are preserved, and later summaries do not
+overwrite returned text. A returned result remains reported output, not
+verification of its correctness.
+
 ### Task deliverable and work-chat relationships
 
 `task-graph` exports `TaskIdentity` (`taskId`, `taskCreatedAt`),
