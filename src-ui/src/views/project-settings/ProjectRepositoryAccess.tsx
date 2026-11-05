@@ -19,6 +19,46 @@ export function ProjectRepositoryAccess({
   stationName: string;
   github: boolean;
 }) {
+  const data = useRepositoryAuthentication(authority, github);
+  const { previews, status } = data;
+  return (
+    <section
+      className="project-repositories__access"
+      aria-label={`Source and Station access on ${stationName}`}
+    >
+      <div className="project-repositories__heading">
+        <h4>Source and Station access</h4>
+        {github && (
+          <Button
+            variant="secondary"
+            disabled={
+              status.isFetching || previews.isPending || previews.isError
+            }
+            onClick={() => void status.refetch()}
+          >
+            Check sign-in
+          </Button>
+        )}
+      </div>
+      <p>Git may use a different SSH key or credential helper.</p>
+      {github && (
+        <AuthenticationFeedback data={data} stationName={stationName} />
+      )}
+      <AuthenticationFacts
+        github={github}
+        stationName={stationName}
+        authentication={data.authentication}
+        signIn={data.signIn}
+      />
+      {github && <StationSignInHelp stationName={stationName} />}
+    </section>
+  );
+}
+
+function useRepositoryAuthentication(
+  authority: ApiRequestScope,
+  github: boolean,
+) {
   const previews = useFeaturePreviewsQuery(authority.apiBase, {
     enabled: github,
     keepPreviousData: false,
@@ -55,41 +95,40 @@ export function ProjectRepositoryAccess({
       : !status.isError && read?.state === 'failed'
         ? 'failed'
         : 'unknown');
+  return {
+    previews,
+    preview,
+    metadataEnabled,
+    status,
+    previewOff,
+    authentication,
+    signIn,
+  };
+}
+
+function AuthenticationFeedback({
+  data,
+  stationName,
+}: {
+  data: ReturnType<typeof useRepositoryAuthentication>;
+  stationName: string;
+}) {
+  const { previews, preview, metadataEnabled, status, previewOff } = data;
   return (
-    <section
-      className="project-repositories__access"
-      aria-label={`Source and Station access on ${stationName}`}
-    >
-      <div className="project-repositories__heading">
-        <h4>Source and Station access</h4>
-        {github && (
-          <Button
-            variant="secondary"
-            disabled={
-              status.isFetching || previews.isPending || previews.isError
-            }
-            onClick={() => void status.refetch()}
-          >
-            Check sign-in
-          </Button>
-        )}
-      </div>
-      <p>Git may use a different SSH key or credential helper.</p>
-      {github &&
-      (previews.isPending || status.isPending) &&
-      !previews.isError ? (
+    <>
+      {(previews.isPending || status.isPending) && !previews.isError ? (
         <SkeletonBlock
           count={1}
           label={`Checking GitHub sign-in on ${stationName}`}
         />
       ) : null}
-      {github && (previewOff || (preview && !metadataEnabled)) && (
+      {(previewOff || (preview && !metadataEnabled)) && (
         <p className="project-sources__hint">
           Enable Repository sign-in details in Settings → Advanced → Feature
           previews.
         </p>
       )}
-      {github && previews.isError && (
+      {previews.isError && (
         <ErrorState
           variant="compact"
           title="Sign-in settings unavailable"
@@ -101,7 +140,7 @@ export function ProjectRepositoryAccess({
           }
         />
       )}
-      {github && status.isError && !previewOff ? (
+      {status.isError && !previewOff ? (
         <ErrorState
           variant="compact"
           title="GitHub sign-in details unavailable"
@@ -118,57 +157,77 @@ export function ProjectRepositoryAccess({
           }
         />
       ) : null}
-      <dl className="project-repositories__details">
-        <dt>Credential location</dt>
-        <dd>{stationName}</dd>
-        {github ? (
-          <>
-            <dt>GitHub CLI sign-in</dt>
-            <dd>
-              {signIn === 'signed-in'
-                ? 'Signed in'
-                : signIn === 'failed'
-                  ? 'Needs attention'
-                  : 'Not confirmed'}
-            </dd>
-            <dt>Account</dt>
-            <dd>{authentication?.account ?? 'Not reported'}</dd>
-            <dt>Reported token scopes</dt>
-            <dd>
-              {authentication?.scopes === undefined
-                ? 'Not reported'
-                : authentication.scopes.length
-                  ? authentication.scopes.join(', ')
-                  : 'None reported'}
-            </dd>
-            {authentication && (
-              <>
-                <dt>Checked</dt>
-                <dd>{new Date(authentication.observedAt).toLocaleString()}</dd>
-              </>
-            )}
-          </>
-        ) : (
-          <>
-            <dt>Provider sign-in</dt>
-            <dd>Not reported by this Station</dd>
-          </>
-        )}
-        <dt>Repository permissions</dt>
-        <dd>Not checked by this sign-in check</dd>
-        <dt>Project or repository sign-in</dt>
-        <dd>Not available in this view</dd>
-      </dl>
-      {github && (
-        <details className="project-sources__diagnostics">
-          <summary>Sign-in help for {stationName}</summary>
-          <p>Run on {stationName}:</p>
-          <code>gh auth status --hostname github.com</code>
-          <p>To sign in or replace the account, run:</p>
-          <code>gh auth login --hostname github.com</code>
-          <p>This view cannot start sign-in on another machine.</p>
-        </details>
+    </>
+  );
+}
+
+function AuthenticationFacts({
+  github,
+  stationName,
+  authentication,
+  signIn,
+}: {
+  github: boolean;
+  stationName: string;
+  authentication: ReturnType<
+    typeof useRepositoryAuthentication
+  >['authentication'];
+  signIn: ReturnType<typeof useRepositoryAuthentication>['signIn'];
+}) {
+  return (
+    <dl className="project-repositories__details">
+      <dt>Credential location</dt>
+      <dd>{stationName}</dd>
+      {github ? (
+        <>
+          <dt>GitHub CLI sign-in</dt>
+          <dd>
+            {signIn === 'signed-in'
+              ? 'Signed in'
+              : signIn === 'failed'
+                ? 'Needs attention'
+                : 'Not confirmed'}
+          </dd>
+          <dt>Account</dt>
+          <dd>{authentication?.account ?? 'Not reported'}</dd>
+          <dt>Reported token scopes</dt>
+          <dd>
+            {authentication?.scopes === undefined
+              ? 'Not reported'
+              : authentication.scopes.length
+                ? authentication.scopes.join(', ')
+                : 'None reported'}
+          </dd>
+          {authentication && (
+            <>
+              <dt>Checked</dt>
+              <dd>{new Date(authentication.observedAt).toLocaleString()}</dd>
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <dt>Provider sign-in</dt>
+          <dd>Not reported by this Station</dd>
+        </>
       )}
-    </section>
+      <dt>Repository permissions</dt>
+      <dd>Not checked by this sign-in check</dd>
+      <dt>Project or repository sign-in</dt>
+      <dd>Not available in this view</dd>
+    </dl>
+  );
+}
+
+function StationSignInHelp({ stationName }: { stationName: string }) {
+  return (
+    <details className="project-sources__diagnostics">
+      <summary>Sign-in help for {stationName}</summary>
+      <p>Run on {stationName}:</p>
+      <code>gh auth status --hostname github.com</code>
+      <p>To sign in or replace the account, run:</p>
+      <code>gh auth login --hostname github.com</code>
+      <p>This view cannot start sign-in on another machine.</p>
+    </details>
   );
 }

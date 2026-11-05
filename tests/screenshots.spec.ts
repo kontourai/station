@@ -2882,11 +2882,52 @@ function projectRepositorySourceScreens(): Screen[] {
                   exact: true,
                 }),
               ).toBeVisible();
-              await first
-                .locator('.project-repositories__checkout')
-                .scrollIntoViewIfNeeded();
+            }
+            const target = accessDetails
+              ? first.locator('.project-repositories__checkout')
+              : sources.getByRole('heading', {
+                  name: 'Repositories and folders',
+                  exact: true,
+                });
+            const header = await page.locator('.detail-header').boundingBox();
+            const body = await page
+              .locator('.project-settings__body')
+              .boundingBox();
+            const subject = await target.boundingBox();
+            expect(header).not.toBeNull();
+            expect(body).not.toBeNull();
+            expect(subject).not.toBeNull();
+            const top = Math.max(header!.y + header!.height, body!.y) + 16;
+            await page.mouse.move(
+              body!.x + body!.width / 2,
+              Math.min(viewport.height - 100, top + 150),
+            );
+            await page.mouse.wheel(0, subject!.y - top);
+            await expect
+              .poll(async () =>
+                Math.abs(((await target.boundingBox())?.y ?? 0) - top),
+              )
+              .toBeLessThan(3);
+            if (accessDetails) {
+              await expect(
+                first.getByText('example-user', { exact: true }),
+              ).toBeInViewport();
+              await expect(
+                first.getByText('repo, read:org', { exact: true }),
+              ).toBeInViewport();
+              await expect(
+                first.getByRole('button', {
+                  name: 'Check sign-in',
+                  exact: true,
+                }),
+              ).toBeInViewport();
             } else {
-              await first.scrollIntoViewIfNeeded();
+              await expect(
+                sources.getByRole('button', {
+                  name: 'Review checkout',
+                  exact: true,
+                }),
+              ).toBeInViewport();
             }
             expect(
               await page.evaluate(
