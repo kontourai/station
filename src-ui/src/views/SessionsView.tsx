@@ -241,7 +241,7 @@ function ActivityRowMeta({
     segments.push({ key: 'turns', text: `${foldedTurnCount} turns` });
   return (
     <span
-      className="activity-row-meta"
+      className={`activity-row-meta${cwdLabel ? ' activity-row-meta--directory' : ''}`}
       data-session-id={session.threadId}
       data-testid="activity-row-meta"
     >
@@ -296,7 +296,12 @@ function ActivityRowMeta({
       {segments.map((segment) => (
         <Fragment key={segment.key}>
           {' · '}
-          <span data-segment={segment.key}>{segment.text}</span>
+          <span
+            data-segment={segment.key}
+            title={segment.key === 'directory' ? segment.text : undefined}
+          >
+            {segment.text}
+          </span>
         </Fragment>
       ))}
       {recency > 0 && (
