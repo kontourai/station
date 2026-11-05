@@ -1,4 +1,4 @@
-import { hasTauriRuntime } from '../native/index';
+import { hasTauriRuntime, nativePlatformPromise } from '../native/index';
 import { invokeTauri, listenTauriPlugin } from '../native/tauriInvoke';
 import {
   type FoldRect,
@@ -27,7 +27,12 @@ export interface FoldSourceEnvironment {
   window: FoldWindow;
   devicePosture?: DevicePosture | null;
   document?: Pick<Document, 'visibilityState'> & EventTarget;
-  hasTauri: () => boolean;
+  /**
+   * Whether this shell registers `station-fold` (only the iOS app does).
+   * Desktop and Android refuse the command at the ACL before any plugin runs,
+   * so they are never asked.
+   */
+  nativeFoldSupported: () => Promise<boolean>;
   readNative: () => Promise<unknown>;
   listenNative: (changed: () => void) => Promise<() => void>;
   publish: typeof publishFoldGeometry;
@@ -46,17 +51,17 @@ export interface FoldSourceEnvironment {
  */
 export const FOLD_FOLLOW_UP_READS_MS = [250, 1000, 3000, 8000] as const;
 
-/**
- * Tauri's rejection when the running shell does not register `station-fold`
- * (desktop, Android, or an iOS build without it): exact messages, not a
- * substring, so a transient plugin error keeps the shell asking.
- */
-export function isFoldPluginMissing(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : error;
-  return (
-    message === 'plugin station-fold not found' ||
-    message === 'Command plugin:station-fold|state not found'
-  );
+/** The iOS app is the one shell with `station-fold`, per its capability report. */
+export async function iosShell(): Promise<boolean> {
+  if (!hasTauriRuntime()) return false;
+  try {
+    const adapter = await nativePlatformPromise;
+    if (adapter.platform !== 'tauri') return false;
+    const report = await adapter.getCapabilityReport();
+    return report.status === 'ok' && report.value.platform === 'ios';
+  } catch {
+    return false;
+  }
 }
 
 function defaultEnvironment(): FoldSourceEnvironment {
@@ -65,7 +70,7 @@ function defaultEnvironment(): FoldSourceEnvironment {
     devicePosture: (navigator as Navigator & { devicePosture?: DevicePosture })
       .devicePosture,
     document,
-    hasTauri: hasTauriRuntime,
+    nativeFoldSupported: iosShell,
     readNative: () => invokeTauri<unknown>('plugin:station-fold|state'),
     listenNative: (changed) =>
       listenTauriPlugin('station-fold', 'change', changed),
@@ -128,9 +133,9 @@ export function installFoldGeometry(
   // (desktop, Android) answers that definitively, so it is asked no more.
   let reading = false;
   let readAgain = false;
-  let unavailable = false;
+  let nativeActive = false;
   const refresh = () => {
-    if (disposed || unavailable) return;
+    if (disposed || !nativeActive) return;
     if (reading) {
       readAgain = true;
       return;
@@ -138,17 +143,13 @@ export function installFoldGeometry(
     reading = true;
     environment
       .readNative()
-      .then(accept, (error: unknown) => {
-        // Not the iOS shell: segments decide. Any other failure is transient
-        // and the next event, resize or follow-up asks again.
-        if (isFoldPluginMissing(error)) {
-          unavailable = true;
-          stopFollowUps();
-        }
+      .then(accept, () => {
+        // Transient (the iOS plugin still initializing): the next event,
+        // resize or follow-up asks again.
       })
       .finally(() => {
         reading = false;
-        if (readAgain && !disposed && !unavailable) {
+        if (readAgain && !disposed) {
           readAgain = false;
           refresh();
         }
@@ -163,12 +164,14 @@ export function installFoldGeometry(
   // it again in the shell, and recompute either way.
   const resized = () => {
     recompute();
-    if (environment.hasTauri()) refresh();
+    refresh();
   };
 
   win.addEventListener('resize', resized);
   devicePosture?.addEventListener('change', recompute);
-  if (environment.hasTauri()) {
+  const startNative = () => {
+    if (disposed) return;
+    nativeActive = true;
     doc?.addEventListener('visibilitychange', visible);
     followUps = FOLD_FOLLOW_UP_READS_MS.map((ms) =>
       setTimer(() => {
@@ -186,7 +189,13 @@ export function installFoldGeometry(
       .finally(() => {
         if (!disposed) refresh();
       });
-  }
+  };
+  void environment
+    .nativeFoldSupported()
+    .then((supported) => {
+      if (supported) startNative();
+    })
+    .catch(() => {});
   recompute();
 
   return () => {

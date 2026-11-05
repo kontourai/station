@@ -43,7 +43,7 @@ function harness({
     window: win,
     devicePosture: null,
     document,
-    hasTauri: () => tauri,
+    nativeFoldSupported: async () => tauri,
     readNative: native,
     listenNative: async (changed) => {
       if (listenFails) throw new Error('register_listener refused');
@@ -252,19 +252,17 @@ describe('a cold launch on a device that is already folded', () => {
     stop();
   });
 
-  it('stops asking a shell without the plugin, however often the page resizes', async () => {
-    const native = vi
-      .fn<() => Promise<unknown>>()
-      .mockRejectedValue(new Error('plugin station-fold not found'));
+  it('never asks a shell that is not the iOS app, however often the page resizes', async () => {
+    const native = vi.fn<() => Promise<unknown>>();
     const { stop, resize, fireFollowUps, pendingFollowUps } = harness({
+      tauri: false,
       native,
     });
     await settle();
-    const afterInstall = native.mock.calls.length;
     for (let i = 0; i < 120; i += 1) resize();
     fireFollowUps();
     await settle();
-    expect(native.mock.calls.length).toBe(afterInstall);
+    expect(native).not.toHaveBeenCalled();
     expect(pendingFollowUps()).toBe(0);
     stop();
   });
