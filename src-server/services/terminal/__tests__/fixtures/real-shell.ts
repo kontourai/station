@@ -7,6 +7,8 @@
  * `printf` form byte for byte.
  */
 import { writeFile } from 'node:fs/promises';
+// TEMPORARY (#3994): hosted Windows floor worker breadcrumbs.
+import './floor-diagnostics.js';
 import { join } from 'node:path';
 
 export const windows = process.platform === 'win32';
