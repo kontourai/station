@@ -138,7 +138,7 @@ describe('restore after a restart follows the current binding (#492)', () => {
   });
 
   test('keeps a shell ended, with the reason, when its Project moved', async () => {
-    const { b, binding, spawns, create } = await setup();
+    const { a, b, binding, spawns, create } = await setup();
     const id = await shellEndedWithHost(create);
     binding.root = b;
     const sessions = create();
@@ -157,7 +157,8 @@ describe('restore after a restart follows the current binding (#492)', () => {
     // It is not tried again on the next start.
     await sessions.dispose();
     opened.splice(opened.indexOf(sessions), 1);
-    binding.root = (await sessions.read('operator', project, id)).cwd;
+    // Back where the shell was: still not reopened.
+    binding.root = a;
     const next = create();
     expect((await next.read('operator', project, id)).status).toBe('exited');
     expect(spawns).toHaveLength(1);
