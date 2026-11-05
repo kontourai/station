@@ -8,7 +8,19 @@
  * does not carry them.
  * `@kontourai/station-contracts/managed-policy` re-exports all of it.
  */
-import { isRecord } from './contract-validation.js';
+export * from './managed-policy-codes.js';
+
+/**
+ * The same check as `isRecord` in `./contract-validation.js`, kept local:
+ * that module imports the task graph contract, which would follow this one
+ * into the UI's first-load bundle.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
 
 /**
  * #4522: how Station on this machine updates itself. Every key is optional;
@@ -316,14 +328,6 @@ export function managedPolicyDenial(
 // telemetry, webhooks or a registry on.
 // ---------------------------------------------------------------------------
 
-/**
- * The refusal code every surface uses for a capability the managed policy
- * turned off. Clients key on it to show the managed message instead of
- * offering a retry.
- */
-export const MANAGED_POLICY_CAPABILITY_DISABLED_CODE =
-  'managed-policy-capability-disabled' as const;
-
 /** `record[key]` when it is the record's own member (no `Object.hasOwn`: ES2020). */
 function ownLimitValue(record: Record<string, unknown>, key: string): unknown {
   return Object.getOwnPropertyDescriptor(record, key)?.value;
@@ -408,15 +412,6 @@ export function managedPolicyAllowsRemoteClients(
 }
 
 /**
- * #4519: the refusal code for remote access the managed policy forbids: a
- * pairing offer, a relay invitation, LAN discovery, or a credential of a
- * device paired before the policy. Clients key on it to show the managed
- * message instead of offering a retry.
- */
-export const MANAGED_POLICY_REMOTE_CLIENTS_CODE =
-  'managed-policy-remote-clients' as const;
-
-/**
  * #4519: the refusal without its help tail, for a surface that renders the
  * policy's support link itself ("Get help").
  */
@@ -435,11 +430,3 @@ export function managedRemoteClientsDenial(
     'remote access: only this computer can connect to Station',
   );
 }
-
-/**
- * #4522: the refusal code every update surface answers with when the
- * managed policy forbids an update check, download or install. Clients key
- * on it to show the policy sentence instead of offering a retry.
- */
-export const MANAGED_POLICY_UPDATES_REFUSED_CODE =
-  'managed-policy-updates-refused' as const;
