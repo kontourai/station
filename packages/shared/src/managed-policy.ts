@@ -40,10 +40,10 @@ import {
   WINDOWS_POLICY_SUBKEY,
 } from './managed-policy-controls.js';
 import {
-  plistKeyScanProblem,
   MACOS_MANAGED_PREFERENCES_PATH,
   managedPreferencesDocument,
   type PlistConverter,
+  plistKeyScanProblem,
   plutilConverter,
 } from './managed-policy-macos.js';
 import {
