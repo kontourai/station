@@ -200,7 +200,11 @@ Secrets and variables → Actions → Variables**, create the repository variabl
 the [Kontour Worker receiver](../../deploy/telemetry-worker/README.md) that is
 `https://telemetry.kontourai.io/v1/lite/station`. Senders post the daily ping
 to this URL unchanged. The `station` source lists every ring's channel and the
-ping carries its own, so one URL serves every ring. The
+ping carries its own, so one URL serves every ring. Never revoke `station`
+while builds post to it: senders record a refused ping as dropped without
+retrying, so revoking it would silently lose every ring's pings. Its channel
+list is provisioned final up front, and editing a source in place (an
+operator update route) is future work. The
 build requires a canonical HTTPS URL: input must equal its normalized URL,
 including a trailing slash for a bare host. It rejects shorthand such as
 `https:example.com`, credentials, queries, fragments and whitespace.

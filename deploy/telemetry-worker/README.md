@@ -44,7 +44,7 @@ Public routes:
 
 | Route | Answers |
 | --- | --- |
-| `POST /v1/lite/<source>` | 202 `{ "accepted": true }` for a new ping, a retained replay and any feedback; 400 `invalid_daily_ping`; 401 `source_unauthorized`; 409 `event_conflict` for a changed payload under a retained event UUID; 413 `body_too_large` over 16 KiB; 429 `receiver_rate_limit` (edge limit, `Retry-After: 60`) or `lite_rate_limit` (60 attempts per network per UTC day, `Retry-After: 86400`); 507 `storage_limit` |
+| `POST /v1/lite/<source>` | 202 `{ "accepted": true }` for a new ping, a retained replay and any feedback; 400 `invalid_daily_ping`; 401 `source_unauthorized`; 409 `event_conflict` for a changed payload under a retained event UUID; 422 `day_closed` when the receiver's arrival day is already closed (a receiver clock fault, not a client error); 413 `body_too_large` over 16 KiB; 429 `receiver_rate_limit` (edge limit, `Retry-After: 60`) or `lite_rate_limit` (60 attempts per network per UTC day, `Retry-After: 86400`); 507 `storage_limit` |
 | `GET /v1/public/aggregates[?cursor=]` | Kontour's noisy weekly marginals, at most 200 cells per page. Unknown or repeated parameters and forged cursors return 400 `invalid_cursor` |
 | `GET /public/`, `/public/dashboard.js` | The public weekly aggregates page |
 | `GET /insights`, `/insights/insights.js` | The owner dashboard page. Static: it holds no data until the operator key is entered |
@@ -94,10 +94,16 @@ from running one process. Each request runs its SQL inside one
   forbidden by policy (see the restore warning below), so that history is
   reachable only by deliberately breaking the policy, by someone with access
   to the Cloudflare account, and only for those 30 days.
-- **Closed days stay closed.** A day closes once a later day has begun or
-  maintenance has passed it. An arrival for a closed day (the clock stepped
-  back) is refused with 503 `storage_busy`, as the Node receiver refuses a
-  day mismatch, and no second salt is created for it.
+- **Closed days stay closed.** A day closes when its salt is erased (or it
+  is finalized). An arrival for a closed day (the clock stepped back) is
+  refused with 422 `day_closed` and no second salt is created for it. That is
+  content-free and not a 5xx, because the same request is refused again until
+  the receiver's clock moves on; 409 keeps its changed-payload meaning. Only
+  days that had a salt close, so after a forward clock jump is corrected, the
+  real days in between still accept pings. Pings stored under the jumped day
+  are finalized once its salt is gone. A week published while the clock was
+  ahead stays published (publications are immutable), so a jump can still
+  leave the real days of that week out of the public estimate.
 - **Finalization and erasure.** An alarm runs once per UTC hour. For each closed
   publisher/day it computes exact marginals and erases that day's contributor
   hashes and contribution arrays in one transaction. Finalization happens once
@@ -195,9 +201,14 @@ curl -s -X POST https://telemetry.kontourai.io/v1/operator/lite/sources \
 curl -s -H "Authorization: Bearer $OPERATOR_KEY" https://telemetry.kontourai.io/v1/operator/storage
 ```
 
-A source's catalogs and channels cannot be edited. To change them, provision a
-new source ID and revoke the old one with
-`DELETE /v1/operator/lite/sources/<source>`.
+**Never revoke `station` while builds post to it.** Every released build posts
+to the baked-in `/v1/lite/station`, and senders record a refused ping as
+dropped without retrying, so revoking it silently loses every ring's pings
+until a new build ships with a new URL. Provision its channel list final up
+front (every channel a released build can report). Sources cannot be edited
+yet: changing `station`'s catalogs or channels in place needs an operator
+update route, which is future work. Until then, version estimates for
+`station` come only from the `releaseVersions` provisioned with it.
 
 An empty `releaseVersions` with `semver` admits every valid version but
 publishes no public version cells. To publish version estimates, list the
