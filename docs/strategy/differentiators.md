@@ -10,10 +10,9 @@ evidence routes establish which parts a particular feature currently delivers.
 ## The One-Line Differentiation
 
 **Station keeps coding work attached to a Task across agents, Sessions, and
-paired devices.** Individual developers
-get their agents, project context, changes, and checks together across Sessions
-and paired devices. Scoped collaboration lets the same work involve others;
-plugins let the workspace fit personal and organizational workflows.
+paired devices.** An individual developer can return to the same work from
+another paired device. Selected sharing gives others access to that Task
+history. Plugins adapt the workspace to personal and organizational workflows.
 
 The product hypothesis is less effort reconstructing context and coordinating
 work. Evidence and receipts support the decision to accept a result. Qualify
@@ -38,7 +37,7 @@ workflow.
 4. **Inspectable results.** Configured workflow checks, evidence, receipts,
    and visible gaps help participants decide what to accept.
 
-“Command your Station” is a brand line. “Work ships with receipts” expresses
+“Command your Station” remains an optional brand line. “Work ships with receipts” expresses
 the evidence discipline. Neither replaces the coding-workspace description or
 establishes current team or verification guarantees. Public headings should
 name what developers can do rather than repeat a positioning slogan.

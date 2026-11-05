@@ -12,7 +12,7 @@ Kontour's evidence infrastructure.*
 
 ## Mission
 
-**Station is an open-source workspace for running and reviewing coding agents.**
+**Station is an open-source workspace for running coding agents and reviewing their work.**
 
 People choose it for their own coding work: use preferred agents, keep project
 context and results together, inspect changes and checks, and continue from a
