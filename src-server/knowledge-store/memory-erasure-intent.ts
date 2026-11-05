@@ -35,7 +35,7 @@ const receiptSchema = z.discriminatedUnion('kind', [
 export type MemoryErasureReceipt = z.infer<typeof receiptSchema>;
 
 /** Only content-free identifiers and the confirmed Corpus plan enter the journal. */
-export const memoryErasureIntentSchema = z
+const memoryErasureIntentSchema = z
   .object({
     version: z.literal(1),
     operation: z.enum(['purge', 'cleanup']),
