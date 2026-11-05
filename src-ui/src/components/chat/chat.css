@@ -3034,6 +3034,10 @@
    bottom gutter instead: at rest at the bottom only padding is in the fade,
    and mid-scroll the cut line dissolves before it reaches the rail. A static
    mask on the scroller, no animation and no blur. */
+.chat-dock__retained-text {
+  color: var(--k-text);
+}
+
 .chat-messages {
   -webkit-mask-image: linear-gradient(
     to bottom,

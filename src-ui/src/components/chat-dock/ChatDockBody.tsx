@@ -80,7 +80,12 @@ export function ChatDockBody({
           }
         />
         {retained?.messages.map((message, index) => (
-          <p key={`${index}:${message.role}`}>{message.content}</p>
+          <p
+            className="chat-dock__retained-text"
+            key={`${index}:${message.role}`}
+          >
+            {message.content}
+          </p>
         ))}
         {props.activeSession.messages
           .filter(
@@ -94,9 +99,15 @@ export function ChatDockBody({
                 )),
           )
           .map((message) => (
-            <p key={message.id}>{message.content}</p>
+            <p className="chat-dock__retained-text" key={message.id}>
+              {message.content}
+            </p>
           ))}
-        {props.activeSession.input && <p>{props.activeSession.input}</p>}
+        {props.activeSession.input && (
+          <p className="chat-dock__retained-text">
+            {props.activeSession.input}
+          </p>
+        )}
       </div>
     );
   return (
