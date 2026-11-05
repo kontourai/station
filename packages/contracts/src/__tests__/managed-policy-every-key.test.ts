@@ -109,7 +109,10 @@ describe('a policy that sets every enforced key at once', () => {
     expect(status(EVERY_KEY_LIMITS)).toBeNull();
     // Engines are summarized beside `limits`, never inside it (#4520).
     expect(
-      status({ ...EVERY_KEY_SUMMARY_LIMITS, engines: EVERY_KEY_ENGINE_SUMMARY }),
+      status({
+        ...EVERY_KEY_SUMMARY_LIMITS,
+        engines: EVERY_KEY_ENGINE_SUMMARY,
+      }),
     ).toBeNull();
     // And a document must not use the summary's `mirror` key.
     expect(

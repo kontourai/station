@@ -237,10 +237,11 @@ describe('managed policy at real server startup', () => {
       body: JSON.stringify({
         schemaVersion: 1,
         organization: 'Acme',
-        limits: { engines: false },
+        // Reserved for #4518; when it is enforced, no reserved key remains.
+        limits: { maxApprovalMode: 'auto' },
       }),
       reason:
-        'limits.engines: this limit is not supported by this version of Station',
+        'limits.maxApprovalMode: this limit is not supported by this version of Station',
     },
     {
       name: 'a schema mismatch (organization is not a string)',
