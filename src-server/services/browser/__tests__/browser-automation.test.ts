@@ -834,6 +834,46 @@ describe('BrowserAutomation: control through the live-surface lease', () => {
     expect(h.fake.inputs()).toEqual([]);
   });
 
+  test("while a person's stuck key is still being released, the agent is told to wait and nothing reaches the page", async () => {
+    const h = await harness();
+    pageBasics(h.fake);
+    const session = await h.open();
+    const authority = await authorityFor();
+    const entry = h.entryOf(session.browserSessionId);
+    expect(
+      (
+        await dispatchHumanInput(entry, HUMAN, 0, [
+          { kind: 'key', type: 'down', key: 'Shift', code: 'ShiftLeft' },
+        ])
+      ).ok,
+    ).toBe(true);
+    // The page will not take the key's release for now.
+    h.fake.onSend(async (method, params) => {
+      if (method === 'Input.dispatchKeyEvent' && params.type === 'keyUp')
+        throw new Error('page refused the key up');
+    });
+    expect(
+      releaseHumanControl(entry, HUMAN, entry.lease.snapshot().epoch).ok,
+    ).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const before = h.fake.inputs().length;
+    const result = await h.automation.click(
+      authority,
+      session.browserSessionId,
+      { x: 10, y: 10 },
+    );
+    expect(result).toMatchObject({ ok: false, code: 'surface-wedged' });
+    expect(String((result as { message: string }).message)).toMatch(
+      /still being released/,
+    );
+    expect(
+      h.fake
+        .inputs()
+        .slice(before)
+        .filter((input) => input.method === 'Input.dispatchMouseEvent'),
+    ).toEqual([]);
+  });
+
   test("a dialog the agent's own click opens is answered automatically, as before a person could answer dialogs", async () => {
     const h = await harness();
     pageBasics(h.fake);

@@ -2976,6 +2976,14 @@ function inputRefusal(
         { accepted },
       ),
     );
+  if (code === 'release-pending')
+    return new ToolRefusal(
+      refuse(
+        'surface-wedged',
+        'A key or button from earlier input is still being released on the page, so input waits until it is. Wait a moment and take a snapshot before trying again.',
+        { accepted },
+      ),
+    );
   if (code === 'page-dialog-open')
     return new ToolRefusal(
       refuse(
