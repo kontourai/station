@@ -31,6 +31,7 @@ import {
   print,
   printCwd,
   SHELL,
+  shown,
   windows,
 } from './fixtures/real-shell.js';
 
@@ -124,7 +125,9 @@ describe('durable terminal sessions with real node-pty', () => {
       .poll(
         async () => {
           const snapshot = await sessions.read(request(), scope, id);
-          return snapshot.journal.records.map((record) => record.data).join('');
+          return shown(
+            snapshot.journal.records.map((record) => record.data).join(''),
+          );
         },
         { timeout: 10_000 },
       )
@@ -204,7 +207,7 @@ describe('durable terminal sessions with real node-pty', () => {
     expect(restored.status).toBe('exited');
     expect(restored.pid).toBeNull();
     expect(
-      restored.journal.records.map((record) => record.data).join(''),
+      shown(restored.journal.records.map((record) => record.data).join('')),
     ).toContain('proof:second');
     await expect(
       sessions.write(
@@ -248,11 +251,13 @@ describe('durable terminal sessions with real node-pty', () => {
     await expect
       .poll(
         async () =>
-          (
-            await sessions.read(request(), otherScope, kept.terminalId)
-          ).journal.records
-            .map((record) => record.data)
-            .join(''),
+          shown(
+            (
+              await sessions.read(request(), otherScope, kept.terminalId)
+            ).journal.records
+              .map((record) => record.data)
+              .join(''),
+          ),
         { timeout: 10_000 },
       )
       .toContain('still:alive');
@@ -819,7 +824,9 @@ describe('durable terminal sessions with real node-pty', () => {
       .parse(await response.json());
     const records = body.data.journal.records;
     const text = records.map((record) => record.data).join('');
-    expect(text).toContain('unsafe');
+    // The visible text survives; the safe link's target stays in its OSC 8
+    // control and the unsafe one is gone from the bytes.
+    expect(shown(text)).toContain('unsafe');
     expect(text).toContain('https://example.com');
     expect(text).not.toContain('file:///tmp/private');
   });
@@ -1167,11 +1174,13 @@ describe('durable terminal sessions with real node-pty', () => {
     expect(retained.length).toBeLessThanOrEqual(2);
     for (const record of retained)
       expect(
-        (
-          await sessions.read(request(), scope, record.terminalId)
-        ).journal.records
-          .map((row) => row.data)
-          .join(''),
+        shown(
+          (
+            await sessions.read(request(), scope, record.terminalId)
+          ).journal.records
+            .map((row) => row.data)
+            .join(''),
+        ),
       ).toContain('quota:done');
     expect(await diskBytes()).toBeLessThanOrEqual(8192);
   });
@@ -1464,7 +1473,7 @@ exec /bin/ps "$@"
         );
         expect(restored.status).toBe('exited');
         expect(
-          restored.journal.records.map((record) => record.data).join(''),
+          shown(restored.journal.records.map((record) => record.data).join('')),
         ).toContain('burst:done');
       } else {
         expect(snapshot.journal.reset).toBe(true);

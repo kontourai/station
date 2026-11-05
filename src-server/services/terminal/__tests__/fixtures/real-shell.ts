@@ -14,6 +14,31 @@ export const SHELL = windows ? (process.env.COMSPEC ?? 'cmd.exe') : '/bin/sh';
 /** The last character of the shell's idle prompt. */
 export const PROMPT = windows ? '>' : '$';
 
+/**
+ * ECMA-48 control functions: CSI, OSC (ended by BEL or ST), DCS, SOS, PM and
+ * APC strings, two-byte escapes, their 8-bit C1 forms, and C0 controls other
+ * than tab, line feed and carriage return.
+ */
+const CONTROL_FUNCTIONS =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching terminal control functions is exactly the job.
+  /\x1b\[[0-?]*[ -/]*[@-~]|\x9b[0-?]*[ -/]*[@-~]|(?:\x1b\]|\x9d)[\s\S]*?(?:\x07|\x1b\\|\x9c)|(?:\x1b[PX^_]|[\x90\x98\x9e\x9f])[\s\S]*?(?:\x1b\\|\x9c)|\x1b[ -/]*[0-~]|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
+
+/** Output with its control functions removed: the characters it prints. */
+export function visibleText(data: string): string {
+  return data.replace(CONTROL_FUNCTIONS, '');
+}
+
+/**
+ * What a marker check reads. ConPTY renders rather than passes bytes through:
+ * between two characters of one printed word it may write a title update or
+ * a cursor show (\`http-l\` ESC ]0;… BEL ESC [?25h \`inks:done\`), depending on
+ * when it paints a frame. On Windows a check of printed text therefore reads
+ * the characters printed; a POSIX PTY's bytes are read as they are.
+ */
+export function shown(data: string): string {
+  return windows ? visibleText(data) : data;
+}
+
 /** Prints `left` and `right` joined on one line. */
 export function print(left: string, right: string): string {
   // cmd's caret escapes the next character: the echo shows `left^right`.

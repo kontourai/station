@@ -40,6 +40,7 @@ import {
   printCwd,
   runScript,
   SHELL,
+  shown,
   windows,
 } from './fixtures/real-shell.js';
 
@@ -139,7 +140,9 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
   }
 
   async function output(id: string, marker: string) {
-    await expect.poll(() => text(id), { timeout: 10_000 }).toContain(marker);
+    await expect
+      .poll(async () => shown(await text(id)), { timeout: 10_000 })
+      .toContain(marker);
   }
 
   async function exited(id: string, target = scope) {
@@ -198,7 +201,7 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
     expect(restored.restoredAt).toEqual(expect.any(Number));
     expect(restored.pid).not.toBeNull();
     expect(restored.pid).not.toBe(first.pid);
-    const replay = await text(first.terminalId);
+    const replay = shown(await text(first.terminalId));
     expect(replay.indexOf('before:restart')).toBeGreaterThanOrEqual(0);
     expect(replay.indexOf('restored after restart')).toBeGreaterThan(
       replay.indexOf('before:restart'),
@@ -359,7 +362,7 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
     expect(existsSync(join(home, 'terminal-journals', ended.terminalId))).toBe(
       false,
     );
-    expect(await text(ended.terminalId)).toContain('moved:output');
+    expect(shown(await text(ended.terminalId))).toContain('moved:output');
     expect(
       existsSync(join(home, 'terminal-journals', running.terminalId)),
     ).toBe(true);
@@ -369,7 +372,7 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
     expect(existsSync(join(target, fresh.terminalId))).toBe(true);
     await sessions.dispose();
     create();
-    expect(await text(ended.terminalId)).toContain('moved:output');
+    expect(shown(await text(ended.terminalId))).toContain('moved:output');
   });
 
   test('with history off a new terminal writes nothing to disk', async () => {

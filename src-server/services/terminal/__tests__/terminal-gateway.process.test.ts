@@ -28,6 +28,7 @@ import {
   nodeProgram,
   print,
   SHELL,
+  shown,
   windows,
 } from './fixtures/real-shell.js';
 
@@ -281,7 +282,7 @@ describe('same-origin terminal gateway with real sockets', () => {
       record.terminalId,
       line(print('sdk-', 'replayed')),
     );
-    await expect.poll(() => output.join('')).toContain('sdk-replayed');
+    await expect.poll(() => shown(output.join(''))).toContain('sdk-replayed');
     expect(reader.appliedThrough).toBeGreaterThan(0);
     const after = await sessions.read('operator', scope, record.terminalId);
     expect(after.terminalId).toBe(record.terminalId);
@@ -564,16 +565,15 @@ describe('same-origin terminal gateway with real sockets', () => {
           );
           return (
             snapshot.journal.reset &&
-            snapshot.journal.records
-              .map((item) => item.data)
-              .join('')
-              .includes('reset-marker')
+            shown(
+              snapshot.journal.records.map((item) => item.data).join(''),
+            ).includes('reset-marker')
           );
         })
         .toBe(true);
       release();
       await expect.poll(() => resets).toBeGreaterThan(0);
-      await expect.poll(() => output).toContain('reset-marker');
+      await expect.poll(() => shown(output)).toContain('reset-marker');
       expect(errors).toEqual([]);
     } finally {
       release();
@@ -589,9 +589,11 @@ describe('same-origin terminal gateway with real sockets', () => {
     await expect
       .poll(
         async () =>
-          (await sessions.read('operator', scope, id)).journal.records
-            .map((r) => r.data)
-            .join(''),
+          shown(
+            (await sessions.read('operator', scope, id)).journal.records
+              .map((r) => r.data)
+              .join(''),
+          ),
         { timeout: 10_000 },
       )
       .toContain(text);
@@ -811,21 +813,23 @@ describe('same-origin terminal gateway with real sockets', () => {
       line(print('after:', 'marker'), windows ? 'cd' : 'pwd'),
     );
     await expect
-      .poll(() => client.output.map((frame) => frame.data).join(''), {
+      .poll(() => shown(client.output.map((frame) => frame.data).join('')), {
         timeout: 10_000,
       })
       .toContain('after:marker');
     const after = client.output.filter(
       (frame) => frame.seq > done.restartedAfterSeq!,
     );
-    expect(after.map((frame) => frame.data).join('')).toContain(
+    expect(shown(after.map((frame) => frame.data).join(''))).toContain(
       join(await realpath(root), 'sub'),
     );
     expect(
-      client.output
-        .filter((frame) => frame.seq <= done.restartedAfterSeq!)
-        .map((frame) => frame.data)
-        .join(''),
+      shown(
+        client.output
+          .filter((frame) => frame.seq <= done.restartedAfterSeq!)
+          .map((frame) => frame.data)
+          .join(''),
+      ),
     ).toContain('before:marker');
   });
 
@@ -869,7 +873,7 @@ describe('same-origin terminal gateway with real sockets', () => {
     expect(resumed.output.map((r) => r.seq)).toEqual(
       after.journal.records.filter((r) => r.seq > fromSeq).map((r) => r.seq),
     );
-    expect(resumed.output.map((r) => r.data).join('')).toContain(
+    expect(shown(resumed.output.map((r) => r.data).join(''))).toContain(
       'offline:marker',
     );
   });
@@ -926,10 +930,12 @@ describe('same-origin terminal gateway with real sockets', () => {
         frame.sentThrough === quietSnapshot.journal.lastSeq,
     );
     expect(
-      client.output
-        .filter((r) => r.channel === 2)
-        .map((r) => r.data)
-        .join(''),
+      shown(
+        client.output
+          .filter((r) => r.channel === 2)
+          .map((r) => r.data)
+          .join(''),
+      ),
     ).toContain('quiet:done');
     client.ack(1, blocked.sentThrough!);
     await client.wait(
@@ -971,8 +977,9 @@ describe('same-origin terminal gateway with real sockets', () => {
       // cmd's `type` decodes the file through the OEM code page, so the
       // 8-bit C1 link never reaches ConPTY as a control.
       if (!windows) expect(text).toContain('http://example.test/');
-      expect(text).toContain('bad-js');
-      expect(text).toContain('bad-file');
+      // Link text stays visible; the controls above are judged on the bytes.
+      expect(shown(text)).toContain('bad-js');
+      expect(shown(text)).toContain('bad-file');
     };
     assertLinks();
     expect(
@@ -1122,9 +1129,9 @@ describe('same-origin terminal gateway with real sockets', () => {
     const snapshot = await journal(record.terminalId, 'resize:done');
     expect(snapshot.cols).toBe(180);
     expect(snapshot.rows).toBe(40);
-    expect(snapshot.journal.records.map((r) => r.data).join('')).toContain(
-      '40 180',
-    );
+    expect(
+      shown(snapshot.journal.records.map((r) => r.data).join('')),
+    ).toContain('40 180');
     expect((await client.result('resize-180')).type).toBe('done');
     expect(
       client.controls.filter((r) => r.type === 'superseded').length,
