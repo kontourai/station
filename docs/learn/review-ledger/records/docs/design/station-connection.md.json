@@ -44,7 +44,39 @@
 
     "tests/station-connection-chat.spec.ts",
 
-    "tests/conversation-surfaces.spec.ts"
+    "tests/conversation-surfaces.spec.ts",
+
+    "src-ui/src/components/conversation/ConversationReader.tsx",
+
+    "src-ui/src/components/conversation/RecordConversationBody.tsx",
+
+    "src-ui/src/components/conversation/useRecordConversationController.ts",
+
+    "src-ui/src/components/conversation/ConversationConnectionContext.tsx",
+
+    "src-ui/src/components/conversation/ConversationStopControl.tsx",
+
+    "src-ui/src/components/conversation/useApprovalAnswering.ts",
+
+    "src-ui/src/components/conversation/SharedTaskHistoryList.tsx",
+
+    "src-ui/src/components/chat-dock/useInboxPanelController.ts",
+
+    "src-ui/src/utils/stationFailure.ts",
+
+    "src-ui/src/contexts/ManagedPolicyContext.tsx",
+
+    "src-ui/src/hooks/orchestration/childWorkHandlers.ts",
+
+    "src-ui/src/components/conversation/__tests__/merge-integration.test.tsx",
+
+    "scripts/conversation-boundary-gate.mjs",
+
+    "scripts/conversation-surfaces.json",
+
+    "scripts/conversation-boundary-baseline.json",
+
+    "scripts/__tests__/conversation-boundary-gate.test.ts"
   ],
 
   "checks": [

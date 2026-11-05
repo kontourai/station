@@ -74,7 +74,11 @@
 
     "src-ui/src/components/updates/PostUpdateChangelog.tsx",
 
-    "src-ui/src/components/updates/UpdateDownloadIcon.tsx"
+    "src-ui/src/components/updates/UpdateDownloadIcon.tsx",
+
+    "src-ui/src/connections/StationConnectionsContext.tsx",
+
+    "src-ui/src/components/conversation/LegacyConversationRecovery.tsx"
   ],
 
   "checks": [

@@ -260,15 +260,7 @@
 
     "src-server/routes/environments/__tests__/peer-chat-routes.test.ts",
 
-    "src-ui/src/components/chat-dock/PeerChatBody.tsx",
-
-    "src-ui/src/hooks/usePeerChatStart.ts",
-
     "src-ui/src/lib/peer-chat.ts",
-
-    "src-ui/src/__tests__/PeerChatBody.test.tsx",
-
-    "src-ui/src/components/chat/ChatRequestContext.ts",
 
     "src-ui/src/components/chat-start/ChatStart.css",
 
@@ -284,7 +276,43 @@
 
     "src-ui/src/__tests__/ConversationHandoffDialog.test.tsx",
 
-    "src-ui/src/components/chat-start/__tests__/StartStationControl.test.tsx"
+    "src-ui/src/components/chat-start/__tests__/StartStationControl.test.tsx",
+
+    "src-ui/src/components/conversation/ConversationBody.tsx",
+
+    "src-ui/src/components/conversation/ConversationReader.tsx",
+
+    "src-ui/src/components/conversation/RecordConversationBody.tsx",
+
+    "src-ui/src/components/conversation/useRecordConversationController.ts",
+
+    "src-ui/src/components/conversation/ConversationConnectionContext.tsx",
+
+    "src-ui/src/components/conversation/ConversationStopControl.tsx",
+
+    "src-ui/src/components/conversation/useApprovalAnswering.ts",
+
+    "src-ui/src/components/conversation/SharedTaskHistoryList.tsx",
+
+    "src-ui/src/components/chat-dock/useInboxPanelController.ts",
+
+    "src-ui/src/utils/stationFailure.ts",
+
+    "src-ui/src/components/conversation/conversation-transport.ts",
+
+    "src-ui/src/components/conversation/LegacyConversationRecovery.tsx",
+
+    "src-ui/src/connections/resolve-station-connection.ts",
+
+    "src-ui/src/contexts/ManagedPolicyContext.tsx",
+
+    "src-ui/src/hooks/orchestration/childWorkHandlers.ts",
+
+    "src-server/routes/environments/peer-chat-policy.ts",
+
+    "src-server/services/remote-stations/remote-station-forwarder.ts",
+
+    "packages/contracts/src/peer-chat.ts"
   ],
 
   "checks": [
