@@ -28,6 +28,10 @@ test('a daily ping is accepted once, replays answer the same, and a changed payl
   const sent = ping({
     surfaces_today: ['web', 'cli'],
     engines_used_today: ['codex', 'claude'],
+    engine_tokens_today: [
+      { engine: 'codex', bucket: '100k-1M' },
+      { engine: 'claude', bucket: '1-10k' },
+    ],
   });
   const first = await post(env, LITE, sent);
   expect(first.status).toBe(202);
@@ -40,6 +44,10 @@ test('a daily ping is accepted once, replays answer the same, and a changed payl
       event_id: sent.event_id.toUpperCase(),
       surfaces_today: [...sent.surfaces_today].reverse(),
       engines_used_today: [...sent.engines_used_today].reverse(),
+      // Engine entries reversed, and each entry's keys swapped.
+      engine_tokens_today: [...(sent.engine_tokens_today ?? [])]
+        .reverse()
+        .map(({ engine, bucket }) => ({ bucket, engine })),
     }).reverse(),
   );
   const replay = await post(env, LITE, reordered);

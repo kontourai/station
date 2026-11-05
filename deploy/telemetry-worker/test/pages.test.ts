@@ -106,15 +106,15 @@ test('insights renders the operator JSON as headline numbers and charts', async 
   expect(
     document.querySelectorAll('svg.chart path.line').length,
   ).toBeGreaterThan(0);
-  // No token field in the contract yet: no token panel.
+  // These seeded pings carry no token field, so there is no token panel.
   expect(titles(document)).not.toContain('Token throughput by engine');
 });
 
 test('a per-engine token dimension gets its own panel once pings carry it', async () => {
   const receiver = fakeReceiver();
   const env = testEnv(receiver);
-  // The parallel contract change adds engine_tokens_today; stand in for the
-  // receiver's answer so the dashboard's detection is proven independently.
+  // Stand in for the receiver's answer so the dashboard's detection of the
+  // engine_tokens_today dimension is proven independently of ingest.
   const insights = receiver.object.fetch.bind(receiver.object);
   receiver.namespace.get = () => ({
     fetch: async (request: Request) => {

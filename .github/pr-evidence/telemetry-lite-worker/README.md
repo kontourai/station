@@ -12,7 +12,8 @@ ingest and hourly maintenance over in-memory SQLite, and serves the real Worker
 handler. The before capture serves the baseline's page script against the same
 preview's aggregates. Noise keys are random per preview run, so public
 estimates differ between captures. The token-throughput panel uses a simulated
-`engine_tokens_today` dimension, because the contract does not carry that field yet.
+`engine_tokens_today` dimension, because these captures predate merging the
+contract field; the panel renders from real pings once they carry it.
 
 Chromium at 1280 px (light and dark) and 390 px, device scale 2. Inspected:
 the hero and stat tiles, the public headline's below-noise state and its
