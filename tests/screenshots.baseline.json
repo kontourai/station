@@ -336,6 +336,30 @@
       "width": 1440,
       "height": 900,
       "sha256": "2dfb0041f995b6e23936a7717089c344571a8cb559ee1a438748f93b4b50c88f"
+    },
+    {
+      "name": "task-capabilities-dark-desktop",
+      "width": 1440,
+      "height": 900,
+      "sha256": "6d053b9c1f7094aebb6cdfb1268db2b00b34921ef2ea44030c9687d6d897f087"
+    },
+    {
+      "name": "task-capabilities-dark-mobile",
+      "width": 390,
+      "height": 844,
+      "sha256": "20e2d336e91b47a7d6508c786f31e774e9872f3e4dc37a9fe207fe077253e0c5"
+    },
+    {
+      "name": "task-capabilities-light-desktop",
+      "width": 1440,
+      "height": 900,
+      "sha256": "8a64e35cb60577a5662eaaf87f5fb96419d03a575c9a847761136864d65e8cab"
+    },
+    {
+      "name": "task-capabilities-light-mobile",
+      "width": 390,
+      "height": 844,
+      "sha256": "9b0bb6d514d03a9ac240c6d14b1725e925eae29e8ed867bbfe0cdfa8542c0e82"
     }
   ]
 }

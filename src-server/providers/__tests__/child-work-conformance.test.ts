@@ -639,8 +639,16 @@ describe('#2456 child-work conformance tripwire', () => {
       replayClaudeTaskCapture('task-subagents').events,
     );
     const settled = deltas.filter((delta) => delta.kind === 'settle');
-    // Each subagent settles twice (task_updated then task_notification).
-    expect(settled).toHaveLength(4);
+    const returned = settled.filter(
+      (delta) => delta.result?.source === 'tool-return',
+    );
+    expect(returned).toMatchObject([
+      { result: { source: 'tool-return', summary: 'FOREGROUND DONE' } },
+    ]);
+    // The foreground tool return enriches the same child after its status updates.
+    expect(
+      settled.filter((delta) => delta.result?.source !== 'tool-return'),
+    ).toHaveLength(4);
     expect(new Set(settled.map((delta) => delta.childId)).size).toBe(2);
     expect(
       deltas.some(

@@ -2547,6 +2547,131 @@ function stationSwitcherScreens(): Screen[] {
   });
 }
 
+function taskCapabilityScreens(): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      const slug = `gallery-task-tools-${theme}-${viewport.width}`;
+      let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+      let previousEnabled = false;
+      let previewChanged = false;
+      let projectCreated = false;
+      const screen: Screen = {
+        name: `task-capabilities-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+        title: `Task capabilities — ${theme}, ${viewport.width}px`,
+        path: '/',
+        viewport,
+        async beforeGoto(page) {
+          request = createAuthenticatedE2ERequest(page.request);
+          const previews = await request.get(
+            `${resolveE2EApiBase()}/api/feature-previews`,
+          );
+          expect(previews.ok()).toBe(true);
+          const catalog = await previews.json();
+          const preview = catalog.data.find(
+            (entry: { id: string }) => entry.id === 'task-capabilities',
+          );
+          expect(preview).toBeDefined();
+          previousEnabled = preview.enabled;
+          const enabled = await request.put(
+            `${resolveE2EApiBase()}/api/feature-previews/task-capabilities`,
+            { data: { enabled: true } },
+          );
+          expect(enabled.ok()).toBe(true);
+          previewChanged = true;
+          const project = await request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: slug, slug } },
+          );
+          expect(project.ok()).toBe(true);
+          projectCreated = true;
+          const task = await request.post(`${resolveE2EApiBase()}/api/tasks`, {
+            data: {
+              projectId: slug,
+              title: 'Review the documentation change',
+              createdBy: 'user',
+            },
+          });
+          expect(task.ok()).toBe(true);
+          const created = await task.json();
+          expect(created.data.id).toBeTruthy();
+          screen.path = `/tasks/${encodeURIComponent(created.data.id)}?taskView=overview`;
+        },
+        async afterGoto(page) {
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
+          const panel = page.getByRole('region', {
+            name: 'Capabilities and evidence',
+          });
+          await expect(panel).toBeVisible();
+          await panel
+            .getByRole('button', { name: 'Inspect Project tools' })
+            .click();
+          const search = panel.getByRole('searchbox', {
+            name: 'Find a Project tool',
+          });
+          await expect(search).toBeVisible();
+          await search.fill('Station Docs');
+          await panel
+            .locator('summary')
+            .filter({ hasText: 'Station Docs' })
+            .click();
+          await expect(
+            panel.getByText('From Station', { exact: true }),
+          ).toBeVisible();
+          await expect(
+            panel.getByText('Project permits source', { exact: true }),
+          ).toBeVisible();
+          const heading = panel.getByRole('heading', {
+            name: 'Capabilities and evidence',
+          });
+          const headingBox = await heading.boundingBox();
+          const tabBox = await page
+            .getByRole('tablist', { name: 'Task views' })
+            .boundingBox();
+          expect(headingBox).not.toBeNull();
+          expect(tabBox).not.toBeNull();
+          const top = tabBox!.y + tabBox!.height + 16;
+          await page.mouse.move(
+            viewport.width / 2,
+            (top + viewport.height) / 2,
+          );
+          await page.mouse.wheel(0, headingBox!.y - top);
+          await expect
+            .poll(async () => (await heading.boundingBox())?.y)
+            .toBeCloseTo(top, 0);
+          expect(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= innerWidth,
+            ),
+          ).toBe(true);
+        },
+        async cleanup() {
+          try {
+            if (projectCreated) {
+              const deleted = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${slug}`,
+              );
+              expect(deleted.ok()).toBe(true);
+            }
+          } finally {
+            if (previewChanged) {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/task-capabilities`,
+                { data: { enabled: previousEnabled } },
+              );
+              expect(restored.ok()).toBe(true);
+            }
+          }
+        },
+      };
+      return screen;
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
   ...telemetryConsentScreens(),
   ...[DESKTOP, MOBILE].map((viewport): Screen => {
@@ -4037,6 +4162,7 @@ const SCREENS: Screen[] = [
   })(),
   ...inventoryDrilldownScreens(),
   ...stationSwitcherScreens(),
+  ...taskCapabilityScreens(),
 ];
 
 async function statusRasterState(page: Page) {

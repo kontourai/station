@@ -132,6 +132,7 @@ type SessionActivityStore = Pick<
 export function handleSessionStateChangedEvent(
   event: Extract<OrchestrationEvent, { method: 'session.state-changed' }>,
   store: SessionActivityStore = activeChatsStore,
+  apiBase?: string,
 ) {
   // archive#1076: `to` is the provider's coarse PROCESS status — 'running' means
   // the runtime attached, not that a turn is open. Mirror the archive#1034 snapshot
@@ -198,7 +199,10 @@ export function handleSessionStateChangedEvent(
           activityHint: undefined,
           // #2456: this session's children end with it; a sibling session of
           // the same chat keeps its own (R1).
-          backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
+          backgroundTasks: backgroundTasksAfterSessionEnds(
+            event.threadId,
+            apiBase,
+          ),
         }
       : {}),
   });
@@ -207,6 +211,7 @@ export function handleSessionStateChangedEvent(
 export function handleSessionExitedEvent(
   event: Extract<OrchestrationEvent, { method: 'session.exited' }>,
   store: SessionActivityStore = activeChatsStore,
+  apiBase?: string,
 ) {
   const chat = store.getSnapshot()[event.threadId];
   // A session the conversation has moved past (a stopped never-used
@@ -228,7 +233,7 @@ export function handleSessionExitedEvent(
     orchestrationTurnOpen: false,
     orchestrationSessionStarted: false,
     activityHint: undefined,
-    backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
+    backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId, apiBase),
     // #2880: the note speaks for a live engine that may still acknowledge;
     // once the session has ended, nothing will.
     unacknowledgedDecisions: [],

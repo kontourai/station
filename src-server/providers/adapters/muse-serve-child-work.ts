@@ -340,7 +340,9 @@ function settle(
     reporterThreadId: context.reporterThreadId,
     childId,
     status,
-    ...(summary ? { result: { summary } } : {}),
+    ...(summary
+      ? { result: { summary, source: 'provider-summary' as const } }
+      : {}),
     ...(extra.usage ? { usage: extra.usage } : {}),
     identity: { endedAt: context.nowIso() },
   });
