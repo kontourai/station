@@ -112,7 +112,11 @@
 
     "src-ui/src/styles/layout-recipes.css",
 
-    "src-ui/src/styles/control-recipes.css"
+    "src-ui/src/styles/control-recipes.css",
+
+    "src-ui/src/components/ActionRow.tsx",
+
+    "src-ui/src/components/ActionRow.css"
   ],
 
   "checks": [
