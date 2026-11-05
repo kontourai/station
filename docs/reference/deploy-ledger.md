@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-05T09:07:52Z | nightly-npm | 0.11.0-nightly.2500.41998120703 | `3876f62` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41998120703) |
 | 2026-11-04T23:58:11Z | nightly-desktop | 0.1.11-nightly.2499.3 | `970191e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41923272661) |
 | 2026-11-04T23:58:08Z | nightly-android | 0.1.11-nightly.2499.3 | `970191e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41923272661) |
 | 2026-11-04T22:33:16Z | nightly-npm | 0.11.0-nightly.2499.41923272661 | `970191e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41923272661) |
@@ -419,6 +420,47 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-05T09:07:52Z · nightly-npm · 0.11.0-nightly.2500.41998120703
+
+- Ship SHA: `3876f626e588bcaac041582594506f6c82c45d6c`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2500.41998120703 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `970191e` ([full sha](https://github.com/kontourai/station/commit/970191e5e1c4e848415971473e362f79449eca8e)):
+
+**Features**
+
+- [#4591](https://github.com/kontourai/station/pull/4591) feat(telemetry): add a Cloudflare Worker Lite receiver with visual dashboards
+- [#4596](https://github.com/kontourai/station/pull/4596) feat(updates): add changelogs, release history and download progress
+- [#4556](https://github.com/kontourai/station/pull/4556) feat(tasks): GitHub follow-ups and lead wake for tracker-backed Tasks (preview)
+- [#4570](https://github.com/kontourai/station/pull/4570) feat(managed-policy): approval-mode ceiling (limits.maxApprovalMode)
+- [#4569](https://github.com/kontourai/station/pull/4569) feat: prioritize interactive engine starts
+
+**Fixes**
+
+- [#4598](https://github.com/kontourai/station/pull/4598) fix(terminal): phone keyboards, hidden-view redraw, touch selection, Windows scripts and Desktop webdriver build
+- [#4597](https://github.com/kontourai/station/pull/4597) fix(ci): verify cancelled metadata workflow against live main
+- [#4542](https://github.com/kontourai/station/pull/4542) fix(ui): announce accent preset selection
+- [#4581](https://github.com/kontourai/station/pull/4581) fix(terminal): bound pending approvals, owner-only journal ACLs on Windows, command custody, output credit and observer views
+- [#4564](https://github.com/kontourai/station/pull/4564) fix(orchestration): retire stale adapter event consumers
+- [#4576](https://github.com/kontourai/station/pull/4576) fix(settings): unblock cross-origin appearance preference saves
+- [#4561](https://github.com/kontourai/station/pull/4561) fix(chat): keep Stop failures with their interrupted turn
+- [#4551](https://github.com/kontourai/station/pull/4551) fix(ui): confirm occupied shortcut default restores
+- [#4574](https://github.com/kontourai/station/pull/4574) fix(chat): name the checks in the restart Continue prompt
+- [#4547](https://github.com/kontourai/station/pull/4547) fix(ui): retain current local restart failure notice
+
+**Docs**
+
+- [#4594](https://github.com/kontourai/station/pull/4594) docs(marketing): align Station around coding and shared Task rooms
+- [#4588](https://github.com/kontourai/station/pull/4588) docs(contributing): link pull requests back to their agent sessions
+
+**Other**
+
+- [#4595](https://github.com/kontourai/station/pull/4595) perf(agent-runtime): bound 1300-delta prefix cost (Refs #4467 #3558)
 
 ## 2026-11-04T23:58:11Z · nightly-desktop · 0.1.11-nightly.2499.3
 
