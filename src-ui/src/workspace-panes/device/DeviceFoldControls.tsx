@@ -5,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts/live-surface';
 import { type ReactNode, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { ArrowDownGlyph } from '../../components/icons/Glyph';
 import type { DeviceFoldViewControls } from './DeviceFoldView';
 import { snapHingeAngle, standOf } from './deviceFold';
 import './DeviceFold.css';
@@ -106,27 +107,35 @@ export function DevicePostureControl({
   };
   if (compact) {
     const angle = previewAngle ?? fold.hingeAngle;
+    // The shell's compact value picker (`.choice-trigger` + caret), so the
+    // full-screen bar's select matches its other controls in both themes.
     return (
-      <select
-        aria-label="Stand"
-        className="device-fold-controls__stand-select"
-        disabled={!inputReady}
-        onChange={(event) =>
-          choose(event.currentTarget.value as LiveSurfacePosture)
-        }
-        value={current ?? ''}
-      >
-        {current === null ? (
-          <option disabled value="">
-            {angle === null ? 'Between stands' : `Hinge ${Math.round(angle)}°`}
-          </option>
-        ) : null}
-        {fold.postures.map((posture) => (
-          <option key={posture} value={posture}>
-            {POSTURE_LABEL[posture]}
-          </option>
-        ))}
-      </select>
+      <span className="device-fold-controls__stand-picker">
+        <select
+          aria-label="Stand"
+          className="choice-trigger device-fold-controls__stand-select"
+          disabled={!inputReady}
+          onChange={(event) =>
+            choose(event.currentTarget.value as LiveSurfacePosture)
+          }
+          title="Stand"
+          value={current ?? ''}
+        >
+          {current === null ? (
+            <option disabled value="">
+              {angle === null
+                ? 'Between stands'
+                : `Hinge ${Math.round(angle)}°`}
+            </option>
+          ) : null}
+          {fold.postures.map((posture) => (
+            <option key={posture} value={posture}>
+              {POSTURE_LABEL[posture]}
+            </option>
+          ))}
+        </select>
+        <ArrowDownGlyph className="choice-caret device-fold-controls__stand-caret" />
+      </span>
     );
   }
   return (

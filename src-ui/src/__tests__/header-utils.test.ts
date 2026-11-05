@@ -41,6 +41,18 @@ describe('header utils', () => {
     expect(getHeaderBreadcrumb({ type: 'project', slug: 'alpha' })).toEqual({
       projectSlug: 'alpha',
     });
+    // A direct pane route names its project and which pane it shows.
+    expect(
+      getHeaderBreadcrumb({
+        type: 'workspace-pane',
+        projectSlug: 'alpha',
+        descriptorId: 'pane:builtin:workspace-preview:browser-preview',
+        instanceId: 'browser-preview:1',
+      }),
+    ).toEqual({
+      projectSlug: 'alpha',
+      paneDescriptorId: 'pane:builtin:workspace-preview:browser-preview',
+    });
     // Standalone views now carry a section crumb that climbs to its root.
     expect(getHeaderBreadcrumb({ type: 'agents' })).toEqual({
       section: 'Agents',

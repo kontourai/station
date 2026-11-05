@@ -177,10 +177,29 @@
   width: 20px;
 }
 
-.device-fold-controls__stand-select {
+.device-fold-controls__stand-picker {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  position: relative;
+}
+
+/* `.choice-trigger` dresses the native select; this keeps the 44px target on
+   every pointer and leaves room for the caret drawn over its right edge. */
+.device-fold-controls__stand-select.choice-trigger {
+  appearance: none;
   max-width: 100%;
   min-height: 44px;
   min-width: 0;
+  padding-right: calc(var(--k-space-3) + 14px);
+}
+
+.device-fold-controls__stand-caret {
+  pointer-events: none;
+  position: absolute;
+  right: var(--k-space-2);
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .device-fold-controls--compact {
