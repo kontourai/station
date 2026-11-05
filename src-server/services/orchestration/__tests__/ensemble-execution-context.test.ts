@@ -1946,6 +1946,38 @@ describe('explicit Ensemble inspection login checks', () => {
     expect(execFile).not.toHaveBeenCalled();
     f.assertNoInvocations();
   });
+  test('an expired native observation returns a stale inspection instead of an unknown success', async () => {
+    const f = await fixture('codex');
+    const observe = f.adapter.observeExecutionAuthentication.bind(f.adapter);
+    let restoreClock = () => {};
+    vi.spyOn(f.adapter, 'observeExecutionAuthentication').mockImplementation(
+      async (input) => {
+        const observation = await observe(input);
+        const clock = vi
+          .spyOn(Date, 'now')
+          .mockReturnValue(observation.checkedAt + 30_000);
+        restoreClock = () => clock.mockRestore();
+        return observation;
+      },
+    );
+    try {
+      const response = await f.send(
+        f.operator,
+        { ...inputFor(f), verifyAuthentication: true },
+        '127.0.0.1',
+        {},
+        inspectionPath,
+      );
+      expect(response).toMatchObject({
+        status: 409,
+        body: { code: 'ensemble_inspection_stale' },
+      });
+      f.assertNoInvocations();
+    } finally {
+      restoreClock();
+    }
+  });
+
   test('a replaced native executable after login cannot publish an authenticated inspection', async () => {
     const f = await fixture('codex');
     let observed = false;

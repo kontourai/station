@@ -3012,7 +3012,7 @@ It uses the same authentication owner as group startup, in each selected
 profile, model and directory; it never starts a Session or makes a model call.
 Private executable/authentication witnesses remain server-side and are checked
 again after the final awaited read. Grant loss refuses publication; changed
-native witnesses return `409 ensemble_inspection_stale`.
+or expired native witnesses return `409 ensemble_inspection_stale`.
 
 The optional `authenticationCheck` response cell offers `{state:'available'}`
 or explains `{state:'unavailable',detail}`. Older hosts omit it. Engine sign-in

@@ -33,6 +33,7 @@ import {
 } from '../execution-target/execution-target-resolver.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import { projectMcpServers } from '../projects/project-tools.js';
+import { CliSessionGroupUnavailable } from './cli-session-group.js';
 import { loadEnsemblePreset } from './ensemble-presets.js';
 import type {
   EnsembleSessionAuthenticationObservation,
@@ -689,9 +690,14 @@ export class EnsembleInspectionService {
           },
         );
         authenticationSucceeded = true;
-      } catch {
+      } catch (error) {
         current();
         fence();
+        if (
+          error instanceof CliSessionGroupUnavailable &&
+          error.code === 'ensemble_auth_stale'
+        )
+          throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
       }
       current();
       fence();
