@@ -63,9 +63,7 @@ async function setup() {
     { outcome: 'accept' },
     'human',
   );
-  const clock = { now: 1_000_000 };
   const provider = createMemoryBriefProvider({
-    now: () => clock.now,
     manager,
     review,
     enabled: () => state.enabled,
@@ -77,7 +75,6 @@ async function setup() {
   });
   return {
     state,
-    clock,
     provider,
     request: new Request('http://station.test/chat'),
   };
@@ -144,12 +141,11 @@ test('a relayed session is briefed only from its recorded owner’s memory', asy
 });
 
 test('a conversation is briefed once its brief is delivered, however many turns follow', async () => {
-  const { provider, request, clock } = await setup();
+  const { provider, request } = await setup();
   const session = { relayOwner: OWNER, conversationId: 'thread-1' };
   const first = await provider(request, session);
   expect(first?.entries).toBe(1);
   first?.delivered();
-  clock.now += 24 * 60 * 60 * 1000;
   expect(await provider(request, session)).toBeNull();
   expect(await provider(request, session)).toBeNull();
   // Reporting an abandoned turn afterwards changes nothing: it was delivered.
@@ -169,7 +165,6 @@ test('an abandoned turn gives the conversation its brief back at once', async ()
   expect(first?.entries).toBe(1);
   // While that turn is in flight, a second one waits.
   expect(await provider(request, session)).toBeNull();
-  // It was refused before it reached the model. The very next turn is briefed.
   first?.abandoned();
   const retry = await provider(request, session);
   expect(retry?.entries).toBe(1);
@@ -177,13 +172,29 @@ test('an abandoned turn gives the conversation its brief back at once', async ()
   expect(await provider(request, session)).toBeNull();
 });
 
-test('a turn that never reports does not hold the brief forever', async () => {
-  const { provider, request, clock } = await setup();
-  const session = { relayOwner: OWNER, conversationId: 'thread-lost' };
-  expect((await provider(request, session))?.entries).toBe(1);
+test('a turn still in flight holds the brief: no second turn takes it, however long it takes', async () => {
+  const { provider, request } = await setup();
+  const session = { relayOwner: OWNER, conversationId: 'thread-slow' };
+  const first = await provider(request, session);
+  expect(first?.entries).toBe(1);
+  for (let turn = 0; turn < 3; turn += 1)
+    expect(await provider(request, session)).toBeNull();
+  first?.delivered();
   expect(await provider(request, session)).toBeNull();
-  clock.now += 11 * 60_000;
-  expect((await provider(request, session))?.entries).toBe(1);
+});
+
+test('a repeated report from an old turn cannot release a newer turn’s reservation', async () => {
+  const { provider, request } = await setup();
+  const session = { relayOwner: OWNER, conversationId: 'thread-owner' };
+  const first = await provider(request, session);
+  first?.abandoned();
+  const second = await provider(request, session);
+  expect(second?.entries).toBe(1);
+  // The first turn reports again, late. The second turn still holds the brief.
+  first?.abandoned();
+  expect(await provider(request, session)).toBeNull();
+  second?.delivered();
+  expect(await provider(request, session)).toBeNull();
 });
 
 test('a refused or failed attempt does not use up a conversation’s brief', async () => {

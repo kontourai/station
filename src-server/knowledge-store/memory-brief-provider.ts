@@ -41,36 +41,38 @@ export interface MemoryBrief extends MemoryBriefDelivery {
   entries: number;
 }
 
-export function createMemoryBriefProvider(
-  deps: MemoryBriefProviderDeps & { now?: () => number },
-) {
+export function createMemoryBriefProvider(deps: MemoryBriefProviderDeps) {
   // A conversation is briefed once. Station's relay sends every turn as plain
   // text, so "first turn" cannot be read from the message; it is the first time
   // this person's conversation gets a brief to the model. A restart forgets, and
   // briefs a long-running conversation once more, still as labelled background.
   //
-  // `done`: briefed (or nothing to brief). `reserved`: a brief is being built or is
-  // on its way, until `commit` or the reservation lapses. A refused or failed
-  // attempt leaves neither, so a later turn retries. Keys are hashes, so a long
-  // caller-chosen id costs a fixed 64 characters.
-  const now = deps.now ?? Date.now;
+  // `done`: briefed (or nothing to brief). `reserved`: one turn holds the brief
+  // until it reports `delivered` or `abandoned`. Every turn reports, on every path
+  // (the route's `finally` and the stream's), so there is no timeout: a timeout
+  // would let a second turn take the brief while the first still carries it. Each
+  // reservation has its own owner token, so a late or repeated report from a turn
+  // can never release another turn's reservation. Keys are hashes, so a long
+  // caller-chosen id costs a fixed 64 characters, and `reserved` holds only turns
+  // in flight.
   const done = new Set<string>();
-  const reserved = new Map<string, number>();
+  const reserved = new Map<string, symbol>();
   const MAX_REMEMBERED = 5000;
-  // Only a backstop for a turn that never reports (a crash mid-request): every
-  // normal ending reports `delivered` or `abandoned`, which settles it at once.
-  const RESERVATION_MS = 10 * 60_000;
   const keyOf = (userId: string, conversationId: string) =>
     createHash('sha256')
       .update(`${userId}\u0000${conversationId}`)
       .digest('hex');
-  const finish = (key: string) => {
+  const finish = (key: string, owner: symbol) => {
+    if (reserved.get(key) !== owner) return;
     reserved.delete(key);
     done.add(key);
     if (done.size > MAX_REMEMBERED) {
       const oldest = done.values().next().value;
       if (oldest !== undefined) done.delete(oldest);
     }
+  };
+  const release = (key: string, owner: symbol) => {
+    if (reserved.get(key) === owner) reserved.delete(key);
   };
   return async (
     request: Request,
@@ -92,13 +94,10 @@ export function createMemoryBriefProvider(
     const key = session.conversationId
       ? keyOf(scope.userId, session.conversationId)
       : undefined;
+    const owner = Symbol('memory-brief');
     if (key) {
-      const until = reserved.get(key);
-      if (done.has(key) || (until !== undefined && until > now())) return null;
-      if (reserved.size > 1000)
-        for (const [held, expiry] of reserved)
-          if (expiry <= now()) reserved.delete(held);
-      reserved.set(key, now() + RESERVATION_MS);
+      if (done.has(key) || reserved.has(key)) return null;
+      reserved.set(key, owner);
     }
     let handedOff = false;
     try {
@@ -116,7 +115,7 @@ export function createMemoryBriefProvider(
       );
       if (!guarded.ok) return null;
       if (!brief.text) {
-        if (key) finish(key);
+        if (key) finish(key, owner);
         return {
           text: null,
           entries: 0,
@@ -129,15 +128,15 @@ export function createMemoryBriefProvider(
         text: brief.text,
         entries: brief.entries.length,
         delivered: () => {
-          if (key) finish(key);
+          if (key) finish(key, owner);
         },
-        // After delivery this is a no-op: the conversation stays briefed.
+        // After delivery this changes nothing: the conversation stays briefed.
         abandoned: () => {
-          if (key && !done.has(key)) reserved.delete(key);
+          if (key) release(key, owner);
         },
       };
     } finally {
-      if (key && !handedOff) reserved.delete(key);
+      if (key && !handedOff) release(key, owner);
     }
   };
 }

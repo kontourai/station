@@ -298,6 +298,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         capturedProject: nativeForeground?.project,
         capturedWorkspaceRoot: nativeWorkspace?.workspaceRoot,
       });
+      // Adopt the brief before any guard below can refuse the turn, so the `finally`
+      // gives it back whatever refuses.
+      memoryBriefDelivery = preparedBriefDelivery;
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       if (
         nativeMemory &&
@@ -306,7 +309,6 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
           nativeMemory.currentSessionId !== turnCorrelation?.sessionId)
       )
         throw new NativeMemoryContinuityUnavailableError();
-      memoryBriefDelivery = preparedBriefDelivery;
       const ragContext = preparedRagContext;
 
       logDebugChatImages(ctx.logger, input as string | ChatMessage[]);

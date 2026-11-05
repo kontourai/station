@@ -87,6 +87,7 @@ describe('Chat Routes', () => {
   test.each(['station', 'reader'])(
     '/%s/chat retains its registered tools, memory and approval hooks when selecting another model',
     async (publicSlug) => {
+      const configurationRevision = { value: 0 };
       const runtimeKey = publicSlug === 'station' ? 'default' : publicSlug;
       const home = makeTempDir('chat-model-override-');
       const memory = new FileMemoryAdapter({ projectHomeDir: home });
@@ -156,7 +157,7 @@ describe('Chat Routes', () => {
           listProviderConnections: () => [provider],
           resolveModelForProvider: async (_id, model) => model,
         },
-        getAgentConfigurationRevision: () => 0,
+        getAgentConfigurationRevision: () => configurationRevision.value,
         commitAgentConfigurationRead: async (_revision, operation) =>
           operation(),
         framework: {
@@ -280,6 +281,18 @@ describe('Chat Routes', () => {
       // The stream is the one that reports delivery; the route only hands it over.
       expect(streamPrimaryAgentChat.mock.calls[0]?.[0].memoryBrief).toBe(sent);
       expect(sent.abandoned).not.toHaveBeenCalled();
+
+      // The configuration changing while the turn was prepared is refused (409) after
+      // preparation has already reserved the brief: it is still given back.
+      const stale = { delivered: vi.fn(), abandoned: vi.fn() };
+      vi.mocked(prepareChatRequest).mockImplementationOnce(async () => {
+        configurationRevision.value += 1;
+        return prepared(stale);
+      });
+      expect((await post()).status).toBe(409);
+      expect(stale.abandoned).toHaveBeenCalledTimes(1);
+      expect(stale.delivered).not.toHaveBeenCalled();
+      configurationRevision.value = 0;
 
       // A stream that throws before starting hands nothing over: the brief is abandoned.
       const broken = { delivered: vi.fn(), abandoned: vi.fn() };
