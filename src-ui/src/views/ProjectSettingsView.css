@@ -371,7 +371,23 @@
   }
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+@media (max-width: 768px), (pointer: coarse) {
+  .project-settings__layout {
+    flex-direction: column;
+    gap: 0;
+  }
+  .project-settings__layout > .section-navigation {
+    flex: 0 0 auto;
+    overflow: visible;
+    padding: 0 var(--k-space-3);
+  }
+  .project-settings__layout > .project-settings__body {
+    padding-top: 0;
+  }
+  .project-settings__layout .section-navigation__picker select {
+    min-height: 44px;
+  }
+
   /* Stop the identity preview / path strings from forcing horizontal scroll */
   .project-settings__identity-preview,
   .project-settings__identity-card,
@@ -543,22 +559,4 @@
 .project-settings__icon-button {
   min-width: 44px;
   min-height: 44px;
-}
-
-@media (max-width: 768px), (pointer: coarse) {
-  .project-settings__layout {
-    flex-direction: column;
-    gap: 0;
-  }
-  .project-settings__layout > .section-navigation {
-    flex: 0 0 auto;
-    overflow: visible;
-    padding: 0 var(--k-space-3);
-  }
-  .project-settings__layout > .project-settings__body {
-    padding-top: 0;
-  }
-  .project-settings__layout .section-navigation__picker select {
-    min-height: 44px;
-  }
 }

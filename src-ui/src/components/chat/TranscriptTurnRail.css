@@ -236,27 +236,24 @@
   outline-offset: 2px;
 }
 
-@media (hover: hover) and (pointer: fine) {
+.transcript-turn-rail-host:not([data-touch-controls])
   .transcript-turn-rail__step {
-    opacity: 0;
-    transition: opacity var(--motion-base) var(--ease-standard);
-  }
-
-  .chat-messages:hover ~ .transcript-turn-rail-host .transcript-turn-rail__step,
-  .transcript-turn-rail-host:hover .transcript-turn-rail__step,
-  .transcript-turn-rail-host:focus-within .transcript-turn-rail__step {
-    opacity: 1;
-  }
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-standard);
 }
 
-@media (pointer: coarse), (max-width: 767px) {
-  .chat-messages[data-turn-navigation] {
-    padding-right: calc(var(--chat-message-gutter) + 44px);
-  }
+.chat-messages:hover ~ .transcript-turn-rail-host .transcript-turn-rail__step,
+.transcript-turn-rail-host:hover .transcript-turn-rail__step,
+.transcript-turn-rail-host:focus-within .transcript-turn-rail__step {
+  opacity: 1;
+}
 
-  .transcript-turn-rail-host {
-    --transcript-turn-step-size: 44px;
-  }
+.chat-messages[data-touch-turn-controls] {
+  padding-right: calc(var(--chat-message-gutter) + 44px);
+}
+
+.transcript-turn-rail-host[data-touch-controls] {
+  --transcript-turn-step-size: 44px;
 }
 
 /* Turn markers form a map beside the independent native scrollbar. */

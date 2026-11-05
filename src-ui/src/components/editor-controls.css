@@ -317,6 +317,7 @@
  * tablets wider than the phone breakpoint. Icon buttons need both dimensions.
  */
 @media (max-width: 768px), (pointer: coarse) {
+  :where(select),
   .editor-input,
   .editor-select,
   .editor-btn,
@@ -327,11 +328,5 @@
 
   .editor-btn--icon {
     min-width: 44px;
-  }
-}
-
-@media (max-width: 768px), (pointer: coarse) {
-  :where(select) {
-    min-height: 44px;
   }
 }

@@ -294,14 +294,19 @@
   min-width: 44px;
   min-height: 44px;
 }
-@media (hover: hover) and (pointer: fine) {
-  .chat-dock-inbox__section-header .action-overflow__trigger {
-    opacity: 0;
-  }
-  .chat-dock-inbox__section-header:hover .action-overflow__trigger,
-  .chat-dock-inbox__section-header:focus-within .action-overflow__trigger,
+.chat-dock-inbox:not([data-coarse-pointer])
   .chat-dock-inbox__section-header
-    .action-overflow__trigger[aria-expanded="true"] {
-    opacity: 1;
-  }
+  .action-overflow__trigger {
+  opacity: 0;
+}
+.chat-dock-inbox:not([data-coarse-pointer])
+  .chat-dock-inbox__section-header:hover
+  .action-overflow__trigger,
+.chat-dock-inbox:not([data-coarse-pointer])
+  .chat-dock-inbox__section-header:focus-within
+  .action-overflow__trigger,
+.chat-dock-inbox:not([data-coarse-pointer])
+  .chat-dock-inbox__section-header
+  .action-overflow__trigger[aria-expanded="true"] {
+  opacity: 1;
 }

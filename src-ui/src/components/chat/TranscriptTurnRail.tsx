@@ -193,6 +193,7 @@ interface TranscriptTurnRailProps {
   readonly previousTurn: number | undefined;
   readonly nextTurn: number | undefined;
   readonly onStep: (turnIndex: number) => void;
+  readonly touchControls: boolean;
 }
 
 /**
@@ -239,6 +240,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   previousTurn,
   nextTurn,
   onStep,
+  touchControls,
 }: TranscriptTurnRailProps) {
   const hostRef = useRef<HTMLFieldSetElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -394,6 +396,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
     <fieldset
       className="transcript-turn-rail-host"
       ref={hostRef}
+      data-touch-controls={touchControls || undefined}
       aria-label="Turn navigation"
     >
       <button

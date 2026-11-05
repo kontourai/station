@@ -172,6 +172,7 @@ function ChatDockInboxPanelImpl({
   return (
     <aside
       ref={panelRef}
+      data-coarse-pointer={coarsePointer || undefined}
       className={`chat-dock-inbox${exiting ? ' chat-dock-inbox--exiting' : ''}`}
       aria-label="Inbox chats"
       tabIndex={-1}

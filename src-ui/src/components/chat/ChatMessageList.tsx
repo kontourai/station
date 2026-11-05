@@ -16,7 +16,9 @@ import { chatFormDraftsStore } from '../../contexts/chat-form-drafts-store';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useToolApproval } from '../../hooks/useToolApproval';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { ChatMessage, ChatSession } from '../../types';
@@ -293,6 +295,9 @@ function ChatMessageListComponent({
   approvalEventsSettled,
 }: ChatMessageListProps) {
   const agents = useAgents();
+  const isMobile = useIsMobile();
+  const coarsePointer = useCoarsePointer();
+  const touchTurnControls = isMobile || coarsePointer;
   const [turnBrowserOpen, setTurnBrowserOpen] = useState(false);
   const [pendingTurnJump, setPendingTurnJump] = useState<string | null>(null);
   useEffect(() => {
@@ -1794,7 +1799,9 @@ function ChatMessageListComponent({
           />
           <div
             className="chat-messages"
-            data-turn-navigation={turnNavigation || undefined}
+            data-touch-turn-controls={
+              (turnNavigation && touchTurnControls) || undefined
+            }
             data-answer-width={chatAnswerWidth}
             ref={messagesContainerRef}
             role="log"
@@ -2018,6 +2025,7 @@ function ChatMessageListComponent({
               previousTurn={previousTurn}
               nextTurn={nextTurn}
               onStep={stepToTurn}
+              touchControls={touchTurnControls}
             />
           )}
           {/* Mounted with the navigation, before anything is said: a region
