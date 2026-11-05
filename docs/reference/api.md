@@ -3022,9 +3022,11 @@ the Flow reference and context-sync receipt metadata. A reservation or launch
 intent without a confirmed handle is indeterminate. References do not assert
 output availability; context ACKs do not establish native/shared memory,
 acceptance or a grant. Schedule/webhook projection remains unavailable.
-The server rereads the authorized group snapshot after awaited inspection and
-refuses changed snapshots as stale. Read authority is checked again before
-publication; these checks are observations, not atomic external storage custody.
+The server rereads the authorized group snapshot after awaited inspection,
+checks its stored revision after Flow loading, and refuses changed snapshots as
+stale. Loaded preset-file identity and Knowledge registry currency are checked
+after the final awaited read. Read authority is checked again before publication;
+these checks are observations, not atomic external storage custody.
 Draft prerequisite provenance uses an immutable request snapshot digest, not a
 signed execution receipt.
 

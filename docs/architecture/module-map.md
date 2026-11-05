@@ -2724,6 +2724,9 @@ hook, without a receiver draft or sign-in check. Authorized bound responses
 show the group ID and revision with the recorded references. Source or authority
 changes hide the prior result; unsupported hosts offer no bound request. This
 read neither creates nor runs a group.
+Only this reader requires a current stored group snapshot after awaited Flow
+loading. The loaded preset's file identity and Knowledge registry digest remain
+witnessed through the final await and are checked before publication.
 
 The [result component](../../src-ui/src/views/EnsembleInspectionResult.tsx) uses
 the same configuration facts for its provenance table and diagram. Optional

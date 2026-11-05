@@ -10,12 +10,46 @@ work. Each landing keeps its own evidence and does not close the full epic.
 ## Current delivery state
 
 **IN_PROGRESS; full epic NOT_READY.** The independently useful retention,
-result-provenance, Station-isolation, parent-notice and Directory foundation is
-[PR #4602](https://github.com/kontourai/station/pull/4602), armed for auto-merge.
-Its merged source passes 1,036 focused tests; readiness reports zero failures
-and zero warnings. Hosted checks and actual merge remain separate. Group,
-lineage, context-sync and finalizer/recovery work remains on this branch;
-neither production qualification flag is enabled.
+result-provenance, Station-isolation, parent-notice and Directory foundation
+landed in [PR #4602](https://github.com/kontourai/station/pull/4602) as
+`812a2280f7961ecd293faa767dd831f7f6a829a7` on 2026-11-05. GitHub REST merge
+state was rechecked after the recorded-group repair. The foundation's 1,036
+focused tests and zero-failure, zero-warning readiness receipt belong to that
+landing; they do not qualify the remaining branch. Group, lineage, context-sync
+and finalizer/recovery work remains here. Neither production qualification flag
+is enabled.
+
+At `6ccc4c54667159f371549fdde321121b96a94620`, the recorded-group inspector
+has an explicit UI action for an authorized group ID, exact preset binding,
+Session/output references, retained dependencies, Flow and context-sync metadata.
+It does not infer membership or claim output availability, native/shared memory,
+acceptance or execution authority. The 23 focused UI cases and UI typecheck pass;
+four controlled renders at 390/1440 in light/dark were opened. These are
+production markup/CSS captures after controlled SDK responses, not a live
+provider or native-shell journey.
+
+Independent source review found two final-read currency gaps. The repair retains
+the loaded preset's file identity and checks Knowledge registry currency after
+the last await. Only inspection opts into a group read that rechecks its stored
+record after awaited Flow loading; ordinary group reads keep their semantics.
+Three valid regressions failed before the repair. The affected owner suites
+pass after the stale member-assignment expectation was corrected; server-test
+types pass. Removing the router's strict-read option fails the real HTTP case
+with 12 controls passing; byte-exact restoration passes all 13 route cases. The
+independent delta review finds no blocking defect by source reasoning, not
+executed or whole-epic approval.
+
+The earlier basic three-seat native Claude/Codex pass remains tied to
+`89d2c02f6011c71f8e19cea0c3d4f12120b0661e`. Full streaming and exact elicitation
+acceptance remains open. One fresh attempt was refused as stale before group
+creation; a read-only profile attributed most sampled delay to ambient native
+transcript ingestion. A later attempt passed sign-in but did not reach the SSE
+catch-up marker within its existing bound, still before group creation. The
+isolated follow-up uses the existing setting to exclude attached sessions outside
+Projects; host samples at 99/100 percent refused its admission, so no runtime or
+model started. No deadline, freshness limit or production guard was relaxed.
+Final documentation/readiness and the remaining topology, portable lineage,
+context-sync and finalizer/recovery qualification remain open.
 
 At `59821ae7e773`, the delayed attached-session follower start belongs to the
 existing runtime timer list. Shutdown cancels it before stopping the follower,
