@@ -437,8 +437,29 @@ export function summarizeManagedPolicy(
   };
 }
 
-/** Where a loaded policy came from. More kinds arrive with later sources. */
-export type ManagedPolicySourceKind = 'file' | 'test-override';
+/**
+ * Where a loaded policy came from: the policy file, a macOS configuration
+ * profile (#4523), the Windows Policies registry key (#4524), or the
+ * test-only override.
+ */
+export type ManagedPolicySourceKind =
+  | 'file'
+  | 'macos-profile'
+  | 'windows-registry'
+  | 'test-override';
+
+export const MANAGED_POLICY_SOURCE_KINDS: readonly ManagedPolicySourceKind[] = [
+  'file',
+  'macos-profile',
+  'windows-registry',
+  'test-override',
+];
+
+function isManagedPolicySourceKind(
+  value: unknown,
+): value is ManagedPolicySourceKind {
+  return (MANAGED_POLICY_SOURCE_KINDS as readonly unknown[]).includes(value);
+}
 
 export interface ManagedPolicySourceDescriptor {
   kind: ManagedPolicySourceKind;
@@ -479,7 +500,7 @@ export function parseManagedPolicyStatus(
   const { source, digest, summary } = value;
   if (
     !isRecord(source) ||
-    (source.kind !== 'file' && source.kind !== 'test-override') ||
+    !isManagedPolicySourceKind(source.kind) ||
     typeof source.location !== 'string' ||
     !isManagedPolicyDigest(digest) ||
     !isRecord(summary) ||

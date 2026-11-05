@@ -1,20 +1,25 @@
 # Managed policy
 
 A managed policy lets an organization's IT administrator control Station on
-the machines it manages. You install one policy file on a machine. Every
+the machines it manages. You install one policy on a machine: a file, a macOS
+configuration profile, or Windows Group Policy (or Intune). Every
 Station server on that machine loads the policy when it starts, applies it to
 every client that connects (desktop, browser and mobile), and refuses to start
 if it cannot enforce it.
 
 This guide covers what the current release supports. The
 [decision record](../decisions/managed-policy.md) explains the design and the
-precedence rules. Settings, the other limits, configuration profiles and Group
-Policy arrive in later releases (#4517–#4524). This guide grows with them.
+precedence rules. Settings and the other limits arrive in later releases
+(#4517–#4522). This guide grows with them.
 
 ## What this release supports
 
-The current release supports the policy document, the file source, the
-fail-closed startup check, `station policy check` and `station policy show`,
+The current release supports the policy document, three ways to install it
+(the [file](#where-to-install-it), a
+[macOS configuration profile](#deploy-with-a-macos-configuration-profile) and
+[Group Policy or Intune](#deploy-with-group-policy-or-intune) on Windows), the
+fail-closed startup check, `station policy check`, `station policy show` and
+`station policy templates`,
 a value-free summary that clients can read, and three
 [capability switches](#capability-switches) in `limits`: `telemetry`,
 `webhookAutomations` and `registries`. It does **not** yet enforce any setting
@@ -144,13 +149,173 @@ who can write it can delete the policy, and Station starts unmanaged when the
 file is gone. `station policy check` applies the ownership rule only when you
 pass it the system path itself, so run it there after installing.
 
-On Windows, Station refuses a link at the path but does not yet check the
-file's owner or ACL (#4524). Make sure only administrators can write the file
-and its folder. Station reads these exact paths; it does not use environment
-variables to find them.
+On Windows, the file, `C:\Program Files\Station` and every folder above it
+must be owned by Administrators, SYSTEM or TrustedInstaller, and no one else
+may be granted a right that changes them. For the file and its folder that is
+any write right. For `C:\Program Files` and `C:\` it is the rights that
+could remove or re-permission what is below (delete, delete a child, change
+permissions or owner), so the stock "create folders" right that Authenticated
+Users have on `C:\` is fine. A folder created in `C:\Program Files` from an
+elevated prompt inherits a qualifying ACL:
+
+```powershell
+New-Item -ItemType Directory -Force 'C:\Program Files\Station'
+Copy-Item .\policy.json 'C:\Program Files\Station\policy.json'
+```
+
+Station reads the owner and access list through the Windows API, refuses a
+symbolic link, junction or other reparse point anywhere in the path, and fails
+closed when it cannot read them. Station reads these exact paths; it does not
+use environment variables to find them.
 
 If no file is at the path, there is no policy, and Station runs exactly as it
 does without one.
+
+## Deploy with a macOS configuration profile
+
+Deploy the policy as a configuration profile with **System** scope for the
+preference domain `io.kontourai.station`. macOS installs it as
+`/Library/Managed Preferences/io.kontourai.station.plist`, and Station reads
+that file. Station ignores user-scoped profiles, which land under
+`/Library/Managed Preferences/<user>/`.
+
+Generate a complete profile from a checked policy:
+
+```bash
+station policy templates ./out --policy ./policy.json
+```
+
+`out/macos/station.mobileconfig` has one payload of type
+`io.kontourai.station` that carries the policy's keys. Upload it to your MDM
+as a custom profile, or sign it and install it directly. Its identifiers are
+fixed, so a profile generated from a changed policy replaces the installed
+one. Station also reads the `Forced` / `mcx_preference_settings` form that an
+MDM's "custom settings" screen writes for a
+`com.apple.ManagedClient.preferences` payload.
+
+Station checks the installed plist like a policy file (a regular file owned by
+root, in folders only root can write) and converts it with `/usr/bin/plutil`,
+called by its full path. The keys and rules are the same as the file's. The
+property-list format has two limits:
+
+- There is no `null` in a property list. A policy that uses `null` cannot be a
+  profile; `station policy templates` refuses it and names the key. Deploy
+  that policy as a file.
+- A `<date>` or `<data>` value is refused when Station starts; no policy key
+  takes one.
+- A key repeated in one `<dict>` of an XML profile is refused, as in a file.
+  A property list otherwise keeps the last of the two.
+
+Profile metadata that macOS writes beside the keys (`PayloadUUID`,
+`PayloadIdentifier`, `PayloadType`, `PayloadVersion`, `PayloadDisplayName`,
+`PayloadDescription`, `PayloadOrganization`, `PayloadEnabled`,
+`_manualProfile`) is ignored. Any other key is refused like an unknown key in
+a file.
+
+A profile and a policy file on the same Mac is a startup error: remove one.
+After the profile installs, run `station policy show`; it names the profile as
+the installed source.
+
+## Deploy with Group Policy or Intune
+
+On Windows, Station reads `HKLM\SOFTWARE\Policies\Kontour\Station` through
+the Windows API in its own process, not through `reg.exe` or PowerShell, so
+blocking those tools for users does not matter. It reads only that machine
+key. It never reads `HKEY_CURRENT_USER` or any other place a user can write.
+`HKLM\SOFTWARE\Policies` is shared by the 32-bit and 64-bit registry views,
+so a 32-bit tool writes the same key. WSL runs Linux, so Station inside WSL
+reads `/etc/station/policy.json` in that distribution, not the Windows
+registry.
+
+The key holds the policy one of two ways, never both:
+
+- **The Group Policy template.** One value per setting, written by the ADMX
+  template below.
+- **One `Policy` value.** A `REG_SZ` holding the whole policy as JSON, exactly
+  as the file would hold it.
+
+The key, and every key above it up to `HKLM\SOFTWARE`, must be owned by
+Administrators, SYSTEM or TrustedInstaller and changeable by no one else. Keys
+that Group Policy, Intune or an elevated prompt creates under
+`HKLM\SOFTWARE\Policies` inherit such an ACL.
+
+### Install the template
+
+```bash
+station policy templates ./out
+```
+
+Copy `out/windows/station.admx` to `PolicyDefinitions` and
+`out/windows/en-US/station.adml` to `PolicyDefinitions\en-US`:
+
+- for one machine, `C:\Windows\PolicyDefinitions`;
+- for a domain, the central store,
+  `\\<domain>\SYSVOL\<domain>\Policies\PolicyDefinitions`.
+
+The settings appear under **Computer Configuration > Administrative Templates
+> Station**. Configure them in a Group Policy object, then on a client run
+`gpupdate /target:computer /force` and restart Station (a running server keeps
+the policy it loaded at startup). `station policy show` confirms what is
+installed and loaded.
+
+**Intune:** import `station.admx` and `station.adml` under **Devices >
+Configuration > Import ADMX**. Intune first needs the templates the file
+depends on; this one depends on none. Then create a profile from the
+imported templates and assign it to devices.
+
+### What each setting writes
+
+Every value is in `HKLM\SOFTWARE\Policies\Kontour\Station`.
+
+| Setting | Values | Policy document |
+| --- | --- | --- |
+| Organization | `Organization` (`REG_SZ`), `SupportUrl` (`REG_SZ`, blank for none) | `organization`, `supportUrl` |
+| Managed settings (JSON) | `ManagedSettings` (`REG_DWORD` state), `ManagedSettingsJson` (`REG_MULTI_SZ`, lines joined) | `settings` (must be `{}` in this release) |
+| Allow usage data and telemetry | `Telemetry` (`REG_DWORD`) | `limits.telemetry: false` when Disabled |
+| Allow webhook automations | `WebhookAutomations` (`REG_DWORD`) | `limits.webhookAutomations: false` when Disabled |
+| Allowed plugin and skill registries | `RegistryAllowList` (`REG_DWORD` state), `RegistryAllowedUrls` (`REG_MULTI_SZ`, one URL per line) | `limits.registries.allowedUrls` |
+| Allow unsigned registry packages | `RegistryUnsignedPackages` (`REG_DWORD`) | `limits.registries.unsignedPackages: false` when Disabled |
+| Allow the default skill registries | `DefaultSkillRegistries` (`REG_DWORD`) | `limits.registries.defaultSkillRegistries: false` when Disabled |
+| Allow engine installs from the ACP registry | `AcpRegistryInstalls` (`REG_DWORD`) | `limits.registries.acpRegistryInstalls: false` when Disabled |
+
+The template carries a setting for every limit this release enforces. Later
+limits join it when they ship.
+
+### What Enabled, Disabled and Not Configured mean
+
+| Kind of setting | Enabled | Disabled | Not Configured |
+| --- | --- | --- | --- |
+| An **Allow …** switch | Leaves it to each user, like Not Configured (writes `1`) | Turns the capability off (writes `0`) | No value |
+| Any other setting | Applies its value (state value `1`) | **Startup error.** Station will not start (state value `0`). | No value |
+| Organization | Required whenever any other setting is configured | Its text is removed; with any other setting configured, that is a startup error | No value |
+
+Disabled never means "no restriction". An administrator who disables
+"Allowed plugin and skill registries" did not ask for every registry, so
+Station refuses to start and says which setting is Disabled. Use Not
+Configured to remove a restriction.
+
+Station also refuses to start when the key holds a value or subkey the
+template does not define (it may be a setting from a newer template), a value
+of the wrong type, a `REG_DWORD` other than `0` or `1`, or both a `Policy`
+value and template values. An empty key is no policy.
+
+### The single `Policy` value
+
+To deploy the JSON document unchanged, for example from a script, write it as
+one `REG_SZ` from an elevated PowerShell prompt:
+
+```powershell
+$key = 'HKLM:\SOFTWARE\Policies\Kontour\Station'
+New-Item -Path $key -Force | Out-Null
+New-ItemProperty -Path $key -Name Policy -PropertyType String -Force `
+  -Value (Get-Content -Raw .\policy.json)
+```
+
+Run `station policy check .\policy.json` first. With Intune, use a
+PowerShell script or a custom OMA-URI setting that writes the same value.
+
+A registry policy and `C:\Program Files\Station\policy.json` on the same
+machine is a startup error: remove one.
 
 ## Rollout
 
@@ -164,7 +329,8 @@ does without one.
    exits `0` and prints what the policy does and its fingerprint, or exits `1`
    and lists each problem. Add `--json` for a machine-readable report.
 
-2. Deploy the file to the path for each OS with your device management tool.
+2. Deploy it with your device management tool: the file at the path for each
+   OS, a configuration profile on macOS, or Group Policy or Intune on Windows.
 
 3. Restart Station on each machine. A running server keeps the policy it
    loaded at startup until it restarts.
@@ -202,14 +368,22 @@ Station refuses to start when:
 - the path is a symbolic link, even one whose target is missing;
 - the file, or a folder above it, is not owned by root or is writable by its
   group or other users (macOS and Linux);
+- on Windows, the file, a folder above it, or the policy registry key or a
+  key above it, has another owner than Administrators, SYSTEM or
+  TrustedInstaller, grants someone else a right to change it, or is a reparse
+  point;
+- the Windows registry or a configuration profile cannot be read, or the
+  registry key holds something the template does not define, a Disabled
+  setting that is not an **Allow …** switch, or both a `Policy` value and
+  template values;
 - the file is larger than 1 MiB;
 - the file is not valid JSON;
 - the document repeats a key name in the same object (`duplicate key
   <path>`), so a second `limits` cannot quietly replace the first;
 - the document does not match the schema, including a wrong `schemaVersion`,
   an unknown key, a setting entry or a limit key;
-- more than one policy source is installed (this matters once configuration
-  profiles and Group Policy are supported).
+- more than one policy source is installed: a file and a configuration
+  profile, or a file and the registry key.
 
 The desktop app shows that the organization's policy cannot be used and does
 not retry; restarting cannot fix it. `station start` prints the same line as

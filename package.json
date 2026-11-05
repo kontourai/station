@@ -444,7 +444,8 @@
     "zod-to-json-schema": "^3.25.2",
     "@better-auth/passkey": "1.7.13",
     "@simplewebauthn/browser": "13.3.0",
-    "@kontourai/bearing": "0.2.0"
+    "@kontourai/bearing": "0.2.0",
+    "koffi": "3.3.6"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.6",

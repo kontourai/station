@@ -1,5 +1,7 @@
-import { isAbsolute, resolve } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import {
+  MANAGED_POLICY_SCHEMA_VERSION,
   type ManagedPolicyDigest,
   type ManagedPolicyDocument,
   type ManagedPolicyProblem,
@@ -19,6 +21,12 @@ import {
   SYSTEM_MANAGED_POLICY_OWNERSHIP,
 } from '@kontourai/station-shared/managed-policy';
 import {
+  MANAGED_POLICY_TEMPLATE_FILES,
+  managedPolicyAdml,
+  managedPolicyAdmx,
+  managedPolicyMobileconfig,
+} from '@kontourai/station-shared/managed-policy-templates';
+import {
   configureApiCredential,
   parseCoreArgs,
   requestJson,
@@ -26,7 +34,9 @@ import {
 } from './core-api.js';
 
 const USAGE =
-  'Usage: station policy check <file> [--json] | station policy show [--json]';
+  'Usage: station policy check <file> [--json] | station policy show [--json] | station policy templates <dir> [--policy <file>]';
+/** The profile's document when no `--policy` is given; it names no real organization. */
+const PLACEHOLDER_ORGANIZATION = 'Example Organization';
 const MANAGED_POLICY_ROUTE = '/api/settings/managed-policy';
 
 function describeEffect(
@@ -263,6 +273,90 @@ async function runShow(args: string[], json: boolean): Promise<void> {
     );
 }
 
+/** `templates <dir> [--policy <file>]`, also accepting `--policy=<file>`. */
+function parseTemplatesArgs(args: string[]): { dir: string; policy?: string } {
+  const positionals: string[] = [];
+  let policy: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--policy') {
+      const next = args[i + 1];
+      if (next === undefined || next.startsWith('--') || policy !== undefined)
+        throw new Error(USAGE);
+      policy = next;
+      i++;
+    } else if (arg.startsWith('--policy=')) {
+      if (policy !== undefined || arg.length === '--policy='.length)
+        throw new Error(USAGE);
+      policy = arg.slice('--policy='.length);
+    } else if (arg.startsWith('--')) {
+      throw new Error(USAGE);
+    } else {
+      positionals.push(arg);
+    }
+  }
+  if (positionals.length !== 1) throw new Error(USAGE);
+  return { dir: positionals[0], ...(policy === undefined ? {} : { policy }) };
+}
+
+/**
+ * `station policy templates <dir>`: the Group Policy template (ADMX and its
+ * en-US ADML) and a macOS configuration profile. With `--policy`, the
+ * profile carries that file's document after the same validation as
+ * `policy check`; without it, a placeholder organization to replace. Nothing
+ * is written unless every file can be.
+ */
+function runTemplates(args: string[]): void {
+  const { dir, policy } = parseTemplatesArgs(args);
+  const root = resolve(dir);
+  let document: ManagedPolicyDocument = {
+    schemaVersion: MANAGED_POLICY_SCHEMA_VERSION,
+    organization: PLACEHOLDER_ORGANIZATION,
+  };
+  if (policy !== undefined) {
+    const path = resolve(policy);
+    try {
+      const raw = readManagedPolicyFile(path);
+      if (!raw)
+        throw new ManagedPolicyInvalidError(
+          path,
+          'no file exists at this path',
+        );
+      document = decodeManagedPolicy(path, raw);
+    } catch (error) {
+      if (!(error instanceof ManagedPolicyInvalidError)) throw error;
+      console.error(`Policy ${path} is not valid; no templates were written.`);
+      console.error(`  ${error.reason}`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+  const profile = managedPolicyMobileconfig(document);
+  if (!profile.ok) {
+    console.error(`Cannot make a configuration profile: ${profile.reason}.`);
+    process.exitCode = 1;
+    return;
+  }
+  const files: Array<[string, string]> = [
+    [MANAGED_POLICY_TEMPLATE_FILES.mobileconfig, profile.profile],
+    [MANAGED_POLICY_TEMPLATE_FILES.admx, managedPolicyAdmx()],
+    [MANAGED_POLICY_TEMPLATE_FILES.adml, managedPolicyAdml()],
+  ];
+  for (const [relative, content] of files) {
+    const target = join(root, relative);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, content);
+    console.log(`Wrote ${target}`);
+  }
+  if (policy === undefined)
+    console.log(
+      `The profile names "${PLACEHOLDER_ORGANIZATION}". Run again with --policy <file> to put your policy in it.`,
+    );
+  console.log(
+    'Copy station.admx and en-US\\station.adml to PolicyDefinitions; see docs/guides/managed-policy.md.',
+  );
+}
+
 export async function runPolicyCommand(args: string[]): Promise<void> {
   const parsed = parseCoreArgs(args);
   const [action, ...rest] = parsed.positionals;
@@ -273,6 +367,10 @@ export async function runPolicyCommand(args: string[]): Promise<void> {
     if (rest.length !== 1 || flags.some((flag) => flag !== 'json'))
       throw new Error(USAGE);
     runCheck(rest[0], json);
+    return;
+  }
+  if (action === 'templates') {
+    runTemplates(args.slice(args.indexOf('templates') + 1));
     return;
   }
   if (action === 'show') {

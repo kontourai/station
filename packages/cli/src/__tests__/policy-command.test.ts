@@ -4,7 +4,13 @@
  * the contract an administrator's rollout script branches on.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
@@ -187,5 +193,101 @@ describe('station policy check', () => {
       expect(result.stderr).toContain('it is a symbolic link');
     },
     120_000,
+  );
+});
+
+function templates(...args: string[]) {
+  const root = fixture();
+  const result = spawnSyncBounded(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      join(repoRoot, 'scripts/station-cli.ts'),
+      'policy',
+      'templates',
+      ...args,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 60_000,
+      killSignal: 'SIGKILL',
+      env: {
+        ...process.env,
+        STATION_HOME: join(root, 'home'),
+        STATION_ROOT: join(root, 'home'),
+        STATION_PORT: '9',
+      },
+    },
+  );
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+describe('station policy templates', () => {
+  const FILES = [
+    'macos/station.mobileconfig',
+    'windows/station.admx',
+    'windows/en-US/station.adml',
+  ];
+
+  test('writes the profile and the Group Policy template; --policy fills the profile', () => {
+    const policy = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { telemetry: false },
+      }),
+    );
+    for (const args of [['--policy', policy], [`--policy=${policy}`]]) {
+      const out = join(fixture(), 'templates');
+      const result = templates(out, ...args);
+      expect(result.status, result.stderr).toBe(0);
+      for (const file of FILES)
+        expect(existsSync(join(out, file)), file).toBe(true);
+      const profile = readFileSync(join(out, FILES[0]), 'utf8');
+      expect(profile).toContain('<string>Acme</string>');
+      expect(profile).toContain('<key>telemetry</key>');
+      expect(readFileSync(join(out, FILES[1]), 'utf8')).toContain(
+        'key="SOFTWARE\\Policies\\Kontour\\Station"',
+      );
+    }
+  });
+
+  test('without --policy the profile names a placeholder organization', () => {
+    const out = join(fixture(), 'templates');
+    const result = templates(out);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Run again with --policy <file>');
+    expect(readFileSync(join(out, FILES[0]), 'utf8')).toContain(
+      'Example Organization',
+    );
+  });
+
+  test('an invalid --policy writes nothing and exits 1', () => {
+    const policy = write(
+      JSON.stringify({ schemaVersion: 1, organization: 'Acme', extra: 1 }),
+    );
+    const out = join(fixture(), 'templates');
+    const result = templates(out, '--policy', policy);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('no templates were written');
+    expect(existsSync(out)).toBe(false);
+  });
+
+  test.each([[[]], [['a', 'b']], [['out', '--policy']], [['out', '--nope']]])(
+    'refuses bad arguments %j',
+    (args) => {
+      const result = templates(...args);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'station policy templates <dir> [--policy <file>]',
+      );
+    },
   );
 });
