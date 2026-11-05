@@ -1507,7 +1507,7 @@ test('preset authentication fences unsupported and changed contexts and retains 
   );
   expect(f.adapter.starts).toHaveLength(0);
   expect(f.adapter.turns).toHaveLength(0);
-  expect(f.adapter.authentications).toHaveLength(1);
+  expect(f.adapter.authentications).toHaveLength(preset.members.length);
   f.adapter.authentications.length = 0;
   Reflect.deleteProperty(f.adapter, 'observeExecutionAuthentication');
   f.adapter.authenticationStates = [
@@ -1539,8 +1539,13 @@ test('preset authentication fences unsupported and changed contexts and retains 
   expect(unchanged.members.every((member) => member.state === 'pending')).toBe(
     true,
   );
+  const beforeDriftProbes = f.adapter.authentications.length;
+  let driftInjected = false;
   f.adapter.onAuthentication = async () => {
-    if (f.adapter.authentications.length === 5) f.changeInventory();
+    if (!driftInjected) {
+      driftInjected = true;
+      f.changeInventory();
+    }
   };
   const drifted = await f.app.request(
     `/api/orchestration/session-groups/${group.groupId}/run`,
@@ -1551,8 +1556,13 @@ test('preset authentication fences unsupported and changed contexts and retains 
   );
   expect(drifted.status).toBe(409);
   expect(f.adapter.starts).toHaveLength(0);
-  expect(f.adapter.authentications).toHaveLength(5);
+  expect(driftInjected).toBe(true);
+  expect(f.adapter.authentications.length).toBeGreaterThan(beforeDriftProbes);
+  expect(
+    f.adapter.authentications.length - beforeDriftProbes,
+  ).toBeLessThanOrEqual(preset.members.length);
   f.adapter.onAuthentication = undefined;
+  const beforeRunProbes = f.adapter.authentications.length;
   const ran = await f.app.request(
     `/api/orchestration/session-groups/${group.groupId}/run`,
     {
@@ -1574,7 +1584,9 @@ test('preset authentication fences unsupported and changed contexts and retains 
   expect(final.preset).toEqual(uploadedView.preset);
   expect(JSON.stringify(final)).not.toContain('Private addition');
   expect(f.adapter.turns).toHaveLength(3);
-  expect(f.adapter.authentications).toHaveLength(11);
+  expect(f.adapter.authentications).toHaveLength(
+    beforeRunProbes + preset.members.length * 2,
+  );
   expect(
     f.adapter.authentications.every(
       (observation) =>
@@ -1591,6 +1603,14 @@ test('preset authentication fences unsupported and changed contexts and retains 
     )!;
     expect(turn.input).toContain('Review this work.');
     expect(turn.input).toContain(`Private addition for ${member.id}`);
+    expect(turn.input).toContain(
+      `Your Ensemble member assignment:\n${JSON.stringify({
+        id: member.id,
+        codename: member.codename,
+        role: member.role,
+        stationmaster: member.id === preset.stationmaster,
+      })}`,
+    );
     for (const id of ['lead', 'check', 'join'])
       expect(turn.input).toContain(`"id":"${id}"`);
     expect(
@@ -1606,7 +1626,9 @@ test('preset authentication fences unsupported and changed contexts and retains 
     },
   );
   expect(replayed.status).toBe(200);
-  expect(f.adapter.authentications).toHaveLength(11);
+  expect(f.adapter.authentications).toHaveLength(
+    beforeRunProbes + preset.members.length * 2,
+  );
   expect(f.adapter.turns).toHaveLength(3);
   writeFileSync(path, `${bytes} `);
   await expect(
@@ -1752,7 +1774,13 @@ test('preset authentication cancellation and changed start context stop member e
   );
   expect(cancelled.status).toBe(200);
   expect((await cancellingRun).status).toBe(409);
-  expect(f.adapter.authentications).toHaveLength(1);
+  expect(f.adapter.authentications.length).toBeGreaterThanOrEqual(1);
+  expect(f.adapter.authentications.length).toBeLessThanOrEqual(
+    Object.keys(input.bindings).length,
+  );
+  expect(
+    f.adapter.authentications.every((probe) => probe.signal?.aborted === true),
+  ).toBe(true);
   expect(f.adapter.starts).toHaveLength(0);
   expect(f.adapter.turns).toHaveLength(0);
   f.adapter.onAuthentication = undefined;

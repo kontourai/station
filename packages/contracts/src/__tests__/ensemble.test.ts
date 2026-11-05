@@ -77,11 +77,15 @@ describe('Ensemble JSON contract', () => {
         parseEnsemblePreset(JSON.stringify(declaration(), null, 2)),
       ),
     ).toBe(roster);
+    const leadAssignment =
+      'Your Ensemble member assignment:\n{"id":"lead","codename":"Rune","role":"coordinate\\ncarefully","stationmaster":true}';
+    const reviewerAssignment =
+      'Your Ensemble member assignment:\n{"id":"reviewer","codename":"Flux","role":"review","stationmaster":false}';
     expect(composeEnsembleBrief(preset, 'lead', '  Task\r\n')).toBe(
-      `  Task\r\n\n\n  preserve\r\n\n\n\n\n\nπ🙂\n\n${roster}`,
+      `  Task\r\n\n\n  preserve\r\n\n\n\n\n\nπ🙂\n\n${leadAssignment}\n\n${roster}`,
     );
     expect(composeEnsembleBrief(preset, 'reviewer', 'Task')).toBe(
-      `Task\n\nReview independently.\n\n${roster}`,
+      `Task\n\nReview independently.\n\n${reviewerAssignment}\n\n${roster}`,
     );
     expect(() => composeEnsembleBrief(preset, 'absent', 'Task')).toThrow(
       'unknown brief member',
@@ -89,6 +93,25 @@ describe('Ensemble JSON contract', () => {
     expect(() => {
       Object.assign(preset.members[0].options, { fastMode: true });
     }).toThrow();
+  });
+
+  test('members sharing an engine have distinct assignments without prompt additions', () => {
+    const value = declaration();
+    for (const member of value.members) {
+      member.engine = 'claude';
+      member.model = 'sonnet';
+      member.promptAppends = [];
+    }
+    const preset = parseEnsemblePreset(JSON.stringify(value));
+    const lead = composeEnsembleBrief(preset, 'lead', 'Task');
+    const reviewer = composeEnsembleBrief(preset, 'reviewer', 'Task');
+    expect(lead).not.toBe(reviewer);
+    expect(lead).toContain(
+      'Your Ensemble member assignment:\n{"id":"lead","codename":"Rune","role":"coordinate\\ncarefully","stationmaster":true}',
+    );
+    expect(reviewer).toContain(
+      'Your Ensemble member assignment:\n{"id":"reviewer","codename":"Flux","role":"review","stationmaster":false}',
+    );
   });
 
   test.each([

@@ -6601,7 +6601,10 @@ schema lockstep requirements apply to these additive response fields too.
 `parseEnsembleCliSessionGroupInput` and `createEnsembleCliSessionGroup` use the
 preset entry point in that API. The request supplies exactly one of a preset
 `path` or `presetJson`, its exact hash, a brief and receiver bindings; the server
-composes the authored models, additions and roster. Host-path reads require the
+composes the authored models, byte-preserved additions, escaped current-member
+assignment and shared roster. The assignment binds the seat ID, codename, role
+and Stationmaster marker; it grants no authority and does not rewrite retained
+group briefs. Host-path reads require the
 current locally granted operator; caller-supplied JSON uses ordinary group
 request authority. Creation starts no engines. Use the returned group ID with
 `runCliSessionGroup` to start work.

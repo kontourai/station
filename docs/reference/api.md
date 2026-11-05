@@ -3226,7 +3226,11 @@ cannot use this endpoint to read a host path. Supply `expectedPresetHash`, `brie
 member ID. Each binding supplies a local `target` with an Agent, expected engine
 connection and explicit Project or directory workspace, plus `needs` (an array,
 empty for independent members). The preset supplies the model, options, prompt
-additions and shared roster; bindings cannot override them. Native engine names
+additions and shared roster; bindings cannot override them. Each composed brief
+also identifies its own member by an escaped seat ID, codename, role and
+Stationmaster marker before the shared roster. Members using the same Agent or
+engine therefore receive distinct assignments even without prompt additions.
+Those declarations grant no permissions. Native engine names
 match the provider identity; a configured CLI engine uses its connection identity
 (for example `opencode`). Station resolves configuration without starting an
 authentication or model-discovery process. Creation persists composed member

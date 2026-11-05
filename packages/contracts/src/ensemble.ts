@@ -309,7 +309,15 @@ export function composeEnsembleBrief(
 ): string {
   const member = preset.members.find((entry) => entry.id === memberId);
   if (!member) throw new Error('Ensemble: unknown brief member');
-  return [brief, ...member.promptAppends, renderEnsembleRoster(preset)].join(
-    '\n\n',
-  );
+  return [
+    brief,
+    ...member.promptAppends,
+    `Your Ensemble member assignment:\n${JSON.stringify({
+      id: member.id,
+      codename: member.codename,
+      role: member.role,
+      stationmaster: member.id === preset.stationmaster,
+    })}`,
+    renderEnsembleRoster(preset),
+  ].join('\n\n');
 }
