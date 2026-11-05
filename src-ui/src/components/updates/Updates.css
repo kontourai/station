@@ -89,8 +89,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: var(--k-space-8);
-  height: var(--k-space-8);
+  width: var(--k-space-6);
+  height: var(--k-space-6);
 }
 .updates-control__progress {
   position: absolute;
@@ -151,14 +151,14 @@
 .release-history a {
   display: inline-flex;
   align-items: center;
-  min-height: calc(var(--k-space-6) + var(--k-space-5));
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
   color: var(--k-action);
 }
 .release-history summary {
   cursor: pointer;
   display: list-item;
   align-content: center;
-  min-height: calc(var(--k-space-6) + var(--k-space-5));
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
 }
 .release-history label,
 .release-history select {
@@ -167,7 +167,7 @@
   margin-block: var(--k-space-2);
 }
 .release-history select {
-  min-height: calc(var(--k-space-6) + var(--k-space-5));
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
   background: var(--k-panel);
   color: var(--k-text);
   border: 1px solid var(--k-line);
@@ -177,7 +177,7 @@
   display: flex;
   align-items: center;
   gap: var(--k-space-2);
-  min-height: calc(var(--k-space-6) + var(--k-space-5));
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
   margin-top: var(--k-space-3);
   font-size: var(--k-text-sm);
 }
