@@ -669,10 +669,10 @@ test('mobile keeps its installed version and channel when no app update is avail
   profile.channel = 'nightly';
   render(<UpdatesControl onNavigate={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
-  const panel = await screen.findByRole('dialog', { name: 'Updates' });
   expect(
-    within(panel).getByRole('heading', { name: 'Station app · nightly' }),
+    await screen.findByRole('heading', { name: 'Station app · nightly' }),
   ).toBeTruthy();
+  const panel = screen.getByRole('dialog', { name: 'Updates' });
   expect(within(panel).getByText('0.1.11-nightly.20261105.1')).toBeTruthy();
   expect(
     within(panel).queryByRole('button', {
