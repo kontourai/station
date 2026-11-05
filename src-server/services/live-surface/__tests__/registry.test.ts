@@ -33,6 +33,8 @@ const key = (k: string, type: 'down' | 'up' = 'down') =>
   ({ kind: 'key', type, key: k, code: `Key${k.toUpperCase()}` }) as const;
 const press = (type: 'down' | 'up', x: number, y: number) =>
   ({ kind: 'pointer', type, x, y, button: 'left', clickCount: 1 }) as const;
+const SENDER = '0b8a8f4e-5d0e-4c8e-9a43-1f2e3d4c5b6a';
+const OTHER_SENDER = '7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -849,6 +851,80 @@ describe('server-owned release of pressed input (#90 B)', () => {
         : `${event.kind}:${'type' in event ? event.type : ''}`,
     );
     expect(order).toEqual(['key:down', 'key:up', 'text']);
+  });
+
+  test('a release names the last batch it covers: a later press of the same key, from a later batch, is never released by it (round 8, item 2)', async () => {
+    const { producer, entry } = setup();
+    const order = (seq: number) => ({ sender: SENDER, seq });
+    await dispatchHumanInput(
+      entry,
+      human,
+      0,
+      [shift('down')],
+      undefined,
+      order(1),
+    );
+    await dispatchHumanInput(
+      entry,
+      human,
+      1,
+      [shift('up')],
+      undefined,
+      order(2),
+    );
+    await dispatchHumanInput(
+      entry,
+      human,
+      1,
+      [shift('down')],
+      undefined,
+      order(3),
+    );
+    // A request issued after batch 1 that arrives (or is retried) only now.
+    expect(
+      (await releaseHumanPressed(entry, human, undefined, order(1))).ok,
+    ).toBe(true);
+    expect(heldOn(producer)).toEqual(['key:ShiftLeft']);
+    // Another sender of the same controller names its own order only.
+    expect(
+      (
+        await releaseHumanPressed(entry, human, undefined, {
+          sender: OTHER_SENDER,
+          seq: 9,
+        })
+      ).ok,
+    ).toBe(true);
+    expect(heldOn(producer)).toEqual(['key:ShiftLeft']);
+    // One that covers batch 3 releases it.
+    expect(
+      (await releaseHumanPressed(entry, human, undefined, order(3))).ok,
+    ).toBe(true);
+    expect(heldOn(producer)).toEqual([]);
+  });
+
+  test('a stale epoch or fence is told before a release owed (round 8, item 5)', async () => {
+    const { producer, entry } = setup();
+    await dispatchHumanInput(entry, human, 0, [shift('down')]);
+    refuseKeyUps(producer, 100);
+    expect(await releaseHumanPressed(entry, human)).toMatchObject({
+      code: 'release-pending',
+    });
+    // A human acting on a stale view.
+    expect(
+      await dispatchHumanInput(entry, other, 0, [{ kind: 'text', text: 'x' }]),
+    ).toMatchObject({ ok: false, code: 'stale-epoch' });
+    // An agent whose fence is no longer current.
+    expect(
+      await dispatchAgentInput(entry, agent, OPERATOR, 0, [
+        { kind: 'text', text: 'x' },
+      ]),
+    ).toMatchObject({ ok: false, code: 'stale-fence' });
+    // A current human is told about the owed release.
+    expect(
+      await dispatchHumanInput(entry, human, entry.lease.snapshot().epoch, [
+        { kind: 'text', text: 'x' },
+      ]),
+    ).toMatchObject({ ok: false, code: 'release-pending' });
   });
 
   test('a release request arriving while an attempt is in flight is answered at once instead of queuing behind it (round 7, item 4)', async () => {

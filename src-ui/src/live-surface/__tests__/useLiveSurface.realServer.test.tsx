@@ -876,3 +876,67 @@ test('R6-2c: after a release whose answer is lost, the viewer asks the host to r
   expect(server.remotePressed()).toEqual([]);
   a.unmount();
 });
+
+// ---- fix round 8 -----------------------------------------------------------
+
+test('R8-2: a release retried after its answer was lost never cancels the key pressed again since', async () => {
+  server = await realLiveSurfaceServer({ viewerGraceMs: 10_000 });
+  let lost = 0;
+  const a = viewer(
+    server.transport({
+      // The host releases Shift; the answer never comes back.
+      loseAnswer: (url, body) => isRelease(url, body) && lost++ === 0,
+    }),
+  );
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  act(() => {
+    a.result.current.releasePressed();
+  });
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]));
+  // Released and pressed again before the retry goes.
+  act(() => a.result.current.sendInput([shiftUp, shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  await waitFor(() => expect(releaseRequests(server!)).toBe(2), {
+    timeout: 2_000,
+  });
+  await settle();
+  // The fresh press is still down: the retry was about the earlier one.
+  expect(server.remotePressed()).toEqual(['key:ShiftLeft']);
+  a.unmount();
+});
+
+test('R8-2b: a release asked while input is still queued goes after it, and covers the presses queued ahead of it', async () => {
+  server = await realLiveSurfaceServer({ viewerGraceMs: 10_000 });
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  let first = true;
+  const a = viewer(
+    server.transport({
+      delay: (url) => {
+        if (!url.endsWith('/input') || !first) return null;
+        first = false;
+        return gate;
+      },
+    }),
+  );
+  await settle();
+  act(() => a.result.current.sendInput([text('first')]));
+  // Shift pressed while the first batch is still on its way, then blur.
+  act(() => a.result.current.sendInput([shiftDown]));
+  act(() => {
+    a.result.current.releasePressed();
+  });
+  expect(releaseRequests(server)).toBe(0);
+  open();
+  await waitFor(() => expect(releaseRequests(server!)).toBe(1));
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]));
+  a.unmount();
+});

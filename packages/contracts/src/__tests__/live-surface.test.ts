@@ -416,6 +416,44 @@ describe('epoch causality and host release (#90 A, B)', () => {
     ).toBeNull();
   });
 
+  test('an input batch carries its place in its sender order, and release-pressed may name the last one it covers', () => {
+    const order = { sender: viewerId, seq: 7 };
+    expect(
+      parseLiveSurfaceInputBatch({
+        epoch: 1,
+        events: [{ kind: 'text', text: 'x' }],
+        order,
+      }),
+    ).toEqual({ epoch: 1, events: [{ kind: 'text', text: 'x' }], order });
+    expect(
+      parseLiveSurfaceLeaseRequest({
+        action: 'release-pressed',
+        through: order,
+      }),
+    ).toEqual({ action: 'release-pressed', through: order });
+    for (const bad of [
+      { sender: 'short', seq: 1 },
+      { sender: viewerId, seq: -1 },
+      { sender: viewerId, seq: 1.5 },
+      { sender: viewerId },
+      { sender: viewerId, seq: 1, extra: true },
+    ]) {
+      expect(
+        parseLiveSurfaceInputBatch({
+          epoch: 1,
+          events: [{ kind: 'text', text: 'x' }],
+          order: bad,
+        }),
+      ).toBeNull();
+      expect(
+        parseLiveSurfaceLeaseRequest({
+          action: 'release-pressed',
+          through: bad,
+        }),
+      ).toBeNull();
+    }
+  });
+
   test('release-pressed is an unfenced lease action: it names no epoch', () => {
     expect(parseLiveSurfaceLeaseRequest({ action: 'release-pressed' })).toEqual(
       { action: 'release-pressed' },
