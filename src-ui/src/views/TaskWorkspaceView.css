@@ -1417,7 +1417,7 @@
   border: 1px solid var(--k-line-strong);
   border-radius: var(--k-radius-sm);
   background: color-mix(in oklab, var(--room-avatar-ink) 14%, var(--k-panel));
-  color: var(--room-avatar-ink);
+  color: var(--k-text);
   font: 600 var(--k-text-sm) / 1 var(--k-font-ui);
 }
 .task-room-avatar--agent {
@@ -2036,6 +2036,8 @@
 }
 .task-relationships input,
 .task-relationships select {
+  box-sizing: border-box;
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
   color: var(--k-text);
   background: var(--k-panel);
   border: 1px solid var(--k-line);

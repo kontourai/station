@@ -8,6 +8,16 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "task-capabilities-dark-desktop": [
+      "src-ui/src/views/TaskWorkspaceView.tsx"
+    ],
+    "task-capabilities-dark-mobile": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "task-capabilities-light-desktop": [
+      "src-ui/src/views/TaskWorkspaceView.tsx"
+    ],
+    "task-capabilities-light-mobile": [
+      "src-ui/src/views/TaskWorkspaceView.tsx"
+    ],
     "personal-board-projects-unavailable-desktop": [
       "src-ui/src/views/PersonalBoardView.tsx"
     ],

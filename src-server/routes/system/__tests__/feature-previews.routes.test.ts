@@ -66,6 +66,7 @@ describe('feature preview routes', () => {
       data: [
         { id: 'task-review', enabled: false },
         { id: 'continue-interrupted-turn', enabled: false },
+        { id: 'task-capabilities', enabled: false },
         { id: 'task-collaboration', enabled: false },
         { id: 'chat-apps', enabled: false },
         { id: 'visual-skills', enabled: false },
