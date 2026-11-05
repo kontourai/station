@@ -135,6 +135,9 @@ function control(
     claimControl: vi.fn(async () => {}),
     releaseControl: vi.fn(async () => {}),
     keepControlAlive: vi.fn(async () => {}),
+    immersive: false,
+    enterImmersive: vi.fn(),
+    exitImmersive: vi.fn(),
     ...overrides,
   };
 }
