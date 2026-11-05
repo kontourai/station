@@ -6600,6 +6600,43 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     display: none;
   }
 
+  /* Except on a direct pane route: it renders its pane edge to edge with no
+     identity header below, so the crumb (project / pane) is the only "where
+     am I" on the screen. It takes the row's spare width and truncates; the
+     wordmark yields to it (the logo stays the home link). */
+  .app-toolbar .app-toolbar__breadcrumb.app-toolbar__breadcrumb--pane {
+    display: flex;
+    flex: 1 1 auto;
+    gap: var(--k-space-1);
+    min-width: 0;
+    margin-right: 0;
+    white-space: nowrap;
+  }
+
+  .app-toolbar__breadcrumb--pane > * {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .app-toolbar__breadcrumb--pane > .app-toolbar__breadcrumb-sep {
+    flex: none;
+  }
+
+  /* The project yields first; the pane name is the page's title. */
+  .app-toolbar__breadcrumb--pane > .app-toolbar__breadcrumb-link {
+    flex: 0 1 auto;
+  }
+
+  .app-toolbar__breadcrumb--pane > .app-toolbar__breadcrumb-current {
+    flex: none;
+    max-width: 60%;
+  }
+
+  .app-toolbar:has(.app-toolbar__breadcrumb--pane) .app-toolbar__brand {
+    display: none;
+  }
+
   .app-toolbar {
     gap: 8px;
     --app-toolbar-gutter: 12px;
@@ -7538,6 +7575,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .app-toolbar__breadcrumb-sep {
   color: var(--text-muted);
+}
+
+.app-toolbar__breadcrumb-current {
+  color: var(--text-primary);
 }
 
 /* ── ChatDock Session Info Bar ──────────────────────────────────── */

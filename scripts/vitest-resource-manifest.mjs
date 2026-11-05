@@ -1478,6 +1478,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Owns Chromium to lay out the live view's input notice (slim banner,
   // z-order, immersive placement) against the real cascade.
   'src-ui/src/live-surface/__tests__/liveSurfaceInputNotice.browser.test.tsx',
+  // Owns Chromium to style the full-screen bar's compact stand picker
+  // against the real cascade in both themes.
+  'src-ui/src/workspace-panes/device/__tests__/devicePostureSelect.browser.test.tsx',
+  // Owns Chromium to lay out a pane route's top-bar crumb at desktop and
+  // phone width against the real cascade.
+  'src-ui/src/components/header/__tests__/HeaderPaneCrumb.browser.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved
