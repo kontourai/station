@@ -83,7 +83,7 @@ launch or reconnect: never received → sent again with the same key; started �
 done; received → asked again later; queued in Station’s inbox → retained for
 inspection (the outbox does not yet settle that answer); possibly started, or the conversation runs
 on another Station → kept as unconfirmed, with Refresh delivery that asks Station once, reports the result,
-and never resends. A not-received answer enables an explicit Retry. Copy message
+and never resends. A not-received answer enables an explicit Retry. More message actions → Copy message
 keeps the text available for recovery. The row also offers Discard… that removes it only after the user confirms
 "I checked, discard it" with the risk stated (its key is retired, so it is never
 sent again). Rows written with Station identity are sent to or settled by that Station;

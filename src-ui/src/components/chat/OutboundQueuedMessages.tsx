@@ -3,6 +3,8 @@ import { copyToClipboard } from '../../lib/clipboard';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { FileAttachment } from '../../types';
+import { ActionRow } from '../ActionRow';
+import { Button } from '../Button';
 import { EditGlyph } from '../icons/Glyph';
 import {
   AWAITING_CONFIRMATION_LABEL,
@@ -318,12 +320,12 @@ export function OutboundQueuedMessages({
                 Accepted · waiting for the agent to finish
               </span>
             ) : null}
-            {turn.status === 'may-have-started' && turn.lastError ? (
+            {turn.status === 'may-have-started' && turn.lastError && (
               <span className="queued-message__delivery-note" role="status">
                 {turn.lastError} Your message is saved here and will not be
                 resent automatically.
               </span>
-            ) : null}
+            )}
             <UnconfirmedRowActions
               sessionId={sessionId}
               turn={turn}
@@ -505,7 +507,7 @@ function RecheckDeliveryButton({ clientTurnId }: { clientTurnId: string }) {
             ? 'Station has the message. The agent has not started it yet.'
             : outcome === 'started'
               ? 'The agent started this message.'
-              : 'Delivery is still unconfirmed. Nothing was resent. Review the chat before sending a copy.',
+              : 'Nothing was resent; delivery remains unconfirmed. Review the chat before sending a copy.',
       );
     } catch (error) {
       setResult(
@@ -517,14 +519,14 @@ function RecheckDeliveryButton({ clientTurnId }: { clientTurnId: string }) {
   };
   return (
     <>
-      <button
-        type="button"
+      <Button
+        size="sm"
         disabled={busy}
         title="Ask Station whether this message arrived. Does not resend it."
         onClick={() => void refresh()}
       >
         {busy ? 'Refreshing delivery…' : 'Refresh delivery'}
-      </button>
+      </Button>
       {result ? (
         <span className="queued-message__delivery-note" role="status">
           {result}
@@ -562,30 +564,37 @@ function UnconfirmedRowActions({
     turn.status === 'may-have-started' || turn.awaitingLookup === true;
   return (
     <>
-      <span className="queued-message__actions">
-        {turn.waitingForStation ? null : (
-          <RecheckDeliveryButton clientTurnId={clientTurnId} />
-        )}
-        <button
-          type="button"
-          onClick={() =>
-            void copyToClipboard(turn.content).then((copied) => {
-              setCopied(copied);
-              if (!copied)
-                onError(
-                  'Could not copy this message. Select its text to copy it.',
-                );
-            })
-          }
-        >
-          {copied ? 'Copied' : 'Copy message'}
-        </button>
-        {discardable ? (
-          <button type="button" {...disclosure.triggerProps}>
-            Discard…
-          </button>
-        ) : null}
-      </span>
+      <ActionRow
+        className="queued-message__actions"
+        overflowLabel="More message actions"
+        primary={
+          turn.waitingForStation ? undefined : (
+            <RecheckDeliveryButton clientTurnId={clientTurnId} />
+          )
+        }
+        secondary={
+          discardable ? (
+            <Button size="sm" {...disclosure.triggerProps}>
+              Discard…
+            </Button>
+          ) : undefined
+        }
+        overflow={[
+          {
+            key: 'copy-message',
+            label: copied ? 'Copied' : 'Copy message',
+            onSelect: () => {
+              void copyToClipboard(turn.content).then((copied) => {
+                setCopied(copied);
+                if (!copied)
+                  onError(
+                    'Could not copy this message. Select its text to copy it.',
+                  );
+              });
+            },
+          },
+        ]}
+      />
       {discardable && disclosure.open ? (
         <span className="queued-message__confirm">
           <UnconfirmedDiscardConfirm

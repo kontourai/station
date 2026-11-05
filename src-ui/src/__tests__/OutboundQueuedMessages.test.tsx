@@ -82,7 +82,13 @@ describe('OutboundQueuedMessages (station#2522)', () => {
           ),
         ).toBeTruthy();
       expect(retry).not.toHaveBeenCalled();
-      expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Copy message' })).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More message actions' }),
+      );
+      expect(
+        screen.getByRole('menuitem', { name: 'Copy message' }),
+      ).toBeTruthy();
     },
   );
 
