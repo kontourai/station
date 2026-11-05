@@ -763,14 +763,20 @@ export class StationReportGroupContinuation {
               return null;
             return terminalRef;
           }
-          const window = await orchestration.readSessionEventWindow(sessionId, {
-            turnLimit: 20,
-            authority: sessionReadAuthorityFromRequest(
-              root.authenticated_principal_ref.id,
-              undefined,
-              undefined,
-            ),
-          });
+          const readWindow = () =>
+            orchestration.readSessionEventWindow(sessionId, {
+              turnLimit: 20,
+              authority: sessionReadAuthorityFromRequest(
+                root.authenticated_principal_ref.id,
+                undefined,
+                undefined,
+              ),
+            });
+          const window = scope
+            ? await requestWriter.withLeaseLifetime(scope.lease, readWindow)
+            : await requestWriter.runOwnedLease(executionSignal, (lease) =>
+                requestWriter.withLeaseLifetime(lease, readWindow),
+              );
           const terminal = window?.events.find(
             ({ event }) =>
               event.threadId === sessionId &&

@@ -776,17 +776,20 @@ export class StationReportGroupExecution {
               value.attempt.evidenceReference,
               current,
             );
-            const window = await orchestration.readSessionEventWindow(
-              value.task.sessionId,
-              {
+            const readWindow = () =>
+              orchestration.readSessionEventWindow(value.task.sessionId, {
                 turnLimit: 20,
                 authority: sessionReadAuthorityFromRequest(
                   prepared.root.authenticated_principal_ref.id,
                   undefined,
                   undefined,
                 ),
-              },
-            );
+              });
+            const window = scope
+              ? await requestWriter.withLeaseLifetime(scope.lease, readWindow)
+              : await requestWriter.runOwnedLease(signal, (lease) =>
+                  requestWriter.withLeaseLifetime(lease, readWindow),
+                );
             current();
             const terminal = window?.events.find(
               ({ event }) =>
