@@ -247,8 +247,8 @@ function nightlyDeepLinkConfig() {
 }
 
 /**
- * SemVer-valid marketing version. The prerelease segment carries the same day
- * number as the version code, so a build's two identities cannot drift.
+ * SemVer-valid marketing version with a readable UTC calendar date. Native
+ * build numbers retain the epoch-based allocation and its reservation ledger.
  */
 export function nightlyVersion(packageVersion, date, build = 0) {
   try {
@@ -259,10 +259,9 @@ export function nightlyVersion(packageVersion, date, build = 0) {
     );
   }
   // Validate the index through the same authority that allocates numeric
-  // versions. The first nightly keeps its long-standing day-only SemVer,
-  // while a same-day rebuild must sort strictly after it for the updater.
+  // versions. A same-day rebuild must sort strictly after build zero.
   nightlyVersionCode(date, build);
-  const day = nightlyDayNumber(date);
+  const day = date.toISOString().slice(0, 10).replaceAll('-', '');
   return build === 0
     ? `${packageVersion}-nightly.${day}`
     : `${packageVersion}-nightly.${day}.${build}`;

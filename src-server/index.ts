@@ -170,7 +170,7 @@ async function main() {
   // reaps children whose recorded owner pid is demonstrably gone — so it
   // cannot touch a live sibling Station's engines. Best-effort, like the temp
   // sweep: a failure here must never block boot.
-  void sweepOrphanedOwnedProcesses({
+  const orphanEngineSweep = sweepOrphanedOwnedProcesses({
     log: (message, data) => console.log(`[station] ${message}`, data ?? ''),
   }).catch(() => {});
   let port = resolveRuntimePort(
@@ -369,6 +369,8 @@ async function main() {
 
   const runtime = new StationRuntime({
     projectHomeDir,
+    // #4507: deferred Task worktree finalizations wait for this.
+    orphanEngineSweep,
     port,
     host: configuredHost,
     logger,

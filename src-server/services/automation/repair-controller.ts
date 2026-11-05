@@ -34,7 +34,10 @@ import type {
   CreateAutomationRuleInput,
   CreateAutomationSourceInput,
 } from './automation-store.js';
-import { projectAutomationSource } from './automation-store.js';
+import {
+  projectAutomationSource,
+  requestedRuleMode,
+} from './automation-store.js';
 import { materializeRepairCredential } from './repair-credentials.mjs';
 import {
   publishRepair,
@@ -140,8 +143,14 @@ export class IsolatedRepairController {
     input: Parameters<AutomationStore['setEnabled']>[0],
     operator: RepairOperator,
   ) {
+    // Anything but switching off is a setup change: `observe` widens what
+    // intake records, `live` what it may start.
+    const switchingOn =
+      input.kind === 'rule'
+        ? requestedRuleMode(input) !== 'off'
+        : 'enabled' in input && input.enabled;
     const assertCurrent = () =>
-      input.enabled ? this.assertSetup(operator) : operator.assertCurrent();
+      switchingOn ? this.assertSetup(operator) : operator.assertCurrent();
     await assertCurrent();
     await this.options.policy.setEnabled(input, assertCurrent);
   }
@@ -175,7 +184,7 @@ export class IsolatedRepairController {
     const fields = intent.event.fields;
     if (
       !source ||
-      !rule?.enabled ||
+      rule?.mode !== 'live' ||
       rule.action.kind !== 'isolated-repair' ||
       !rule.episode ||
       !sourceGrantsRuleAction(source, rule) ||
@@ -310,6 +319,17 @@ export class IsolatedRepairController {
         const config = this.options.policy.read();
         const rule = config.rules.find((r) => r.id === intent.ruleId);
         if (rule?.action.kind !== 'isolated-repair') continue;
+        // A rule that is not `live` may not act. Its retained intent is
+        // refused now, as the native Task runtime does, so it cannot dispatch
+        // a stale repair if the rule is switched back to `live` later.
+        if (rule.mode !== 'live') {
+          ledger.updateIntent(
+            intent.intentId,
+            { state: 'refused', reason: 'policy_changed' },
+            Date.now(),
+          );
+          continue;
+        }
         const claim = ledger.claimAction({
           episodeKey: intent.episodeKey,
           expectedEpisodeId: intent.episodeId,

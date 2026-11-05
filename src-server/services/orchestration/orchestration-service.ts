@@ -5625,6 +5625,19 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * #4507: the Task a Session was started for, from the server-written room
+   * execution binding (never from start metadata). A continuation uses it to
+   * prove a Task-owned worktree belongs to the Session's own Task.
+   */
+  readTaskRoomExecutionBinding(
+    sessionId: string,
+  ): { projectId: string; taskId: string } | undefined {
+    return this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+      sessionId,
+    );
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
