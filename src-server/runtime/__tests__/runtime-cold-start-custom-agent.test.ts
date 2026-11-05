@@ -96,6 +96,7 @@ import type { LoadedLocalAccounts } from '../../services/identity/local-account-
 import { createReportFlow } from '../../services/orchestration/__tests__/delegation-source-fixtures/flow.js';
 import { useAdvancingHistoricalClock } from '../../services/orchestration/__tests__/delegation-source-fixtures/report-clock.js';
 import { controlledTextStream } from '../../services/orchestration/__tests__/delegation-source-fixtures/streamed-text.js';
+import { AttachedSessionFollowService } from '../../services/orchestration/attached-session-follow-service.js';
 import { StationDelegationPersistence } from '../../services/orchestration/delegation-group-persistence.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { StationReportGroupPreparation } from '../../services/orchestration/station-report-group-preparation.js';
@@ -2512,6 +2513,41 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         }
       ).voltAgent.shutdown,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not begin deferred attached-session polling after shutdown', async () => {
+    home = await createSchemaHome('station-deferred-follow-shutdown-');
+    const stopped = new Set<AttachedSessionFollowService>();
+    const stopActual = AttachedSessionFollowService.prototype.stop;
+    const poll = vi
+      .spyOn(AttachedSessionFollowService.prototype, 'pollNow')
+      .mockResolvedValue();
+    const stop = vi
+      .spyOn(AttachedSessionFollowService.prototype, 'stop')
+      .mockImplementation(function (this: AttachedSessionFollowService) {
+        stopped.add(this);
+        return stopActual.call(this);
+      });
+    try {
+      runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+      await runtime.initialize();
+      await runtime.shutdown();
+      runtime = undefined;
+      expect(stopped.size).toBe(1);
+      for (const follower of stopped)
+        expect(poll.mock.contexts).not.toContain(follower);
+      poll.mockClear();
+      await new Promise<void>((resolve) => setTimeout(resolve, 2750));
+      for (const follower of stopped)
+        expect(poll.mock.contexts).not.toContain(follower);
+    } finally {
+      try {
+        for (const follower of stopped) await stopActual.call(follower);
+      } finally {
+        stop.mockRestore();
+        poll.mockRestore();
+      }
+    }
   });
 
   it('preserves an explicit programmatic port 0 without defaulting it', async () => {
