@@ -227,3 +227,12 @@ export function outboxTurnDeliveryState(row: {
     outboxBehindUnsent: row.behindUnsent === true,
   });
 }
+
+/** A send notice keeps diagnostics out of its shared delivery copy. */
+export interface ConversationDeliveryNotice {
+  clientTurnId: string;
+  text: string;
+  description: string;
+  diagnostic: string;
+  state: 'not-sent' | 'unconfirmed';
+}

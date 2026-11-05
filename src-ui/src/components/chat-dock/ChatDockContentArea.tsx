@@ -36,6 +36,7 @@ const loadSkillExperiencePanel = () =>
 
 interface ChatDockContentAreaProps {
   activeSession: ChatSession | null;
+  connection?: import('../../connections/station-connection').StationConnection;
   workingDirectory?: string | null;
   /**
    * station#3213: the serving Station's own record of this chat, correlated
@@ -114,6 +115,7 @@ interface ChatDockContentAreaProps {
 
 function ChatDockContentAreaImpl({
   activeSession,
+  connection,
   workingDirectory,
   activeOrchestrationSession,
   activeOrchestrationSessionRead,
@@ -253,6 +255,7 @@ function ChatDockContentAreaImpl({
         <div className="chat-dock__body">
           {activeSession ? (
             <ChatDockBody
+              connection={connection}
               activeSession={activeSession}
               workingDirectory={workingDirectory}
               activeOrchestrationSession={activeOrchestrationSession}

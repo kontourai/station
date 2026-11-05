@@ -1,5 +1,5 @@
 import { QueryClientContext } from '@tanstack/react-query';
-import { useContext, useEffect, useState } from 'react';
+import { useCallback, useContext, useEffect, useState } from 'react';
 import { workObservation } from '../contexts/work-observation';
 import { useStationConnectionsOptional } from './StationConnectionsContext';
 import type { StationConnection } from './station-connection';
@@ -23,7 +23,13 @@ export function useChatStationConnection(
     connection?: StationConnection;
     failed?: boolean;
   }>();
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setResolved(undefined);
+    setAttempt((value) => value + 1);
+  }, []);
   useEffect(() => {
+    void attempt;
     if (!remote || provided || !bindingKey || !connections || !client) return;
     const binding = readChatStationBinding(JSON.parse(bindingKey));
     if (!binding || chat?.stationBindingInvalid) return;
@@ -73,6 +79,7 @@ export function useChatStationConnection(
     connections,
     provided,
     remote,
+    attempt,
   ]);
   const connection =
     provided ??
@@ -96,5 +103,6 @@ export function useChatStationConnection(
     connection: current,
     unavailable: remote && !current && !resolving,
     resolving,
+    retry,
   };
 }

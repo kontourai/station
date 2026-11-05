@@ -21,8 +21,8 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { useChatRequestTarget } from '../../components/chat/ChatRequestContext';
 import { withoutRepeatedRestartNotice } from '../../components/chat/message-bubble/visibleContent';
+import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
 import { useChatStationConnection } from '../../connections/use-chat-station-connection';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
@@ -330,7 +330,7 @@ function mergeTranscriptMessages(...groups: ChatMessage[][]): ChatMessage[] {
  * orchestration stream remains the only live authority.
  */
 export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
-  const contextTarget = useChatRequestTarget();
+  const contextTarget = useOptionalConversationConnection();
   const { connection, unavailable, resolving } = useChatStationConnection(
     session,
     contextTarget?.station,
@@ -577,7 +577,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.conversationActivity,
     window.events,
   ]);
-  const checkpointKey = `${apiBase}\0${target?.station?.runtimeKey ?? target?.requestScope.authorityKey ?? 'host'}\0${session.id}\0${checkpointRevision}`;
+  const checkpointKey = `${apiBase}\0${target?.station?.runtimeKey ?? target?.requestScope?.authorityKey ?? 'host'}\0${session.id}\0${checkpointRevision}`;
   const [changedFilesState, setChangedFilesState] = useState<{
     key: string;
     byTurn: Map<string, NonNullable<ChatMessage['changedFiles']>>;

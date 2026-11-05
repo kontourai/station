@@ -61,13 +61,6 @@ export function readRetainedPeerPendingText(
     return pending.text;
 }
 
-export function peerChatApiBase(
-  apiBase: string,
-  environmentId: string,
-): string {
-  return `${apiBase}/api/environments/peers/${encodeURIComponent(environmentId)}/chat-api`;
-}
-
 export function readPeerChatBinding(
   value: unknown,
 ): PeerChatBinding | undefined {

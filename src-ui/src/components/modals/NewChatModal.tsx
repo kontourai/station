@@ -1,7 +1,6 @@
 import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { usePeerChatStart } from '../../hooks/usePeerChatStart';
-import type { PeerChatBinding } from '../../lib/peer-chat';
+import type { StationConnection } from '../../connections/station-connection';
+import { useConversationStartTarget } from '../../hooks/useConversationStartTarget';
 import './TaskChatStart.css';
 import {
   ENGINE_CAPABILITY_MATRICES,
@@ -205,7 +204,19 @@ interface NewChatModalProps {
   onLeave?: () => void;
   /** A remote start's task was accepted on `stationName`. */
   onTaskStarted?: (task: DelegatedTaskHandle, stationName: string) => void;
-  onPeerChatStarted?: (agent: AgentData, binding: PeerChatBinding) => void;
+  onConversationStarted?: (
+    agent: AgentData,
+    start: {
+      connection: StationConnection;
+      projectSlug?: string;
+      projectName?: string;
+      executionAgentId?: string;
+      expectedDefinitionFingerprint?: string;
+      model?: string;
+      providerOptions?: Record<string, unknown>;
+      text: string;
+    },
+  ) => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
   requestAuthority?: NewChatSetupAuthority;
@@ -268,7 +279,7 @@ export function NewChatModal({
   onClose,
   onLeave,
   onTaskStarted,
-  onPeerChatStarted,
+  onConversationStarted,
   draftContext = null,
   mode,
   requestAuthority,
@@ -511,10 +522,10 @@ export function NewChatModal({
   const startEnvironmentId = draftAgent
     ? start.modelChoiceFor(draftAgent)?.environmentId
     : undefined;
-  const peerChat = usePeerChatStart(
+  const targetStart = useConversationStartTarget(
     startEnvironmentId,
     previewFlags.has('paired-station-chats') &&
-      !!onPeerChatStarted &&
+      !!onConversationStarted &&
       stationChoices.stations.find(
         (station) => station.id === startEnvironmentId,
       )?.kind !== 'ssh',
@@ -905,8 +916,8 @@ export function NewChatModal({
         setShowChatOptions(true);
         return;
       }
-      if (peerChat.active && onPeerChatStarted) {
-        if (!peerChat.ready) {
+      if (targetStart.active && onConversationStarted) {
+        if (!targetStart.ready) {
           setShowChatOptions(true);
           setSelectFeedback(
             'Choose a project on that Station, or start without a project.',
@@ -915,24 +926,17 @@ export function NewChatModal({
         }
         try {
           startedRef.current = true;
-          onPeerChatStarted(agent, {
-            environmentId: choice.environmentId,
-            stationName:
-              stationChoices.nameFor(choice.environmentId) ??
-              'Selected Station',
-            conversationId: `chat:${randomCorrelationId()}`,
-            agentId: agent.slug,
+          if (!targetStart.connection?.isCurrent())
+            throw new Error('Reconnect to the selected Station.');
+          onConversationStarted(agent, {
+            connection: targetStart.connection,
             executionAgentId: choice.executionAgentId,
             expectedDefinitionFingerprint: choice.expectedDefinitionFingerprint,
-            projectSlug: peerChat.project?.slug,
-            projectName: peerChat.project?.name,
+            projectSlug: targetStart.project?.slug,
+            projectName: targetStart.project?.name,
             model: choice.modelId,
             providerOptions: choice.providerOptions,
-            pending: {
-              id: randomCorrelationId(),
-              text: initialMessage ?? '',
-              dispatched: false,
-            },
+            text: initialMessage ?? '',
           });
         } catch (error) {
           startedRef.current = false;
@@ -1436,19 +1440,19 @@ export function NewChatModal({
           approvalPick,
           onApprovalPick: setApprovalPick,
         };
-  const projectChip: StartProjectChip = peerChat.active
-    ? peerChat.projects.isPending
+  const projectChip: StartProjectChip = targetStart.active
+    ? targetStart.projects.isPending
       ? { status: 'loading' }
       : {
           status: 'ready',
           label:
-            peerChat.project?.name ??
-            (peerChat.context === GLOBAL_CONTEXT
+            targetStart.project?.name ??
+            (targetStart.context === GLOBAL_CONTEXT
               ? NO_PROJECT_LABEL
               : 'Choose a project on this Station'),
-          isGlobal: !peerChat.project,
-          folder: peerChat.project?.workingDirectory
-            ? `Project folder: ${peerChat.project.workingDirectory}`
+          isGlobal: !targetStart.project,
+          folder: targetStart.project?.workingDirectory
+            ? `Project folder: ${targetStart.project.workingDirectory}`
             : undefined,
         }
     : contextPending
@@ -1484,7 +1488,7 @@ export function NewChatModal({
     !runtimeFetching &&
     !modelsFetching &&
     projectCatalogResolved &&
-    (!peerChat.active || peerChat.ready);
+    (!targetStart.active || targetStart.ready);
   const chooseContext = (value: string) => {
     contextSelectionTouchedRef.current = true;
     setContextChosen(true);
@@ -1936,27 +1940,36 @@ export function NewChatModal({
                 </Button>
               )}
             </div>
-            {peerChat.active &&
-              !peerChat.ready &&
-              !peerChat.projects.isError && (
+            {targetStart.active &&
+              !targetStart.ready &&
+              !targetStart.projects.isError && (
                 <p>
                   Choose a project on the selected Station, or{' '}
                   <Button
                     variant="link"
-                    onClick={() => peerChat.choose(GLOBAL_CONTEXT)}
+                    onClick={() => targetStart.choose(GLOBAL_CONTEXT)}
                   >
                     start without a project
                   </Button>
                   .
                 </p>
               )}
-            {peerChat.active && peerChat.projects.isError && (
+            {targetStart.active && Boolean(targetStart.connectionError) && (
+              <ErrorState
+                variant="compact"
+                title="Couldn’t connect to that Station"
+                action={
+                  <Button onClick={targetStart.reconnect}>Reconnect</Button>
+                }
+              />
+            )}
+            {targetStart.active && targetStart.projects.isError && (
               <ErrorState
                 variant="compact"
                 title="Couldn’t load projects on that Station"
-                description={describeReadFailure(peerChat.projects.error)}
+                description={describeReadFailure(targetStart.projects.error)}
                 action={
-                  <Button onClick={() => void peerChat.projects.refetch()}>
+                  <Button onClick={() => void targetStart.projects.refetch()}>
                     Retry
                   </Button>
                 }
@@ -2098,8 +2111,8 @@ export function NewChatModal({
             }}
             project={projectChip}
             onClearProject={() =>
-              peerChat.active
-                ? peerChat.choose(GLOBAL_CONTEXT)
+              targetStart.active
+                ? targetStart.choose(GLOBAL_CONTEXT)
                 : chooseContext(GLOBAL_CONTEXT)
             }
             onOpenProject={(trigger) =>
@@ -2351,14 +2364,14 @@ export function NewChatModal({
             interactionDisabled={checkingSetup || setupReturn.pending}
             onChooseProject={chooseContext}
             projectOverride={
-              peerChat.active
+              targetStart.active
                 ? {
-                    options: peerChat.options,
-                    context: peerChat.context ?? '',
-                    workspaceHint: peerChat.project?.workingDirectory
+                    options: targetStart.options,
+                    context: targetStart.context ?? '',
+                    workspaceHint: targetStart.project?.workingDirectory
                       ? {
                           kind: 'unverified',
-                          path: peerChat.project.workingDirectory,
+                          path: targetStart.project.workingDirectory,
                         }
                       : {
                           kind: 'unchecked',
@@ -2371,12 +2384,12 @@ export function NewChatModal({
                         'The selected Station chooses the folder when the chat starts.',
                     },
                     icons: new Map(
-                      (peerChat.projects.data ?? []).flatMap((project) =>
+                      (targetStart.projects.data ?? []).flatMap((project) =>
                         project.icon ? [[project.slug, project.icon]] : [],
                       ),
                     ),
                     accents: NO_PROJECT_ACCENTS,
-                    onChoose: peerChat.choose,
+                    onChoose: targetStart.choose,
                   }
                 : undefined
             }

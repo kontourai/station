@@ -32,7 +32,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useMemo } from 'react';
-import { useChatRequestTarget } from '../components/chat/ChatRequestContext';
+import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import { useAuthorityPersistence } from './AuthorityPersistenceContext';
 
@@ -74,7 +74,7 @@ export function useScopedProjectsQuery(
   config?: AppProjectReadConfig<ProjectMetadata[]>,
 ) {
   const hostScope = useHostRequestAuthorityScope();
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const readTarget = config?.readTarget ?? target?.station;
   const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
@@ -97,7 +97,7 @@ export function useScopedProjectRunLocationsQuery(
   config?: AppProjectReadConfig<ProjectRunLocations>,
 ) {
   const hostScope = useHostRequestAuthorityScope();
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const readTarget = config?.readTarget ?? target?.station;
   const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
@@ -127,7 +127,7 @@ export function useScopedProjectChatDefaultsQuery(
   config?: AppProjectReadConfig<ProjectChatDefaultsView>,
 ) {
   const hostScope = useHostRequestAuthorityScope();
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const readTarget = config?.readTarget ?? target?.station;
   const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
@@ -158,7 +158,7 @@ export function useScopedProjectCheckoutFreshnessQuery(
   config?: AppProjectReadConfig<ProjectCheckoutFreshness | null>,
 ) {
   const hostScope = useHostRequestAuthorityScope();
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const readTarget = config?.readTarget ?? target?.station;
   const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
@@ -199,7 +199,7 @@ export function useScopedProjectQuery(
   config?: AppProjectReadConfig<ProjectConfig>,
 ) {
   const hostScope = useHostRequestAuthorityScope();
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const readTarget = config?.readTarget ?? target?.station;
   const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();

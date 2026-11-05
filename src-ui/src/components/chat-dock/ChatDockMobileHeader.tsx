@@ -137,6 +137,7 @@ interface ChatDockMobileHeaderProps {
   showConnection: boolean;
   sessionTitle: string;
   routeLabel?: string;
+  stationName?: string;
   sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
   projectScope?: { name: string; onClear: () => void };
@@ -162,6 +163,7 @@ export function ChatDockMobileHeader({
   showConnection,
   sessionTitle,
   routeLabel,
+  stationName,
   sessionProjectMismatchLabel,
   agentIdentity,
   projectScope,
@@ -326,10 +328,14 @@ export function ChatDockMobileHeader({
             {inboxActive ? 'Inbox' : sessionTitle}
           </span>
           {!inboxActive && agentIdentity && ' '}
-          {!inboxActive && agentIdentity && (
-            <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
-              {agentIdentity.name}
-              {routeLabel ? ` · via ${routeLabel}` : ''}
+          {!inboxActive && (agentIdentity || stationName) && (
+            <span className="chat-dock__mobile-eyebrow">
+              {agentIdentity?.name}
+              {stationName
+                ? `${agentIdentity ? ' · ' : ''}Via ${stationName}`
+                : routeLabel
+                  ? ` · via ${routeLabel}`
+                  : ''}
               {sessionProjectMismatchLabel &&
                 ` · ${sessionProjectMismatchLabel}`}
             </span>

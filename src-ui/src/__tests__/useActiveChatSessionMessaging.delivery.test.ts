@@ -229,6 +229,87 @@ describe('useSendMessage: durable before the request', () => {
     expect(getQueryDataMock).not.toHaveBeenCalledWith(['agents']);
   });
 
+  it('a paired refusal keeps an editable draft and uses the shared Not sent notice', async () => {
+    activeChatsStore.updateChat(chat, {
+      stationBinding: peerConnection.binding,
+      input: 'keep this draft',
+      executionOnCurrentStation: true,
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      Object.assign(new Error('insufficient_scope'), {
+        status: 424,
+        code: 'peer_chat_target_refused',
+        stationEnvelope: true,
+        details: {
+          version: 1,
+          failureAuthority: 'target',
+          environmentId: 'peer',
+          remoteStatus: 403,
+          disposition: 'refused-before-dispatch',
+          mutationKey: 'refused-key',
+        },
+      }),
+    );
+    const { result } = renderHook(() => useSendMessage('http://host.test'));
+    await act(async () => {
+      await result.current(
+        chat,
+        'codex',
+        undefined,
+        'keep this draft',
+        undefined,
+        undefined,
+        'refused-key',
+        { connection: peerConnection },
+      );
+    });
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('keep this draft');
+    expect(state?.sendAwaitingTurnStart).not.toBe(true);
+    expect(state?.ephemeralMessages?.at(-1)?.deliveryNotice).toMatchObject({
+      state: 'not-sent',
+      description: 'This connection cannot send to Peer.',
+      diagnostic: 'peer_chat_target_refused: insufficient_scope',
+    });
+    expect(state?.ephemeralMessages?.at(-1)?.content).not.toContain(
+      'insufficient_scope',
+    );
+  });
+
+  it('a paired lost response holds its original key without automatic replay', async () => {
+    activeChatsStore.updateChat(chat, {
+      stationBinding: peerConnection.binding,
+      executionOnCurrentStation: true,
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://host.test'));
+    await act(async () => {
+      await result.current(
+        chat,
+        'codex',
+        undefined,
+        'once only',
+        undefined,
+        undefined,
+        'uncertain-peer-key',
+        { connection: peerConnection },
+      );
+    });
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.status).toBe('idle');
+    expect(state?.deliveryChecks?.['uncertain-peer-key']).toBe('indeterminate');
+    expect(state?.ephemeralMessages ?? []).toEqual([]);
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'uncertain-peer-key',
+        status: 'may-have-started',
+      }),
+    ]);
+    expect(sendExecutionMessageMock).toHaveBeenCalledOnce();
+  });
+
   it('binds Stop to B and leaves an A turn with colliding execution ids running', async () => {
     activeChatsStore.updateChat(chat, {
       status: 'sending',

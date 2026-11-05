@@ -9,8 +9,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { Button } from '../Button';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
-import { useChatRequestTarget } from './ChatRequestContext';
 import { useUIBlockActions } from './UIBlockActionsContext';
 import './ChildWorkInstructionPanel.css';
 
@@ -53,23 +53,25 @@ export function ChildWorkInstructionPanel({
 }) {
   const authority = useAuthorityPersistence();
   const host = useHostRequestAuthorityScope();
-  const targetScope = useChatRequestTarget();
+  const targetScope = useOptionalConversationConnection();
   const scope = targetScope?.requestScope ?? host;
   const apiBase = targetScope?.apiBase ?? scope?.apiBase;
   const mayContinue = useUIBlockActions().canSendChildInstruction === true;
   const grant = authority.observation?.grant;
-  const canOperate =
-    grant?.kind === 'operator' ||
-    (grant?.kind === 'device' &&
-      grant.grantedScopes.includes(PAIRING_SCOPE_ORCHESTRATION_OPERATE));
-  const key = authority.namespace
-    ? `child-steer:${JSON.stringify([authority.namespace, threadId, childId])}`
+  const canOperate = targetScope?.station
+    ? targetScope.station.capabilities.childInstruction.state === 'allowed'
+    : grant?.kind === 'operator' ||
+      (grant?.kind === 'device' &&
+        grant.grantedScopes.includes(PAIRING_SCOPE_ORCHESTRATION_OPERATE));
+  const namespace = targetScope?.station?.stationKey ?? authority.namespace;
+  const key = namespace
+    ? `child-steer:${JSON.stringify([namespace, threadId, childId])}`
     : null;
   const history = useChildWorkInstructionsQuery(
     {
       threadId,
       childId,
-      enabled: !!scope && !!authority.namespace && historyAvailable,
+      enabled: !!scope && !!namespace && historyAvailable,
       requestScope: scope,
       running,
     },
@@ -265,10 +267,9 @@ export function ChildWorkInstructionPanel({
       {!historyAvailable && (
         <p>Instruction history is unavailable for this subagent.</p>
       )}
-      {historyAvailable &&
-        scope &&
-        authority.namespace &&
-        history.isPending && <SkeletonBlock count={1} label="Instructions" />}
+      {historyAvailable && scope && namespace && history.isPending && (
+        <SkeletonBlock count={1} label="Instructions" />
+      )}
       {history.isError && (
         <ErrorState
           variant="compact"

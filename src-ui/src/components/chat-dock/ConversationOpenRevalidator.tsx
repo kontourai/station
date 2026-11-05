@@ -8,7 +8,7 @@ import {
   type SelectableModel,
   sanitizeRuntimeOptionsForModel,
 } from '../../utils/modelCapabilities';
-import { useChatRequestTarget } from '../chat/ChatRequestContext';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 
 export interface ConversationOpenRevalidatorProps {
   sessionId: string;
@@ -45,7 +45,7 @@ export function ConversationOpenRevalidator({
   agents,
   modelConnections,
 }: ConversationOpenRevalidatorProps) {
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const chat = activeChatsStore.getSnapshot()[sessionId];
   const { connection, unavailable, resolving } = useChatStationConnection(
     chat,

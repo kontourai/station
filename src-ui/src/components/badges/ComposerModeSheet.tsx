@@ -8,6 +8,7 @@ import {
   approvalModeDescription,
 } from '../../utils/approvalMode';
 import { Button } from '../Button';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { EngineGlyph, HandGlyph, ReturnGlyph } from '../icons/Glyph';
 import {
   ResponsiveDialogHeader,
@@ -76,9 +77,14 @@ export function ComposerModeSheet({
   layer = 'popover',
 }: ComposerModeSheetProps) {
   const account = useAccountPreferences();
+  const target = useOptionalConversationConnection();
+  const personalDefaults =
+    !target?.station ||
+    target.station.capabilities.personalDefaults.state === 'allowed';
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const apply = (mode: ApprovalMode) => {
     if (
+      personalDefaults &&
       saveAsDefault &&
       (engineConnectionId === 'codex' ||
         engineConnectionId === 'claude' ||
@@ -134,7 +140,7 @@ export function ComposerModeSheet({
               : 'Applies next turn'}
           {activeMode ? ` · Active: ${activeMode}` : ''}
         </p>
-        {account.status === 'account' && (
+        {personalDefaults && account.status === 'account' && (
           <label className="composer-mode-sheet__confirm-body">
             <input
               type="checkbox"
@@ -190,7 +196,12 @@ export function ComposerModeSheet({
           role="radiogroup"
           aria-label="Approval mode"
         >
-          {APPROVAL_MODE_OPTIONS.map((option) => {
+          {APPROVAL_MODE_OPTIONS.filter(
+            (option) =>
+              option.value !== 'never' ||
+              !target?.station ||
+              target.station.capabilities.fullAccess.state === 'allowed',
+          ).map((option) => {
             const isSelected = option.value === effectiveMode;
             return (
               <label

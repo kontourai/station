@@ -75,12 +75,12 @@ import {
   type ChatErrorTranslation,
   chatErrorHintFor,
   SESSION_START_INDETERMINATE_CODE,
-  translateChatError,
 } from '../utils/chatErrorTranslation';
 import { liveTurnTarget } from '../utils/conversation-activity';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { withDeliveryCheck } from '../utils/messageDeliveryState';
+import { describeStationFailure } from '../utils/stationFailure';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
@@ -1498,7 +1498,9 @@ export function useSendMessage(
           } else {
             // No answer from Station: only its delivery lookup can say what
             // happened, so the row is released for that, never resent blind.
-            await live.unanswered();
+            if (remote)
+              await live.indeterminate('Check delivery before retrying.');
+            else await live.unanswered();
           }
         }
         if (sourceStart) {
@@ -1659,6 +1661,24 @@ export function useSendMessage(
         );
         const undeliverableCause =
           queueModule?.classifyUndeliverableSend(err) ?? null;
+        if (remote && !options?.dispatch && !stationAnswered(err)) {
+          clearStreamingMessage(sessionId);
+          updateChat(sessionId, {
+            ...withDeliveryCheck(
+              activeChatsStore.getSnapshot()[sessionId],
+              resolvedTurnId,
+              'indeterminate',
+            ),
+            status: 'idle',
+            error: undefined,
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+          });
+          options?.onAdmission?.('indeterminate');
+          return false;
+        }
+
         if (undeliverableCause && mcpPromptOrigin && !options?.dispatch) {
           updateChat(sessionId, {
             status: 'error',
@@ -1844,12 +1864,7 @@ export function useSendMessage(
         // the two raw-error surfaces produced it.
         const translated =
           foreground?.translation ??
-          translateChatError({
-            status: err.status,
-            // A validation refusal reads as its reasons, not schema keys.
-            message: userFacingErrorMessage(err),
-            code: err.code,
-          });
+          describeStationFailure(err, connection, resolvedTurnId);
         const terminalSession = foregroundIndeterminate
           ? false
           : (translated as ChatErrorTranslation).terminalSession;
@@ -1917,6 +1932,23 @@ export function useSendMessage(
         addEphemeralMessage(sessionId, {
           role: 'system',
           sendFailure: true,
+          ...(!foregroundIndeterminate &&
+          !terminalSession &&
+          stationAnswered(err) &&
+          (translated.title === 'Not sent' ||
+            translated.title === 'Request failed')
+            ? {
+                deliveryNotice: {
+                  clientTurnId: resolvedTurnId,
+                  text: content,
+                  description: translated.body,
+                  diagnostic: [err.code, err.message]
+                    .filter(Boolean)
+                    .join(': '),
+                  state: 'not-sent' as const,
+                },
+              }
+            : {}),
           // Title on its own line, as `formatChatErrorDisplay` shapes the
           // transcript's error markers: "Error: thread … Provider session…"
           // ran the label into the engine's text.

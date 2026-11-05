@@ -16,6 +16,7 @@ import {
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -124,6 +125,7 @@ export function ApprovalModeChip({
   onChange,
 }: ApprovalModeChipProps) {
   const account = useAccountPreferences();
+  const target = useOptionalConversationConnection();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   if (!approvalModeKnobSupported(engineConnectionId)) {
@@ -143,7 +145,11 @@ export function ApprovalModeChip({
     agentDefault: notApplied ? undefined : agentDefault,
     projectDefault: !notApplied && isNewSession ? projectDefault : undefined,
     projectDefaultUnavailable:
-      !notApplied && isNewSession && projectDefaultUnavailable === true,
+      (!target?.station ||
+        target.station.capabilities.personalDefaults.state === 'allowed') &&
+      !notApplied &&
+      isNewSession &&
+      projectDefaultUnavailable === true,
     stationDefault: notApplied ? undefined : stationDefault,
     personalDefault:
       !notApplied &&

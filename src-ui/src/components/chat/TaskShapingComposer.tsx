@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useRef } from 'react';
 import { showChatPageOrDock } from '../../app-shell/chat-placement';
+import { chatBelongsToStation } from '../../connections/station-state';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
@@ -46,10 +47,11 @@ export function TaskShapingHost() {
       if (source) {
         let entry = Object.entries(activeChatsStore.getSnapshot()).find(
           ([key, chat]) =>
-            key === source.sessionId ||
-            chat.currentSessionId === source.sessionId ||
-            (source.conversationId &&
-              chat.conversationId === source.conversationId),
+            chatBelongsToStation(chat) &&
+            (key === source.sessionId ||
+              chat.currentSessionId === source.sessionId ||
+              (source.conversationId &&
+                chat.conversationId === source.conversationId)),
         );
         if (!entry && source.conversationId && source.agentSlug) {
           const sourceAgent = agents.find(

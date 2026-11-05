@@ -35,6 +35,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import { attentionWord } from '../../views/home/work-status';
 import { Button } from '../Button';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import {
   DiscardGlyph,
   DocumentGlyph,
@@ -605,6 +606,10 @@ function useApprovalDecision(
   onCheck?: () => Promise<'pending' | 'already-settled'>,
   reference?: ApprovalAnswerReference,
 ) {
+  const target = useOptionalConversationConnection();
+  reference = reference
+    ? { ...reference, authorityKey: target?.requestScope?.authorityKey }
+    : undefined;
   const admission = useRef(false);
   const [checking, setChecking] = useState(false);
   const [localPhase, setPhase] = useState<ApprovalPhase>('idle');
@@ -692,23 +697,20 @@ function useApprovalDecision(
           error.code === 'approval_delivery_unconfirmed';
         setPhase(unconfirmed ? 'unconfirmed' : 'idle');
         admission.current = unconfirmed;
-        const translation = await import(
-          '../../utils/chatErrorTranslation'
-        ).catch(() => undefined);
+        const translation = await import('../../utils/stationFailure').catch(
+          () => undefined,
+        );
         const message =
           error instanceof Error
             ? error.message
             : 'Station did not accept this decision.';
-        const code =
-          error instanceof Error &&
-          'code' in error &&
-          typeof error.code === 'string'
-            ? error.code
-            : undefined;
-        const translated = translation?.translateChatError({
-          message,
-          code,
-        }) ?? { title: 'Decision delivery failed', body: message };
+        const translated = translation?.describeStationFailure(
+          error,
+          target?.station,
+        ) ?? {
+          title: 'Decision delivery failed',
+          body: 'Check this request before trying again.',
+        };
         if (
           unconfirmed &&
           reference &&
@@ -718,7 +720,7 @@ function useApprovalDecision(
         setFailure({
           summary: unconfirmed
             ? message
-            : `${translated.title}. ${translated.hint ?? translated.body}`,
+            : `${translated.title}. ${('hint' in translated ? translated.hint : undefined) ?? translated.body}`,
           detail:
             error instanceof Error && error.cause instanceof Error
               ? error.cause.message

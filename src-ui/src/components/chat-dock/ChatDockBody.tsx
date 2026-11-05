@@ -1,10 +1,16 @@
-import type { ComponentProps } from 'react';
+import { type ComponentProps, useMemo } from 'react';
+import { useStationConnectionsOptional } from '../../connections/StationConnectionsContext';
+import type { StationConnection } from '../../connections/station-connection';
+import { useChatStationConnection } from '../../connections/use-chat-station-connection';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
+import { Button } from '../Button';
 import { ConversationBody } from '../conversation/ConversationBody';
 import { ConversationConnectionProvider } from '../conversation/ConversationConnectionContext';
+import { ErrorState, SkeletonList } from '../state';
 
 export {
   agentScheduleRefreshKey,
@@ -16,11 +22,61 @@ export {
 } from '../conversation/ConversationBody';
 
 /** Dock shell adapter. The transcript and composer have one shared owner. */
-export function ChatDockBody(props: ComponentProps<typeof ConversationBody>) {
+export function ChatDockBody({
+  connection: provided,
+  ...props
+}: ComponentProps<typeof ConversationBody> & {
+  connection?: StationConnection;
+}) {
   const { apiBase } = useApiBase();
   const requestScope = useHostRequestAuthorityScope();
+  const connections = useStationConnectionsOptional();
+  const { navigate } = useNavigationActions();
+  const { connection, resolving, unavailable, retry } =
+    useChatStationConnection(props.activeSession, provided);
+  const value = useMemo(
+    () =>
+      connection
+        ? {
+            apiBase: connection.targetApiBase,
+            requestScope: {
+              ...connection.requestScope,
+              isCurrent: connection.isCurrent,
+            },
+            station: connection,
+          }
+        : { apiBase, requestScope },
+    [connection, apiBase, requestScope],
+  );
+  if (resolving) return <SkeletonList label="Connecting to Station" />;
+  if (unavailable)
+    return (
+      <div>
+        <ErrorState
+          title="Station unavailable"
+          description={
+            connections?.remoteEnabled === false
+              ? 'Enable Paired Station chats in Feature previews to continue.'
+              : 'Reconnect to this chat’s Station to continue.'
+          }
+          action={
+            connections?.remoteEnabled === false ? (
+              <Button onClick={() => navigate('/settings/advanced')}>
+                Open Feature previews
+              </Button>
+            ) : (
+              <Button onClick={retry}>Reconnect</Button>
+            )
+          }
+        />
+        {props.activeSession.messages.map((message) => (
+          <p key={message.id}>{message.content}</p>
+        ))}
+        {props.activeSession.input && <p>{props.activeSession.input}</p>}
+      </div>
+    );
   return (
-    <ConversationConnectionProvider value={{ apiBase, requestScope }}>
+    <ConversationConnectionProvider value={value}>
       <ConversationBody {...props} />
     </ConversationConnectionProvider>
   );

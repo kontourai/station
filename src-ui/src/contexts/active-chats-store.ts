@@ -721,6 +721,7 @@ export class ActiveChatsStore {
         confirm?: 'unconfirmed-discard';
       };
       sendFailure?: boolean;
+      deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
       queuedRetry?: boolean;
       childWorkKey?: string;
       backgroundTaskNotice?: BackgroundTaskNotice;

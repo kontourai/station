@@ -18,7 +18,6 @@ import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingReq
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useToolApproval } from '../../hooks/useToolApproval';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import type { SavedAnswerQuote } from '../../utils/answer-quotes';
@@ -29,6 +28,8 @@ import {
   chatWaitsOnUser,
   requestsWaitingOnUser,
 } from '../../utils/waiting-approvals';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { AgentIcon } from '../icons/AgentIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { LoadingDots } from '../LoadingDots';
@@ -314,9 +315,11 @@ function ChatMessageListComponent({
     setPendingTurnJump(null);
   }, [activeSession.id]);
   const { chatAnswerWidth } = useDeviceSettings();
-  const { apiBase } = useApiBase();
+  const host = useApiBase();
+  const target = useOptionalConversationConnection();
+  const apiBase = target?.apiBase ?? host.apiBase;
   const handleCopy = useCopyToClipboardToast();
-  const handleToolApproval = useToolApproval(apiBase);
+  const handleToolApproval = useApprovalAnswering(apiBase);
   const pendingApprovalRequests = useMemo(
     () =>
       approvalEvents && approvalEvents.length > 0 && !activeSession.replay
@@ -524,14 +527,21 @@ function ChatMessageListComponent({
     () => ({
       submitForm,
       formScope,
-      readOnly: Boolean(activeSession.replay),
+      readOnly: Boolean(
+        activeSession.replay ||
+          (target?.station &&
+            target.station.capabilities.uiBlockActions.state !== 'allowed'),
+      ),
       canSendChildInstruction:
         !activeSession.replay &&
+        (!target?.station ||
+          target.station.capabilities.childInstruction.state === 'allowed') &&
         activeSession.conversationOpenState?.callerAccess?.continue === true,
     }),
     [
       submitForm,
       formScope,
+      target,
       activeSession.replay,
       activeSession.conversationOpenState?.callerAccess?.continue,
     ],
@@ -1785,6 +1795,7 @@ function ChatMessageListComponent({
           threadId: request.approvalThreadId,
           requestId: request.approvalId,
           requestEventId: request.approvalEventId,
+          requestScope: target?.requestScope,
         });
         const current = activeChatsStore.getSnapshot()[activeSession.id];
         if (outcome === 'pending' && current) {

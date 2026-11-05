@@ -109,7 +109,10 @@ export async function editMessageInComposer(
   dropUnsentBubble(chatKey, clientTurnId);
   const draft = activeChatsStore.getSnapshot()[chatKey]?.input ?? '';
   activeChatsStore.updateChat(chatKey, {
-    input: draft.trim() === '' ? text : `${draft}\n\n${text}`,
+    input:
+      draft.trim() === '' || draft.trim() === text.trim()
+        ? text
+        : `${draft}\n\n${text}`,
   });
   return 'removed';
 }

@@ -3,7 +3,7 @@ import { toolRequestIsPlanReview } from '@kontourai/station-shared/tool-request-
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
-import { useChatRequestTarget } from './ChatRequestContext';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { InputRequestCard } from './InputRequestCard';
 
 /**
@@ -18,7 +18,7 @@ export function InputRequestRequest({
   request: PendingApprovalRequest;
 }) {
   const host = useHostRequestAuthorityScope();
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const scope = target?.requestScope ?? host;
   const apiBase = target?.apiBase ?? scope?.apiBase;
   const { namespace, status } = useAuthorityPersistence();
@@ -30,6 +30,9 @@ export function InputRequestRequest({
     approvalToolName,
   } = request;
   if (
+    (target?.station &&
+      (!target.station.isCurrent() ||
+        target.station.capabilities.inputAnswer.state !== 'allowed')) ||
     !scope ||
     !inputRequest ||
     !approvalId ||
@@ -53,7 +56,12 @@ export function InputRequestRequest({
     inputRequest.source.startsWith('harness:') &&
     namespace &&
     status === 'verified'
-      ? [namespace, approvalThreadId, approvalId, approvalEventId]
+      ? [
+          target?.station?.stationKey ?? namespace,
+          approvalThreadId,
+          approvalId,
+          approvalEventId,
+        ]
           .map(encodeURIComponent)
           .join(':')
       : undefined;

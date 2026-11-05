@@ -19,6 +19,7 @@ import {
   buildLastChosenModelBindingKey,
   isProviderManagedAgent,
 } from '../components/modals/new-chat-modal-utils';
+import type { StationConnection } from '../connections/station-connection';
 import {
   type ChatUIState,
   useActiveChatActions,
@@ -122,6 +123,7 @@ function selectComposerSlice(
 }
 
 interface UseChatInputOptions {
+  connection?: StationConnection;
   apiBase: string;
   sessionId: string | null;
   agentSlug: string | null;
@@ -206,6 +208,7 @@ export function useChatInput({
   workingDirectory,
   mentionRequestScope,
   mentionAuthority,
+  connection,
 }: UseChatInputOptions) {
   const { showToast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -241,7 +244,7 @@ export function useChatInput({
     selectComposerSlice,
   );
   const currentAgent = useAgent(agentSlug || '');
-  const cancelMessage = useCancelMessage(apiBase);
+  const cancelMessage = useCancelMessage(apiBase, connection);
 
   // Slash commands
   const { commands: slashCommands } = useSlashCommands(
@@ -254,6 +257,7 @@ export function useChatInput({
 
   const slashCommandHandler = useCallback(
     async (sid: string, command: string) => {
+      if (connection && connection.routeKind !== 'host') return false;
       return handleSlashCommand(sid, command, {
         onInputCleared,
         availableModels,
@@ -279,6 +283,7 @@ export function useChatInput({
     },
     [
       handleSlashCommand,
+      connection,
       openModel,
       onOpenNewChat,
       closeCommand,
@@ -653,6 +658,7 @@ export function useChatInput({
               }
             : {}),
           ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+          connection,
           onDurable: handOffDraft,
         },
       );
@@ -700,6 +706,7 @@ export function useChatInput({
       attachments,
       attachmentStages,
       sendMessageAction,
+      connection,
       updateChat,
       activeChatState?.skillExperienceDraft,
       addToInputHistory,
@@ -729,10 +736,10 @@ export function useChatInput({
         [],
         undefined,
         clientTurnId,
-        { preserveComposer: true },
+        { preserveComposer: true, connection },
       );
     },
-    [sessionId, agentSlug, conversationId, sendMessageAction],
+    [sessionId, agentSlug, conversationId, sendMessageAction, connection],
   );
 
   const handleCancel = useCallback(async () => {
@@ -1038,7 +1045,7 @@ export function useChatInput({
       const threadId = current?.orchestrationSessionStarted
         ? (current.currentSessionId ?? sessionId)
         : undefined;
-      if (!threadId) {
+      if (!threadId || connection?.routeKind === 'relay') {
         notePickSet();
         return;
       }
@@ -1050,6 +1057,7 @@ export function useChatInput({
         // Compare-and-set: the decision this chat had folded when the user
         // picked. A newer one it has not seen stands instead (#2436).
         basedOnSequence: current?.approvalPostureSequence ?? null,
+        requestScope: connection?.requestScope,
         apiBase,
       })
         .then((result) => {
@@ -1085,7 +1093,7 @@ export function useChatInput({
           notePickSet();
         });
     },
-    [apiBase, sessionId, updateChat, addEphemeralMessage],
+    [apiBase, connection, sessionId, updateChat, addEphemeralMessage],
   );
 
   const handleAcpSessionModeChange = useCallback(
@@ -1199,10 +1207,14 @@ export function useChatInput({
         agentSlug,
         conversationId,
         command.cmd,
+        undefined,
+        undefined,
+        undefined,
+        { connection },
       );
       textareaRef.current?.focus();
     },
-    [sessionId, agentSlug, conversationId, sendMessageAction],
+    [sessionId, agentSlug, conversationId, sendMessageAction, connection],
   );
 
   const handleHistoryUp = useCallback(() => {
@@ -1266,7 +1278,8 @@ export function useChatInput({
       modelsStale,
       modelQuery,
       commandQuery,
-      slashCommands,
+      slashCommands:
+        connection && connection.routeKind !== 'host' ? [] : slashCommands,
       // Handlers
       handleInputChange,
       handleSend,
@@ -1298,6 +1311,7 @@ export function useChatInput({
       closeAll,
     }),
     [
+      connection,
       input,
       quotes,
       quotedDraftText,

@@ -464,6 +464,7 @@
     "@tauri-apps/cli": "^2.12.4",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "14.6.1",
     "@types/debug": "^4.1.13",
     "@types/node": "^26.6.5",
     "@types/pngjs": "^6.0.5",

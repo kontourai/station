@@ -11,6 +11,7 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useToast } from '../../contexts/ToastContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { Dialog } from '../Dialog';
 
 function restoreFailureMessage(cause: unknown): string {
@@ -56,8 +57,15 @@ export function CheckpointRestoreButton({
   sessionId: string;
   turnId: string;
 }) {
-  const { apiBase } = useApiBase();
-  const authority = useHostRequestAuthorityScope();
+  const host = useApiBase();
+  const hostAuthority = useHostRequestAuthorityScope();
+  const target = useOptionalConversationConnection();
+  const apiBase = target?.apiBase ?? host.apiBase;
+  const authority = target?.requestScope ?? hostAuthority;
+  const allowed =
+    !target?.station ||
+    (target.station.isCurrent() &&
+      target.station.capabilities.checkpointRestore.state === 'allowed');
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [preview, setPreview] = useState<CheckpointRestorePreview>();
@@ -83,7 +91,7 @@ export function CheckpointRestoreButton({
     [],
   );
   const load = async () => {
-    if (!authority?.isCurrent()) return;
+    if (!allowed || !authority?.isCurrent()) return;
     setBusy(true);
     setError(undefined);
     const operation = ++generation.current;
@@ -109,7 +117,7 @@ export function CheckpointRestoreButton({
       <button
         type="button"
         className="button button--secondary"
-        disabled={busy || !authority}
+        disabled={busy || !authority || !allowed}
         onClick={() => void load()}
       >
         {busy ? 'Checking workspace…' : 'Restore workspace to here…'}

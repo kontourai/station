@@ -266,6 +266,7 @@ export type EphemeralMessage = ChatMessage & {
    * composer repeats only these, and only until a later send is accepted.
    */
   sendFailure?: boolean;
+  deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
   /**
    * This notice says a send was queued to be retried by itself and carries the
    * one way to discard it. A short dock hides the transcript, so the composer
@@ -1968,6 +1969,7 @@ export function createEphemeralMessageState(
       confirm?: 'unconfirmed-discard';
     };
     sendFailure?: boolean;
+    deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
     queuedRetry?: boolean;
     childWorkKey?: string;
     backgroundTaskNotice?: BackgroundTaskNotice;

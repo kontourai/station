@@ -15,7 +15,7 @@ import {
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useChatRequestTarget } from '../../components/chat/ChatRequestContext';
+import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useWorkObservation } from '../../contexts/work-observation';
@@ -244,16 +244,16 @@ export function useSessionEventWindow(
   threadId: string | null,
   reconcileRevision = 0,
   legacySessionId?: string,
-  explicitTarget?: ReturnType<typeof useChatRequestTarget>,
+  explicitTarget?: ReturnType<typeof useOptionalConversationConnection>,
 ): SessionEventWindowReader {
-  const contextTarget = useChatRequestTarget();
+  const contextTarget = useOptionalConversationConnection();
   const target = explicitTarget ?? contextTarget;
   apiBase = target?.apiBase ?? apiBase;
   const station = target?.station;
   const requestScope = target?.requestScope;
   const observationTarget =
     station ??
-    (target
+    (target?.requestScope
       ? {
           targetApiBase: target.apiBase,
           requestScope: target.requestScope,

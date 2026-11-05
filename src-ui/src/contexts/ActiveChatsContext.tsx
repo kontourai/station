@@ -38,6 +38,7 @@ type ActiveChatsContextType = {
       };
       fullAccessRefusal?: FullAccessRefusalNotice;
       sendFailure?: boolean;
+      deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
       queuedRetry?: boolean;
     },
   ) => void;
@@ -113,6 +114,7 @@ export function ActiveChatsProvider({ children }: { children: ReactNode }) {
           confirm?: 'unconfirmed-discard';
         };
         sendFailure?: boolean;
+        deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
         queuedRetry?: boolean;
       },
     ) => {

@@ -171,6 +171,13 @@ export interface ChatMessage {
    * `addEphemeralMessage`/`createEphemeralMessageState`, which always sets
    * this; there is no writer that sets it on any other message. */
   ephemeral?: boolean;
+  terminalSession?: boolean;
+  action?: {
+    label: string;
+    handler: () => void;
+    confirm?: 'unconfirmed-discard';
+  };
+  deliveryNotice?: import('./utils/messageDeliveryState').ConversationDeliveryNotice;
   /** Child identity on a local completion notice, for inline-card deduplication. */
   childWorkKey?: string;
   showContinue?: boolean;

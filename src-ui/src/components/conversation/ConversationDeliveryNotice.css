@@ -1,0 +1,23 @@
+.message-delivery-notice {
+  position: relative;
+  margin: var(--k-space-3);
+  padding: var(--k-space-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.message-delivery-notice p {
+  margin: var(--k-space-2) 0 0;
+}
+
+.message-delivery-notice summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.message-delivery-notice pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

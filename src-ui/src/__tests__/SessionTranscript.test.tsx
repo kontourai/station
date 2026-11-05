@@ -2,7 +2,7 @@ import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { type ReactNode, useSyncExternalStore } from 'react';
-import { ChatRequestContext } from '../components/chat/ChatRequestContext';
+import { ConversationConnectionContext } from '../components/conversation/ConversationConnectionContext';
 import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 // @vitest-environment jsdom
 
@@ -271,7 +271,9 @@ describe('SessionTranscript source', () => {
     const view = render(
       <QueryClientProvider client={client}>
         <PreviewProvider>
-          <ChatRequestContext.Provider value={{ apiBase, requestScope: scope }}>
+          <ConversationConnectionContext.Provider
+            value={{ apiBase, requestScope: scope }}
+          >
             <SessionTranscript
               apiBase={apiBase}
               session={{ threadId: THREAD, conversationId: THREAD }}
@@ -279,7 +281,7 @@ describe('SessionTranscript source', () => {
               isStreaming={false}
               observation={{ live: false, revision: 1 }}
             />
-          </ChatRequestContext.Provider>
+          </ConversationConnectionContext.Provider>
         </PreviewProvider>
       </QueryClientProvider>,
     );

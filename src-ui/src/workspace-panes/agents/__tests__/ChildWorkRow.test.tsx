@@ -18,7 +18,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { ChatRequestContext } from '../../../components/chat/ChatRequestContext';
+import { ConversationConnectionContext } from '../../../components/conversation/ConversationConnectionContext';
 import type { ChildWorkRowModel } from '../childWorkSelectors';
 
 const useOrchestrationSessionQuery = vi.fn();
@@ -616,7 +616,7 @@ test('a peer chat reads its subagent transcript through the receiver bridge unde
   const apiBase = `${requestScope.apiBase}/api/environments/peers/desktop-win/chat-api`;
   useChildWorkTranscriptQuery.mockReturnValue(transcriptQuery());
   render(
-    <ChatRequestContext.Provider value={{ apiBase, requestScope }}>
+    <ConversationConnectionContext.Provider value={{ apiBase, requestScope }}>
       <ul>
         <ChildWorkRow
           row={row({ status: 'completed', transcript: TRANSCRIPT })}
@@ -625,7 +625,7 @@ test('a peer chat reads its subagent transcript through the receiver bridge unde
           onOpenSession={onOpenSession}
         />
       </ul>
-    </ChatRequestContext.Provider>,
+    </ConversationConnectionContext.Provider>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
   expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith(

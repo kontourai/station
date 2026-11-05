@@ -9,7 +9,8 @@ export interface ConversationConnection {
   station?: StationConnection;
 }
 
-const ConnectionContext = createContext<ConversationConnection | null>(null);
+export const ConversationConnectionContext =
+  createContext<ConversationConnection | null>(null);
 
 export function ConversationConnectionProvider({
   value,
@@ -19,14 +20,14 @@ export function ConversationConnectionProvider({
   children: ReactNode;
 }) {
   return (
-    <ConnectionContext.Provider value={value}>
+    <ConversationConnectionContext.Provider value={value}>
       {children}
-    </ConnectionContext.Provider>
+    </ConversationConnectionContext.Provider>
   );
 }
 
 export function useConversationConnection() {
-  const connection = useContext(ConnectionContext);
+  const connection = useContext(ConversationConnectionContext);
   if (!connection)
     throw new Error('ConversationConnectionProvider is required');
   return connection;
@@ -34,5 +35,5 @@ export function useConversationConnection() {
 
 /** Transitional read-only Task/detail adapters are migrated in P2. */
 export function useOptionalConversationConnection() {
-  return useContext(ConnectionContext);
+  return useContext(ConversationConnectionContext);
 }

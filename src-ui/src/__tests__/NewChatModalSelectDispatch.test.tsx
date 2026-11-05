@@ -1,6 +1,7 @@
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
+import { conversationConnection } from '../components/conversation/__tests__/fixtures';
 /**
  * @vitest-environment jsdom
  *
@@ -54,6 +55,14 @@ import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 
 // The Station control reads this caller's Station inventory; its own
 // behavior is covered in `StartStationControl.test.tsx`.
+const stationResolver = vi.hoisted(() => ({
+  current: null as ReturnType<
+    typeof import('../connections/StationConnectionsContext').useStationConnectionsOptional
+  >,
+}));
+vi.mock('../connections/StationConnectionsContext', () => ({
+  useStationConnectionsOptional: () => stationResolver.current,
+}));
 vi.mock('../components/chat-start/StartStationControl', () => ({
   StartStationControl: () => <span>Runs on this Station</span>,
 }));
@@ -1670,13 +1679,29 @@ describe('the start composer in the dock', () => {
         credential: 'source-token',
         requestAuthority: hostScope.current!,
       }));
-      const onPeerChatStarted = vi.fn(() => {
+      const connection = conversationConnection('relay');
+      const startConnection = {
+        ...connection,
+        environmentId: 'peer-kontour',
+        targetApiBase:
+          'http://station.test/api/environments/peers/peer-kontour/chat-api',
+        requestScope: hostScope.current!,
+        binding: { ...connection.binding, environmentId: 'peer-kontour' },
+      };
+      stationResolver.current = {
+        remoteEnabled: true,
+        resolve: async () => ({
+          connection: startConnection,
+          release: () => {},
+        }),
+      };
+      const onConversationStarted = vi.fn(() => {
         if (openFails) throw new Error('Could not open the chat.');
       });
       const onTaskStarted = vi.fn();
       const onSelect = start(vi.fn(), {
         initialPrompt: 'Which machine is this?',
-        onPeerChatStarted,
+        onConversationStarted,
         onTaskStarted,
         startSelection: {
           context: '__global__',
@@ -1701,16 +1726,13 @@ describe('the start composer in the dock', () => {
       );
       await waitFor(() => expect(startButton().disabled).toBe(false));
       fireEvent.click(startButton());
-      expect(onPeerChatStarted).toHaveBeenCalledWith(
+      expect(onConversationStarted).toHaveBeenCalledWith(
         profile,
         expect.objectContaining({
-          environmentId: 'peer-kontour',
+          connection: startConnection,
           projectSlug: 'windows-checkout',
           model: 'remote-model',
-          pending: expect.objectContaining({
-            text: 'Which machine is this?',
-            dispatched: false,
-          }),
+          text: 'Which machine is this?',
         }),
       );
       if (openFails)

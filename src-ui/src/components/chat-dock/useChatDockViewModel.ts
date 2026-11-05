@@ -583,6 +583,8 @@ export function useChatDockViewModel({
   const executionSummary = resolveSessionExecutionSummary(activeSession);
 
   return {
+    conversationConnection: connection,
+    conversationAgents: agents,
     activeSession,
     activeOrchestrationSession,
     activeOrchestrationSessionRead,

@@ -15,6 +15,7 @@ import {
   MemoryContinuationUnsupportedError,
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
+  useAgentsQuery,
 } from '@kontourai/station-sdk';
 import { listConversationInbox } from '@kontourai/station-sdk/client';
 import {
@@ -29,6 +30,7 @@ import React, {
   useState,
 } from 'react';
 import { verifiedBuildLabel } from '../../build-info';
+import { outboundStationIdentity } from '../../connections/station-state';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -47,8 +49,6 @@ import {
   sendPendingMessageNow,
 } from '../../hooks/orchestration/queueDrain';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
-import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
-import { useChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { useACPConnections } from '../../hooks/useACPConnections';
 import { useActiveStationName } from '../../hooks/useActiveStationName';
 import type { useChatInput } from '../../hooks/useChatInput';
@@ -111,7 +111,6 @@ import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import { Button } from '../Button';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
 import type { ChatInputArea } from '../chat/ChatInputArea';
-import { ComposerStopButton } from '../chat/ComposerStopButton';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type {
@@ -128,6 +127,7 @@ import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
 import { AgentScheduleNotes } from '../chat-dock/AgentScheduleNotes';
 import type { ComposerActionsMenuProps } from '../chat-dock/ComposerActionsMenu';
 import { CoordinatorToolsNotice } from '../chat-dock/CoordinatorToolsNotice';
+import { DockDeliveryNotice } from '../chat-dock/DockDeliveryNotice';
 import {
   CONTINUE_INTERRUPTED_TURN_PREVIEW_ID,
   continuableInterruptedBoundary,
@@ -154,6 +154,8 @@ import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
 import { useConversationConnection } from './ConversationConnectionContext';
+import { ConversationStopControl } from './ConversationStopControl';
+import { useConversationController } from './useConversationController';
 
 /** The station-control tools that change what a chat has scheduled. */
 const SCHEDULE_TOOLS = new Set([
@@ -200,7 +202,7 @@ function DeferredChatInputArea(
       </div>
       <span className="chat-controls-row__spacer" />
       {props.turnInFlight && (
-        <ComposerStopButton
+        <ConversationStopControl
           onCancel={props.onCancel}
           stopPending={props.stopPending}
         />
@@ -594,7 +596,7 @@ export function ConversationBody({
   modelsLoading = false,
   chatInput,
   onComposerEnabledChange,
-  secondaryActions,
+  secondaryActions: dockSecondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
   onOpenBackgroundTasks,
@@ -607,9 +609,21 @@ export function ConversationBody({
 }: ConversationBodyProps) {
   const [scrollControlsTarget, setScrollControlsTarget] =
     useState<HTMLDivElement | null>(null);
-  const agents = useAgents();
-  const { apiBase, requestScope: mentionRequestScope } =
-    useConversationConnection();
+  const hostAgents = useAgents();
+  const {
+    apiBase,
+    requestScope: mentionRequestScope,
+    station,
+  } = useConversationConnection();
+  const { transport, transcript, streamStatus, turnInFlight } =
+    useConversationController(activeSession);
+  const secondaryActions =
+    station && station.routeKind !== 'host' ? undefined : dockSecondaryActions;
+  const targetAgents = useAgentsQuery({
+    enabled: Boolean(station),
+    readTarget: station,
+  });
+  const agents = station ? (targetAgents.data ?? []) : hostAgents;
   const { updateChat, clearEphemeralMessages, addEphemeralMessage } =
     useActiveChatActions();
   const { navigate } = useNavigationActions();
@@ -629,15 +643,19 @@ export function ConversationBody({
   );
   const projectChatDefaults = projectChatDefaultsAnswer ?? undefined;
   const mentionCredentialEvidence = captureCredentialEvidence();
-  const mentionAuthority = mentionCredentialEvidence
-    ? durableMentionAuthority({
-        apiBase: mentionCredentialEvidence.origin,
-        connectionId: mentionCredentialEvidence.connectionId,
-        authorityGeneration: mentionCredentialEvidence.authorityGeneration,
-        credentialState: mentionCredentialEvidence.credentialState,
-      })
-    : null;
-  const { data: acpConnections = [] } = useACPConnections();
+  const mentionAuthority =
+    (!station || station.capabilities.mentions.state === 'allowed') &&
+    mentionCredentialEvidence
+      ? durableMentionAuthority({
+          apiBase: mentionCredentialEvidence.origin,
+          connectionId: mentionCredentialEvidence.connectionId,
+          authorityGeneration: mentionCredentialEvidence.authorityGeneration,
+          credentialState: mentionCredentialEvidence.credentialState,
+        })
+      : null;
+  const { data: acpConnections = [] } = useACPConnections(
+    !station || station.routeKind === 'host',
+  );
   const activeAcpConnection = useMemo(
     () =>
       acpConnections.find(
@@ -661,16 +679,19 @@ export function ConversationBody({
   const owner = useMemo(
     () =>
       ownerAttributionFromStation(
-        activeConnection && activeStationName
-          ? { ...activeConnection, name: activeStationName }
-          : activeConnection,
+        station
+          ? { id: station.environmentId, name: station.stationName }
+          : activeConnection && activeStationName
+            ? { ...activeConnection, name: activeStationName }
+            : activeConnection,
         verifiedBuildLabel ? `Station ${verifiedBuildLabel}` : null,
       ),
-    [activeConnection, activeStationName],
+    [activeConnection, activeStationName, station],
   );
   const accountableHuman = useMemo(
-    () => accountableHumanFromUser(user),
-    [user],
+    () =>
+      station?.routeKind === 'relay' ? null : accountableHumanFromUser(user),
+    [user, station],
   );
 
   const { settings } = useFeatureSettings();
@@ -694,7 +715,7 @@ export function ConversationBody({
   // but its open turn still takes Steer or Queue, as it does in the tab that
   // started it. Only a busy wait this tab sees no turn for (a missed
   // terminal) stays draft-only behind its Check again notice.
-  const busyWaitBlocksSend = busyOpen && !isTurnInFlight(activeSession);
+  const busyWaitBlocksSend = busyOpen && !turnInFlight;
   const resolvingOpen = openPhase === 'resolving';
   // Whether THIS caller may send into this conversation or start a chat, as
   // the server's own boundary answered it on the open read (`callerAccess`).
@@ -709,8 +730,6 @@ export function ConversationBody({
   const callerMayContinue = callerAccess?.continue !== false;
   const callerMayStartChat = callerAccess?.startChat !== false;
   const onNewChat = callerMayStartChat ? onNewChatProp : undefined;
-  const transcript = useActiveChatTranscript(apiBase, activeSession);
-  const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
   const windowRequests = useMemo(
     () =>
       unansweredApprovalRequests(
@@ -732,6 +751,7 @@ export function ConversationBody({
   // (Running, background work) is no longer current proof.
   const workObservation = useWorkObservation(
     activeSession.conversationId ?? activeSession.id,
+    station,
   );
   useEffect(() => {
     if (
@@ -1157,7 +1177,7 @@ export function ConversationBody({
       ? 'Loading steering support…'
       : 'Steering unavailable: the host did not report a durability profile.';
   const busyFollowUp =
-    isTurnInFlight(activeSession) &&
+    turnInFlight &&
     chatInput.attachments.length === 0 &&
     sessionAdapterSupportsSteering(activeSession.orchestrationDurability)
       ? 'steer'
@@ -1200,7 +1220,9 @@ export function ConversationBody({
     new Set(),
   );
   const ephemeralMessages = activeSession.messages.filter((m) => m.ephemeral);
-  const sendFailureNotice = latestSendFailureLine(activeSession.messages);
+  const sendFailureNotice = latestSendFailureLine(
+    activeSession.messages.filter((message) => !message.deliveryNotice),
+  );
   const staleSendFailures = staleSendFailureIds(activeSession.messages);
   const queuedRetry = latestQueuedRetryNotice(
     activeSession.messages,
@@ -1265,13 +1287,14 @@ export function ConversationBody({
         const attachments = await resolveRetryAttachments(
           turn.attachments,
           apiBase,
+          mentionRequestScope,
         );
         await run(turn.text, attachments);
       } catch (error) {
         surfaceRecoveryFailure(error);
       }
     },
-    [apiBase, surfaceRecoveryFailure],
+    [apiBase, mentionRequestScope, surfaceRecoveryFailure],
   );
 
   // Continue after a memory kill goes through Station, which sends the
@@ -1280,6 +1303,8 @@ export function ConversationBody({
   // such route: then the short continuation is sent as an ordinary message.
   const continueAfterMemoryKill = useCallback(async () => {
     try {
+      if (station && station.routeKind !== 'host')
+        throw new MemoryContinuationUnsupportedError();
       await continueAfterMemoryExhaustion(
         activeSession.conversationId ?? activeSession.id,
         apiBase,
@@ -1298,6 +1323,7 @@ export function ConversationBody({
     activeSession.conversationId,
     activeSession.id,
     apiBase,
+    station,
     runRecoveredTurn,
     surfaceRecoveryFailure,
   ]);
@@ -1345,7 +1371,7 @@ export function ConversationBody({
             !transcriptPending &&
             !observationUnavailable &&
             openPhase === 'writable',
-          turnInFlight: isTurnInFlight(activeSession),
+          turnInFlight: turnInFlight,
           pendingSends:
             (activeSession.outboundQueuedTurns?.length ?? 0) +
             (activeSession.queuedMessages?.length ?? 0),
@@ -1360,6 +1386,7 @@ export function ConversationBody({
     },
     [
       continueInterruptedEnabled,
+      turnInFlight,
       renderedSession.messages,
       activeSession,
       transcriptPending,
@@ -1374,7 +1401,7 @@ export function ConversationBody({
       setRemovingMessages((prev) => new Set(prev).add(messageId));
       setTimeout(() => {
         const updated = ephemeralMessages.filter(
-          (m, i) => ((m as any).id || `ephemeral-${i}`) !== messageId,
+          (m, i) => (m.id || `ephemeral-${i}`) !== messageId,
         );
         if (updated.length === 0) {
           clearEphemeralMessages(activeSession.id);
@@ -1501,8 +1528,17 @@ export function ConversationBody({
   // Dock-specific message overrides: ephemeral messages and system events
   const renderOverride = useCallback(
     (msg: ChatMessage, idx: number): React.ReactNode | null => {
+      if (msg.ephemeral && msg.deliveryNotice) {
+        return (
+          <DockDeliveryNotice
+            chatKey={activeSession.id}
+            notice={msg.deliveryNotice}
+            retry={msg.action?.handler}
+          />
+        );
+      }
       if (msg.ephemeral) {
-        const messageId = (msg as any).id || `ephemeral-${idx}`;
+        const messageId = msg.id || `ephemeral-${idx}`;
         if (staleSendFailures.has(messageId) && 'action' in msg && msg.action) {
           // The message stays readable; only its Retry goes (#4400).
           const settled = { ...msg, action: undefined };
@@ -1525,11 +1561,9 @@ export function ConversationBody({
             isRemoving={removingMessages.has(messageId)}
             onDismiss={() => handleDismissEphemeral(messageId)}
             msg={
-              (msg as any).terminalSession &&
-              chatInput.input.trim() &&
-              onNewChat
+              msg.terminalSession && chatInput.input.trim() && onNewChat
                 ? {
-                    ...(msg as any),
+                    ...msg,
                     action: {
                       label: 'New chat',
                       handler: () =>
@@ -1538,20 +1572,18 @@ export function ConversationBody({
                         ),
                     },
                   }
-                : (msg as any)
+                : msg
             }
             onAction={
-              ((msg as any).terminalSession &&
-                chatInput.input.trim() &&
-                onNewChat) ||
-              (msg as any).action
+              (msg.terminalSession && chatInput.input.trim() && onNewChat) ||
+              msg.action
                 ? () => {
-                    if ((msg as any).terminalSession && onNewChat) {
+                    if (msg.terminalSession && onNewChat) {
                       void Promise.resolve(onNewChat(chatInput.input))
                         .then(() => clearEphemeralMessages(activeSession.id))
                         .catch(surfaceRecoveryFailure);
                     } else {
-                      (msg as any).action.handler();
+                      msg.action?.handler();
                       clearEphemeralMessages(activeSession.id);
                     }
                   }
@@ -1699,7 +1731,7 @@ export function ConversationBody({
                         }
                       : chatErrorCode === ENGINE_MEMORY_EXHAUSTED_CODE
                         ? memoryContinued
-                          ? isTurnInFlight(activeSession)
+                          ? turnInFlight
                             ? {
                                 label: 'Stop',
                                 onClick: () => void chatInput.handleCancel(),
@@ -1772,6 +1804,7 @@ export function ConversationBody({
       callerAccess,
       callerMayContinue,
       callerMayStartChat,
+      turnInFlight,
     ],
   );
 
@@ -1797,7 +1830,11 @@ export function ConversationBody({
   const outboundTurns = activeSession.outboundQueuedTurns ?? [];
   const sendHeldCopy = async (turn: { clientTurnId: string }) => {
     const { outboundDispatch } = await import('../../lib/outboundQueue');
-    await outboundDispatch.sendHeld(turn.clientTurnId);
+    await outboundDispatch.sendHeld(
+      turn.clientTurnId,
+      station ? outboundStationIdentity(station) : undefined,
+      activeSession.conversationId,
+    );
   };
   const outboxRows: OutboxRows | undefined = outboundTurns.length
     ? {
@@ -1836,7 +1873,11 @@ export function ConversationBody({
                   const { outboundDispatch } = await import(
                     '../../lib/outboundQueue'
                   );
-                  await outboundDispatch.retry(clientTurnId);
+                  await outboundDispatch.retry(
+                    clientTurnId,
+                    station ? outboundStationIdentity(station) : undefined,
+                    activeSession.conversationId,
+                  );
                 } catch (error) {
                   surfaceRecoveryFailure(
                     `Could not retry the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
@@ -1993,7 +2034,7 @@ export function ConversationBody({
             // #2309: the stall notice below presents the silence (with its
             // Stop action); the streaming row does not repeat it.
             progressSilenceShownElsewhere: Boolean(
-              turnProgressSilence && isTurnInFlight(activeSession),
+              turnProgressSilence && turnInFlight,
             ),
             onLoadOlder: transcript.loadOlder,
             onLoadTurn: transcript.loadTurn,
@@ -2141,7 +2182,12 @@ export function ConversationBody({
               });
             },
             onSendMessageNow: (messageId: string) =>
-              sendPendingMessageNow(apiBase, activeSession.id, messageId),
+              sendPendingMessageNow(
+                apiBase,
+                activeSession.id,
+                messageId,
+                station,
+              ),
             failure: activeSession.queuedMessageFailure,
             heldByUsageLimit: activeSession.usageLimitStopped === true,
             // UX audit T3: the automatic drain only fires on a later
@@ -2156,6 +2202,7 @@ export function ConversationBody({
                 true,
                 // #2309: an explicit request; not held back by the record.
                 true,
+                station,
               ),
             steeringUnavailableReason,
             canSteer:
@@ -2175,7 +2222,13 @@ export function ConversationBody({
                 latest.orchestrationStatus !== 'aborted' &&
                 !isTurnInFlight(latest)
               )
-                drainQueuedMessageOnTurnCompleted(apiBase, activeSession.id);
+                drainQueuedMessageOnTurnCompleted(
+                  apiBase,
+                  activeSession.id,
+                  false,
+                  false,
+                  station,
+                );
             },
             onSteer: async (message: string, clientInputId?: string) => {
               const latest = activeChatsStore.getSnapshot()[activeSession.id];
@@ -2232,10 +2285,7 @@ export function ConversationBody({
               };
               try {
                 if (metadata.inboxSteerConversationId) {
-                  if (
-                    !mentionRequestScope?.isCurrent() ||
-                    mentionRequestScope.apiBase !== apiBase
-                  )
+                  if (!mentionRequestScope?.isCurrent())
                     throw new Error('Station authority changed.');
                   const entries = await listConversationInbox(
                     apiBase,
@@ -2278,6 +2328,7 @@ export function ConversationBody({
                     activeSession.currentSessionId ??
                     activeSession.id,
                   text: message,
+                  requestScope: mentionRequestScope,
                   clientInputId,
                   turnId:
                     metadata?.delivery && metadata.steerThreadId !== undefined
@@ -2366,7 +2417,9 @@ export function ConversationBody({
                   });
                   return false;
                 }
-                const result = await steerOrchestrationTurn(steeringInput);
+                const result = await (transport
+                  ? transport.steer(steeringInput)
+                  : steerOrchestrationTurn(steeringInput));
                 if (result.outcome === 'steered') {
                   retireConfirmedById();
                   addEphemeralMessage(activeSession.id, {
@@ -2479,7 +2532,9 @@ export function ConversationBody({
         summary={activeOrchestrationSession}
       />
       {/* What an agent scheduled here: check-backs and job proposals. */}
-      {activeSession.conversationId && !activeSession.replay ? (
+      {activeSession.conversationId &&
+      !activeSession.replay &&
+      (!station || station.routeKind === 'host') ? (
         <AgentScheduleNotes
           conversationId={activeSession.conversationId}
           refreshKey={agentScheduleRefreshKey(
@@ -2489,7 +2544,9 @@ export function ConversationBody({
         />
       ) : null}
       {/* Commands an agent asked to run here, each waiting for its own Run. */}
-      {activeSession.conversationId && !activeSession.replay ? (
+      {activeSession.conversationId &&
+      !activeSession.replay &&
+      (!station || station.routeKind === 'host') ? (
         <TerminalRunNotes
           conversationId={activeSession.conversationId}
           refreshKey={terminalRunRefreshKey(
@@ -2711,7 +2768,7 @@ export function ConversationBody({
         the recovery notice owns. A genuine wait (turn in flight) keeps the
         current draft-only behavior below.
       */}
-      {busyOpen && !isTurnInFlight(activeSession) ? (
+      {busyOpen && !turnInFlight ? (
         <div className="session-history-controls" role="status">
           <span>
             Waiting for the active turn to finish. If it already has, check
@@ -2742,7 +2799,7 @@ export function ConversationBody({
         settled cannot claim a live stall.
       */}
       {turnProgressSilence &&
-        isTurnInFlight(activeSession) &&
+        turnInFlight &&
         activeSession.activityHint?.kind !== 'retrying' && (
           <div
             role="status"
@@ -2870,7 +2927,7 @@ export function ConversationBody({
               busyWaitBlocksSend && !!agent && callerMayContinue
             }
             sendRefused={!callerMayContinue || workspaceRefusedWithoutNewChat}
-            turnInFlight={isTurnInFlight(activeSession)}
+            turnInFlight={turnInFlight}
             busyFollowUp={busyFollowUp}
             busySteeringUnavailableReason={steeringUnavailableReason}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
@@ -2926,7 +2983,9 @@ export function ConversationBody({
                 : undefined
             }
             onOpenAgentHandoff={
-              onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
+              station && station.routeKind !== 'host'
+                ? undefined
+                : (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
             }
             agentHandoffTriggerRef={agentHandoffTriggerRef}
             agentHandoffDisabled={secondaryActions?.handoffDisabled}

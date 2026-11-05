@@ -5,8 +5,8 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
-import { useChatRequestTarget } from '../../components/chat/ChatRequestContext';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
+import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
 import { SkeletonBlock } from '../../components/state';
 import './ChildWorkTranscript.css';
 
@@ -122,7 +122,7 @@ export function ChildWorkTranscript({
    */
   revision: string;
 }) {
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const transcript = useChildWorkTranscriptQuery(
     { threadId, childId, requestScope: target?.requestScope },
     target?.apiBase,

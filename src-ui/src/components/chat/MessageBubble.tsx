@@ -18,8 +18,11 @@ import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { absoluteTime, messageTime } from '../../utils/relativeTime';
+import { describeStationFailure } from '../../utils/stationFailure';
 import type { OverflowMenuHandle } from '../ActionOverflowMenu';
 import { Button } from '../Button';
+import { useDockDeliveryPort } from '../chat-dock/useDockDeliveryPort';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -259,10 +262,19 @@ function MessageBubbleComponent({
 }: MessageBubbleProps) {
   const { developerToolsEnabled } = useDeviceSettings();
   const isMobile = useIsMobile();
+  const connection = useOptionalConversationConnection();
+  const hostTaskActions =
+    !connection?.station || connection.station.routeKind === 'host';
   const textContent = typeof msg.content === 'string' ? msg.content : '';
   // The user's own message until the agent has it (`messageDeliveryState`).
   // Hoisted above the early returns below: hooks run unconditionally.
   const deliveryState = useMessageDeliveryState(activeSession.id, msg);
+  const deliveryPort = useDockDeliveryPort(
+    activeSession.id,
+    msg.clientId ?? '',
+    textContent,
+    deliveryState,
+  );
   // A right-click on the bubble opens its own ⋯ — the user menu on a user
   // bubble, the answer menu on an answer — with the rows that ⋯ shows. Only on
   // the desktop layout and only for the pointer: a held finger in a message is
@@ -300,19 +312,15 @@ function MessageBubbleComponent({
   const discardUnsent =
     undelivered === 'not-sent' && msg.clientId
       ? () => {
-          const key = msg.clientId!;
           setDeliveryNotice(null);
-          void import('../../lib/messageDeliveryActions')
-            .then(async ({ discardMessage, ALREADY_DELIVERED }) => {
-              if (
-                (await discardMessage(activeSession.id, key, 'not-sent')) ===
-                'delivered'
-              )
-                setDeliveryNotice({ text: ALREADY_DELIVERED, error: false });
+          void deliveryPort
+            .discard('not-sent')
+            .then((text) => {
+              if (text) setDeliveryNotice({ text, error: false });
             })
             .catch((error: unknown) =>
               setDeliveryNotice({
-                text: `That didn't work: ${error instanceof Error ? error.message : String(error)}`,
+                text: describeStationFailure(error).body,
                 error: true,
               }),
             );
@@ -602,6 +610,7 @@ function MessageBubbleComponent({
   // carry no surrogate action. On desktop it is a row of the bubble's ⋯ menu,
   // like an answer's "Add to Task"; the phone sheet lists it itself.
   const userTaskTarget =
+    hostTaskActions &&
     !replaying &&
     msg.role === 'user' &&
     msg.sourceEventId &&
@@ -853,6 +862,7 @@ function MessageBubbleComponent({
           load={loadTurnActionsMenu}
           componentProps={{
             taskTarget:
+              hostTaskActions &&
               msg.turnId &&
               answerSessionId &&
               msg.answerEligible === true &&
@@ -1293,10 +1303,8 @@ function MessageBubbleComponent({
             a message that was already delivered when it mounted). */}
         {msg.role === 'user' && msg.clientId && deliveryState ? (
           <MessageDeliveryNote
-            chatKey={activeSession.id}
-            clientTurnId={msg.clientId}
+            port={deliveryPort}
             state={deliveryState}
-            text={textContent}
             notice={deliveryNotice}
           />
         ) : null}

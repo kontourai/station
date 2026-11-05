@@ -47,11 +47,11 @@ import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
+import { ConversationStopControl } from '../conversation/ConversationStopControl';
 import { ArrowDownGlyph } from '../icons/Glyph';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
 import { ComposerIconAction } from './ComposerIconAction';
-import { ComposerStopButton } from './ComposerStopButton';
 import {
   appendComposerSessionReference,
   composerDisplayValue,
@@ -1816,7 +1816,7 @@ export function ChatInputArea({
             data-stop-placement={isMobile ? 'trailing' : undefined}
           >
             {turnInFlight && !isMobile && (
-              <ComposerStopButton
+              <ConversationStopControl
                 onCancel={onCancel}
                 stopPending={stopPending}
               />
@@ -1926,7 +1926,7 @@ export function ChatInputArea({
               )}
             </div>
             {turnInFlight && isMobile && (
-              <ComposerStopButton
+              <ConversationStopControl
                 onCancel={onCancel}
                 stopPending={stopPending}
               />
