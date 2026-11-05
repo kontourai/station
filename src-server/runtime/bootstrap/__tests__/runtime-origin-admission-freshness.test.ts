@@ -168,6 +168,13 @@ describe('runtime origin gate: owned Serve origin admission is not stale', () =>
     };
     let release!: (stdout: string) => void;
     let first = true;
+    // The wall clock, adjustable: a real clock change alters what Date.now
+    // returns, so the spy is in place before the resolver exists.
+    const realNow = Date.now;
+    let setBack = 0;
+    const wall = vi
+      .spyOn(Date, 'now')
+      .mockImplementation(() => realNow() - setBack);
     // No injected clock: the production default.
     const resolver = createPublicIngressOriginResolver({
       localPorts: [3141],
@@ -197,10 +204,7 @@ describe('runtime origin gate: owned Serve origin admission is not stale', () =>
       '/evil': { Proxy: 'http://127.0.0.1:9000' },
     };
     config.AllowFunnel = { [`${HOST}:443`]: true };
-    const realNow = Date.now;
-    const wall = vi
-      .spyOn(Date, 'now')
-      .mockImplementation(() => realNow() - 500);
+    setBack = 500;
     try {
       // 1.1 s of real time passes while the wall clock is set back 0.5 s:
       // by the wall clock the evidence is 0.6 s old, by real time 1.1 s.
