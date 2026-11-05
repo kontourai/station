@@ -187,10 +187,14 @@ every encoding it would read is scanned for a key repeated within one dict and
 refused with `duplicate key <path>`, as a file is. An XML plist goes through a
 strict tokenizer that refuses any markup it cannot read rather than skipping
 it; a binary plist (what macOS writes) through its object table, refusing a
-structure it cannot read. Each object is scanned once, however many
-references share it, so the scan makes at most one step per reference the
-file stores: a crafted profile cannot make startup slow, and no separate
-budget refuses a valid profile whose strings plutil shares. The conversion
+structure it cannot read. An object is its encoded bytes, found by
+its offset, however many indices name it, and each distinct container is
+scanned once. The references read are bounded by the reference slots the
+object area can hold, charged as each container is expanded: objects that do
+not overlap, as plutil writes them (including a valid profile whose strings
+plutil shares), stay within it, and a file whose containers overlap so as to
+exceed it is refused before reading further. So a crafted profile cannot make
+startup slow. The conversion
 itself runs plutil with a 10-second timeout; a timeout refuses the profile. Any other encoding plutil reads (JSON, old-style
 text) is not what macOS writes and is refused.
 

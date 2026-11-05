@@ -210,10 +210,14 @@ const BINARY_PLIST_MAX_DEPTH = 64;
  * a string, a cycle, nesting past {@link BINARY_PLIST_MAX_DEPTH}) refuses
  * the profile rather than being passed on. An object reached twice (shared,
  * not a cycle) is scanned once: its keys are its own, whatever path reaches
- * it. So each container is expanded at most once, and the scan makes at most
- * one step per reference the file stores, each of which takes at least a
- * byte of it: the work is linear in the file's size (at most 1 MiB), with no
- * separate budget for a legitimate profile to run into (#4515).
+ * it, and an object is its encoded bytes, however many indices name them:
+ * each distinct encoded container is expanded at most once. The references
+ * read are bounded by the reference slots the object area can hold
+ * (`(tableOffset - 8) / refSize`), charged as each container is expanded;
+ * non-overlapping objects, as plutil and CFPropertyList write them, stay
+ * within it, and a file whose containers overlap so as to exceed it is
+ * refused before reading past it. So the work is linear in the file's size
+ * (at most 1 MiB) (#4515).
  */
 export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
   const unreadable = 'it is a binary property list Station cannot read';
@@ -287,20 +291,32 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
     }
     return refs;
   };
+  // Keyed by an object's offset (its encoded bytes), not its index: two
+  // indices may name the same bytes, and that is one object. A finished one
+  // had no problem (a problem ends the scan), so it is not scanned again;
+  // one being scanned and reached again is a cycle.
   const visiting = new Set<number>();
-  // A finished object had no problem (a problem ends the scan), so it is
-  // never scanned again: shared references stay linear, not exponential.
   const clean = new Set<number>();
+  // The references the object area can hold. Expanding a container charges
+  // its references (both halves of a dict) before they are read, so the
+  // scan reads at most this many. Distinct, non-overlapping objects, as a
+  // writer lays them out, never exceed it: each is expanded once and its
+  // references are its own bytes. Containers that overlap in the file (a
+  // crafted offset table) can, and are refused before reading past it.
+  const referenceSlots = Math.floor((tableOffset - 8) / refSize);
+  let charged = 0;
   const walk = (ref: number, path: string, depth: number): string | null => {
-    if (clean.has(ref)) return null;
-    if (depth > BINARY_PLIST_MAX_DEPTH || visiting.has(ref)) return unreadable;
     const at = offsetOf(ref);
     if (at === null) return unreadable;
+    if (clean.has(at)) return null;
+    if (depth > BINARY_PLIST_MAX_DEPTH || visiting.has(at)) return unreadable;
     const kind = bytes[at] >> 4;
     if (kind !== 0xa && kind !== 0xc && kind !== 0xd) return null;
     const length = lengthOf(at);
     if (length === null) return unreadable;
-    visiting.add(ref);
+    charged += kind === 0xd ? length.count * 2 : length.count;
+    if (charged > referenceSlots) return unreadable;
+    visiting.add(at);
     try {
       if (kind !== 0xd) {
         const refs = refsAt(length.start, length.count);
@@ -309,7 +325,7 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
           const problem = walk(child, path, depth + 1);
           if (problem) return problem;
         }
-        clean.add(ref);
+        clean.add(at);
         return null;
       }
       const keys = refsAt(length.start, length.count);
@@ -329,10 +345,10 @@ export function binaryPlistKeyScanProblem(bytes: Buffer): string | null {
         const problem = walk(values[i], keyPath, depth + 1);
         if (problem) return problem;
       }
-      clean.add(ref);
+      clean.add(at);
       return null;
     } finally {
-      visiting.delete(ref);
+      visiting.delete(at);
     }
   };
   return walk(topObject, '', 0);

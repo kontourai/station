@@ -764,3 +764,132 @@ describe('a binary plist that shares references is scanned in bounded work', () 
     10_000,
   );
 });
+
+/**
+ * A binary plist from raw parts: the object area (written from offset 8),
+ * the offset of every index (absolute), the reference width and the top
+ * index. Lets a test alias indices onto one object, or overlap objects.
+ */
+function rawBplist(input: {
+  area: Buffer;
+  offsets: readonly number[];
+  refSize: 1 | 2;
+  top: number;
+}): Buffer {
+  const tableOffset = 8 + input.area.length;
+  const max = Math.max(...input.offsets);
+  const offsetSize = max > 0xffff ? 3 : max > 0xff ? 2 : 1;
+  const table = Buffer.alloc(input.offsets.length * offsetSize);
+  input.offsets.forEach((offset, i) =>
+    table.writeUIntBE(offset, i * offsetSize, offsetSize),
+  );
+  const trailer = Buffer.alloc(32);
+  trailer[6] = offsetSize;
+  trailer[7] = input.refSize;
+  trailer.writeBigUInt64BE(BigInt(input.offsets.length), 8);
+  trailer.writeBigUInt64BE(BigInt(input.top), 16);
+  trailer.writeBigUInt64BE(BigInt(tableOffset), 24);
+  return Buffer.concat([Buffer.from('bplist00'), input.area, table, trailer]);
+}
+
+/** An array header with a two-byte count, then `refs` as two-byte refs. */
+function wideArray(refs: readonly number[]): Buffer {
+  const body = Buffer.alloc(4 + refs.length * 2);
+  body[0] = 0xaf;
+  body[1] = 0x11;
+  body.writeUInt16BE(refs.length, 2);
+  refs.forEach((ref, i) => body.writeUInt16BE(ref, 4 + i * 2));
+  return body;
+}
+
+// #4515 fix round 5: the scan keys an object by its encoded bytes (its
+// offset), not its index. The reviewer's 192 KB profile aliased 16,000
+// indices onto one array of 16,000 references: keyed by index, that array
+// was expanded 16,000 times (256M steps, 5.18 s, before plutil runs).
+describe('a binary plist whose offset table aliases or overlaps objects', () => {
+  test('16,000 indices aliasing one array of 16,000 references is scanned once', () => {
+    const n = 16_000;
+    // index 0: the top array of indices 1..n; indices 1..n: one array of
+    // n references to the leaf; index n + 1: the leaf.
+    const top = wideArray(Array.from({ length: n }, (_, i) => i + 1));
+    const shared = wideArray(Array.from({ length: n }, () => n + 1));
+    const area = Buffer.concat([top, shared, Buffer.from([0x09])]);
+    const sharedAt = 8 + top.length;
+    const bytes = rawBplist({
+      area,
+      offsets: [
+        8,
+        ...Array.from({ length: n }, () => sharedAt),
+        8 + top.length + shared.length,
+      ],
+      refSize: 2,
+      top: 0,
+    });
+    const started = performance.now();
+    expect(binaryPlistKeyScanProblem(bytes)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(500);
+  }, 10_000);
+
+  test('containers that overlap in the file are refused before the scan reads past the file', () => {
+    // Every 4-byte unit is an array header whose count covers the units
+    // after it, and each is a distinct offset: n overlapping containers of
+    // up to 2n references, ~n^2 steps, from a file of ~6n bytes.
+    const n = 15_000;
+    const leafIndex = 0xaf11; // the header pair, read as a reference
+    const unitIndex = (i: number) => 45_000 + i;
+    const top = wideArray(Array.from({ length: n }, (_, i) => unitIndex(i)));
+    const units = Buffer.alloc(4 * n);
+    for (let i = 0; i < n; i += 1) {
+      units[4 * i] = 0xaf;
+      units[4 * i + 1] = 0x11;
+      units.writeUInt16BE(2 * (n - 1 - i), 4 * i + 2);
+    }
+    const area = Buffer.concat([top, units, Buffer.from([0x08])]);
+    const leafAt = 8 + area.length - 1;
+    const offsets = Array.from({ length: 45_000 + n }, () => leafAt);
+    offsets[1] = 8;
+    for (let i = 0; i < n; i += 1)
+      offsets[unitIndex(i)] = 8 + top.length + 4 * i;
+    expect(offsets[leafIndex]).toBe(leafAt);
+    const bytes = rawBplist({ area, offsets, refSize: 2, top: 1 });
+    expect(bytes.length).toBeLessThan(1024 * 1024);
+    const started = performance.now();
+    expect(binaryPlistKeyScanProblem(bytes)).toBe(
+      'it is a binary property list Station cannot read',
+    );
+    expect(performance.now() - started).toBeLessThan(500);
+  }, 10_000);
+
+  test('a cycle through two indices that alias one array is refused', () => {
+    // index 0: [1]; indices 1 and 2: the same array, [2].
+    const area = Buffer.from([0xa1, 0x01, 0xa1, 0x02]);
+    expect(
+      binaryPlistKeyScanProblem(
+        rawBplist({ area, offsets: [8, 10, 10], refSize: 1, top: 0 }),
+      ),
+    ).toBe('it is a binary property list Station cannot read');
+  });
+
+  test('a dict two indices alias is one dict: its own repeated key is still found', () => {
+    // index 0: [1, 2]; indices 1 and 2: one dict { k: true, k: true }.
+    const dict = (keys: [number, number]) => Buffer.from([0xd2, ...keys, 4, 4]);
+    const build = (keys: [number, number], second: number) =>
+      rawBplist({
+        // 0: array [1, 2] at 8; dict at 11; "k" at 16; "j" at 18; true at 20
+        area: Buffer.concat([
+          Buffer.from([0xa2, 0x01, 0x02]),
+          dict(keys),
+          Buffer.from([0x51, 0x6b]),
+          Buffer.from([0x51, 0x6a]),
+          Buffer.from([0x09]),
+        ]),
+        offsets: [8, 11, second, 16, 20, 18],
+        refSize: 1,
+        top: 0,
+      });
+    expect(binaryPlistKeyScanProblem(build([3, 3], 11))).toBe(
+      'it repeats the key k',
+    );
+    expect(binaryPlistKeyScanProblem(build([3, 5], 11))).toBeNull();
+  });
+});
