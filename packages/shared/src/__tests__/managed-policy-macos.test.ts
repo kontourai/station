@@ -480,18 +480,20 @@ function bplist(objects: BplistObject[], top = 0): Buffer {
     offsets.push(at);
     at += body.length;
   }
+  // Offsets are as wide as the body needs (plutil does the same): a
+  // one-byte table would wrap past 255 and point at the wrong objects.
+  const offsetSize = at > 0xff ? 2 : 1;
+  const table = Buffer.alloc(offsets.length * offsetSize);
+  offsets.forEach((offset, i) =>
+    table.writeUIntBE(offset, i * offsetSize, offsetSize),
+  );
   const trailer = Buffer.alloc(32);
-  trailer[6] = 1; // offset size
+  trailer[6] = offsetSize;
   trailer[7] = 1; // object reference size
   trailer.writeBigUInt64BE(BigInt(objects.length), 8);
   trailer.writeBigUInt64BE(BigInt(top), 16);
   trailer.writeBigUInt64BE(BigInt(at), 24);
-  return Buffer.concat([
-    Buffer.from('bplist00'),
-    ...bodies,
-    Buffer.from(offsets),
-    trailer,
-  ]);
+  return Buffer.concat([Buffer.from('bplist00'), ...bodies, table, trailer]);
 }
 
 // #4515 fix round 2: duplicate validation covers every encoding plutil
@@ -685,6 +687,18 @@ describe('a binary plist that shares references is scanned in bounded work', () 
     expect(binaryPlistKeyScanProblem(bytes)).toBe(
       'it is a binary property list Station cannot read',
     );
+    // The same structure with fewer references (a well-formed file of the
+    // same encoding, two-byte offsets included) reads: the refusal above
+    // is the budget, not a malformed table.
+    // 4 objects allow 272 visits; this takes 203.
+    const fewer = bplist([
+      { array: [1, 2] },
+      { array: Array.from({ length: 100 }, () => 3) },
+      { array: Array.from({ length: 100 }, () => 3) },
+      { string: 'x'.repeat(120) },
+    ]);
+    expect(fewer.readUInt8(fewer.length - 26)).toBe(2);
+    expect(binaryPlistKeyScanProblem(fewer)).toBeNull();
     // At the profile source, before conversion: the invalid-policy error,
     // and the converter is never asked.
     const path = join(makeTempDir('station-policy-budget-'), 'p.plist');
