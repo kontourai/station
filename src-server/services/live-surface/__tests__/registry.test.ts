@@ -851,6 +851,31 @@ describe('server-owned release of pressed input (#90 B)', () => {
     expect(order).toEqual(['key:down', 'key:up', 'text']);
   });
 
+  test('a release request arriving while an attempt is in flight is answered at once instead of queuing behind it (round 7, item 4)', async () => {
+    const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 2_000 });
+    await dispatchHumanInput(entry, human, 0, [shift('down')]);
+    let cancels = 0;
+    producer.dispatchImpl = (event) => {
+      if (event.kind === 'key' && event.type === 'up') {
+        cancels += 1;
+        return sleep(300);
+      }
+      return Promise.resolve();
+    };
+    const started = Date.now();
+    const first = releaseHumanPressed(entry, human);
+    await sleep(0);
+    const later = await Promise.all(
+      Array.from({ length: 4 }, () => releaseHumanPressed(entry, human)),
+    );
+    // Answered while the first attempt is still running.
+    expect(Date.now() - started).toBeLessThan(150);
+    for (const answer of later)
+      expect(answer).toMatchObject({ ok: false, code: 'release-pending' });
+    expect((await first).ok).toBe(true);
+    expect(cancels).toBe(1);
+  });
+
   test('release requests against a hung cancel share one attempt: one producer call, and every request is answered (round 7, item 4)', async () => {
     const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 30 });
     await dispatchHumanInput(entry, human, 0, [shift('down')]);
