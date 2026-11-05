@@ -713,6 +713,108 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
     );
   });
 
+  test("#4512 review: an agent's send that starts a new delegated child is delegation, and so is its next send into that stamped child", async () => {
+    installCurrentStation(workspace);
+    const { claude, eventStore, service } = compose();
+    const events = (
+      claude as unknown as { events: AsyncEventQueue<CanonicalRuntimeEvent> }
+    ).events;
+    claude.sendTurn.mockImplementation(async (input: ProviderSendTurnInput) => {
+      const turnId = `turn-${claude.sendTurn.mock.calls.length}`;
+      const base = {
+        provider: 'claude',
+        threadId: input.threadId,
+        turnId,
+        ...(input.invocationId ? { invocationId: input.invocationId } : {}),
+      };
+      events.push({
+        ...base,
+        eventId: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+      } as CanonicalRuntimeEvent);
+      queueMicrotask(() =>
+        events.push({
+          ...base,
+          eventId: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          method: 'turn.completed',
+        } as CanonicalRuntimeEvent),
+      );
+      return { threadId: input.threadId, turnId };
+    });
+    const authority = sessionReadAuthorityFromRequest(
+      OWNER,
+      undefined,
+      undefined,
+    );
+    const target = {
+      environment: { kind: 'current' as const },
+      agent: agentId('task-lead'),
+      workspace: {
+        kind: 'project' as const,
+        projectSlug: 'project-alpha',
+        ...(workspace ? { cwd: workspace } : {}),
+      },
+    };
+    const delegation = {
+      mode: 'isolated-child' as const,
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: agentId('task-lead'),
+      rootAgentSlug: agentId('task-lead'),
+    };
+    const originOf = (sessionId: string, turnId: string) =>
+      eventStore
+        .listEventsByMethods(sessionId, ['turn.started'])
+        .map((event) => event.payload as unknown as Record<string, unknown>)
+        .find((payload) => payload.turnId === turnId)?.dispatchOrigin;
+
+    // No conversation named: the send starts a new delegated child.
+    const child = await executeExecutionTargetMessage(
+      {
+        target,
+        message: 'Investigate the flaky test.',
+        clientTurnId: 'agent-new',
+        userId: OWNER,
+        readAuthority: authority,
+        delegation,
+        delegationProvenance: 'caller-derived',
+      },
+      service,
+    );
+    await vi.waitFor(() =>
+      expect(originOf(child.sessionId, child.providerTurnId)).toBe(
+        'delegation',
+      ),
+    );
+    // The start carries Station's own provenance stamp (not a mock).
+    expect(service.sessionDispatchFacts(child.sessionId).delegatedChild).toBe(
+      true,
+    );
+    await vi.waitFor(() =>
+      expect(service.hasActiveTurn(child.sessionId)).toBe(false),
+    );
+
+    // The agent's next send into that stamped child is delegated work too.
+    const next = await executeExecutionTargetMessage(
+      {
+        target,
+        message: 'Also check the retry path.',
+        clientTurnId: 'agent-next',
+        conversationId: child.conversationId,
+        userId: OWNER,
+        readAuthority: authority,
+        delegation,
+        delegationProvenance: 'caller-derived',
+      },
+      service,
+    );
+    await vi.waitFor(() =>
+      expect(originOf(next.sessionId, next.providerTurnId)).toBe('delegation'),
+    );
+  });
+
   test('a seeded dispatch records a known Agent and refuses an unknown one', async () => {
     installCurrentStation(workspace);
     const { app, graph, claude } = compose();
