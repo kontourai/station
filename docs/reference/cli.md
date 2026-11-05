@@ -911,8 +911,9 @@ side effects. `config get` reads through the live route when reachable
 (showing a provenance note when the value comes from the environment or from
 the managed policy). On a transport
 failure it prints a notice and shows the local home's file instead, with the
-installed managed policy's locks and defaults applied; that is not a reading
-of the unavailable target Station's configuration.
+installed managed policy's locks and defaults applied and the same managed
+note (`config get --offline` reads it this way directly); that is not a
+reading of the unavailable target Station's configuration.
 
 A mistyped action is a failure, not a listing: `station config sett` exits
 non-zero and names the valid actions.
