@@ -588,7 +588,8 @@ test('R6-4: many release calls make one request at a time, and an obligation sti
   server = await realLiveSurfaceServer();
   let inflight = 0;
   let maxInflight = 0;
-  let failures = 6;
+  // One more failure than the old six-try limit allowed.
+  let failures = 7;
   const base = server.transport({
     fail: (url, body) => isRelease(url, body) && failures-- > 0,
   });
@@ -612,9 +613,11 @@ test('R6-4: many release calls make one request at a time, and an obligation sti
   act(() => {
     for (let call = 0; call < 8; call += 1) a.result.current.releasePressed();
   });
-  await waitFor(() => expect(releaseRequests(server!)).toBe(6), {
-    timeout: 9_000,
+  // A seventh try, with no reconnect to prompt it: the worker never gave up.
+  await waitFor(() => expect(releaseRequests(server!)).toBe(7), {
+    timeout: 15_000,
   });
+  expect(server.remotePressed()).toEqual(['key:ShiftLeft']);
   expect(maxInflight).toBe(1);
   // Back in touch with the host: the obligation is tried again at once.
   server.dropStreams();
@@ -622,7 +625,7 @@ test('R6-4: many release calls make one request at a time, and an obligation sti
     timeout: 5_000,
   });
   a.unmount();
-}, 20_000);
+}, 30_000);
 
 test("R6-5: a stream reopened for new params verifies the Station before it presents this viewer's id", async () => {
   server = await realLiveSurfaceServer();
