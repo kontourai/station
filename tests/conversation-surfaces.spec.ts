@@ -624,6 +624,39 @@ for (const access of ['owner', 'member', 'guest'] as const) {
               },
             }),
           );
+          await page.route('**/api/auth/authority', (route) =>
+            route.request().method() === 'GET'
+              ? route.fulfill({
+                  json: {
+                    schemaVersion: 'station.authority-observation/v1',
+                    environmentId: 'history-station',
+                    principal: {
+                      kind: 'human',
+                      id: 'human:deployment:' + 'a'.repeat(64),
+                    },
+                    grant: {
+                      kind: 'device',
+                      deviceId: 'history-guest-device',
+                      grantedScopes: ['orchestration:read'],
+                    },
+                  },
+                })
+              : rejectUnexpectedFixtureRequest(route),
+          );
+          await page.route(
+            '**/api/projects/' + project.slug + '/access',
+            (route) =>
+              route.request().method() === 'GET'
+                ? route.fulfill({
+                    status: 403,
+                    json: {
+                      success: false,
+                      error: 'project_access_forbidden',
+                      code: 'project_access_forbidden',
+                    },
+                  })
+                : rejectUnexpectedFixtureRequest(route),
+          );
           await page.route('**/api/projects', (route) =>
             route.request().method() === 'GET'
               ? route.fulfill({
@@ -636,6 +669,14 @@ for (const access of ['owner', 'member', 'guest'] as const) {
             .getByRole('button', { name: 'Read Project details' })
             .click();
           await page.getByRole('button', { name: 'Read shared Task' }).click();
+          await expect(
+            page.getByRole('region', { name: 'People and access' }),
+          ).toContainText(
+            'People and invitation management is limited to Project admins.',
+          );
+          await expect(
+            page.getByText(/This browser’s approval changed/),
+          ).toHaveCount(0);
         } else {
           await page.goto(
             stations.source.ui + '/projects/' + project.slug + '?section=tasks',
