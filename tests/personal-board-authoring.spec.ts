@@ -862,6 +862,20 @@ for (const width of [390, 1440]) {
         await expect(
           page.getByRole('dialog', { name: 'Unsaved Changes' }),
         ).toHaveCount(0);
+        const projectPicker = page.getByRole('combobox', {
+          name: 'Project for a Project watch',
+          exact: true,
+        });
+        await expect(projectPicker).toHaveCSS('color-scheme', colorScheme);
+        const pickerBox = await projectPicker.boundingBox();
+        expect(pickerBox).not.toBeNull();
+        expect(pickerBox!.height).toBeGreaterThanOrEqual(44);
+        expect(pickerBox!.x).toBeGreaterThanOrEqual(0);
+        expect(pickerBox!.x + pickerBox!.width).toBeLessThanOrEqual(width);
+        await page.screenshot({
+          path: testInfo.outputPath('apps-board-host.png'),
+          fullPage: true,
+        });
         await openLibrary();
         await library.getByLabel('Search apps').fill(name);
         const launch = library.getByRole('button', {
