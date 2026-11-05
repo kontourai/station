@@ -2183,7 +2183,11 @@ Project-effective settings. Invalid/missing Project selections return 400/404.
 With a [managed policy](../guides/managed-policy.md#settings) installed, `data`
 holds the managed values in effect, and `provenance` reports `{source:
 'managed', locked, organization, supportUrl}` for each value the policy
-supplied; it never carries the value.
+supplied; it never carries the value. Under the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
+`defaultApprovalMode` is the default as it applies, lowered to the ceiling; a
+saved default above it stays saved, and a `PUT` that sends the lowered value
+back leaves it unchanged.
 
 ### Update App Configuration
 
@@ -3642,7 +3646,11 @@ listed, as `expired`, until it is revoked.
 
 These [routes](../../src-server/routes/agents/invoke.ts) execute against Station's
 active managed Agent map. An external-engine Agent being listed in the catalog
-does not make it callable through this map; use orchestration for its lifecycle.
+does not make it callable through this map; use orchestration for its lifecycle. On a
+machine whose [managed policy](../guides/managed-policy.md#engines) does not
+allow `station-agent`, `/agents/:slug/invoke`, `/agents/:slug/invoke/stream`
+and `/invoke` answer `403` with `code: "managed-policy-engine-refused"` before
+a run is recorded.
 The [request schemas](../../src-server/routes/schemas/schema-definitions/runtime.ts)
 distinguish `input` on named invoke from `prompt` on global/legacy stream invoke.
 
