@@ -145,7 +145,7 @@ export type TaskFollowUpWakeOutcome =
     };
 
 /** The inbox key: one per Task incarnation and set of GitHub items. */
-export function taskFollowUpWakeKey(
+function taskFollowUpWakeKey(
   task: TaskIncarnation,
   items: readonly Pick<FollowUpItem, 'kind' | 'githubId'>[],
 ): string {
