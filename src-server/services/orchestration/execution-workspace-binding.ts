@@ -14,23 +14,39 @@ type Coordinate = Readonly<{
 const bindings = new WeakMap<object, Coordinate>();
 const verifier = new WorktreeProvisioningService();
 
-/** Reuse canonical Git/session ownership verification; metadata alone is insufficient. */
-export async function captureExecutionWorkspaceBinding(input: {
-  threadId: string;
-  ownerThreadId: string;
-  projectSlug: string;
-  cwd: string;
-  worktree: WorktreeSessionMetadata;
-}): Promise<ExecutionWorkspaceBinding> {
+/**
+ * Reuse canonical Git/session ownership verification; metadata alone is
+ * insufficient. The owner is the Session that provisioned the worktree
+ * (`ownerThreadId`) or, #4507, the Task that owns it (`ownerTaskId`); the
+ * caller establishes which Task a Session belongs to from server-owned
+ * state, never from the metadata itself.
+ */
+export async function captureExecutionWorkspaceBinding(
+  input: {
+    threadId: string;
+    projectSlug: string;
+    cwd: string;
+    worktree: WorktreeSessionMetadata;
+  } & (
+    | { ownerThreadId: string; ownerTaskId?: never }
+    | { ownerTaskId: string; ownerThreadId?: never }
+  ),
+): Promise<ExecutionWorkspaceBinding> {
   try {
     if (
       !input.threadId ||
-      !input.ownerThreadId ||
+      !(input.ownerThreadId || input.ownerTaskId) ||
       !input.projectSlug ||
       input.cwd !== input.worktree.path
     )
       throw new Error('Invalid workspace binding');
-    await verifier.assertSessionWorkspace(input.worktree, input.ownerThreadId);
+    if (input.ownerTaskId)
+      await verifier.assertTaskWorkspace(input.worktree, input.ownerTaskId);
+    else
+      await verifier.assertSessionWorkspace(
+        input.worktree,
+        input.ownerThreadId!,
+      );
     const binding = Object.freeze({}) as ExecutionWorkspaceBinding;
     bindings.set(
       binding,
