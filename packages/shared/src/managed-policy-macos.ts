@@ -173,8 +173,7 @@ export function plistKeyScanProblem(xml: string): string | null {
       continue;
     }
     if (name === 'key') {
-      if (closing || selfClosing)
-        return 'it holds a <key> Station cannot read';
+      if (closing || selfClosing) return 'it holds a <key> Station cannot read';
       keyRaw = '';
       continue;
     }

@@ -328,11 +328,20 @@ describe('duplicatePlistKeyPath', () => {
   // seen by the scan, and markup the scan cannot tokenize refuses the
   // profile rather than being skipped.
   test.each([
-    ['<dict><key >limits</key><true/><key>limits</key><true/></dict>', 'limits'],
-    ['<dict><key>limits</key><true/><key\n\t>limits</key ><true/></dict>', 'limits'],
-  ])('finds a repeat whatever the whitespace in the key tag: %s', (body, path) => {
-    expect(duplicatePlistKeyPath(plist(body))).toBe(path);
-  });
+    [
+      '<dict><key >limits</key><true/><key>limits</key><true/></dict>',
+      'limits',
+    ],
+    [
+      '<dict><key>limits</key><true/><key\n\t>limits</key ><true/></dict>',
+      'limits',
+    ],
+  ])(
+    'finds a repeat whatever the whitespace in the key tag: %s',
+    (body, path) => {
+      expect(duplicatePlistKeyPath(plist(body))).toBe(path);
+    },
+  );
 
   test.each([
     ['an attribute on a key', '<dict><key id="x">limits</key><true/></dict>'],
@@ -373,7 +382,7 @@ describe('duplicatePlistKeyPath', () => {
     },
   );
 
-  test('the reviewer\'s profile (<key > limits with telemetry off, then a second limits) is refused as invalid', () => {
+  test("the reviewer's profile (<key > limits with telemetry off, then a second limits) is refused as invalid", () => {
     const path = join(makeTempDir('station-policy-profile-'), 'p.plist');
     writeFileSync(
       path,
@@ -389,7 +398,11 @@ describe('duplicatePlistKeyPath', () => {
           // The conversion plutil would give: the second `limits` wins.
           hasPlutil
             ? plutilConverter()
-            : jsonConverter({ schemaVersion: 1, organization: 'Acme', limits: {} }),
+            : jsonConverter({
+                schemaVersion: 1,
+                organization: 'Acme',
+                limits: {},
+              }),
         ),
       ]);
     expect(load).toThrow(ManagedPolicyInvalidError);
