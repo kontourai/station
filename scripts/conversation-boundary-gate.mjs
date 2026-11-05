@@ -138,7 +138,11 @@ function exportedNames(ast) {
   return result;
 }
 
-/** Git supplies tracked AND nonignored untracked source; never traverses links. */
+/**
+ * Git supplies tracked AND nonignored untracked source; never traverses links.
+ * @param {string} [root]
+ * @param {(command: string, args: readonly string[], options: { cwd: string; encoding: 'utf8'; windowsHide: boolean }) => string} [capture]
+ */
 export function discoverConversationFiles(
   root = process.cwd(),
   capture = execFileSyncBounded,
