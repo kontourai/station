@@ -1236,6 +1236,13 @@ export interface StationCapabilityFlags {
    * the new dedup/skip-refetch behavior.
    */
   eventStreamResume?: boolean;
+  /**
+   * Live surfaces accept a `requestId` on claims and input, answer with the
+   * `epochCause` of the current epoch, take `epochCause=1` on the frames
+   * stream, and accept the `release-pressed` lease action. Absent: an older
+   * host that refuses those, so a viewer sends none of them.
+   */
+  liveSurfaceEpochCause?: boolean;
   /** The versioned bounded per-session event-window protocol is available. */
   sessionEventWindow?: boolean;
   /**

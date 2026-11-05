@@ -159,6 +159,8 @@ class HubViewer implements LiveSurfaceViewer {
     readonly freshOnly: boolean,
     readonly attachedAt: number,
     readonly attachedAfter: number,
+    /** This viewer asked for `epochCause` on its state records. */
+    readonly epochCause = false,
   ) {}
 
   /**
@@ -254,7 +256,11 @@ class HubViewer implements LiveSurfaceViewer {
       this.busy = true;
       return {
         kind: 'state',
-        state: this.hub.state(this.identity, this.agentActions),
+        state: this.hub.state(
+          this.identity,
+          this.agentActions,
+          this.epochCause,
+        ),
       };
     }
     const frame = this.codec === 'h264' ? this.videoQueue.shift() : this.slot;
@@ -361,6 +367,8 @@ export class LiveSurfaceHub {
       codec?: LiveSurfaceViewerCodec;
       /** Ignore cached and queued images captured before this viewer attached. */
       freshOnly?: boolean;
+      /** Put `epochCause` on this viewer's state records (it asked). */
+      epochCause?: boolean;
     },
   ): LiveSurfaceViewer {
     if (this.disposed) throw new Error('live surface hub is disposed');
@@ -374,6 +382,7 @@ export class LiveSurfaceHub {
       options?.freshOnly === true,
       this.now(),
       this.frameArrival,
+      options?.epochCause === true,
     );
     if (options?.freshOnly) viewer.skipFrame = this.pending;
     if (
@@ -447,6 +456,7 @@ export class LiveSurfaceHub {
   state(
     viewer?: LiveSurfaceViewerIdentity,
     agentActions?: () => boolean,
+    epochCause = false,
   ): LiveSurfaceStreamState {
     const health = this.inputHealth();
     let includeActions = false;
@@ -469,6 +479,7 @@ export class LiveSurfaceHub {
             },
           }
         : {}),
+      ...(epochCause ? { epochCause: this.lease.epochCause() } : {}),
     };
   }
 

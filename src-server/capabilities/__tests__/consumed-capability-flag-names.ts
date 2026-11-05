@@ -10,6 +10,7 @@ export const TABLED_CAPABILITY_FLAGS: readonly string[] = Object.freeze([
   'connectionRoutes',
   'coordinatorSession',
   'eventStreamResume',
+  'liveSurfaceEpochCause',
   'privateOperationalOutcomes',
   'scheduledConversationTarget',
   'sessionEventWindow',

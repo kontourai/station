@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { SyntheticLiveSurfaceProducer } from '../../../__test-utils__/synthetic-live-surface-producer.js';
 import type { LiveSurfaceHeldInput } from '../producer.js';
 import {
+  attachHumanViewer,
   claimAgentControl,
   claimHumanControl,
   dispatchAgentInput,
@@ -11,6 +12,7 @@ import {
   LiveSurfaceRegistry,
   type LiveSurfaceRegistryOptions,
   releaseHumanControl,
+  releaseHumanPressed,
 } from '../registry.js';
 
 const agent = {
@@ -699,5 +701,79 @@ describe('onExplicitControl (#90: only a person’s explicit claim or release)',
       release: { ok: true, holder: null },
       after: null,
     });
+  });
+});
+
+describe('server-owned release of pressed input (#90 B)', () => {
+  const other = {
+    kind: 'human',
+    principal: 'human:local:other',
+    device: 'device:b',
+  } as const;
+  /** What is down on the surface, replayed from what it received. */
+  const downOn = (producer: SyntheticLiveSurfaceProducer) => {
+    const down = new Set<string>();
+    for (const event of producer.dispatched)
+      if (
+        event.kind === 'pointer' &&
+        (event.type === 'down' || event.type === 'up')
+      )
+        if (event.type === 'down') down.add(event.button ?? 'left');
+        else down.delete(event.button ?? 'left');
+    return [...down];
+  };
+
+  test("release-pressed releases only the caller's presses, fenced by the epoch it holds", async () => {
+    const { producer, entry } = setup();
+    const first = await dispatchHumanInput(entry, human, 0, [
+      press('down', 5, 5),
+    ]);
+    expect(first.ok).toBe(true);
+    const epoch = entry.lease.snapshot().epoch;
+    // A stale epoch, or a caller who does not hold control, releases nothing.
+    expect(releaseHumanPressed(entry, human, epoch - 1)).toMatchObject({
+      ok: false,
+      code: 'stale-epoch',
+    });
+    expect(releaseHumanPressed(entry, other, epoch)).toMatchObject({
+      ok: false,
+      code: 'not-holder',
+    });
+    await settleChain();
+    expect(downOn(producer)).toEqual(['left']);
+    expect(releaseHumanPressed(entry, human, epoch).ok).toBe(true);
+    await settleChain();
+    expect(downOn(producer)).toEqual([]);
+  });
+
+  test("a controller's presses are released when its last viewer stream closes, not before", async () => {
+    const { producer, entry } = setup();
+    const tabOne = attachHumanViewer(entry, human);
+    const tabTwo = attachHumanViewer(entry, human);
+    await dispatchHumanInput(entry, human, 0, [press('down', 5, 5)]);
+    tabOne();
+    await settleChain();
+    // The other tab of the same person and device can still see it.
+    expect(downOn(producer)).toEqual(['left']);
+    tabTwo();
+    await settleChain();
+    expect(downOn(producer)).toEqual([]);
+  });
+
+  test("an input or claim answer carries the epoch's cause only when it named a request", async () => {
+    const { entry } = setup();
+    const withId = await dispatchHumanInput(
+      entry,
+      human,
+      0,
+      [move(1)],
+      'viewer-request-0001',
+    );
+    expect(withId.epochCause).toEqual({ requestId: 'viewer-request-0001' });
+    const without = await dispatchHumanInput(entry, human, 1, [move(2)]);
+    expect('epochCause' in without).toBe(false);
+    // A renewal claim reports the cause of the epoch it did not create.
+    const renewal = claimHumanControl(entry, human, 'viewer-request-0002');
+    expect(renewal.epochCause).toEqual({ requestId: 'viewer-request-0001' });
   });
 });

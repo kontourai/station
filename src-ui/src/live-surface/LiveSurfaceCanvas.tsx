@@ -1034,6 +1034,15 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       heldRef.current.clear();
       return;
     }
+    // A host that releases presses itself does it (it knows what landed);
+    // on an older host this viewer sends its own releases.
+    if (
+      (heldRef.current.size > 0 || keys.length > 0) &&
+      current.releasePressed()
+    ) {
+      heldRef.current.clear();
+      return;
+    }
     releaseHeld();
     if (keys.length > 0)
       sendInput(
@@ -1042,6 +1051,15 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   };
   const releaseEverythingRef = useRef(releaseEverything);
   releaseEverythingRef.current = releaseEverything;
+  // Going away with something pressed: the host releases it (it also does
+  // when this viewer's stream closes, which unmounting ends).
+  useEffect(
+    () => () => {
+      if (heldRef.current.size > 0 || heldKeysRef.current.size > 0)
+        surfaceRef.current.releasePressed();
+    },
+    [],
+  );
   useEffect(() => {
     const onHidden = () => {
       if (document.visibilityState === 'hidden') releaseEverythingRef.current();

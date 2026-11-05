@@ -393,3 +393,47 @@ describe('a person keep-alive (not input, capped from their last real input)', (
     expect(state.keepHumanAlive(alice, second).ok).toBe(true);
   });
 });
+
+describe('epoch cause (#90 A)', () => {
+  const me = {
+    kind: 'human',
+    principal: 'human:me',
+    device: 'device:mine',
+  } as const;
+  const other = {
+    kind: 'human',
+    principal: 'human:other',
+    device: 'device:theirs',
+  } as const;
+
+  test('the request whose handoff created the epoch is its cause; a renewal by the same controller changes nothing', () => {
+    const lease = new LiveSurfaceControlLeaseState('surface-1');
+    expect(lease.epochCause()).toBeNull();
+    lease.claimForHumanInput(me, 0, 'tab-one-request-0001');
+    expect(lease.snapshot().epoch).toBe(1);
+    expect(lease.epochCause()).toEqual({ requestId: 'tab-one-request-0001' });
+    // Another tab of the same person and device: the same controller, so
+    // no handoff, no new epoch, and the cause stays the first tab's.
+    lease.claimHuman(me, 'tab-two-request-0002');
+    lease.claimForHumanInput(me, 1, 'tab-two-request-0003');
+    expect(lease.snapshot().epoch).toBe(1);
+    expect(lease.epochCause()).toEqual({ requestId: 'tab-one-request-0001' });
+    // Someone else's takeover is caused by their request.
+    lease.claimForHumanInput(other, 1, 'other-request-00004');
+    expect(lease.snapshot().epoch).toBe(2);
+    expect(lease.epochCause()).toEqual({ requestId: 'other-request-00004' });
+  });
+
+  test('an agent takeover, or a request without an id, has no cause', () => {
+    const lease = new LiveSurfaceControlLeaseState('surface-1');
+    lease.claimForHumanInput(me, 0, 'tab-one-request-0001');
+    // An agent never preempts a live human hold: released first.
+    lease.release(me, { epoch: 1 });
+    expect(lease.claimForAgent('agent:coder', 'session-1').ok).toBe(true);
+    expect(lease.snapshot().epoch).toBe(2);
+    expect(lease.epochCause()).toBeNull();
+    lease.claimHuman(other);
+    expect(lease.snapshot().epoch).toBe(3);
+    expect(lease.epochCause()).toBeNull();
+  });
+});
