@@ -1,6 +1,6 @@
 # Dependency security
 
-Station uses one root `pnpm-lock.yaml` for its workspace. Root, SDK, and Shared
+Station uses one root `pnpm-lock.yaml` for its workspace. Dated remediation tables below record the versions inspected for those advisories; read the current manifest and resolved lockfile for today's exact versions. A dependency refresh does not rerun every historical advisory or provider probe. Root, SDK, and Shared
 remain separate advisory views of that graph; they no longer own independent
 npm lockfiles.
 
