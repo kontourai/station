@@ -1,4 +1,11 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -41,6 +48,162 @@ describe('knowledge source registry lifecycle on real storage', () => {
       expect.arrayContaining([first, second]),
     );
     expect(await store.listRoots()).toHaveLength(2);
+  });
+
+  test.each(['private-first', 'shared-first'] as const)(
+    'registry refuses overlapping private and shared roots (%s)',
+    async (order) => {
+      const directory = join(home, 'memory');
+      const privateRoot = {
+        id: 'root:private-test',
+        scope: { kind: 'personal' as const },
+        readPolicy: { kind: 'author-private' as const, ownerId: 'human:owner' },
+        adapterId: 'kit-default-store',
+        storeRoot: directory,
+        displayName: 'Private',
+        createdAt: new Date().toISOString(),
+      };
+      const sharedRoot = {
+        id: 'root:shared-test',
+        scope: { kind: 'personal' as const },
+        adapterId: 'kit-default-store',
+        storeRoot: `${directory}/`,
+        displayName: 'Shared',
+        createdAt: new Date().toISOString(),
+      };
+      const first = order === 'private-first' ? privateRoot : sharedRoot;
+      const second = order === 'private-first' ? sharedRoot : privateRoot;
+      await persistence.saveKnowledgeStoreRoot(first, { createOnly: true });
+      await expect(
+        persistence.saveKnowledgeStoreRoot(second, { createOnly: true }),
+      ).rejects.toThrow();
+      expect(await store.listRoots()).toEqual([first]);
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'a shared alias retargeted to a private root is refused at adapter access',
+    async () => {
+      const privateDir = join(home, 'private');
+      const publicDir = join(home, 'public');
+      const moved = join(home, 'public-old');
+      mkdirSync(privateDir);
+      mkdirSync(publicDir);
+      await store.createRoot({
+        scope: { kind: 'personal' },
+        readPolicy: { kind: 'author-private', ownerId: 'human:owner' },
+        adapterId: 'kit-default-store',
+        storeRoot: privateDir,
+        displayName: 'Private',
+      });
+      const shared = await store.createRoot({
+        scope: { kind: 'personal' },
+        adapterId: 'kit-default-store',
+        storeRoot: publicDir,
+        displayName: 'Shared',
+      });
+      await store.adapterFor(shared.id);
+      renameSync(publicDir, moved);
+      symlinkSync(privateDir, publicDir, 'dir');
+      await expect(store.adapterFor(shared.id)).rejects.toThrow();
+    },
+  );
+
+  test('registry overlap check serializes concurrent private and shared registrations', async () => {
+    const directory = join(home, 'memory');
+    const common = {
+      scope: { kind: 'personal' as const },
+      adapterId: 'kit-default-store',
+      storeRoot: directory,
+      createdAt: new Date().toISOString(),
+    };
+    const results = await Promise.allSettled([
+      persistence.saveKnowledgeStoreRoot(
+        {
+          ...common,
+          id: 'root:private',
+          displayName: 'Private',
+          readPolicy: { kind: 'author-private', ownerId: 'human:owner' },
+        },
+        { createOnly: true },
+      ),
+      new FileStorageAdapter(home).saveKnowledgeStoreRoot(
+        { ...common, id: 'root:shared', displayName: 'Shared' },
+        { createOnly: true },
+      ),
+    ]);
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(1);
+    expect(await store.listRoots()).toHaveLength(1);
+  });
+
+  test('root registration captures its private owner before waiting for the registry lock', async () => {
+    const anchor = await store.createRoot({
+      scope: { kind: 'personal' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(home, 'anchor'),
+      displayName: 'Anchor',
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = persistence.withKnowledgeStoreRoot(anchor, async () => {
+      entered();
+      await blocked;
+    });
+    await started;
+    const root = {
+      id: 'root:private-captured',
+      scope: { kind: 'personal' as const },
+      readPolicy: { kind: 'author-private' as const, ownerId: 'human:owner' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(home, 'private'),
+      displayName: 'Private',
+      createdAt: new Date().toISOString(),
+    };
+    const pending = persistence.saveKnowledgeStoreRoot(root, {
+      createOnly: true,
+    });
+    root.readPolicy.ownerId = 'human:other';
+    release();
+    await held;
+    await pending;
+    expect((await store.getRoot(root.id))?.readPolicy).toEqual({
+      kind: 'author-private',
+      ownerId: 'human:owner',
+    });
+  });
+
+  test('root registration rechecks authority immediately before publishing', async () => {
+    let checks = 0;
+    const root = {
+      id: 'root:private',
+      scope: { kind: 'personal' as const },
+      readPolicy: { kind: 'author-private' as const, ownerId: 'human:owner' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(home, 'private'),
+      displayName: 'Private',
+      createdAt: new Date().toISOString(),
+    };
+    await expect(
+      persistence.saveKnowledgeStoreRoot(root, {
+        createOnly: true,
+        assertCurrent: () => {
+          checks += 1;
+          if (checks === 2) throw new Error('authority ended');
+        },
+      }),
+    ).rejects.toThrow('authority ended');
+    expect(await store.listRoots()).toEqual([]);
   });
 
   test('stale disconnect preserves a replacement; exact disconnect preserves source files', async () => {
@@ -176,6 +339,36 @@ describe('knowledge source registry lifecycle on real storage', () => {
       (await (await store.adapterFor(original.id)).get(recordId))?.body,
     ).toBe('Original document bytes');
     expect((await attach({ ...replaced, projectId })).status).toBe(409);
+  });
+  test('legacy attachment refuses an author-private root without changing its registration', async () => {
+    const projectId = '11111111-1111-4111-8111-111111111111';
+    const root = await store.createRoot({
+      scope: { kind: 'project', projectSlug: 'legacy' },
+      readPolicy: { kind: 'author-private', ownerId: 'human:another-owner' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(home, 'private'),
+      displayName: 'Private',
+    });
+    const app = createKnowledgeStoreRoutes({
+      store,
+      dataDir: home,
+      mayRegisterRoot: () => true,
+      projectIdForSlug: () => projectId,
+    });
+    const response = await app.request(
+      `/roots/${encodeURIComponent(root.id)}/attach-project`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedRoot: root,
+          projectSlug: 'current',
+          projectId,
+        }),
+      },
+    );
+    expect(response.status).toBe(409);
+    expect(await store.getRoot(root.id)).toEqual(root);
   });
   test('registration refuses a stale Project selection after real deletion and same-slug replacement', async () => {
     const slug = 'research';

@@ -87,8 +87,9 @@ export interface KnowledgeStoreRoot {
 
 /**
  * The Kit's adapter contract, §8 verbatim (+ A.6 supersede, B.5 retire).
- * Historical interface sketch. The current implementations are Station-owned
- * default-store and obsidian-store adapters over the published format. The original Kit contract described:
+ * Historical interface sketch. The original implementations were Station-owned
+ * default-store and obsidian-store adapters over the published format. The private-memory
+ * preview now composes Corpus Store through its public contract. The original Kit contract described:
  * "a JavaScript module (ESM) exporting a default class or factory function" whose
  * constructor/factory accepts `{ storeRoot }`.
  */
@@ -178,7 +179,7 @@ from the K2 stores, and no read path may treat an index hit as the record (alway
 `adapterFor(rootId).get(recordId)`).
 
 > **K3 landed (`s201-knowledge-retrieval`, issue archive#201, 2026-07-06).** Contract:
-> `packages/contracts/src/knowledge-index.ts` (transcribed verbatim from the block below). Built-in
+> `packages/contracts/src/knowledge-index.ts` (the block below is the original sketch; consult the contract for later additions). Built-in
 > provider: `src-server/knowledge-index/sqlite-vec-index-provider.ts` (`SqliteVecIndexProvider`,
 > `id: 'sqlite-vec'`), registered through `src-server/knowledge-index/index-adapter-registry.ts`
 > (`KnowledgeIndexAdapterRegistry` — a small `Map`-based, additive registry mirroring the K2 store

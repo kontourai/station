@@ -59,13 +59,16 @@ interface SessionTranscriptReadsDeps {
    */
   conversationIdForThread?: (threadId: string) => string;
   readUsageRevision: (threadId: string) => string;
-  listUsageEventPayloads: (threadId: string) => CanonicalRuntimeEvent[];
+  listUsageEventPayloads: EventStore['listUsageEventPayloads'];
   listUsageReceiptEvents: EventStore['listUsageReceiptEvents'];
   listUsageCoverageEvents: EventStore['listUsageCoverageEvents'];
   // Derived from the store's own method type — no re-declared row shape.
   searchConversationMessages: EventStore['searchConversationMessages'];
   transcriptOwnerConstraint?: SessionAuthorization['transcriptOwnerConstraint'];
-  readSessionThreadIds: (authority: SessionReadScope) => string[];
+  readSessionThreadIds: (
+    authority: SessionReadScope,
+    stationOwnedOnly?: boolean,
+  ) => string[];
   requireTenantExecutionContext: () => boolean;
   /**
    * Receives a token figure the fold refused as unusable while replaying
@@ -221,6 +224,35 @@ export class SessionTranscriptReads {
         .flatMap((threadId) => this.deps.listUsageEventPayloads(threadId)),
       (dropped) => this.deps.reportDroppedUsageFigure(dropped),
     );
+  }
+
+  /** Daily Lite counts use the canonical allocation with Station's durable clock. */
+  listDailyUsage(day: string, authority: SessionReadScope) {
+    if (this.deps.requireTenantExecutionContext()) return [];
+    return this.deps
+      .readSessionThreadIds(authority, true)
+      .flatMap((threadId) => {
+        if (
+          this.deps.isEphemeralSession(threadId) ||
+          !this.deps.canReadSession(threadId, authority)
+        )
+          return [];
+        const events = this.deps
+          .listUsageEventPayloads(threadId, 'observation')
+          .filter(
+            (event) =>
+              event.createdAt <= `${day}T23:59:59.999Z` &&
+              (event.method !== 'token-usage.updated' ||
+                providerUsageScope(event.provider) !== undefined),
+          );
+        return foldUsageObservationProjection(
+          events,
+          (dropped) => this.deps.reportDroppedUsageFigure(dropped),
+          { withholdResumedCumulativeUsage: true },
+        ).observations.filter(
+          (observation) => observation.recordedAt?.slice(0, 10) === day,
+        );
+      });
   }
 
   listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {

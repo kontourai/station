@@ -37,6 +37,15 @@
       "route": "/settings?view=system&highlight=desktop-app-updates"
     },
     {
+      "id": "show-release-notes",
+      "label": "Show changelog after updates",
+      "help": "This device shows what changed the first time a newer app version opens.",
+      "scope": "device",
+      "section": "system",
+      "route": "/settings?view=system&highlight=show-release-notes",
+      "configKey": "showReleaseNotesAfterUpdate"
+    },
+    {
       "id": "core-app-updates",
       "label": "Connected Station server",
       "scope": "station",

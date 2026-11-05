@@ -225,7 +225,7 @@ export class PgProductRepository implements ProductRepository {
     );
     if (rows.length) {
       if (
-        rows.length > 9 ||
+        rows.length > 10 ||
         rows[0].version !== 1 ||
         rows[0].digest !== SCHEMA_DIGEST
       )
@@ -347,7 +347,7 @@ export class PgProductRepository implements ProductRepository {
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
     if (
-      rows.length !== 9 ||
+      rows.length !== 10 ||
       rows[0].version !== 1 ||
       rows[0].digest !== SCHEMA_DIGEST ||
       rows[1].version !== 2 ||
@@ -357,7 +357,8 @@ export class PgProductRepository implements ProductRepository {
       rows[5].version !== 6 ||
       rows[6].version !== 7 ||
       rows[7].version !== 8 ||
-      rows[8].version !== 9
+      rows[8].version !== 9 ||
+      rows[9].version !== 10
     )
       throw new BrokerError('schema_incompatible');
     await assertLiteSchema(client);

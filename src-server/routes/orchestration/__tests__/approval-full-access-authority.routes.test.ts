@@ -29,6 +29,7 @@ import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture
 import { AgentConfigNotFoundError } from '../../../domain/config-loader-agents.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { bindFullAccessRefusalIdentity } from '../../../security/full-access-refusal.js';
+import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -826,4 +827,85 @@ test('a Station default that cannot be read counts as never', async () => {
       )
     ).status,
   ).toBeLessThan(300);
+});
+
+/**
+ * #4518: under a managed ceiling below full access, the Agent default rule is
+ * about the Agent's OWN default: writing an explicit `never` is refused even
+ * where the inherited Station default is already `never`, and clearing to an
+ * inherited `never` is allowed, because an inherited default is lowered to
+ * the ceiling where it applies.
+ */
+test('under a managed ceiling, an explicit Agent never is refused whatever it inherits, and clearing to an inherited never is allowed', async () => {
+  const f = await fixture({ stationDefault: 'never' });
+  installManagedApprovalCeiling({
+    summary: {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: { maxApprovalMode: 'auto' },
+    },
+  });
+  try {
+    // No default of its own, inheriting a stored Station `never`.
+    f.setPreviousDefault(undefined);
+    const refused = await f.post(
+      f.operator.credential,
+      '/api/agents/builder',
+      { execution: { approvalMode: 'never' } },
+      'PUT',
+    );
+    expect(refused.status).toBe(403);
+    expect(refused.body.code).toBe('managed-policy-approval-ceiling');
+    const created = await f.post(f.operator.credential, '/api/agents', {
+      name: 'Builder',
+      prompt: 'Build.',
+      execution: { approvalMode: 'never' },
+    });
+    expect(created.status).toBe(403);
+    expect(created.body.code).toBe('managed-policy-approval-ceiling');
+    expect(f.agentService.updateAgent).not.toHaveBeenCalled();
+    expect(f.agentService.createAgent).not.toHaveBeenCalled();
+
+    // Clearing an Agent's own `auto` falls back to the inherited `never`,
+    // which the resolver lowers: allowed, for a device without any grant too.
+    const delegate = f.pair('Delegate', 'delegation');
+    f.setPreviousDefault('auto');
+    for (const execution of [{}, null]) {
+      expect(
+        (
+          await f.post(
+            delegate.credential,
+            '/api/agents/builder',
+            { execution },
+            'PUT',
+          )
+        ).status,
+      ).toBeLessThan(300);
+    }
+    // So is creating an Agent with no default of its own.
+    expect(
+      (
+        await f.post(delegate.credential, '/api/agents', {
+          name: 'Builder',
+          prompt: 'Build.',
+        })
+      ).status,
+    ).toBeLessThan(300);
+
+    // An Agent `never` saved before the policy stays resendable.
+    f.setPreviousDefault('never');
+    expect(
+      (
+        await f.post(
+          f.operator.credential,
+          '/api/agents/builder',
+          { description: 'Edited', execution: { approvalMode: 'never' } },
+          'PUT',
+        )
+      ).status,
+    ).toBeLessThan(300);
+  } finally {
+    installManagedApprovalCeiling(null);
+  }
 });

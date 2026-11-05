@@ -49,6 +49,7 @@ import { parseKnowledgeStoreRoots } from '../../domain/file-storage-schemas.js';
 import { FileStorageConflictError } from '../../domain/project-file-transactions.js';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
+import { MEMORY_ADAPTER_ID } from '../../knowledge-store/memory-root.js';
 import {
   KNOWLEDGE_ROOT_NOT_FOUND_ERROR,
   RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR,
@@ -153,7 +154,11 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
       // conversation root; it is not user-selectable (see POST /roots).
       const adapters = deps.store
         .listAdapters()
-        .filter((a) => a.id !== CONVERSATION_STORE_ADAPTER_ID)
+        .filter(
+          (a) =>
+            a.id !== CONVERSATION_STORE_ADAPTER_ID &&
+            a.id !== MEMORY_ADAPTER_ID,
+        )
         .map((a) => ({ id: a.id, displayName: a.displayName }));
       return c.json({ success: true, data: adapters });
     } catch (e: unknown) {
@@ -185,6 +190,11 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
       // Only the runtime registers a conversation-store root. Another root
       // backed by it would be one more per-caller root to protect, created by
       // a caller who then drives its builds.
+      if (adapterId === MEMORY_ADAPTER_ID)
+        return c.json(
+          { success: false, error: 'Private memory is managed by Station.' },
+          403,
+        );
       if (adapterId === CONVERSATION_STORE_ADAPTER_ID) {
         return c.json(
           {

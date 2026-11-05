@@ -46,6 +46,7 @@ import type {
 import type {
   CapabilityUndelivered,
   ResolvedAgentDefinition,
+  StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
@@ -507,6 +508,8 @@ export interface AcpAdapterOptions {
     threadId: string;
     projectSlug?: string;
     cwd: string;
+    /** #2497: the session's current confinement, read at each create. */
+    confinement: () => StationConfinement | undefined;
   }) => AcpSessionTerminals | undefined;
 }
 
@@ -631,6 +634,12 @@ export interface AcpSessionRecord {
   stopping?: boolean;
   /** At most one engine re-establishment is attempted for this session. */
   credentialRecoveryAttempted?: boolean;
+  /**
+   * #2497: the session's server-derived confinement (#2493) as it stands:
+   * the start's, then each turn's. The engine's terminal commands run on the
+   * host only while it is `host`.
+   */
+  executionConfinement: StationConfinement | undefined;
   currentModeId?: string;
   /**
    * #3290: who decides which of this session's actions ask, from the
@@ -1256,6 +1265,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           : undefined,
       agent: input.agent,
       credentialRecoveryAttempted: options?.credentialRecoveryAttempted,
+      executionConfinement: input.confinement,
       toolUpdateSupervisor: undefined as unknown as AcpToolUpdateSupervisor,
     };
     record.toolUpdateSupervisor = new AcpToolUpdateSupervisor(
@@ -1271,6 +1281,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         projectSlug: input.metadata.projectSlug,
       }),
       cwd,
+      confinement: () => record.executionConfinement,
     });
     let terminalCounter = 0;
     const logger = this.options.logger ?? console;
@@ -2253,6 +2264,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     // caller that did not (or a start that began since) is refused
     // retryably rather than racing the start.
     if (record.startSettled) throw new ProviderSessionStartingError();
+    // #2497: the turn carries the session's confinement as it stands now (a
+    // revoked grant re-confines it); the engine's terminal commands follow.
+    if (input.confinement !== undefined)
+      record.executionConfinement = input.confinement;
     // #2415: a send that races the session's active turn is refused here,
     // before any provider-visible effect, so it must be a
     // `SendTurnRefusedError`. A plain error is recorded by orchestration as
@@ -2903,6 +2918,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const client = createACPBridgeClient({
       cwd: context.cwd,
       terminals: context.terminals,
+      terminalConfinement: () => record.executionConfinement,
       ...(context.sessionTerminals && {
         sessionTerminals: context.sessionTerminals,
       }),

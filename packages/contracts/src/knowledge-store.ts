@@ -24,6 +24,8 @@ export interface KnowledgeStoreRoot {
   scope: KnowledgeRootScope;
   /** Durable Project identity; absent on legacy registrations, never inferred from slug for member access. */
   projectId?: string;
+  /** Absent preserves the existing root policy. Private roots require their recorded author. */
+  readPolicy?: { kind: 'author-private'; ownerId: string };
   /** Server-issued generation for a registration created or explicitly attached by the provider. */
   registrationId?: string;
   adapterId: string; // which registered adapter serves this root
@@ -46,6 +48,7 @@ export function isProjectKnowledgeRoot(
 ): boolean {
   return (
     root.scope.kind === 'project' &&
+    root.readPolicy === undefined &&
     Boolean(projectId) &&
     root.projectId === projectId
   );
@@ -287,6 +290,8 @@ export interface KnowledgeAdapterDescriptor {
   id: string; // 'kit-default-store' | 'kit-obsidian-store' | plugin-contributed
   displayName: string;
   create(options: { storeRoot: string }): Promise<KnowledgeStoreAdapter>;
+  /** Refuse a registration whose metadata is not valid for this adapter. */
+  validateRegistration?(root: KnowledgeStoreRoot): void;
   /** e.g. the Obsidian adapter validating an existing vault; optional. */
   validateRoot?(storeRoot: string): Promise<{ ok: boolean; reason?: string }>;
 }

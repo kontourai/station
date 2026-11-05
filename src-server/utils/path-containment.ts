@@ -54,21 +54,28 @@ export function assertExistingPathInside(
   }
   let resolved: string;
   try {
-    let existing = candidate;
-    const missing: string[] = [];
-    while (!lstatExists(existing)) {
-      const parent = dirname(existing);
-      if (parent === existing) throw new Error('no existing ancestor');
-      missing.unshift(basename(existing));
-      existing = parent;
-    }
-    resolved = join(realpathSync.native(existing), ...missing);
+    resolved = canonicalPathThroughExistingAncestor(candidate);
   } catch (error) {
     throw new Error(`${label} cannot be resolved (${errorCode(error)})`);
   }
   if (!isCanonicalPathWithin(rootPath, resolved)) {
     throw new Error(`${label} escapes root`);
   }
+}
+
+/** Resolve existing ancestors without following a dangling or cyclic link. */
+export function canonicalPathThroughExistingAncestor(
+  candidate: string,
+): string {
+  let existing = expandTilde(candidate);
+  const missing: string[] = [];
+  while (!lstatExists(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) throw new Error('no existing ancestor');
+    missing.unshift(basename(existing));
+    existing = parent;
+  }
+  return join(realpathSync.native(existing), ...missing);
 }
 
 function isAbsent(path: string): boolean {

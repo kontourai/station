@@ -52,6 +52,12 @@ run's output follows on the same session, with no reattach. It needs operate
 authority and rejects with `refused` for an agent's command or a server-owned
 launch. A new subscriber first receives the retained output (256 KiB per
 session by default), then live output; `reset` means earlier output is gone.
+An `output` listener that consumes output later (a renderer's worker) returns
+a promise that settles once it has; the host is credited for that output only
+after every such listener settled it, oldest first, so a fast program waits
+for its slowest view instead of queueing unbounded output in front of it.
+Unsubscribing releases what a listener still owed; a reconnect starts its
+credit afresh.
 Each session notifies only its own subscribers, so output on one terminal
 never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
 resize is latest-wins. After a dropped socket the store reconnects with backoff
@@ -138,7 +144,11 @@ renderer and input modules behind it are internal and may change.
 Pass a `session` implementing `TerminalViewSession`: `state`, `readOnly`,
 `subscribe(listener)`, `write(bytes)` and `resize(cols, rows)`. The listener's
 `output(bytes, kind)` receives PTY output in order; `kind: 'replay'` marks output
-from before this attachment. The view renders replayed output but answers none
+from before this attachment. It returns a promise that settles once the view's
+emulator parsed that output; a session should not hand the view more until it
+does (the SDK store's sessions wait). A view holds at most 4 MiB it has not
+parsed: past that it resets its screen and subscribes again, replaying what the
+session retains, rather than rendering a stream with a gap. The view renders replayed output but answers none
 of its device queries and rings none of its bells. Terminal replies (device
 attributes, status reports) for live output are written back through
 `session.write` only while the session is `ready`. A `readOnly` session never
@@ -209,6 +219,19 @@ and `transcribed` before reading segments. Queue overflow throws `StationHttpErr
 with status 503, code `busy` and `retryAfterMs: 5000`; direct transcription
 results also include `busy` in the failed reason union. These exports require a build
 containing this change. See [local speech](../guides/local-speech.md).
+
+## Managed policy
+
+The root exports `fetchManagedPolicyStatus(apiBase?)` and
+`useManagedPolicyStatusQuery(apiBase?, config?)`, which read
+`GET /api/settings/managed-policy` as a `ManagedPolicyStatus` from
+`@kontourai/station-contracts/managed-policy`. A host older than the route
+answers 404, which reads as `{ state: 'none' }`; any other failure, or a body
+the contract parser refuses, throws. The status is fixed for the server's
+lifetime, so the query never goes stale. The server enforces the policy
+whatever a client shows; use it to explain a managed control, such as the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling).
+This surface requires a published SDK version containing it.
 
 ## Telemetry delivery
 
@@ -5582,7 +5605,8 @@ Use the public root-key serializer, also available from
 this order: root ID, scope kind, project slug or null, adapter ID, store root,
 display name, creation timestamp, then the Project ID (or null) and issued
 registration ID when present. Legacy roots without either field keep the original
-seven-field encoding; a legacy Project-bound root has eight fields. Send its URI-encoded UTF-8 representation in
+seven-field encoding; a legacy Project-bound root has eight fields. An
+author-private root then appends the policy kind and owner ID. Send its URI-encoded UTF-8 representation in
 `x-station-knowledge-root-identity` (at most 8,192 characters after encoding). This
 metadata comparison does not detect an identically restored registration or
 provide a revision/CAS contract.
@@ -5603,6 +5627,8 @@ otherwise valid local credentials. Project/tenant record authorization and owner
 learning lifecycle intents are separate future contracts. Hosts should present
 these limits directly, without treating a source read as candidate approval,
 promotion, or effect evidence.
+The source observation policy also refuses author-private roots; their ordinary
+record reads use the root's separate owner authorization.
 
 Follow the [SDK reader](../../packages/sdk/src/client/learning-source.ts),
 [query hook](../../packages/sdk/src/query-domains/knowledgeStores.ts),
@@ -6658,3 +6684,15 @@ establish activation or an observed effect.
 
 See [bounded agent work](../guides/agent-efficiency.md) for the mounted operator
 flow and the separate setup, provider and release boundaries.
+
+### Station release notes
+
+`@kontourai/station-sdk/release-notes-query` exports
+`useStationReleaseNotesQuery(version, nativeApp, enabled?)` and
+`useStationReleaseHistoryQuery(enabled?)`. They read public GitHub Releases
+without Station credentials, using the host’s QueryClient. An exact-version
+404 returns `null`; transport and response failures remain errors for retry.
+Native app Nightlies use the cohort’s `desktop-v<version>` changelog releases; other versions
+use `v<version>`. History includes versioned entries from the latest 100
+GitHub releases, with `STATION_RELEASE_HISTORY_URL` for older entries. Release
+prose never authorizes an update.
