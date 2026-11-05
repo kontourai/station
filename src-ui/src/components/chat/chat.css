@@ -1603,6 +1603,8 @@
    keeps its size: it can hold Stop.)
    The composer keeps the room `ChatInputArea` reserves for a two-line draft. */
 .chat-dock__body > .chat-dock__session-failure,
+.chat-dock__body > .error-state,
+.chat-dock__body > .session-history-error,
 .chat-dock__body > .chat-messages {
   flex-shrink: 1000;
   min-height: 0;
@@ -1614,7 +1616,7 @@
    draft off the dock. */
 .chat-dock__body > .queued-messages-presence {
   flex-shrink: 500;
-  min-height: 0;
+  min-height: 44px;
 }
 .chat-dock__body
   > .queued-messages-presence:not(
