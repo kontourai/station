@@ -1,4 +1,9 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
+import {
+  chatBelongsToStation,
+  type StationStateScope,
+  stationStateKey,
+} from '../connections/station-state';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import { newerConversationActivity } from '../utils/conversation-activity';
 import { migrateInboxDismissal } from '../utils/inbox-dismissal-store';
@@ -220,19 +225,87 @@ export class ActiveChatsStore {
    * the UI projection seam that lets a conversation tab consume those events
    * without rewriting their provenance.
    */
-  getChatForExecutionSession(sessionId: string): ChatUIState | undefined {
-    const key = this.getChatKeyForExecutionSession(sessionId);
+  getChatForExecutionSession(
+    sessionId: string,
+    station?: StationStateScope,
+  ): ChatUIState | undefined {
+    const key = this.getChatKeyForExecutionSession(sessionId, station);
     return key ? this.chats[key] : undefined;
   }
 
   /** Durable store key for an exact execution-session identity. */
-  getChatKeyForExecutionSession(sessionId: string): string | undefined {
-    if (this.chats[sessionId]) return sessionId;
+  getChatKeyForExecutionSession(
+    sessionId: string,
+    station?: StationStateScope,
+  ): string | undefined {
+    if (
+      this.chats[sessionId] &&
+      chatBelongsToStation(this.chats[sessionId], station)
+    )
+      return sessionId;
     return Object.entries(this.chats).find(
       ([, chat]) =>
-        chat.currentSessionId === sessionId ||
-        chat.conversationId === sessionId,
+        chatBelongsToStation(chat, station) &&
+        (chat.currentSessionId === sessionId ||
+          chat.conversationId === sessionId),
     )?.[0];
+  }
+
+  /** A stream carries its owner through delayed handlers and callbacks. */
+  forStation(station?: StationStateScope) {
+    const keyFor = (id: string) =>
+      this.getChatKeyForExecutionSession(id, station);
+    return {
+      station,
+      getSnapshot: () =>
+        Object.fromEntries(
+          Object.entries(this.getSnapshot()).filter(([, chat]) =>
+            chatBelongsToStation(chat, station),
+          ),
+        ),
+      getChatKeyForExecutionSession: keyFor,
+      getChatForExecutionSession: (id: string) =>
+        this.getChatForExecutionSession(id, station),
+      updateChat: (id: string, updates: Partial<ChatUIState>) => {
+        const key = keyFor(id);
+        if (key) this.updateChat(key, updates, station);
+      },
+      addEphemeralMessage: (
+        id: string,
+        message: Parameters<ActiveChatsStore['addEphemeralMessage']>[1],
+      ) => {
+        const key = keyFor(id);
+        if (key) this.addEphemeralMessage(key, message);
+      },
+      clearEphemeralMessages: (id: string) => {
+        const key = keyFor(id);
+        if (key) this.clearEphemeralMessages(key);
+      },
+      assignConversationId: (id: string, conversationId: string) => {
+        const key = keyFor(id);
+        if (key) this.assignConversationId(key, conversationId);
+      },
+      applyConversationActivity: (
+        activity: ConversationTurnActivity | undefined,
+      ) => this.applyConversationActivity(activity, station),
+    };
+  }
+
+  /** Host authority teardown retires every retained Station observation. */
+  clearAllConversationActivity() {
+    this.activityByConversation.clear();
+    for (const [key, chat] of Object.entries(this.chats)) {
+      this.chats[key] = {
+        ...chat,
+        conversationActivity: undefined,
+        orchestrationTurnOpen: undefined,
+        openTurnStartedAt: undefined,
+        sendAwaitingTurnStart: undefined,
+        sendAwaitingPriorTurnId: undefined,
+        stopSettledTurnId: undefined,
+      };
+    }
+    this.notify(false);
   }
 
   setBackendMessagesResolver(
@@ -251,15 +324,26 @@ export class ActiveChatsStore {
    * every chat on that conversation; an older copy is dropped. Notifies only
    * when a chat's record actually changed.
    */
-  applyConversationActivity(activity: ConversationTurnActivity | undefined) {
-    if (!activity) return;
-    const known = this.activityByConversation.get(activity.conversationId);
+  applyConversationActivity(
+    activity: ConversationTurnActivity | undefined,
+    station?: StationStateScope,
+  ) {
+    if (!activity || (station && !station.isCurrent())) return;
+    const activityKey = JSON.stringify([
+      stationStateKey(station?.binding),
+      activity.conversationId,
+    ]);
+    const known = this.activityByConversation.get(activityKey);
     const newest = newerConversationActivity(known, activity);
     if (!newest || newest === known) return;
-    this.activityByConversation.set(activity.conversationId, newest);
+    this.activityByConversation.set(activityKey, newest);
     let changed = false;
     for (const [key, chat] of Object.entries(this.chats)) {
-      if (chat.conversationId !== activity.conversationId) continue;
+      if (
+        !chatBelongsToStation(chat, station) ||
+        chat.conversationId !== activity.conversationId
+      )
+        continue;
       const { chat: next } = mergeChatUpdates(chat, {
         conversationActivity: newest,
       });
@@ -275,10 +359,15 @@ export class ActiveChatsStore {
    * tab's authority changes, another Station's sequences are not comparable,
    * and keep-newest would otherwise reject its lower ones for the tab's life.
    */
-  clearConversationActivity() {
-    this.activityByConversation.clear();
+  clearConversationActivity(station?: StationStateScope) {
+    const partition = stationStateKey(station?.binding);
+    for (const key of this.activityByConversation.keys()) {
+      if (JSON.parse(key)[0] === partition)
+        this.activityByConversation.delete(key);
+    }
     let changed = false;
     for (const [key, chat] of Object.entries(this.chats)) {
+      if (!chatBelongsToStation(chat, station)) continue;
       if (
         !chat.conversationActivity &&
         chat.openTurnStartedAt === undefined &&
@@ -306,15 +395,27 @@ export class ActiveChatsStore {
   /** The newest record this store holds for a conversation. */
   private getConversationActivity(
     conversationId: string | undefined,
+    binding?: ChatUIState['stationBinding'],
   ): ConversationTurnActivity | undefined {
     return conversationId
-      ? this.activityByConversation.get(conversationId)
+      ? this.activityByConversation.get(
+          JSON.stringify([stationStateKey(binding), conversationId]),
+        )
       : undefined;
   }
 
   /** A chat that names a conversation adopts the newest record already held. */
   private withKnownActivity(chat: ChatUIState): ChatUIState {
-    const known = this.getConversationActivity(chat.conversationId);
+    if (
+      chat.stationBindingInvalid ||
+      (!chat.stationBinding &&
+        (chat.peerChat !== undefined || chat.peerChatInvalid))
+    )
+      return chat;
+    const known = this.getConversationActivity(
+      chat.conversationId,
+      chat.stationBinding,
+    );
     if (!known || known === chat.conversationActivity) return chat;
     const { chat: next } = mergeChatUpdates(chat, {
       conversationActivity: known,
@@ -346,8 +447,16 @@ export class ActiveChatsStore {
     this.notify(true);
   }
 
-  updateChat(sessionId: string, updates: Partial<ChatUIState>) {
-    const targetSessionId = this.getChatKeyForExecutionSession(sessionId);
+  updateChat(
+    sessionId: string,
+    updates: Partial<ChatUIState>,
+    station?: StationStateScope,
+  ) {
+    const targetSessionId =
+      this.chats[sessionId] &&
+      (!station || chatBelongsToStation(this.chats[sessionId], station))
+        ? sessionId
+        : this.getChatKeyForExecutionSession(sessionId, station);
     const current = targetSessionId ? this.chats[targetSessionId] : undefined;
     if (!current) {
       return;
@@ -382,14 +491,23 @@ export class ActiveChatsStore {
       // A record that arrived through a direct update (an open-resolution
       // patch) is the newest this store has seen for that conversation too.
       const known = this.activityByConversation.get(
-        chat.conversationActivity.conversationId,
+        JSON.stringify([
+          stationStateKey(chat.stationBinding),
+          chat.conversationActivity.conversationId,
+        ]),
       );
       const newest = newerConversationActivity(
         known,
         chat.conversationActivity,
       );
       if (newest) {
-        this.activityByConversation.set(newest.conversationId, newest);
+        this.activityByConversation.set(
+          JSON.stringify([
+            stationStateKey(chat.stationBinding),
+            newest.conversationId,
+          ]),
+          newest,
+        );
       }
     }
     if (
@@ -428,7 +546,7 @@ export class ActiveChatsStore {
       { role: 'system', content },
       this.now,
       this.randomId,
-      this.getBackendMessages,
+      chatBelongsToStation(chat) ? this.getBackendMessages : () => [],
       chat.conversationId ?? sessionId,
     );
     if (next) this.chats[sessionId] = next;
@@ -442,10 +560,13 @@ export class ActiveChatsStore {
     // own storage-refusal notice.
     this.storageFailureReportedFor.delete(sessionId);
     if (
-      removed?.agentSlug &&
+      removed &&
+      chatBelongsToStation(removed) &&
+      removed.agentSlug &&
       removed.conversationId &&
       !Object.values(this.chats).some(
         (chat) =>
+          chatBelongsToStation(chat) &&
           chat.agentSlug === removed.agentSlug &&
           chat.conversationId === removed.conversationId,
       )
@@ -536,7 +657,7 @@ export class ActiveChatsStore {
       message,
       this.now,
       this.randomId,
-      this.getBackendMessages,
+      chatBelongsToStation(chat) ? this.getBackendMessages : () => [],
       backendConversationId,
     );
     if (!next) {

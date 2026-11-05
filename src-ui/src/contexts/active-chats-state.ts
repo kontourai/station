@@ -26,6 +26,8 @@ import type {
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
+import type { ChatStationBindingV1 } from '../connections/station-connection';
+import { readChatStationBinding } from '../connections/station-state';
 import type { PeerChatBinding } from '../lib/peer-chat';
 import { readPeerChatBinding } from '../lib/peer-chat';
 import {
@@ -371,6 +373,9 @@ export type ChatLiveUsage = {
 };
 
 export type ChatUIState = {
+  stationConnectionUnavailable?: boolean;
+  stationBinding?: ChatStationBindingV1;
+  stationBindingInvalid?: boolean;
   peerChat?: PeerChatBinding;
   peerChatInvalid?: boolean;
   taskShaping?: boolean;
@@ -798,6 +803,8 @@ export type ChatReplayState = {
 };
 
 export type ActiveChatMetadata = {
+  stationBinding?: ChatStationBindingV1;
+  stationBindingInvalid?: boolean;
   agentSlug: string;
   agentName: string;
   title: string;
@@ -838,6 +845,8 @@ export type ActiveChatMetadata = {
 };
 
 export type PersistedActiveChat = {
+  stationBinding?: ChatStationBindingV1;
+  stationBindingInvalid?: boolean;
   peerChat?: PeerChatBinding;
   peerChatInvalid?: boolean;
   taskShaping?: boolean;
@@ -1070,6 +1079,7 @@ export function hydrateActiveChats(
     }
     const session = candidate as PersistedActiveChat;
     const peerChat = readPeerChatBinding(session.peerChat);
+    const stationBinding = readChatStationBinding(session.stationBinding);
     const text = (value: unknown) => optionalString(value);
     const queuedMessageFailure = readQueuedMessageFailure(
       session.queuedMessageFailure,
@@ -1165,6 +1175,10 @@ export function hydrateActiveChats(
       inputHistory: stringList(session.inputHistory),
       hasUnread: false,
       agentSlug: session.agentSlug,
+      stationBinding,
+      stationBindingInvalid:
+        session.stationBindingInvalid === true ||
+        (session.stationBinding !== undefined && !stationBinding),
       peerChat,
       peerChatInvalid:
         session.peerChatInvalid === true ||
@@ -1310,6 +1324,8 @@ export function activeChatDurableId(
  * see `activeChatHasWork` below.
  */
 export function isDurableActiveChat(chat: {
+  stationBinding?: ChatStationBindingV1;
+  stationBindingInvalid?: boolean;
   peerChat?: PeerChatBinding;
   peerChatInvalid?: boolean;
   conversationId?: string;
@@ -1381,6 +1397,8 @@ export function serializeActiveChats(
       conversationId: chat.conversationId,
       currentSessionId: chat.currentSessionId,
       agentSlug: chat.agentSlug!,
+      stationBinding: chat.stationBinding,
+      stationBindingInvalid: chat.stationBindingInvalid,
       peerChat: chat.peerChat,
       peerChatInvalid: chat.peerChatInvalid,
       queuedMessages: chat.queuedMessages || [],
@@ -1614,6 +1632,8 @@ export function mergeChatUpdates(
     chat.stopSettledTurnId = undefined;
   }
   const shouldPersist =
+    'stationBinding' in nextUpdates ||
+    'stationBindingInvalid' in nextUpdates ||
     'peerChat' in nextUpdates ||
     'peerChatInvalid' in nextUpdates ||
     'skillExperienceDraft' in nextUpdates ||

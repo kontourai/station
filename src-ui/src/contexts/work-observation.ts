@@ -5,10 +5,16 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { type QueryClient, QueryClientContext } from '@tanstack/react-query';
 import { useCallback, useContext, useSyncExternalStore } from 'react';
+import type { StationConnection } from '../connections/station-connection';
+import { onStationConnectionRetired } from '../connections/station-connection-registry';
 
 // Query clients belong to verified Station/principal/grant namespaces. Never persist these observations
 // or share them with another principal using the same Station endpoint.
-const authorities = new WeakMap<QueryClient, WorkObservation>();
+const authorities = new WeakMap<QueryClient, Map<string, WorkObservation>>();
+type ObservationTarget = Pick<
+  StationConnection,
+  'runtimeKey' | 'targetApiBase' | 'requestScope'
+> & { routeKind?: StationConnection['routeKind']; isCurrent?: () => boolean };
 const INBOX = Symbol('inbox');
 type Scope = string | typeof INBOX;
 type Source =
@@ -21,6 +27,7 @@ type Source =
 
 class WorkObservation {
   private revision = 0;
+  private unsubscribeCache?: () => void;
   private clock = 0;
   private epochGeneration = 0;
   private records = new Map<string, object>();
@@ -102,10 +109,32 @@ class WorkObservation {
     // resetQueries also refetches mounted lists in the replacement epoch.
     void this.client.resetQueries({
       predicate: (query) =>
-        query.queryKey[0] === 'conversation-inventory' ||
-        query.queryKey[0] === 'orchestration-sessions',
+        this.ownsQuery(query.queryKey) &&
+        (query.queryKey[0] === 'conversation-inventory' ||
+          query.queryKey[0] === 'orchestration-sessions'),
     });
     this.notify();
+  }
+  dispose() {
+    this.unsubscribeCache?.();
+    this.epochGeneration += 1;
+    this.records.clear();
+    this.failures.clear();
+    this.successes.clear();
+    this.streamSuccesses.clear();
+    this.streamWatermarks.clear();
+    this.sequences.clear();
+    this.notify();
+    this.listeners.clear();
+    if (this.target) {
+      this.client.removeQueries({
+        predicate: (query) => this.ownsQuery(query.queryKey),
+      });
+      this.client.removeQueries({
+        queryKey: ['work-observation', this.target.runtimeKey],
+        exact: true,
+      });
+    }
   }
   private record(conversationId: string) {
     let record = this.records.get(conversationId);
@@ -224,11 +253,33 @@ class WorkObservation {
     this.successes.delete(conversationId);
   }
   private ensureLifecycle() {
-    this.client
-      .getQueryCache()
-      .build(this.client, { queryKey: ['work-observation'], gcTime: Infinity });
+    this.client.getQueryCache().build(this.client, {
+      queryKey: ['work-observation', this.target?.runtimeKey ?? 'host'],
+      gcTime: Infinity,
+    });
   }
-  constructor(private readonly client: QueryClient) {
+  private ownsQuery(key: readonly unknown[]) {
+    if (this.target)
+      return (
+        key[1] === this.target.targetApiBase &&
+        key[2] === this.target.requestScope.authorityKey &&
+        key[3] === this.target.runtimeKey
+      );
+    for (const observation of authorities.get(this.client)?.values() ?? []) {
+      const target = observation.target;
+      if (
+        target &&
+        key[1] === target.targetApiBase &&
+        key[2] === target.requestScope.authorityKey
+      )
+        return false;
+    }
+    return true;
+  }
+  constructor(
+    private readonly client: QueryClient,
+    private readonly target?: ObservationTarget,
+  ) {
     // A cache-owned lifecycle entry makes clear() observable even with no remote queries.
     this.ensureLifecycle();
     // Both reads supply the inbox. Keep each read's failure until that read
@@ -240,6 +291,7 @@ class WorkObservation {
       if (
         (root === 'conversation-inventory' ||
           root === 'orchestration-sessions') &&
+        this.ownsQuery(query.queryKey) &&
         query.state.status === 'error'
       ) {
         failedLists.set(root, this.begin());
@@ -255,11 +307,13 @@ class WorkObservation {
           ]),
         ),
       );
-    client.getQueryCache().subscribe((event) => {
+    this.unsubscribeCache = client.getQueryCache().subscribe((event) => {
       if (
         event.type === 'removed' &&
-        event.query.queryKey[0] === 'work-observation'
+        event.query.queryKey[0] === 'work-observation' &&
+        event.query.queryKey[1] === (this.target?.runtimeKey ?? 'host')
       ) {
+        this.epochGeneration += 1;
         this.records.clear();
         this.streamWatermarks.clear();
         this.streamSuccesses.clear();
@@ -272,7 +326,8 @@ class WorkObservation {
         this.notify();
         return;
       }
-      if (event.type !== 'updated') return;
+      if (event.type !== 'updated' || !this.ownsQuery(event.query.queryKey))
+        return;
       const root = event.query.queryKey[0];
       if (
         root !== 'conversation-inventory' &&
@@ -367,20 +422,44 @@ class WorkObservation {
   }
 }
 
-export function workObservation(client: QueryClient) {
-  let observation = authorities.get(client);
+export function workObservation(
+  client: QueryClient,
+  target?: ObservationTarget,
+) {
+  if (target?.routeKind === 'host') target = undefined;
+  let partitions = authorities.get(client);
+  if (!partitions) {
+    partitions = new Map();
+    authorities.set(client, partitions);
+  }
+  const key = target?.runtimeKey ?? 'host';
+  let observation = partitions.get(key);
   if (!observation) {
-    observation = new WorkObservation(client);
-    authorities.set(client, observation);
+    observation = new WorkObservation(client, target);
+    partitions.set(key, observation);
+    if (target) {
+      const owned = observation;
+      onStationConnectionRetired(target, () => {
+        if (partitions.get(key) !== owned) return;
+        partitions.delete(key);
+        owned.dispose();
+      });
+    }
   }
   return observation;
 }
 
 const noopSubscribe = () => () => {};
 const emptySnapshot = () => 0;
-export function useWorkObservation(conversationId?: string | null) {
+export function useWorkObservation(
+  conversationId?: string | null,
+  target?: ObservationTarget,
+) {
   const client = useContext(QueryClientContext);
-  const observation = client ? workObservation(client) : undefined;
+  const observation =
+    client && target?.isCurrent?.() !== false
+      ? workObservation(client, target)
+      : undefined;
   const subscribe = useCallback(
     (listener: () => void) =>
       observation && conversationId

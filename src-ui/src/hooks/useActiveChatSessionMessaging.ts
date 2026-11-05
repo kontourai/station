@@ -33,6 +33,7 @@ import {
   skillExperienceInputErrors,
 } from '@kontourai/station-shared/skill-experience-values';
 import { useCallback, useRef } from 'react';
+import { chatBelongsToStation } from '../connections/station-state';
 import { useAccountPreferences } from '../contexts/AccountPreferencesContext';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
@@ -451,7 +452,7 @@ export function useSendMessage(
         throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
       let currentState = allChats[sessionId];
-      if (currentState?.peerChat || currentState?.peerChatInvalid) {
+      if (currentState && !chatBelongsToStation(currentState)) {
         onError?.(
           new Error('Send this message from the remote chat composer.'),
         );

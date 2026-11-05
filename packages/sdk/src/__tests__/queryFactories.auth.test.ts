@@ -23,6 +23,55 @@ import {
 } from '../queryFactories';
 
 describe('query factories authenticate (station#2614)', () => {
+  it('keys and fetches relay targets independently from their shared credential authority', async () => {
+    const scope = { apiBase: 'https://source.test', authorityKey: 'owner' };
+    const a = {
+      targetApiBase: `${scope.apiBase}/peer/a/chat-api`,
+      requestScope: { ...scope },
+    };
+    const b = {
+      targetApiBase: `${scope.apiBase}/peer/b/chat-api`,
+      requestScope: { ...scope },
+    };
+    const query = agentQueries.tools('same-agent', a);
+    expect(query.queryKey).toEqual([
+      'agent-tools',
+      a.targetApiBase,
+      'owner',
+      'same-agent',
+    ]);
+    expect(orchestrationQueries.sessions(scope, b).queryKey).toEqual([
+      'orchestration-sessions',
+      b.targetApiBase,
+      'owner',
+    ]);
+    expect(conversationQueries.inventory(a).queryKey).toEqual([
+      'conversation-inventory',
+      a.targetApiBase,
+      'owner',
+    ]);
+    const originalBase = a.targetApiBase;
+    a.targetApiBase = 'https://replacement.test';
+    a.requestScope.authorityKey = 'replacement';
+    authenticatedFetchMock.mockResolvedValueOnce(
+      Response.json({ success: true, data: [] }),
+    );
+    await expect(query.queryFn()).resolves.toEqual([]);
+    expect(authenticatedFetchMock).toHaveBeenCalledWith(
+      `${originalBase}/agents/same-agent/tools`,
+      { requestScope: scope },
+    );
+    expect(query.queryKey).toEqual([
+      'agent-tools',
+      originalBase,
+      'owner',
+      'same-agent',
+    ]);
+    expect(agentQueries.tools('same-agent', b).queryKey).not.toEqual(
+      query.queryKey,
+    );
+  });
+
   beforeEach(() => {
     authenticatedFetchMock.mockReset();
     // A plain global fetch would bypass auth — make any use of it loud.

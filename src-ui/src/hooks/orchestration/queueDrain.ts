@@ -14,6 +14,7 @@ import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/sessi
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import type { StationStateScope } from '../../connections/station-state';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
@@ -152,11 +153,23 @@ function userSendBlockedReason(
  * Called by the revalidation once it has settled; a no-op when nothing is
  * held or the chat is still not writable.
  */
-export function resumeHeldQueueDrain(apiBase: string, chatKey: string): void {
-  const chat = activeChatsStore.getSnapshot()[chatKey];
+export function resumeHeldQueueDrain(
+  apiBase: string,
+  chatKey: string,
+  station?: StationStateScope,
+): void {
+  if (station && station.binding.affinity.kind !== 'host') return;
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getSnapshot()[chatKey];
   if (!chat?.queueDrainHeldForOpen || !conversationCanMutate(chat)) return;
-  activeChatsStore.updateChat(chatKey, { queueDrainHeldForOpen: undefined });
-  drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+  chatStore.updateChat(chatKey, { queueDrainHeldForOpen: undefined });
+  drainQueuedMessageOnTurnCompleted(
+    apiBase,
+    chatKey,
+    undefined,
+    undefined,
+    station,
+  );
 }
 
 /** How long a drained send waits for its durable row before going without. */
@@ -182,15 +195,18 @@ function scheduleProviderTurnRedrain(
   apiBase: string,
   threadId: string,
   code: string,
+  station?: StationStateScope,
 ): void {
+  if (station && station.binding.affinity.kind !== 'host') return;
+  const chatStore = activeChatsStore.forStation(station);
   const attempts = providerTurnRedrainAttempts.get(threadId) ?? 0;
   if (attempts >= PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS) {
     providerTurnRedrainAttempts.delete(threadId);
     // Out of automatic retries: nothing else would send this message, so
     // say so beside it and offer Retry rather than leaving it silently
     // queued. The message itself stays at the head of the queue.
-    if (activeChatsStore.getSnapshot()[threadId]?.queuedMessages?.length) {
-      activeChatsStore.updateChat(threadId, {
+    if (chatStore.getSnapshot()[threadId]?.queuedMessages?.length) {
+      chatStore.updateChat(threadId, {
         queuedMessageFailure: {
           message:
             code === PROVIDER_SESSION_STARTING_CODE
@@ -206,7 +222,7 @@ function scheduleProviderTurnRedrain(
     return;
   }
   providerTurnRedrainAttempts.set(threadId, attempts + 1);
-  const scheduled = activeChatsStore.getSnapshot()[threadId];
+  const scheduled = chatStore.getSnapshot()[threadId];
   const binding = [scheduled?.conversationId, scheduled?.currentSessionId];
   const previous = providerTurnRedrainTimers.get(threadId);
   if (previous) clearTimeout(previous);
@@ -214,7 +230,7 @@ function scheduleProviderTurnRedrain(
     threadId,
     setTimeout(() => {
       providerTurnRedrainTimers.delete(threadId);
-      const chat = activeChatsStore.getSnapshot()[threadId];
+      const chat = chatStore.getSnapshot()[threadId];
       if (
         !chat ||
         chat.conversationId !== binding[0] ||
@@ -229,7 +245,13 @@ function scheduleProviderTurnRedrain(
         providerTurnRedrainAttempts.delete(threadId);
         return;
       }
-      drainQueuedMessageOnTurnCompleted(apiBase, threadId);
+      drainQueuedMessageOnTurnCompleted(
+        apiBase,
+        threadId,
+        undefined,
+        undefined,
+        station,
+      );
     }, PROVIDER_TURN_REDRAIN_DELAY_MS),
   );
 }
@@ -238,11 +260,14 @@ export function resumePendingSendNowOnTurnTerminal(
   apiBase: string,
   executionSessionId: string,
   turnId: string,
+  station?: StationStateScope,
 ): void {
+  if (station && station.binding.affinity.kind !== 'host') return;
+  const chatStore = activeChatsStore.forStation(station);
   const chatKey =
-    activeChatsStore.getChatKeyForExecutionSession(executionSessionId) ??
+    chatStore.getChatKeyForExecutionSession(executionSessionId) ??
     executionSessionId;
-  const chat = activeChatsStore.getSnapshot()[chatKey];
+  const chat = chatStore.getSnapshot()[chatKey];
   const intent = chat?.pendingSendNow;
   if (
     !chat ||
@@ -256,11 +281,11 @@ export function resumePendingSendNowOnTurnTerminal(
       (message) => message.id === intent.messageId,
     ) ?? -1;
   if (index < 0) {
-    activeChatsStore.updateChat(chatKey, { pendingSendNow: undefined });
+    chatStore.updateChat(chatKey, { pendingSendNow: undefined });
     return;
   }
   if (chat.queueSendNowPending || chat.queueDrainSettling) {
-    activeChatsStore.updateChat(chatKey, {
+    chatStore.updateChat(chatKey, {
       pendingSendNow: { ...intent, terminalConfirmed: true },
     });
     return;
@@ -269,12 +294,12 @@ export function resumePendingSendNowOnTurnTerminal(
   const metadata = [...(chat.queuedMessageMetadata ?? [])];
   messages.unshift(...messages.splice(index, 1));
   metadata.unshift(...metadata.splice(index, 1));
-  activeChatsStore.updateChat(chatKey, {
+  chatStore.updateChat(chatKey, {
     queuedMessages: messages,
     queuedMessageMetadata: metadata,
     pendingSendNow: undefined,
   });
-  drainQueuedMessageOnTurnCompleted(apiBase, chatKey, true, true);
+  drainQueuedMessageOnTurnCompleted(apiBase, chatKey, true, true, station);
 }
 
 /** Explicit override: interrupt immediately, then dispatch only after a settled receipt. */
@@ -282,12 +307,15 @@ export async function sendPendingMessageNow(
   apiBase: string,
   threadId: string,
   messageId: string,
+  station?: StationStateScope,
 ): Promise<void> {
-  const chat = activeChatsStore.getSnapshot()[threadId];
+  if (station && station.binding.affinity.kind !== 'host') return;
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getSnapshot()[threadId];
   if (!chat || chat.queueSendNowPending) return;
   const blocked = userSendBlockedReason(chat, true);
   if (blocked) {
-    activeChatsStore.addEphemeralMessage(threadId, {
+    chatStore.addEphemeralMessage(threadId, {
       role: 'system',
       content: blocked,
     });
@@ -299,21 +327,21 @@ export async function sendPendingMessageNow(
     ) ?? -1;
   if (index < 0) return;
   if (chat.queuedMessageMetadata?.[index]?.originUnverified) {
-    activeChatsStore.addEphemeralMessage(threadId, {
+    chatStore.addEphemeralMessage(threadId, {
       role: 'system',
       content: 'Review the saved message’s destination before resending it.',
     });
     return;
   }
   if (chat.queuedMessageMetadata?.[index]?.delivery) {
-    activeChatsStore.addEphemeralMessage(threadId, {
+    chatStore.addEphemeralMessage(threadId, {
       role: 'system',
       content:
         'Steering delivery is not confirmed. Retry steering with this same message before sending it as a new turn.',
     });
     return;
   }
-  activeChatsStore.updateChat(threadId, { queueSendNowPending: true });
+  chatStore.updateChat(threadId, { queueSendNowPending: true });
   const binding = [chat.conversationId, chat.currentSessionId];
   try {
     if (serverTurnLive(chat) === true || chat.status === 'sending') {
@@ -325,14 +353,14 @@ export async function sendPendingMessageNow(
         turnId: chat.conversationActivity?.openTurn?.turnId ?? chat.openTurnId,
       };
       if (!target.turnId) {
-        activeChatsStore.addEphemeralMessage(threadId, {
+        chatStore.addEphemeralMessage(threadId, {
           role: 'system',
           content:
             'Wait for the turn to start before using Send now. Your message is still pending.',
         });
         return;
       }
-      activeChatsStore.updateChat(threadId, {
+      chatStore.updateChat(threadId, {
         pendingSendNow: {
           messageId,
           threadId: target.threadId,
@@ -346,7 +374,7 @@ export async function sendPendingMessageNow(
           ? { clientTurnId: chat.pendingClientTurnId }
           : {}),
       });
-      const latest = activeChatsStore.getSnapshot()[threadId];
+      const latest = chatStore.getSnapshot()[threadId];
       const latestTarget = latest
         ? {
             ...liveTurnTarget(latest, threadId),
@@ -364,20 +392,20 @@ export async function sendPendingMessageNow(
       )
         return;
       if (result.outcome === 'pending-turn-start') {
-        activeChatsStore.addEphemeralMessage(threadId, {
+        chatStore.addEphemeralMessage(threadId, {
           role: 'system',
           content:
             'Stop requested. Your message waits until the current turn has stopped.',
         });
         return;
       }
-      activeChatsStore.updateChat(threadId, {
+      chatStore.updateChat(threadId, {
         orchestrationTurnOpen: false,
         status: 'idle',
         ...(target.turnId ? { stopSettledTurnId: target.turnId } : {}),
       });
     }
-    const current = activeChatsStore.getSnapshot()[threadId];
+    const current = chatStore.getSnapshot()[threadId];
     if (
       !current ||
       current.conversationId !== binding[0] ||
@@ -393,26 +421,27 @@ export async function sendPendingMessageNow(
     const metadata = [...(current.queuedMessageMetadata ?? [])];
     messages.unshift(...messages.splice(currentIndex, 1));
     metadata.unshift(...metadata.splice(currentIndex, 1));
-    activeChatsStore.updateChat(threadId, {
+    chatStore.updateChat(threadId, {
       queuedMessages: messages,
       queuedMessageMetadata: metadata,
       queueSendNowPending: false,
       pendingSendNow: undefined,
     });
-    drainQueuedMessageOnTurnCompleted(apiBase, threadId, true, true);
+    drainQueuedMessageOnTurnCompleted(apiBase, threadId, true, true, station);
   } catch (error) {
-    activeChatsStore.addEphemeralMessage(threadId, {
+    chatStore.addEphemeralMessage(threadId, {
       role: 'system',
       content: `Stop was not confirmed. Your message is still pending: ${userFacingErrorMessage(error)}`,
     });
   } finally {
-    activeChatsStore.updateChat(threadId, { queueSendNowPending: false });
-    const intent = activeChatsStore.getSnapshot()[threadId]?.pendingSendNow;
+    chatStore.updateChat(threadId, { queueSendNowPending: false });
+    const intent = chatStore.getSnapshot()[threadId]?.pendingSendNow;
     if (intent?.terminalConfirmed)
       resumePendingSendNowOnTurnTerminal(
         apiBase,
         intent.threadId,
         intent.turnId,
+        station,
       );
   }
 }
@@ -428,16 +457,19 @@ export function drainQueuedMessageOnTurnCompleted(
    * other reason it cannot send is said in the chat, never swallowed.
    */
   userInitiated = false,
+  station?: StationStateScope,
 ) {
+  if (station && station.binding.affinity.kind !== 'host') return;
+  const chatStore = activeChatsStore.forStation(station);
   if (isReplayThread(threadId)) return;
-  const chat = activeChatsStore.getSnapshot()[threadId];
+  const chat = chatStore.getSnapshot()[threadId];
   // #3157: after a usage-limit stop, only the user (Send now) or the resumed
   // turn's own end sends the queue. Live and snapshot paths set the flag.
   if (!userInitiated && chat?.usageLimitStopped) return;
   if (userInitiated) {
     const blocked = userSendBlockedReason(chat);
     if (blocked) {
-      activeChatsStore.addEphemeralMessage(threadId, {
+      chatStore.addEphemeralMessage(threadId, {
         role: 'system',
         sendFailure: true,
         content: blocked,
@@ -458,7 +490,7 @@ export function drainQueuedMessageOnTurnCompleted(
     !conversationCanMutate(chat)
   ) {
     if (!chat.queueDrainHeldForOpen)
-      activeChatsStore.updateChat(threadId, { queueDrainHeldForOpen: true });
+      chatStore.updateChat(threadId, { queueDrainHeldForOpen: true });
     return;
   }
   if (
@@ -507,7 +539,7 @@ export function drainQueuedMessageOnTurnCompleted(
     chat.queuedMessageFailure?.code === CONTINUATION_WORKSPACE_REFUSAL_CODES[6];
   // A fresh attempt clears the previous refusal: the reason on screen must
   // describe THIS attempt, never a stale one.
-  activeChatsStore.updateChat(threadId, {
+  chatStore.updateChat(threadId, {
     queuedMessages: remainingQueue,
     queuedMessageMetadata: remainingMetadata,
     pendingQueueDispatch: {
@@ -524,20 +556,26 @@ export function drainQueuedMessageOnTurnCompleted(
     try {
       await dispatchDrainedHead();
     } finally {
-      if (activeChatsStore.getSnapshot()[threadId]?.queueDrainSettling) {
-        activeChatsStore.updateChat(threadId, {
+      if (chatStore.getSnapshot()[threadId]?.queueDrainSettling) {
+        chatStore.updateChat(threadId, {
           queueDrainSettling: undefined,
           pendingQueueDispatch: undefined,
         });
       }
-      const settled = activeChatsStore.getSnapshot()[threadId];
+      const settled = chatStore.getSnapshot()[threadId];
       if (
         dispatchAccepted &&
         settled?.queuedMessages.length &&
         settled.orchestrationStatus !== 'aborted' &&
         !isTurnInFlight(settled)
       ) {
-        drainQueuedMessageOnTurnCompleted(apiBase, threadId);
+        drainQueuedMessageOnTurnCompleted(
+          apiBase,
+          threadId,
+          undefined,
+          undefined,
+          station,
+        );
       }
     }
   }, 100);
@@ -549,9 +587,9 @@ export function drainQueuedMessageOnTurnCompleted(
         '../../lib/foregroundMessageDispatch'
       ));
     } catch (error) {
-      const failed = activeChatsStore.getSnapshot()[threadId];
+      const failed = chatStore.getSnapshot()[threadId];
       if (failed) {
-        activeChatsStore.updateChat(threadId, {
+        chatStore.updateChat(threadId, {
           queuedMessages: [nextMessage, ...(failed.queuedMessages ?? [])],
           queuedMessageMetadata: nextMetadata
             ? [nextMetadata, ...(failed.queuedMessageMetadata ?? [])]
@@ -565,7 +603,7 @@ export function drainQueuedMessageOnTurnCompleted(
       return;
     }
     // Loading the send chunk can yield; re-read authority before mutating.
-    const current = activeChatsStore.getSnapshot()[threadId];
+    const current = chatStore.getSnapshot()[threadId];
     if (!current) {
       return;
     }
@@ -580,7 +618,7 @@ export function drainQueuedMessageOnTurnCompleted(
       !conversationCanMutate(current) ||
       current.queuedMessageFailure?.reviewReason === 'execution-binding-changed'
     ) {
-      activeChatsStore.updateChat(threadId, {
+      chatStore.updateChat(threadId, {
         queuedMessages: [nextMessage, ...(current.queuedMessages ?? [])],
         queuedMessageMetadata: nextMetadata
           ? [nextMetadata, ...(current.queuedMessageMetadata ?? [])]
@@ -609,7 +647,7 @@ export function drainQueuedMessageOnTurnCompleted(
     );
     const clientId = outgoing.clientId;
     const messages = outgoing.messages;
-    activeChatsStore.updateChat(threadId, {
+    chatStore.updateChat(threadId, {
       status: 'sending',
       // #2309: this drain's dispatch is the optimistic window until the
       // server reports its turn open.
@@ -622,7 +660,7 @@ export function drainQueuedMessageOnTurnCompleted(
     });
 
     if (!current.agentSlug) {
-      activeChatsStore.updateChat(threadId, {
+      chatStore.updateChat(threadId, {
         status: 'error',
         error:
           'This chat has no agent to send to. Your message is still queued.',
@@ -666,7 +704,7 @@ export function drainQueuedMessageOnTurnCompleted(
           .then((late) =>
             // Back in the queue (a transient failure requeued it): the late
             // row becomes its held copy. Otherwise nothing will settle it.
-            activeChatsStore
+            chatStore
               .getSnapshot()
               [threadId]?.queuedMessageMetadata?.some(
                 (entry) => entry.id === clientId,
@@ -688,8 +726,8 @@ export function drainQueuedMessageOnTurnCompleted(
         // The outbox already holds this message on its way, or as possibly
         // started: sending it again from here would bypass that record. It
         // leaves the queue; its outbox row is where it is checked.
-        const latest = activeChatsStore.getSnapshot()[threadId];
-        activeChatsStore.updateChat(threadId, {
+        const latest = chatStore.getSnapshot()[threadId];
+        chatStore.updateChat(threadId, {
           status: 'idle',
           sendAwaitingTurnStart: undefined,
           ...(latest?.pendingClientTurnId === clientId
@@ -699,7 +737,7 @@ export function drainQueuedMessageOnTurnCompleted(
             (message) => message.clientId !== clientId,
           ),
         });
-        activeChatsStore.addEphemeralMessage(threadId, {
+        chatStore.addEphemeralMessage(threadId, {
           role: 'system',
           content: retired
             ? `${(error as Error).message} It was not sent again.`
@@ -745,16 +783,16 @@ export function drainQueuedMessageOnTurnCompleted(
         // the composer send path).
         const carried = current.queuedApprovalMode;
         if (carried && receipt.approvalMode) {
-          activeChatsStore.updateChat(
+          chatStore.updateChat(
             threadId,
             approvalPickReceived(
-              activeChatsStore.getSnapshot()[threadId],
+              chatStore.getSnapshot()[threadId],
               carried,
               receipt.approvalMode,
             ),
           );
           if (!receipt.approvalMode.recorded) {
-            activeChatsStore.addEphemeralMessage(threadId, {
+            chatStore.addEphemeralMessage(threadId, {
               role: 'system',
               content: supersededPickNote(receipt.approvalMode.approvalMode),
             });
@@ -765,7 +803,7 @@ export function drainQueuedMessageOnTurnCompleted(
         // grouped under. Silently dropping the workspace would be a second
         // label-vs-derivation defect in the fix for the first one.
         if (!continueUnbound) return;
-        activeChatsStore.addEphemeralMessage(threadId, {
+        chatStore.addEphemeralMessage(threadId, {
           role: 'system',
           content:
             'Sent to this conversation as it is. It was started without a workspace, so it does not run inside your project directory.',
@@ -792,7 +830,7 @@ export function drainQueuedMessageOnTurnCompleted(
         // A failed drain must never strand the session at 'sending' with the
         // popped message silently lost — surface it like the interactive send
         // path does and requeue the message at the head so nothing is dropped.
-        const failed = activeChatsStore.getSnapshot()[threadId];
+        const failed = chatStore.getSnapshot()[threadId];
         // archive#1293: remove the optimistic entry
         // this drain appended above, by its clientId — mirrors
         // rejectedSendRollback in useActiveChatSessionMessaging.ts. Without
@@ -813,8 +851,8 @@ export function drainQueuedMessageOnTurnCompleted(
           live &&
           (error as { outcome?: unknown })?.outcome === 'indeterminate'
         ) {
-          const failed = activeChatsStore.getSnapshot()[threadId];
-          activeChatsStore.updateChat(threadId, {
+          const failed = chatStore.getSnapshot()[threadId];
+          chatStore.updateChat(threadId, {
             status: 'idle',
             error: undefined,
             sendAwaitingTurnStart: undefined,
@@ -825,7 +863,7 @@ export function drainQueuedMessageOnTurnCompleted(
               (message) => message.clientId !== clientId,
             ),
           });
-          activeChatsStore.addEphemeralMessage(threadId, {
+          chatStore.addEphemeralMessage(threadId, {
             role: 'system',
             content:
               'Station could not confirm whether your queued message reached the agent. It was not sent again; check it in the outbox list.',
@@ -858,7 +896,7 @@ export function drainQueuedMessageOnTurnCompleted(
           code === PROVIDER_SESSION_STARTING_CODE ||
           code === CLIENT_TURN_IN_FLIGHT_CODE
         ) {
-          activeChatsStore.updateChat(threadId, {
+          chatStore.updateChat(threadId, {
             status: 'idle',
             error: undefined,
             sendAwaitingTurnStart: undefined,
@@ -871,7 +909,7 @@ export function drainQueuedMessageOnTurnCompleted(
               ? { messages: messagesAfterRollback }
               : {}),
           });
-          scheduleProviderTurnRedrain(apiBase, threadId, code);
+          scheduleProviderTurnRedrain(apiBase, threadId, code, station);
           return;
         }
         // A permanent Station-side refusal of a QUEUED follow-up is not an
@@ -884,7 +922,7 @@ export function drainQueuedMessageOnTurnCompleted(
         // now carried durably by the unsent record below, so ALL permanent
         // drops return the chat to idle. Transient failures keep 'error':
         // their send is still pending in the queue and needs attention.
-        activeChatsStore.updateChat(threadId, {
+        chatStore.updateChat(threadId, {
           ...(failed?.pendingClientTurnId === clientId
             ? { pendingClientTurnId: undefined }
             : {}),
@@ -944,7 +982,7 @@ export function drainQueuedMessageOnTurnCompleted(
         // archive#1292: routed through addEphemeralMessage (not a raw
         // `ephemeralMessages` assignment) so this notice gets a real
         // id/timestamp, same as every other failure-path notice.
-        activeChatsStore.addEphemeralMessage(threadId, {
+        chatStore.addEphemeralMessage(threadId, {
           role: 'system',
           sendFailure: true,
           // The dropped text is echoed into the notice because it survives

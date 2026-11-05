@@ -24,6 +24,12 @@ const queryState = vi.hoisted(() => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useAgentsQuery: () => ({ data: [] }),
+  useOrchestrationSessionsQuery: () => ({
+    data: [],
+    status: 'pending',
+    isFetching: false,
+  }),
   // The real picker projection is credential-free and drops
   // `capabilityInventory` (workspaceConnections.ts `useModelPickerCatalogQuery`);
   // modelled faithfully so a consumer cannot read the live handshake off it.

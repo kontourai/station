@@ -68,6 +68,7 @@ import {
   rememberSentTurnKey,
 } from '../client/sent-turn-key';
 import { isStationAnswer } from '../client/station-envelope';
+import { captureConnectionReadTarget } from '../connection-read-target';
 import { OrchestrationSessionsContext } from '../orchestrationSessionsContext';
 import {
   type MutationOptions,
@@ -1383,9 +1384,11 @@ export async function steerOrchestrationTurn(input: {
 export function useOrchestrationProvidersQuery(
   config?: QueryConfig<OrchestrationProviderSummary[]>,
 ) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
+  const query = orchestrationQueries.providers(readTarget);
   return useApiQuery(
-    orchestrationQueries.providers().queryKey,
-    () => fetchOrchestrationProviders(),
+    query.queryKey,
+    () => (readTarget ? query.queryFn() : fetchOrchestrationProviders()),
     {
       staleTime:
         config?.staleTime ?? orchestrationQueries.providers().staleTime,
@@ -1400,22 +1403,29 @@ export function useOrchestrationSessionsQuery(
   requestScope?: ApiRequestScope | null,
 ) {
   const host = useContext(OrchestrationSessionsContext);
+  const target = captureConnectionReadTarget(config?.readTarget);
   const scope =
-    requestScope === null ? undefined : (requestScope ?? host?.scope);
+    requestScope === null
+      ? undefined
+      : (target?.requestScope ?? requestScope ?? host?.scope);
   const streamLive =
+    !target &&
     host?.streamLive === true &&
     host.scope?.apiBase === scope?.apiBase &&
     host.scope?.authorityKey === scope?.authorityKey;
   return useApiQueryWithSharing(
     requestScope === null
       ? ['orchestration-sessions-unavailable']
-      : orchestrationQueries.sessions(scope).queryKey,
+      : orchestrationQueries.sessions(scope, target).queryKey,
     (signal) => {
       if (requestScope === null) throw new StationRequestAuthorityError();
-      return fetchOrchestrationSessions(scope?.apiBase, {
-        signal,
-        ...(scope ? { requestScope: scope } : {}),
-      });
+      return fetchOrchestrationSessions(
+        target?.targetApiBase ?? scope?.apiBase,
+        {
+          signal,
+          ...(scope ? { requestScope: scope } : {}),
+        },
+      );
     },
     shareSessionReadModel,
     {

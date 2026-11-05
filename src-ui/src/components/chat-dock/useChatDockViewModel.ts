@@ -11,11 +11,16 @@ import {
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   type OrchestrationSessionSummary,
+  useAgentsQuery,
   useEngineConnectionsQuery,
   useModelPickerCatalogQuery,
+  useOrchestrationSessionsQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
+import type { StationConnection } from '../../connections/station-connection';
+import { chatBelongsToStation } from '../../connections/station-state';
+import { useChatStationConnection } from '../../connections/use-chat-station-connection';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useModelImageSupport } from '../../contexts/ModelCapabilitiesContext';
 import { countOpenChatAttention } from '../../contexts/open-chats-store';
@@ -91,6 +96,7 @@ function ensureActiveModelOption(
 }
 
 interface UseChatDockViewModelArgs {
+  connection?: StationConnection;
   activeSessionId: string | null;
   availableModels: ModelOption[];
   globalModelsLoading?: boolean;
@@ -125,6 +131,7 @@ interface UseChatDockViewModelArgs {
 }
 
 export function useChatDockViewModel({
+  connection,
   activeSessionId,
   availableModels,
   globalModelsLoading = false,
@@ -138,6 +145,42 @@ export function useChatDockViewModel({
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) || null;
   const activeSessionForHook = activeSession;
+  const owner = useChatStationConnection(activeSession, connection);
+  connection = owner.connection;
+  const remote = Boolean(activeSession && !chatBelongsToStation(activeSession));
+  const readsOwnStation =
+    !remote ||
+    Boolean(
+      connection &&
+        activeSession &&
+        chatBelongsToStation(activeSession, connection),
+    );
+  const remoteSessions = useOrchestrationSessionsQuery(
+    { enabled: remote && Boolean(connection), readTarget: connection },
+    remote && !connection ? null : undefined,
+  );
+  const remoteAgents = useAgentsQuery({
+    enabled: remote && Boolean(connection),
+    readTarget: connection,
+  });
+  if (remote && connection) {
+    orchestrationSessions = remoteSessions.data ?? EMPTY_ORCHESTRATION_SESSIONS;
+    orchestrationSessionsStatus = remoteSessions.status;
+    orchestrationSessionsFetching = remoteSessions.isFetching;
+    agents = remoteAgents.data ?? [];
+  }
+  if (remote) {
+    availableModels = [];
+    globalModelsLoading = false;
+    globalModelsLiveConfirmed = false;
+  }
+  if (!readsOwnStation) {
+    orchestrationSessions = EMPTY_ORCHESTRATION_SESSIONS;
+    orchestrationSessionsStatus = 'pending';
+    orchestrationSessionsFetching = false;
+    agents = [];
+    availableModels = [];
+  }
   const agentForHook: AgentData | null = activeSessionForHook
     ? agents.find((agent) => agent.slug === activeSessionForHook.agentSlug) ||
       null
@@ -147,7 +190,10 @@ export function useChatDockViewModel({
     : null;
 
   const sessionProjectSlug = activeSessionForHook?.projectSlug ?? null;
-  const { project: sessionProject } = useProject(sessionProjectSlug ?? '');
+  const { project: sessionProject } = useProject(
+    remote && !connection ? '' : (sessionProjectSlug ?? ''),
+    connection,
+  );
   const sessionWorkingDir = sessionProject?.workingDirectory ?? null;
   const sessionProjectName =
     sessionProject?.name ??
@@ -157,8 +203,8 @@ export function useChatDockViewModel({
   // station#1146: git stays bound to the PROJECT's directory, deliberately —
   // see `sessionDisplayCwd` below for the split and its reasoning.
   const { data: gitStatus } = useGitStatus(
-    sessionProjectSlug,
-    sessionWorkingDir,
+    remote ? null : sessionProjectSlug,
+    remote ? null : sessionWorkingDir,
   );
   // station#1146: the dock reports on a session that has ALREADY started, so
   // the directory it names must be the one that session was started in, not
@@ -256,16 +302,20 @@ export function useChatDockViewModel({
   const sessionCwdManaged = Boolean(
     sessionCwd && activeOrchestrationSession?.cwdManagedWorkspace,
   );
-  const { data: sessionLayouts = [] } = useProjectLayoutsQuery(
+  const { data: projectLayouts = [] } = useProjectLayoutsQuery(
     sessionProjectSlug ?? '',
-    { enabled: !!sessionProjectSlug },
+    { enabled: !!sessionProjectSlug && !remote },
   );
+  const sessionLayouts = remote ? [] : projectLayouts;
   const {
     data: modelPickerCatalog,
     isFetchedAfterMount,
     error,
     isLoading: stationModelsLoading,
-  } = useModelPickerCatalogQuery();
+  } = useModelPickerCatalogQuery({
+    enabled: readsOwnStation,
+    readTarget: connection,
+  });
   const modelCatalogLiveConfirmed = isFetchedAfterMount && !error;
   const agentConnections =
     modelPickerCatalog?.agentConnections ?? EMPTY_CONNECTIONS;
@@ -472,7 +522,9 @@ export function useChatDockViewModel({
   const selectedModelImageSupport =
     engineModelImageSupport !== 'unknown'
       ? engineModelImageSupport
-      : bedrockModelImageSupport;
+      : remote
+        ? 'unknown'
+        : bedrockModelImageSupport;
   // `resolveEngineCapabilityMatrix` reads CONNECTION records, and its
   // no-id-no-connection default only fires when `agentConnectionId` is
   // genuinely absent. A live Station session can carry an `agentConnectionId`
@@ -492,7 +544,10 @@ export function useChatDockViewModel({
   // Grok Build chat (handshake: `promptCapabilities.image: false`) attached
   // images and only learned otherwise on send. The engine inventory query is
   // the same read the send path already subscribes to.
-  const { data: engineConnections } = useEngineConnectionsQuery();
+  const { data: engineConnections } = useEngineConnectionsQuery({
+    enabled: readsOwnStation,
+    readTarget: connection,
+  });
   const observedImagePrompt = engineConnections?.find(
     (connection) => connection.id === agentConnectionId,
   )?.capabilityInventory?.sessionSurfaces?.promptImage;

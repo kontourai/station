@@ -1,5 +1,6 @@
 import { fetchOrchestrationConversationEventWindow } from '@kontourai/station-sdk';
 import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import type { StationStateScope } from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
 import { raiseRequestOpenedToast } from './approvalHandlers';
@@ -36,7 +37,12 @@ export async function hydrateOpenApprovalToasts(
   apiBase: string,
   chatKey: string,
   placeholders: ReadonlyMap<string, string>,
+  station?: StationStateScope,
 ): Promise<void> {
+  if (station && !station.isCurrent()) return;
+  const conversationId =
+    activeChatsStore.forStation(station).getSnapshot()[chatKey]
+      ?.conversationId ?? chatKey;
   const unresolved = new Set(placeholders.keys());
   let cursor: string | undefined;
   for (let pageIndex = 0; pageIndex <= OLDER_PAGE_LIMIT; pageIndex += 1) {
@@ -45,16 +51,17 @@ export async function hydrateOpenApprovalToasts(
     >;
     try {
       page = await fetchOrchestrationConversationEventWindow(
-        chatKey,
-        apiBase,
+        conversationId,
+        station?.targetApiBase ?? apiBase,
         cursor === undefined
           ? { turnLimit: 1, direction: 'newest' }
           : { cursor, turnLimit: OLDER_PAGE_TURNS, direction: 'newest' },
+        station ? { requestScope: station.requestScope } : undefined,
       );
     } catch {
       return;
     }
-    hydratePage(apiBase, page.events, placeholders, unresolved);
+    hydratePage(apiBase, page.events, placeholders, unresolved, station);
     const next = page.nextCursor;
     if (unresolved.size === 0 || !page.hasMore || !next || next === cursor)
       return;
@@ -67,13 +74,15 @@ function hydratePage(
   events: ReadonlyArray<{ event: OrchestrationEvent }>,
   placeholders: ReadonlyMap<string, string>,
   unresolved: Set<string>,
+  station?: StationStateScope,
 ): void {
+  const chatStore = activeChatsStore.forStation(station);
   for (const { event } of events) {
     if (event.method !== 'request.opened' || !event.eventId) continue;
     const placeholderToastId = placeholders.get(event.requestId);
     if (!placeholderToastId || event.blocking === false) continue;
     unresolved.delete(event.requestId);
-    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    const chat = chatStore.getChatForExecutionSession(event.threadId);
     // The placeholder is still this request's toast: an answer, a newer
     // snapshot or a live `request.opened` since the read all replace it.
     if (chat?.approvalToasts?.get(event.requestId) !== placeholderToastId)
@@ -98,19 +107,20 @@ function hydratePage(
     // A questionnaire or an MCP form is answered on its own card, not by the
     // approval toast, so the placeholder stays; only the turn is bound.
     if (inputRequestFromRequestEvent(event)) {
-      if (learnedTurnId) activeChatsStore.updateChat(event.threadId, bindTurn);
+      if (learnedTurnId) chatStore.updateChat(event.threadId, bindTurn);
       continue;
     }
     toastStore.dismiss(placeholderToastId);
     const approvalToasts = new Map(chat.approvalToasts);
     approvalToasts.delete(event.requestId);
-    activeChatsStore.updateChat(event.threadId, {
+    chatStore.updateChat(event.threadId, {
       approvalToasts,
       ...bindTurn,
     });
     raiseRequestOpenedToast(
       apiBase,
       event as Extract<OrchestrationEvent, { method: 'request.opened' }>,
+      station,
     );
   }
 }

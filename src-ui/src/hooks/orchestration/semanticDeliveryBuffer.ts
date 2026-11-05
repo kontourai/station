@@ -1,3 +1,4 @@
+import type { StationStateScope } from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { OrchestrationEvent } from './types';
@@ -17,6 +18,7 @@ interface Segment {
   chunks: string[];
   apiBase: string;
   provenance?: unknown;
+  station?: StationStateScope;
 }
 
 export function createDeviceSemanticDeliveryBuffer(
@@ -24,12 +26,14 @@ export function createDeviceSemanticDeliveryBuffer(
     apiBase: string,
     event: OrchestrationEvent,
     provenance?: unknown,
+    station?: StationStateScope,
   ) => void,
 ): SemanticDeliveryBuffer {
   const enabled = () =>
     deviceSettingsStore.get('featureSettings').bufferedDelivery === true;
   const buffer = new SemanticDeliveryBuffer(
-    (event, apiBase, provenance) => dispatch(apiBase, event, provenance),
+    (event, apiBase, provenance, station) =>
+      dispatch(apiBase, event, provenance, ...(station ? [station] : [])),
     enabled,
     deviceOwnerOf,
   );
@@ -48,6 +52,7 @@ export function createDeviceSemanticDeliveryBuffer(
 interface PendingThread {
   apiBase: string;
   owner: string;
+  station?: StationStateScope;
   segments: Segment[];
   chars: number;
   events: number;
@@ -60,8 +65,8 @@ function isDelta(event: OrchestrationEvent): event is DeltaEvent {
   );
 }
 
-function deviceOwnerOf(threadId: string): string {
-  const key = activeChatsStore.getChatKeyForExecutionSession(threadId);
+function deviceOwnerOf(threadId: string, station?: StationStateScope): string {
+  const key = activeChatsStore.getChatKeyForExecutionSession(threadId, station);
   const chat = key ? activeChatsStore.getSnapshot()[key] : undefined;
   return chat
     ? `${key}\u0000${chat.conversationId ?? ''}\u0000${chat.currentSessionId ?? ''}`
@@ -93,16 +98,33 @@ export class SemanticDeliveryBuffer {
       event: OrchestrationEvent,
       apiBase: string,
       provenance?: unknown,
+      station?: StationStateScope,
     ) => void,
     private readonly buffered: () => boolean,
-    private readonly ownerOf: (threadId: string) => string = () => 'owner',
+    private readonly ownerOf: (
+      threadId: string,
+      station?: StationStateScope,
+    ) => string = () => 'owner',
   ) {}
-  offer(event: OrchestrationEvent, apiBase = '', provenance?: unknown): void {
-    if (!this.ownerOf(event.threadId)) {
-      this.dispatch(event, apiBase, provenance);
+  private emit(
+    event: OrchestrationEvent,
+    apiBase: string,
+    provenance?: unknown,
+    station?: StationStateScope,
+  ) {
+    this.dispatch(event, apiBase, provenance, ...(station ? [station] : []));
+  }
+  offer(
+    event: OrchestrationEvent,
+    apiBase = '',
+    provenance?: unknown,
+    station?: StationStateScope,
+  ): void {
+    if (!this.ownerOf(event.threadId, station)) {
+      this.emit(event, apiBase, provenance, station);
       return;
     }
-    const key = this.key(apiBase, event.threadId);
+    const key = this.key(apiBase, event.threadId, station);
     if (!isDelta(event)) {
       this.flushKey(key);
       this.dispatch(event, apiBase, provenance);
@@ -173,7 +195,13 @@ export class SemanticDeliveryBuffer {
     if (last && sameSegment(last.event, event)) {
       last.chunks.push(event.delta);
     } else {
-      held.segments.push({ event, chunks: [event.delta], apiBase, provenance });
+      held.segments.push({
+        event,
+        chunks: [event.delta],
+        apiBase,
+        provenance,
+        station,
+      });
     }
     held.chars += event.delta.length;
     this.totalChars += event.delta.length;
@@ -208,7 +236,10 @@ export class SemanticDeliveryBuffer {
   dropChangedOwners(): void {
     for (const [key, held] of [...this.pending.entries()]) {
       const threadId = held.segments[0]?.event.threadId;
-      if (threadId !== undefined && held.owner !== this.ownerOf(threadId))
+      if (
+        threadId !== undefined &&
+        held.owner !== this.ownerOf(threadId, held.station)
+      )
         this.dropKey(key);
     }
   }
@@ -226,13 +257,14 @@ export class SemanticDeliveryBuffer {
     this.pending.delete(key);
     this.totalChars -= held.chars;
     for (const segment of held.segments) {
-      this.dispatch(
+      this.emit(
         {
           ...segment.event,
           delta: segment.chunks.join(''),
         } as OrchestrationEvent,
         segment.apiBase,
         segment.provenance,
+        segment.station,
       );
     }
   }
@@ -251,7 +283,11 @@ export class SemanticDeliveryBuffer {
     });
   }
 
-  private key(apiBase: string, threadId: string): string {
-    return `${apiBase}\u0000${threadId}`;
+  private key(
+    apiBase: string,
+    threadId: string,
+    station?: StationStateScope,
+  ): string {
+    return JSON.stringify([apiBase, station?.runtimeKey, threadId]);
   }
 }

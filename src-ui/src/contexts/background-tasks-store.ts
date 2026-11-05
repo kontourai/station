@@ -28,6 +28,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
 import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
+import type { StationStateScope } from '../connections/station-state';
 import type {
   OrchestrationEvent,
   OrchestrationSnapshotPayload,
@@ -752,6 +753,7 @@ export function selectChatBackgroundTasks(
 // Constructed in unit tests via dynamic import; the app uses the singleton below.
 export class BackgroundTasksStore {
   private state: BackgroundTasksState = createEmptyBackgroundTasksState();
+  private partitions = new Map<string, BackgroundTasksState>();
   private listeners = new Set<() => void>();
 
   subscribe = (listener: () => void): (() => void) => {
@@ -759,24 +761,45 @@ export class BackgroundTasksStore {
     return () => this.listeners.delete(listener);
   };
 
-  getSnapshot = (): BackgroundTasksState => this.state;
+  getSnapshot = (station?: StationStateScope): BackgroundTasksState => {
+    if (!station || station.binding.affinity.kind === 'host') return this.state;
+    let state = this.partitions.get(station.runtimeKey);
+    if (!state) {
+      state = createEmptyBackgroundTasksState();
+      this.partitions.set(station.runtimeKey, state);
+    }
+    return state;
+  };
 
-  private commit(next: BackgroundTasksState) {
-    if (next === this.state) return;
-    this.state = next;
+  private commit(next: BackgroundTasksState, station?: StationStateScope) {
+    if (station && !station.isCurrent()) return;
+    if (next === this.getSnapshot(station)) return;
+    if (station && station.binding.affinity.kind !== 'host')
+      this.partitions.set(station.runtimeKey, next);
+    else this.state = next;
     this.listeners.forEach((listener) => listener());
   }
 
-  ingest(event: OrchestrationEvent) {
-    this.commit(ingestBackgroundTaskEvent(this.state, event));
+  ingest(event: OrchestrationEvent, station?: StationStateScope) {
+    this.commit(
+      ingestBackgroundTaskEvent(this.getSnapshot(station), event),
+      station,
+    );
   }
 
-  reconcileSnapshot(payload: OrchestrationSnapshotPayload) {
-    this.commit(reconcileBackgroundTasksSnapshot(this.state, payload));
+  reconcileSnapshot(
+    payload: OrchestrationSnapshotPayload,
+    station?: StationStateScope,
+  ) {
+    this.commit(
+      reconcileBackgroundTasksSnapshot(this.getSnapshot(station), payload),
+      station,
+    );
   }
 
   /** Test-only: clears all tracked entries/bindings between test cases. */
   reset() {
+    this.partitions.clear();
     this.state = createEmptyBackgroundTasksState();
   }
 }

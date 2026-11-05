@@ -94,3 +94,7 @@ export function useStationConnections(): StationConnections {
   if (!connections) throw new Error('StationConnectionsProvider is required');
   return connections;
 }
+
+export function useStationConnectionsOptional(): StationConnections | null {
+  return useContext(StationConnectionsContext);
+}

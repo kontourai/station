@@ -446,7 +446,7 @@ export function AuthorityQueryProvider({
       lastVerifiedNamespaceRef.current !== undefined &&
       lastVerifiedNamespaceRef.current !== verifiedNamespace
     ) {
-      activeChatsStore.clearConversationActivity();
+      activeChatsStore.clearAllConversationActivity();
       // #1418/#1419: a different Station's ledger is not this document's to
       // settle. Flush what the old identity owes, then mint a fresh one.
       notifyPluginCommandEffectAuthoritySwitch();
@@ -697,7 +697,7 @@ export function AuthorityQueryProvider({
           persistOptions={persistOptions}
         >
           <AuthoritySwitchInvalidator />
-          <OfflineSessionIndex />
+          <OfflineSessionIndex requestScope={requestScope ?? undefined} />
           <ClientBootstrapContext.Provider
             value={
               bootCapability !== null &&

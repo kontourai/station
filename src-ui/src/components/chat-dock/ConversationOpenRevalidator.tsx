@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useChatStationConnection } from '../../connections/use-chat-station-connection';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useWorkObservation } from '../../contexts/work-observation';
@@ -7,6 +8,7 @@ import {
   type SelectableModel,
   sanitizeRuntimeOptionsForModel,
 } from '../../utils/modelCapabilities';
+import { useChatRequestTarget } from '../chat/ChatRequestContext';
 
 export interface ConversationOpenRevalidatorProps {
   sessionId: string;
@@ -43,8 +45,24 @@ export function ConversationOpenRevalidator({
   agents,
   modelConnections,
 }: ConversationOpenRevalidatorProps) {
-  const observation = useWorkObservation(conversationId);
+  const target = useChatRequestTarget();
+  const chat = activeChatsStore.getSnapshot()[sessionId];
+  const { connection, unavailable, resolving } = useChatStationConnection(
+    chat,
+    target?.station,
+  );
+  apiBase = connection?.targetApiBase ?? apiBase;
+  const observation = useWorkObservation(conversationId, connection);
   useEffect(() => {
+    if (resolving) return;
+    if (unavailable) {
+      updateChat(sessionId, {
+        stationConnectionUnavailable: true,
+        conversationOpenPending: false,
+        conversationOpenFailed: true,
+      });
+      return;
+    }
     let cancelled = false;
     const read = observation?.read(conversationId, 'open', () => !cancelled);
     void import('./conversationOpenController')
@@ -56,6 +74,7 @@ export function ConversationOpenRevalidator({
             apiBase,
             observation,
             () => !cancelled && read?.current() !== false,
+            ...(connection ? [connection] : []),
           );
         if (cancelled || read?.current() === false) return;
         const previous = activeChatsStore.getSnapshot()[sessionId];
@@ -100,9 +119,11 @@ export function ConversationOpenRevalidator({
           resolution.status === 'resolved'
             ? resolution.execution?.agentId
             : undefined;
-        updateChat(
-          sessionId,
-          controller.conversationOpenPatch(resolution, previous, {
+        updateChat(sessionId, {
+          ...(previous?.stationConnectionUnavailable
+            ? { stationConnectionUnavailable: undefined }
+            : {}),
+          ...controller.conversationOpenPatch(resolution, previous, {
             validModelIds: selected ? [selected.id] : [],
             ...(modelProvider
               ? {
@@ -126,11 +147,11 @@ export function ConversationOpenRevalidator({
             agentName: agents?.find((agent) => agent.slug === actualAgent)
               ?.name,
           }),
-        );
+        });
         // #2309: a turn end that arrived while this binding was being
         // re-proved held its queued follow-up; now that the chat is writable
         // again, send it.
-        resumeHeldQueueDrain(apiBase, sessionId);
+        resumeHeldQueueDrain(apiBase, sessionId, connection);
       })
       .catch(() => {
         if (cancelled || read?.current() === false) return;
@@ -148,6 +169,9 @@ export function ConversationOpenRevalidator({
     };
   }, [
     observation,
+    connection,
+    unavailable,
+    resolving,
     apiBase,
     conversationId,
     sessionId,

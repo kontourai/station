@@ -1,3 +1,4 @@
+import { chatBelongsToStation } from '../../connections/station-state';
 import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import '../chat/TaskShaping.css';
@@ -2401,9 +2402,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             )) === true,
           projectName: (slug) =>
             projects.find((project) => project.slug === slug)?.name,
-          findTab: (conversationId) =>
+          findTab: (conversationId, connection) =>
             Object.entries(activeChatsStore.getSnapshot()).find(
-              ([, chat]) => chat.conversationId === conversationId,
+              ([, chat]) =>
+                chat.conversationId === conversationId &&
+                chatBelongsToStation(chat, connection),
             )?.[0],
           updateChat,
           readChat: (tabId) => activeChatsStore.getSnapshot()[tabId],

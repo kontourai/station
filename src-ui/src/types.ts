@@ -31,6 +31,7 @@ import type {
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
+import type { ChatStationBindingV1 } from './connections/station-connection';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
@@ -358,6 +359,9 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  stationConnectionUnavailable?: boolean;
+  stationBinding?: ChatStationBindingV1;
+  stationBindingInvalid?: boolean;
   peerChat?: PeerChatBinding;
   peerChatInvalid?: boolean;
   taskShaping?: boolean;

@@ -20,6 +20,7 @@ import type {
   ProjectSharedTaskSummary,
 } from '@kontourai/station-contracts/project-shared-task';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
+import type { ConnectionReadTarget } from '@kontourai/station-sdk';
 import {
   type ProjectReadQueryConfig,
   useProjectChatDefaultsQuery,
@@ -31,6 +32,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useMemo } from 'react';
+import { useChatRequestTarget } from '../components/chat/ChatRequestContext';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import { useAuthorityPersistence } from './AuthorityPersistenceContext';
 
@@ -71,10 +73,14 @@ type AppProjectReadConfig<T> = Omit<
 export function useScopedProjectsQuery(
   config?: AppProjectReadConfig<ProjectMetadata[]>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useChatRequestTarget();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectsQuery({
     ...config,
+    readTarget,
     requestScope,
     requireRequestScope: true,
     durableAuthorityId: namespace ?? undefined,
@@ -90,7 +96,10 @@ export function useScopedProjectsQuery(
 export function useScopedProjectRunLocationsQuery(
   config?: AppProjectReadConfig<ProjectRunLocations>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useChatRequestTarget();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectRunLocationsQuery({
     staleTime: PROJECT_RUN_LOCATIONS_STALE_MS,
@@ -99,6 +108,7 @@ export function useScopedProjectRunLocationsQuery(
     // answer is older than the stale time.
     refetchOnMount: true,
     ...config,
+    readTarget,
     requestScope,
     requireRequestScope: true,
     durableAuthorityId: namespace ?? undefined,
@@ -116,12 +126,16 @@ export function useScopedProjectChatDefaultsQuery(
   slug: string | null | undefined,
   config?: AppProjectReadConfig<ProjectChatDefaultsView>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useChatRequestTarget();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectChatDefaultsQuery(slug ?? '', {
     staleTime: 0,
     refetchOnMount: true,
     ...config,
+    readTarget,
     enabled: !!slug && (config?.enabled ?? true),
     requestScope,
     requireRequestScope: true,
@@ -143,7 +157,10 @@ export function useScopedProjectCheckoutFreshnessQuery(
   slug: string | null | undefined,
   config?: AppProjectReadConfig<ProjectCheckoutFreshness | null>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useChatRequestTarget();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectCheckoutFreshnessQuery(slug ?? '', {
     staleTime: 10_000,
@@ -153,6 +170,7 @@ export function useScopedProjectCheckoutFreshnessQuery(
     refetchOnMount: true,
     refetchOnWindowFocus: true,
     ...config,
+    readTarget,
     enabled: !!slug && (config?.enabled ?? true),
     requestScope,
     requireRequestScope: true,
@@ -180,10 +198,14 @@ export function useScopedProjectQuery(
   slug: string,
   config?: AppProjectReadConfig<ProjectConfig>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useChatRequestTarget();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectQuery(slug, {
     ...config,
+    readTarget,
     requestScope,
     requireRequestScope: true,
     durableAuthorityId: namespace ?? undefined,
@@ -623,11 +645,15 @@ export function useProjects(): {
   };
 }
 
-export function useProject(slug: string): {
+export function useProject(
+  slug: string,
+  readTarget?: ConnectionReadTarget,
+): {
   project: ProjectConfig | undefined;
   isLoading: boolean;
 } {
   const { data, isLoading } = useScopedProjectQuery(slug, {
+    readTarget,
     enabled: !!slug,
   });
   return { project: data, isLoading };

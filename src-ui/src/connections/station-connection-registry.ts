@@ -23,6 +23,24 @@ interface Entry {
   dispose(): void;
 }
 
+const retirementListeners = new Map<string, Set<() => void>>();
+
+export function onStationConnectionRetired(
+  connection: Pick<StationConnection, 'runtimeKey'>,
+  listener: () => void,
+): () => void {
+  let listeners = retirementListeners.get(connection.runtimeKey);
+  if (!listeners) {
+    listeners = new Set();
+    retirementListeners.set(connection.runtimeKey, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size) retirementListeners.delete(connection.runtimeKey);
+  };
+}
+
 const authorityRegistries = new WeakMap<
   object,
   Set<StationConnectionRegistry>
@@ -127,7 +145,14 @@ export class StationConnectionRegistry {
     const { dispose, ...target } = prepared;
     const entry: Entry = {
       readers: new Set(),
-      dispose,
+      dispose: () => {
+        for (const listener of retirementListeners.get(
+          entry.connection.runtimeKey,
+        ) ?? [])
+          listener();
+        retirementListeners.delete(entry.connection.runtimeKey);
+        dispose();
+      },
       connection: {
         ...target,
         requestScope: Object.freeze({ ...target.requestScope }),

@@ -84,9 +84,15 @@ export function sessionReadModelRefreshState(
 
 export function currentStreamQueryClient(
   apiBase: string,
+  authorityKey?: string,
 ): QueryClient | undefined {
-  return streamQueryClients.filter((entry) => entry.apiBase === apiBase).at(-1)
-    ?.queryClient;
+  return streamQueryClients
+    .filter(
+      (entry) =>
+        entry.apiBase === apiBase &&
+        (authorityKey === undefined || entry.authorityKey === authorityKey),
+    )
+    .at(-1)?.queryClient;
 }
 
 /** The authority the newest registration of `client` for `apiBase` carries. */

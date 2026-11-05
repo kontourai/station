@@ -30,6 +30,9 @@ vi.mock('../../../contexts/ToastContext', () => ({
 }));
 vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: {
+    forStation() {
+      return this;
+    },
     getChatForExecutionSession,
     getChatKeyForExecutionSession,
     updateChat,
