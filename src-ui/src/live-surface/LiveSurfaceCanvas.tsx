@@ -354,6 +354,8 @@ const INPUT_NOTICE_TEXT: Record<
     'Control changed before your input arrived, so it was not sent.',
   'input-failed': 'Your last input may not have reached the page. Check it.',
   'page-dialog': 'The page is showing a dialog. Answer it to continue.',
+  'release-stuck':
+    'A key may be stuck on this page. Reload or reopen the session.',
   'host-busy': 'The host is busy, so nothing was sent.',
 };
 
@@ -372,7 +374,11 @@ function InputNotice(props: {
   const notice = props.surface.inputNotice;
   if (!notice) return null;
   const title = INPUT_NOTICE_TEXT[notice];
-  if (notice === 'input-failed' || notice === 'host-busy')
+  if (
+    notice === 'input-failed' ||
+    notice === 'host-busy' ||
+    notice === 'release-stuck'
+  )
     return (
       <ErrorState
         variant="compact"

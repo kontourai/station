@@ -170,6 +170,20 @@ export interface LiveSurfaceRegistration {
     human: HumanController;
     fence: number;
   }) => void;
+  /**
+   * What a reset of this surface keeps: presses still held when the surface
+   * is unregistered are carried to the next surface registered with the
+   * same scope (a reopened session, a reconnected device), which releases
+   * them through its producer before it takes any input. Defaults to the
+   * surface id.
+   */
+  heldScope?: string;
+  /**
+   * The release cleanup has failed `CLEANUP_STUCK_AFTER` times in a row: a
+   * key or button may be stuck. Called once each time the surface becomes
+   * stuck; the host resets the surface (its existing reopen/reconnect).
+   */
+  onReleaseStuck?: () => void;
 }
 
 const DEFAULT_DISPATCH_TIMEOUT_MS = 10_000;
@@ -210,6 +224,27 @@ function pressOf(
  * is cancelled by the surface's cleanup (`runCleanup`), never completed,
  * and input waits until it is.
  */
+/** Held presses carried across an unregister (see `heldScope`). */
+interface HeldCarry {
+  buttons: [LiveSurfacePointerButton, HeldButton][];
+  keys: [string, HeldKey][];
+  pointer: { x: number; y: number };
+  pointerType: LiveSurfacePointerType;
+}
+type HeldButton = {
+  pointerType: LiveSurfacePointerType;
+  owner: string;
+  order?: LiveSurfaceInputOrder;
+  releasing: boolean;
+};
+type HeldKey = {
+  key: string;
+  code: string;
+  owner: string;
+  order?: LiveSurfaceInputOrder;
+  releasing: boolean;
+};
+
 class PressedInput {
   /**
    * Each held button: the pointer type its down was dispatched as, the
@@ -217,25 +252,8 @@ class PressedInput {
    * keeps a different holder live), the place in its sender's input order
    * of the batch that pressed it, and whether it is to be released.
    */
-  private readonly buttons = new Map<
-    LiveSurfacePointerButton,
-    {
-      pointerType: LiveSurfacePointerType;
-      owner: string;
-      order?: LiveSurfaceInputOrder;
-      releasing: boolean;
-    }
-  >();
-  private readonly keys = new Map<
-    string,
-    {
-      key: string;
-      code: string;
-      owner: string;
-      order?: LiveSurfaceInputOrder;
-      releasing: boolean;
-    }
-  >();
+  private readonly buttons = new Map<LiveSurfacePointerButton, HeldButton>();
+  private readonly keys = new Map<string, HeldKey>();
   private pointer = { x: 0, y: 0 };
   private pointerType: LiveSurfacePointerType = 'mouse';
 
@@ -326,6 +344,30 @@ class PressedInput {
       if (button.owner === owner) return true;
     for (const key of this.keys.values()) if (key.owner === owner) return true;
     return false;
+  }
+
+  /** Everything held, forgotten here: carried to the surface's next life. */
+  takeAll(): HeldCarry | null {
+    if (this.buttons.size === 0 && this.keys.size === 0) return null;
+    const carry: HeldCarry = {
+      buttons: [...this.buttons],
+      keys: [...this.keys],
+      pointer: { ...this.pointer },
+      pointerType: this.pointerType,
+    };
+    this.buttons.clear();
+    this.keys.clear();
+    return carry;
+  }
+
+  /** Presses carried from the surface's previous life, all to be released. */
+  adopt(carry: HeldCarry): void {
+    for (const [button, held] of carry.buttons)
+      this.buttons.set(button, { ...held, releasing: true });
+    for (const [id, held] of carry.keys)
+      this.keys.set(id, { ...held, releasing: true });
+    this.pointer = { ...carry.pointer };
+    this.pointerType = carry.pointerType;
   }
 
   /**
@@ -430,7 +472,15 @@ interface EntryInternals {
     retry: ReturnType<typeof setTimeout> | null;
     failures: number;
   };
+  /** The cleanup kept failing: input is refused `release-stuck`. */
+  stuck: boolean;
+  onReleaseStuck: () => void;
 }
+
+/** Failed cleanup attempts in a row after which the surface is stuck. */
+const CLEANUP_STUCK_AFTER = 6;
+/** Bound on presses carried between a surface's lives (oldest dropped). */
+const CARRIED_SCOPES_MAX = 64;
 
 /** The first pause before a failed release is tried again, doubling. */
 const CLEANUP_RETRY_MS = 200;
@@ -447,6 +497,8 @@ function internalsOf(entry: LiveSurfaceEntry): EntryInternals {
 
 export class LiveSurfaceRegistry {
   private readonly entries = new Map<string, LiveSurfaceEntry>();
+  /** Presses still held when a surface went, by `heldScope`. */
+  private readonly carried = new Map<string, HeldCarry>();
   private disposal?: Promise<void>;
 
   constructor(private readonly options: LiveSurfaceRegistryOptions = {}) {}
@@ -521,9 +573,26 @@ export class LiveSurfaceRegistry {
       viewers: new Map(),
       viewerGraceMs: this.options.viewerGraceMs ?? DEFAULT_VIEWER_GRACE_MS,
       cleanup: { attempt: null, retry: null, failures: 0 },
+      stuck: false,
+      onReleaseStuck: registration.onReleaseStuck ?? (() => {}),
     };
     internals.set(entry, own);
+    const scope = registration.heldScope ?? producer.surfaceId;
+    const carried = this.carried.get(scope);
+    if (carried) {
+      this.carried.delete(scope);
+      own.pressed.adopt(carried);
+    }
     own.dispose = async () => {
+      // What is still held goes with the scope: the next surface releases
+      // it before taking input (it is never simply forgotten).
+      const held = own.pressed.takeAll();
+      if (held) {
+        this.carried.delete(scope);
+        this.carried.set(scope, held);
+        while (this.carried.size > CARRIED_SCOPES_MAX)
+          this.carried.delete(this.carried.keys().next().value!);
+      }
       lifetime.abort();
       if (own.cleanup.retry) clearTimeout(own.cleanup.retry);
       own.cleanup.retry = null;
@@ -552,8 +621,11 @@ export class LiveSurfaceRegistry {
     hub.setInputHealth(() => ({
       wedged: own.orphan !== null,
       wedgedSince: own.wedgedSince,
+      releaseStuck: own.stuck,
     }));
     this.entries.set(producer.surfaceId, entry);
+    // Carried presses are released before this surface takes any input.
+    if (carried) void runCleanup(entry);
     return async () => {
       if (this.entries.get(producer.surfaceId) !== entry) return;
       this.entries.delete(producer.surfaceId);
@@ -716,20 +788,28 @@ function runCleanup(entry: LiveSurfaceEntry): Promise<boolean> {
     cleanup.failures = 0;
     return Promise.resolve(true);
   }
-  const attempt = enqueue(entry, () => cancelMarked(entry));
+  const run = enqueue(entry, () => cancelMarked(entry));
+  const attempt = run.then((outcome) => outcome === 'released');
   cleanup.attempt = attempt;
-  return attempt.then((released) => {
+  return run.then((outcome) => {
+    const released = outcome === 'released';
     cleanup.attempt = null;
     if (entry.signal.aborted) return false;
     if (released) cleanup.failures = 0;
-    if (!own.pressed.unresolved()) return true;
+    if (!own.pressed.unresolved()) {
+      setStuck(entry, false);
+      return true;
+    }
     // Marked while this attempt ran: tried at once. Failed: after a pause.
     if (released) return runCleanup(entry);
     const pause = Math.min(
       CLEANUP_RETRY_MS * 2 ** cleanup.failures,
       CLEANUP_RETRY_MAX_MS,
     );
-    cleanup.failures += 1;
+    // Waiting out a wedge is not a failed release (the orphan settling
+    // resumes it); a cancel that ran and failed, or timed out, is.
+    if (outcome === 'failed') cleanup.failures += 1;
+    if (cleanup.failures >= CLEANUP_STUCK_AFTER) setStuck(entry, true);
     cleanup.retry = setTimeout(() => {
       cleanup.retry = null;
       void runCleanup(entry);
@@ -739,13 +819,35 @@ function runCleanup(entry: LiveSurfaceEntry): Promise<boolean> {
   });
 }
 
+/**
+ * The surface became stuck (the cleanup kept failing) or recovered. Viewers
+ * are told in their state record; the host is told once per time it sticks.
+ */
+function setStuck(entry: LiveSurfaceEntry, stuck: boolean): void {
+  const own = internalsOf(entry);
+  if (own.stuck === stuck) return;
+  own.stuck = stuck;
+  entry.hub.announce();
+  if (!stuck) return;
+  own.onError('live surface release stuck', {
+    surfaceId: entry.producer.surfaceId,
+  });
+  try {
+    own.onReleaseStuck();
+  } catch (error) {
+    own.onError('live surface release-stuck listener failed', error);
+  }
+}
+
 /** One cleanup attempt, on the input chain. */
-async function cancelMarked(entry: LiveSurfaceEntry): Promise<boolean> {
+async function cancelMarked(
+  entry: LiveSurfaceEntry,
+): Promise<'released' | 'failed' | 'waiting'> {
   const own = internalsOf(entry);
   // Never overlaps an orphaned dispatch; the orphan settling resumes it.
-  if (own.orphan) return false;
+  if (own.orphan) return 'waiting';
   const taken = own.pressed.takeReleasing();
-  if (!taken) return true;
+  if (!taken) return 'released';
   const { held } = taken;
   const producer = entry.producer;
   const outcomes = producer.cancelHeldInput
@@ -766,20 +868,21 @@ async function cancelMarked(entry: LiveSurfaceEntry): Promise<boolean> {
           `held-input cancel ${describeInput(event)}`,
         ),
       );
-  if (outcomes.every((outcome) => outcome === 'ok')) return true;
+  if (outcomes.every((outcome) => outcome === 'ok')) return 'released';
   own.onError('live surface held-input cancel failed', outcomes);
   taken.restore();
-  return false;
+  return 'failed';
 }
 
 /** Input waits while a release is owed, so nobody types through it. */
 function releasePending(
   entry: LiveSurfaceEntry,
 ): LiveSurfaceInputResult | null {
-  if (!internalsOf(entry).pressed.unresolved()) return null;
+  const own = internalsOf(entry);
+  if (!own.pressed.unresolved()) return null;
   return {
     ok: false,
-    code: 'release-pending',
+    code: own.stuck ? 'release-stuck' : 'release-pending',
     accepted: 0,
     lease: entry.lease.snapshot(),
   };
@@ -939,7 +1042,11 @@ export async function releaseHumanPressed(
   return answer(
     released
       ? { ok: true, lease }
-      : { ok: false, code: 'release-pending', lease },
+      : {
+          ok: false,
+          code: own.stuck ? 'release-stuck' : 'release-pending',
+          lease,
+        },
   );
 }
 

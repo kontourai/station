@@ -1436,6 +1436,34 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     expect(screen.queryByText(/may not have reached the page/)).toBeNull();
   });
 
+  test('input refused release-stuck says a key may be stuck and how to reset it, and offers no Retry (round 8, item 4)', async () => {
+    const h = harness({
+      inputReply: (body) =>
+        Response.json(
+          {
+            success: false,
+            data: {
+              ok: false,
+              code: 'release-stuck',
+              accepted: 0,
+              lease: lease(body.epoch + 1, MY_HOLD),
+            },
+          },
+          { status: 409 },
+        ),
+    });
+    await renderLive(h);
+    pressOnce();
+    await flush();
+    await flush();
+    expect(
+      screen.getByText(
+        'A key may be stuck on this page. Reload or reopen the session.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
   test('the busy notice clears by itself when nothing newer answers', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

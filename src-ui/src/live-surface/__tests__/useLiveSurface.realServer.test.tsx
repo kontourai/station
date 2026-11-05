@@ -940,3 +940,40 @@ test('R8-2b: a release asked while input is still queued goes after it, and cove
   await waitFor(() => expect(server!.remotePressed()).toEqual([]));
   a.unmount();
 });
+
+test('R8-4: a release that keeps failing is told to the viewer as a key that may be stuck, and typing is refused until it recovers', async () => {
+  server = await realLiveSurfaceServer({ viewerGraceMs: 30_000 });
+  const a = viewer(server.transport());
+  await settle();
+  act(() => a.result.current.sendInput([shiftDown]));
+  await waitFor(() =>
+    expect(server!.remotePressed()).toEqual(['key:ShiftLeft']),
+  );
+  let refuse = true;
+  server.producer.dispatchImpl = async (event) => {
+    if (refuse && event.kind === 'key' && event.type === 'up') {
+      server!.producer.dispatched.pop();
+      throw new Error('surface refused the key up');
+    }
+  };
+  act(() => {
+    a.result.current.releasePressed();
+  });
+  // Six failed releases, with the capped pauses between them.
+  await waitFor(
+    () => expect(a.result.current.inputNotice).toBe('release-stuck'),
+    { timeout: 10_000 },
+  );
+  act(() => a.result.current.sendInput([text('typed')]));
+  await settle();
+  expect(dispatchedText(server)).toEqual([]);
+  expect(a.result.current.inputNotice).toBe('release-stuck');
+  expect(a.result.current.retryableInput).toBe(false);
+  // The host's next try succeeds: the notice goes.
+  refuse = false;
+  await waitFor(() => expect(server!.remotePressed()).toEqual([]), {
+    timeout: 7_000,
+  });
+  await waitFor(() => expect(a.result.current.inputNotice).toBeNull());
+  a.unmount();
+}, 30_000);

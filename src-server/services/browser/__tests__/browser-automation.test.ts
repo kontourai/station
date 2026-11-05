@@ -874,6 +874,71 @@ describe('BrowserAutomation: control through the live-surface lease', () => {
     ).toEqual([]);
   });
 
+  test('a key whose release keeps failing stops the session for Reopen; the reopened page releases it before anyone types (round 8, item 4)', async () => {
+    const h = await harness();
+    pageBasics(h.fake);
+    const session = await h.open();
+    const id = session.browserSessionId;
+    const authority = await authorityFor();
+    const entry = h.entryOf(id);
+    expect(
+      (
+        await dispatchHumanInput(entry, HUMAN, 0, [
+          { kind: 'key', type: 'down', key: 'Shift', code: 'ShiftLeft' },
+        ])
+      ).ok,
+    ).toBe(true);
+    // The page refuses every release of the key for now.
+    let refuse = true;
+    h.fake.onSend(async (method, params) => {
+      if (
+        refuse &&
+        method === 'Input.dispatchKeyEvent' &&
+        params.type === 'keyUp'
+      )
+        throw new Error('page refused the key up');
+    });
+    expect(
+      releaseHumanControl(entry, HUMAN, entry.lease.snapshot().epoch).ok,
+    ).toBe(true);
+    // Six failed releases, with the capped pauses between them.
+    await vi.waitFor(
+      () =>
+        expect(h.sessions.getSession(id)).toMatchObject({
+          state: 'needs-reopen',
+          endReason: 'input-stuck',
+        }),
+      { timeout: 10_000, interval: 100 },
+    );
+    expect(h.sessions.getSession(id)!.history.entries.at(-1)).toMatchObject({
+      kind: 'input-stuck',
+    });
+    // An agent is pointed at Reopen, not told to wait.
+    const refused = await h.automation.click(authority, id, { x: 10, y: 10 });
+    expect(refused).toMatchObject({ ok: false });
+    expect(String((refused as { message: string }).message)).toMatch(
+      /browser_open/,
+    );
+    // Reopen: the new page's surface releases the key first.
+    refuse = false;
+    const before = h.fake.sent.length;
+    await h.sessions.reopenSession(id, { kind: 'operator' });
+    await vi.waitFor(() =>
+      expect(
+        h.fake.sent
+          .slice(before)
+          .some(
+            (call) =>
+              call.method === 'Input.dispatchKeyEvent' &&
+              call.params.type === 'keyUp' &&
+              call.params.code === 'ShiftLeft',
+          ),
+      ).toBe(true),
+    );
+    const result = await h.automation.click(authority, id, { x: 10, y: 10 });
+    expect(result).toMatchObject({ ok: true });
+  }, 20_000);
+
   test("a dialog the agent's own click opens is answered automatically, as before a person could answer dialogs", async () => {
     const h = await harness();
     pageBasics(h.fake);

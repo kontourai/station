@@ -51,7 +51,9 @@ export type BrowserSessionEndReason =
   | 'closed'
   | 'host-exited'
   | 'server-stopped'
-  | 'server-restarted';
+  | 'server-restarted'
+  /** A key or button may have been stuck on the page (its release kept failing). */
+  | 'input-stuck';
 
 /** Who caused a session action. Authority is decided by the caller, not here. */
 export type BrowserSessionActor =
@@ -70,6 +72,7 @@ export type BrowserSessionActionKind =
   | 'host-exited'
   | 'server-stopped'
   | 'server-restarted'
+  | 'input-stuck'
   // Added by the Browser pane lane (#90 wave 2).
   | 'history-navigated'
   | 'reloaded'
@@ -1447,6 +1450,31 @@ export class BrowserSessionRegistry {
       this.scheduleIdleShutdown(this.keyOf(record), entry);
     }
     return structuredClone(record);
+  }
+
+  /**
+   * A key or button may be stuck on this session's page: its release kept
+   * failing. The page is closed and the session waits to be reopened (the
+   * existing Reopen); the reopened page's surface first releases what was
+   * held, before it takes any input. Only for the generation that stuck.
+   */
+  async markInputStuck(
+    browserSessionId: string,
+    generation: number,
+  ): Promise<void> {
+    const record = this.sessions.get(browserSessionId);
+    if (!record || record.state !== 'live' || record.generation !== generation)
+      return;
+    const entry = this.hosts.get(this.keyOf(record));
+    const target = entry?.targets.get(record.browserSessionId);
+    record.state = 'needs-reopen';
+    record.endReason = 'input-stuck';
+    this.record(record, 'input-stuck', SYSTEM, { generation });
+    if (entry && target) {
+      entry.targets.delete(record.browserSessionId);
+      await entry.host.closeTarget(target.targetId).catch(() => {});
+      this.scheduleIdleShutdown(this.keyOf(record), entry);
+    }
   }
 
   /** Server stop: shut every browser down; live sessions become needs-reopen. */

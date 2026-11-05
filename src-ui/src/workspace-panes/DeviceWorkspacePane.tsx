@@ -1569,7 +1569,9 @@ function DeviceToolbar({
           description={
             surface.status === 'denied'
               ? 'Ask the Station operator to share it with your Project.'
-              : 'Reconnect to open it again.'
+              : surface.inputNotice === 'release-stuck'
+                ? 'A key may have been stuck on the device. Reconnect to reset it.'
+                : 'Reconnect to open it again.'
           }
           action={
             surface.status === 'unavailable' ? (

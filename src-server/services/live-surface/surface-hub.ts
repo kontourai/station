@@ -327,8 +327,11 @@ export class LiveSurfaceHub {
   private keyframeTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly unsubscribeLease: () => void;
   private readonly unsubscribeStatus: () => void;
-  private inputHealth: () => { wedged: boolean; wedgedSince: number | null } =
-    () => ({ wedged: false, wedgedSince: null });
+  private inputHealth: () => {
+    wedged: boolean;
+    wedgedSince: number | null;
+    releaseStuck?: boolean;
+  } = () => ({ wedged: false, wedgedSince: null });
 
   constructor(
     readonly producer: LiveSurfaceProducer,
@@ -489,6 +492,10 @@ export class LiveSurfaceHub {
       ...(attested
         ? { viewerId: attested.viewerId, epochCause: attested.epochCause }
         : {}),
+      // Opted-in viewers only: an older one's strict parser knows no such key.
+      ...(attested && health.releaseStuck
+        ? { releaseStuck: true as const }
+        : {}),
     };
   }
 
@@ -548,7 +555,11 @@ export class LiveSurfaceHub {
 
   /** Where the input side reports whether it is wedged (the registry). */
   setInputHealth(
-    probe: () => { wedged: boolean; wedgedSince: number | null },
+    probe: () => {
+      wedged: boolean;
+      wedgedSince: number | null;
+      releaseStuck?: boolean;
+    },
   ): void {
     this.inputHealth = probe;
   }

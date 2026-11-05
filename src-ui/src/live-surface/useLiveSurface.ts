@@ -108,6 +108,11 @@ export type LiveSurfaceInputNotice =
   | 'host-busy'
   /** The page is showing a dialog that waits for an answer. */
   | 'page-dialog'
+  /**
+   * A key or button may be stuck: the host's release of it kept failing,
+   * and the surface takes no input until it is reset (reloaded or reopened).
+   */
+  | 'release-stuck'
   | null;
 
 /** A retryable 503 `surface-busy` answer (#2433). */
@@ -870,6 +875,13 @@ export function useLiveSurface(
               // Who this viewer is decides whether a new epoch is its own
               // takeover, so it is known before the lease is adopted.
               if (record.state.viewer) selfRef.current = record.state.viewer;
+              // Said by the host while it lasts, and no longer once it
+              // recovered.
+              if (record.state.releaseStuck) setInputNotice('release-stuck');
+              else
+                setInputNotice((current) =>
+                  current === 'release-stuck' ? null : current,
+                );
               if (record.state.viewerId) {
                 viewerIdRef.current = record.state.viewerId;
                 presentViewerIdRef.current = record.state.viewerId;
@@ -1228,6 +1240,11 @@ export function useLiveSurface(
         );
         queueRef.current = [];
         showHostBusy();
+      } else if (result && !result.ok && result.code === 'release-stuck') {
+        // Sending it again cannot help until the surface is reset.
+        queueRef.current = [];
+        keepUndelivered([]);
+        setInputNotice('release-stuck');
       } else if (result && !result.ok && result.code === 'page-dialog-open') {
         queueRef.current = [];
         keepUndelivered([]);

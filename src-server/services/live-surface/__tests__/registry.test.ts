@@ -927,6 +927,94 @@ describe('server-owned release of pressed input (#90 B)', () => {
     ).toMatchObject({ ok: false, code: 'release-pending' });
   });
 
+  test('a release that keeps failing makes the surface stuck: input is refused release-stuck, the host is told once, and a recovery clears it (round 8, item 4)', async () => {
+    const registry = new LiveSurfaceRegistry();
+    const producer = new SyntheticLiveSurfaceProducer('surface-1');
+    let stuckCalls = 0;
+    registry.register(producer, {
+      authorize: () => true,
+      onReleaseStuck: () => {
+        stuckCalls += 1;
+      },
+    });
+    const entry = registry.get('surface-1')!;
+    await dispatchHumanInput(entry, human, 0, [shift('down')]);
+    const calls = refuseKeyUps(producer, 1_000);
+    expect(await releaseHumanPressed(entry, human)).toMatchObject({
+      code: 'release-pending',
+    });
+    // Five more failures, with the capped pauses between them.
+    await sleep(6_600);
+    expect(calls.ups).toBe(6);
+    expect(stuckCalls).toBe(1);
+    const epoch = entry.lease.snapshot().epoch;
+    expect(
+      await dispatchHumanInput(entry, human, epoch, [
+        { kind: 'text', text: 'x' },
+      ]),
+    ).toMatchObject({ ok: false, code: 'release-stuck' });
+    expect(await releaseHumanPressed(entry, human)).toMatchObject({
+      code: 'release-stuck',
+    });
+    expect(heldOn(producer)).toEqual(['key:ShiftLeft']);
+    // The surface recovers on its own next try: no longer stuck.
+    producer.dispatchImpl = async () => {};
+    await sleep(5_200);
+    await settleChain();
+    expect(heldOn(producer)).toEqual([]);
+    expect(
+      (
+        await dispatchHumanInput(entry, human, epoch, [
+          { kind: 'text', text: 'x' },
+        ])
+      ).ok,
+    ).toBe(true);
+    expect(stuckCalls).toBe(1);
+    await registry.dispose();
+  }, 20_000);
+
+  test('a surface registered again in the same scope releases what the previous one still held before it takes input (round 8, item 4)', async () => {
+    const registry = new LiveSurfaceRegistry();
+    const first = new SyntheticLiveSurfaceProducer('surface-1');
+    const unregister = registry.register(first, {
+      authorize: () => true,
+      heldScope: 'device:a',
+    });
+    await dispatchHumanInput(registry.get('surface-1')!, human, 0, [
+      shift('down'),
+    ]);
+    await unregister();
+    // The reset: a new producer, a new surface id, the same scope.
+    const next = new SyntheticLiveSurfaceProducer('surface-2');
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    next.dispatchImpl = async (event) => {
+      if (event.kind === 'key' && event.type === 'up') await released;
+    };
+    registry.register(next, { authorize: () => true, heldScope: 'device:a' });
+    const entry = registry.get('surface-2')!;
+    // Not before the carried release is confirmed.
+    expect(
+      await dispatchHumanInput(entry, other, 0, [{ kind: 'text', text: 'x' }]),
+    ).toMatchObject({ ok: false, code: 'release-pending' });
+    release();
+    await settleChain();
+    await settleChain();
+    expect(next.dispatched).toEqual([
+      { kind: 'key', type: 'up', key: 'Shift', code: 'ShiftLeft' },
+    ]);
+    expect(
+      (
+        await dispatchHumanInput(entry, other, entry.lease.snapshot().epoch, [
+          { kind: 'text', text: 'x' },
+        ])
+      ).ok,
+    ).toBe(true);
+    await registry.dispose();
+  });
+
   test('a release request arriving while an attempt is in flight is answered at once instead of queuing behind it (round 7, item 4)', async () => {
     const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 2_000 });
     await dispatchHumanInput(entry, human, 0, [shift('down')]);

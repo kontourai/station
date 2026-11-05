@@ -357,6 +357,8 @@ function stoppedReason(session: BrowserSessionView): string {
     case 'server-stopped':
     case 'server-restarted':
       return 'Station restarted, so this session’s browser was stopped.';
+    case 'input-stuck':
+      return 'A key may have been stuck on the page. Reopen to reset it.';
     default:
       return 'The browser behind this session is not running.';
   }

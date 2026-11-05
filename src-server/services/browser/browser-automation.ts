@@ -100,6 +100,9 @@ export type BrowserToolRefusalCode =
   | 'other-thread'
   | 'interrupted'
   | 'surface-wedged'
+  // A key or button may be stuck on the page: Station stops the session so
+  // it can be reopened, which releases it first.
+  | 'release-stuck'
   | 'not-authorized'
   | 'stale-ref'
   | 'target-not-found'
@@ -2973,6 +2976,14 @@ function inputRefusal(
       refuse(
         'surface-wedged',
         'The page stopped taking input (an earlier input has not finished; a dialog or a hung page can do this). Wait a moment and take a snapshot before trying again.',
+        { accepted },
+      ),
+    );
+  if (code === 'release-stuck')
+    return new ToolRefusal(
+      refuse(
+        'release-stuck',
+        'A key or button may be stuck on this page, so it takes no input, and waiting will not fix it. Station stops the session: reopen it with browser_open (pass its browserSessionId), which releases what was stuck, before trying again.',
         { accepted },
       ),
     );

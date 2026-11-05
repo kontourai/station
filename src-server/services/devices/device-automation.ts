@@ -78,6 +78,14 @@ const ownerKey = (authority: DeviceAgentAuthority) =>
   ]);
 const refused = (code: string) => ({ ok: false as const, code });
 
+/** What an agent should do about a release still owed or stuck. */
+const RELEASE_ADVICE: Partial<Record<string, string>> = {
+  'release-pending':
+    'A key or button from earlier input is still being released on the device, so input waits until it is. Wait a moment, then try again.',
+  'release-stuck':
+    'A key or button may be stuck on the device, so it takes no input, and waiting will not fix it. Station ends the session: open the device again with device_open, which releases what was stuck, before trying again.',
+};
+
 /** Holds are scoped to one tool call; refuse unbalanced input before any send. */
 function completeGestures(events: readonly LiveSurfaceInput[]): boolean {
   const pointers = new Set<string>();
@@ -480,7 +488,12 @@ export class DeviceAutomation {
                 selected.agent,
                 selected.lease.fence,
               );
-              return { ...result, accepted };
+              const advice = RELEASE_ADVICE[result.code];
+              return {
+                ...result,
+                accepted,
+                ...(advice ? { message: advice } : {}),
+              };
             }
           }
           return { ok: true, accepted };

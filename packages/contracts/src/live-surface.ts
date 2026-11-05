@@ -399,7 +399,13 @@ export type LiveSurfaceLeaseRefusalCode =
    * input is refused with this code until it succeeds, so nobody types
    * through a stuck key or button.
    */
-  | 'release-pending';
+  | 'release-pending'
+  /**
+   * That release has kept failing: a key or button may be stuck on the
+   * surface. Input stays refused; the surface needs a reset (reload or
+   * reopen the session), which releases it before input is taken again.
+   */
+  | 'release-stuck';
 
 export type LiveSurfaceLeaseResult = (
   | { ok: true; lease: LiveSurfaceControlLease }
@@ -1053,6 +1059,12 @@ export interface LiveSurfaceStreamState {
    */
   viewerId?: LiveSurfaceViewerId;
   epochCause?: LiveSurfaceEpochCause;
+  /**
+   * A release of what was pressed has kept failing, so a key or button may
+   * be stuck and input is refused `release-stuck` until the surface is
+   * reset. Present (true) only then, and only on an `epochCause=1` stream.
+   */
+  releaseStuck?: true;
   /** Negotiated only: recent, bounded agent actions and the server's clock. */
   agentActions?: { now: number; events: LiveSurfaceAgentAction[] };
 }
@@ -1302,8 +1314,10 @@ export function parseLiveSurfaceStreamState(
       'agentActions',
       'viewerId',
       'epochCause',
+      'releaseStuck',
     ]) ||
     (record.wedged !== undefined && typeof record.wedged !== 'boolean') ||
+    (record.releaseStuck !== undefined && record.releaseStuck !== true) ||
     (record.wedgedSince !== undefined &&
       record.wedgedSince !== null &&
       !intInRange(record.wedgedSince, 0, Number.MAX_SAFE_INTEGER)) ||
@@ -1354,6 +1368,7 @@ export function parseLiveSurfaceStreamState(
       ? {}
       : { viewerId: record.viewerId as string }),
     ...(epochCause === undefined ? {} : { epochCause }),
+    ...(record.releaseStuck === true ? { releaseStuck: true as const } : {}),
   };
 }
 
