@@ -274,7 +274,7 @@ describe('turn navigation availability', () => {
   });
 
   test.each([5, 6])(
-    '%i user turns get one tick each and steps beside Scroll to bottom',
+    '%i user turns keep navigation separate from Scroll to bottom',
     (turns) => {
       const { scroller } = renderList(session(turns));
       expect(within(turnRail()!).getAllByRole('button')).toHaveLength(turns);
@@ -282,9 +282,15 @@ describe('turn navigation availability', () => {
       const group = screen.getByRole('group', { name: 'Turn navigation' });
       expect(
         within(group)
-          .getAllByRole('button')
+          .getAllByRole('button', { name: /^(Previous|Next) turn$/ })
           .map((button) => button.getAttribute('aria-label')),
-      ).toEqual(['Previous turn', 'Next turn', 'Scroll to bottom']);
+      ).toEqual(['Previous turn', 'Next turn']);
+      expect(
+        within(group).queryByRole('button', { name: 'Scroll to bottom' }),
+      ).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Scroll to bottom' }),
+      ).toBeTruthy();
     },
   );
 
@@ -593,45 +599,33 @@ describe('#3862 follow-ups', () => {
     expect(onUp).toHaveBeenCalledTimes(1);
   });
 
-  test('at the latest message a column too narrow for the rail keeps Previous turn in the composer slot', () => {
+  test('narrow columns keep both turn steps beside the transcript, preserving focus across navigation', () => {
     const slot = document.body.appendChild(document.createElement('div'));
     try {
       const { scroller } = renderList(session(10), {
         scrollControlsTarget: slot,
       });
-      // Wide: the rail is the navigation; nothing waits in the slot.
-      expect(within(slot).queryByRole('button')).toBeNull();
-
       Object.defineProperty(scroller, 'clientWidth', {
         configurable: true,
         get: () => 390,
       });
       deliverResize(scroller);
-      const group = within(slot).getByRole('group', {
-        name: 'Turn navigation',
-      });
+      const group = screen.getByRole('group', { name: 'Turn navigation' });
       expect(
         within(group)
-          .getAllByRole('button')
+          .getAllByRole('button', { name: /^(Previous|Next) turn$/ })
           .map((button) => button.getAttribute('aria-label')),
-      ).toEqual(['Previous turn']);
+      ).toEqual(['Previous turn', 'Next turn']);
+      expect(within(slot).queryByRole('button')).toBeNull();
       const previous = within(group).getByRole('button', {
         name: 'Previous turn',
       });
       act(() => previous.focus());
-      fireEvent.click(previous);
-      act(() => {
-        vi.advanceTimersByTime(32);
-      });
-      // At the end with the last prompt on screen: the turn before it.
+      step('Previous turn');
       expect(announcement()).toBe('Turn 9 of 10: Question 8');
-      // Away from the end the group grows to its full form around the
-      // same Previous button, which keeps focus.
       expect(
-        within(slot)
-          .getAllByRole('button')
-          .map((button) => button.getAttribute('aria-label')),
-      ).toEqual(['Previous turn', 'Next turn', 'Scroll to bottom']);
+        within(slot).getByRole('button', { name: 'Scroll to bottom' }),
+      ).toBeTruthy();
       expect(document.activeElement).toBe(previous);
     } finally {
       slot.remove();

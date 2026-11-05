@@ -76,7 +76,20 @@ export const NOTIFICATION_SOUND_VALUES = [
  */
 export const INBOX_SCOPE_CURRENT_PROJECT = 'current-project';
 
+export const INBOX_SECTION_IDS = [
+  'needsYou',
+  'running',
+  'open',
+  'idle',
+  'settled',
+  'snoozed',
+  'external',
+  'earlier',
+] as const;
+export type InboxSectionId = (typeof INBOX_SECTION_IDS)[number];
+
 export interface InboxSectionsState {
+  order?: InboxSectionId[];
   snoozed: boolean;
   earlier: boolean;
   needsYou?: boolean;
@@ -880,8 +893,8 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Chat dock inbox sections',
-    help: 'Inbox groups reopen collapsed or expanded as you left them.',
-    description: 'Collapsed/expanded state of the inbox groups.',
+    help: 'Inbox groups keep their order and fold state on this device.',
+    description: 'Order and collapsed/expanded state of the inbox groups.',
     priorStorageKey: 'station.inbox.sections',
     // Confirmed against ChatDockInboxPanel.tsx's DEFAULT_SECTION_STATE.
     defaultValue: DEFAULT_INBOX_SECTIONS,
@@ -1280,6 +1293,7 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
  */
 export const PREFERENCE_DEVICE_KEYS = [
   'theme',
+  'showReleaseNotesAfterUpdate',
   'accentColor',
   'colorTheme',
   'colorThemeFlavor',

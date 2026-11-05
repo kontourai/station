@@ -52,6 +52,10 @@ const REPO_ROOT = resolve(import.meta.dirname, '../../../../../');
 const css = [
   '../../../index.css',
   '../../chat/chat.css',
+  '../../ActionOverflowMenu.css',
+  '../../DisclosureToggle.css',
+  '../../header/HeaderMenu.css',
+  '../WorkGroupLabel.css',
   '../../chat-dock/ChatDockInboxPanel.css',
   '../../chat-dock/MobileInboxPanel.css',
   '../../chat-dock/ChatInboxHoverCard.css',
@@ -158,9 +162,9 @@ function panelMarkup(
   );
   // Expand the two collapsed sections the way a user does, so the slim
   // rows are in the measured markup.
-  for (const name of [/^Snoozed/, /^Earlier/]) {
-    const toggle = screen.getByRole('button', { name });
-    if (toggle.getAttribute('aria-expanded') === 'false')
+  for (const name of [/^Snoozed/, /^Settled/]) {
+    const toggle = screen.queryByRole('button', { name });
+    if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
   }
   const markup = `<div style="display:flex;height:900px">${container.innerHTML}</div>`;
@@ -191,9 +195,9 @@ function sheetMarkup(
       workFacts={work.facts}
     />,
   );
-  for (const name of [/^Snoozed/, /^Earlier/]) {
-    const toggle = screen.getByRole('button', { name });
-    if (toggle.getAttribute('aria-expanded') === 'false')
+  for (const name of [/^Snoozed/, /^Settled/]) {
+    const toggle = screen.queryByRole('button', { name });
+    if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
   }
   const markup = document.body.innerHTML;

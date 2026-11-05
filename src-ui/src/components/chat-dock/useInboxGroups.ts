@@ -28,6 +28,7 @@ export function useInboxGroups(
   items: HomeWorkItem[],
   now: number,
   workFacts?: WorkFactsById,
+  includeDismissed = false,
 ): MobileActivityGroup[] {
   const { visible, dismissed } = useInboxDismissals(items, workFacts);
   const state = useConversationWorkState();
@@ -46,11 +47,11 @@ export function useInboxGroups(
   return useMemo(
     () => [
       ...groupMobileActivity(visible, now, snoozed, workFacts, resolution),
-      ...(dismissed.length
+      ...(includeDismissed && dismissed.length
         ? [{ id: 'dismissed' as const, label: 'Dismissed', items: dismissed }]
         : []),
     ],
-    [visible, now, snoozed, workFacts, dismissed, resolution],
+    [visible, now, snoozed, workFacts, dismissed, resolution, includeDismissed],
   );
 }
 

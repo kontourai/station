@@ -155,7 +155,12 @@ export function MobileInboxPanel({
         )
       : scope.items;
   }, [query, scope.items]);
-  const groups = useInboxGroups(matchingItems, now, workFacts);
+  const groups = useInboxGroups(
+    matchingItems,
+    now,
+    workFacts,
+    Boolean(query.trim()),
+  );
   const visibleGroups = groups;
   const hasVisibleItems = groups.some((group) => group.items.length > 0);
 
@@ -292,6 +297,9 @@ export function MobileInboxPanel({
           showGroupCounts
           collapsible={{
             sections: inboxSections,
+            order: inboxSections.order,
+            onReorder: (order) =>
+              setDeviceSetting('inboxSections', { ...inboxSections, order }),
             onToggle: (id) =>
               setDeviceSetting('inboxSections', {
                 ...inboxSections,

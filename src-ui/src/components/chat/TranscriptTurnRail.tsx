@@ -1,7 +1,6 @@
 import {
   memo,
   type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   useCallback,
@@ -19,8 +18,7 @@ import {
 } from './transcriptTurnLandmarks';
 import './TranscriptTurnRail.css';
 
-// The gutter needs a column this wide beside it, and a transcript this tall,
-// to be a map rather than clutter; below either, the turn actions remain.
+// Narrow columns keep the step controls without the turn map.
 const RAIL_MIN_COLUMN_WIDTH_PX = 560;
 const RAIL_MIN_TRANSCRIPT_HEIGHT_PX = 200;
 
@@ -192,12 +190,9 @@ interface TranscriptTurnRailProps {
   readonly onJump: (turnIndex: number) => void;
   /** Older history exists beyond the loaded rows (see `turnPosition`). */
   readonly olderHistory: boolean;
-  /**
-   * Whether the gutter has room to show (the column and height minimums
-   * below), reported when it changes. The transcript offers a compact step
-   * at the latest message while it has none.
-   */
-  readonly onAvailableChange?: (available: boolean) => void;
+  readonly previousTurn: number | undefined;
+  readonly nextTurn: number | undefined;
+  readonly onStep: (turnIndex: number) => void;
 }
 
 /**
@@ -241,9 +236,11 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   activeTurn,
   onJump,
   olderHistory,
-  onAvailableChange,
+  previousTurn,
+  nextTurn,
+  onStep,
 }: TranscriptTurnRailProps) {
-  const hostRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLFieldSetElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const previewId = useId();
   const [hovered, setHovered] = useState<number>();
@@ -251,8 +248,6 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   // Mirrors the host's `data-unavailable`: a hidden rail shows no preview,
   // which would otherwise stay mounted and take the next Escape.
   const [unavailable, setUnavailable] = useState(false);
-  const availableChangeRef = useRef(onAvailableChange);
-  availableChangeRef.current = onAvailableChange;
   const scrubRef = useRef<{ pointerId: number; last?: number } | null>(null);
 
   // The gutter sits over the transcript's right edge, inside its scrollbar,
@@ -275,10 +270,13 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
         element.clientWidth < RAIL_MIN_COLUMN_WIDTH_PX ||
         element.clientHeight < RAIL_MIN_TRANSCRIPT_HEIGHT_PX;
       host.toggleAttribute('data-unavailable', hidden);
+      host.toggleAttribute(
+        'data-too-short',
+        element.clientHeight < RAIL_MIN_TRANSCRIPT_HEIGHT_PX,
+      );
       setUnavailable(hidden);
       // The pointer that was resting on the rail is no longer over anything.
       if (hidden) setHovered(undefined);
-      availableChangeRef.current?.(!hidden);
     };
     place();
     if (typeof ResizeObserver === 'undefined') return;
@@ -393,7 +391,21 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   }, [previewed, railRef, rowCount]);
 
   return (
-    <div className="transcript-turn-rail-host" ref={hostRef}>
+    <fieldset
+      className="transcript-turn-rail-host"
+      ref={hostRef}
+      aria-label="Turn navigation"
+    >
+      <button
+        type="button"
+        className="transcript-turn-rail__step transcript-turn-rail__step--previous"
+        aria-label="Previous turn"
+        title="Previous turn"
+        aria-disabled={previousTurn === undefined || undefined}
+        onClick={() => previousTurn !== undefined && onStep(previousTurn)}
+      >
+        <ArrowUpGlyph />
+      </button>
       <nav
         className="transcript-turn-rail"
         aria-label="Conversation turns"
@@ -485,68 +497,16 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
           </div>
         )}
       </nav>
-    </div>
-  );
-});
-
-interface TranscriptTurnActionsProps {
-  readonly previousTurn: number | undefined;
-  readonly nextTurn: number | undefined;
-  readonly onJump: (turnIndex: number) => void;
-  /** Positioned over the transcript rather than placed in a host's row. */
-  readonly floating: boolean;
-  /**
-   * At the latest message, with no rail to navigate by: Previous turn alone
-   * (there is no next turn, and no Scroll to bottom to sit beside).
-   */
-  readonly latest?: boolean;
-  /** The transcript's existing return-to-latest control. */
-  readonly children?: ReactNode;
-}
-
-/**
- * Previous/next user turn, attached to the transcript's return-to-latest
- * control. The steps stay focusable at either end (`aria-disabled`, not
- * `disabled`), so a reader stepping with the keyboard keeps their place.
- */
-export function TranscriptTurnActions({
-  previousTurn,
-  nextTurn,
-  onJump,
-  floating,
-  latest = false,
-  children,
-}: TranscriptTurnActionsProps) {
-  return (
-    <fieldset
-      className="transcript-turn-actions"
-      aria-label="Turn navigation"
-      data-floating={floating || undefined}
-      data-latest={latest || undefined}
-    >
       <button
         type="button"
-        className="transcript-turn-actions__step"
-        aria-label="Previous turn"
-        title="Previous turn"
-        aria-disabled={previousTurn === undefined || undefined}
-        onClick={() => previousTurn !== undefined && onJump(previousTurn)}
+        className="transcript-turn-rail__step transcript-turn-rail__step--next"
+        aria-label="Next turn"
+        title="Next turn"
+        aria-disabled={nextTurn === undefined || undefined}
+        onClick={() => nextTurn !== undefined && onStep(nextTurn)}
       >
-        <ArrowUpGlyph />
+        <ArrowDownGlyph />
       </button>
-      {!latest && (
-        <button
-          type="button"
-          className="transcript-turn-actions__step"
-          aria-label="Next turn"
-          title="Next turn"
-          aria-disabled={nextTurn === undefined || undefined}
-          onClick={() => nextTurn !== undefined && onJump(nextTurn)}
-        >
-          <ArrowDownGlyph />
-        </button>
-      )}
-      {children}
     </fieldset>
   );
-}
+});

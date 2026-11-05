@@ -67,6 +67,8 @@
 }
 
 .chat-dock-inbox__scroll {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -77,10 +79,12 @@
  * automatic minimum is its widest row's unbroken title, and the whole group
  * grows past the phone's edge instead of the title truncating. */
 .chat-dock-inbox__group {
+  flex-shrink: 0;
   min-width: 0;
 }
 
 .chat-dock-inbox__group + .chat-dock-inbox__group {
+  flex-shrink: 0;
   margin-top: var(--space-3);
 }
 
@@ -239,10 +243,35 @@
   padding: var(--k-space-2);
   border-bottom: 1px solid var(--k-line);
 }
-.chat-dock-inbox__toolbar-title {
+.chat-dock-inbox__search {
+  display: flex;
   flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.chat-dock-inbox__search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
   color: var(--k-text);
-  font-weight: 600;
+  font: inherit;
+}
+.chat-dock-inbox__search input:focus-visible {
+  outline: var(--k-border-thick) solid var(--k-focus);
+  outline-offset: calc(-1 * var(--k-border-thick));
+}
+.chat-dock-inbox__group.chat-dock-inbox__group--shelf-start {
+  margin-block-start: auto;
+}
+.chat-dock-inbox__group--collapsed {
+  border-block-start: var(--k-border-thin) solid var(--k-line);
+}
+.chat-dock-inbox__group--collapsed + .chat-dock-inbox__group--collapsed {
+  margin-block-start: 0;
 }
 .chat-dock-inbox__toolbar svg {
   inline-size: 16px;
@@ -251,4 +280,28 @@
 .chat-dock-inbox__toolbar > button {
   min-inline-size: 44px;
   min-block-size: 44px;
+}
+
+.chat-dock-inbox__section-header {
+  display: flex;
+  align-items: center;
+}
+.chat-dock-inbox__section-header .chat-dock-inbox__section-toggle {
+  flex: 1;
+  min-width: 0;
+}
+.chat-dock-inbox__section-header .action-overflow__trigger {
+  min-width: 44px;
+  min-height: 44px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .chat-dock-inbox__section-header .action-overflow__trigger {
+    opacity: 0;
+  }
+  .chat-dock-inbox__section-header:hover .action-overflow__trigger,
+  .chat-dock-inbox__section-header:focus-within .action-overflow__trigger,
+  .chat-dock-inbox__section-header
+    .action-overflow__trigger[aria-expanded="true"] {
+    opacity: 1;
+  }
 }

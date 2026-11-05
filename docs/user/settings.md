@@ -14,6 +14,23 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+## Project settings
+
+Open a Project's settings to change its defaults, sources and access. Desktop
+uses the same vertical section navigation as Settings; on a narrow screen,
+choose a section from the picker. One section is shown at a time. Section
+links remain bookmarkable, and moving between sections keeps unsaved edits.
+
+**Save** applies project defaults. Layout, source, access and knowledge actions
+apply separately when confirmed. A saved model connection that is no longer
+available stays visible until you choose a replacement; an unrelated edit does
+not reset it to the Station default.
+
+Folder paths identify the Station that owns them. A path shown while using a
+phone or remote browser belongs to that Station, rather than to the viewing
+device. **Sources → Repositories and folders** contains repository attachment
+and working-copy repair; **Workspace** edits the Project's local working folder.
+
 ## Feature previews
 
 Feature previews are features that are still being evaluated. Each one has a

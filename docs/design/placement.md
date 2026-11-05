@@ -2058,9 +2058,14 @@ active conversation does not offer a future-project switcher. A region host deci
 Chat absorbs the region's rows; Activity and the other panes keep the bar's
 buttons, so their bars are unchanged.
 
-A collapsed side region is a 36px strip holding only the region's own
-controls. The chat's identity and the "This chat" chip are rows the strip
-cannot fit, so they return with the open bar (#4401).
+A collapsed side region takes no screen space. Its pane stays mounted for
+session continuity; the app toolbar's region toggle or the pane's reveal
+command opens it again. The bottom region keeps its compact collapsed bar.
+
+Previous and next turn controls sit above and below the transcript's turn
+map. A narrow transcript keeps the two 44px controls without the map; on a
+fine pointer they appear on hover or keyboard focus. Return to latest stays
+beside the composer, separate from turn navigation.
 
 ## The session context card beside Chat (2026-10-19)
 
@@ -2181,3 +2186,17 @@ server read beyond the pull request links Chat details already reads.
   renders against, across in-process and iframe transports.
 - station#928: the epic and its decision log. station#570: pane-native
   surfaces. station#265: the layout-tabs to panes migration.
+
+### Desktop pane pop-outs
+
+A native pane pop-out renders the pane route with its own content and recovery
+controls. It omits the main window’s sidebar, global toolbar, ambient docks and
+global launch overlays. Main-window navigation shortcuts are unavailable while showing the pane;
+controls inside it retain their normal authorization and behavior. An explicit
+action that opens a result or conversation leaves the pane route and reveals
+the standard workspace in that window. Returning to the pane route restores
+its compact shell. Opening
+a pop-out creates another viewer rather than moving the pane or stopping its
+session. Closing that viewer leaves the main window intact. Native window
+identity comes from the existing adapter, rather than guessing from a URL that
+the main window can also open.

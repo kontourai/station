@@ -159,7 +159,7 @@ or causal cost savings. Those remain separate acceptance observations.
 
 [Controlled visual captures](../learn/media/agent-efficiency-captures.json) retain
 390/1440 light/dark examples. The learning comparisons show access granted →
-read refused in the same current component, with synthetic owner data. They do
+read refused in the same captured component, with synthetic owner data. They do
 not establish a live account, installed app or causal savings result.
 
 ## Run an isolated GitHub repair

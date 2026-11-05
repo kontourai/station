@@ -957,3 +957,26 @@
 .coding-workbench__tool-count {
   font-variant-numeric: tabular-nums;
 }
+
+.coding-workbench__rail-initials {
+  font-size: var(--k-text-sm);
+  font-weight: var(--k-weight-semibold, 600);
+  line-height: 1;
+}
+
+.coding-workbench__rail-ordinal {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding-inline: var(--k-space-1);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font-size: var(--k-text-xs);
+  line-height: 1;
+}

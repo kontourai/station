@@ -358,7 +358,7 @@ The desktop Inbox, embedded mobile Inbox, and start surface share their row anat
 cards allow two title lines while status and metadata keep predictable positions.
 Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed
 clock and ×, while × hides any conversation without stopping work or deleting
-history. Undo and the collapsed Dismissed section restore it on this device.
+history. Undo restores it on this device; inbox search reveals dismissed work with Restore.
 With Sheet gestures preview enabled, mobile rows reveal the same clock and ×
 on a left swipe, with larger targets and short labels. Swiping only reveals;
 Snooze still opens its duration picker, and Details retains the same actions.
@@ -667,9 +667,9 @@ message row starts a turn.
   the turn as ended with an error; otherwise a standalone sub-agent row marks
   it as having started a sub-agent. Sub-agents shown inside a reply's tool
   call, and interrupted turns, are not marked.
-- **Previous turn / Next turn.** Desktop keeps steps beside return-to-latest.
-  Mobile uses **Browse turns** in the conversation overflow instead of arrows
-  beside the composer. The browser pages indexed turn summaries independently
+- **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
+  They appear on hover or keyboard focus on desktop and retain 44px targets on
+  narrow screens. **Browse turns** remains in the conversation overflow. The browser pages indexed turn summaries independently
   of transcript bodies; selecting a turn loads older bounded history pages until
   its complete prompt/body window is available, then reveals it. Each request
   is bounded to 64 pages; a retry continues from the retained cursor. Switching
@@ -1218,19 +1218,30 @@ comparisons. Their duplicate callout and older dock chrome are not current
 acceptance evidence. See the [current improvement round](../plans/onboarding-improvement-rounds.md)
 for actual captures and remaining Terminal and pairing work.
 
-## Open and Settled inbox preview (2026-10-30)
+## Inbox shelves and conversation resolution
 
 The `conversation-resolution` Feature Preview groups actionable work under
-Needs attention and Open. A completed or failed agent turn leaves a standalone
-conversation Open. Settle and Reopen record the person's explicit decision on
+Needs attention, Working, Open, Snoozed, Third-party and Settled. An owed
+decision takes precedence over Working; running turns and monitoring work stay
+in Working. An unsent draft is an indicator on its chat row and does not change
+its status. A chat that has never started stays in Open. A completed or failed
+agent turn leaves a standalone conversation Open. Settle and Reopen record the person's explicit decision on
 the host, shared across their owner devices, separately from last-viewed state,
 snoozing, dismissal and deletion. A closed Task is Settled; automatic Task closure
 continues to follow its existing close-on-merge setting. Linked pull requests
 alone do not automatically settle standalone conversations.
 
-Every inbox group can be collapsed. Find and New chat live in its header;
-Browse all conversations retains paginated history, rename and delete, and
-Refresh lives in overflow with a direct retry on failure. Dismissal offers a
+Every populated shelf can be collapsed; collapsed shelves sit below expanded
+work, with Settled at the bottom by default. Shelf menus offer Move up and
+Move down; that order is saved on this device within expanded and collapsed
+shelves. The inbox header contains search
+and New chat. Search also finds dismissed work; there is no Dismissed shelf in
+the normal list. Third-party sessions can be hidden without stopping the
+external harness, and stay hidden through its status updates. Adoption into
+Station restores their normal status handling. Task family summaries use an
+explicit Open task control; chat rows open chats. Browse all conversations
+retains paginated history, rename and delete. Refresh lives in overflow with a
+direct retry on failure. Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
 
