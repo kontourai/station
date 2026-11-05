@@ -466,6 +466,28 @@ test('review time and routed share are measured per run', async () => {
   ).toBe(true);
 });
 
+test('an agent note before a human decision does not become the measured review', async () => {
+  const h = await contradiction();
+  const [item] = (await h.json(await h.get('/memory/queue'))).items;
+  await h.post(
+    `/memory/queue/${item.itemId}/decision`,
+    { outcome: 'accept' },
+    h.as('agent'),
+  );
+  h.state.clock += 1_000;
+  await h.post(`/memory/queue/${item.itemId}/open`, {});
+  h.state.clock += 30_000;
+  await h.post(`/memory/queue/${item.itemId}/decision`, { outcome: 'accept' });
+  const measurement = await h.json(await h.get('/memory/measurement'));
+  const row = measurement.lineages.find((l: any) => l.routed);
+  expect(row).toMatchObject({
+    outcome: 'accept',
+    reviewerKind: 'human',
+    reviewSeconds: 30,
+  });
+  expect(measurement.reviewer).toMatchObject({ confirmed: 1, annotated: 1 });
+});
+
 test('an agent opening an item does not lend its time to a human decision', async () => {
   const h = await contradiction();
   const [item] = (await h.json(await h.get('/memory/queue'))).items;

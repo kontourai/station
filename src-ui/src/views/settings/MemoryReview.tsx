@@ -69,13 +69,11 @@ function QueueCard({
   busy,
   onOpen,
   onDecide,
-  note,
 }: {
   item: MemoryQueueItem;
   busy: boolean;
   onOpen: () => void;
   onDecide: (outcome: MemoryDecisionOutcome, correctedValue?: string) => void;
-  note: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [correcting, setCorrecting] = useState(false);
@@ -155,11 +153,6 @@ function QueueCard({
           </Button>
         </form>
       )}
-      {note && (
-        <p className="memory-review__note" role="status">
-          {note}
-        </p>
-      )}
     </li>
   );
 }
@@ -217,7 +210,7 @@ export function MemoryReview() {
       cancelWhenInactive: true,
     },
   );
-  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [lastNote, setLastNote] = useState<string | null>(null);
   const decide = useApiMutation(
     async (variables: {
       itemId: string;
@@ -234,15 +227,14 @@ export function MemoryReview() {
       });
     },
     {
-      onSuccess: (result) =>
-        setNotes((current) => ({
-          ...current,
-          [result.itemId]: result.promoted
-            ? 'Saved.'
-            : result.reviewerKind === 'agent'
-              ? 'Noted, but only you at this Station can settle it. It is still waiting.'
-              : 'Saved. It stays open until you decide.',
-        })),
+      onSuccess: (result) => {
+        const message = result.promoted
+          ? 'Saved.'
+          : result.reviewerKind === 'agent'
+            ? 'Noted, but only you at this Station can settle it. It is still waiting.'
+            : 'Saved. It stays open until you decide.';
+        setLastNote(message);
+      },
       invalidateKeys: [['memory']],
     },
   );
@@ -266,6 +258,11 @@ export function MemoryReview() {
       {supported && (
         <>
           <h4>Waiting for you</h4>
+          {lastNote && (
+            <p className="memory-review__note" role="status">
+              {lastNote}
+            </p>
+          )}
           {queue.isFetching && !queue.data && <SkeletonList count={2} />}
           {refused && (
             <Empty
@@ -291,7 +288,6 @@ export function MemoryReview() {
                   key={item.itemId}
                   item={item}
                   busy={decide.isPending}
-                  note={notes[item.itemId] ?? null}
                   onOpen={() => {
                     void client?.open(item.itemId).catch(() => undefined);
                   }}
@@ -331,7 +327,6 @@ export function MemoryReview() {
                     key={item.itemId}
                     item={item}
                     busy
-                    note={null}
                     onOpen={() => undefined}
                     onDecide={() => undefined}
                   />
@@ -423,11 +418,6 @@ export function MemoryReview() {
                         Confirm
                       </Button>
                     )}
-                  {notes[entry.itemId] && (
-                    <p className="memory-review__note" role="status">
-                      {notes[entry.itemId]}
-                    </p>
-                  )}
                 </li>
               ))}
             </ul>

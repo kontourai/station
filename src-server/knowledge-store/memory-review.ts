@@ -787,7 +787,10 @@ export class MemoryReviewService {
           .sort(
             (a, b) => instant(a.spec.reviewedAt) - instant(b.spec.reviewedAt),
           );
-        const first = own[0];
+        // The first review that counts is the first human one; an agent's note before it is not a review.
+        const first =
+          own.find((decision) => memoryReviewerKind(decision) === 'human') ??
+          own[0];
         const standing = standingHumanDecision(
           snapshot.decisions,
           entry.itemName,
