@@ -34,6 +34,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 
 import { resetFloatStoreForTests } from '../../float-over-chat/floatStore';
 import { DeviceWorkspacePane } from '../DeviceWorkspacePane';
+import { DEVICE_FOLD_BENT_KEY } from '../device/DeviceFoldView';
 import { foldPresentation, projectFoldPoint } from '../device/deviceFold';
 import {
   authorizeScope,
@@ -160,7 +161,25 @@ describe('a foldable device', () => {
     expect(log.inputs[2]!.events).toEqual([{ kind: 'fold', tableMode: true }]);
   });
 
+  test('the lit inner display is drawn flat with its crease by default, and bent once 3D view is on (kept)', async () => {
+    await live(BOOK);
+    const view = screen.getByTestId('device-fold-view');
+    expect(view.dataset.crease).toBe('vertical');
+    expect(
+      [...view.querySelectorAll('canvas')].map((half) => half.dataset.turn),
+    ).toEqual(['0', '0']);
+    await click(screen.getByRole('checkbox', { name: '3D view' }));
+    expect(
+      [
+        ...screen.getByTestId('device-fold-view').querySelectorAll('canvas'),
+      ].map((half) => half.dataset.turn),
+    ).toEqual(['45', '45']);
+    // A viewer preference: kept on this device, nothing sent to the device.
+    expect(localStorage.getItem(DEVICE_FOLD_BENT_KEY)).toBe('1');
+  });
+
   test('the lit inner display is drawn bent at a crease across its longer side', async () => {
+    localStorage.setItem(DEVICE_FOLD_BENT_KEY, '1');
     const { stream, surfaceId } = await live(BOOK);
     const view = screen.getByTestId('device-fold-view');
     expect(view.dataset.crease).toBe('vertical');
@@ -185,6 +204,7 @@ describe('a foldable device', () => {
   });
 
   test('a touch on the bent drawing reaches the flat display point under it', async () => {
+    localStorage.setItem(DEVICE_FOLD_BENT_KEY, '1');
     const { log } = await live(BOOK);
     const presentation = foldPresentation(BOOK, INNER);
     // Where the display point (1650, 480) — the right half — is drawn.
@@ -230,6 +250,7 @@ describe('a foldable device', () => {
   });
 
   test('full screen keeps the bent view current and offers the stands in its bar', async () => {
+    localStorage.setItem(DEVICE_FOLD_BENT_KEY, '1');
     const { log, stream, surfaceId } = await live(BOOK);
     await click(screen.getByRole('button', { name: 'Full screen' }));
     // The pane's header is gone in full screen; the fold still updates
@@ -268,5 +289,31 @@ describe('a foldable device', () => {
   test('without the helper saying so, face up/down is not offered', async () => {
     await live(BOOK);
     expect(screen.queryByRole('button', { name: 'Lay face down' })).toBeNull();
+  });
+
+  test('a stand the hinge plainly reports is selected even when the device names none', async () => {
+    await live({
+      ...BOOK,
+      activeDisplay: 'cover',
+      hingeAngle: 0,
+      posture: null,
+    });
+    expect(
+      screen
+        .getByRole('radio', { name: 'Closed' })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+
+  test('each stand shows its name, and table mode has a full-size target', async () => {
+    await live(BOOK);
+    for (const name of ['Closed', 'Open flat', 'Book', 'Laptop', 'Tent'])
+      expect(screen.getByRole('radio', { name }).textContent).toContain(name);
+    expect(
+      screen
+        .getByRole('checkbox', { name: 'Table mode' })
+        .closest('label')
+        ?.classList.contains('device-fold-controls__toggle'),
+    ).toBe(true);
   });
 });

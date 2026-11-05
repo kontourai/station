@@ -42,6 +42,7 @@ import {
 } from '../contexts/useOpenInRegion';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
 import { useFeatureSettings } from '../hooks/useFeatureSettings';
+import { useNarrowViewport } from '../hooks/useNarrowViewport';
 import {
   LiveSurfaceCanvas,
   type LiveSurfaceControlState,
@@ -61,7 +62,10 @@ import {
   browserPaneApi,
   describeBrowserFailure,
 } from '../workspace-panes/browser-pane/browserPaneApi';
-import { DeviceFoldControls } from '../workspace-panes/device/DeviceFoldControls';
+import {
+  DeviceFoldSettings,
+  DevicePostureControl,
+} from '../workspace-panes/device/DeviceFoldControls';
 import { useDeviceFold } from '../workspace-panes/device/DeviceFoldView';
 import { DeviceImmersiveActions } from '../workspace-panes/device/DeviceImmersiveActions';
 import {
@@ -1022,6 +1026,15 @@ function BrowserFloat({
             onControlState={reportControl(onControlState)}
             renderImmersiveActions={() => (
               <BrowserImmersiveNav
+                part="address"
+                host={host}
+                disabled={control?.tone !== 'you' || navigate.isPending}
+                onAction={(action) => navigate.mutate(action)}
+              />
+            )}
+            renderImmersiveMenu={() => (
+              <BrowserImmersiveNav
+                part="navigation"
                 host={host}
                 disabled={control?.tone !== 'you' || navigate.isPending}
                 onAction={(action) => navigate.mutate(action)}
@@ -1128,6 +1141,7 @@ function DeviceFloat({
   const name = session?.name ?? source.name;
   const { projectSlug } = source;
   const fold = useDeviceFold();
+  const narrow = useNarrowViewport();
   return (
     <SourceFloat
       anchor={anchor}
@@ -1164,9 +1178,17 @@ function DeviceFloat({
             {...(fold.projection ? { projection: fold.projection } : {})}
             onProducerStatus={fold.reportStatus}
             renderImmersiveActions={(api) => (
+              <DevicePostureControl
+                {...fold.controls}
+                compact={narrow}
+                inputReady={api.inputReady}
+                sendInput={api.sendInput}
+              />
+            )}
+            renderImmersiveMenu={(api) => (
               <>
                 <DeviceImmersiveActions api={api} platform={platform} />
-                <DeviceFoldControls
+                <DeviceFoldSettings
                   {...fold.controls}
                   inputReady={api.inputReady}
                   sendInput={api.sendInput}

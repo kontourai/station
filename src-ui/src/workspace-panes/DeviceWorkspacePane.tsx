@@ -59,12 +59,17 @@ import {
 } from '../float-over-chat/floatStore';
 import { useAnnounceShownSource } from '../float-over-chat/shownSources';
 import { useActiveProject } from '../hooks/useActiveProject';
+import { useNarrowViewport } from '../hooks/useNarrowViewport';
 import {
   LiveSurfaceCanvas,
   type LiveSurfaceHeaderApi,
 } from '../live-surface/LiveSurfaceCanvas';
 import { DeviceSetupSlot } from './DeviceSetupSlot';
-import { DeviceFoldControls } from './device/DeviceFoldControls';
+import {
+  DeviceFoldControls,
+  DeviceFoldSettings,
+  DevicePostureControl,
+} from './device/DeviceFoldControls';
 import { type DeviceFoldState, useDeviceFold } from './device/DeviceFoldView';
 import {
   DeviceImmersiveActions,
@@ -932,6 +937,7 @@ function DeviceStage({
   const [axOverlay, setAxOverlay] = useState(false);
   const [streamLive, setStreamLive] = useState(false);
   const foldState = useDeviceFold();
+  const narrow = useNarrowViewport();
   const [captureError, setCaptureError] = useState(false);
   const previews = useFeaturePreviewsQuery(requestScope.apiBase);
   const deviceLoopEnabled =
@@ -1083,10 +1089,20 @@ function DeviceStage({
       }}
       fullScreenButton
       onProducerStatus={foldState.reportStatus}
+      // The bar's row keeps the stand picker; Home, Rotate and the fold
+      // settings go behind More controls at phone width.
       renderImmersiveActions={(api) => (
+        <DevicePostureControl
+          {...foldState.controls}
+          compact={narrow}
+          inputReady={api.inputReady}
+          sendInput={api.sendInput}
+        />
+      )}
+      renderImmersiveMenu={(api) => (
         <>
           <DeviceImmersiveActions api={api} platform={platform} />
-          <DeviceFoldControls
+          <DeviceFoldSettings
             {...foldState.controls}
             inputReady={api.inputReady}
             sendInput={api.sendInput}
@@ -1361,6 +1377,7 @@ function DeviceToolbar({
   onReconnect: () => void;
 }) {
   const { surface, inputReady, sendInput } = api;
+  const narrow = useNarrowViewport();
   const live = surface.status === 'live';
   useEffect(() => onStreamLive(live), [live, onStreamLive]);
   const press = (button: LiveSurfaceDeviceButton) =>
@@ -1532,6 +1549,7 @@ function DeviceToolbar({
       {foldState.fold ? (
         <DeviceFoldControls
           {...foldState.controls}
+          compact={narrow}
           inputReady={inputReady}
           sendInput={sendInput}
         />

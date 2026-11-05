@@ -3,9 +3,10 @@ import type {
   LiveSurfaceInput,
   LiveSurfacePosture,
 } from '@kontourai/station-contracts/live-surface';
-import { type ReactNode, useId, useRef } from 'react';
+import { type ReactNode, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
-import { snapHingeAngle } from './deviceFold';
+import type { DeviceFoldViewControls } from './DeviceFoldView';
+import { snapHingeAngle, standOf } from './deviceFold';
 import './DeviceFold.css';
 
 /**
@@ -61,20 +62,116 @@ function PostureGlyph({ posture }: { posture: LiveSurfacePosture }) {
   );
 }
 
-export interface DeviceFoldControlsProps {
-  fold: LiveSurfaceFold | undefined;
-  previewAngle: number | null;
-  onPreviewAngle: (angle: number | null) => void;
+export interface DeviceFoldControlsProps extends DeviceFoldViewControls {
   sendInput: (events: LiveSurfaceInput[]) => void;
   inputReady: boolean;
+  /** One stand picker and a Fold settings disclosure (phone width). */
+  compact?: boolean;
 }
 
-export function DeviceFoldControls({
+/**
+ * Which stand the device is in: a named stand, or the shut/flat state its
+ * hinge plainly reports. A stand the person just chose is not claimed
+ * until the device reports it.
+ */
+function currentStand(
+  fold: LiveSurfaceFold,
+  previewAngle: number | null,
+): LiveSurfacePosture | null {
+  return previewAngle === null ? standOf(fold) : null;
+}
+
+/** The stand picker: labelled buttons, or one select when compact. */
+export function DevicePostureControl({
   fold,
   previewAngle,
   onPreviewAngle,
   sendInput,
   inputReady,
+  compact = false,
+}: Pick<
+  DeviceFoldControlsProps,
+  | 'fold'
+  | 'previewAngle'
+  | 'onPreviewAngle'
+  | 'sendInput'
+  | 'inputReady'
+  | 'compact'
+>): ReactNode {
+  if (!fold) return null;
+  const current = currentStand(fold, previewAngle);
+  const choose = (posture: LiveSurfacePosture) => {
+    onPreviewAngle(null);
+    sendInput([{ kind: 'fold', posture }]);
+  };
+  if (compact) {
+    const angle = previewAngle ?? fold.hingeAngle;
+    return (
+      <select
+        aria-label="Stand"
+        className="device-fold-controls__stand-select"
+        disabled={!inputReady}
+        onChange={(event) =>
+          choose(event.currentTarget.value as LiveSurfacePosture)
+        }
+        value={current ?? ''}
+      >
+        {current === null ? (
+          <option disabled value="">
+            {angle === null ? 'Between stands' : `Hinge ${Math.round(angle)}°`}
+          </option>
+        ) : null}
+        {fold.postures.map((posture) => (
+          <option key={posture} value={posture}>
+            {POSTURE_LABEL[posture]}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <div
+      aria-label="Stand"
+      className="device-fold-controls__stands"
+      role="radiogroup"
+    >
+      {fold.postures.map((posture) => {
+        const checked = current === posture;
+        return (
+          <Button
+            aria-checked={checked}
+            className="device-fold-controls__stand"
+            disabled={!inputReady}
+            key={posture}
+            onClick={() => choose(posture)}
+            role="radio"
+            size="sm"
+            title={POSTURE_LABEL[posture]}
+            variant={checked ? 'secondary' : 'ghost'}
+          >
+            <PostureGlyph posture={posture} />
+            <span className="device-fold-controls__stand-label">
+              {POSTURE_LABEL[posture]}
+            </span>
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The hinge, table mode, face up/down and how the display is drawn. */
+export function DeviceFoldSettings({
+  fold,
+  previewAngle,
+  onPreviewAngle,
+  sendInput,
+  inputReady,
+  bent,
+  onBent,
+  turnToFit,
+  onTurnToFit,
+  turnToFitOffered,
 }: DeviceFoldControlsProps): ReactNode {
   const sliderId = useId();
   // Release, key-up and blur can all end one drag: send its angle once.
@@ -87,39 +184,7 @@ export function DeviceFoldControls({
     sendInput([{ kind: 'fold', hingeAngle: previewAngle }]);
   };
   return (
-    <fieldset
-      aria-label="Fold"
-      className="device-fold-controls"
-      data-testid="device-fold-controls"
-    >
-      <div
-        aria-label="Stand"
-        className="device-fold-controls__stands"
-        role="radiogroup"
-      >
-        {fold.postures.map((posture) => {
-          const current = fold.posture === posture && previewAngle === null;
-          return (
-            <Button
-              aria-checked={current}
-              aria-label={POSTURE_LABEL[posture]}
-              className="device-fold-controls__stand"
-              disabled={!inputReady}
-              key={posture}
-              onClick={() => {
-                onPreviewAngle(null);
-                sendInput([{ kind: 'fold', posture }]);
-              }}
-              role="radio"
-              size="sm"
-              title={POSTURE_LABEL[posture]}
-              variant={current ? 'secondary' : 'ghost'}
-            >
-              <PostureGlyph posture={posture} />
-            </Button>
-          );
-        })}
-      </div>
+    <>
       {fold.angleControl ? (
         <div className="device-fold-controls__hinge">
           <label htmlFor={sliderId}>Hinge</label>
@@ -153,7 +218,7 @@ export function DeviceFoldControls({
         </div>
       ) : null}
       {fold.tableMode !== undefined ? (
-        <label className="device-fold-controls__table">
+        <label className="device-fold-controls__toggle">
           <input
             checked={fold.tableMode}
             disabled={!inputReady}
@@ -183,6 +248,66 @@ export function DeviceFoldControls({
           ))}
         </div>
       ) : null}
+      {/* How THIS viewer draws the display; nothing is sent to the device. */}
+      <label className="device-fold-controls__toggle">
+        <input
+          checked={bent}
+          onChange={(event) => onBent(event.currentTarget.checked)}
+          type="checkbox"
+        />
+        3D view
+      </label>
+      {turnToFitOffered ? (
+        <label className="device-fold-controls__toggle">
+          <input
+            checked={turnToFit}
+            onChange={(event) => onTurnToFit(event.currentTarget.checked)}
+            type="checkbox"
+          />
+          Rotate picture to fit
+        </label>
+      ) : null}
+    </>
+  );
+}
+
+/** The stands and the settings together (the Device pane's fold row). */
+export function DeviceFoldControls(props: DeviceFoldControlsProps): ReactNode {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsId = useId();
+  if (!props.fold) return null;
+  if (props.compact)
+    return (
+      <fieldset
+        aria-label="Fold"
+        className="device-fold-controls device-fold-controls--compact"
+        data-testid="device-fold-controls"
+      >
+        <DevicePostureControl {...props} compact />
+        <Button
+          aria-controls={settingsId}
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((open) => !open)}
+          size="sm"
+          variant="ghost"
+        >
+          Fold settings
+        </Button>
+        {settingsOpen ? (
+          <div className="device-fold-controls__settings" id={settingsId}>
+            <DeviceFoldSettings {...props} />
+          </div>
+        ) : null}
+      </fieldset>
+    );
+  return (
+    <fieldset
+      aria-label="Fold"
+      className="device-fold-controls"
+      data-testid="device-fold-controls"
+    >
+      <DevicePostureControl {...props} />
+      <DeviceFoldSettings {...props} />
     </fieldset>
   );
 }

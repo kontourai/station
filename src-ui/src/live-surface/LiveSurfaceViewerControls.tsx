@@ -1,6 +1,19 @@
-import { type CSSProperties, type ReactNode, useEffect, useRef } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { Button } from '../components/Button';
-import { ExpandGlyph, glyph, RestoreGlyph } from '../components/icons/Glyph';
+import {
+  ExpandGlyph,
+  glyph,
+  MoreGlyph,
+  RestoreGlyph,
+} from '../components/icons/Glyph';
+import { useNarrowViewport } from '../hooks/useNarrowViewport';
 import type { LiveSurfaceControllerTone } from './LiveSurfaceCanvas';
 
 /**
@@ -21,6 +34,14 @@ export const DRIVER_TEXT: Record<LiveSurfaceControllerTone, string> = {
   you: 'You are in control',
   other: 'Someone else is in control',
   none: 'No one is in control',
+};
+
+/** The same, as a chip in the compact row. */
+export const DRIVER_CHIP: Record<LiveSurfaceControllerTone, string> = {
+  agent: 'Agent',
+  you: 'You',
+  other: 'Someone else',
+  none: 'No one',
 };
 
 const KeyboardGlyph = /* @__PURE__ */ glyph(
@@ -47,7 +68,15 @@ export interface LiveSurfaceViewerControlsProps {
   onToggleImmersive?: (() => void) | null;
   immersive?: boolean;
   leading?: ReactNode;
+  /** Kept in the row in every layout (a surface's one primary control). */
   trailing?: ReactNode;
+  /**
+   * A surface's secondary controls: in the row when there is room, behind
+   * one More controls button in the compact (phone-width) layout.
+   */
+  menu?: ReactNode;
+  /** Force the compact layout; by default it follows a phone-narrow viewport. */
+  compact?: boolean;
 }
 
 export function LiveSurfaceViewerControls({
@@ -65,11 +94,122 @@ export function LiveSurfaceViewerControls({
   immersive = false,
   leading,
   trailing,
+  menu,
+  compact: compactProp,
 }: LiveSurfaceViewerControlsProps) {
+  const narrow = useNarrowViewport();
+  const compact = compactProp ?? narrow;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuId = useId();
   const action = ['live-surface-controls__action', actionClassName]
     .filter(Boolean)
     .join(' ');
   const icon = `${action} live-surface-controls__icon`;
+  const keyboardButton = keyboard ? (
+    <Button
+      size="sm"
+      variant="ghost"
+      className={icon}
+      aria-label={keyboard.open ? 'Hide keyboard' : 'Show keyboard'}
+      aria-pressed={keyboard.open}
+      title={keyboard.open ? 'Hide keyboard' : 'Show keyboard'}
+      onClick={keyboard.onToggle}
+    >
+      <KeyboardGlyph />
+    </Button>
+  ) : null;
+  const immersiveButton = onToggleImmersive ? (
+    <Button
+      size="sm"
+      variant="ghost"
+      className={icon}
+      aria-label={immersive ? 'Exit full screen' : 'Full screen'}
+      title={immersive ? 'Exit full screen' : 'Full screen'}
+      onClick={onToggleImmersive}
+    >
+      {immersive ? <RestoreGlyph /> : <ExpandGlyph />}
+    </Button>
+  ) : null;
+  const hasMenu = Boolean(menu) || Boolean(keyboardButton);
+  if (compact)
+    return (
+      <div
+        id={id}
+        className={[
+          'live-surface-controls',
+          'live-surface-controls--compact',
+          className,
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={style}
+        role="toolbar"
+        aria-label={label}
+        data-tone={tone}
+      >
+        {leading}
+        {status ? (
+          <p
+            className="live-surface-controls__chip"
+            data-tone={tone}
+            title={DRIVER_TEXT[tone]}
+          >
+            {DRIVER_CHIP[tone]}
+          </p>
+        ) : null}
+        {onClaim ? (
+          <Button
+            size="sm"
+            className={action}
+            title={DRIVER_TEXT[tone]}
+            onClick={onClaim}
+          >
+            Take control
+          </Button>
+        ) : null}
+        {onRelease ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className={action}
+            title="Give control back"
+            onClick={onRelease}
+          >
+            Release
+          </Button>
+        ) : null}
+        {trailing ? (
+          <span className="live-surface-controls__slot">{trailing}</span>
+        ) : null}
+        {hasMenu ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className={icon}
+            aria-label="More controls"
+            aria-expanded={menuOpen}
+            aria-controls={menuId}
+            title="More controls"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <MoreGlyph />
+          </Button>
+        ) : null}
+        {immersiveButton}
+        {hasMenu && menuOpen ? (
+          // biome-ignore lint/a11y/useSemanticElements: a group of mixed controls (buttons, a slider), not a form section.
+          <div
+            className="live-surface-controls__menu"
+            id={menuId}
+            role="group"
+            aria-label="More controls"
+          >
+            {keyboardButton}
+            {menu}
+          </div>
+        ) : null}
+      </div>
+    );
   return (
     <div
       id={id}
@@ -110,32 +250,10 @@ export function LiveSurfaceViewerControls({
           Release control
         </Button>
       ) : null}
-      {keyboard ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          className={icon}
-          aria-label={keyboard.open ? 'Hide keyboard' : 'Show keyboard'}
-          aria-pressed={keyboard.open}
-          title={keyboard.open ? 'Hide keyboard' : 'Show keyboard'}
-          onClick={keyboard.onToggle}
-        >
-          <KeyboardGlyph />
-        </Button>
-      ) : null}
-      {onToggleImmersive ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          className={icon}
-          aria-label={immersive ? 'Exit full screen' : 'Full screen'}
-          title={immersive ? 'Exit full screen' : 'Full screen'}
-          onClick={onToggleImmersive}
-        >
-          {immersive ? <RestoreGlyph /> : <ExpandGlyph />}
-        </Button>
-      ) : null}
+      {keyboardButton}
+      {immersiveButton}
       {trailing}
+      {menu}
     </div>
   );
 }

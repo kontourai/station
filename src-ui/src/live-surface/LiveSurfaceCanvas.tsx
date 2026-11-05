@@ -183,6 +183,13 @@ export interface LiveSurfaceCanvasProps {
    * `renderHeader` so its input goes through this surface's lease.
    */
   renderImmersiveActions?: (surface: LiveSurfaceHeaderApi) => ReactNode;
+  /**
+   * The surface's secondary full-screen controls: in the bar's row when it
+   * has room, behind its More controls button at phone width.
+   */
+  renderImmersiveMenu?: (surface: LiveSurfaceHeaderApi) => ReactNode;
+  /** Told when this surface enters or leaves full screen. */
+  onImmersiveChange?: (immersive: boolean) => void;
   /** A Full screen button on the stage (a pane; the float has its pill). */
   fullScreenButton?: boolean;
   /**
@@ -204,6 +211,11 @@ export interface LiveSurfaceProjection {
   ): { x: number; y: number } | null;
   /** Drawn over the canvas box; repaints from `source` after each frame. */
   render(source: LiveSurfaceProjectionSource): ReactNode;
+  /**
+   * The box's aspect (width / height) for this shown frame, when the
+   * projection draws it differently (turned a quarter to fit a screen).
+   */
+  fitAspect?(shown: { width: number; height: number }): number;
 }
 
 /** The drawn frame a projection copies from. */
@@ -385,19 +397,23 @@ function InputNotice(props: {
   );
 }
 
-function controllerLine(surface: UseLiveSurfaceResult): {
+function controllerLine(
+  surface: UseLiveSurfaceResult,
+  touch = false,
+): {
   text: string;
   tone: LiveSurfaceControllerTone;
 } {
+  const verb = touch ? 'Tap' : 'Click or type';
   const holder = surface.lease?.holder;
   if (!holder)
     return {
-      text: 'No one is in control. Click or type to take control.',
+      text: `No one is in control. ${verb} to take control.`,
       tone: 'none',
     };
   if (holder.kind === 'agent')
     return {
-      text: 'An agent is in control. Click or type to take control from it.',
+      text: `An agent is in control. ${verb} to take control from it.`,
       tone: 'agent',
     };
   // Identity comes from the server (each viewer's state record names it),
@@ -407,12 +423,12 @@ function controllerLine(surface: UseLiveSurfaceResult): {
     if (holder.device === self.device)
       return { text: 'You are in control.', tone: 'you' };
     return {
-      text: 'You are in control from another device. Click or type here to take control.',
+      text: `You are in control from another device. ${verb} here to take control.`,
       tone: 'other',
     };
   }
   return {
-    text: 'Another person is in control. Click or type to take control.',
+    text: `Another person is in control. ${verb} to take control.`,
     tone: 'other',
   };
 }
@@ -724,7 +740,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   let fitStyle: CSSProperties | undefined;
   if (props.fit && stageBox) {
     const aspect = frameSize
-      ? frameSize.width / frameSize.height
+      ? (props.projection?.fitAspect?.(frameSize) ??
+        frameSize.width / frameSize.height)
       : props.fit.aspect;
     const box = largestBoxAtAspect(stageBox, aspect);
     fitStyle = {
@@ -1338,7 +1355,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     event.currentTarget.value = '';
   };
 
-  const controller = controllerLine(surface);
+  const touchPointer = useCoarsePointer();
+  const controller = controllerLine(surface, touchPointer);
   const { onControlState } = props;
   const { status, claimControl, releaseControl, keepControlAlive } = surface;
   const tone = controller.tone;
@@ -1351,6 +1369,17 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   } = useImmersive(containerRef);
   const immersiveRef = useRef(immersive);
   immersiveRef.current = immersive;
+  // Going full screen and back is this viewer still at the surface: a hold
+  // it has is renewed (never claimed), so the bar does not open on
+  // "No one is in control" merely because the viewer stopped touching.
+  const wasImmersiveRef = useRef(immersive);
+  const { onImmersiveChange } = props;
+  useEffect(() => {
+    if (wasImmersiveRef.current === immersive) return;
+    wasImmersiveRef.current = immersive;
+    if (holdsControl(surfaceRef.current)) void keepControlAlive();
+    onImmersiveChange?.(immersive);
+  }, [immersive, keepControlAlive, onImmersiveChange]);
   const requiresLease = props.inputRequiresLease === true && !immersive;
   requiresLeaseRef.current = requiresLease;
   // A touch press held back before eligibility changed (read-only, lost
@@ -1736,6 +1765,11 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
               immersive
               onToggleImmersive={exitImmersive}
               trailing={props.renderImmersiveActions?.({
+                surface,
+                inputReady,
+                sendInput,
+              })}
+              menu={props.renderImmersiveMenu?.({
                 surface,
                 inputReady,
                 sendInput,

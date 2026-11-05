@@ -804,6 +804,7 @@ test('LOW-1: floating the same device again as a NEW session, while its old one 
 });
 
 test('a floated foldable is drawn bent at its hinge, from the fold its stream reports', async () => {
+  window.localStorage.setItem('station.device.foldView.bent', '1');
   renderChat();
   await floatDevice();
   await screen.findByTestId('live-surface-canvas');

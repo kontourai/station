@@ -207,3 +207,45 @@ export function snapHingeAngle(
   }
   return best ?? Math.round(clamped);
 }
+
+/** The same display drawn flat, keeping its crease line. */
+export function flattened(presentation: FoldPresentation): FoldPresentation {
+  return presentation.crease
+    ? { crease: presentation.crease, turns: [0, 0] }
+    : presentation;
+}
+
+/**
+ * The drawing turned a quarter clockwise to fit a screen of the other
+ * shape: a point of the turned (shown) box, in box pixels, as a point of the
+ * unturned drawing, whose box is `box` with its sides swapped.
+ */
+export function unturnQuarter(
+  point: { x: number; y: number },
+  box: { width: number; height: number },
+): { x: number; y: number } {
+  return { x: point.y, y: box.width - point.x };
+}
+
+/** Where a point of the unturned drawing is shown once turned (the inverse). */
+export function turnQuarter(
+  point: { x: number; y: number },
+  box: { width: number; height: number },
+): { x: number; y: number } {
+  return { x: box.width - point.y, y: point.x };
+}
+
+/**
+ * The stand a reported fold is in: the named one, or, between names, the
+ * fold state its hinge angle plainly is (shut, or flat open). Otherwise
+ * none: an angle between stands is not any of them.
+ */
+export function standOf(fold: {
+  posture: LiveSurfacePosture | null;
+  hingeAngle: number | null;
+}): LiveSurfacePosture | null {
+  if (fold.posture) return fold.posture;
+  if (fold.hingeAngle === 0) return 'closed';
+  if (fold.hingeAngle === 180) return 'open';
+  return null;
+}

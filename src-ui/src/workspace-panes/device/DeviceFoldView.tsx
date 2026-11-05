@@ -17,10 +17,12 @@ import type {
 } from '../../live-surface/LiveSurfaceCanvas';
 import {
   type FoldPresentation,
+  flattened,
   foldFitScale,
   foldPerspective,
   foldPresentation,
   unprojectFoldPoint,
+  unturnQuarter,
 } from './deviceFold';
 import './DeviceFold.css';
 
@@ -50,12 +52,68 @@ export interface DeviceFoldState {
   /** Undefined unless the device folds, so a flat phone is untouched. */
   projection: LiveSurfaceProjection | undefined;
   /** Props for `DeviceFoldControls` (add `sendInput` and `inputReady`). */
-  controls: {
-    fold: LiveSurfaceFold | undefined;
-    previewAngle: number | null;
-    onPreviewAngle: (angle: number | null) => void;
-  };
+  controls: DeviceFoldViewControls;
 }
+
+/** What the fold controls need from `useDeviceFold`. */
+export interface DeviceFoldViewControls {
+  fold: LiveSurfaceFold | undefined;
+  previewAngle: number | null;
+  onPreviewAngle: (angle: number | null) => void;
+  /** Draw the display bent in 3D (a viewer preference; default flat). */
+  bent: boolean;
+  onBent: (bent: boolean) => void;
+  /** Turn a landscape display a quarter to fill a portrait screen. */
+  turnToFit: boolean;
+  onTurnToFit: (turn: boolean) => void;
+  /** The screen is portrait, so turning a landscape display can help. */
+  turnToFitOffered: boolean;
+}
+
+/** A viewer preference kept on this device (never sent to the surface). */
+function useStoredFlag(key: string): [boolean, (value: boolean) => void] {
+  const [value, setValue] = useState(() => {
+    try {
+      return globalThis.localStorage?.getItem(key) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const store = useCallback(
+    (next: boolean) => {
+      setValue(next);
+      try {
+        globalThis.localStorage?.setItem(key, next ? '1' : '0');
+      } catch {
+        // A private window may refuse storage: the choice lasts this view.
+      }
+    },
+    [key],
+  );
+  return [value, store];
+}
+
+const PORTRAIT_QUERY = '(orientation: portrait)';
+
+function usePortraitViewport(): boolean {
+  const read = () =>
+    typeof window !== 'undefined' &&
+    Boolean(window.matchMedia) &&
+    window.matchMedia(PORTRAIT_QUERY).matches;
+  const [portrait, setPortrait] = useState(read);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const media = window.matchMedia(PORTRAIT_QUERY);
+    const onChange = () => setPortrait(media.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+  return portrait;
+}
+
+/** Keys of the viewer's fold-view preferences. */
+export const DEVICE_FOLD_BENT_KEY = 'station.device.foldView.bent';
+export const DEVICE_FOLD_TURN_KEY = 'station.device.foldView.turnToFit';
 
 export function useDeviceFold(): DeviceFoldState {
   const [fold, setFold] = useState<LiveSurfaceFold | undefined>(undefined);
@@ -93,42 +151,69 @@ export function useDeviceFold(): DeviceFoldState {
     },
     [reportedAngle, reportedPosture],
   );
+  const [bent, onBent] = useStoredFlag(DEVICE_FOLD_BENT_KEY);
+  const [turnToFit, onTurnToFit] = useStoredFlag(DEVICE_FOLD_TURN_KEY);
+  const portrait = usePortraitViewport();
   const reportStatus = useCallback(
     (status: { fold?: LiveSurfaceFold }) => report(status.fold),
     [report],
   );
   const projection = useMemo<LiveSurfaceProjection | undefined>(() => {
     if (!fold) return undefined;
+    const present = (shown: { width: number; height: number }) => {
+      const presentation = foldPresentation(fold, shown, previewAngle);
+      return bent ? presentation : flattened(presentation);
+    };
+    /** A landscape display on a portrait screen, turned a quarter to fit. */
+    const turned = (shown: { width: number; height: number }) =>
+      turnToFit && portrait && shown.width > shown.height;
     return {
+      fitAspect(shown) {
+        return turned(shown)
+          ? shown.height / shown.width
+          : shown.width / shown.height;
+      },
       toFrame(client, box, shown) {
-        const presentation = foldPresentation(fold, shown, previewAngle);
-        const flat = unprojectFoldPoint(
-          { x: client.x - box.left, y: client.y - box.top },
-          box,
-          presentation,
-        );
-        if (!flat || box.width <= 0 || box.height <= 0) return null;
+        if (box.width <= 0 || box.height <= 0) return null;
+        let point = { x: client.x - box.left, y: client.y - box.top };
+        let drawing = { width: box.width, height: box.height };
+        if (turned(shown)) {
+          point = unturnQuarter(point, drawing);
+          drawing = { width: box.height, height: box.width };
+        }
+        const flat = unprojectFoldPoint(point, drawing, present(shown));
+        if (!flat) return null;
         return {
-          x: (flat.x * shown.width) / box.width,
-          y: (flat.y * shown.height) / box.height,
+          x: (flat.x * shown.width) / drawing.width,
+          y: (flat.y * shown.height) / drawing.height,
         };
       },
       render(source) {
         return (
           <DeviceFoldView
-            presentation={foldPresentation(fold, source.shown, previewAngle)}
+            presentation={present(source.shown)}
+            quarterTurn={turned(source.shown)}
             source={source}
           />
         );
       },
     };
-  }, [fold, previewAngle]);
+  }, [fold, previewAngle, bent, turnToFit, portrait]);
   return {
     fold,
     report,
     reportStatus,
     projection,
-    controls: { fold, previewAngle, onPreviewAngle },
+    controls: {
+      fold,
+      previewAngle,
+      onPreviewAngle,
+      bent,
+      onBent,
+      turnToFit,
+      onTurnToFit,
+      turnToFitOffered: portrait && fold?.activeDisplay === 'inner',
+    },
   };
 }
 
@@ -157,15 +242,22 @@ function halfShade(turn: number): number {
 export function DeviceFoldView({
   presentation,
   source,
+  quarterTurn = false,
 }: {
   presentation: FoldPresentation;
   source: LiveSurfaceProjectionSource;
+  /** Drawn turned a quarter clockwise inside its (portrait) box. */
+  quarterTurn?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const halvesRef = useRef<
     [HTMLCanvasElement | null, HTMLCanvasElement | null]
   >([null, null]);
-  const [box, setBox] = useState({ width: 0, height: 0 });
+  const [outer, setBox] = useState({ width: 0, height: 0 });
+  /** The unturned drawing's box: the outer box, sides swapped when turned. */
+  const box = quarterTurn
+    ? { width: outer.height, height: outer.width }
+    : outer;
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -225,42 +317,58 @@ export function DeviceFoldView({
       ref={containerRef}
     >
       <div
-        className="device-fold__bend"
+        className="device-fold__turn"
+        data-quarter-turn={quarterTurn ? '' : undefined}
         style={
-          flat
-            ? undefined
-            : {
-                perspective: `${foldPerspective(box)}px`,
-                transform: `scale(${foldFitScale(box, presentation)})`,
+          quarterTurn
+            ? {
+                width: `${box.width}px`,
+                height: `${box.height}px`,
+                left: `${(outer.width - box.width) / 2}px`,
+                top: `${(outer.height - box.height) / 2}px`,
+                transform: 'rotate(90deg)',
               }
+            : undefined
         }
       >
-        {flat ? (
-          <canvas
-            className="device-fold__half device-fold__half--whole"
-            ref={(element) => {
-              halvesRef.current[0] = element;
-            }}
-          />
-        ) : (
-          ([0, 1] as const).map((half) => (
+        <div
+          className="device-fold__bend"
+          style={
+            flat
+              ? undefined
+              : {
+                  perspective: `${foldPerspective(box)}px`,
+                  transform: `scale(${foldFitScale(box, presentation)})`,
+                }
+          }
+        >
+          {flat ? (
             <canvas
-              className={`device-fold__half device-fold__half--${half === 0 ? 'first' : 'second'}`}
-              data-turn={presentation.turns[half]}
-              key={half}
+              className="device-fold__half device-fold__half--whole"
               ref={(element) => {
-                halvesRef.current[half] = element;
-              }}
-              style={{
-                ...halfTransform(presentation, half),
-                filter: `brightness(${halfShade(presentation.turns[half])})`,
+                halvesRef.current[0] = element;
               }}
             />
-          ))
-        )}
-        {flat ? null : (
-          <div aria-hidden="true" className="device-fold__crease" />
-        )}
+          ) : (
+            ([0, 1] as const).map((half) => (
+              <canvas
+                className={`device-fold__half device-fold__half--${half === 0 ? 'first' : 'second'}`}
+                data-turn={presentation.turns[half]}
+                key={half}
+                ref={(element) => {
+                  halvesRef.current[half] = element;
+                }}
+                style={{
+                  ...halfTransform(presentation, half),
+                  filter: `brightness(${halfShade(presentation.turns[half])})`,
+                }}
+              />
+            ))
+          )}
+          {flat ? null : (
+            <div aria-hidden="true" className="device-fold__crease" />
+          )}
+        </div>
       </div>
     </div>
   );

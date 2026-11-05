@@ -45,6 +45,7 @@ vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
     new Set(preview.enabled ? ['browser-experience'] : []),
 }));
 const canvasState = vi.hoisted(() => ({
+  immersive: undefined as ((immersive: boolean) => void) | undefined,
   report: undefined as
     | ((
         state: import('../../../live-surface/LiveSurfaceCanvas').LiveSurfaceControlState,
@@ -65,10 +66,12 @@ vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
       state: import('../../../live-surface/LiveSurfaceCanvas').LiveSurfaceControlState,
     ) => void;
     overlay?: import('react').ReactNode;
+    onImmersiveChange?: (immersive: boolean) => void;
   }) => {
     useEffect(() => {
       canvasState.report = props.onControlState;
     }, [props.onControlState]);
+    canvasState.immersive = props.onImmersiveChange;
     return (
       <div
         data-testid="live-canvas"
@@ -77,6 +80,7 @@ vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
       >
         {props.label}
         {props.overlay}
+        <div className="live-surface__stage" />
       </div>
     );
   },
@@ -1051,6 +1055,67 @@ describe('BrowserPane address bar', () => {
           .map((c) => (c.body as { action: string }).action),
       ).toEqual(['back', 'forward', 'reload']),
     );
+  });
+
+  test('Fit to this pane fits again on entering and leaving full screen; a preset does not follow', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        // The pane's stage, and the live view's own stage in full screen.
+        const [width, height] = this.classList.contains('live-surface__stage')
+          ? [1000, 700]
+          : this.classList.contains('browser-pane__stage')
+            ? [800, 500]
+            : [0, 0];
+        return new DOMRect(0, 0, width, height);
+      },
+    );
+    const { calls } = renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+      [`POST /api/browser/sessions/${SESSION}/viewport`]: ok(sessionView()),
+    });
+    await screen.findByTestId('live-canvas');
+    const viewports = () =>
+      calls
+        .filter((c) => c.path.endsWith('/viewport'))
+        .map(
+          (c) =>
+            (c.body as { viewport: { width: number; height: number } })
+              .viewport,
+        );
+    const choose = async (name: string | RegExp) => {
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'More browser actions' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: /^Viewport: / }),
+      );
+      const menu = await screen.findByRole('menu', { name: 'Viewport' });
+      fireEvent.click(within(menu).getByRole('menuitemradio', { name }));
+    };
+    await choose('Fit to this pane');
+    await waitFor(() => expect(viewports()).toHaveLength(1));
+    expect(viewports()[0]).toMatchObject({ width: 800, height: 500 });
+    await act(async () => {
+      canvasState.immersive?.(true);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    await waitFor(() => expect(viewports()).toHaveLength(2));
+    expect(viewports()[1]).toMatchObject({ width: 1000, height: 700 });
+    await act(async () => {
+      canvasState.immersive?.(false);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    await waitFor(() => expect(viewports()).toHaveLength(3));
+    expect(viewports()[2]).toMatchObject({ width: 800, height: 500 });
+    // A preset is a fixed size: full screen leaves it alone.
+    await choose('Phone 393 × 852');
+    await waitFor(() => expect(viewports()).toHaveLength(4));
+    await act(async () => {
+      canvasState.immersive?.(true);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    expect(viewports()).toHaveLength(4);
   });
 
   test('a device preset is applied through the viewport route', async () => {

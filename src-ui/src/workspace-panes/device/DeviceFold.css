@@ -10,6 +10,19 @@
   width: 100%;
 }
 
+/* The drawing's frame: the whole box, or turned a quarter inside it. */
+.device-fold__turn {
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  transform-origin: 50% 50%;
+  width: 100%;
+}
+
+.device-fold__turn[data-quarter-turn] {
+  inset: auto;
+}
+
 /* The bent drawing, shrunk about its centre to stay inside the box. */
 .device-fold__bend {
   height: 100%;
@@ -116,7 +129,7 @@
 }
 
 .device-fold-controls__hinge,
-.device-fold-controls__table {
+.device-fold-controls__toggle {
   align-items: center;
   display: flex;
   font-size: 0.8125rem;
@@ -136,4 +149,48 @@
 .device-fold-controls__facing {
   display: flex;
   gap: var(--k-space-1);
+}
+
+/* A stand: its glyph over a short visible name. */
+.device-fold-controls__stand {
+  align-items: center;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-fold-controls__stand-label {
+  font-size: 0.6875rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* A toggle's whole label is its target (44px), and the box is legible. */
+.device-fold-controls__toggle {
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.device-fold-controls__toggle input[type="checkbox"] {
+  height: 20px;
+  margin: 0;
+  width: 20px;
+}
+
+.device-fold-controls__stand-select {
+  max-width: 100%;
+  min-height: 44px;
+  min-width: 0;
+}
+
+.device-fold-controls--compact {
+  flex-wrap: wrap;
+}
+
+.device-fold-controls__settings {
+  align-items: center;
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
 }
