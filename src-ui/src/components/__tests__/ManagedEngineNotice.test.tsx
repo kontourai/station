@@ -1,7 +1,11 @@
 /** @vitest-environment jsdom */
 
-import { parseManagedPolicyStatus } from '@kontourai/station-contracts/managed-policy-status';
+import {
+  type ManagedPolicyStatus,
+  parseManagedPolicyStatus,
+} from '@kontourai/station-contracts/managed-policy-status';
 import { render, renderHook, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   managedEngineIdFor,
@@ -10,8 +14,9 @@ import {
   useManagedEngines,
 } from '../../hooks/useManagedEngines';
 
-// The shared managed-policy status query (#4519's SDK hook) and the app's
-// API base; `useManagedEngines` reads both and nothing else.
+// The shared managed-policy status query (the SDK hook) and the app's API
+// base: `ManagedPolicyProvider` reads both, and `useManagedEngines` reads the
+// provider and nothing else.
 const statusQuery = vi.hoisted(() => ({
   calls: [] as unknown[],
   data: undefined as unknown,
@@ -26,6 +31,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://127.0.0.1:4100' }),
 }));
 
+import { ManagedPolicyProvider } from '../../contexts/ManagedPolicyContext';
 import {
   ManagedEngineNotice,
   managedEngineSubtitle,
@@ -60,9 +66,15 @@ const body = {
   },
 };
 
+/** The summary of a decoded status, as `ManagedPolicyProvider` provides it. */
+const summaryOf = (status: ManagedPolicyStatus | null) =>
+  status?.state === 'loaded' ? status.summary : undefined;
+
 describe('#4520: managed engines in the UI', () => {
   // Decoded the one way every surface decodes it (#4515).
-  const view = managedEnginesView(parseManagedPolicyStatus(body.data));
+  const view = managedEnginesView(
+    summaryOf(parseManagedPolicyStatus(body.data)),
+  );
 
   afterEach(() => {
     statusQuery.calls.length = 0;
@@ -73,7 +85,9 @@ describe('#4520: managed engines in the UI', () => {
   test('reads the engine summary from the decoded status, and nothing from what the decoder refuses', () => {
     expect(view?.organization).toBe('Acme');
     expect(
-      managedEnginesView(parseManagedPolicyStatus({ state: 'none' })),
+      managedEnginesView(
+        summaryOf(parseManagedPolicyStatus({ state: 'none' })),
+      ),
     ).toBeNull();
     // A malformed engine summary refuses the whole status, so nothing shows.
     expect(
@@ -86,21 +100,33 @@ describe('#4520: managed engines in the UI', () => {
     // A policy without `limits.engines` limits no engine.
     const { engines: _engines, ...summary } = body.data.summary;
     expect(
-      managedEnginesView(parseManagedPolicyStatus({ ...body.data, summary })),
+      managedEnginesView(
+        summaryOf(parseManagedPolicyStatus({ ...body.data, summary })),
+      ),
     ).toBeNull();
   });
 
-  test('the hook reads the shared status query and sends no request of its own', () => {
+  test('the hook reads the app policy provider, which reads the shared status query; no request of its own', () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     statusQuery.data = parseManagedPolicyStatus(body.data);
-    const { result } = renderHook(() => useManagedEngines());
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ManagedPolicyProvider>{children}</ManagedPolicyProvider>
+    );
+    const { result } = renderHook(() => useManagedEngines(), { wrapper });
     expect(statusQuery.calls).toEqual(['http://127.0.0.1:4100']);
     expect(result.current).toEqual(view);
     expect(fetchSpy).not.toHaveBeenCalled();
     // While the status loads, nothing is marked.
     statusQuery.data = undefined;
+    expect(
+      renderHook(() => useManagedEngines(), { wrapper }).result.current,
+    ).toBeNull();
+    // Outside the provider it reads nothing and queries nothing itself.
+    statusQuery.calls.length = 0;
+    statusQuery.data = parseManagedPolicyStatus(body.data);
     expect(renderHook(() => useManagedEngines()).result.current).toBeNull();
+    expect(statusQuery.calls).toEqual([]);
   });
 
   test('derives disallowed and pinned engines', () => {
