@@ -87,6 +87,10 @@ function impactSummary(data: z.infer<typeof responseSchema>['data']): string {
   const impact = data.kind === 'record' ? data.impact : data.impact.record;
   const parts =
     data.kind === 'proposal' ? [`Proposal to erase: ${data.id}`] : [];
+  if (data.kind === 'proposal' && data.impact.state === 'pending')
+    parts.push('The pending proposal will be rejected.');
+  if (data.kind === 'proposal' && data.impact.recordId)
+    parts.push(`Created record: ${data.impact.recordId}`);
   if (impact) {
     const groups = [
       ['Records to erase', impact.purged],
@@ -413,6 +417,9 @@ export function MemoryErasurePreview() {
           {preview.data.kind === 'proposal' ? (
             <>
               <p>Proposal to erase: {preview.data.impact.proposalId}</p>
+              {preview.data.impact.state === 'pending' && (
+                <p>The pending proposal will be rejected.</p>
+              )}
               {preview.data.impact.recordId && (
                 <p>Created record: {preview.data.impact.recordId}</p>
               )}
