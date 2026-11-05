@@ -42,6 +42,8 @@ Everything else is in **⋯**: **Save screenshot**, **Record to Task**, **Logs**
   minutes; the device keeps running.
 - **End for everyone** ends the session for every viewer. **Power off** stops
   the device. Only the operator can do either.
+- A key that may be stuck on the device (Station kept failing to release it)
+  ends the session too; **Reconnect** releases it before taking input.
 
 ## Share a device and give Agents access
 
