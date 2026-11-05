@@ -267,7 +267,8 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
     id: 'flow-agents-development-sources',
     package: '@kontourai/flow-agents',
     // Top-level only: `src/` is the TypeScript input of `build/` (the package's
-    // main, exports and bin all point into `build/`) and `evals/` is the
+    // main and bin point into `build/`; its other exports point at `build/`,
+    // schemas, metadata and `integrations/`, never at `src/`) and `evals/` is the
     // package's own acceptance and integration harness. Each kit's own
     // `kits/<kit>/evals/` is a different directory and stays.
     excludes: (segments) => segments[0] === 'src' || segments[0] === 'evals',
