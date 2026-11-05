@@ -1117,6 +1117,11 @@ Each conversation is filed under a Project by the folder it ran in:
 3. Otherwise, **No project**. Choose **No project** in Activity's **Project**
    filter to list these.
 
+Rows can show **Directory · …/parent/folder** when a working folder is recorded
+without a Project label. The label provides folder context and leaves Project
+membership unchanged; use **No project** in the Project filter for unassigned
+conversations.
+
 A conversation keeps its Project after its worktree is removed. If its Project
 is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
 of a worktree outside the Project folder also lands in **No project**: Station

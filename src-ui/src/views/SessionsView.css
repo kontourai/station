@@ -137,6 +137,17 @@
   white-space: nowrap;
 }
 
+/* Directory context needs room for the recorded origin too. */
+.activity-row-meta--directory {
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+}
+
+.activity-row-meta--directory [data-segment="directory"] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .activity-row__actions {
   display: flex;
   flex-wrap: nowrap;
