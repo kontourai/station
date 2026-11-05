@@ -214,8 +214,9 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  *   Node implementation, package metadata and license; omit those variants.
  * - koffi (#4524) is the FFI the managed policy's Windows registry and ACL
  *   reader loads with `require('koffi')` on first use, and only on Windows
- *   (packages/shared/src/managed-policy-windows.ts). Its `src/`, `vendor/` and
- *   `doc/` are the C++ build inputs and documentation, never loaded: the
+ *   (packages/shared/src/managed-policy-windows.ts). Keep `src/`: the public
+ *   entrypoint loads JavaScript from it. `vendor/` and `doc/` are build inputs
+ *   and documentation, never loaded at runtime. The
  *   runtime binary comes from `lib/native` or the `@koromix/koffi-<os>-<arch>`
  *   package. Off Windows nothing requires it at all, so koffi and its
  *   platform package keep only their metadata and license there.
@@ -264,7 +265,7 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
   Object.freeze({
     id: 'koffi-build-sources',
     package: 'koffi',
-    excludes: (segments) => ['src', 'vendor', 'doc'].includes(segments[0]),
+    excludes: (segments) => ['vendor', 'doc'].includes(segments[0]),
   }),
   Object.freeze({
     id: 'koffi-off-windows',
