@@ -150,7 +150,7 @@ test('a settled child with no reported end shows no elapsed', () => {
   expect(container.querySelector('.child-work-row__meta')?.textContent).toBe(
     'Subagent',
   );
-  expect(screen.getByText('No summary reported')).toBeTruthy();
+  expect(screen.getByText('Summary not reported')).toBeTruthy();
 });
 
 test('unresolved and unconfirmed-stop terminals never read as Completed or Stopped', () => {
