@@ -239,3 +239,20 @@ test('a very long conversation id is accepted without being kept whole', async (
     )?.entries,
   ).toBe(1);
 });
+
+test('a stale turn’s delivery report cannot mark a newer turn’s conversation briefed', async () => {
+  const { provider, request } = await setup();
+  const session = {
+    relayOwner: OWNER,
+    conversationId: 'thread-stale-delivery',
+  };
+  const first = await provider(request, session);
+  first?.abandoned();
+  const second = await provider(request, session);
+  expect(second?.entries).toBe(1);
+  // The first turn wrongly reports delivery late. It does not hold the reservation.
+  first?.delivered();
+  // The second turn is refused before it reaches the model, so the brief comes back.
+  second?.abandoned();
+  expect((await provider(request, session))?.entries).toBe(1);
+});
