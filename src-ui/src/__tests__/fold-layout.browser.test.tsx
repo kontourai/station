@@ -234,13 +234,25 @@ test.each([
       await page.addStyleTag({ content: CSS });
       await page.locator('.split-pane__left').waitFor();
       await settle(page);
-      const shown = await page.evaluate(() =>
+      const [list, detail] = await page.evaluate(() =>
         ['.split-pane__left', '.split-pane__right'].map((selector) => {
           const el = document.querySelector(selector);
-          return !!el && el.getClientRects().length > 0;
+          if (!el || !el.getClientRects().length) return null;
+          const r = el.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top };
         }),
       );
-      expect(shown).toEqual(sideBySide ? [true, true] : [true, false]);
+      expect(list).not.toBeNull();
+      if (sideBySide) {
+        // Side by side: on the same row, the detail right of the list
+        // (across at most the resize divider).
+        expect(detail).not.toBeNull();
+        expect(detail!.top).toBe(list!.top);
+        expect(detail!.left).toBeGreaterThanOrEqual(list!.right - 1);
+        expect(detail!.left - list!.right).toBeLessThanOrEqual(24);
+      } else {
+        expect(detail).toBeNull();
+      }
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
