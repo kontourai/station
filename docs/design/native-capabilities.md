@@ -119,9 +119,13 @@ WebView bounds the plugin reported, not the page's possibly unsettled
 whose host tests run with `STATION_FOLD_HOST_TESTS=1 swift test` in
 `src-desktop/plugins/station-fold/ios`; no hosted lane runs them yet. The WebView side is one store,
 [`foldStore`](../../src-ui/src/platform/fold/foldStore.ts), fed by
-[`foldSources`](../../src-ui/src/platform/fold/foldSources.ts): the native reply
-wins whenever the shell answers, and otherwise CSS Viewport Segments (with the
-Device Posture API's `continuous` read as flat) decide. The store publishes
+[`foldSources`](../../src-ui/src/platform/fold/foldSources.ts). It asks the
+plugin only once the page's own platform resolution (the profile's one
+capability report) names iOS, so desktop and Android are never asked and no
+second report is requested; reads coalesce to one in flight plus one trailing
+read. The native reply then wins whenever the shell answers, and otherwise CSS
+Viewport Segments (with the Device Posture API's `continuous` read as flat)
+decide. The store publishes
 `data-fold-posture` and `data-fold-axis` on `<html>` and the
 `--station-hinge-x|y|width|height` properties; [responsive UI](../guides/responsive-ui.md#foldable-displays)
 owns how layouts use them.
