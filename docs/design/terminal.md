@@ -1093,7 +1093,8 @@ verification.
   [shared shell fixture](../../src-server/services/terminal/__tests__/fixtures/real-shell.ts),
   beside the supervisor-host, command-session and
   [real-supervisor handoff](../../src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts)
-  suites that already did; the required Windows PR check runs all six
+  suites that already did, and the command-process suite; the required
+  Windows PR check runs all seven
   (`npm run test:windows:portable`), with the script-runner and agent-run
   suite (below). Cases built on POSIX job control (fork, `setsid`, HUP, `ps`)
   stay POSIX-only. ConPTY is a renderer, not a byte pipe, and the suites assert the
@@ -1184,6 +1185,28 @@ verification.
   runs on Windows (and in `test:windows:portable`): package managers' batch
   shims run through cmd.exe, an approved command reaches cmd with its quotes
   as shown, and both fail when their fix is reverted.
+- Windows command custody and resize replay (#4624, #4625; Windows 11 26200,
+  Node 24.18, revision `cd72116f20`): the
+  [command-process suite](../../src-server/services/terminal/__tests__/command-process.process.test.ts),
+  now in `test:windows:portable`, starts real commands through the Job guard.
+  Stop and the output cap end a detached grandchild whose parent had already
+  exited; typed input reaches a command in its Job; arguments arrive as Node
+  passes them; a command that exits by itself leaves its detached child
+  running; and a guard that does not confirm the Job ended makes Stop fail.
+  (Node ends a non-detached child together with its parent through libuv's own
+  kill-on-close job, so only a detached descendant can be orphaned this way.)
+  The [retention suite](../../src-server/services/terminal/__tests__/terminal-retention.process.test.ts)
+  resizes a real ConPTY cmd.exe from 80x24 to 80x10 after 40 rows, checks the
+  journal's resize records and their order, and replays the records through
+  the SDK's Ghostty fixture in a 100x30 view: every row survives. The
+  [controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+  replays a ConPTY-style repaint through the real engine; without the recorded
+  sizes the lines that had scrolled are overwritten. Fault injection, each
+  restored to its original bytes: starting commands without the guard failed
+  both orphan cases, a guard that keeps its Job after a natural exit failed the
+  background-child case, a journal without resize records failed the resize
+  case, and the view or store ignoring sizes failed their cases; the restored
+  suites passed.
 
 - Fault injection for each isolation check and for the query stripping.
 - Listener isolation (#3994): each store session notifies only its own
@@ -1201,10 +1224,11 @@ refusing to recreate it", also after its data was cleared. An agent's
 `terminal_run` was not approved from a phone: a Station-native agent's call
 was refused as unattended in a chat started from the composer, and a Claude
 Code chat in a Project was not offered the tool. Desktop copy to the system
-clipboard was not read back. On Windows, Stop does not reach a command's
-descendant whose parent already exited, and the journal does not record
-resizes, so ConPTY output replayed at another size can repaint over lines
-already scrolled. On Windows a forked Vitest worker
+clipboard was not read back. On Windows, a Station with no Job guard (the
+Desktop app's bundled server stages none yet) still runs commands without a
+Job, so there Stop does not reach a descendant whose parent already exited.
+Replay at recorded sizes was checked with cmd.exe on ConPTY and a synthetic
+repaint, not with full-screen programs or other shells. On Windows a forked Vitest worker
 running a terminal process suite has exited without an error, a report or a
 log line, at most once in three runs and under a different suite each time
 (the retention suite in run 41973735929, the socket suite about 37 seconds
@@ -1217,7 +1241,10 @@ found. The floor
 ([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
 therefore runs each terminal process suite in a Vitest invocation of its own,
 so a dead worker hides no other suite's results; the floor still fails, and
-nothing retries it. The screen reader mode has not been used with real
+nothing retries it. Since #4626 a failed invocation also keeps how each
+worker ended (exit code or signal), any Node fatal-error report and the
+Application log's crash entries, and the hosted job uploads them; Vitest
+itself reports only "Worker exited unexpectedly". The screen reader mode has not been used with real
 assistive technology (VoiceOver, NVDA, TalkBack; the Windows machine above
 has no NVDA), and the manual screen reader pass listed above has not
 happened. The browser broker (DataChannel) route is unsupported by design,
