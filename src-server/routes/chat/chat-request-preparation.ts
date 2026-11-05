@@ -286,7 +286,7 @@ export async function prepareChatRequest(
 }
 
 /** A new session's first turn: the input carries no earlier assistant reply. */
-export function isFirstTurn(input: string | ChatMessage[]): boolean {
+function isFirstTurn(input: string | ChatMessage[]): boolean {
   return (
     typeof input === 'string' ||
     !input.some((message) => message.role === 'assistant')

@@ -31,6 +31,8 @@ import {
 import { RESETTABLE_STATION_SETTING_KEYS } from '../views/settings/station-reset';
 import { visibleCatalogIds } from './helpers/settings-catalog-visibility';
 
+// The memory review panel has its own tests; this catalog test does not render it.
+vi.mock('../views/settings/MemoryReview', () => ({ MemoryReview: () => null }));
 vi.mock('@kontourai/station-connect', () => ({
   QRDisplay: () => <div />,
   useConnections: () => ({

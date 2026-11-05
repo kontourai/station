@@ -1,14 +1,8 @@
-import { randomBytes } from 'node:crypto';
-import {
-  chmodSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import type { ReviewDecision, ReviewSessionEvent } from '@kontourai/survey';
+import { JsonFileStore } from '../services/infra/json-store.js';
 import { assertExistingPathInside } from '../utils/path-containment.js';
 
 /**
@@ -16,15 +10,18 @@ import { assertExistingPathInside } from '../utils/path-containment.js';
  * `ReviewDecision`s and `ReviewSessionEvent`s, kept as plain JSON beside (not
  * inside) the Corpus store, so Corpus never sees a file it did not write.
  *
- * This is one atomic file under the existing file-mutation lock, the same
- * primitive the memory root uses. Each record is the whole effect, so there is
- * nothing for Monument to sequence afterwards. A decision is keyed by its name;
+ * This is one file under the existing file-mutation lock, the same primitive
+ * the memory root uses, written through the shared `JsonFileStore` (bounded
+ * read, crash-safe atomic write that keeps one prior complete copy as
+ * `review.json.previous`). Each record is the whole effect, so there is nothing
+ * for Monument to sequence afterwards. A decision is keyed by its name;
  * recording the same name twice returns the first record, so a retried request
  * cannot double-count.
  *
  * Records hold only identifiers, decision fields and, for a correction, the
- * reviewer's own value. When the memory they refer to is erased, `retain`
- * drops them on the next load.
+ * reviewer's own value. When the memory they refer to is erased they are
+ * ignored on every read and dropped on the next write. The retained prior copy
+ * can still hold them until the write after that.
  */
 export interface MemoryReviewState {
   version: 1;
@@ -46,8 +43,18 @@ function isState(value: unknown): value is MemoryReviewState {
   );
 }
 
+const MAX_READ_BYTES = 64 * 1024 * 1024;
+
+function decode(text: string): MemoryReviewState {
+  const parsed: unknown = JSON.parse(text);
+  if (!isState(parsed))
+    throw new Error('Memory review records are unreadable.');
+  return parsed;
+}
+
 export class MemoryReviewStore {
   private readonly file: string;
+  private readonly json: JsonFileStore<MemoryReviewState>;
 
   constructor(
     private readonly home: string,
@@ -60,6 +67,11 @@ export class MemoryReviewStore {
       ownerHash,
       'review.json',
     );
+    this.json = new JsonFileStore<MemoryReviewState>(this.file, EMPTY, {
+      onCorruption: 'throw',
+      maxReadBytes: MAX_READ_BYTES,
+      durableAtomicWrite: true,
+    });
   }
 
   private ensureDirectory(): void {
@@ -69,24 +81,15 @@ export class MemoryReviewStore {
   }
 
   read(): MemoryReviewState {
-    try {
-      assertExistingPathInside(
-        resolve(this.home),
-        this.file,
-        'Memory review records',
-      );
-      const parsed: unknown = JSON.parse(readFileSync(this.file, 'utf8'));
-      if (!isState(parsed))
-        throw new Error('Memory review records are unreadable.');
-      return parsed;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-        return structuredClone(EMPTY);
-      throw error;
-    }
+    assertExistingPathInside(
+      resolve(this.home),
+      this.file,
+      'Memory review records',
+    );
+    return this.json.read(decode);
   }
 
-  /** Runs `change` on the current state under the lock; writes only if it returns a new state. */
+  /** Runs `change` on the current state under the lock and writes the state it returns. */
   async mutate<T>(
     assertCurrent: () => void,
     change: (state: MemoryReviewState) => {
@@ -106,10 +109,7 @@ export class MemoryReviewStore {
       )
         throw new Error('Memory review history is full.');
       assertCurrent();
-      const temporary = `${this.file}.${randomBytes(6).toString('hex')}.tmp`;
-      writeFileSync(temporary, JSON.stringify(state), { mode: 0o600 });
-      renameSync(temporary, this.file);
-      chmodSync(this.file, 0o600);
+      this.json.write(state);
       return result;
     } finally {
       await release();

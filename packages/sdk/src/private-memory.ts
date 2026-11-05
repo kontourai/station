@@ -9,6 +9,7 @@ import type {
 import { hasCapability } from './capability.js';
 import { getJson, mutateJson } from './client/http.js';
 import { fetchPublicStationCapabilities } from './client/publicStationCapabilities.js';
+import { rethrowDeadline } from './client/request-deadline.js';
 import type { ApiRequestScope } from './query-core';
 
 /**
@@ -69,8 +70,9 @@ async function read<T>(response: Response): Promise<T> {
   try {
     const body = (await response.json()) as { error?: unknown };
     if (typeof body.error === 'string') message = body.error;
-  } catch {
-    // Keep the generic message.
+  } catch (error) {
+    // A deadline is not "no message"; anything else keeps the generic one.
+    rethrowDeadline(error);
   }
   throw new PrivateMemoryRequestError(
     response.status === 400 || response.status === 413
