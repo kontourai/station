@@ -985,7 +985,8 @@ verification.
 - End to end: open, reload, restart the server, and confirm the same shell
   (same PID) and no lost output; repeat on the mobile webview and Windows.
   On Windows this runs as
-  [`tests/live/terminal-restart-journey.mjs`](../../tests/live/terminal-restart-journey.mjs):
+  [`tests/live/terminal-restart-journey.mjs`](../../tests/live/terminal-restart-journey.mjs)
+  (`npm run test:live:terminal-restart -- --out <dir>`):
   real Chromium against an isolated `station start` (own temp home and
   ports), switching on terminal screen reader mode in Settings and reading
   the rendered text from its mirror. See the Windows/ConPTY item for the run.
