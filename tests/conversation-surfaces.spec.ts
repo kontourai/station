@@ -125,7 +125,9 @@ test('host and peer dock adopt the same writable conversation controls', async (
   await expect(composer).toBeEditable();
   await captureConnectionState(page, testInfo, 'direct-idle');
   const inbox = await ensureConnectionInboxOpen(page);
-  await inbox.getByRole('button', { name: /Check the local project/ }).click();
+  await inbox
+    .getByRole('button', { name: /^Check the local project\.,/ })
+    .click();
   await expect(transcript).toContainText('Local approval completed.');
   await expect(transcript).not.toContainText(
     'The new chat uses the direct receiver Device.',
