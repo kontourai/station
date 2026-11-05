@@ -280,6 +280,7 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     // Includes chat-app links, bindings, kill switches and delivery receipts.
     ['data', 'orchestration.sqlite'],
     ['data', 'agent-runtime', 'steps.sqlite'],
+    ['data', 'memory-erasure', 'intents.sqlite'],
     ['scheduler', 'scheduler.sqlite'],
     ['automation', 'automation.sqlite'],
     // #4508: Task tracker follow-ups. Created at the first poll with the
