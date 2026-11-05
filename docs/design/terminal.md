@@ -1071,10 +1071,9 @@ verification.
   never hands ConPTY a file's 8-bit C1 controls.
 
   Run on Windows 11 Pro 26200 (Ryzen 5 7600X, Node 24.18.0, node-pty 1.1.0,
-  cmd.exe, Chromium 156): the floor's terminal vitest command (the terminal
-  suites of `test:windows:portable`, `--maxWorkers=1 --no-file-parallelism`)
-  passed {{FLOOR_RESULT}} at revision `{{FLOOR_REVISION}}`, on a saturated
-  host. Fault injection,
+  cmd.exe, Chromium 156): the vitest command of `test:windows:portable` (its 13
+  files, `--maxWorkers=1 --no-file-parallelism`) passed 157 tests (31
+  POSIX-only skipped) at revision `76af54e`, on a saturated host. Fault injection,
   each reverted with `git checkout` and rerun green: removing the Windows
   tree kill, making ConPTY resize a no-op, skipping restore, starting a
   resumed channel one record late, disabling the open-or-adopt reservation
