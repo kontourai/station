@@ -315,10 +315,8 @@ export function admitLiteObservation(
 }
 
 type DailyFieldRule = { domain: unknown; arrayMax?: number };
-const DAILY_RULES = STATION_DAILY_FIELDS as unknown as Record<
-  string,
-  DailyFieldRule
->;
+const DAILY_RULES: Readonly<Record<string, DailyFieldRule>> =
+  STATION_DAILY_FIELDS;
 /** Envelope fields: never a marginal dimension. */
 const ENVELOPE_FIELDS = new Set(['event', 'event_id']);
 // Object set entries (per-engine buckets) are identified by `engine`, the
@@ -355,7 +353,7 @@ function canonicalSet(entries: SetEntry[]): SetEntry[] {
  * A field added to STATION_DAILY_FIELDS needs no change here.
  */
 function normalizeDailyPing(ping: StationDailyPing): StationDailyPing {
-  const source = ping as unknown as Record<string, unknown>;
+  const source: Readonly<Record<string, unknown>> = ping;
   const out: Record<string, unknown> = {};
   for (const [field, rule] of Object.entries(DAILY_RULES)) {
     if (!Object.hasOwn(source, field)) continue;
@@ -396,7 +394,7 @@ function entryValue(entry: SetEntry): string {
  * public release stays limited to PUBLIC_FIELDS.
  */
 function dailyContributions(ping: StationDailyPing): Record<string, string[]> {
-  const source = ping as unknown as Record<string, unknown>;
+  const source: Readonly<Record<string, unknown>> = ping;
   const out: Record<string, string[]> = Object.create(null);
   for (const field of Object.keys(DAILY_RULES)) {
     if (ENVELOPE_FIELDS.has(field) || !Object.hasOwn(source, field)) continue;
