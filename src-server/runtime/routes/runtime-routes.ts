@@ -4699,6 +4699,12 @@ export function configureRuntimeRoutes(
     operatorDeviceViewRequests.add(request);
     return true;
   };
+  const repositoryAuthDetails = context.featurePreviews.bind({
+    id: 'repository-auth-details',
+    label: 'Repository sign-in details',
+    description:
+      'Show the Station’s GitHub CLI account and reported token scopes in Project Sources. Does not verify repository access.',
+  });
   const integrationStatus = createIntegrationStatusReader(
     createIntegrationStatusProbes({
       readDiscord: () =>
@@ -4716,6 +4722,11 @@ export function configureRuntimeRoutes(
     '/api/integrations/status',
     createIntegrationStatusRoutes({
       readStatus: integrationStatus,
+      githubAuthenticationEnabled: () =>
+        repositoryAuthDetails.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
       mayRead: (request) =>
         isOperatorInPersonNotAgent(request) &&
         isRequestPrincipalCurrent(request),

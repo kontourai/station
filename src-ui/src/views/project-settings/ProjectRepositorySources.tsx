@@ -9,21 +9,27 @@ import {
   useProjectResolutionQuery,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
-import { Badge } from '@kontourai/ui/react';
+import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ForgeMark, forgeForHost } from '../../components/icons/ForgeMark';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { errorText } from '../../utils/errorText';
+import { ProjectRepositoryAccess } from './ProjectRepositoryAccess';
 
-const AVAILABILITY: Record<ResourceResolutionResult['state'], string> = {
-  bound: 'Working copy verified',
-  unbound: 'No working copy recorded',
-  missing: 'Working copy missing',
-  stale: 'Identity not verified',
-  drifted: 'Repository changed',
-  ambiguous: 'Resource unclear',
-  unresolvable: 'Access denied',
-  'not-portable': 'Local only',
+const CHECKOUT_PROBLEMS: Record<
+  Exclude<ResourceResolutionResult['state'], 'bound'>,
+  string
+> = {
+  unbound: 'Choose a checkout folder on this Station.',
+  missing: 'The saved folder was not found. Check its location.',
+  stale:
+    'Station could not check this folder. Check its location and try again.',
+  drifted:
+    'This folder points to a different repository. Choose the right folder.',
+  ambiguous: 'Choose which repository to use before starting a chat.',
+  unresolvable: 'Ask this Station’s operator for access to the checkout.',
+  'not-portable':
+    'This folder is available only on the Station that registered it.',
 };
 
 export function ProjectRepositorySources({
@@ -31,11 +37,13 @@ export function ProjectRepositorySources({
   projectId,
   authority,
   stationName,
+  onRepair,
 }: {
   slug: string;
   projectId: string;
   authority: ApiRequestScope;
   stationName: string;
+  onRepair?: () => void;
 }) {
   const identity = useProjectIdentityQuery(slug, {
     requestScope: authority,
@@ -52,8 +60,7 @@ export function ProjectRepositorySources({
   const startingId =
     manifest?.executionRoot?.repoId ??
     (primary?.ok ? primary.resource.id : undefined);
-  // Failed refreshes may retain an older successful query value. It is not a
-  // current availability answer and must not lend its paths to these cards.
+  // A failed refresh can retain cached data; it cannot confirm a checkout.
   const view =
     identity.isError || resolution.isError ? undefined : resolution.data;
   return (
@@ -71,17 +78,14 @@ export function ProjectRepositorySources({
           Refresh sources
         </Button>
       </div>
-      <p className="project-sources__hint">
-        A Project can use several repositories, or work without one.
-      </p>
       {identity.isError && (
         <ErrorState
           variant="compact"
-          title="Could not read repository identity"
+          title="Could not load repositories"
           description={errorText(identity.error)}
           action={
             <Button onClick={() => void identity.refetch()}>
-              Retry identity
+              Retry repositories
             </Button>
           }
         />
@@ -89,11 +93,11 @@ export function ProjectRepositorySources({
       {resolution.isError && (
         <ErrorState
           variant="compact"
-          title="Working copy availability unknown"
+          title="Checkout details unavailable"
           description={errorText(resolution.error)}
           action={
             <Button onClick={() => void resolution.refetch()}>
-              Retry working copies
+              Retry checkouts
             </Button>
           }
         />
@@ -113,6 +117,7 @@ export function ProjectRepositorySources({
               key={repo.id}
               repo={repo}
               view={view}
+              authority={authority}
               stationName={stationName}
               primary={primary?.ok === true && primary.resource.id === repo.id}
               startingDirectory={
@@ -120,6 +125,7 @@ export function ProjectRepositorySources({
                   ? (manifest.executionRoot?.path ?? '.')
                   : undefined
               }
+              onRepair={onRepair}
             />
           ))}
         </ul>
@@ -128,117 +134,159 @@ export function ProjectRepositorySources({
   );
 }
 
-function RepositorySourceCard({
-  repo,
-  view,
-  stationName,
-  primary,
-  startingDirectory,
-}: {
+type CardProps = {
   repo: ProjectRepoResource;
   view: ProjectResolutionView | undefined;
+  authority: ApiRequestScope;
   stationName: string;
   primary: boolean;
   startingDirectory: string | undefined;
-}) {
+  onRepair?: () => void;
+};
+
+function RepositorySourceCard({
+  repo,
+  view,
+  authority,
+  stationName,
+  primary,
+  startingDirectory,
+  onRepair,
+}: CardProps) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const remote = repo.kind === 'git' ? repo.canonicalRemote : undefined;
-  const forge = remote ? forgeForHost(remote.split('/')[0]) : null;
   const resource =
     view?.posture === 'backing'
       ? view.resources.find((row) => row.resourceId === repo.id)
       : undefined;
-  const status =
-    view?.posture === 'not-backing'
-      ? 'No working copy on this Station'
-      : resource
-        ? AVAILABILITY[resource.state]
-        : 'Availability unknown';
   return (
     <li className="project-repositories__card">
       <div className="project-repositories__heading">
-        <div className="project-repositories__identity">
-          {forge && (
-            <ForgeMark forge={forge} className="project-repositories__mark" />
-          )}
-          <strong>
-            {repo.label ||
-              remote?.split('/').slice(1).join('/') ||
-              'Local folder'}
-          </strong>
-        </div>
-        <Badge
-          value={status}
-          tone={resource?.state === 'bound' ? 'positive' : 'neutral'}
-        />
-      </div>
-      <span className="project-sources__hint">
-        {remote ?? 'Local-only resource'}
-      </span>
-      <div className="project-repositories__roles">
-        {primary && <Badge value="Primary resource" />}
+        <RepositorySourceIdentity repo={repo} />
         {startingDirectory !== undefined && (
-          <Badge value="Agent starting resource" />
+          <span className="project-repositories__usage">
+            Used for new chats
+          </span>
         )}
       </div>
-      <details className="project-sources__diagnostics">
-        <summary>Details for {repo.label || remote || 'local folder'}</summary>
-        <RepositoryMappingDetails
-          repo={repo}
-          resource={resource}
-          stationName={stationName}
-          startingDirectory={startingDirectory}
-          unreadableReason={
-            view?.posture === 'unreadable' ? view.reason : undefined
-          }
-        />
+      {resource && resource.state !== 'bound' && (
+        <div className="project-repositories__problem">
+          <p>{CHECKOUT_PROBLEMS[resource.state]}</p>
+          {onRepair &&
+            ['unbound', 'missing', 'stale', 'drifted'].includes(
+              resource.state,
+            ) && (
+              <Button variant="secondary" onClick={onRepair}>
+                Review checkout
+              </Button>
+            )}
+        </div>
+      )}
+      {!view && (
+        <p className="project-sources__hint">
+          Checkout details have not been checked.
+        </p>
+      )}
+      {view?.posture === 'not-backing' && (
+        <p className="project-sources__hint">
+          This Station does not provide a checkout for this Project.
+        </p>
+      )}
+      {view?.posture === 'unreadable' && (
+        <p className="project-sources__hint">
+          Station could not read its checkout records. Refresh to try again.
+        </p>
+      )}
+      <details
+        className="project-sources__diagnostics"
+        open={detailsOpen}
+        onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
+      >
+        <summary>Checkout and access details</summary>
+        <p className="project-sources__hint">
+          Showing {stationName} only. Other Stations and Peers are not listed
+          here.
+        </p>
+        <section
+          aria-label={`Checkout on ${stationName}`}
+          className="project-repositories__checkout"
+        >
+          <h4>{stationName}</h4>
+          <dl className="project-repositories__details">
+            <ResourceLocation resource={resource} />
+            {startingDirectory !== undefined && (
+              <>
+                <dt>New chats start in</dt>
+                <dd>
+                  <code>{startingDirectory}</code> within this checkout
+                </dd>
+              </>
+            )}
+          </dl>
+        </section>
+        {detailsOpen && (
+          <ProjectRepositoryAccess
+            authority={authority}
+            stationName={stationName}
+            github={Boolean(
+              remote && forgeForHost(remote.split('/')[0]) === 'github',
+            )}
+          />
+        )}
+        <details className="project-sources__diagnostics">
+          <summary>Advanced details</summary>
+          <dl className="project-repositories__details">
+            {repo.label && (
+              <>
+                <dt>Project label</dt>
+                <dd>{repo.label}</dd>
+              </>
+            )}
+            <dt>Resource identity</dt>
+            <dd>
+              <code>{repo.id}</code>
+            </dd>
+            <dt>Primary resource</dt>
+            <dd>{primary ? 'Yes' : 'No'}</dd>
+            <dt>Checkout check</dt>
+            <dd>{resource?.state ?? view?.posture ?? 'Not available'}</dd>
+            {resource && 'reason' in resource && (
+              <>
+                <dt>Check details</dt>
+                <dd>{resource.reason}</dd>
+              </>
+            )}
+            {view?.posture === 'unreadable' && (
+              <>
+                <dt>Record details</dt>
+                <dd>{view.reason}</dd>
+              </>
+            )}
+          </dl>
+        </details>
       </details>
     </li>
   );
 }
 
-function RepositoryMappingDetails({
-  repo,
-  resource,
-  stationName,
-  startingDirectory,
-  unreadableReason,
-}: {
-  repo: ProjectRepoResource;
-  resource: ResourceResolutionResult | undefined;
-  stationName: string;
-  startingDirectory: string | undefined;
-  unreadableReason: string | undefined;
-}) {
+function RepositorySourceIdentity({ repo }: { repo: ProjectRepoResource }) {
+  if (repo.kind === 'local-only')
+    return <strong>{repo.label || 'Local folder'}</strong>;
+  const [host, ...parts] = repo.canonicalRemote.split('/');
+  const forge = forgeForHost(host);
   return (
-    <dl className="project-repositories__details">
-      <dt>Working copy via</dt>
-      <dd>{stationName}</dd>
-      <ResourceLocation resource={resource} />
-      {resource && 'reason' in resource && (
-        <>
-          <dt>Availability detail</dt>
-          <dd>{resource.reason}</dd>
-        </>
+    <a
+      className="project-repositories__identity"
+      href={`https://${repo.canonicalRemote}`}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {forge && (
+        <ForgeMark forge={forge} className="project-repositories__mark" />
       )}
-      {unreadableReason && (
-        <>
-          <dt>Availability detail</dt>
-          <dd>{unreadableReason}</dd>
-        </>
-      )}
-      {startingDirectory !== undefined && (
-        <>
-          <dt>Starting directory within resource</dt>
-          <dd>
-            <code>{startingDirectory}</code>
-          </dd>
-        </>
-      )}
-      <dt>Resource identity</dt>
-      <dd>
-        <code>{repo.id}</code>
-      </dd>
-    </dl>
+      <strong>{parts.join('/')}</strong>
+      {!forge && <span className="project-sources__hint">{host}</span>}
+    </a>
   );
 }
 
@@ -247,12 +295,18 @@ function ResourceLocation({
 }: {
   resource: ResourceResolutionResult | undefined;
 }) {
-  if (!resource) return null;
+  if (!resource)
+    return (
+      <>
+        <dt>Checkout folder</dt>
+        <dd>Not reported</dd>
+      </>
+    );
   switch (resource.state) {
     case 'bound':
       return (
         <>
-          <dt>Verified path</dt>
+          <dt>Checkout folder</dt>
           <dd>
             <code>{resource.path}</code>
           </dd>
@@ -262,7 +316,7 @@ function ResourceLocation({
     case 'drifted':
       return (
         <>
-          <dt>Directory found — identity not verified</dt>
+          <dt>Folder to check</dt>
           <dd>
             <code>{resource.unverifiedPath}</code>
           </dd>
@@ -271,13 +325,18 @@ function ResourceLocation({
     case 'missing':
       return (
         <>
-          <dt>Declared path — not found</dt>
+          <dt>Last saved folder</dt>
           <dd>
             <code>{resource.declaredPath}</code>
           </dd>
         </>
       );
     default:
-      return null;
+      return (
+        <>
+          <dt>Checkout folder</dt>
+          <dd>Not available on this Station</dd>
+        </>
+      );
   }
 }

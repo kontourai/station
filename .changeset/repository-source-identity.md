@@ -1,4 +1,6 @@
 ---
+'@kontourai/station-contracts': minor
+'@kontourai/station-sdk': minor
 ---
 
-Project Sources leads with repository identity and provider marks for public GitHub and GitLab hosts. Details qualify working-copy paths by Station, preserve unavailable sources, and distinguish the primary resource from the Agent starting resource. Existing acquisition, attachment, binding and execution-root operations retain their authority and retry rules.
+Project Sources links repository identities and puts checkout paths and Station access in details. `IntegrationConnectionStatus` optionally carries bounded GitHub CLI authentication observations. `fetchIntegrationStatus` and `useIntegrationStatusQuery` can opt into that metadata; default responses retain the earlier closed shape. The operator-only Repository sign-in details Feature Preview is off by default, and its observations grant no repository permissions.

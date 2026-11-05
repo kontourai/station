@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageSection } from '../../components/PageSection';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -24,6 +25,8 @@ export function ProjectSourcesSection({
   slug: string;
   projectId?: string;
 }) {
+  const [repairOpen, setRepairOpen] = useState(false);
+  const repairSummary = useRef<HTMLElement>(null);
   const authority = useHostRequestAuthorityScope();
   const { navigate } = useNavigation();
   const station = useActiveStationName();
@@ -53,6 +56,11 @@ export function ProjectSourcesSection({
                 projectId={projectId}
                 authority={authority}
                 stationName={stationName}
+                onRepair={() => {
+                  setRepairOpen(true);
+                  repairSummary.current?.focus();
+                  repairSummary.current?.scrollIntoView({ block: 'start' });
+                }}
               />
             )}
             <details className="project-sources__diagnostics">
@@ -66,8 +74,12 @@ export function ProjectSourcesSection({
                 />
               )}
             </details>
-            <details className="project-sources__diagnostics">
-              <summary>Working copies and repair</summary>
+            <details
+              className="project-sources__diagnostics"
+              open={repairOpen}
+              onToggle={(event) => setRepairOpen(event.currentTarget.open)}
+            >
+              <summary ref={repairSummary}>Advanced: checkout repair</summary>
               <p className="project-sources__hint">
                 Filesystem paths below belong to {stationName}.
               </p>
@@ -114,7 +126,7 @@ export function ProjectSourcesSection({
           )}
           {projectId && (
             <details className="project-sources__group">
-              <summary>Where Agent work starts</summary>
+              <summary>Where new chats start</summary>
               <ProjectWorkspaceSelection
                 slug={slug}
                 projectId={projectId}

@@ -681,6 +681,24 @@ reports gateway state, and webhooks report configuration and active start
 grants; neither proves delivery. Slack is not implemented, and Linear and Jira
 are waiting on tracker support. Probe diagnostics do not expose credentials.
 
+`?include=github-authentication` additionally requests optional `authentication`
+on the GitHub connection: `{state, observedAt, account?, scopes?}`. `observedAt`
+is Unix milliseconds. The **Repository sign-in details** preview is off by default;
+an authorized request while off returns 404 with `code: feature_preview_disabled`,
+`previewId: repository-auth-details`, and its Settings path. Authority and preview
+choice are checked before the probe and response release. Default requests keep
+the earlier closed response shape, so older parsers receive no new fields.
+An older host may ignore the opt-in and omit metadata; omission is not a healthy
+account or a repository permission result.
+
+The metadata read runs the Station’s `gh auth status --hostname github.com --json
+hosts --no-refresh`, never `--show-token`. It selects one active account, refuses
+malformed/beyond-bound metadata, and projects only health, account and scopes.
+Process/output bounds are five seconds/8 KiB and results cache for ten seconds.
+JSON-mode exit zero alone is not sign-in proof. No credential refresh, login,
+repository read/write, scoped credential binding or Peer aggregation is performed.
+
+
 `GET /api/tasks/:taskId/write-back` requires the personal Task room's current
 person and Task scope and paired `orchestration:read` where applicable. It is
 mounted with the personal Task room runtime, not hosted Task execution.

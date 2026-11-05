@@ -161,3 +161,38 @@
   margin: 0 0 var(--k-space-2);
   overflow-wrap: anywhere;
 }
+
+.project-repositories__identity {
+  color: var(--k-text);
+  text-decoration: none;
+  min-height: 44px;
+}
+.project-repositories__identity:hover {
+  text-decoration: underline;
+}
+.project-repositories__identity:focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: var(--k-space-1);
+}
+.project-repositories__usage,
+.project-repositories__problem,
+.project-repositories__checkout,
+.project-repositories__access {
+  font-size: var(--k-text-sm);
+}
+.project-repositories__usage {
+  color: var(--k-text-muted);
+}
+.project-repositories__checkout,
+.project-repositories__access {
+  padding-block: var(--k-space-3);
+  border-top: 1px solid var(--k-line);
+}
+.project-repositories__access p,
+.project-repositories__problem p {
+  margin-block: var(--k-space-2);
+}
+.project-repositories__problem {
+  border-inline-start: 2px solid var(--k-caution);
+  padding-inline-start: var(--k-space-3);
+}

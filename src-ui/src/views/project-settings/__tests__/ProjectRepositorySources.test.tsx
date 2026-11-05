@@ -39,11 +39,52 @@ function mount(
     origin: authority.apiBase,
     requestAuthority: authority,
   }));
-  const replies = { identity, resolution, failResolution: false };
+  const replies = {
+    identity,
+    resolution,
+    failResolution: false,
+    failAuth: false,
+    previewsEnabled: true,
+  };
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
       const path = new URL(String(url)).pathname;
+      if (path === '/api/feature-previews')
+        return Response.json({
+          success: true,
+          data: [
+            {
+              id: 'repository-auth-details',
+              label: 'Repository sign-in details',
+              enabled: replies.previewsEnabled,
+            },
+          ],
+        });
+      if (path === '/api/integrations/status')
+        return Response.json(
+          replies.failAuth
+            ? { success: false, error: 'Station unavailable' }
+            : {
+                success: true,
+                data: {
+                  connections: [
+                    {
+                      connectionId: 'github',
+                      provider: 'github',
+                      actions: [],
+                      authentication: {
+                        state: 'signed-in',
+                        observedAt: 1_000,
+                        account: 'checkout-owner',
+                        scopes: ['repo', 'read:org'],
+                      },
+                    },
+                  ],
+                },
+              },
+          { status: replies.failAuth ? 503 : 200 },
+        );
       if (path.endsWith('/identity'))
         return new Response(
           JSON.stringify({ success: true, data: replies.identity }),
@@ -74,7 +115,7 @@ function mount(
       />
     </QueryClientProvider>,
   );
-  return replies;
+  return Object.assign(replies, { client });
 }
 
 function project(): ProjectIdentityView {
@@ -113,8 +154,8 @@ function project(): ProjectIdentityView {
   };
 }
 
-test('repository identity leads multiple Station-qualified mappings and keeps primary distinct from the starting resource', async () => {
-  mount(project(), {
+test('repository links lead the cards, chat placement is plain, and access belongs to the checkout Station', async () => {
+  const replies = mount(project(), {
     posture: 'backing',
     primary: { named: true, resourceId: 'github.com/example/station' },
     resources: [
@@ -136,33 +177,68 @@ test('repository identity leads multiple Station-qualified mappings and keeps pr
       },
     ],
   });
-  const station = (await screen.findByText('Station repository')).closest(
-    'li',
-  )!;
-  const docs = screen.getByText('example/docs').closest('li')!;
-  expect(within(station).getByText('Primary resource')).toBeTruthy();
-  expect(within(station).queryByText('Agent starting resource')).toBeNull();
-  expect(within(docs).getByText('Agent starting resource')).toBeTruthy();
-  expect(within(docs).getByText('Repository changed')).toBeTruthy();
-  fireEvent.click(within(station).getByText('Details for Station repository'));
+  const link = await screen.findByRole('link', { name: 'example/station' });
+  expect(link.getAttribute('href')).toBe('https://github.com/example/station');
+  const station = link.closest('li')!;
+  const docs = screen
+    .getByRole('link', { name: 'example/docs' })
+    .closest('li')!;
+  expect(within(station).queryByText('Used for new chats')).toBeNull();
+  expect(within(docs).getByText('Used for new chats')).toBeTruthy();
+  expect(within(station).queryByText('Working copy verified')).toBeNull();
   expect(
-    within(station).getByText('Kontour Station · build-host'),
+    within(docs).getByText(
+      'This folder points to a different repository. Choose the right folder.',
+    ),
+  ).toBeTruthy();
+  fireEvent.click(within(station).getByText('Checkout and access details'));
+  await within(station).findByText('checkout-owner');
+  expect(
+    within(station).getByRole('region', {
+      name: 'Checkout on Kontour Station · build-host',
+    }),
   ).toBeTruthy();
   expect(
     within(station).getByText('/srv/code/station').closest('dl')?.textContent,
-  ).toContain('Verified path');
-  fireEvent.click(
-    within(docs).getByText('Details for gitlab.com/example/docs'),
-  );
+  ).toContain('Checkout folder');
+  expect(within(station).getByText('repo, read:org')).toBeTruthy();
+  expect(
+    within(station).getByText('Not checked by this sign-in check'),
+  ).toBeTruthy();
+  expect(
+    within(station).getByText('Primary resource').closest('details')?.open,
+  ).toBe(false);
+  fireEvent.click(within(docs).getByText('Checkout and access details'));
   expect(
     within(docs).getByText('/srv/code/docs').closest('dl')?.textContent,
-  ).toContain('Directory found — identity not verified');
-  expect(within(docs).queryByText('Verified path')).toBeNull();
+  ).toContain('Folder to check');
+  expect(within(docs).queryByText('checkout-owner')).toBeNull();
   expect(within(docs).getByText('manual')).toBeTruthy();
-  const other = screen.getByText('github.com/other').closest('li')!;
+  const other = screen
+    .getByRole('link', { name: /github.com\/other.*forge.example/ })
+    .closest('li')!;
   expect(station.querySelector('svg')).toBeTruthy();
   expect(docs.querySelector('svg')).toBeTruthy();
   expect(other.querySelector('svg')).toBeNull();
+  replies.failAuth = true;
+  fireEvent.click(
+    within(station).getByRole('button', { name: 'Check sign-in' }),
+  );
+  await within(station).findByText('GitHub sign-in details unavailable');
+  expect(within(station).queryByText('checkout-owner')).toBeNull();
+  expect(within(station).queryByText('repo, read:org')).toBeNull();
+  replies.failAuth = false;
+  fireEvent.click(
+    within(station).getByRole('button', { name: 'Retry sign-in check' }),
+  );
+  await within(station).findByText('checkout-owner');
+  replies.previewsEnabled = false;
+  await replies.client.invalidateQueries({ queryKey: ['feature-previews'] });
+  await within(station).findByText(
+    'Enable Repository sign-in details in Settings → Advanced → Feature previews.',
+  );
+  expect(within(station).queryByText('checkout-owner')).toBeNull();
+  expect(within(station).queryByText('repo, read:org')).toBeNull();
 });
 
 test('failed refresh retains source identity but withdraws cached verified paths, and retry restores the current mapping', async () => {
@@ -180,12 +256,14 @@ test('failed refresh retains source identity but withdraws cached verified paths
       },
     ],
   });
-  await screen.findByText('Working copy verified');
+  await screen.findByText('/srv/code/station');
   replies.failResolution = true;
   fireEvent.click(screen.getByRole('button', { name: 'Refresh sources' }));
-  await screen.findByText('Working copy availability unknown');
+  await screen.findByText('Checkout details unavailable');
   expect(screen.getByText('Station repository')).toBeTruthy();
-  expect(screen.queryByText('Working copy verified')).toBeNull();
+  expect(
+    screen.getByText('Checkout details have not been checked.'),
+  ).toBeTruthy();
   expect(screen.queryByText('/srv/code/station')).toBeNull();
   replies.failResolution = false;
   replies.resolution = {
@@ -199,7 +277,7 @@ test('failed refresh retains source identity but withdraws cached verified paths
       },
     ],
   };
-  fireEvent.click(screen.getByRole('button', { name: 'Retry working copies' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry checkouts' }));
   await screen.findByText('/srv/repaired/station');
   expect(screen.queryByText('/srv/code/station')).toBeNull();
 });
@@ -218,10 +296,14 @@ test.each([true, false])(
     else
       await waitFor(() =>
         expect(
-          screen.getAllByText('No working copy on this Station'),
+          screen.getAllByText(
+            'This Station does not provide a checkout for this Project.',
+          ),
         ).toHaveLength(3),
       );
-    expect(screen.queryByText('Working copy missing')).toBeNull();
+    expect(
+      screen.queryByText('The saved folder was not found. Check its location.'),
+    ).toBeNull();
     expect(screen.queryByRole('button', { name: /repair|clone/i })).toBeNull();
   },
 );

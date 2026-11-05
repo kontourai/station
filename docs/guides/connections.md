@@ -1485,20 +1485,41 @@ the normal workspace checks. Operator-assisted import uses host Git credentials.
 Provider OAuth, Project-scoped forge grants and collaboration onboarding are
 tracked separately in [the authorization epic](https://github.com/kontourai/station/issues/4068);
 importing a repository does not grant an Agent remote credentials.
-Project Settings → Sources lists every attached repository or local folder before
-its working-copy details. Public GitHub and GitLab identities use their forge
-marks; other hosts keep their own identity without a guessed provider. Details
-name the connected Station (and its reported machine name when available) beside
-verified, unverified or missing paths. These paths belong to that Station, not
-the viewing browser. This is a view of one Station’s mappings, not a fleet-wide
-checkout inventory or proof that an execution destination is available.
+Project Settings → Sources lists repositories as links with their provider mark and
+`owner/repo`. A healthy checkout needs no header status badge. **Used for new chats**
+names the selected repository; it does not mean a chat has run or a Station is online.
+**Checkout and access details** lists the answering Station and its local folder.
+Missing or mismatched folders retain their repository identity and offer checkout
+repair. Paths whose identity could not be confirmed are labelled **Folder to check**;
+a failed refresh withholds old paths. **Advanced details** retains resource IDs,
+primary selection and resolver diagnostics. **Refresh sources** rechecks local
+records, without fetching Git remotes. Repo-free Projects retain documents and tools.
 
-The primary resource and Agent starting resource are shown separately. An explicit
-execution root takes precedence over the primary for new Sessions; attachment
-alone does not change either. A failed availability refresh keeps repository
-identity visible but withholds previously verified paths. Use **Refresh sources**
-to recheck identity and working copies; this does not fetch from Git remotes.
-Projects without repositories retain documents and connected tools.
+These details show one Station’s registered checkout, not a fleet-wide inventory.
+The Station name comes from its connection and reported machine presentation;
+the viewing browser is not an execution host. Additional Peer checkout registration
+and aggregation remain outside this view. Selecting a repository for new chats
+retains the existing execution-root/primary fallback rules and affects new Sessions.
+
+**Source and Station access** separates the checkout from its authentication.
+Enable **Repository sign-in details** in **Settings → Advanced → Feature previews**
+to read the owning Station’s GitHub CLI health, active account and reported scopes.
+This operator-only observation runs `gh auth status --hostname github.com --json
+hosts --no-refresh`, bounded to five seconds and 8 KiB, with a ten-second cache.
+It returns no token, credential source path or inactive account. Missing account
+or scope fields remain **Not reported**; malformed or unsupported CLI output is
+unavailable, even if its JSON-mode process exited zero. Turning the preview off
+prevents new metadata probes and withholds waiting responses; an already launched
+read remains bounded by its original deadline.
+
+The account/scopes describe this Station’s `gh`, not a verified repository grant.
+Git may use another SSH key or credential helper. Other providers’ authentication
+is not reported here. Project/repository credential bindings are not managed in
+this view. **Sign-in help** names the owning machine and its supported `gh auth
+status` / `gh auth login --hostname github.com` commands; the browser cannot start
+remote sign-in. No connection credentials are copied to the browser or another
+Station. The metadata API and its legacy-compatible opt-in are described in the
+[API reference](../reference/api.md#integration-capability-status-and-task-write-back).
 
 Sources combines repository repair with knowledge-store
 registration, refresh and disconnect. A repository repair row offers the same

@@ -2681,139 +2681,231 @@ function taskCapabilityScreens(): Screen[] {
 
 function projectRepositorySourceScreens(): Screen[] {
   return (['dark', 'light'] as const).flatMap((theme) =>
-    [DESKTOP, MOBILE].map((viewport): Screen => {
-      const slug = `gallery-repository-sources-${theme}-${viewport.width}`;
-      let request: ReturnType<typeof createAuthenticatedE2ERequest>;
-      const cleanups: (() => Promise<void>)[] = [];
-      let created = false;
-      return {
-        name: `project-repository-sources-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
-        title: `Project repository sources — ${theme}, ${viewport.width}px`,
-        path: `/projects/${slug}/edit?section=resources`,
-        viewport,
-        async beforeGoto(page) {
-          request = createAuthenticatedE2ERequest(page.request);
-          const response = await request.post(
-            `${resolveE2EApiBase()}/api/projects`,
-            { data: { name: 'Station documentation', slug } },
-          );
-          expect(response.ok()).toBe(true);
-          created = true;
-          const project = (await response.json()).data;
-          const identity = {
-            schemaVersion: 1 as const,
-            id: `portable-${slug}`,
-            repos: [
-              {
-                kind: 'git' as const,
-                id: 'github.com/example/station',
-                canonicalRemote: 'github.com/example/station',
-                role: 'primary' as const,
-                label: 'Station repository',
-              },
-              {
-                kind: 'git' as const,
-                id: 'gitlab.com/example/docs',
-                canonicalRemote: 'gitlab.com/example/docs',
-              },
-            ],
-            executionRoot: {
-              repoId: 'gitlab.com/example/docs',
-              path: 'manual',
-            },
-            createdAt: '2026-11-05T00:00:00.000Z',
-            updatedAt: '2026-11-05T00:00:00.000Z',
-          } satisfies import('@kontourai/station-contracts/project-identity').ProjectPortableIdentity;
-          cleanups.push(
-            await withRoute(
-              page,
-              `**/api/projects/${slug}/identity`,
-              (route) => {
-                if (route.request().method() !== 'GET')
-                  return rejectUnexpectedFixtureRequest(route);
-                return route.fulfill({
-                  json: {
-                    success: true,
-                    data: {
-                      identity,
-                      association: {
-                        portableProjectId: identity.id,
-                        localProjectId: project.id,
-                        localProjectSlug: slug,
+    [false, true].flatMap((accessDetails) =>
+      [DESKTOP, MOBILE].map((viewport): Screen => {
+        const slug = `gallery-repository-${accessDetails ? 'access' : 'sources'}-${theme}-${viewport.width}`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        const cleanups: (() => Promise<void>)[] = [];
+        let created = false;
+        let previousPreview = false;
+        return {
+          name: `project-repository-${accessDetails ? 'access' : 'sources'}-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+          title: `Project repository sources — ${theme}, ${viewport.width}px`,
+          path: `/projects/${slug}/edit?section=resources`,
+          viewport,
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const preview = (await previews.json()).data.find(
+              (item: { id: string }) => item.id === 'repository-auth-details',
+            );
+            expect(preview).toBeDefined();
+            previousPreview = preview.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/repository-auth-details`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+            cleanups.push(async () => {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/repository-auth-details`,
+                { data: { enabled: previousPreview } },
+              );
+              expect(restored.ok()).toBe(true);
+            });
+            cleanups.push(
+              await withRoute(
+                page,
+                '**/api/integrations/status?include=github-authentication',
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: {
+                      success: true,
+                      data: {
+                        connections: [
+                          {
+                            connectionId: 'github',
+                            provider: 'github',
+                            actions: [
+                              {
+                                action: 'read',
+                                computedBy: 'github.gh-auth-status',
+                                state: 'unverified',
+                                reason:
+                                  'Repository permissions have not been checked.',
+                              },
+                            ],
+                            authentication: {
+                              state: 'signed-in',
+                              observedAt: 1793836800000,
+                              account: 'example-user',
+                              scopes: ['repo', 'read:org'],
+                            },
+                          },
+                        ],
                       },
                     },
-                  },
-                });
-              },
-            ),
-          );
-          const resolution = {
-            posture: 'backing',
-            primary: { named: true, resourceId: identity.repos[0].id },
-            resources: [
-              {
-                state: 'bound',
-                resourceId: identity.repos[0].id,
-                path: '/srv/code/station',
-              },
-              {
-                state: 'missing',
-                resourceId: identity.repos[1].id,
-                record: 'binding',
-                declaredPath: '/srv/code/docs',
-                reason:
-                  'The recorded working copy is unavailable on this Station.',
-              },
-            ],
-          } satisfies import('@kontourai/station-contracts/project-identity').ProjectResolutionView;
-          cleanups.push(
-            await withRoute(
-              page,
-              `**/api/projects/${slug}/resolution`,
-              (route) => {
-                if (route.request().method() !== 'GET')
-                  return rejectUnexpectedFixtureRequest(route);
-                return route.fulfill({
-                  json: { success: true, data: resolution },
-                });
-              },
-            ),
-          );
-        },
-        async afterGoto(page) {
-          await page.evaluate(
-            (selected) =>
-              document.documentElement.setAttribute('data-theme', selected),
-            theme,
-          );
-          const sources = page.locator('[aria-label="Repository sources"]');
-          await expect(
-            sources.getByText('Working copy missing', { exact: true }),
-          ).toBeVisible();
-          await sources
-            .getByText('Details for Station repository', { exact: true })
-            .click();
-          await expect(
-            sources.getByText('/srv/code/station', { exact: true }),
-          ).toBeVisible();
-          await sources.scrollIntoViewIfNeeded();
-          expect(
-            await page.evaluate(
-              () => document.documentElement.scrollWidth <= innerWidth,
-            ),
-          ).toBe(true);
-        },
-        async cleanup() {
-          for (const cleanup of cleanups.splice(0)) await cleanup();
-          if (created) {
-            const removed = await request.delete(
-              `${resolveE2EApiBase()}/api/projects/${slug}`,
+                  });
+                },
+              ),
             );
-            expect(removed.ok()).toBe(true);
-          }
-        },
-      };
-    }),
+
+            const response = await request.post(
+              `${resolveE2EApiBase()}/api/projects`,
+              { data: { name: 'Station documentation', slug } },
+            );
+            expect(response.ok()).toBe(true);
+            created = true;
+            const project = (await response.json()).data;
+            const identity = {
+              schemaVersion: 1 as const,
+              id: `portable-${slug}`,
+              repos: [
+                {
+                  kind: 'git' as const,
+                  id: 'github.com/example/station',
+                  canonicalRemote: 'github.com/example/station',
+                  role: 'primary' as const,
+                  label: 'Station repository',
+                },
+                {
+                  kind: 'git' as const,
+                  id: 'gitlab.com/example/docs',
+                  canonicalRemote: 'gitlab.com/example/docs',
+                },
+              ],
+              executionRoot: {
+                repoId: 'gitlab.com/example/docs',
+                path: 'manual',
+              },
+              createdAt: '2026-11-05T00:00:00.000Z',
+              updatedAt: '2026-11-05T00:00:00.000Z',
+            } satisfies import('@kontourai/station-contracts/project-identity').ProjectPortableIdentity;
+            cleanups.push(
+              await withRoute(
+                page,
+                `**/api/projects/${slug}/identity`,
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: {
+                      success: true,
+                      data: {
+                        identity,
+                        association: {
+                          portableProjectId: identity.id,
+                          localProjectId: project.id,
+                          localProjectSlug: slug,
+                        },
+                      },
+                    },
+                  });
+                },
+              ),
+            );
+            const resolution = {
+              posture: 'backing',
+              primary: { named: true, resourceId: identity.repos[0].id },
+              resources: [
+                {
+                  state: 'bound',
+                  resourceId: identity.repos[0].id,
+                  path: '/srv/code/station',
+                },
+                {
+                  state: 'missing',
+                  resourceId: identity.repos[1].id,
+                  record: 'binding',
+                  declaredPath: '/srv/code/docs',
+                  reason:
+                    'The recorded working copy is unavailable on this Station.',
+                },
+              ],
+            } satisfies import('@kontourai/station-contracts/project-identity').ProjectResolutionView;
+            cleanups.push(
+              await withRoute(
+                page,
+                `**/api/projects/${slug}/resolution`,
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: { success: true, data: resolution },
+                  });
+                },
+              ),
+            );
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            const sources = page.locator('[aria-label="Repository sources"]');
+            await expect(
+              sources.getByRole('link', {
+                name: 'example/station',
+                exact: true,
+              }),
+            ).toHaveAttribute('href', 'https://github.com/example/station');
+            await expect(
+              sources.getByText(
+                'The saved folder was not found. Check its location.',
+                { exact: true },
+              ),
+            ).toBeVisible();
+            await expect(
+              sources.getByText('Working copy verified', { exact: true }),
+            ).toHaveCount(0);
+            const first = sources
+              .locator('.project-repositories__card')
+              .first();
+            if (accessDetails) {
+              await first
+                .getByText('Checkout and access details', { exact: true })
+                .click();
+              await expect(
+                first.getByText('/srv/code/station', { exact: true }),
+              ).toBeVisible();
+              await expect(
+                first.getByText('example-user', { exact: true }),
+              ).toBeVisible();
+              await expect(
+                first.getByText('Not checked by this sign-in check', {
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await first
+                .locator('.project-repositories__checkout')
+                .scrollIntoViewIfNeeded();
+            } else {
+              await first.scrollIntoViewIfNeeded();
+            }
+            expect(
+              await page.evaluate(
+                () => document.documentElement.scrollWidth <= innerWidth,
+              ),
+            ).toBe(true);
+          },
+          async cleanup() {
+            for (const cleanup of cleanups.splice(0)) await cleanup();
+            if (created) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${slug}`,
+              );
+              expect(removed.ok()).toBe(true);
+            }
+          },
+        };
+      }),
+    ),
   );
 }
 
