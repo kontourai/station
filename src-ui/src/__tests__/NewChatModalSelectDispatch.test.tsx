@@ -1694,6 +1694,7 @@ describe('the start composer in the dock', () => {
         binding: { ...connection.binding, environmentId: 'peer-kontour' },
       };
       stationResolver.current = {
+        ready: true,
         remoteEnabled: true,
         resolve: async () => ({
           connection: startConnection,

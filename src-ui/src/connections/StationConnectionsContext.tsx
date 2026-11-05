@@ -23,6 +23,7 @@ import {
 } from './station-connection-registry';
 
 interface StationConnections {
+  readonly ready: boolean;
   readonly remoteEnabled: boolean;
   resolve(options?: {
     environmentId?: string;
@@ -74,6 +75,13 @@ export function StationConnectionsProvider({
   }, [registry, remoteEnabled]);
   const value = useMemo<StationConnections>(
     () => ({
+      ready: Boolean(
+        namespace &&
+          observation &&
+          scope?.isCurrent() &&
+          activeConnection &&
+          !previews.isPending,
+      ),
       remoteEnabled,
       resolve: async (options = {}) => {
         const remoteEpoch = remotePreviewRef.current.epoch;
@@ -113,6 +121,7 @@ export function StationConnectionsProvider({
       activeConnection,
       connections,
       remoteEnabled,
+      previews.isPending,
     ],
   );
   return (

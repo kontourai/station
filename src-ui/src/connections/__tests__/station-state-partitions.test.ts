@@ -45,6 +45,7 @@ const wire = vi.hoisted(() => ({
   open: vi.fn<(...args: unknown[]) => Promise<ConversationOpenResolution>>(),
   connections: undefined as
     | {
+        ready?: boolean;
         resolve(options: {
           binding?: StationConnection['binding'];
         }): Promise<StationConnectionLease>;
@@ -307,6 +308,35 @@ describe('Station state partitions', () => {
     expect(
       wire.streams.get(`${a.targetApiBase}/api/orchestration/events`)?.close,
     ).not.toHaveBeenCalled();
+  });
+
+  it('a restored reader waits for source readiness and replaces a failed resolution when its source changes', async () => {
+    const { client, a } = await setup();
+    const resolve = vi.fn().mockRejectedValue(new Error('Source not ready'));
+    wire.connections = { ready: false, resolve };
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+    const hook = renderHook(
+      () => useChatStationConnection({ stationBinding: a.binding }),
+      { wrapper },
+    );
+    expect(resolve).not.toHaveBeenCalled();
+    expect(hook.result.current.resolving).toBe(true);
+    expect(hook.result.current.unavailable).toBe(false);
+    wire.connections = { ready: true, resolve };
+    hook.rerender();
+    await waitFor(() => expect(hook.result.current.unavailable).toBe(true));
+    const release = vi.fn();
+    wire.connections = {
+      ready: true,
+      resolve: vi.fn().mockResolvedValue({ connection: a, release }),
+    };
+    hook.rerender();
+    expect(hook.result.current.resolving).toBe(true);
+    expect(hook.result.current.unavailable).toBe(false);
+    await waitFor(() => expect(hook.result.current.connection).toBe(a));
+    hook.unmount();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it('a restored reader releases a late original lease instead of publishing it into the replacement tab', async () => {

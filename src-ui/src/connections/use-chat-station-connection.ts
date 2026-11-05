@@ -22,6 +22,7 @@ export function useChatStationConnection(
     key: string;
     connection?: StationConnection;
     failed?: boolean;
+    source: typeof connections;
   }>();
   const [attempt, setAttempt] = useState(0);
   const retry = useCallback(() => {
@@ -30,7 +31,15 @@ export function useChatStationConnection(
   }, []);
   useEffect(() => {
     void attempt;
-    if (!remote || provided || !bindingKey || !connections || !client) return;
+    if (
+      !remote ||
+      provided ||
+      !bindingKey ||
+      !connections ||
+      !client ||
+      connections.ready === false
+    )
+      return;
     const binding = readChatStationBinding(JSON.parse(bindingKey));
     if (!binding || chat?.stationBindingInvalid) return;
     let cancelled = false;
@@ -62,11 +71,16 @@ export function useChatStationConnection(
           stop();
           lease.release();
         };
-        setResolved({ key: bindingKey, connection: lease.connection });
+        setResolved({
+          key: bindingKey,
+          connection: lease.connection,
+          source: connections,
+        });
       })
       .catch(() => {
         release();
-        if (!cancelled) setResolved({ key: bindingKey, failed: true });
+        if (!cancelled)
+          setResolved({ key: bindingKey, failed: true, source: connections });
       });
     return () => {
       cancelled = true;
@@ -97,7 +111,11 @@ export function useChatStationConnection(
       connections &&
       client &&
       !chat?.stationBindingInvalid &&
-      !(resolved?.key === bindingKey && resolved.failed),
+      !(
+        resolved?.key === bindingKey &&
+        resolved.source === connections &&
+        resolved.failed
+      ),
   );
   return {
     connection: current,

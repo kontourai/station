@@ -56,11 +56,14 @@ test('a relay activity read carries source authority and partitions the same chi
   const apiBase = 'http://source.test';
   const targetApiBase = `${apiBase}/api/environments/peers/receiver/chat-api`;
   let authorityKey = 'source-one';
-  setClientCredentialResolver(async () => ({
-    origin: apiBase,
-    credential: 'fixture-source-credential',
-    requestAuthority: { apiBase, authorityKey, isCurrent: () => true },
-  }));
+  setClientCredentialResolver(async (selector) => {
+    expect(selector?.requestScope).toEqual({ apiBase, authorityKey });
+    return {
+      origin: apiBase,
+      credential: 'fixture-source-credential',
+      requestAuthority: { apiBase, authorityKey, isCurrent: () => true },
+    };
+  });
   const fetcher = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe(

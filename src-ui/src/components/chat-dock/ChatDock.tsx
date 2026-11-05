@@ -2495,8 +2495,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       () => showToast('Conversation resolution is unavailable. Try again.'),
       (tabId) => activeChatsStore.getSnapshot()[tabId],
       workObservation,
+      conversationConnection,
     );
-  }, [activeSession, apiBase, showToast, updateChat, workObservation]);
+  }, [
+    activeSession,
+    apiBase,
+    showToast,
+    updateChat,
+    workObservation,
+    conversationConnection,
+  ]);
   const retryConversationOpenRecovery = useCallback(async () => {
     if (!conversationOpenRecovery) return;
     await openConversationForDock(conversationOpenRecovery.conversation);
