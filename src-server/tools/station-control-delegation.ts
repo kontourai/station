@@ -54,6 +54,7 @@ import {
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
   type TokenUsageUpdatedEvent,
+  type TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
@@ -102,6 +103,7 @@ import {
 import {
   createConversationHandoffIntent,
   executeForegroundMessage as executeResolvedForegroundMessage,
+  type ForegroundMessageContext,
   type ForegroundMessageHandle,
   ForegroundMessageIndeterminateError,
   type ForegroundMessageInput,
@@ -6428,6 +6430,8 @@ export async function delegateTask(
               environmentId: target.environmentId,
             },
             resourceAdmissionIntent: 'delegated_background',
+            // #4512: the delegated Session's first turn, sent by Station.
+            dispatchOrigin: 'delegation',
             ...(input.taskRoomInvocationAdmission
               ? {
                   receiverExecutionAdmission: input.taskRoomInvocationAdmission,
@@ -6602,12 +6606,29 @@ export async function delegateTask(
  * CLI/UI/MCP callers never receive or construct the target Environment's
  * apiBase, SSH tunnel, credential, or engine connection binding.
  */
+/**
+ * #4512: the origin a delegated send records: `delegation` for a new
+ * conversation (the delegated child it starts) or one whose current Session
+ * is itself unattended, else `unknown`.
+ */
+function delegatedTargetOrigin(
+  orchestrationService: OrchestrationService | undefined,
+  conversationId: string | undefined,
+): TurnDispatchOrigin {
+  if (!conversationId) return 'delegation';
+  if (!orchestrationService) return 'unknown';
+  const facts = orchestrationService.sessionDispatchFacts(
+    orchestrationService.currentConversationSessionId(conversationId),
+  );
+  return facts.taskBound || facts.delegatedChild ? 'delegation' : 'unknown';
+}
+
 export async function executeExecutionTargetMessage(
   input: AuthorityBearingForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   admission?: ForegroundInvocationAdmission,
   remote?: RemoteStationForwarder,
-  context?: { submissionDigest?: string; inboxPlacement?: true },
+  context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
   context = context ? { ...context } : undefined;
   if (input.clientTurnId || input.handoffIntent)
@@ -7394,6 +7415,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
+              ...(context?.dispatchOrigin
+                ? { dispatchOrigin: context.dispatchOrigin }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7424,6 +7448,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
+              ...(context?.dispatchOrigin
+                ? { dispatchOrigin: context.dispatchOrigin }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7445,7 +7472,33 @@ export async function executeExecutionTargetMessage(
       return { turnId: dispatched.result.turnId };
     },
   } satisfies Parameters<typeof executeResolvedForegroundMessage>[1];
-  return executeResolvedForegroundMessage(input, resolverDependencies, context);
+  // #4512: a send carrying a delegation context Station itself derived from
+  // the calling Session or its own runtime attested (a Station Control
+  // `send_message`) is a delegated turn, but only into a Session that is
+  // itself unattended. Into an existing conversation it counts only when that
+  // conversation's current Session is bound to a Task or is a delegated child
+  // Station derived; an agent messaging a person's own chat leaves that chat
+  // the person's (`unknown`). A `direct-claim` context is a requester's own
+  // word and never counts.
+  const delegatedSend =
+    input.delegation &&
+    (input.delegationProvenance === 'caller-derived' ||
+      input.delegationProvenance === 'runtime-attested') &&
+    !context?.dispatchOrigin;
+  const turnContext: ForegroundMessageContext | undefined = delegatedSend
+    ? {
+        ...context,
+        dispatchOrigin: delegatedTargetOrigin(
+          orchestrationService,
+          input.conversationId,
+        ),
+      }
+    : context;
+  return executeResolvedForegroundMessage(
+    input,
+    resolverDependencies,
+    turnContext,
+  );
 }
 
 /**
@@ -7615,7 +7668,7 @@ export async function continueExecutionTargetMessage(
   input: ContinueForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
-  context?: { submissionDigest?: string; inboxPlacement?: true },
+  context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
   context = context ? { ...context } : undefined;
   if (input.clientTurnId)

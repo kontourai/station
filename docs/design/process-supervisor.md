@@ -513,6 +513,25 @@ automatically from its `resumeCursor`, with a bounded retry. This is the
 In-process engines (Ollama, Bedrock, station-agent) rely on it, since they
 live in the core server.
 
+For external engines, which can only be resumed by a new turn, unattended work
+gets one such turn behind the `continue-unattended-after-restart` preview
+(#4512). After boot, [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
+takes the turns interrupted-turn recovery settled this boot
+(`OrchestrationService.whenInterruptedTurnsRecovered`). For each one whose
+recorded origin (`turn.started.dispatchOrigin`) is `task-dispatch` or
+`delegation`, it queues the restart note on the conversation inbox, oldest Task
+first, as the Session's recorded owner, as `automaticBackground` work
+(engine-start admission). The inbox key is the chat's Continue key for that
+interruption, so the person's Continue and this path start one turn between
+them. It skips interactive, Automation and unknown-origin turns, a turn that
+was itself such a continuation (so a second restart adds none), a Session that
+moved on, and a Task that is done, canceled or blocked. Recovery drains only
+this Station's own turn boundaries, so Sessions mirrored from another Station
+never qualify. The continuation's own turn shows as **Continued after
+restart**. A crash between a boundary's resolution and the queued entry loses
+that continuation (the banner and the person's Continue remain): the path is at
+most once.
+
 ### Launch modes and the tray
 
 | Mode | Launcher | Change |

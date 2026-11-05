@@ -21,9 +21,10 @@ import {
 import { stationControlRefusalView } from '@kontourai/station-contracts/station-control-refusal';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { agentMessageInput } from './agent-message-frame.js';
-import type {
-  ConversationMessage,
-  MessagePart,
+import {
+  type ConversationMessage,
+  isStationRestartContinuationTurn,
+  type MessagePart,
 } from './conversation-message.js';
 import {
   EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
@@ -954,6 +955,13 @@ export function projectRuntimeEventsToMessages(
           if (isStationMemoryContinuationTurn(ev)) {
             const row = messages[messages.length - 1]!;
             row.metadata = { ...row.metadata, stationMemoryContinuation: true };
+          }
+          if (isStationRestartContinuationTurn(ev)) {
+            const row = messages[messages.length - 1]!;
+            row.metadata = {
+              ...row.metadata,
+              stationRestartContinuation: true,
+            };
           }
           userRowSender = undefined;
         }

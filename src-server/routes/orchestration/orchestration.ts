@@ -90,6 +90,7 @@ import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { turnInterruptedContinueBoundaryId } from '@kontourai/station-shared/conversation-message';
 import {
   assertDelegationFileSizes,
   DelegationFileRefusal,
@@ -2590,8 +2591,13 @@ export function createOrchestrationRoutes(
     return c.json(
       {
         success: false,
+        // #4512: a held Continue key means that interrupted turn is already
+        // being continued (by Station after a restart, or another member);
+        // resending under a new key would continue it twice.
         error:
-          "This message key belongs to someone else's queued message. Send under a new key.",
+          turnInterruptedContinueBoundaryId(clientTurnId) !== undefined
+            ? 'This interrupted turn is already being continued.'
+            : "This message key belongs to someone else's queued message. Send under a new key.",
         code: 'inbox_key_held',
       },
       409,
