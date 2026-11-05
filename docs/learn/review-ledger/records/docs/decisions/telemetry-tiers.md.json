@@ -22,7 +22,9 @@
 
     "src-server/routes/system/__tests__/config.routes.test.ts",
 
-    "packages/cli/src/__tests__/telemetry-command.test.ts"
+    "packages/cli/src/__tests__/telemetry-command.test.ts",
+
+    "packages/contracts/src/plugin-telemetry.ts"
   ],
 
   "checks": []
