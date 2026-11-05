@@ -6,9 +6,10 @@
  * a first turn are only told apart there.
  */
 import { join } from 'node:path';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
 import {
   buildChatHarnessApp,
+  type ChatHarnessAgent,
   createHarnessConversationStore,
   emptyAgentResult,
 } from '../../../__test-utils__/chat-primary-stream-harness.js';
@@ -25,7 +26,9 @@ describe('streamPrimaryAgentChat memory brief settlement', () => {
   });
 
   const brief = () => ({ delivered: vi.fn(), abandoned: vi.fn() });
-  const agentFor = (streamText: ReturnType<typeof vi.fn>) => ({
+  const agentFor = (
+    streamText: Mock<ChatHarnessAgent['streamText']>,
+  ): ChatHarnessAgent => ({
     getMemory: () => null as null,
     model: { modelId: 'test-model' },
     streamText,
@@ -41,7 +44,9 @@ describe('streamPrimaryAgentChat memory brief settlement', () => {
 
   test('a turn that reaches the agent delivers its brief and does not abandon it', async () => {
     const turn = brief();
-    const streamText = vi.fn(async () => emptyAgentResult());
+    const streamText = vi.fn<ChatHarnessAgent['streamText']>(async () =>
+      emptyAgentResult(),
+    );
     const app = buildChatHarnessApp({
       agent: agentFor(streamText),
       conversations: createHarnessConversationStore(),
@@ -55,7 +60,9 @@ describe('streamPrimaryAgentChat memory brief settlement', () => {
   });
 
   test('a replayed turn never reaches the agent, so its brief is abandoned, not delivered', async () => {
-    const streamText = vi.fn(async () => emptyAgentResult());
+    const streamText = vi.fn<ChatHarnessAgent['streamText']>(async () =>
+      emptyAgentResult(),
+    );
     const first = brief();
     await run(
       buildChatHarnessApp({
@@ -83,7 +90,9 @@ describe('streamPrimaryAgentChat memory brief settlement', () => {
   });
 
   test('a turn refused before the stream starts abandons its brief', async () => {
-    const streamText = vi.fn(async () => emptyAgentResult());
+    const streamText = vi.fn<ChatHarnessAgent['streamText']>(async () =>
+      emptyAgentResult(),
+    );
     await run(
       buildChatHarnessApp({
         agent: agentFor(streamText),
@@ -113,7 +122,7 @@ describe('streamPrimaryAgentChat memory brief settlement', () => {
 
   test('an agent that fails after it was invoked still counts as delivered', async () => {
     const turn = brief();
-    const streamText = vi.fn(async () => {
+    const streamText = vi.fn<ChatHarnessAgent['streamText']>(async () => {
       throw new Error('provider unavailable');
     });
     const app = buildChatHarnessApp({
