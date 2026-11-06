@@ -6,6 +6,7 @@ import { IconButton } from '../../components/IconButton';
 import { CloseGlyph } from '../../components/icons/Glyph';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/navigation-store';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { BROWSER_PAGE_CONTENT_NOTICE } from './browserArtifactContent';
 import { BrowserApiError, type BrowserPaneApi } from './browserPaneApi';
 import { useBrowserArtifactIntake } from './useBrowserArtifactIntake';
@@ -257,9 +258,7 @@ export function BrowserRecordingStatus({
           error instanceof BrowserApiError &&
             error.code === 'contact-unavailable'
             ? 'Recording frames are unavailable or too large. Save the clip instead.'
-            : error instanceof Error
-              ? error.message
-              : 'Could not attach recording frames.',
+            : describeStationFailure(error).body,
         );
     } finally {
       if (alive.current) setAttaching(false);

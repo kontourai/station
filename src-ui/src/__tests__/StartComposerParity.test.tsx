@@ -73,6 +73,7 @@ vi.mock('../contexts/ConfigContext', () => ({
 }));
 
 const state = vi.hoisted(() => ({
+  dockOpen: false,
   agents: [] as unknown[],
   projects: [] as unknown[],
   projectsLoading: false,
@@ -227,6 +228,7 @@ vi.mock('../components/session/SessionModelPicker', () => ({
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
+    isDockOpen: state.dockOpen,
     selectedProject: null,
     selectedProjectLayout: null,
     setDockState: vi.fn(),
@@ -279,6 +281,7 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 beforeEach(() => {
+  state.dockOpen = false;
   resetStartChoicesForTests();
   localStorage.clear();
   sessionStorage.clear();
@@ -373,6 +376,55 @@ const agentChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Agent:/ });
 const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
+
+function HomeWithDockToggle() {
+  const [, update] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          state.dockOpen = !state.dockOpen;
+          update(state.dockOpen);
+        }}
+      >
+        Toggle dock
+      </button>
+      <HomeStartComposer />
+    </>
+  );
+}
+
+test('Home yields its start surface to the open dock and restores the held draft', () => {
+  render(<HomeWithDockToggle />);
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'What would you like done?' }),
+    {
+      target: { value: 'Keep my Home draft' },
+    },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle dock' }));
+  expect(screen.queryByRole('form', { name: 'Start work' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle dock' }));
+  expect(
+    (
+      screen.getByRole('textbox', {
+        name: 'What would you like done?',
+      }) as HTMLTextAreaElement
+    ).value,
+  ).toBe('Keep my Home draft');
+});
+
+test('a draft can choose an unavailable profile to configure another execution Station', async () => {
+  state.agents = [{ ...CLAUDE, available: false }];
+  const { dock, dockSelect } = renderBoth();
+  fireEvent.click(agentChip(dock()));
+  const row = await screen.findByRole('button', { name: /Claude/ });
+  expect((row as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(row);
+  expect(agentChip(dock()).textContent).toContain('Claude');
+  expect(dockSelect).not.toHaveBeenCalled();
+});
 
 describe('a Project’s new-chat defaults preselect the composer', () => {
   const CLAUDE_APP = {

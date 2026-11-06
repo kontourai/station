@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { projectOutboundQueueEntries } from '../hooks/outboundQueueProjection';
-import type { QueuedOutboundTurn } from '../lib/outboundQueue';
+import type {
+  OutboundStationIdentity,
+  QueuedOutboundTurn,
+} from '../lib/outboundQueue';
 
 function turn(
   clientTurnId: string,
@@ -22,10 +26,102 @@ function turn(
 }
 
 describe('outboundQueueProjection (station#1224 restart hydration)', () => {
+  const remote: OutboundStationIdentity = {
+    apiBase: 'https://source.test/relay/b',
+    environmentId: 'b',
+    authorityNamespace: 'source:principal-b',
+    binding: {
+      version: 1,
+      environmentId: 'b',
+      stationName: 'B',
+      affinity: {
+        kind: 'peer',
+        sourceEnvironmentId: 'source',
+        sourceConnectionId: 'profile',
+        principalNamespace: 'principal-b',
+      },
+    },
+  };
   beforeEach(() => {
     for (const sessionId of Object.keys(activeChatsStore.getSnapshot())) {
       activeChatsStore.removeChat(sessionId);
     }
+  });
+
+  it('retains readable peer delivery while unavailable without changing a host chat or inventing a running turn', () => {
+    activeChatsStore.initChat('host', {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Host',
+    });
+    activeChatsStore.updateChat('host', {
+      status: 'sending',
+      orchestrationTurnOpen: true,
+    });
+    projectOutboundQueueEntries(
+      [
+        {
+          ...turn('same', 'peer', 'retained text'),
+          station: remote,
+          conversationId: 'same-conversation',
+          status: 'invoking',
+        },
+      ],
+      undefined,
+      undefined,
+      remote,
+    );
+    expect(activeChatsStore.getSnapshot().peer).toMatchObject({
+      stationBinding: remote.binding,
+      outboundQueuedTurns: [
+        { content: 'retained text', waitingForStation: remote.apiBase },
+      ],
+    });
+    expect(isTurnInFlight(activeChatsStore.getSnapshot().peer)).toBe(false);
+    expect(activeChatsStore.getSnapshot().host).toMatchObject({
+      status: 'sending',
+      orchestrationTurnOpen: true,
+    });
+  });
+
+  it('settles retired bubbles only in the owning conversation and Station', () => {
+    for (const [id, conversationId] of [
+      ['one', 'one'],
+      ['two', 'two'],
+      ['host', 'one'],
+    ]) {
+      activeChatsStore.initChat(id, {
+        agentSlug: 'assistant',
+        agentName: 'Assistant',
+        title: id,
+        conversationId,
+        ...(id !== 'host' ? { stationBinding: remote.binding } : {}),
+      });
+      activeChatsStore.updateChat(id, {
+        messages: [
+          { id: 'bubble', role: 'user', content: id, clientId: 'same' },
+        ],
+      });
+    }
+    projectOutboundQueueEntries(
+      [],
+      {
+        accepted: ['same'],
+        discarded: [],
+        byConversation: { one: { accepted: ['same'], discarded: [] } },
+      },
+      undefined,
+      remote,
+    );
+    expect(activeChatsStore.getSnapshot().one?.deliveryChecks?.same).toBe(
+      'started',
+    );
+    expect(
+      activeChatsStore.getSnapshot().two?.deliveryChecks?.same,
+    ).toBeUndefined();
+    expect(
+      activeChatsStore.getSnapshot().host?.deliveryChecks?.same,
+    ).toBeUndefined();
   });
 
   it('does not list a live send this renderer is still waiting on, nor call its chat queued', () => {

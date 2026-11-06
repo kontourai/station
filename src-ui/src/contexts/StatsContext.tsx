@@ -1,4 +1,5 @@
 import { useStatsQuery } from '@kontourai/station-sdk';
+import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
 
 export function useStats(
   agentSlug: string,
@@ -15,12 +16,14 @@ export function useStats(
    */
   refetchIntervalMs?: number,
 ) {
+  const target = useOptionalConversationConnection();
   const {
     data: stats,
     error,
     refetch,
     isLoading,
   } = useStatsQuery(agentSlug, conversationId, {
+    readTarget: target?.station,
     enabled: shouldFetch && !!agentSlug,
     ...(refetchIntervalMs === undefined
       ? {}

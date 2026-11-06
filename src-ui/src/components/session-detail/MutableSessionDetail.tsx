@@ -1,9 +1,9 @@
 import { flowRunDisplayIdentity } from '@kontourai/station-contracts';
 import {
   type OrchestrationSessionSummary,
+  useAgentsQuery,
   useOrchestrationCommandReceiptsQuery,
 } from '@kontourai/station-sdk';
-import { boundedDisplayText } from '@kontourai/station-shared/display-text';
 import {
   type ReactNode,
   useCallback,
@@ -12,7 +12,6 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { useAgents } from '../../contexts/AgentsContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
 import {
   getStreamConnectionState,
@@ -27,7 +26,6 @@ import {
   clientOriginSummary,
   clientOriginSurfaceLabel,
 } from '../../utils/clientOrigin';
-import { errorAgentDraft } from '../../utils/errorAgentDraft';
 import { relativeTime } from '../../utils/relativeTime';
 import {
   builderRunIdentityLabel,
@@ -39,27 +37,22 @@ import {
 } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
 import { DelegationLauncher } from '../chat-dock/DelegationLauncher';
+import { ConversationBody } from '../conversation/ConversationBody';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { WorkflowStatusLineList } from '../flow/WorkflowStatusLine';
 import { LazyBoundary } from '../LazyBoundary';
-import { ConfirmModal } from '../modals/ConfirmModal';
 import { SkeletonBlock } from '../state';
 import { OwnedWorkCleanup } from './OwnedWorkCleanup';
 import { SessionDetailAttention } from './SessionDetailAttention';
 import { SessionDetailDiagnostics } from './SessionDetailDiagnostics';
 import { SessionDetailErrors } from './SessionDetailErrors';
 import { SessionDetailHeader } from './SessionDetailHeader';
-import { SessionReplyComposer } from './SessionReplyComposer';
-import { SessionTranscript } from './SessionTranscript';
 import {
   isPeerDelegationRecord,
-  PEER_TRANSCRIPT_ELSEWHERE,
   sessionAgentLabel,
   sessionChatOpenTarget,
 } from './sessionDetailPresentation';
 import './SessionDetail.css';
-
-/** A pending request's title is engine text; Codex's is the whole command. */
-const MAX_PENDING_REQUEST_TITLE_LENGTH = 200;
 
 const loadConversationPullRequestLinks = () =>
   import('../pull-requests/ConversationPullRequestLinks').then((module) => ({
@@ -81,19 +74,7 @@ export type SessionEvidenceReveal = {
   token: number;
 };
 
-/**
- * The mutable (station-owned, still-live-or-terminal) session detail page.
- * State/query/mutation wiring lives in `useMutableSessionDetailState`
- * (archive#1204); this component owns only the render tree.
- *
- * Reading order, top to bottom: the header (what this is, its state, Open in
- * chat / Stop… / ⋯); what needs you (the one failure card, attention items);
- * the conversation itself (read-only, live while a turn streams); then a
- * collapsed Details disclosure holding the evidence rows, the session id,
- * linked pull requests and the raw event log. The live request card and the
- * reply composer stay pinned below the scroll region so they are reachable
- * without scrolling, including on a phone with the keyboard open.
- */
+/** Activity retains metadata and evidence around the shared record body. */
 export function MutableSessionDetail({
   apiBase,
   session,
@@ -104,11 +85,15 @@ export function MutableSessionDetail({
   historyNotices,
   draftScope,
   onOpenConversation,
+  conversationSession,
+  conversationWritable,
 }: {
   apiBase: string;
   draftScope?: string;
   onOpenConversation?: () => void;
   session: OrchestrationSessionSummary;
+  conversationSession?: OrchestrationSessionSummary;
+  conversationWritable?: boolean;
   onTaskChanged: () => void;
   events: OrchestrationEvent[];
   connected: boolean;
@@ -121,13 +106,6 @@ export function MutableSessionDetail({
     input,
     setInput,
     isDelegated,
-    sendTurn,
-    sendTurnPending,
-    sendTurnError,
-    respond,
-    stopTask,
-    pendingRequest,
-    pendingRequestPresentation,
     isStreaming,
     isStopped,
     sessionUnanswerable,
@@ -161,11 +139,12 @@ export function MutableSessionDetail({
   });
 
   const threadId = session.threadId;
-  const sendError = sendTurnError ?? sendTurn.error;
+  const inheritedConnection = useOptionalConversationConnection();
+  const connection = inheritedConnection ?? { apiBase };
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
   const livePhase = useSyncExternalStore(
     subscribeStreamConnectionState,
-    () => getStreamConnectionState(apiBase).phase,
+    () => getStreamConnectionState(connection.apiBase).phase,
   );
   const connectionLabel = {
     unknown: 'Connecting…',
@@ -178,28 +157,30 @@ export function MutableSessionDetail({
     ? session.conversationActivity?.runningTools?.at(-1)?.name
     : undefined;
   const importantNotice = Boolean(
-    failureText ||
-      attentionCheckFailed ||
-      visibleAttentionItems.length ||
-      sendError ||
-      respond.error ||
-      stopTask.error,
+    failureText || attentionCheckFailed || visibleAttentionItems.length,
   );
-  // biome-ignore lint/correctness/useExhaustiveDependencies: A new request failure must reveal its notice even when an earlier notice keeps the boolean true.
   useEffect(() => {
     if (importantNotice && transcriptScrollRef.current) {
       transcriptScrollRef.current.scrollTop = 0;
     }
-  }, [importantNotice, sendError, respond.error]);
-  const agentLabel = sessionAgentLabel(session, useAgents());
+  }, [importantNotice]);
+  const agents =
+    useAgentsQuery(
+      connection.requestScope
+        ? {
+            readTarget: {
+              targetApiBase: connection.apiBase,
+              requestScope: connection.requestScope,
+              runtimeKey: connection.station?.runtimeKey,
+            },
+          }
+        : undefined,
+    ).data ?? [];
+  const agentLabel = sessionAgentLabel(session, agents);
   // Open in chat goes through the shared open-chat focus (archive#1297), the
   // seam Home and the project page use: the chat dock rehydrates the real
   // conversation. Absent when there is no chat to rehydrate.
-  // A delegated task running on a PAIRED Station: this Station only records
-  // its lifecycle. The stored agent slug and conversation id are the PEER's,
-  // so opening, stopping, replying or delegating from here would act on a
-  // local id that names nothing (or something else). None are offered; the
-  // detail says where the transcript lives instead.
+  // A peer Task uses its receiver connection for reads; Task writes keep their own protocol.
   const isPeerRecord = isPeerDelegationRecord(session);
   const chatOpenTarget = isPeerRecord ? null : sessionChatOpenTarget(session);
   const openInChat = chatOpenTarget
@@ -285,16 +266,7 @@ export function MutableSessionDetail({
     stopFollowingRevealRef.current = stop;
   }, []);
 
-  const [confirmStop, setConfirmStop] = useState(false);
   const [delegating, setDelegating] = useState(false);
-  const canStop = !isPeerRecord && !isStopped && isStreaming;
-  // The turn ended while the confirmation was open: there is nothing left to
-  // stop, so the question is withdrawn rather than answered against a turn
-  // that already finished.
-  useEffect(() => {
-    if (confirmStop && !canStop && !stopTask.isPending) setConfirmStop(false);
-  }, [confirmStop, canStop, stopTask.isPending]);
-
   const receipts = useOrchestrationCommandReceiptsQuery(threadId, {
     enabled: threadId.length > 0,
   });
@@ -380,213 +352,140 @@ export function MutableSessionDetail({
     >
       <SessionDetailHeader
         session={session}
+        agents={agents}
         title={title}
         meta={meta}
         isStopped={isStopped}
-        isStreaming={canStop}
         connected={livePhase === 'caught-up'}
         connectionLabel={connectionLabel}
         currentActivity={currentTool ? `Using ${currentTool}` : undefined}
-        stopTaskPending={stopTask.isPending}
-        onRequestStop={() => setConfirmStop(true)}
         onOpenInChat={openInChat}
         menuActions={menuActions}
       />
 
-      {/* Open requests stay above the transcript; stopped-session and
-          answerability gates still belong to the canonical owner. */}
-      {!isPeerRecord &&
-        !isStopped &&
-        pendingRequest &&
-        pendingRequestPresentation && (
-          <div
-            className="sessions-detail__request"
-            data-testid="session-request"
-          >
-            <div className="sessions-detail__request-copy">
-              <span className="sessions-detail__request-label">
-                {pendingRequestPresentation.label}
-              </span>
-              {/* #3382: an engine-supplied title (Codex's is the command)
-                  beside Approve/Decline, so in display form. */}
-              <strong>
-                {boundedDisplayText(
-                  pendingRequest.title,
-                  MAX_PENDING_REQUEST_TITLE_LENGTH,
-                )}
-              </strong>
-            </div>
-            {/* archive#1781: the card RENDERS for an unanswerable session —
-              deleting it would be the silent filtering ADR 0012 forbids, and
-              the request really is still open. What it must not do is offer
-              Approve/Deny that dispatch into nothing, so the buttons are
-              disabled and the observation that disabled them is named. */}
-            {sessionUnanswerableNotice && (
-              <p
-                id="session-request-answerability-note"
-                className="sessions-detail__request-note"
-                data-testid="session-request-answerability"
-              >
-                {sessionUnanswerableNotice}
-              </p>
-            )}
-            <div className="sessions-detail__request-actions">
-              <Button
-                variant="primary"
-                disabled={respond.isPending || sessionUnanswerable}
-                aria-describedby={
-                  sessionUnanswerable
-                    ? 'session-request-answerability-note'
-                    : undefined
-                }
-                onClick={() => respond.mutate('accept')}
-              >
-                {pendingRequestPresentation.accept}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={respond.isPending || sessionUnanswerable}
-                aria-describedby={
-                  sessionUnanswerable
-                    ? 'session-request-answerability-note'
-                    : undefined
-                }
-                onClick={() => respond.mutate('decline')}
-              >
-                {pendingRequestPresentation.decline}
-              </Button>
-            </div>
-          </div>
-        )}
+      <ConversationBody
+        density="record"
+        connection={connection}
+        session={conversationSession ?? session}
+        readOnly={isPeerRecord || conversationWritable === false}
+        answeringDeniedReason={sessionUnanswerableNotice ?? undefined}
+        reader={{
+          agentLabel,
+          agents,
+          isStreaming,
+          failureShownAbove: !isPeerRecord && Boolean(failureText),
+          notices: historyNotices,
+          onSettledChange: onTranscriptSettledChange,
+          preserveReading: importantNotice || Boolean(evidenceReveal),
+        }}
+        scrollContainerRef={transcriptScrollRef}
+        onChanged={onTaskChanged}
+        composer={
+          hideGenericCompose || isPeerRecord
+            ? undefined
+            : {
+                input,
+                onInputChange: setInput,
+                onSent: (submitted) =>
+                  setInput((current) => (current === submitted ? '' : current)),
+                disabled: sessionUnanswerable || conversationWritable === false,
+                reason:
+                  sessionUnanswerableNotice ??
+                  (conversationWritable === false
+                    ? 'This conversation is read only for this connection.'
+                    : undefined),
+              }
+        }
+        beforeTranscript={
+          <>
+            <SessionDetailErrors
+              failureText={failureText}
+              failureNote={failureNote}
+              onDismissFailure={acknowledgeFailure}
+              dismissFailurePending={acknowledgeFailurePending}
+              dismissFailureError={acknowledgeFailureError}
+            />
 
-      {/* archive#3305: one scroll region for everything between the pinned
-          header and the pinned request/compose controls. The previous fixed
-          grid template assigned one flexible row by position, so any other
-          section that grew (error stacks, multiple attention cards, the
-          context grid) was clipped with no way to reach it. */}
-      <div className="sessions-detail__scroll" ref={transcriptScrollRef}>
-        <SessionDetailErrors
-          failureText={failureText}
-          failureNote={failureNote}
-          onDismissFailure={acknowledgeFailure}
-          dismissFailurePending={acknowledgeFailurePending}
-          dismissFailureError={acknowledgeFailureError}
-          stopTaskError={confirmStop ? null : stopTask.error}
-          sendTurnError={sendError}
-          respondError={respond.error}
-          onDraftSendError={
-            sendError && !hideGenericCompose && !isStreaming
-              ? () => {
-                  const draft = errorAgentDraft({
-                    attempted: 'Continue session',
-                    error: sendError,
-                    context: {
-                      threadId,
-                      provider: session.provider,
-                      lifecycleState: session.lifecycleState,
-                    },
-                  });
-                  setInput((current) =>
-                    current.trim() ? `${current}\n\n${draft}` : draft,
-                  );
-                }
-              : undefined
-          }
-        />
+            <OwnedWorkCleanup
+              session={session}
+              apiBase={apiBase}
+              onRemoved={onTaskChanged}
+            />
 
-        <OwnedWorkCleanup
-          session={session}
-          apiBase={apiBase}
-          onRemoved={onTaskChanged}
-        />
-
-        <SessionDetailAttention
-          checkFailed={attentionCheckFailed}
-          errorMessage={attentionErrorMessage}
-          onRetry={attentionRefetch}
-          items={visibleAttentionItems}
-          answerHere={!isPeerRecord}
-        />
-
-        {isPeerRecord ? (
-          <p
-            className="sessions-detail__peer-note"
-            data-testid="session-peer-transcript-note"
-          >
-            {PEER_TRANSCRIPT_ELSEWHERE}
-          </p>
-        ) : (
-          <SessionTranscript
-            apiBase={apiBase}
-            session={session}
-            agentLabel={agentLabel}
-            isStreaming={isStreaming}
-            failureShownAbove={Boolean(failureText)}
-            notices={historyNotices}
-            onSettledChange={onTranscriptSettledChange}
-            scrollContainerRef={transcriptScrollRef}
-            preserveReading={importantNotice || Boolean(evidenceReveal)}
-          />
-        )}
-
-        <details
-          ref={detailsRef}
-          className="sessions-detail__disclosure"
-          data-testid="session-details-disclosure"
-        >
-          <summary>Details</summary>
-          <div className="sessions-detail__disclosure-body">
-            <p className="sessions-detail__session-id">
-              <span>Session ID</span>
-              <code>{threadId}</code>
-              <Button variant="secondary" onClick={copySessionId}>
-                Copy ID
-              </Button>
-            </p>
-            <dl
-              className="sessions-detail__context"
-              aria-label="Task context"
-              ref={evidenceRegionRef}
-              tabIndex={-1}
-              data-testid="session-evidence-region"
+            <SessionDetailAttention
+              checkFailed={attentionCheckFailed}
+              errorMessage={attentionErrorMessage}
+              onRetry={attentionRefetch}
+              items={visibleAttentionItems}
+              answerHere={!isPeerRecord}
+            />
+          </>
+        }
+        afterTranscript={
+          <>
+            <details
+              ref={detailsRef}
+              className="sessions-detail__disclosure"
+              data-testid="session-details-disclosure"
             >
-              <div className="sessions-detail__context-item">
-                <dt>Last user action</dt>
-                <dd
-                  title={
-                    latestOrigin ? clientOriginDetail(latestOrigin) : undefined
-                  }
+              <summary>Details</summary>
+              <div className="sessions-detail__disclosure-body">
+                <p className="sessions-detail__session-id">
+                  <span>Session ID</span>
+                  <code>{threadId}</code>
+                  <Button variant="secondary" onClick={copySessionId}>
+                    Copy ID
+                  </Button>
+                </p>
+                <dl
+                  className="sessions-detail__context"
+                  aria-label="Task context"
+                  ref={evidenceRegionRef}
+                  tabIndex={-1}
+                  data-testid="session-evidence-region"
                 >
-                  {lastUserAction}
-                  {lastUserActionWhen ? ` · ${lastUserActionWhen}` : ''}
-                </dd>
-              </div>
-              {rows.map((row) => (
-                <div className="sessions-detail__context-item" key={row.label}>
-                  <dt>{row.label}</dt>
-                  <dd>{row.value}</dd>
-                </div>
-              ))}
-              {linkedFlowRun && (
-                <div
-                  className="sessions-detail__context-item"
-                  key="linked-flow"
-                >
-                  <dt>Linked Flow</dt>
-                  <dd>
-                    <strong>
-                      {flowRunDisplayIdentity(linkedFlowRun.definitionId)}
-                    </strong>
-                    <p className="sessions-detail__workflow-hint">
-                      {linkedFlowStateLabel(linkedFlowRun.run.state)}
-                      {linkedFlowRun.run.openGates.length > 0
-                        ? ` · gates: ${linkedFlowRun.run.openGates.map((gate) => gate.id).join(', ')}`
-                        : ''}
-                    </p>
-                  </dd>
-                </div>
-              )}
-              {/* archive#189. Its own row, always — never merged into "Linked
+                  <div className="sessions-detail__context-item">
+                    <dt>Last user action</dt>
+                    <dd
+                      title={
+                        latestOrigin
+                          ? clientOriginDetail(latestOrigin)
+                          : undefined
+                      }
+                    >
+                      {lastUserAction}
+                      {lastUserActionWhen ? ` · ${lastUserActionWhen}` : ''}
+                    </dd>
+                  </div>
+                  {rows.map((row) => (
+                    <div
+                      className="sessions-detail__context-item"
+                      key={row.label}
+                    >
+                      <dt>{row.label}</dt>
+                      <dd>{row.value}</dd>
+                    </div>
+                  ))}
+                  {linkedFlowRun && (
+                    <div
+                      className="sessions-detail__context-item"
+                      key="linked-flow"
+                    >
+                      <dt>Linked Flow</dt>
+                      <dd>
+                        <strong>
+                          {flowRunDisplayIdentity(linkedFlowRun.definitionId)}
+                        </strong>
+                        <p className="sessions-detail__workflow-hint">
+                          {linkedFlowStateLabel(linkedFlowRun.run.state)}
+                          {linkedFlowRun.run.openGates.length > 0
+                            ? ` · gates: ${linkedFlowRun.run.openGates.map((gate) => gate.id).join(', ')}`
+                            : ''}
+                        </p>
+                      </dd>
+                    </div>
+                  )}
+                  {/* archive#189. Its own row, always — never merged into "Linked
                 Flow" above and never suppressed by it. They are two different
                 runs with independent lifecycles, and a session routinely has
                 one and not the other; one combined figure is how a
@@ -594,130 +493,95 @@ export function MutableSessionDetail({
                 progress. No freshness is claimed: `flow_run` carries no
                 currency stamp upstream, so the row says where the values came
                 from and stops. */}
-              {builderRun && (
-                <div className="sessions-detail__context-item">
-                  <dt>Builder run</dt>
-                  <dd>
-                    <strong>{builderRun.taskSlug ?? 'Unavailable'}</strong>
-                    <p className="sessions-detail__workflow-hint">
-                      {builderRunMatchLabel(builderRun.matchKind)} ·{' '}
-                      {builderRunIdentityLabel(builderRun.identityStatus)}
-                    </p>
-                    {builderRun.flowRun ? (
-                      <p className="sessions-detail__workflow-hint">
-                        {flowRunDisplayIdentity(
-                          builderRun.flowRun.definition_id,
-                        )}{' '}
-                        · {builderRun.flowRun.current_step} ·{' '}
-                        {builderRun.flowRun.status}
-                        {builderRun.flowRun.open_gate_ids.length > 0
-                          ? ` · gates: ${builderRun.flowRun.open_gate_ids.join(', ')}`
-                          : ''}
-                        {sidecarWriteProvenance(builderRun.sidecarUpdatedAt)}
-                      </p>
-                    ) : (
-                      /* Only for a sidecar that was actually READ. A binding
+                  {builderRun && (
+                    <div className="sessions-detail__context-item">
+                      <dt>Builder run</dt>
+                      <dd>
+                        <strong>{builderRun.taskSlug ?? 'Unavailable'}</strong>
+                        <p className="sessions-detail__workflow-hint">
+                          {builderRunMatchLabel(builderRun.matchKind)} ·{' '}
+                          {builderRunIdentityLabel(builderRun.identityStatus)}
+                        </p>
+                        {builderRun.flowRun ? (
+                          <p className="sessions-detail__workflow-hint">
+                            {flowRunDisplayIdentity(
+                              builderRun.flowRun.definition_id,
+                            )}{' '}
+                            · {builderRun.flowRun.current_step} ·{' '}
+                            {builderRun.flowRun.status}
+                            {builderRun.flowRun.open_gate_ids.length > 0
+                              ? ` · gates: ${builderRun.flowRun.open_gate_ids.join(', ')}`
+                              : ''}
+                            {sidecarWriteProvenance(
+                              builderRun.sidecarUpdatedAt,
+                            )}
+                          </p>
+                        ) : (
+                          /* Only for a sidecar that was actually READ. A binding
                        whose sidecar could not be opened is a broken binding,
                        not a run that has yet to publish, and saying otherwise
                        would assert a currency nobody has — directly above the
                        true reason. */
-                      builderRun.taskSlug &&
-                      !builderRun.taskSidecarUnreadable && (
+                          builderRun.taskSlug &&
+                          !builderRun.taskSidecarUnreadable && (
+                            <p className="sessions-detail__workflow-hint">
+                              No run has been published for this task yet.
+                            </p>
+                          )
+                        )}
+                        {builderRun.reason && (
+                          <p className="sessions-detail__workflow-hint">
+                            {builderRun.reason}
+                          </p>
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                  {!linkedFlowRun && workflowEntries.length > 0 && (
+                    <div
+                      className="sessions-detail__context-item"
+                      key="workflow"
+                    >
+                      <dt>Project workflows</dt>
+                      <dd>
                         <p className="sessions-detail__workflow-hint">
-                          No run has been published for this task yet.
+                          Not linked to this session — active flow-agents tasks
+                          in this project workspace.
                         </p>
-                      )
-                    )}
-                    {builderRun.reason && (
-                      <p className="sessions-detail__workflow-hint">
-                        {builderRun.reason}
-                      </p>
-                    )}
-                  </dd>
-                </div>
-              )}
-              {!linkedFlowRun && workflowEntries.length > 0 && (
-                <div className="sessions-detail__context-item" key="workflow">
-                  <dt>Project workflows</dt>
-                  <dd>
-                    <p className="sessions-detail__workflow-hint">
-                      Not linked to this session — active flow-agents tasks in
-                      this project workspace.
-                    </p>
-                    <WorkflowStatusLineList
-                      entries={workflowEntries}
-                      moreCount={workflowMoreCount}
+                        <WorkflowStatusLineList
+                          entries={workflowEntries}
+                          moreCount={workflowMoreCount}
+                        />
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+
+                <LazyBoundary
+                  load={loadConversationPullRequestLinks}
+                  // The durable conversation, not this Session's own thread: a
+                  // successor Session (after a context reset or a handoff) is not
+                  // a conversation id, and the links belong to the conversation.
+                  componentProps={{
+                    conversationId: session.conversationId ?? threadId,
+                    linkFormCollapsed: true,
+                  }}
+                  pending={
+                    <SkeletonBlock
+                      label="Reading linked pull requests"
+                      count={1}
                     />
-                  </dd>
-                </div>
-              )}
-            </dl>
+                  }
+                />
 
-            <LazyBoundary
-              load={loadConversationPullRequestLinks}
-              // The durable conversation, not this Session's own thread: a
-              // successor Session (after a context reset or a handoff) is not
-              // a conversation id, and the links belong to the conversation.
-              componentProps={{
-                conversationId: session.conversationId ?? threadId,
-                linkFormCollapsed: true,
-              }}
-              pending={
-                <SkeletonBlock label="Reading linked pull requests" count={1} />
-              }
-            />
-
-            <SessionDetailDiagnostics
-              eventCount={events.length}
-              entries={diagnosticsLog}
-            />
-          </div>
-        </details>
-      </div>
-
-      {!hideGenericCompose && !isPeerRecord && (
-        <SessionReplyComposer
-          input={input}
-          onInputChange={setInput}
-          onSend={() => sendTurn.mutate({ text: input })}
-          busy={isStreaming}
-          pending={sendTurnPending}
-          disabled={sessionUnanswerable}
-          label={
-            isDelegated ? 'Continue delegated task' : 'Send input to session'
-          }
-          placeholder={
-            isDelegated
-              ? 'Add a follow-up for this task…'
-              : `Reply to ${agentLabel}…`
-          }
-        />
-      )}
-
-      <ConfirmModal
-        isOpen={confirmStop}
-        title="Stop this task?"
-        message="Stops the running turn. The session stays open."
-        confirmLabel="Stop task"
-        cancelLabel="Keep running"
-        variant="danger"
-        role="alertdialog"
-        pending={stopTask.isPending}
-        error={
-          stopTask.error
-            ? stopTask.error instanceof Error
-              ? stopTask.error.message
-              : 'Unable to stop this task'
-            : null
+                <SessionDetailDiagnostics
+                  eventCount={events.length}
+                  entries={diagnosticsLog}
+                />
+              </div>
+            </details>
+          </>
         }
-        onCancel={() => setConfirmStop(false)}
-        confirmDisabled={!canStop}
-        onConfirm={() => {
-          if (!canStop) return;
-          stopTask.mutate(undefined, {
-            onSuccess: () => setConfirmStop(false),
-          });
-        }}
       />
 
       {isDelegated && !isPeerRecord && (

@@ -22,6 +22,7 @@ import {
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { NavigationView } from '../types';
 import { connectionEngineId } from '../utils/execution';
+import { describeStationFailure } from '../utils/stationFailure';
 import { ProviderConnectionForm } from './provider-settings/ProviderConnectionForm';
 import { ProviderStackOverview } from './provider-settings/ProviderStackOverview';
 import { ProviderTypePicker } from './provider-settings/ProviderTypePicker';
@@ -242,7 +243,7 @@ export function ProviderSettingsView({
     },
     onError: (err: Error) => {
       setTestResult(null);
-      setTestError(err.message);
+      setTestError(describeStationFailure(err).body);
     },
   });
 
@@ -289,7 +290,11 @@ export function ProviderSettingsView({
             : current,
         );
       }
-      setError(err.message);
+      setError(
+        err instanceof ConnectionModelSelectionError
+          ? 'Choose which installed Ollama model to use.'
+          : describeStationFailure(err).body,
+      );
     },
   });
 
@@ -305,7 +310,7 @@ export function ProviderSettingsView({
     onError: (err: Error, id) => {
       if (id !== selectedProviderId) return;
       setShowDeleteModal(false);
-      setError(err.message);
+      setError(describeStationFailure(err).body);
     },
   });
 

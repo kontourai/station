@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
         {
           entries: [] as Array<{
             clientInputId: string;
+            childId?: string;
+            turnId?: string;
             text: string;
             delivery: 'delivered' | 'refused' | 'indeterminate';
             principal?: { display: string };
@@ -120,6 +122,9 @@ beforeEach(async () => {
   mocks.writeGate = undefined;
   mocks.send.mockReset();
   mocks.history.isError = false;
+  mocks.history.refetch.mockImplementation(async () => ({
+    data: mocks.history.data,
+  }));
   mocks.history.data = { pages: [{ entries: [] }] };
   mocks.authority.observation.grant = { kind: 'operator' };
 });
@@ -149,7 +154,7 @@ test('sends only to the named child and keeps the same request after an uncertai
   const input = await screen.findByLabelText('Send to Worker');
   fireEvent.change(input, { target: { value: 'Please check this' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-  await screen.findByText(/Delivery could not be confirmed/);
+  await screen.findAllByText('May have reached the agent');
   const first = mocks.send.mock.calls[0][0];
   expect(first).toMatchObject({
     threadId: 'parent',
@@ -157,11 +162,17 @@ test('sends only to the named child and keeps the same request after an uncertai
     turnId: 'turn',
     input: 'Please check this',
   });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Check saved instruction' }),
-  );
-  await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(2));
-  expect(mocks.send.mock.calls[1][0]).toEqual(first);
+  fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+  await screen.findByText('Station still can’t confirm it.');
+  expect(mocks.send).toHaveBeenCalledTimes(1);
+  expect(mocks.history.refetch).toHaveBeenCalled();
+  expect(
+    (
+      await get<{ clientInputId: string }>(
+        'child-steer:' + JSON.stringify(['owner', 'parent', 'child']),
+      )
+    )?.clientInputId,
+  ).toBe(first.clientInputId);
 });
 
 test('concurrent panels claim one durable instruction before dispatch', async () => {
@@ -172,7 +183,7 @@ test('concurrent panels claim one durable instruction before dispatch', async ()
   const inputB = await within(b.container).findByLabelText('Send to B');
   fireEvent.change(inputA, { target: { value: 'First instruction' } });
   fireEvent.click(within(a.container).getByRole('button', { name: 'Send' }));
-  await within(a.container).findByText(/Delivery could not be confirmed/);
+  await within(a.container).findAllByText('May have reached the agent');
   fireEvent.change(inputB, { target: { value: 'Second instruction' } });
   fireEvent.click(within(b.container).getByRole('button', { name: 'Send' }));
   await within(b.container).findByText(
@@ -197,7 +208,6 @@ test('an older response cannot clear a later uncertain instruction', async () =>
           finishFirst = resolve;
         }),
     )
-    .mockResolvedValueOnce({ outcome: 'steered' })
     .mockResolvedValue({ outcome: 'indeterminate' });
   const a = view('turn', true, 'A');
   const b = view('turn', true, 'B');
@@ -206,17 +216,29 @@ test('an older response cannot clear a later uncertain instruction', async () =>
   fireEvent.change(inputA, { target: { value: 'First instruction' } });
   fireEvent.click(within(a.container).getByRole('button', { name: 'Send' }));
   await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
+  const first = mocks.send.mock.calls[0][0];
+  mocks.history.data = {
+    pages: [
+      { entries: [{ ...first, text: first.input, delivery: 'delivered' }] },
+    ],
+  };
   const checking = view('turn', true, 'Checking');
   fireEvent.click(
     await within(checking.container).findByRole('button', {
-      name: 'Check saved instruction',
+      name: 'Check',
     }),
   );
-  await within(checking.container).findByText('Sent to the subagent.');
+  await waitFor(() =>
+    expect(
+      within(checking.container).queryByText(
+        'Saved instruction: First instruction',
+      ),
+    ).toBeNull(),
+  );
   fireEvent.change(inputB, { target: { value: 'Second instruction' } });
   fireEvent.click(within(b.container).getByRole('button', { name: 'Send' }));
-  await within(b.container).findByText(/Delivery could not be confirmed/);
-  const second = mocks.send.mock.calls[2][0];
+  await within(b.container).findAllByText('May have reached the agent');
+  const second = mocks.send.mock.calls[1][0];
   finishFirst({ outcome: 'steered' });
   await within(a.container).findByText('Sent to the subagent.');
   a.unmount();
@@ -226,11 +248,16 @@ test('an older response cannot clear a later uncertain instruction', async () =>
   expect(
     await screen.findByText('Saved instruction: Second instruction'),
   ).toBeTruthy();
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Check saved instruction' }),
-  );
-  await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(4));
-  expect(mocks.send.mock.calls[3][0]).toEqual(second);
+  fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+  await screen.findByText('Station still can’t confirm it.');
+  expect(mocks.send).toHaveBeenCalledTimes(2);
+  expect(
+    (
+      await get<{ clientInputId: string }>(
+        'child-steer:' + JSON.stringify(['owner', 'parent', 'child']),
+      )
+    )?.clientInputId,
+  ).toBe(second.clientInputId);
 });
 
 test('freezes editing until the instruction is durably saved', async () => {
@@ -252,7 +279,7 @@ test('freezes editing until the instruction is durably saved', async () => {
   const disabled = (input as HTMLTextAreaElement).disabled;
   fireEvent.change(input, { target: { value: 'Changed during save' } });
   release();
-  await screen.findByText(/Delivery could not be confirmed/);
+  await screen.findAllByText('May have reached the agent');
   expect(disabled).toBe(true);
   expect(mocks.send.mock.calls[0][0].input).toBe('Original instruction');
   expect(
@@ -322,7 +349,7 @@ test('a remounted child keeps the exact uncertain request and shows recorded del
     target: { value: 'Remember this' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-  await screen.findByText(/Delivery could not be confirmed/);
+  await screen.findAllByText('May have reached the agent');
   const first = mocks.send.mock.calls[0][0];
   rendered.unmount();
   mocks.history.data = {
@@ -331,6 +358,8 @@ test('a remounted child keeps the exact uncertain request and shows recorded del
         entries: [
           {
             clientInputId: first.clientInputId,
+            childId: first.childId,
+            turnId: first.turnId,
             text: 'Remember this',
             delivery: 'indeterminate',
             principal: { display: 'Brian' },
@@ -341,14 +370,11 @@ test('a remounted child keeps the exact uncertain request and shows recorded del
     ],
   };
   view('new-turn');
-  expect(
-    await screen.findByText('Brian · mobile · Delivery unconfirmed'),
-  ).toBeTruthy();
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Check saved instruction' }),
-  );
-  await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(2));
-  expect(mocks.send.mock.calls[1][0]).toEqual(first);
+  expect(await screen.findByText(/Brian · mobile/)).toBeTruthy();
+  fireEvent.click(await screen.findByRole('button', { name: 'Check' }));
+  await screen.findByText('Station still can’t confirm it.');
+  expect(mocks.send).toHaveBeenCalledTimes(1);
+  expect(mocks.history.refetch).toHaveBeenCalled();
 });
 
 test('an open engine transcript keeps sent instructions attributed behind a disclosure without hiding uncertain input', async () => {

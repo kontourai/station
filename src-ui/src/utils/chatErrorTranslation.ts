@@ -812,7 +812,8 @@ export function translateChatError(
 
   return {
     title: 'Error',
-    body: text || 'An unknown error occurred.',
+    body: 'Station could not complete this request.',
+    disclosureRaw: true,
     // archive#3299: the fallback classified nothing, so it must not assert
     // that retrying helps \u2014 that is a claim about a cause it does not know.
     hint: 'Retrying may help if this was a temporary failure.',

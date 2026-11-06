@@ -529,7 +529,7 @@ export function InboxRow({
   // The ONE status read (#3042): the line here and the lane this row was
   // filed under come from the same function.
   const status = useObservedWorkStatus(item, now, facts);
-  const claims = useSessionWorkClaims(item);
+  const claims = useSessionWorkClaims(facts?.hostDetails === false ? {} : item);
   const chips = inboxRowChips(item, { isWoken, claims });
   // Provider identity does not establish which app originated a transcript.
   const agentText = item.agentLabel;
@@ -1354,6 +1354,7 @@ export function InboxGroupList({
         isDismissed={group.id === 'dismissed'}
         resolution={
           resolutionState.supported &&
+          workFacts?.get(item.id)?.hostDetails !== false &&
           item.kind !== 'remote-session' &&
           item.controlMode !== 'read-only-attached' &&
           item.conversationId &&
@@ -1389,7 +1390,9 @@ export function InboxGroupList({
             item.orchestrationThreadId ?? item.chatSessionId ?? '',
           ) ?? undefined
         }
-        {...rowProjectMarks(item, projectAccentBySlug, projectIconBySlug)}
+        {...(workFacts?.get(item.id)?.hostDetails === false
+          ? {}
+          : rowProjectMarks(item, projectAccentBySlug, projectIconBySlug))}
       />
     );
   const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (

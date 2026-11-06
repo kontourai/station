@@ -696,7 +696,7 @@ describe('settings catalog completeness', () => {
 
     expect(container.querySelector('.settings__skeleton')).toBeNull();
     expect(screen.getByText('Unable to load settings')).toBeTruthy();
-    expect(screen.getByText('config read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     // 6-OPS-23: the frame the page owns does not depend on the read — the
     // title is the page frame's (page-frame-registry.ts), rendered by the
     // shell above this body, so the page itself renders only the failure.

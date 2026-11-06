@@ -26,8 +26,19 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
 const serverEventsMount = vi.hoisted(() => vi.fn(() => null));
+// Connection authority is exercised by station-connection-registry.test.tsx;
+// these shell routing fixtures intentionally supply no query/credential graph.
+vi.mock('../connections/StationConnectionsContext', () => ({
+  StationConnectionsProvider: ({ children }: { children: ReactNode }) =>
+    children,
+}));
 vi.mock('../hooks/ServerEventsMount', () => ({
   ServerEventsMount: serverEventsMount,
+}));
+// Outbox transport is qualified by its mounted controller suites. This shell
+// routing fixture has no credential graph or QueryClient.
+vi.mock('../hooks/OutboundQueueFlushMount', () => ({
+  OutboundQueueFlushMount: () => null,
 }));
 
 vi.mock('../components/chat/TaskShapingComposer', () => ({

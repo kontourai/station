@@ -994,7 +994,7 @@ describe('NotificationHistory error state (Review H1)', () => {
 
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Unable to load notifications')).toBeTruthy();
-    expect(screen.getByText('notifications read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.queryByText('All caught up')).toBeNull();
   });
 
@@ -1009,7 +1009,7 @@ describe('NotificationHistory error state (Review H1)', () => {
 
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Unable to load notifications')).toBeTruthy();
-    expect(screen.getByText('attention read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.queryByText('All caught up')).toBeNull();
   });
 

@@ -893,7 +893,8 @@ describe('layout apply and removal failures (4-HOME-014)', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain("Couldn't add that layout");
-    expect(alert.textContent).toContain('Layout storage is unavailable');
+    expect(alert.textContent).toContain('Try again in a moment.');
+    expect(alert.textContent).not.toContain('Layout storage is unavailable');
     expect(screen.getByRole('dialog', { name: 'Add Layout' })).toBeTruthy();
   });
 
@@ -909,7 +910,7 @@ describe('layout apply and removal failures (4-HOME-014)', () => {
       expect(
         screen
           .getAllByRole('alert')
-          .some((node) => node.textContent?.includes('apply failed')),
+          .some((node) => node.textContent?.includes('Try again in a moment.')),
       ).toBe(true),
     );
   });
@@ -957,6 +958,7 @@ describe('layout apply and removal failures (4-HOME-014)', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain("Couldn't remove that layout");
-    expect(alert.textContent).toContain('Project storage is unavailable');
+    expect(alert.textContent).toContain('Try again in a moment.');
+    expect(alert.textContent).not.toContain('Project storage is unavailable');
   });
 });

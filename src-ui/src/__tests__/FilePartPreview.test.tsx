@@ -108,6 +108,7 @@ describe('FilePartPreview', () => {
     expect(image.getAttribute('src')).toBe('blob:station-attachment');
     expect(authenticatedFetch).toHaveBeenCalledWith(
       `http://station.test/api/attachments/${REF}`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     // The route serves inert octet-stream; the renderable type comes from the
     // attachment's own metadata.

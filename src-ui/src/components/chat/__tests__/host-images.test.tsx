@@ -97,6 +97,7 @@ describe('host images in a reply', () => {
     expect(image.getAttribute('src')).toBe('blob:host-image');
     expect(authenticatedFetch).toHaveBeenCalledWith(
       `http://station.test/api/attachments/${REF}`,
+      { requestScope: undefined, signal: expect.any(AbortSignal) },
     );
     expect(
       screen.getByRole('button', {

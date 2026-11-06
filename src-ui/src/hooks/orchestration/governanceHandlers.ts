@@ -1,11 +1,17 @@
+import type { StationStateScope } from '../../connections/station-state';
 import type { ChatMessage } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { OrchestrationEvent } from './types';
 
-function appendSystemMessage(threadId: string, message: ChatMessage) {
-  const chat = activeChatsStore.getChatForExecutionSession(threadId);
+function appendSystemMessage(
+  threadId: string,
+  message: ChatMessage,
+  station?: StationStateScope,
+) {
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(threadId);
   if (!chat) return;
-  activeChatsStore.updateChat(threadId, {
+  chatStore.updateChat(threadId, {
     messages: [...(chat.messages || []), message],
   });
 }
@@ -27,6 +33,7 @@ export function handlePolicyHooksAttachedEvent(
 
 export function handlePolicyStopVerdictEvent(
   event: Extract<OrchestrationEvent, { method: 'policy.stop-verdict' }>,
+  station?: StationStateScope,
 ) {
   if (event.verdict === 'pass') return;
   const heading =
@@ -35,15 +42,20 @@ export function handlePolicyStopVerdictEvent(
       : 'Policy warned on completion.';
   const warnings =
     event.warnings.length > 0 ? `\n${event.warnings.join('\n')}` : '';
-  appendSystemMessage(event.threadId, {
-    ...eventMessageMeta(event),
-    role: 'system',
-    content: `${heading}${warnings}`,
-  });
+  appendSystemMessage(
+    event.threadId,
+    {
+      ...eventMessageMeta(event),
+      role: 'system',
+      content: `${heading}${warnings}`,
+    },
+    station,
+  );
 }
 
 export function handlePlatformMutationEvent(
   event: Extract<OrchestrationEvent, { method: 'platform.mutation' }>,
+  station?: StationStateScope,
 ) {
   if (event.outcome === 'allowed') return;
   const heading =
@@ -52,24 +64,33 @@ export function handlePlatformMutationEvent(
       : event.outcome === 'failed'
         ? `Platform change failed: ${event.tool}`
         : `Platform change warned: ${event.tool}`;
-  appendSystemMessage(event.threadId, {
-    ...eventMessageMeta(event),
-    role: 'system',
-    content: event.reason ? `${heading}\n${event.reason}` : heading,
-  });
+  appendSystemMessage(
+    event.threadId,
+    {
+      ...eventMessageMeta(event),
+      role: 'system',
+      content: event.reason ? `${heading}\n${event.reason}` : heading,
+    },
+    station,
+  );
 }
 
 export function handleWorkflowStateChangedEvent(
   event: Extract<OrchestrationEvent, { method: 'workflow.state-changed' }>,
+  station?: StationStateScope,
 ) {
   if (event.trigger === 'session-start') return;
-  appendSystemMessage(event.threadId, {
-    ...eventMessageMeta(event),
-    role: 'system',
-    content: event.nextActionSummary
-      ? `Workflow ${event.status}: ${event.nextActionSummary}`
-      : `Workflow ${event.status} (${event.phase})`,
-  });
+  appendSystemMessage(
+    event.threadId,
+    {
+      ...eventMessageMeta(event),
+      role: 'system',
+      content: event.nextActionSummary
+        ? `Workflow ${event.status}: ${event.nextActionSummary}`
+        : `Workflow ${event.status} (${event.phase})`,
+    },
+    station,
+  );
 }
 
 export function handleConversationForkedEvent(

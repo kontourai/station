@@ -16,6 +16,10 @@
 .child-instructions li {
   overflow-wrap: anywhere;
 }
+.child-instructions ol {
+  margin: 0;
+  padding-inline-start: var(--k-space-5);
+}
 .child-instructions summary {
   min-height: 44px;
   box-sizing: border-box;

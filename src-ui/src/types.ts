@@ -31,6 +31,7 @@ import type {
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
+import type { ChatStationBindingV1 } from './connections/station-connection';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
@@ -170,6 +171,13 @@ export interface ChatMessage {
    * `addEphemeralMessage`/`createEphemeralMessageState`, which always sets
    * this; there is no writer that sets it on any other message. */
   ephemeral?: boolean;
+  terminalSession?: boolean;
+  action?: {
+    label: string;
+    handler: () => void;
+    confirm?: 'unconfirmed-discard';
+  };
+  deliveryNotice?: import('./utils/messageDeliveryState').ConversationDeliveryNotice;
   /** Child identity on a local completion notice, for inline-card deduplication. */
   childWorkKey?: string;
   showContinue?: boolean;
@@ -363,6 +371,10 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  retainedTranscript?: import('./lib/retained-chat-transcript').RetainedChatTranscript;
+  stationConnectionUnavailable?: boolean;
+  stationBinding?: ChatStationBindingV1;
+  stationBindingInvalid?: boolean;
   peerChat?: PeerChatBinding;
   peerChatInvalid?: boolean;
   taskShaping?: boolean;
@@ -446,7 +458,8 @@ export interface ChatSession {
   executionAgentId?: string;
   executionOnCurrentStation?: boolean;
   expectedDefinitionFingerprint?: string;
-  requestedModel?: string;
+  /** Null explicitly resets the picker override; see ChatUIState.requestedModel. */
+  requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
   defaultModel?: string;

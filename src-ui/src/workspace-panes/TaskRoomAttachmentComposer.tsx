@@ -51,12 +51,14 @@ export function TaskRoomAttachmentComposer({
       {drop.isDraggingFiles && (
         <p role="status">Drop images or files to attach</p>
       )}
-      <fieldset disabled={locked} className="task-room-attachment-controls">
-        <ComposerAttachmentStrip
-          attachments={attachments.files}
-          onRemove={attachments.remove}
-        />
-      </fieldset>
+      {attachments.files.length > 0 && (
+        <fieldset disabled={locked} className="task-room-attachment-controls">
+          <ComposerAttachmentStrip
+            attachments={attachments.files}
+            onRemove={attachments.remove}
+          />
+        </fieldset>
+      )}
       {attachments.error && <p role="alert">{attachments.error}</p>}
       {children}
       <input

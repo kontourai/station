@@ -1233,7 +1233,8 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       // dock hands the pending list.
       cleanup();
       render(<>{queuedMessagesPropsMock.current?.outbox?.node}</>);
-      await screen.findByText(/Refused/);
+      await screen.findByText('Not sent', { selector: '[role="status"]' });
+      expect(screen.queryByText('Refused')).toBeNull();
       expect(Boolean(screen.queryByRole('button', { name: 'New chat' }))).toBe(
         startChat,
       );

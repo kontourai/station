@@ -56,10 +56,10 @@ and that tab would do the same in turn). An offline outbox message can be handed
 conversation is busy. A queued receipt retires its browser row; Station delivers
 it after the running turn. A busy chat without a conversation identity waits
 without spending an attempt. Other temporary deferrals wait a moment and a half
-before retry, whatever asks. A send another window has claimed reads "Sending", with no Refresh delivery,
+before retry, whatever asks. A send another window has claimed reads "Sending", with no Check,
 only while that window is proven running (it holds its renderer lock); a claim
 left by a window that closed or crashed reads "No answer yet" like its bubble,
-with Refresh delivery and Discard…, and the discard checks again that the window is gone.
+with Check and Discard…, and the discard checks again that the window is gone.
 A window's own claim reads "Sending" only while its own send is in progress.
 While any send reads "Sending" this way, or a copy is held by another window
 that may still be open, the list looks again every few seconds, since a window
@@ -67,7 +67,7 @@ that closes says nothing.
 If that lookup fails while released rows remain unresolved, each mounted flush
 hook checks again after 2 seconds, then 4 seconds. After three consecutive
 failed lookups, automatic checks pause and the message remains saved as delivery
-unconfirmed, with the failure reason visible. A valid answer resets that failure
+unconfirmed, with Check available for an explicit lookup. A valid answer resets that failure
 count. Each renderer keeps its own local retry schedule. Hiding the document, a browser offline
 event, lost connection health or `pagehide` cancels the retry and resets its
 backoff. Unmount or an authority change also cancels the old schedule. Returning
@@ -82,14 +82,14 @@ The lookup examines released rows, and rows whose app was closed, at the next
 launch or reconnect: never received → sent again with the same key; started →
 done; received → asked again later; queued in Station’s inbox → retained for
 inspection (the outbox does not yet settle that answer); possibly started, or the conversation runs
-on another Station → kept as unconfirmed, with Refresh delivery that asks Station once, reports the result,
-and never resends. A not-received answer enables an explicit Retry. More message actions → Copy message
+on another Station → kept as unconfirmed, with Check that asks Station once, reports the result,
+and never resends. A not-received answer enables an explicit Retry. More delivery actions → Copy message
 keeps the text available for recovery. The row also offers Discard… that removes it only after the user confirms
 "I checked, discard it" with the risk stated (its key is retired, so it is never
 sent again). Rows written with Station identity are sent to or settled by that Station;
 for another they wait, listed. A verified environment ID takes precedence over
 the address; rows that never learned an ID use the normalized address. Older
-rows without a Station identity retain their legacy any-Station behavior.
+rows without a Station identity stay with the host connection. Bound rows also require the matching authority partition.
 
 Station can also hold a follow-up itself, in the conversation's durable inbox
 ([#3568](https://github.com/kontourai/station/issues/3568), `whenBusy: 'queue'`

@@ -169,7 +169,7 @@ describe('AgentActivitySetting', () => {
 
     fireEvent.click(await toggle());
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'Failed to register for native push: 500',
+      'Try again in a moment.',
     );
     expect((await toggle()).getAttribute('aria-checked')).toBe('false');
   });

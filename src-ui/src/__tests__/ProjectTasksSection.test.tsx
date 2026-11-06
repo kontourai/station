@@ -323,7 +323,7 @@ describe('ProjectTasksSection', () => {
       target: { value: 'Starter task' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
-    expect(await screen.findByText(/response lost/i)).toBeTruthy();
+    expect(await screen.findByText(/Try again in a moment/)).toBeTruthy();
     const operationId = launchStarterTask.mock.calls[0][0].operationId;
     first.unmount();
 
@@ -885,7 +885,7 @@ describe('ProjectTasksSection', () => {
       fireEvent.click(screen.getByText('Linked work item for the Tasks board'));
       fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
       expect((await screen.findByRole('alert')).textContent).toContain(
-        'gh auth login',
+        'Try again in a moment.',
       );
       expect(navigate).not.toHaveBeenCalled();
     });
@@ -1242,7 +1242,7 @@ describe('ProjectTasksSection error state (Review H1)', () => {
 
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Unable to load tasks')).toBeTruthy();
-    expect(screen.getByText('tasks read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.queryByText('No tasks yet.')).toBeNull();
   });
 

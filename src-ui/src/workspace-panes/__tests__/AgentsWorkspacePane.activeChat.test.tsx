@@ -185,3 +185,7 @@ test('no chat is still no list, and an unknown id borrows nobody else’s work',
   expect(screen.getByText('No subagents running')).toBeTruthy();
   expect(screen.queryByText('Investigate flaky test')).toBeNull();
 });
+
+vi.mock('../../hooks/useActiveStationName', () => ({
+  useActiveStationName: () => 'Fixture Station',
+}));

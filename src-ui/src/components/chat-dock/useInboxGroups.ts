@@ -1,4 +1,5 @@
 import { useMemo, useSyncExternalStore } from 'react';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import {
   readSnoozes,
   snoozesVersion,
@@ -30,6 +31,7 @@ export function useInboxGroups(
   workFacts?: WorkFactsById,
   query = '',
 ): MobileActivityGroup[] {
+  const { namespace } = useAuthorityPersistence();
   const term = query.trim().toLocaleLowerCase();
   const matchingItems = useMemo(
     () =>
@@ -40,10 +42,11 @@ export function useInboxGroups(
               item.projectLabel,
               item.agentLabel,
               item.environmentLabel,
+              workFacts?.get(item.id)?.station?.label,
             ].some((value) => value?.toLocaleLowerCase().includes(term)),
           )
         : items,
-    [items, term],
+    [items, term, workFacts],
   );
   const includeDismissed = Boolean(term);
   const { visible, dismissed } = useInboxDismissals(matchingItems, workFacts);
@@ -59,7 +62,10 @@ export function useInboxGroups(
   );
   // `version` is the dependency that re-reads the map after a write.
   // biome-ignore lint/correctness/useExhaustiveDependencies: version is the change signal for readSnoozes
-  const snoozed = useMemo(() => readSnoozes(now), [now, version]);
+  const snoozed = useMemo(
+    () => readSnoozes(now, namespace),
+    [now, version, namespace],
+  );
   return useMemo(
     () => [
       ...groupMobileActivity(visible, now, snoozed, workFacts, resolution),

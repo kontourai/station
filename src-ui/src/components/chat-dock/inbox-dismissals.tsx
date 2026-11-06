@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
@@ -26,13 +27,17 @@ export function useInboxDismissals(
   items: HomeWorkItem[],
   facts?: WorkFactsById,
 ) {
+  const { namespace } = useAuthorityPersistence();
   const version = useSyncExternalStore(
     subscribeInboxDismissals,
     inboxDismissalsVersion,
     inboxDismissalsVersion,
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: storage version invalidates the persisted snapshot
-  const entries = useMemo(readInboxDismissals, [version]);
+  const entries = useMemo(
+    () => readInboxDismissals(namespace),
+    [version, namespace],
+  );
   const heldItems = useHeldLifecycles(items);
   const { visible, dismissed, woken } = useMemo(() => {
     const visible: HomeWorkItem[] = [];
@@ -51,11 +56,11 @@ export function useInboxDismissals(
   useEffect(() => {
     if (!woken.length) return;
     try {
-      restoreInboxItems(woken);
+      restoreInboxItems(woken, namespace);
     } catch {
       // Visibility follows the current observation even if storage is unavailable.
     }
-  }, [woken]);
+  }, [woken, namespace]);
   return { visible, dismissed };
 }
 
@@ -63,11 +68,15 @@ export function useInboxDismissActions(
   items: HomeWorkItem[],
   facts?: WorkFactsById,
 ) {
+  const { namespace } = useAuthorityPersistence();
+  const currentNamespace = useRef(namespace);
+  currentNamespace.current = namespace;
   const [error, setError] = useState<string | null>(null);
   // A toast can outlive the render where a local draft gained a durable ID.
   const currentItems = useRef(items);
   currentItems.current = items;
   const restore = (item: HomeWorkItem) => {
+    if (currentNamespace.current !== namespace) return;
     try {
       const current =
         currentItems.current.find(
@@ -79,7 +88,7 @@ export function useInboxDismissActions(
                   candidate.chatSessionId === item.chatSessionId,
               )),
         ) ?? item;
-      restoreInboxItems([current]);
+      restoreInboxItems([current], namespace);
       if (lastDismissToast) toastStore.dismiss(lastDismissToast);
       lastDismissToast = null;
       undoLastDismiss = null;
@@ -91,7 +100,7 @@ export function useInboxDismissActions(
   return {
     dismiss: (item: HomeWorkItem) => {
       try {
-        dismissInboxItem(item, facts?.get(item.id));
+        dismissInboxItem(item, facts?.get(item.id), namespace);
       } catch {
         setError('Could not save dismissal. Try again.');
         return;
@@ -125,10 +134,12 @@ let undoLastDismiss: (() => void) | null = null;
 /** One registered Undo command for the latest dismissal across inbox hosts. */
 export function InboxDismissUndo({ children }: { children: ReactNode }) {
   const { apiBase } = useApiBase();
+  const { namespace } = useAuthorityPersistence();
   useEffect(() => {
     void apiBase;
+    void namespace;
     undoLastDismiss = null;
-  }, [apiBase]);
+  }, [apiBase, namespace]);
   useKeyboardShortcut(
     'inbox.undoDismiss',
     'z',

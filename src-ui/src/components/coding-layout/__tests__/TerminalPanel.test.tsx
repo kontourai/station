@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { TerminalSessionError } from '@kontourai/station-sdk';
 import {
   act,
   cleanup,
@@ -38,7 +39,7 @@ const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
     state = 'connecting';
     status: string | undefined;
     readOnly = false;
-    error: { code: string; message: string } | undefined;
+    error: import('@kontourai/station-sdk').TerminalSessionError | undefined;
     listeners = new Set<Listener>();
     write = vi.fn((_data: string) => this.state === 'ready');
     resize = vi.fn();
@@ -83,7 +84,10 @@ const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
   return { executeCodingCommand: vi.fn(), store, FakeSession };
 });
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async (original) => ({
+  TerminalSessionError: (
+    await original<typeof import('@kontourai/station-sdk')>()
+  ).TerminalSessionError,
   executeCodingCommand,
   authenticatedFetch: (...args: unknown[]) => restartFetch(...args),
 }));
@@ -292,7 +296,7 @@ test('unowned saved history still yields a fresh shell', async () => {
   act(() =>
     FakeSession.instances[0]!.emit({
       state: 'failed',
-      error: { code: 'refused', message: 'Terminal access was refused.' },
+      error: new TerminalSessionError('refused'),
     }),
   );
   await waitFor(() => expect(store.open).toHaveBeenCalledTimes(2));
@@ -323,7 +327,7 @@ test('a dropped connection shows reconnecting and an explicit reconnect starts a
   act(() =>
     session.emit({
       state: 'failed',
-      error: { code: 'connection-lost', message: 'Terminal unavailable.' },
+      error: new TerminalSessionError('connection-lost'),
     }),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Reconnect terminal' }));
@@ -339,10 +343,10 @@ test('a missing PTY backend swaps to the command executor with the server reason
   act(() =>
     session.emit({
       state: 'failed',
-      error: {
-        code: 'pty-unavailable',
-        message: 'node-pty could not load on this host',
-      },
+      error: new TerminalSessionError(
+        'pty-unavailable',
+        'node-pty could not load on this host',
+      ),
     }),
   );
   expect((await screen.findByRole('alert')).textContent).toContain(
@@ -351,17 +355,13 @@ test('a missing PTY backend swaps to the command executor with the server reason
   expect(screen.getByPlaceholderText('Type a command...')).toBeTruthy();
 });
 
-test('a broker route refusal is shown instead of a terminal', async () => {
+test('a broker route refusal explains that a direct Station connection is required', async () => {
   renderTerminal();
   await waitFor(() => expect(FakeSession.instances).toHaveLength(1));
   act(() =>
     FakeSession.instances[0]!.emit({
       state: 'failed',
-      error: {
-        code: 'raw-egress-unavailable',
-        message:
-          'Terminals need a direct Station connection. Select a direct connection and try again.',
-      },
+      error: new TerminalSessionError('raw-egress-unavailable'),
     }),
   );
   expect((await screen.findByRole('alert')).textContent).toContain(
@@ -507,9 +507,7 @@ test('a refused restart says why and keeps the ended notice', async () => {
     ended: { message: 'check exited with code 3.' },
   });
   const { session } = await connectTerminal();
-  session.restart.mockRejectedValue(
-    new Error('This terminal cannot be restarted'),
-  );
+  session.restart.mockRejectedValue(new TerminalSessionError('refused'));
   act(() => session.emit({ status: 'exited' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Restart' }));
   await waitFor(() =>
@@ -518,8 +516,10 @@ test('a refused restart says why and keeps the ended notice', async () => {
         .getAllByRole('alert')
         .map((alert) => alert.textContent)
         .join(' '),
-    ).toContain('This terminal cannot be restarted'),
+    ).toContain('Terminal access was refused.'),
   );
+  expect(screen.getByText('check exited with code 3.')).toBeTruthy();
+  expect(session.restart).toHaveBeenCalledTimes(1);
 });
 
 test('a shell view passes its output through unchanged', async () => {

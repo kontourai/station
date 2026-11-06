@@ -13,6 +13,7 @@ import {
 import { ErrorState } from '../../../components/state';
 import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
+import { describeStationFailure } from '../../../utils/stationFailure';
 import { useReviewDraft } from './useReviewDraft';
 
 export function ReviewAnchorComposer({
@@ -71,9 +72,10 @@ export function ReviewAnchorComposer({
               onCancel();
             } catch (cause) {
               setError(
-                cause instanceof Error
-                  ? cause.message
-                  : 'Could not create review comment.',
+                cause instanceof Error &&
+                  cause.message === 'Document changed. Select text again.'
+                  ? 'Document changed. Select text again.'
+                  : describeStationFailure(cause).body,
               );
             } finally {
               setPending(false);

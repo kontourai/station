@@ -2,6 +2,7 @@ import type { DesktopUpdateState } from '@kontourai/station-contracts/desktop-up
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
 import { installDesktopUpdateAndRestart } from '../../platform/native/desktopUpdate';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { TechnicalDetails } from '../../views/settings/coreUpdatePresentation';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
@@ -231,9 +232,7 @@ export function DesktopUpdateRestartDialog({
           },
           (error: unknown) => {
             setRequested(false);
-            setRequestError(
-              error instanceof Error ? error.message : String(error),
-            );
+            setRequestError(describeStationFailure(error).body);
           },
         );
       }}

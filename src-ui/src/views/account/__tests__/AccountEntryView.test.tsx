@@ -1113,7 +1113,7 @@ describe('member passkeys (#4303)', () => {
       }),
     );
     expect(
-      await within(confirmation).findByText('Passkey removal unavailable.'),
+      await within(confirmation).findByText('Try again in a moment.'),
     ).toBeTruthy();
     expect(screen.getByRole('alertdialog')).toBe(confirmation);
     const retry = within(confirmation).getByRole('button', {

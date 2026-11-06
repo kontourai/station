@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
 
@@ -128,7 +129,7 @@ export function KitCatalog() {
       <ErrorState
         variant="prominent"
         title="Couldn't load portable Kits"
-        description={entriesError.message}
+        description={describeStationFailure(entriesError).body}
       />
     );
   }
@@ -196,12 +197,14 @@ export function KitCatalog() {
         )}
         {projectionError && (
           <div className="page__subtitle" role="alert">
-            Could not load this Kit’s view: {projectionError.message}
+            Could not load this Kit’s view:{' '}
+            {describeStationFailure(projectionError).body}
           </div>
         )}
         {projectLayoutsError && (
           <div className="page__subtitle" role="alert">
-            Could not verify project layouts: {projectLayoutsError.message}
+            Could not verify project layouts:{' '}
+            {describeStationFailure(projectLayoutsError).body}
           </div>
         )}
         {selected && selected.experience.diagnostics.length > 0 && (

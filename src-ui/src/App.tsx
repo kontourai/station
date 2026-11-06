@@ -44,6 +44,7 @@ import {
 } from './components/notifications/StationConditions';
 import { ProjectSidebar } from './components/project-sidebar/ProjectSidebar';
 import { Empty, ErrorState, useRetainedReadFailure } from './components/state';
+import { StationConnectionsProvider } from './connections/StationConnectionsContext';
 import { useAgents } from './contexts/AgentsContext';
 import { useApiBase } from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
@@ -970,4 +971,12 @@ function HomeRouteError({
   );
 }
 
-export default App;
+function AppWithStationConnections(props: Parameters<typeof App>[0]) {
+  return (
+    <StationConnectionsProvider>
+      <App {...props} />
+    </StationConnectionsProvider>
+  );
+}
+
+export default AppWithStationConnections;

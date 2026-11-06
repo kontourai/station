@@ -52,11 +52,6 @@ const DEICTIC_EXEMPTIONS: ReadonlyArray<{
   why: string;
 }> = [
   {
-    file: 'views/connections-hub/SshComputerCreatorDialog.tsx',
-    line: ": 'This computer could not be saved.',",
-    why: 'The save-failure message for the computer being ADDED. Its subject is the new SSH host, not the device reading it.',
-  },
-  {
     file: 'views/connections-hub/ComputersSection.tsx',
     line: 'Remove this computer',
     why: 'The label of a per-row button. "This computer" is the row\'s subject — the machine being removed — not the device reading it.',

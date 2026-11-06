@@ -10,6 +10,7 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { errorText } from '../../utils/errorText';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 /**
  * The agent's workflow files, managed in place (station#2693).
@@ -88,7 +89,7 @@ export function AgentEditorWorkflows({
       setBaseline(draft);
       setActionError(null);
     },
-    onError: (error) => setActionError(error.message),
+    onError: (error) => setActionError(describeStationFailure(error).body),
   });
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -100,7 +101,7 @@ export function AgentEditorWorkflows({
     },
     onError: (error) => {
       setDeleteTarget(null);
-      setActionError(error.message);
+      setActionError(describeStationFailure(error).body);
     },
   });
 
@@ -114,7 +115,7 @@ export function AgentEditorWorkflows({
       setBaseline(variables.content);
       setDraft(variables.content);
     },
-    onError: (error) => setActionError(error.message),
+    onError: (error) => setActionError(describeStationFailure(error).body),
   });
 
   if (!slug) {

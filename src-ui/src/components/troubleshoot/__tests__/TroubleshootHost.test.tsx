@@ -32,7 +32,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: [] }),
   usePrepareTroubleshootMutation: () => ({ mutateAsync: mocks.prepare }),
 }));
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk/client')>()),
   readTroubleshootCapability: mocks.capability,
 }));
 vi.mock('../../../contexts/AgentsContext', () => ({
@@ -230,7 +231,7 @@ describe('TroubleshootHost', () => {
     const failure = mocks.upsertToast.mock.calls
       .map(([options]) => options as Record<string, any>)
       .find((options) => options.tone === 'error');
-    expect(failure).toMatchObject({ detail: 'HTTP 500' });
+    expect(failure).toMatchObject({ detail: 'Try again in a moment.' });
     expect(failure!.actions.map((a: { label: string }) => a.label)).toEqual([
       'Report a problem',
       'Copy station triage',

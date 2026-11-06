@@ -156,7 +156,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
 
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Unable to load plugins')).toBeTruthy();
-    expect(screen.getByText('plugins read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.queryByText('No plugins installed yet')).toBeNull();
   });
 

@@ -1116,7 +1116,7 @@ describe('NewProjectModal starter layout picker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
-      expect(screen.getByText('Starter could not apply')).toBeTruthy(),
+      expect(screen.getByText('Try again in a moment.')).toBeTruthy(),
     );
     expect(localStorage.getItem('recentLayouts')).toBeNull();
     expect(setProjectMock).not.toHaveBeenCalled();
@@ -1735,7 +1735,9 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Failed to fetch');
+    expect(alert.textContent).toBe(
+      'Could not reach Station. Check the connection, then try again.',
+    );
     expect(createProjectMock).not.toHaveBeenCalled();
     // No verdict about the path: the input must not claim invalidity and the
     // retry control must stay live.
