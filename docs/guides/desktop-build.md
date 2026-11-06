@@ -122,7 +122,10 @@ and license; its browser distributions and TypeScript sources are omitted.
 The OTLP transformer likewise retains its Node `build/src` implementation,
 metadata and license. Its alternate `build/esm` and `build/esnext` bundler
 distributions are omitted; normal Node imports and `require` share the retained
-implementation. The 512 MiB runtime ceiling remains enforced.
+implementation. Flow Agents keeps its compiled `build/`, hooks, skills, kits,
+schemas and context; its per-harness `dist/` bundles, its TypeScript `src/` and
+its own `evals/` test harness are omitted (a kit's own `evals/` is kept). The
+512 MiB runtime ceiling remains enforced.
 node-pty keeps every architecture's prebuilds for the staging operating system
 and omits prebuilds for other operating systems. Release packages use pinned
 Node, but desktop debug builds select Node from the login PATH; its architecture

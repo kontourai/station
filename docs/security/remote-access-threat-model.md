@@ -280,6 +280,23 @@ access. The owner or an approved personal-account device may read under the
 existing private-root rule; an unknown identity is refused. Disabling the
 preview retains the store and withholds it from Knowledge reads.
 
+Review, recall and the session brief read under the same rule and delivery-time
+recheck.
+
+Only the signed-in person, working directly on their Station, can promote a
+memory. A decision sent through an agent tool call, Station's internal token or a
+delegated device is saved as a note and changes nothing. Station works out who is
+reviewing from the request; a request body that names a reviewer is refused.
+
+The brief holds only memory a person confirmed, and it is sent to the chat's model
+provider. Station builds no brief for a hosted request, an unknown person, a
+request that fails the access or delivery check, or a session that belongs to
+someone else. Only Station's own orchestration relay (internal token, local
+caller, named thread) may say who owns a session; the browser proxy carries the
+same token but cannot. A conversation is briefed once, when its first message
+reaches the model; a refused or replayed message does not use it up. A restart
+can brief a long-running conversation once more.
+
 When the default-off experimental S3 flag is enabled, separate Knowledge leaves
 admit current Project readers to source metadata, a bounded selected-prefix page
 and one ETag-pinned object. A source is an explicit operator grant to use a named

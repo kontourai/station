@@ -93,6 +93,7 @@ import {
   usesOperatorCredential,
 } from '../../security/host-operator-credential.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
+import { memoryReviewerKindForRequest } from '../../security/memory-reviewer-kind.js';
 import { captureRelayManagementActor } from '../../security/relay-management-actor.js';
 import {
   captureRelayManagementApproval,
@@ -388,6 +389,8 @@ import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapt
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
+import { createMemoryBriefProvider } from '../../knowledge-store/memory-brief-provider.js';
+import { MemoryReviewService } from '../../knowledge-store/memory-review.js';
 import {
   MEMORY_ADAPTER_ID,
   MemoryRootManager,
@@ -7928,10 +7931,32 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest: conversationReadAuthorityForRequest,
     }),
   );
+  // The chat route binds no request authority of its own. The person asking for a
+  // brief is resolved here from this request's principal, into the same
+  // request-keyed map the Knowledge routes use (`knowledgeReadAuthorities`), so the
+  // root access check sees exactly what it sees on `/api/knowledge`. Nothing else
+  // on the chat route changes.
+  context.app.use('/api/agents/:slug/chat', async (c, next) => {
+    try {
+      knowledgeReadAuthorities.set(
+        c.req.raw,
+        conversationReadAuthorityForContext(c),
+      );
+    } catch {
+      // An unresolvable principal gets no brief.
+    }
+    await next();
+  });
+  // Assigned where the private memory objects exist, later in this function.
+  let memoryBriefProvider: RuntimeContext['memoryBrief'] | undefined;
   context.app.route(
     '/api/agents',
     createChatRoutes({
       ...runtimeContext,
+      memoryBrief: (request, session) =>
+        memoryBriefProvider
+          ? memoryBriefProvider(request, session)
+          : Promise.resolve(null),
       // station#977: threaded in here (rather than widening the shared
       // `RuntimeContext` every route module receives) so `/chat` can apply
       // the same external-engine honesty check `GET /api/agents` uses
@@ -10864,7 +10889,7 @@ export function configureRuntimeRoutes(
         id: 'private-memory',
         label: 'Private memory',
         description:
-          'Use a private memory store. It can contain personal information. Create it through the API; review and erasure are not available yet.',
+          'Private memory you can check and search. New chats start with what you confirmed. No erasure yet.',
       })
     : undefined;
   const memoryEnabled = () =>
@@ -10878,6 +10903,25 @@ export function configureRuntimeRoutes(
     context.configLoader.getProjectHomeDir(),
     memoryEnabled,
   );
+  const memoryReview = new MemoryReviewService({
+    manager: memoryRootManager,
+    home: context.configLoader.getProjectHomeDir(),
+  });
+  // The chat seam asks for the signed-in person's brief on a new session's first turn.
+  memoryBriefProvider = createMemoryBriefProvider({
+    manager: memoryRootManager,
+    review: memoryReview,
+    enabled: memoryEnabled,
+    authority: (request) => knowledgeReadAuthorities.get(request),
+    isRequestCurrent: (request) =>
+      isRuntimeRequestPrincipalCurrent(
+        request,
+        context.environmentSecurityService,
+      ),
+    mayReadRoot: (request, root) => mayUseKnowledgeRoot(request, root, 'view'),
+    guardReadResponse: (request, roots, response) =>
+      guardKnowledgeReadResponse(request, roots, response),
+  });
   const memoryRootPreviewGuard = async (
     c: import('hono').Context,
     next: () => Promise<void>,
@@ -11063,6 +11107,8 @@ export function configureRuntimeRoutes(
       },
       mayReadRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'view'),
+      review: memoryReview,
+      reviewerKind: memoryReviewerKindForRequest,
       guardReadResponse: guardKnowledgeReadResponse,
     }),
   );

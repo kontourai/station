@@ -520,10 +520,40 @@ query. Pending proposals do not appear in ordinary record lists or search.
 returns the target's `{ kind, id, title }` without changing it. It does not
 calculate a cascade or expose erasure.
 
+Review, recall and briefing use the same authority, root-access check and
+delivery-time recheck, advertised by the `privateMemoryReview` handshake flag
+(withdrawn on hosted deployments):
+
+- `GET /api/knowledge/memory/queue` returns `{ items, recallableWithoutReview }`.
+  Each item has a `question`, plain-language `reasons`, the `proposed` claim, the
+  `current` claim it conflicts with or replaces (or `null`), each with its source
+  excerpt, a `status` of `pending` or `decided`, and the standing human
+  `decision`.
+- `POST /api/knowledge/memory/queue/:itemId/open` marks that the reviewer opened
+  the item; its review time starts here.
+- `POST /api/knowledge/memory/queue/:itemId/decision` takes
+  `{ outcome: accept|correct|reject|hold, correctedValue?, rationale?, requestKey? }`
+  (16 KiB). The body is strict: a reviewer or `reviewerKind` field is a 400. The
+  host records a Survey `ReviewDecision` with the reviewer it attested from the
+  request, and returns `{ itemId, outcome, reviewerKind, promoted, reviewSeconds }`.
+  `promoted` is true only when a human decision changed what recall and the brief
+  show; a decision by anyone else is kept as a note. Every field comes from the
+  record that was kept, so a retry with the same `requestKey` returns the first
+  decision whatever the retry asked for. `hold` leaves the item in the queue.
+- `GET /api/knowledge/memory/recall?q=&limit=` returns `{ entries, withheld, notes }`.
+  Entries carry the Kit's display `text`, `review.label`
+  (`confirmed`, `corrected`, `in-review`, `unreviewed`), `review.routing` (`not-evaluated`, `uncontested` or `routed`), the source
+  excerpt, and `replaces`, `replacedBy` and `conflictsWith`.
+- `GET /api/knowledge/memory/brief[?includeUnreviewed=1]` returns the
+  brief new chats get (`text` is `null` when nothing qualifies; at most 6,144 bytes).
+- `GET /api/knowledge/memory/measurement` returns `station.memory-measurement/1`:
+  figures for the whole root, `runs` with one entry per distillation run,
+  and `lineages` with one row per change, each naming its run.
+
 Unknown identity, hosted access, Project membership and delegation do not grant
 memory access. With the preview off, direct memory requests return the standard
-`feature_preview_disabled` 404. Review, application and erasure are not exposed
-by these routes. See [Private memory](../guides/knowledge.md#private-memory-preview).
+`feature_preview_disabled` 404. Erasure is not exposed by these routes. See
+[Private memory](../guides/knowledge.md#private-memory-preview).
 
 ## Project knowledge source identity
 

@@ -1400,6 +1400,17 @@ selected Project/namespace.
 
 ---
 
+### Private memory client
+
+`createPrivateMemoryClient({ apiBase, requestScope })` reviews, recalls and
+briefs from the signed-in person's private memory (`queue`, `open`, `decide`,
+`recall`, `brief`, `measurement`). Check `privateMemoryHostSupport(apiBase)`
+first: `unsupported` means the host predates the routes or never serves them
+(hosted), `unknown` means the handshake could not be read. A refusal throws
+`PrivateMemoryRequestError` with `failure` of `not-available` (the preview is off,
+there is no memory, or you may not read it), `invalid` or `unavailable`. A decision
+request carries no reviewer: the host decides who is reviewing from the request.
+
 ### Notification Hooks
 
 #### `useToast(): SDKToast`
