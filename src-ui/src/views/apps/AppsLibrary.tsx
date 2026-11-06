@@ -17,6 +17,7 @@ import {
 } from '../../components/state';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { AppDetailsDialog } from './AppDetailsDialog';
 import './AppsLibrary.css';
 
@@ -241,7 +242,9 @@ function Library({
         confirmLabel="Delete Board"
         variant="danger"
         pending={remove.isPending}
-        error={remove.error?.message}
+        error={
+          remove.error ? describeStationFailure(remove.error).body : undefined
+        }
         onCancel={() => {
           if (!remove.isPending) setDeleting(null);
         }}

@@ -9,6 +9,7 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { ErrorState } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 export function AppDetailsDialog({
   board,
@@ -136,7 +137,7 @@ export function AppDetailsDialog({
             <ErrorState
               variant="compact"
               title="Could not save app details"
-              description={`${mutationError.message} Refresh the library before retrying an interrupted create.`}
+              description={`${describeStationFailure(mutationError).body} Refresh the library before retrying an interrupted create.`}
             />
           )}
         </form>

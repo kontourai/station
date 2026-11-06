@@ -62,7 +62,7 @@ beforeEach(() => {
           JSON.stringify(
             status < 400
               ? { success: true, data }
-              : { success: false, error: 'Access refused' },
+              : { success: false, error: 'Private backend diagnostic' },
           ),
           { status, headers: { 'Content-Type': 'application/json' } },
         );
@@ -71,12 +71,14 @@ beforeEach(() => {
       if (path === '/api/me/layouts' && method === 'GET')
         return reply(boards, readFailed ? 403 : 200);
       if (path === '/api/me/layouts' && method === 'POST') {
+        if (denied) return reply(null, 403);
         const created = { ...body, id: body.slug, type: 'custom' };
         boards.push(created);
         return reply(created, 201);
       }
       const slug = path.split('/').at(-1);
       if (method === 'PUT') {
+        if (denied) return reply(null, 403);
         const board = boards.find((entry) => entry.slug === slug);
         Object.assign(board!, body);
         return reply(board);
@@ -170,6 +172,16 @@ test('creates a named Board at a free address and opens it after the form closes
   fireEvent.change(screen.getByLabelText('Description'), {
     target: { value: 'Release watch' },
   });
+  denied = true;
+  fireEvent.click(screen.getByRole('button', { name: 'Create Board' }));
+  await screen.findByText(/Station didn't accept this message/);
+  expect(screen.queryByText(/Private backend diagnostic/)).toBeNull();
+  expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+    'Daily',
+  );
+  expect(open).not.toHaveBeenCalled();
+  expect(boards).toHaveLength(2);
+  denied = false;
   fireEvent.click(screen.getByRole('button', { name: 'Create Board' }));
   await waitFor(() => expect(open).toHaveBeenCalledWith('daily-2'));
   expect(requests.find((entry) => entry.method === 'POST')?.body).toEqual({
@@ -194,6 +206,15 @@ test('edits metadata without replacing the layout config or changing its address
   fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), {
     target: { value: 'Release watch' },
   });
+  denied = true;
+  fireEvent.click(screen.getByRole('button', { name: 'Save details' }));
+  await screen.findByText(/Station didn't accept this message/);
+  expect(screen.queryByText(/Private backend diagnostic/)).toBeNull();
+  expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+    'Release desk',
+  );
+  expect(boards[0]?.name).toBe('Daily brief');
+  denied = false;
   fireEvent.click(screen.getByRole('button', { name: 'Save details' }));
   await screen.findByRole('button', {
     name: 'Release desk Personal Board Release watch',
@@ -218,7 +239,8 @@ test('requires deletion confirmation and retains the Board when authority refuse
   );
   expect(requests.some((entry) => entry.method === 'DELETE')).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: 'Delete Board' }));
-  await screen.findByText('Access refused');
+  await screen.findByText("Station didn't accept this message.");
+  expect(screen.queryByText(/Private backend diagnostic/)).toBeNull();
   expect(boards.some((board) => board.slug === 'daily')).toBe(true);
   denied = false;
   fireEvent.click(screen.getByRole('button', { name: 'Delete Board' }));
