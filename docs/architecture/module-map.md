@@ -2238,7 +2238,9 @@ does not redact engine history or establish engine acknowledgement.
 Each `turn.started` a send produces records who caused the turn
 (`dispatchOrigin`, #4512): `interactive`, `task-dispatch`, `delegation`,
 `automation` or `unknown`. Station classifies it when it admits the
-`sendTurn`, never from a request body or an engine. A server caller passes
+`sendTurn`, never from a request body or an engine. The same classification is
+passed to server-owned turn admission observers, which is how the Automation
+runtime admits a person's own turn into an automation Session (#4511). A server caller passes
 its own classification in the dispatch's internal options
 (`dispatchOrigin`); without one, `classifyTurnDispatchOrigin` in the
 [orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
@@ -4912,7 +4914,11 @@ claims or attempts
 ([observe mode](../design/automations.md#per-rule-observe-mode)). Separately enabled native Task actions and
 isolated repairs consume retained intents after source/rule/grant and `live`-mode checks; the
 scheduler invokes both consumers and awaits their shutdown before closing the
-shared ledger.
+shared ledger. Both compare an authority-only policy fingerprint, and the native
+runtime adopts an instructions/budget amendment or stops a revoked action with
+a reason on its Session and Task ([policy changes](../design/automations.md#policy-changes-and-the-start-mandate)).
+The [operator routes](../../src-server/routes/operations/automations.ts) serve
+`AUTOMATION_OPERATOR_SURFACE` ([operator surface](../design/automations.md#operator-surface)).
 
 [Ledger tests](../../src-server/services/scheduling/__tests__/scheduler-ledger.test.ts),
 [execution tests](../../src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts),
