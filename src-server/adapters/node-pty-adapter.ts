@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, readlinkSync } from 'node:fs';
+import { Socket } from 'node:net';
 import { dirname, join } from 'node:path';
 import {
   closeChildWorkload,
@@ -130,7 +131,8 @@ function waitForPendingPtyPid(pty: import('node-pty').IPty): Promise<void> {
   });
 }
 
-function killFailedPty(pty: import('node-pty').IPty): void {
+/** Public Windows kill waits for output; native release must not. */
+function releaseNativePty(pty: import('node-pty').IPty): void {
   if ('_agent' in pty) {
     const agent = pty._agent;
     if (
@@ -139,8 +141,20 @@ function killFailedPty(pty: import('node-pty').IPty): void {
       'kill' in agent &&
       typeof agent.kill === 'function'
     ) {
-      // WindowsTerminal.kill() defers until output; a failed silent launch has none.
-      agent.kill();
+      // A closed or cancelled console needs no delayed PID census (#3994).
+      if (
+        '_getConsoleProcessList' in agent &&
+        typeof agent._getConsoleProcessList === 'function'
+      )
+        agent._getConsoleProcessList = () => Promise.resolve([]);
+      try {
+        agent.kill();
+      } finally {
+        const output = '_socket' in pty ? pty._socket : undefined;
+        const input = 'inSocket' in agent ? agent.inSocket : undefined;
+        if (output instanceof Socket) output.destroy();
+        if (input instanceof Socket) input.destroy();
+      }
       return;
     }
   }
@@ -162,7 +176,7 @@ class NodePtyProcess implements IPtyProcess {
       if (this.paused) this.outputIncomplete = true;
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
-      if (process.platform === 'win32') this.releaseConpty();
+      if ('_agent' in pty) this.releaseConpty();
     });
     this.terminate =
       process.platform === 'win32'
@@ -182,21 +196,8 @@ class NodePtyProcess implements IPtyProcess {
    * answered empty for this terminal before `kill()` releases the rest.
    */
   private releaseConpty(): void {
-    // node-pty's private WindowsTerminal._agent._getConsoleProcessList,
-    // found at runtime. Without it (another node-pty) kill() still releases.
-    const { pty } = this;
-    if ('_agent' in pty) {
-      const agent = pty._agent;
-      if (
-        typeof agent === 'object' &&
-        agent !== null &&
-        '_getConsoleProcessList' in agent &&
-        typeof agent._getConsoleProcessList === 'function'
-      )
-        agent._getConsoleProcessList = () => Promise.resolve([]);
-    }
     try {
-      this.pty.kill();
+      releaseNativePty(this.pty);
     } catch (error) {
       logger.debug('ConPTY release after exit failed', { error });
     }
@@ -465,7 +466,7 @@ export class NodePtyAdapter implements IPtyAdapter {
     } catch (error) {
       if (pty && !exited) {
         try {
-          killFailedPty(pty);
+          releaseNativePty(pty);
         } catch (cleanupError) {
           logger.warn('Failed PTY launch cleanup failed', {
             error: cleanupError,
