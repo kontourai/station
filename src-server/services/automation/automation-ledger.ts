@@ -394,6 +394,17 @@ export interface AutomationLedger {
     now: number,
   ): void;
   /**
+   * Claims a pending intent's action under the global and per-rule limits,
+   * or records why it was held (#4513): a busy claim records
+   * `suppressed(reason)` and the intent keeps waiting; an exhausted or
+   * indeterminate episode refuses the intent with that reason. Both action
+   * consumers start work only through this.
+   */
+  claimIntent(
+    intent: AutomationActionIntent,
+    input: Readonly<{ now: number; maxStartsPerHour: number }>,
+  ): AutomationActionReceipt | undefined;
+  /**
    * Operator `retry-episode` (#4513): an exhausted episode is allowed exactly
    * one more attempt, and a new pending intent for that attempt is retained
    * under `policy` (the current rule, never the old snapshot). Refused for an
@@ -1294,6 +1305,30 @@ class SqliteAutomationLedger implements AutomationLedger {
         )
         .run(reason, now, intent.deliveryKey, intent.ruleId, reason);
     });
+  }
+
+  claimIntent(
+    intent: AutomationActionIntent,
+    input: Readonly<{ now: number; maxStartsPerHour: number }>,
+  ): AutomationActionReceipt | undefined {
+    const claim = this.claimAction({
+      episodeKey: intent.episodeKey,
+      expectedEpisodeId: intent.episodeId,
+      deliveryKey: intent.deliveryKey,
+      now: input.now,
+      maxStartsPerHour: input.maxStartsPerHour,
+      maxConcurrentActions: AUTOMATION_EXECUTION_LIMITS.maxConcurrentActions,
+    });
+    if (claim.kind === 'claimed') return claim.receipt;
+    if (claim.kind === 'busy')
+      this.recordSuppression(intent.intentId, claim.reason, input.now);
+    else if (claim.kind === 'exhausted' || claim.kind === 'indeterminate')
+      this.updateIntent(
+        intent.intentId,
+        { state: 'refused', reason: `episode-${claim.kind}` },
+        input.now,
+      );
+    return undefined;
   }
 
   retryEpisode(input: {

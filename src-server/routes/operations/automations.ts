@@ -126,7 +126,8 @@ const dispatchRule = z
       .strict(),
   })
   .strict();
-const createSource = z
+/** A disabled `github-poll` source; shared with the isolated repair surface. */
+export const automationPollSourceSchema = z
   .object({
     kind: z.literal('github-poll'),
     name: z.string().min(1).max(128),
@@ -392,7 +393,7 @@ export function createAutomationRoutes(
 
   app.post('/sources', (c) =>
     guard(c, 'mutation', async (operator) => {
-      const input = parse(createSource, await body(c.req.raw));
+      const input = parse(automationPollSourceSchema, await body(c.req.raw));
       const created = await store().createSource(
         input,
         current(operator, true),

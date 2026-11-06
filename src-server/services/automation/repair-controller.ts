@@ -336,33 +336,16 @@ export class IsolatedRepairController {
           );
           continue;
         }
-        const claim = ledger.claimAction({
-          episodeKey: intent.episodeKey,
-          expectedEpisodeId: intent.episodeId,
-          deliveryKey: intent.deliveryKey,
+        // #4513: a held claim records why; only a claim starts work.
+        const receipt = ledger.claimIntent(intent, {
           now: Date.now(),
           maxStartsPerHour: rule.rateLimit.maxStartsPerHour,
-          maxConcurrentActions:
-            AUTOMATION_EXECUTION_LIMITS.maxConcurrentActions,
         });
-        if (claim.kind === 'busy') {
-          // #4513: say why nothing started yet; the intent keeps waiting.
-          ledger.recordSuppression(intent.intentId, claim.reason, Date.now());
-          continue;
-        }
-        if (claim.kind === 'exhausted' || claim.kind === 'indeterminate') {
-          ledger.updateIntent(
-            intent.intentId,
-            { state: 'refused', reason: `episode-${claim.kind}` },
-            Date.now(),
-          );
-          continue;
-        }
-        if (claim.kind !== 'claimed') continue;
+        if (!receipt) continue;
         try {
-          await this.start(intent, claim.receipt, rule.name);
+          await this.start(intent, receipt, rule.name);
         } catch {
-          claim.receipt.release();
+          receipt.release();
           if (ledger.readIntent(intent.intentId)?.state === 'pending')
             ledger.updateIntent(
               intent.intentId,
