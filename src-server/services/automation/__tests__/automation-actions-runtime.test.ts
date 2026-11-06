@@ -1002,6 +1002,51 @@ test('disabling a rule stops its Task with a visible reason on the Session and T
   expect(posture?.approvalMode).toBe('ask');
 });
 
+test('an observed revocation still refuses automatic continuation after rule restoration and runtime restart (#4511)', async () => {
+  const w = await world();
+  await editRule(w, (rule) => ({
+    action: {
+      ...(rule.action as NativeAction),
+      budget: { maxTurns: 3, maxTokens: 20000, maxWallRuntimeMs: 60000 },
+    },
+  }));
+  const intent = await running(w);
+  await setRuleMode(w, w.rule.id, 'off');
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intent.intentId)?.revocation?.cause).toBe(
+    'rule-disabled',
+  );
+  await setRuleMode(w, w.rule.id, 'live');
+  w.rebootController();
+  w.adapter.events.push({
+    method: 'turn.aborted',
+    eventId: 'restored-rule-first-turn-aborted',
+    provider: w.adapter.provider,
+    threadId: intent.sessionId!,
+    turnId: intent.turnId!,
+    createdAt: new Date().toISOString(),
+    reason: 'interrupted',
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(intent.sessionId!, ['turn.aborted']),
+    ).toBeTruthy(),
+  );
+  await expect(
+    w.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId: intent.sessionId!,
+          input: 'automatic continuation after restoration',
+        },
+      },
+      { clientOrigin: INTERNAL_ORIGIN },
+    ),
+  ).rejects.toThrow(/was disabled/);
+  expect(w.adapter.sends).toHaveLength(1);
+});
+
 test('a person turn into a running automation Session takes it over: no automation turn is admitted afterwards (#4511)', async () => {
   const w = await world();
   const intent = await running(w);

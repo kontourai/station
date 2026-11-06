@@ -255,6 +255,8 @@ class AutomationActionsRuntime implements AutomationActions {
   private authority(intent: AutomationActionIntent): ActionAuthority {
     if (!nativeIntent(intent))
       return { kind: 'stopped', reason: 'policy_changed' };
+    if (intent.revocation)
+      return { kind: 'revoked', cause: intent.revocation.cause };
     if (!this.enabled()) return { kind: 'revoked', cause: 'preview-disabled' };
     if (!this.options.isProjectCurrent(intent.action.projectId))
       return { kind: 'revoked', cause: 'project-unavailable' };
