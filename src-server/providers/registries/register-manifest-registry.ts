@@ -1,16 +1,15 @@
 import type { JsonManifestRegistryProvider } from './json-manifest-registry.js';
 import {
+  BUNDLED_MANIFEST_REGISTRY_SOURCE,
   registerAgentRegistryProvider,
   registerIntegrationRegistryProvider,
   registerPluginRegistryProvider,
 } from './registry.js';
 
 const manifestRegistrySourceLabels = {
-  bundled: 'Bundled examples',
+  bundled: BUNDLED_MANIFEST_REGISTRY_SOURCE,
   configured: 'Configured registry',
 } as const;
-
-type ManifestRegistrySourceOrigin = keyof typeof manifestRegistrySourceLabels;
 
 /**
  * A JSON manifest is one catalog exposed through three public registry
@@ -25,10 +24,15 @@ type ManifestRegistrySourceOrigin = keyof typeof manifestRegistrySourceLabels;
  */
 export function registerManifestRegistryProvider(
   provider: JsonManifestRegistryProvider,
-  origin: ManifestRegistrySourceOrigin,
 ): void {
+  // The provider owns its origin (#4521): its manifest reader admits the
+  // location, so the labels here cannot disagree with what it reads.
+  const bundled = provider.origin.bundled === true;
+  const origin = bundled ? 'bundled' : 'configured';
   registerAgentRegistryProvider(provider.agentRegistry());
-  registerIntegrationRegistryProvider(provider.integrationRegistry());
+  registerIntegrationRegistryProvider(provider.integrationRegistry(), {
+    bundled,
+  });
   registerPluginRegistryProvider(
     provider,
     manifestRegistrySourceLabels[origin],

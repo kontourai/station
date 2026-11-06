@@ -45,6 +45,10 @@ import {
   defaultCodexGlobalConfigDir,
   detectCodexAuthState,
 } from '../../providers/auth/codex-auth.js';
+import {
+  managedEngineRefusalBody,
+  managedEngineRefusalFor,
+} from '../../security/managed-engine-limits.js';
 import { browserCodeLoginManager } from '../../services/connections/browser-code-login.js';
 import {
   appHomeActive,
@@ -217,6 +221,22 @@ export function createAppHomeRoutes(deps?: {
   accountUsage?: typeof readCredentialUsage;
 }) {
   const app = new Hono();
+
+  // #4515: setting up an engine the managed policy does not allow is
+  // refused: these writes import its global credentials into a profile,
+  // change a profile's credentials, or start its sign-in. Removal (DELETE)
+  // is never refused. Reads report the engine unavailable at their seams
+  // (usage, sign-in status) without reading its credentials.
+  app.use('/agent/:id/*', async (c, next) => {
+    if (['POST', 'PUT', 'PATCH'].includes(c.req.method)) {
+      const engine = Object.hasOwn(APP_HOME_ENGINES, param(c, 'id'))
+        ? APP_HOME_ENGINES[param(c, 'id')]
+        : undefined;
+      const refusal = engine ? managedEngineRefusalFor(engine.provider) : null;
+      if (refusal) return c.json(managedEngineRefusalBody(refusal), 403);
+    }
+    await next();
+  });
   const readLoginCapabilities =
     deps?.loginCapabilities ?? ((engine) => engineLoginCapabilities(engine));
   const deviceCodeLogins = () =>

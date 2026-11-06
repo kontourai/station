@@ -215,6 +215,7 @@ async function run(
       },
     };
     const agent = await new VoltAgentFramework().createTempAgent({
+      purpose: 'agent-run',
       agentId: 'assistant',
       name: 'Benchmark',
       instructions: 'Use probe, then answer.',

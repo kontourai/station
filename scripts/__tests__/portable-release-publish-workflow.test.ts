@@ -14,6 +14,10 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  managedUpdateServerManifestUrl,
+  STATION_RELEASE_DOWNLOAD_BASE,
+} from '../../packages/contracts/src/managed-policy.js';
 import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-server-targets.mjs';
 import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -237,6 +241,12 @@ describe('the one BASE_URL every public manifest location derives from', () => {
     expect(PUBLIC_RELEASE_BASE_URL).toBe(
       'https://github.com/kontourai/station/releases/download/',
     );
+    // #4522: the managed update mirror maps URLs under this same base.
+    expect(STATION_RELEASE_DOWNLOAD_BASE).toBe(PUBLIC_RELEASE_BASE_URL);
+    for (const ring of Object.keys(PUBLIC_MANIFEST_POINTERS))
+      expect(
+        managedUpdateServerManifestUrl(STATION_RELEASE_DOWNLOAD_BASE, ring),
+      ).toBe(rollingManifestUrl(ring));
     expect(PUBLIC_MANIFEST_POINTERS).toEqual({
       stable: {
         rollingTag: 'portable-stable',

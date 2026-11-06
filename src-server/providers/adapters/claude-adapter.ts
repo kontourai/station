@@ -98,6 +98,11 @@ import {
   type SeatbeltEvidence,
   seatbeltConfinementProvider,
 } from '../../security/confinement/seatbelt.js';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEngineBinaryPath,
+  managedEnginePrerequisites,
+} from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
@@ -515,6 +520,11 @@ type InstalledVersionObservation =
  * decision the spawn did not make.
  */
 type ClaudeLaunchReason =
+  /**
+   * #4520: a managed policy pins the executable, so it is launched with no
+   * version comparison and never replaced by the bundled copy.
+   */
+  | 'managed-pin'
   /** Installed CLI is the same version as the bundle or newer. */
   | 'installed-not-older'
   /** Installed CLI predates the bundle, so the SDK's own copy is safer. */
@@ -596,6 +606,10 @@ function claudeExecutableSentence(
     ? `Claude Code ${resolution.bundledVersion} bundled with the Agent SDK`
     : 'Claude Code CLI bundled with the Agent SDK';
   switch (resolution.reason) {
+    case 'managed-pin':
+      return resolution.spawnable
+        ? `Station launches ${resolution.spawnable}, the Claude Code executable this computer's managed policy pins.`
+        : `This computer's managed policy pins the Claude Code executable ${resolution.resolved}, which Station cannot launch, so Claude sessions do not start.`;
     case 'installed-not-older':
       return `Station launches the installed Claude Code ${resolution.installedVersion} at ${resolution.spawnable} (the Agent SDK bundles ${resolution.bundledVersion}).`;
     case 'installed-older':
@@ -3570,6 +3584,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
+    // #4515: an engine the managed policy does not allow is never run, not
+    // even for `--version` (boot priming and system status reach here).
+    const managed = managedEnginePrerequisites(
+      'claude',
+      CLAUDE_CLI_COMMAND,
+      'Claude',
+    );
+    if (managed) return managed;
     // #1551: resolve ONCE and hand that single answer to both the
     // install-status derivation (`findBinary`) and the description below, so
     // the executable this reports is the one the spawn path resolves — not a
@@ -5053,6 +5075,33 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     let bundledVersion: string | null = null;
     try {
       bundledVersion = this.bundledClaudeVersion();
+      // #4520: a pinned executable is the only one launched. When it cannot
+      // be spawned, `spawnable` is null and the spawn refuses rather than
+      // falling back to the bundled copy (`createClaudeEngineProcess`).
+      const pinned = managedEngineBinaryPath('claude');
+      if (pinned) {
+        const resolvedPin = await (
+          this.options.findBinary ?? findCliBinaryAsync
+        )(pinned);
+        const spawnablePin = resolvedPin
+          ? resolveSpawnableClaudeExecutable(resolvedPin, {
+              ...(this.options.executablePlatform
+                ? { platform: this.options.executablePlatform }
+                : {}),
+              ...(this.options.executableFileExists
+                ? { fileExists: this.options.executableFileExists }
+                : {}),
+            }).executable
+          : null;
+        return {
+          resolved: pinned,
+          spawnable: spawnablePin,
+          installedVersion: null,
+          bundledVersion,
+          launch: 'installed',
+          reason: 'managed-pin',
+        };
+      }
       const resolved =
         (await (this.options.findBinary ?? findCliBinaryAsync)(
           CLAUDE_CLI_COMMAND,
@@ -5230,6 +5279,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }
       const cached = this.authStatusProbes.get(key);
       if (cached) return cached.result;
+      // #4515: every `claude auth status` run starts here.
+      assertEngineAllowedByManagedPolicy('claude');
       const result = (this.options.runAuthStatusCommand ?? runCliCommand)(
         command,
         args,
@@ -5296,6 +5347,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     command: string,
     args: string[],
   ): Promise<CliCommandResult | null> {
+    // #4515: every Claude version probe (executable resolution for a
+    // session, readiness, boot priming) starts here, so an engine the
+    // managed policy does not allow is refused before its program runs.
+    assertEngineAllowedByManagedPolicy('claude');
     const key = `${command}\u0000${args.join('\u0000')}`;
     const cached = this.versionProbes.get(key);
     if (cached) return cached;

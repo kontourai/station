@@ -767,7 +767,9 @@ composition. Broker withdrawal is not account or Device revocation.
 From a source checkout on a POSIX server, opt in with
 `STATION_BROKER_CONFIG_FILE=/absolute/private/connector.json` when starting
 Station normally. With the variable unset, no broker connector is created.
-Direct and local connections do not require this configuration.
+Direct and local connections do not require this configuration. Under a
+[managed policy](managed-policy.md#network-exposure) without `remote`
+clients, Station refuses to start while the variable is set.
 
 Initialize the selected Station home offline first:
 

@@ -208,10 +208,22 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  *   entries the package's own `dist/` is read only by `workflow doctor`, a
  *   CLI verb Station never runs (workflow-steering's `dist/` check reads the
  *   project checkout, not the package). ~102 MB.
+ * - `@kontourai/flow-agents/src` and `/evals` are the package's TypeScript
+ *   input and its own test harness (~19 MB together). Everything Station reads
+ *   from the package is under `build/`, `scripts/`, `skills/`, `kits/`,
+ *   `schemas/` and `context/`; a kit's own `kits/<kit>/evals/` is kept.
  * - OTLP transformer's Node entry is build/src/index.js for both import and
  *   require. Its build/esm and build/esnext trees are alternate bundler
  *   distributions, including duplicate generated protobuf code. Keep the
  *   Node implementation, package metadata and license; omit those variants.
+ * - koffi (#4524) is the FFI the managed policy's Windows registry and ACL
+ *   reader loads with `require('koffi')` on first use, and only on Windows
+ *   (packages/shared/src/managed-policy-windows.ts). Keep `src/`: the public
+ *   entrypoint loads JavaScript from it. `vendor/` and `doc/` are build inputs
+ *   and documentation, never loaded at runtime. The
+ *   runtime binary comes from `lib/native` or the `@koromix/koffi-<os>-<arch>`
+ *   package. Off Windows nothing requires it at all, so koffi and its
+ *   platform package keep only their metadata and license there.
  */
 export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
   Object.freeze({
@@ -255,9 +267,32 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
       !segments[1].startsWith(`${target.platform}-`),
   }),
   Object.freeze({
+    id: 'koffi-build-sources',
+    package: 'koffi',
+    excludes: (segments) => ['vendor', 'doc'].includes(segments[0]),
+  }),
+  Object.freeze({
+    id: 'koffi-off-windows',
+    package: '*',
+    excludes: (segments, target, packageName) =>
+      target.platform !== 'win32' &&
+      (packageName === 'koffi' || packageName.startsWith('@koromix/koffi-')) &&
+      !/^(?:package\.json|LICENSE(?:\.txt|\.md)?)$/i.test(segments.join('/')),
+  }),
+  Object.freeze({
     id: 'flow-agents-harness-bundles',
     package: '@kontourai/flow-agents',
     excludes: (segments) => segments[0] === 'dist',
+  }),
+  Object.freeze({
+    id: 'flow-agents-development-sources',
+    package: '@kontourai/flow-agents',
+    // Top-level only: `src/` is the TypeScript input of `build/` (the package's
+    // main and bin point into `build/`; its other exports point at `build/`,
+    // schemas, metadata and `integrations/`, never at `src/`) and `evals/` is the
+    // package's own acceptance and integration harness. Each kit's own
+    // `kits/<kit>/evals/` is a different directory and stays.
+    excludes: (segments) => segments[0] === 'src' || segments[0] === 'evals',
   }),
 ]);
 

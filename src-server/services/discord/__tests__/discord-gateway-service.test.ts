@@ -290,6 +290,61 @@ describe('Discord authorization', () => {
 });
 
 describe('DiscordGatewayService', () => {
+  test('under a managed policy without remote clients, an enabled gateway does not connect and its status gives the managed sentence (#4519)', () => {
+    const directory = home();
+    new DiscordGatewayConfigurationStore(directory).write(
+      configuration({
+        enabled: true,
+        token: 'test-token',
+        identities: [
+          {
+            discordUserId: '3'.repeat(18),
+            stationIdentity: 'station-user',
+            capabilities: ['turn:start'],
+          },
+        ],
+      }),
+    );
+    const refusal =
+      "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help.";
+    const sockets: FakeSocket[] = [];
+    const executeForegroundMessage = vi.fn();
+    const service = new DiscordGatewayService({
+      homeDir: directory,
+      logger: silentLogger,
+      managedRefusal: refusal,
+      executeForegroundMessage,
+      socketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    service.start();
+
+    // No gateway connection means no inbound message can be dispatched.
+    expect(sockets).toHaveLength(0);
+    expect(executeForegroundMessage).not.toHaveBeenCalled();
+    expect(service.getGatewayStatus()).toEqual({
+      state: 'unavailable',
+      reason: refusal,
+    });
+    // The same configuration connects without the limit.
+    const unmanaged = new DiscordGatewayService({
+      homeDir: directory,
+      logger: silentLogger,
+      socketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    unmanaged.start();
+    expect(sockets).toHaveLength(1);
+    void unmanaged.stop();
+  });
+
   test('does not open an outbound connection unless configuration explicitly enables it', () => {
     const sockets: FakeSocket[] = [];
     const service = new DiscordGatewayService({

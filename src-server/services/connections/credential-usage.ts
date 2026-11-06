@@ -44,6 +44,7 @@ import type {
   EngineAccountUsage as CredentialUsage,
   EngineAccountUsageWindow as CredentialUsageWindow,
 } from '@kontourai/station-contracts/engine-accounts';
+import { managedEngineRefusalFor } from '../../security/managed-engine-limits.js';
 import { projectUsageMetadata } from './credential-usage-metadata.js';
 
 export type { CredentialUsage };
@@ -290,6 +291,10 @@ export async function readClaudeUsage(
   configDir: string,
   deps: UsageFetchDeps = defaultUsageFetchDeps(),
 ): Promise<CredentialUsage> {
+  // #4515: a disallowed engine's credentials are not read (no Keychain, no
+  // credentials file) and its vendor is not called.
+  const managed = managedEngineRefusalFor('claude');
+  if (managed) return unknown(deps, managed.message);
   const auth = await claudeAccessToken(deps, configDir);
   if (!auth) {
     return unknown(deps, 'No signed-in credential was found for this account.');
@@ -433,6 +438,9 @@ export async function readCodexUsage(
   configDir: string,
   deps: UsageFetchDeps = defaultUsageFetchDeps(),
 ): Promise<CredentialUsage> {
+  // #4515: as for Claude above.
+  const managed = managedEngineRefusalFor('codex');
+  if (managed) return unknown(deps, managed.message);
   const auth = await codexAuth(deps, configDir);
   if (!auth) {
     return unknown(deps, 'No signed-in credential was found for this account.');

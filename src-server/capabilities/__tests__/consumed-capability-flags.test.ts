@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
+import {
+  parseHostedTenantRegistry,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readStreamUntil } from '../../__test-utils__/sse-helpers.js';
@@ -9,6 +12,11 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { RecipientStore } from '../../analytics/recipient-store.js';
 import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
+import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
+import { MemoryReviewService } from '../../knowledge-store/memory-review.js';
+import { MemoryRootManager } from '../../knowledge-store/memory-root.js';
+import { createMemoryRoutes } from '../../routes/knowledge/memory-routes.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -72,6 +80,36 @@ const CONSUMED_FLAGS: Record<
   string,
   (deployment: Deployment) => Promise<boolean>
 > = {
+  // GET /api/knowledge/memory/queue answers only where the Private memory
+  // preview is bound, which is personal hosts; hosted deployments never bind it.
+  privateMemoryReview: async ({ hosted }) => {
+    const home = makeTempDir('memory-flag-');
+    vi.stubEnv('STATION_HOME', home);
+    try {
+      const persistence = new FileStorageAdapter(home);
+      const store = new KnowledgeStoreProvider(persistence);
+      const enabled = () => !hosted;
+      const manager = new MemoryRootManager(store, persistence, home, enabled);
+      const owner = sessionReadAuthorityFromRequest(
+        'owner',
+        undefined,
+        undefined,
+      );
+      if (enabled()) await manager.ensureRoot(owner, () => {});
+      const routes = createMemoryRoutes({
+        manager,
+        enabled,
+        authority: () => ({ scope: owner, assertCurrent: () => {} }),
+        mayReadRoot: async () => true,
+        review: new MemoryReviewService({ manager, home }),
+        reviewerKind: () => 'human',
+        guardReadResponse: async (_request, _roots, response) => response,
+      });
+      return (await routes.request('/memory/queue')).status === 200;
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  },
   childWorkSteering: async (deployment) => {
     const routes = orchestrationRoutes(deployment, {
       childWorkTranscripts: { ownsChild: () => true },
@@ -433,6 +471,7 @@ describe('consumed capability flags match what their routes serve', () => {
   // a tenant reader) still reds.
   const EXPECTED: Record<string, Record<'personal' | 'hosted', boolean>> = {
     childWorkSteering: { personal: true, hosted: true },
+    privateMemoryReview: { personal: true, hosted: false },
     privateOperationalOutcomes: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },

@@ -58,11 +58,13 @@ vi.mock('../../../providers/registries/registry.js', () => {
     ],
     listInstalled: async () => [{ id: 'p1', installed: true }],
   };
+  const pluginProviders = () => [{ source: 'test', provider: pluginProvider }];
   return {
     pluginProviderSourceGeneration: () => 0,
-    getPluginRegistryProviders: () => [
-      { source: 'test', provider: pluginProvider },
-    ],
+    getPluginRegistryProviders: pluginProviders,
+    // No managed policy here: nothing is refused.
+    getRegisteredPluginRegistryProviders: pluginProviders,
+    integrationCatalogManagedDenial: () => undefined,
     getSkillRegistryProviders: vi
       .fn()
       .mockReturnValue([{ provider: skillProvider, source: 'test' }]),
@@ -102,6 +104,7 @@ vi.mock('../../../services/plugins/plugin-install-transaction.js', () => ({
     source: '/tmp/registry/plugin-one',
     registryKey: 'test-registry',
   }),
+  isRegistryPluginRemovalTarget: vi.fn().mockResolvedValue(true),
   uninstallInstalledPlugin: vi.fn().mockResolvedValue({ success: true }),
 }));
 
@@ -127,6 +130,7 @@ const { __integrationProvider, __agentProvider } = (await import(
 )) as any;
 const {
   installPluginFromSource,
+  isRegistryPluginRemovalTarget,
   resolvePluginRegistryInstall,
   uninstallInstalledPlugin,
 } = await import('../../../services/plugins/plugin-install-transaction.js');
@@ -955,7 +959,7 @@ describe('Registry Routes', () => {
 
   test('DELETE /agents/:id falls back to the agent provider for a non-plugin id', async () => {
     const { app } = setup();
-    vi.mocked(resolvePluginRegistryInstall).mockResolvedValueOnce(null);
+    vi.mocked(isRegistryPluginRemovalTarget).mockResolvedValueOnce(false);
     vi.mocked(uninstallInstalledPlugin).mockClear();
     __agentProvider.uninstall.mockClear();
 

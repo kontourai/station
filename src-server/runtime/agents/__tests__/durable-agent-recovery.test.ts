@@ -261,6 +261,7 @@ for (const mode of [
     };
     if (!cancelled)
       await new VoltAgentFramework().createTempAgent({
+        purpose: 'agent-run',
         agentId: 'assistant',
         name: 'Assistant',
         instructions: 'Answer.',

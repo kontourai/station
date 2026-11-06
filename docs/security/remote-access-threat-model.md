@@ -48,6 +48,18 @@ host; retirement itself never revokes access. Browser storage remains a
 platform dependency, and site-data deletion or device/storage loss is outside
 this recovery guarantee. See the [completion contract](../architecture/module-map.md#pendingpairingcompletion).
 
+## Managed network exposure
+
+A [managed policy](../guides/managed-policy.md#network-exposure) whose
+`limits.clients` leaves out `remote` (#4519) removes the remote surface below:
+loopback-only listeners (each later listener included), no pairing or relay
+enrollment, no Discord gateway, no Tailscale Serve route to Station's ports
+as each listener starts (asked of a root-owned or signed Tailscale CLI only),
+and only home-possession device credentials accepted. Earlier devices are
+suspended, not revoked: lifting the policy restores them, so revoke a
+compromised one. Its limits, including port forwarding with other tools,
+are in the [decision record](../decisions/managed-policy.md#network-exposure).
+
 ## Trust boundary
 
 Station classifies a caller from the directly connected socket peer and request
@@ -267,6 +279,23 @@ not records or search inputs. Project membership and delegation do not grant
 access. The owner or an approved personal-account device may read under the
 existing private-root rule; an unknown identity is refused. Disabling the
 preview retains the store and withholds it from Knowledge reads.
+
+Review, recall and the session brief read under the same rule and delivery-time
+recheck.
+
+Only the signed-in person, working directly on their Station, can promote a
+memory. A decision sent through an agent tool call, Station's internal token or a
+delegated device is saved as a note and changes nothing. Station works out who is
+reviewing from the request; a request body that names a reviewer is refused.
+
+The brief holds only memory a person confirmed, and it is sent to the chat's model
+provider. Station builds no brief for a hosted request, an unknown person, a
+request that fails the access or delivery check, or a session that belongs to
+someone else. Only Station's own orchestration relay (internal token, local
+caller, named thread) may say who owns a session; the browser proxy carries the
+same token but cannot. A conversation is briefed once, when its first message
+reaches the model; a refused or replayed message does not use it up. A restart
+can brief a long-running conversation once more.
 
 When the default-off experimental S3 flag is enabled, separate Knowledge leaves
 admit current Project readers to source metadata, a bounded selected-prefix page

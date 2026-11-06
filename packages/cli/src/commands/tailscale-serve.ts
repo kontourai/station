@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import type { loadInstalledManagedPolicy } from '@kontourai/station-shared/managed-policy';
+import { assertInstalledPolicyAllowsRemoteClients } from './managed-remote-clients.js';
 
 const execFileAsync = promisify(execFile);
 const TAILSCALE_COMMAND_TIMEOUT_MS = 10_000;
@@ -23,6 +25,8 @@ export type TailscaleEndpointProbe = (
 export interface TailscaleOfferDependencies {
   command?: TailscaleCommand;
   probe?: TailscaleEndpointProbe;
+  /** Test seam for the installed managed policy (#4519). */
+  loadManagedPolicy?: typeof loadInstalledManagedPolicy;
 }
 
 export interface TailscaleOfferEndpoint {
@@ -268,6 +272,11 @@ export async function resolveTailscaleOfferEndpoint(input: {
   servePort?: number;
   dependencies?: TailscaleOfferDependencies;
 }): Promise<TailscaleOfferEndpoint> {
+  // #4519: before anything touches Tailscale's configuration.
+  assertInstalledPolicyAllowsRemoteClients(
+    'set up Tailscale Serve',
+    input.dependencies?.loadManagedPolicy,
+  );
   const local = new URL(input.localApiBase);
   if (
     local.protocol !== 'http:' ||

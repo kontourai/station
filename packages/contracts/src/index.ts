@@ -39,6 +39,7 @@ export * from './git-remote-identity.js';
 export * from './guidance-assets.js';
 export * from './inbound-webhook.js';
 export * from './knowledge.js';
+export * from './knowledge-memory.js';
 export * from './knowledge-store.js';
 export * from './known-environment.js';
 export * from './layout.js';

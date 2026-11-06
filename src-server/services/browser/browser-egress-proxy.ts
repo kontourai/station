@@ -31,6 +31,7 @@
  * has (loopback is not user-isolated) and, for a Project admin profile, much
  * less. Station listeners stay refused either way.
  */
+
 import { lookup as dnsLookup } from 'node:dns/promises';
 import {
   createServer,
@@ -42,6 +43,8 @@ import {
 } from 'node:http';
 import { connect, isIP, type Socket } from 'node:net';
 import type { Duplex } from 'node:stream';
+import { gateServerUntilAdmitted } from '../../security/listener-admission-gate.js';
+import { admitManagedListener } from '../../security/managed-network-exposure.js';
 import {
   decideEgress,
   type EgressPolicy,
@@ -164,6 +167,8 @@ export class BrowserEgressProxy {
     });
     server.on('connection', (socket) => this.track(socket));
     server.on('clientError', (_error, socket) => socket.destroy());
+    // #4519: nothing is proxied until the managed admission below succeeds.
+    const gate = gateServerUntilAdmitted(server);
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
       server.listen(0, '127.0.0.1', () => {
@@ -171,8 +176,24 @@ export class BrowserEgressProxy {
         resolve();
       });
     });
+    const port = (server.address() as { port: number }).port;
+    try {
+      // #4519: under the managed limit, no Tailscale Serve route to it.
+      await admitManagedListener({
+        name: 'browser egress proxy',
+        host: '127.0.0.1',
+        port,
+      });
+    } catch (error) {
+      gate.refused();
+      for (const socket of this.sockets) socket.destroy();
+      this.sockets.clear();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      throw error;
+    }
+    gate.admitted();
     this.server = server;
-    this.listeningPort = (server.address() as { port: number }).port;
+    this.listeningPort = port;
     return this.listeningPort;
   }
 

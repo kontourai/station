@@ -121,6 +121,7 @@ describe('VoltAgent lifecycle hooks', () => {
       }),
     });
     const agent = await new VoltAgentFramework().createTempAgent({
+      purpose: 'agent-run',
       name: 'assistant',
       instructions: 'Use tools.',
       model,
