@@ -78,16 +78,19 @@ class NodePtyProcess implements IPtyProcess {
   private pauseEpoch = 0;
   private outputIncomplete = false;
   private pauseWatch?: ReturnType<typeof setTimeout>;
+  private exitEvent?: { exitCode: number; signal?: number };
 
-  constructor(private pty: import('node-pty').IPty) {
+  constructor(
+    private pty: import('node-pty').IPty,
+    private startupReadPaused = false,
+  ) {
     const tty = '_pty' in pty ? pty._pty : undefined;
     this.controllingTty =
       typeof tty === 'string' ? tty.replace(/^\/dev\//, '') : undefined;
     const socket = '_socket' in pty ? pty._socket : undefined;
     let finishPipeWait: (() => void) | undefined;
-    // The pinned node-pty wires socket-close to exit only after this event.
-    // Register before yielding the spawn result; an earlier taskkill can lose
-    // the exit observation while the output worker is still connecting.
+    // Await output-pipe readiness before publishing a usable Windows process.
+    // The managed patch observes startup exits independently of this event.
     if (
       process.platform === 'win32' &&
       typeof socket === 'object' &&
@@ -103,10 +106,11 @@ class NodePtyProcess implements IPtyProcess {
     } else {
       this.outputPipeReady = Promise.resolve();
     }
-    pty.onExit(() => {
+    pty.onExit((event) => {
+      this.exitEvent = event;
       this.exited = true;
       finishPipeWait?.();
-      if (this.paused) this.outputIncomplete = true;
+      if (this.paused || this.startupReadPaused) this.outputIncomplete = true;
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
       if (process.platform === 'win32' && this.pid > 0) this.releaseConpty();
@@ -311,6 +315,10 @@ class NodePtyProcess implements IPtyProcess {
 
   onData(cb: (data: string) => void): () => void {
     const disposable = this.pty.onData(cb);
+    if (this.startupReadPaused) {
+      this.startupReadPaused = false;
+      if (!this.paused) this.pty.resume();
+    }
     return () => disposable.dispose();
   }
 
@@ -321,6 +329,21 @@ class NodePtyProcess implements IPtyProcess {
       outputIncomplete?: boolean;
     }) => void,
   ): () => void {
+    if (this.exitEvent) {
+      const event = this.exitEvent;
+      let active = true;
+      queueMicrotask(() => {
+        if (active)
+          cb({
+            exitCode: event.exitCode,
+            signal: event.signal ?? null,
+            outputIncomplete: this.outputIncomplete,
+          });
+      });
+      return () => {
+        active = false;
+      };
+    }
     const disposable = this.pty.onExit(({ exitCode, signal }) =>
       cb({
         exitCode,
@@ -392,7 +415,6 @@ export class NodePtyAdapter implements IPtyAdapter {
       input.env,
     );
     let pty: import('node-pty').IPty;
-    let readyProcess: NodePtyProcess;
     try {
       pty = nodePty.spawn(
         launch?.command ?? input.shell,
@@ -405,18 +427,27 @@ export class NodePtyAdapter implements IPtyAdapter {
           env: (launch?.env ?? input.env) as Record<string, string>,
         },
       );
-      readyProcess = new NodePtyProcess(pty);
-      if (process.platform === 'win32') await readyProcess.waitForReady();
+      // ConPTY now starts asynchronously; preserve output until the caller
+      // subscribes, and never publish PID 0 as a tracked workload.
+      const starting = process.platform === 'win32' && pty.pid <= 0;
+      if (starting) pty.pause();
+      const result = new NodePtyProcess(pty, starting);
+      try {
+        if (process.platform === 'win32') await result.waitForReady();
+      } catch (error) {
+        if (pty.pid > 0) pty.kill();
+        throw error;
+      }
+      trackChildWorkload(launch, pty.pid);
+      result.onExit(() => {
+        void closeChildWorkload(pty.pid).catch((error) =>
+          logger.warn('Terminal workload cleanup failed', { error }),
+        );
+      });
+      return result;
     } catch (error) {
       await launch?.close();
       throw error;
     }
-    trackChildWorkload(launch, pty.pid);
-    pty.onExit(() => {
-      void closeChildWorkload(pty.pid).catch((error) =>
-        logger.warn('Terminal workload cleanup failed', { error }),
-      );
-    });
-    return readyProcess;
   }
 }
