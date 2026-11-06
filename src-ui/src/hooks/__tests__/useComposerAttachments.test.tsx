@@ -2,21 +2,23 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  type ComposerAttachmentDispatch,
+  stageComposerAttachments as stageAttachments,
+} from '../../lib/attachment-staging-queue';
 import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
 } from '../../types';
 
-const stageComposerAttachments = vi.hoisted(() => vi.fn());
+const stageComposerAttachments = vi.mocked(stageAttachments);
 const readChatAttachmentFiles = vi.hoisted(() => vi.fn());
 const { cancelAttachmentStage, reconcileAttachmentStages } = vi.hoisted(() => ({
   cancelAttachmentStage: vi.fn(),
   reconcileAttachmentStages: vi.fn(),
 }));
 
-vi.mock('../../lib/attachment-staging-queue', () => ({
-  stageComposerAttachments,
-}));
+vi.mock('../../lib/attachment-staging-queue');
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   cancelAttachmentStage,
@@ -121,6 +123,7 @@ describe('useComposerAttachments', () => {
     );
     stageComposerAttachments.mockImplementationOnce(
       async (_api, files, _signal, update) => {
+        if (!update) throw new Error('Missing upload observer');
         update({
           clientAttachmentId: files[0].id,
           state: 'failed',
@@ -176,7 +179,8 @@ describe('useComposerAttachments', () => {
     const selected: FileAttachment[] = [];
     const releases: Array<() => void> = [];
     stageComposerAttachments.mockImplementation(
-      async (_api, files: FileAttachment[], _signal, update) => {
+      async (_api, files, _signal, update) => {
+        if (!update) throw new Error('Missing upload observer');
         await new Promise<void>((resolve) => releases.push(resolve));
         update({
           clientAttachmentId: files[0]!.id,
@@ -184,6 +188,7 @@ describe('useComposerAttachments', () => {
           progress: 1,
           delivery: 'staged',
         });
+        return { kind: 'staged', references: [] };
       },
     );
     const hook = renderHook(() =>
@@ -248,6 +253,7 @@ describe('useComposerAttachments', () => {
     );
     stageComposerAttachments.mockImplementationOnce(
       async (_api, files, _signal, update) => {
+        if (!update) throw new Error('Missing upload observer');
         update({
           clientAttachmentId: files[0].id,
           state: 'failed',
@@ -318,10 +324,15 @@ describe('useComposerAttachments', () => {
       }
     >();
     stageComposerAttachments.mockImplementation(
-      async (_api, files, _signal, update) =>
-        new Promise<void>((resolve) => {
-          controls.set(files[0].id, { update, finish: resolve });
-        }),
+      async (_api, files, _signal, update) => {
+        if (!update) throw new Error('Missing upload observer');
+        return new Promise<ComposerAttachmentDispatch>((resolve) => {
+          controls.set(files[0].id, {
+            update,
+            finish: () => resolve({ kind: 'legacy-inline', attachments: [] }),
+          });
+        });
+      },
     );
     readChatAttachmentFiles
       .mockResolvedValueOnce({ attachments: [attachment('a')], errors: [] })
@@ -464,13 +475,20 @@ describe('useComposerAttachments', () => {
       { signal: AbortSignal; resolve: () => void }
     >();
     stageComposerAttachments.mockImplementation(
-      async (_apiBase, files, signal) =>
-        await new Promise<void>((resolve, reject) => {
-          controls.set(files[0].id, { signal, resolve });
-          signal.addEventListener('abort', () =>
-            reject(new DOMException('Aborted', 'AbortError')),
-          );
-        }),
+      async (_apiBase, files, signal) => {
+        if (!signal) throw new Error('Missing upload abort signal');
+        return await new Promise<ComposerAttachmentDispatch>(
+          (resolve, reject) => {
+            controls.set(files[0].id, {
+              signal,
+              resolve: () => resolve({ kind: 'staged', references: [] }),
+            });
+            signal.addEventListener('abort', () =>
+              reject(new DOMException('Aborted', 'AbortError')),
+            );
+          },
+        );
+      },
     );
     readChatAttachmentFiles
       .mockResolvedValueOnce({ attachments: [first], errors: [] })
@@ -807,6 +825,7 @@ describe('useComposerAttachments', () => {
     });
     stageComposerAttachments
       .mockImplementationOnce(async (_apiBase, _files, _signal, update) => {
+        if (!update) throw new Error('Missing upload observer');
         update({
           clientAttachmentId: file.id,
           state: 'retryable',
@@ -816,7 +835,7 @@ describe('useComposerAttachments', () => {
         });
         throw new Error('network failed');
       })
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce({ kind: 'staged', references: [] });
     reconcileAttachmentStages.mockResolvedValueOnce([
       {
         stageId: 'stage-retry',
@@ -856,35 +875,51 @@ describe('useComposerAttachments', () => {
     );
   });
 
-  test('keeps a committed sibling sendable when the same batch partially fails', async () => {
+  test('retains a committed sibling when another upload from the selection fails', async () => {
     const complete = attachment('complete');
     const retryable = attachment('retryable');
+    const selected: FileAttachment[] = [];
+    const releases = new Map<string, () => void>();
+    let finishReconciliation!: () => void;
+    const reconciliation = new Promise<void>((resolve) => {
+      finishReconciliation = resolve;
+    });
+    const reference = {
+      stageId: 'stage-complete',
+      clientAttachmentId: complete.id,
+      source: 'current-composer',
+      kind: 'file',
+      name: complete.name,
+      mimeType: 'text/plain',
+      size: complete.size,
+      digest: `sha256-${'a'.repeat(64)}`,
+      expiresAt: '2030-01-01T00:00:00.000Z',
+    } satisfies NonNullable<ComposerAttachmentStageSnapshot['reference']>;
     let currentStages: ComposerAttachmentStageSnapshot[] = [];
     const onStagesChange = vi.fn((next: ComposerAttachmentStageSnapshot[]) => {
       currentStages = next;
     });
-    stageComposerAttachments.mockImplementationOnce(
-      async (_apiBase, _files, _signal, update) => {
-        update({
-          clientAttachmentId: complete.id,
-          state: 'complete',
-          progress: 1,
-          delivery: 'staged',
-          stageId: 'stage-complete',
-          reference: {
-            stageId: 'stage-complete',
-            clientAttachmentId: complete.id,
-            source: 'current-composer',
-            kind: 'file',
-            name: complete.name,
-            mimeType: 'text/plain',
-            size: complete.size,
-            digest: `sha256-${'a'.repeat(64)}`,
-            expiresAt: '2030-01-01T00:00:00.000Z',
-          },
+    stageComposerAttachments.mockImplementation(
+      async (_apiBase, files, _signal, update) => {
+        if (!update) throw new Error('Missing upload observer');
+        expect(files).toHaveLength(1);
+        const file = files[0]!;
+        await new Promise<void>((resolve) => {
+          releases.set(file.id, resolve);
         });
+        if (file.id === complete.id) {
+          update({
+            clientAttachmentId: file.id,
+            state: 'complete',
+            progress: 1,
+            delivery: 'staged',
+            stageId: reference.stageId,
+            reference,
+          });
+          return { kind: 'staged', references: [reference] };
+        }
         update({
-          clientAttachmentId: retryable.id,
+          clientAttachmentId: file.id,
           state: 'retryable',
           progress: 0,
           error: 'network failed',
@@ -896,35 +931,72 @@ describe('useComposerAttachments', () => {
       attachments: [complete, retryable],
       errors: [],
     });
+    reconcileAttachmentStages.mockImplementation(async () => {
+      // Recovery must not repair a lost sibling reference before the assertion.
+      await reconciliation;
+      return [{ stageId: reference.stageId, state: 'complete', reference }];
+    });
     const { result } = renderHook(() =>
       useComposerAttachments({
         apiBase: 'http://station.test',
-        attachments: [],
+        attachments: selected,
         stages: currentStages,
+        getCurrentAttachments: () => selected,
+        getCurrentStages: () => currentStages,
         capabilities: { images: true, files: true },
-        onAddAttachments: vi.fn(),
+        onAddAttachments: (files) => selected.push(...files),
         onStagesChange,
       }),
     );
 
-    await act(async () => {
-      await result.current.selectFiles([new File(['x'], complete.name)]);
-    });
-
-    expect(onStagesChange).toHaveBeenLastCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          clientAttachmentId: complete.id,
+    try {
+      await act(async () => {
+        await result.current.selectFiles([
+          new File(['x'], complete.name),
+          new File(['y'], retryable.name),
+        ]);
+      });
+      await waitFor(() =>
+        expect([...releases.keys()]).toEqual([complete.id, retryable.id]),
+      );
+      // Intake returns while the per-file upload tasks are still pending.
+      expect(currentStages).toMatchObject([
+        { clientAttachmentId: complete.id, state: 'queued' },
+        { clientAttachmentId: retryable.id, state: 'queued' },
+      ]);
+      await act(async () => releases.get(complete.id)!());
+      await waitFor(() =>
+        expect(currentStages[0]).toMatchObject({
           state: 'complete',
-          stageId: 'stage-complete',
+          reference,
         }),
-        expect.objectContaining({
-          clientAttachmentId: retryable.id,
-          state: 'retryable',
-        }),
-      ]),
-    );
-    expect(result.current.error).toBe('Try again in a moment.');
+      );
+      expect(result.current.error).toBeNull();
+
+      await act(async () => releases.get(retryable.id)!());
+      await waitFor(() => {
+        expect(onStagesChange).toHaveBeenLastCalledWith([
+          expect.objectContaining({
+            clientAttachmentId: complete.id,
+            state: 'complete',
+            delivery: 'staged',
+            reference,
+          }),
+          expect.objectContaining({
+            clientAttachmentId: retryable.id,
+            state: 'retryable',
+            error: 'Try again in a moment.',
+          }),
+        ]);
+        expect(result.current.error).toBe('Try again in a moment.');
+      });
+      expect(stageComposerAttachments).toHaveBeenCalledTimes(2);
+    } finally {
+      await act(async () => {
+        for (const release of releases.values()) release();
+        finishReconciliation();
+      });
+    }
   });
 });
 
