@@ -1,0 +1,113 @@
+{
+  "path": "docs/design/station-connection.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Implemented Station connection routing, relay, observation, delivery, legacy recovery and shared dock, Activity, attached-session, coding-tab, Task-history and Inbox ownership.",
+
+  "limits": "Source inspection and deterministic fixtures do not establish release, installed native shells, physical devices or external providers. POSIX product journeys remain pending parent qualification; the Windows product attempt stopped before browser startup.",
+
+  "sources": [
+    "src-ui/src/connections/station-connection.ts",
+
+    "src-ui/src/connections/station-connection-registry.ts",
+
+    "src-ui/src/connections/resolve-station-connection.ts",
+
+    "src-ui/src/connections/StationConnectionsContext.tsx",
+
+    "src-ui/src/components/conversation/ConversationBody.tsx",
+
+    "src-ui/src/components/conversation/useConversationController.ts",
+
+    "src-ui/src/components/conversation/conversation-transport.ts",
+
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "src-ui/src/contexts/work-observation.ts",
+
+    "src-ui/src/lib/outboundQueue.ts",
+
+    "src-ui/src/components/conversation/LegacyConversationRecovery.tsx",
+
+    "src-server/routes/environments/peer-chat-policy.ts",
+
+    "src-server/routes/environments/peer-chat-routes.ts",
+
+    "src-server/services/remote-stations/remote-station-forwarder.ts",
+
+    "packages/contracts/src/peer-chat.ts",
+
+    "packages/sdk/src/client/http.ts",
+
+    "tests/station-connection-chat.spec.ts",
+
+    "tests/conversation-surfaces.spec.ts",
+
+    "src-ui/src/components/conversation/ConversationReader.tsx",
+
+    "src-ui/src/components/conversation/RecordConversationBody.tsx",
+
+    "src-ui/src/components/conversation/useRecordConversationController.ts",
+
+    "src-ui/src/components/conversation/ConversationConnectionContext.tsx",
+
+    "src-ui/src/components/conversation/ConversationStopControl.tsx",
+
+    "src-ui/src/components/conversation/useApprovalAnswering.ts",
+
+    "src-ui/src/components/conversation/SharedTaskHistoryList.tsx",
+
+    "src-ui/src/components/chat-dock/useInboxPanelController.ts",
+
+    "src-ui/src/utils/stationFailure.ts",
+
+    "src-ui/src/contexts/ManagedPolicyContext.tsx",
+
+    "src-ui/src/hooks/orchestration/childWorkHandlers.ts",
+
+    "src-ui/src/components/conversation/__tests__/merge-integration.test.tsx",
+
+    "scripts/conversation-boundary-gate.mjs",
+
+    "scripts/conversation-surfaces.json",
+
+    "scripts/conversation-boundary-baseline.json",
+
+    "scripts/__tests__/conversation-boundary-gate.test.ts",
+
+    "src-ui/src/components/chat/OutboundQueuedMessages.tsx",
+
+    "src-ui/src/components/chat/UnsentMessages.tsx",
+
+    "src-ui/src/__tests__/OutboundQueuedMessages.station.test.tsx",
+
+    "src-ui/src/components/conversation/__tests__/RecordConversationBody.test.tsx",
+
+    "src-ui/src/components/conversation/ConversationBody.css",
+
+    "src-ui/src/components/chat/chat.css",
+
+    "src-ui/src/views/TaskWorkspaceView.css",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.tsx",
+
+    "src-ui/src/hooks/useChatDockActions.ts",
+
+    "src-ui/src/__tests__/useChatDockActions.test.tsx",
+
+    "src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx",
+
+    "src-ui/src/utils/StationUiError.ts",
+
+    "src-ui/src/connections/__tests__/station-state-partitions.test.ts",
+
+    "src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts"
+  ],
+
+  "checks": [
+    "Classification records implemented ownership and bounded macOS browser qualification; append-only review notes separately identify the inspected claims and evidence limits."
+  ]
+}

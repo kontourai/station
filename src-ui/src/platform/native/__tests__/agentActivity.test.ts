@@ -304,7 +304,7 @@ describe('agent activity controller', () => {
     await h.controller.enable(target);
 
     await expect(h.controller.disable(target)).rejects.toThrow(
-      /Turned off on this phone, but the Station could not be told: Station unreachable/,
+      'Turned off on this phone, but the Station could not be told: Try again in a moment.',
     );
     expect(h.events.at(-1)).toBe('clear');
     expect(h.controller.registration(STATION)).toBeNull();

@@ -1,14 +1,10 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
-import { activeChatsStore } from '../../../contexts/active-chats-store';
-import { useRecheckMessageDelivery } from '../../../hooks/useMessageDeliveryState';
+import { useId, useRef, useState } from 'react';
 import { useStationOutlivesApp } from '../../../hooks/useStationOutlivesApp';
 import type { MessageDeliveryState } from '../../../utils/messageDeliveryState';
+import { describeStationFailure } from '../../../utils/stationFailure';
+import { ActionOverflowMenu } from '../../ActionOverflowMenu';
+import { Button } from '../../Button';
+import type { DeliveryPort } from '../../conversation/DeliveryPort';
 import {
   AWAITING_CONFIRMATION_LABEL,
   MAY_HAVE_REACHED_LABEL,
@@ -18,6 +14,7 @@ import {
   UnconfirmedDiscardConfirm,
   useUnconfirmedDiscardDisclosure,
 } from '../UnconfirmedDiscardConfirm';
+import '../chat.css';
 
 /** An action's result on the delivery line: an error is an alert. */
 export interface DeliveryNotice {
@@ -63,6 +60,10 @@ const LABELS: Record<ExceptionState, { text: string; title: string }> = {
     title:
       'Kept on this device until the reply ends. If the app closes first, it stays here to send.',
   },
+  'held-for-send': {
+    text: 'Queued. Send when ready.',
+    title: 'Kept on this device. Sent only when you choose Send.',
+  },
   'not-sent': {
     text: 'Not sent',
     title: "Station didn't take it. Retry can't send it twice.",
@@ -94,36 +95,23 @@ const LABELS: Record<ExceptionState, { text: string; title: string }> = {
  * not: every send passes through it.
  */
 export function MessageDeliveryNote({
-  chatKey,
-  clientTurnId,
+  port,
   state,
-  text,
   notice: outsideNotice,
+  variant = 'bubble',
 }: {
-  chatKey: string;
-  clientTurnId: string;
+  port: DeliveryPort;
   state: MessageDeliveryState;
-  text: string;
   /** A result from an action the bubble's own menu ran (Discard). */
   notice?: DeliveryNotice | null;
+  variant?: 'bubble' | 'inline';
 }) {
   const [busy, setBusy] = useState(false);
   const [ownNotice, setNotice] = useState<DeliveryNotice | null>(null);
   const notice = ownNotice ?? outsideNotice ?? null;
   const discardDisclosure = useUnconfirmedDiscardDisclosure();
-  const recheck = useRecheckMessageDelivery(chatKey);
   const titleId = useId();
-  const savedOnDevice = useSyncExternalStore(activeChatsStore.subscribe, () => {
-    const chat = activeChatsStore.getSnapshot()[chatKey];
-    return (
-      chat?.durableClientTurnId === clientTurnId &&
-      chat.pendingClientTurnId === clientTurnId
-    );
-  });
-  const canDiscardUnconfirmed = useUnconfirmedDiscardable(
-    clientTurnId,
-    state === 'unconfirmed',
-  );
+  const { savedOnDevice, canDiscardUnconfirmed } = port;
   // The line keeps its last exception's words while it folds away, so the
   // collapse never shows an empty band.
   const seenUndelivered = useRef(state !== 'delivered');
@@ -145,7 +133,7 @@ export function MessageDeliveryNote({
       setNotice(result ? { text: result, error: false } : null);
     } catch (error) {
       setNotice({
-        text: `That didn't work: ${error instanceof Error ? error.message : String(error)}`,
+        text: describeStationFailure(error).body,
         error: true,
       });
     } finally {
@@ -163,7 +151,7 @@ export function MessageDeliveryNote({
         'Sending'
       )
     ) : state === 'received' ? (
-      <ReceivedText />
+      <ReceivedText value={port.stationOutlivesApp} />
     ) : (
       'Delivered'
     );
@@ -172,13 +160,16 @@ export function MessageDeliveryNote({
   // What a screen reader is told: the received fact or the exception line.
   const announcement =
     state === 'received' ? (
-      <ReceivedText />
+      <ReceivedText value={port.stationOutlivesApp} />
     ) : isException(state) ? (
       LABELS[state].text
     ) : null;
 
   return (
-    <div className="message-delivery" data-delivery-state={state}>
+    <div
+      className={`message-delivery${variant === 'inline' ? ' message-delivery--inline' : ''}`}
+      data-delivery-state={state}
+    >
       <span
         className="message-delivery__glyph"
         data-glyph={
@@ -233,67 +224,107 @@ export function MessageDeliveryNote({
             ) : null}
             {state === 'not-sent' ? (
               <span className="message-delivery__actions">
-                <button
-                  type="button"
-                  className="message-delivery__action"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      const { retryNotSentMessage } = await import(
-                        // Loaded on demand: the actions write the outbox, which a
-                        // plain bubble never needs.
-                        '../../../lib/messageDeliveryActions'
-                      );
-                      await retryNotSentMessage(clientTurnId);
-                      return null;
-                    })
-                  }
-                >
-                  Retry
-                </button>
-                <button
-                  type="button"
-                  className="message-delivery__action"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      const { editMessageInComposer, ALREADY_DELIVERED } =
-                        await import('../../../lib/messageDeliveryActions');
-                      return (await editMessageInComposer(
-                        chatKey,
-                        clientTurnId,
-                        text,
-                      )) === 'delivered'
-                        ? ALREADY_DELIVERED
-                        : null;
-                    })
-                  }
-                >
-                  Edit
-                </button>
+                {port.canRetry !== false && port.retry && (
+                  <button
+                    type="button"
+                    className="message-delivery__action"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await port.retry?.();
+                        return null;
+                      })
+                    }
+                  >
+                    Retry
+                  </button>
+                )}
+                {port.edit && (
+                  <button
+                    type="button"
+                    className="message-delivery__action"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        return port.edit?.();
+                      })
+                    }
+                  >
+                    Edit
+                  </button>
+                )}
               </span>
-            ) : state === 'unconfirmed' ? (
+            ) : (state === 'held-on-device' || state === 'held-for-send') &&
+              port.release ? (
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await port.release?.();
+                    return null;
+                  })
+                }
+              >
+                Send
+              </Button>
+            ) : state === 'unconfirmed' || state === 'awaiting-confirmation' ? (
               <span className="message-delivery__actions">
-                <button
-                  type="button"
-                  className="message-delivery__action"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      const outcome = await recheck(clientTurnId);
-                      if (outcome === undefined)
-                        return 'Nothing new to check right now.';
-                      return outcome === 'indeterminate' ||
-                        outcome === 'expired' ||
-                        outcome === 'unknown'
-                        ? 'Station still can’t confirm it.'
-                        : null;
-                    })
-                  }
-                >
-                  Check
-                </button>
-                {canDiscardUnconfirmed ? (
+                {port.check && (
+                  <button
+                    type="button"
+                    className="message-delivery__action"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const outcome = await port.check?.();
+                        if (outcome === undefined)
+                          return 'Nothing new to check right now.';
+                        if (outcome === 'not-received')
+                          return 'Station did not receive it. Retry sends it with the same message key.';
+                        if (outcome === 'received' || outcome === 'queued')
+                          return 'Station has the message. The agent has not started it yet.';
+                        if (outcome === 'started')
+                          return 'The agent started this message.';
+                        return outcome === 'indeterminate' ||
+                          outcome === 'expired' ||
+                          outcome === 'unknown'
+                          ? 'Station still can’t confirm it.'
+                          : null;
+                      })
+                    }
+                  >
+                    Check
+                  </button>
+                )}
+                {(port.edit || port.copy) && (
+                  <ActionOverflowMenu
+                    label="More delivery actions"
+                    actions={[
+                      ...(port.edit
+                        ? [
+                            {
+                              key: 'edit-copy',
+                              label: 'Edit a copy',
+                              disabled: busy,
+                              onSelect: () => void run(() => port.edit!()),
+                            },
+                          ]
+                        : []),
+                      ...(port.copy
+                        ? [
+                            {
+                              key: 'copy-message',
+                              label: 'Copy message',
+                              disabled: busy,
+                              onSelect: () => void run(() => port.copy!()),
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
+                )}
+                {canDiscardUnconfirmed && port.discard ? (
                   <button
                     type="button"
                     className="message-delivery__action"
@@ -309,23 +340,15 @@ export function MessageDeliveryNote({
         </div>
       </div>
       {discardDisclosure.open &&
-      state === 'unconfirmed' &&
-      canDiscardUnconfirmed ? (
+      (state === 'unconfirmed' || state === 'awaiting-confirmation') &&
+      canDiscardUnconfirmed &&
+      port.discard ? (
         <UnconfirmedDiscardConfirm
           busy={busy}
           {...discardDisclosure.confirmProps}
           onConfirm={() =>
             void run(async () => {
-              const { discardMessage, ALREADY_DELIVERED } = await import(
-                '../../../lib/messageDeliveryActions'
-              );
-              return (await discardMessage(
-                chatKey,
-                clientTurnId,
-                'unconfirmed',
-              )) === 'delivered'
-                ? ALREADY_DELIVERED
-                : null;
+              return port.discard?.();
             })
           }
         />
@@ -344,55 +367,17 @@ export function MessageDeliveryNote({
 }
 
 /**
- * Discard… is offered for an unconfirmed message only when its outbox row is
- * the unconfirmed record itself (`may-have-started`) or there is none. A row
- * still `invoking` or `pending` is a send under way or waiting, which an
- * explicit dismissal would refuse anyway.
- */
-function useUnconfirmedDiscardable(
-  clientTurnId: string,
-  unconfirmed: boolean,
-): boolean {
-  const [discardable, setDiscardable] = useState(false);
-  useEffect(() => {
-    if (!unconfirmed) {
-      setDiscardable(false);
-      return;
-    }
-    let active = true;
-    let unsubscribe = () => {};
-    void import('../../../lib/outboundQueue')
-      .then(({ outboundDispatch }) => {
-        const read = () =>
-          void outboundDispatch
-            .rowStatus(clientTurnId)
-            .then((status) => {
-              if (active)
-                setDiscardable(
-                  status === undefined || status === 'may-have-started',
-                );
-            })
-            .catch(() => {
-              if (active) setDiscardable(false);
-            });
-        if (!active) return;
-        read();
-        unsubscribe = outboundDispatch.subscribe(read);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, [clientTurnId, unconfirmed]);
-  return discardable;
-}
-
-/**
  * Station has the message; the agent does not yet. Says closing the app is
  * safe only when that Station keeps running without it
  * (`useStationOutlivesApp`), so the platform is read only in this state.
  */
-function ReceivedText() {
+function ReceivedText({ value }: { value?: boolean | null }) {
+  return value === undefined ? (
+    <ObservedReceivedText />
+  ) : (
+    <>{receivedDeliveryLabel(value ?? undefined)}</>
+  );
+}
+function ObservedReceivedText() {
   return <>{receivedDeliveryLabel(useStationOutlivesApp())}</>;
 }

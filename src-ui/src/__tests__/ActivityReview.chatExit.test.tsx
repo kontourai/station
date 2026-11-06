@@ -42,6 +42,7 @@ import {
   PaneRelationsProvider,
   usePaneRelations,
 } from '../contexts/PaneRelationsContext';
+import { PreviewProvider } from '../contexts/PreviewContext';
 import {
   RegionModelProvider,
   useRegionModel,
@@ -317,27 +318,29 @@ async function mount(
                   <LayoutChatPlacementContext.Provider
                     value={options.center ? 'center' : 'none'}
                   >
-                    <ToastProvider>
-                      <Owner />
-                      <Review
-                        descriptor={WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR}
-                        instance={instance}
-                      />
-                      <UnsavedGuardOwnerContext.Provider value={paneId}>
-                        {options.otherDirty && <OtherDirtyWork />}
-                      </UnsavedGuardOwnerContext.Provider>
-                      {options.recipient && (
-                        <ImportedConversationPane
-                          threadId={session.threadId}
-                          apiBase={network.apiBase}
-                          onContinueInDock={() => {
-                            throw new Error(
-                              'This fixture stops at recipient confirmation',
-                            );
-                          }}
+                    <PreviewProvider>
+                      <ToastProvider>
+                        <Owner />
+                        <Review
+                          descriptor={WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR}
+                          instance={instance}
                         />
-                      )}
-                    </ToastProvider>
+                        <UnsavedGuardOwnerContext.Provider value={paneId}>
+                          {options.otherDirty && <OtherDirtyWork />}
+                        </UnsavedGuardOwnerContext.Provider>
+                        {options.recipient && (
+                          <ImportedConversationPane
+                            threadId={session.threadId}
+                            apiBase={network.apiBase}
+                            onContinueInDock={() => {
+                              throw new Error(
+                                'This fixture stops at recipient confirmation',
+                              );
+                            }}
+                          />
+                        )}
+                      </ToastProvider>
+                    </PreviewProvider>
                   </LayoutChatPlacementContext.Provider>
                 </ActivityReviewProvider>
               </PaneRelationsProvider>
@@ -412,7 +415,7 @@ test('canonical Chat reveal leaves a desktop sibling visible without asking its 
 
 test('real SessionDetail dirty Close cannot consume a newly registered review owner', async () => {
   await mount();
-  const draft = screen.getByRole('textbox', { name: 'Send input to session' });
+  const draft = await screen.findByRole('textbox', { name: 'Message' });
   fireEvent.change(draft, { target: { value: 'Keep this real review reply' } });
   await waitFor(() => expect(relations.relationOf(paneId)?.kept).toBe(true));
   fireEvent.click(screen.getByRole('button', { name: 'Close review' }));
@@ -631,7 +634,7 @@ test('phone attached Send carries its reply but still asks other dirty work owne
       target: { value: 'A separate unsaved edit' },
     },
   );
-  fireEvent.click(review.getByRole('button', { name: 'Send message' }));
+  fireEvent.click(review.getByRole('button', { name: 'Continue in Station' }));
   const layer = model.readPhoneLayer();
   const discard = await screen.findByRole('dialog', {
     name: 'Unsaved Changes',
@@ -641,7 +644,7 @@ test('phone attached Send carries its reply but still asks other dirty work owne
     expect(
       (
         review.getByRole('button', {
-          name: 'Send message',
+          name: 'Continue in Station',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false),
@@ -651,7 +654,7 @@ test('phone attached Send carries its reply but still asks other dirty work owne
     'Only the submitted reply moves',
   );
   expect(screen.queryByRole('dialog', { name: 'Continue here?' })).toBeNull();
-  fireEvent.click(review.getByRole('button', { name: 'Send message' }));
+  fireEvent.click(review.getByRole('button', { name: 'Continue in Station' }));
   const secondDecision = await screen.findByRole('dialog', {
     name: 'Unsaved Changes',
   });

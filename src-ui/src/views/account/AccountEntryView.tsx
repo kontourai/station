@@ -18,6 +18,7 @@ import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { clearOfflineReading } from '../../lib/offlineReading';
 import { errorText, userFacingErrorMessage } from '../../utils/errorText';
+import { StationUiError } from '../../utils/StationUiError';
 import {
   clearAccountEntryContinuation,
   readAccountEntryContinuation,
@@ -150,9 +151,11 @@ export function AccountEntryView({
         });
       } else if (kind === 'register') {
         if (!invitation)
-          throw new Error('Open your Project invitation to create an account.');
+          throw new StationUiError(
+            'Open your Project invitation to create an account.',
+          );
         if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,31}$/.test(email))
-          throw new Error(
+          throw new StationUiError(
             'Choose a username: 3 to 32 letters, digits, dots, dashes or underscores.',
           );
         await passkey.mutateAsync({
@@ -167,7 +170,9 @@ export function AccountEntryView({
       } else {
         const token = initialFlow.resetToken;
         if (!token)
-          throw new Error('Open the recovery link from the operator again.');
+          throw new StationUiError(
+            'Open the recovery link from the operator again.',
+          );
         await passkey.mutateAsync({
           apiBase,
           path: passkeyPath('passkey-recover')!,
@@ -206,7 +211,7 @@ export function AccountEntryView({
         !('url' in result) ||
         typeof result.url !== 'string'
       )
-        throw new Error(
+        throw new StationUiError(
           'The sign-in provider did not return a login destination.',
         );
       const url = new URL(result.url);
@@ -217,7 +222,7 @@ export function AccountEntryView({
           ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
         )
       )
-        throw new Error(
+        throw new StationUiError(
           'The sign-in provider returned an unsupported destination.',
         );
       window.location.assign(url.href);
@@ -235,7 +240,7 @@ export function AccountEntryView({
       if (mode === 'reset') {
         const path = endpoint('complete-recovery');
         if (!path || !initialFlow.resetToken)
-          throw new Error(
+          throw new StationUiError(
             'Open the password reset link from your email to continue.',
           );
         await mutation.mutateAsync({
@@ -247,7 +252,7 @@ export function AccountEntryView({
       } else if (mode === 'recover') {
         const path = endpoint('request-recovery');
         if (!path)
-          throw new Error(
+          throw new StationUiError(
             'Contact this Station’s operator for account recovery.',
           );
         await mutation.mutateAsync({ path, body: { email } });
@@ -259,10 +264,14 @@ export function AccountEntryView({
           login?.kind !== 'email-password' &&
           login?.kind !== 'username-password'
         )
-          throw new Error('Use this Station’s configured sign-in method.');
+          throw new StationUiError(
+            'Use this Station’s configured sign-in method.',
+          );
         const path = mode === 'register' ? login.signUpPath : login.signInPath;
         if (!path || (mode === 'register' && !invitation))
-          throw new Error('Open your Project invitation to create an account.');
+          throw new StationUiError(
+            'Open your Project invitation to create an account.',
+          );
         await mutation.mutateAsync({
           path,
           body: {
@@ -308,7 +317,7 @@ export function AccountEntryView({
         !('grantsDeviceAccess' in result) ||
         result.grantsDeviceAccess !== false
       )
-        throw new Error('Station did not confirm Project membership.');
+        throw new StationUiError('Station did not confirm Project membership.');
       setJoined(true);
       setInvitation(undefined);
       clearAccountEntryContinuation(invitation);

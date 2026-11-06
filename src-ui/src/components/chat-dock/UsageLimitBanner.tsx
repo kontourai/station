@@ -5,6 +5,7 @@ import type {
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useEffect, useId, useRef, useState } from 'react';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { useUsageLimitRecovery } from '../../hooks/useUsageLimitRecovery';
 import type { ChatSession } from '../../types';
 import { clearSnooze, writeSnooze } from '../../utils/activity-snooze-store';
@@ -120,6 +121,7 @@ function UsageLimitBannerFor({
   // A banner that showed a waiting or resuming stop keeps reading until that
   // stop settles, even after the conversation stops looking limited (a newer
   // message clears the hold), so the reason it settled for can be said.
+  const { namespace } = useAuthorityPersistence();
   const [engaged, setEngaged] = useState(false);
   const enabled = active || engaged;
   const { recovery, refetch, resume, resumeAtReset, hold } =
@@ -279,7 +281,8 @@ function UsageLimitBannerFor({
         disabled={busy}
         onClick={() =>
           resumeAtReset.mutate(undefined, {
-            onSuccess: () => writeSnooze(snoozeId, dueMs, Date.now()),
+            onSuccess: () =>
+              writeSnooze(snoozeId, dueMs, Date.now(), namespace),
           })
         }
       >
@@ -295,7 +298,7 @@ function UsageLimitBannerFor({
         disabled={busy}
         onClick={() =>
           hold.mutate(undefined, {
-            onSuccess: () => clearSnooze(snoozeId, Date.now()),
+            onSuccess: () => clearSnooze(snoozeId, Date.now(), namespace),
           })
         }
       >

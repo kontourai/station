@@ -41,6 +41,87 @@ function wrapper(store: ConnectionStore) {
 }
 
 describe('useConnections', () => {
+  it('keeps profile leases independent of selection and fences rotation, rebind and removal', async () => {
+    const store = makeStore();
+    const a = store.add('A', 'https://a.test');
+    const b = store.add('B', 'https://b.test');
+    store.setCredential(a.id, 'a-secret');
+    store.setCredential(b.id, 'b-secret');
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: wrapper(store),
+    });
+    const active = result.current.captureCredentialEvidence();
+    const captured = result.current.captureCredentialEvidenceForConnection(
+      b.id,
+    );
+    if (!captured || !active) throw new Error('missing evidence');
+    expect(captured.credential).toBe('b-secret');
+    await act(() => result.current.setActiveConnection(b.id));
+    expect(result.current.isCredentialEvidenceCurrent(active)).toBe(false);
+    expect(result.current.isConnectionCredentialEvidenceCurrent(captured)).toBe(
+      true,
+    );
+    act(() => store.setCredential(a.id, 'a-new'));
+    expect(result.current.isConnectionCredentialEvidenceCurrent(captured)).toBe(
+      true,
+    );
+    act(() => store.setCredential(b.id, 'b-new'));
+    expect(result.current.isConnectionCredentialEvidenceCurrent(captured)).toBe(
+      false,
+    );
+    const rotated = result.current.captureCredentialEvidenceForConnection(b.id);
+    if (!rotated) throw new Error('missing rotated evidence');
+    act(() => store.update(b.id, { url: 'https://b-new.test' }));
+    expect(result.current.isConnectionCredentialEvidenceCurrent(rotated)).toBe(
+      false,
+    );
+    const rebound = result.current.captureCredentialEvidenceForConnection(b.id);
+    if (!rebound) throw new Error('missing rebound evidence');
+    act(() => store.remove(b.id));
+    expect(result.current.isConnectionCredentialEvidenceCurrent(rebound)).toBe(
+      false,
+    );
+    expect(
+      result.current.captureCredentialEvidenceForConnection(b.id),
+    ).toBeNull();
+  });
+
+  it('distinguishes same-origin profiles without selecting either one', () => {
+    const store = makeStore();
+    const a = store.add('A', 'https://same.test');
+    store.setInjectedConnection({
+      id: 'B',
+      name: 'B',
+      url: a.url,
+      source: 'cli-base',
+    });
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: wrapper(store),
+    });
+    act(() =>
+      store.setInjectedConnection({
+        id: 'B',
+        name: 'B',
+        url: a.url,
+        source: 'cli-base',
+      }),
+    );
+    const first = result.current.captureCredentialEvidenceForConnection(a.id);
+    const second = result.current.captureCredentialEvidenceForConnection('B');
+    if (!first || !second) throw new Error('missing profiles');
+    expect(first.origin).toBe(second.origin);
+    expect(
+      requestAuthorityScopeFromCredentialEvidence(first).authorityKey,
+    ).not.toBe(
+      requestAuthorityScopeFromCredentialEvidence(second).authorityKey,
+    );
+    expect(result.current.isConnectionCredentialEvidenceCurrent(first)).toBe(
+      true,
+    );
+    expect(result.current.isConnectionCredentialEvidenceCurrent(second)).toBe(
+      true,
+    );
+  });
   it('keeps same-origin connections in distinct live authority snapshots', async () => {
     const store = makeStore();
     const { result } = renderHook(() => useConnections(), {

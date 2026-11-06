@@ -20,6 +20,18 @@ import { isRecord } from '../../utils/isRecord';
 const MAX_REPORT_BYTES = 4096;
 const REPORT_SCHEMA = 'station.connection-key/v1';
 const KEY_ID = /^[A-Za-z0-9_-]{43}$/u;
+const REPORT_VALIDATION_COPY = {
+  size: 'The Station key report is too large.',
+  json: 'Paste the JSON report from the Station operator.',
+  incomplete: 'This is not a complete Station operator key report.',
+  invalid: 'The Station key report is invalid.',
+  mismatch: 'The Station key ID does not match its public key.',
+} as const;
+class OperatorKeyReportError extends Error {
+  constructor(readonly reason: keyof typeof REPORT_VALIDATION_COPY) {
+    super(REPORT_VALIDATION_COPY[reason]);
+  }
+}
 
 interface OperatorKeyReport {
   readonly trust: ApprovedStationConnectionTrust;
@@ -38,12 +50,12 @@ async function parseOperatorKeyReport(
   text: string,
 ): Promise<OperatorKeyReport> {
   if (new TextEncoder().encode(text).byteLength > MAX_REPORT_BYTES)
-    throw new Error('The Station key report is too large.');
+    throw new OperatorKeyReportError('size');
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error('Paste the JSON report from the Station operator.');
+    throw new OperatorKeyReportError('json');
   }
   if (
     !isRecord(parsed) ||
@@ -55,7 +67,7 @@ async function parseOperatorKeyReport(
     typeof parsed.keyId !== 'string' ||
     !KEY_ID.test(parsed.keyId)
   )
-    throw new Error('This is not a complete Station operator key report.');
+    throw new OperatorKeyReportError('incomplete');
 
   let trust: ApprovedStationConnectionTrust;
   try {
@@ -63,11 +75,10 @@ async function parseOperatorKeyReport(
       parsed.trust as ApprovedStationConnectionTrust,
     );
   } catch {
-    throw new Error('The Station key report is invalid.');
+    throw new OperatorKeyReportError('invalid');
   }
   const keyId = await stationConnectionSigningKeyId(trust);
-  if (keyId !== parsed.keyId)
-    throw new Error('The Station key ID does not match its public key.');
+  if (keyId !== parsed.keyId) throw new OperatorKeyReportError('mismatch');
   const confirmationCode = await stationConnectionKeyConfirmationCode(trust);
   return Object.freeze({ trust, keyId, confirmationCode });
 }
@@ -201,12 +212,12 @@ export function BrowserStationTrustApproval() {
       let parsed: OperatorKeyReport;
       try {
         parsed = await parseOperatorKeyReport(reportText.trim());
-      } catch (error) {
+      } catch (cause) {
         if (current)
           setParseError(
-            error instanceof Error
-              ? error.message
-              : 'The Station key report is invalid.',
+            cause instanceof OperatorKeyReportError
+              ? REPORT_VALIDATION_COPY[cause.reason]
+              : REPORT_VALIDATION_COPY.invalid,
           );
         return;
       }

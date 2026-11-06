@@ -1,5 +1,6 @@
 import { useFileSystemBrowseQuery } from '@kontourai/station-sdk';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { nextTabIndex } from '../../utils/tab-navigation';
 import { FolderGlyph } from '../icons/Glyph';
 import {
@@ -203,7 +204,7 @@ export function FolderBrowserModal({
       <div className={cx.body}>
         {error && (
           <div className={`${cx.message} ${cx.messageError}`}>
-            {(error as Error).message}
+            {describeStationFailure(error as Error).body}
           </div>
         )}
         {loading ? (

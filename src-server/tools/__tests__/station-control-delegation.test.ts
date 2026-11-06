@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
@@ -614,6 +614,9 @@ function installRemoteStationFetch(
     if (discovery && url === `${REMOTE_API}/api/connections/agents`) {
       return json({ success: true, data: [] });
     }
+    if (discovery && url === `${REMOTE_API}/api/connections/models`) {
+      return json({ success: true, data: [] });
+    }
     if (discovery && url === `${REMOTE_API}/api/agents`) {
       return json({ success: true, data: [] });
     }
@@ -633,6 +636,79 @@ describe('Station Control canonical Environment + Agent execution', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     fetchMock.mockReset();
+  });
+
+  test('discovers only ready receiver model connections for the Station engine', async () => {
+    installRemoteStationFetch(
+      '/api/orchestration/delegations',
+      {},
+      { workingDirectory: '/srv/station' },
+    );
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === `${REMOTE_API}/api/agents`)
+        return json({
+          success: true,
+          data: [
+            {
+              slug: 'station',
+              name: 'Station Assistant',
+              executionDefault: true,
+            },
+          ],
+        });
+      if (url === `${REMOTE_API}/api/connections/models`)
+        return json({
+          success: true,
+          data: [
+            {
+              kind: 'model',
+              enabled: true,
+              status: 'ready',
+              config: {
+                modelOptions: [
+                  {
+                    id: 'receiver-model',
+                    name: 'Receiver model',
+                    originalId: 'receiver-model',
+                    apiKey: 'must-not-leak',
+                  },
+                ],
+              },
+            },
+            {
+              kind: 'model',
+              enabled: false,
+              status: 'ready',
+              config: { modelOptions: [{ id: 'disabled-model' }] },
+            },
+            {
+              kind: 'model',
+              enabled: true,
+              status: 'error',
+              config: { modelOptions: [{ id: 'broken-model' }] },
+            },
+          ],
+        });
+      return original(input, init);
+    });
+    const { discoverDelegationOptions } = await import(
+      '../station-control-delegation.js'
+    );
+    const catalog = await discoverDelegationOptions({
+      environmentId: 'environment-remote',
+    });
+    expect(catalog.targets[0]?.models).toEqual([
+      {
+        id: 'receiver-model',
+        name: 'Receiver model',
+        originalId: 'receiver-model',
+      },
+    ]);
+    expect(catalog.targets[0]?.capabilities.modelSelection).toBe(true);
+    expect(catalog.targets[0]?.engineId).toBe('station');
+    expect(JSON.stringify(catalog)).not.toContain('must-not-leak');
   });
 
   test('rejects a tilde suffix collision while discovering remote delegation options', async () => {
@@ -2853,12 +2929,13 @@ describe('Station Control canonical Environment + Agent execution', () => {
   // retried continue all run the production derivations.
   test('a reconciled continue after an uncertain start reuses the same reserved child through the real lineage store (#764)', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'delegate-continuation-'));
+    const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
+    let service: OrchestrationService | undefined;
     try {
-      const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
       const claude = new ContinuationFakeAdapter('claude');
       const stationAgent = new ContinuationFakeAdapter('station-agent');
       const adapters = [claude, stationAgent];
-      const service = new OrchestrationService({
+      service = new OrchestrationService({
         adapterRegistry: {
           register() {},
           get(provider: string) {
@@ -2998,7 +3075,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
       ).toHaveLength(2);
       expect(stationAgent.startedSessionThreadIds()).toEqual([reservedChildId]);
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      try {
+        await service?.shutdown();
+      } finally {
+        eventStore.close();
+        rmSync(tmp, { recursive: true, force: true });
+      }
     }
   });
 
@@ -3347,7 +3429,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(startInternal?.receiverExecutionAdmission?.admitted).toMatchObject({
       threadId: 'task-alpha:session:child-1',
       projectSlug: 'receiver-local',
-      cwd: '/fixture/checkout',
+      cwd: resolve('/fixture/checkout'),
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
       localProjectId: 'local-project-1',

@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { _getApiBase } from './api';
+import type { ConnectionReadTarget } from './connection-read-target';
 
 /**
  * gcTime floor for query keys that station-ui persists to IndexedDB for
@@ -39,6 +40,7 @@ import { _getApiBase } from './api';
 export const PERSISTED_QUERY_GC_TIME_MS = 24 * 60 * 60 * 1000;
 
 export interface QueryConfig<_T> {
+  readTarget?: ConnectionReadTarget;
   staleTime?: number;
   gcTime?: number;
   enabled?: boolean;

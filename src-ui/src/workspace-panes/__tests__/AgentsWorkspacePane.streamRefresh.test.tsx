@@ -21,8 +21,9 @@ import {
   QueryClientProvider,
   useQuery,
 } from '@tanstack/react-query';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { renderWithIsolatedConnections as render } from '../../__tests__/renderWithIsolatedConnections';
 
 type StreamOptions = {
   onMessage: (raw: { event: string; data: string; id?: string }) => void;

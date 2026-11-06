@@ -123,7 +123,7 @@ describe('inbox dismissal through the rendered panel', () => {
     },
   );
 
-  it('persists across remounts and restores from the collapsed Dismissed section', () => {
+  it('keeps dismissed work out of the default inbox and finds it through search after remount', () => {
     const view = render(<Harness items={[thread]} />);
     dismiss();
     view.unmount();
@@ -131,7 +131,10 @@ describe('inbox dismissal through the rendered panel', () => {
     expect(
       screen.queryByRole('button', { name: 'Review the inbox, Station' }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Dismissed/ }));
+    expect(screen.queryByRole('region', { name: /Dismissed/ })).toBeNull();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+      target: { value: 'Review' },
+    });
     const section = screen.getByRole('region', { name: /Dismissed/ });
     fireEvent.click(
       within(section).getByRole('button', {
@@ -139,11 +142,45 @@ describe('inbox dismissal through the rendered panel', () => {
       }),
     );
     expect(
-      within(screen.getByRole('region', { name: 'Running' })).getByRole(
+      within(screen.getByRole('region', { name: 'Working' })).getByRole(
         'button',
         { name: 'Review the inbox, Station' },
       ),
     ).toBeTruthy();
+  });
+
+  it('keeps a dismissed third-party session hidden through activity and lifecycle changes', async () => {
+    const external: HomeWorkItem = {
+      ...thread,
+      controlMode: 'read-only-attached',
+    };
+    const view = render(<Harness items={[external]} />);
+    dismiss();
+    view.rerender(
+      <Harness
+        items={[
+          { ...external, lifecycleLabel: 'Completed', updatedAt: NOW + 2000 },
+        ]}
+      />,
+    );
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+      target: { value: 'Review' },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: /Dismissed/ })).toBeTruthy(),
+    );
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+      target: { value: '' },
+    });
+    expect(screen.queryByText('Review the inbox')).toBeNull();
+    view.rerender(
+      <Harness items={[{ ...external, controlMode: 'station-owned' }]} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      ).toBeTruthy(),
+    );
   });
 
   it('ignores running progress, wakes for completion, and does not hide the next turn', async () => {

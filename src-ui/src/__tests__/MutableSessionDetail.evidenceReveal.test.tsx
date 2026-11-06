@@ -1,3 +1,5 @@
+import type { RecordConversationBodyProps } from '../components/conversation/RecordConversationBody';
+import { PreviewProvider } from '../contexts/PreviewContext';
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -18,7 +20,45 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
  * effect under test.
  */
 
-vi.mock('@kontourai/station-sdk', () => ({
+// The body port controls read settlement; the shared reader suite owns its event source.
+vi.mock('../components/conversation/ConversationBody', async () => {
+  const { useState, useEffect } = await import('react');
+  return {
+    ConversationBody: (props: RecordConversationBodyProps) => {
+      const [settled, setSettled] = useState(transcript.settled);
+      transcript.set = setSettled;
+      useEffect(
+        () => props.reader.onSettledChange?.(settled),
+        [props.reader.onSettledChange, settled],
+      );
+      return (
+        <div className="conversation-body conversation-body--record">
+          <div
+            className="sessions-detail__scroll"
+            ref={props.scrollContainerRef}
+          >
+            {props.beforeTranscript}
+            <section
+              className="conversation-reader"
+              data-testid="session-transcript"
+            />
+            {props.afterTranscript}
+          </div>
+        </div>
+      );
+    },
+  };
+});
+vi.mock('../components/LazyBoundary', () => ({ LazyBoundary: () => null }));
+vi.mock('../components/pull-requests/ConversationPullRequestLinks', () => ({
+  ConversationPullRequestLinks: () => null,
+}));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
+vi.mock('../contexts/ToastContext', () => ({
+  useToast: () => ({ showToast: vi.fn(), dismissToast: vi.fn() }),
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useAgentsQuery: () => ({ data: [], error: null }),
   useOrchestrationCommandReceiptsQuery: () => ({
     data: [],
@@ -102,15 +142,17 @@ function renderDetail(
   });
   const detail = (reveal?: { threadId: string; token: number } | null) => (
     <QueryClientProvider client={queryClient}>
-      <MutableSessionDetail
-        apiBase="http://station.test"
-        session={session}
-        onTaskChanged={vi.fn()}
-        events={[]}
-        connected
-        visualViewport={{ style: {} } as any}
-        evidenceReveal={reveal}
-      />
+      <PreviewProvider>
+        <MutableSessionDetail
+          apiBase="http://station.test"
+          session={session}
+          onTaskChanged={vi.fn()}
+          events={[]}
+          connected
+          visualViewport={{ style: {} } as any}
+          evidenceReveal={reveal}
+        />
+      </PreviewProvider>
     </QueryClientProvider>
   );
   const rendered = render(detail(evidenceReveal));
@@ -137,31 +179,26 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
       value: scrollIntoView,
     });
   });
-
-  test('new send and response failures reveal their notice when another notice is already present', () => {
-    detailState.sendTurn.error = new Error('Earlier send failure');
-    const view = renderDetail();
+  test('attention failures reveal the retained record without taking evidence focus', async () => {
+    detailState.attentionCheckFailed = true;
+    const view = await renderDetail();
+    expect(
+      screen.getByText("Couldn't check whether this session needs attention"),
+    ).toBeTruthy();
     const scroll = screen
       .getByTestId('session-detail')
       .querySelector('.sessions-detail__scroll') as HTMLDivElement;
-    scroll.scrollTop = 150;
-    detailState.respond.error = new Error('New response failure');
-    view.rerenderReveal(undefined);
     expect(scroll.scrollTop).toBe(0);
-    expect(screen.getByText('New response failure')).toBeTruthy();
-    scroll.scrollTop = 150;
-    detailState.sendTurn.error = new Error('New send failure');
+    detailState.attentionCheckFailed = false;
     view.rerenderReveal(undefined);
-    expect(scroll.scrollTop).toBe(0);
-    expect(screen.getByText('New send failure')).toBeTruthy();
   });
 
   afterEach(() => {
     delete (HTMLElement.prototype as any).scrollIntoView;
   });
 
-  test('honors the reveal once: opens Details, then scrolls and focuses the evidence region', () => {
-    renderDetail({ threadId: 'station:thread-1', token: 1 });
+  test('honors the reveal once: opens Details, then scrolls and focuses the evidence region', async () => {
+    await renderDetail({ threadId: 'station:thread-1', token: 1 });
 
     // The evidence lives in the collapsed Details disclosure; a reveal that
     // scrolled to a closed <details> would land on nothing.
@@ -176,9 +213,9 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     expect(document.activeElement).toBe(region);
   });
 
-  test('re-asserts the scroll once when the conversation read settles after the reveal, without taking focus back', () => {
+  test('re-asserts the scroll once when the conversation read settles after the reveal, without taking focus back', async () => {
     transcript.settled = false;
-    const view = renderDetail({ threadId: 'station:thread-1', token: 1 });
+    const view = await renderDetail({ threadId: 'station:thread-1', token: 1 });
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     const region = screen.getByTestId('session-evidence-region');
     region.blur();
@@ -192,7 +229,7 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 
-  test('follows lazy growth of the conversation for at most a second after settling, and stops once the reader scrolls', () => {
+  test('follows lazy growth of the conversation for at most a second after settling, and stops once the reader scrolls', async () => {
     const callbacks: Array<() => void> = [];
     const disconnect = vi.fn();
     vi.stubGlobal(
@@ -210,7 +247,10 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     vi.useFakeTimers();
     try {
       transcript.settled = false;
-      const view = renderDetail({ threadId: 'station:thread-1', token: 1 });
+      const view = await renderDetail({
+        threadId: 'station:thread-1',
+        token: 1,
+      });
       act(() => transcript.set(true));
       expect(scrollIntoView).toHaveBeenCalledTimes(2);
       // Markdown lands and the conversation grows: follow it.
@@ -232,7 +272,10 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
       ]) {
         disconnect.mockClear();
         transcript.settled = false;
-        const next = renderDetail({ threadId: 'station:thread-1', token: 3 });
+        const next = await renderDetail({
+          threadId: 'station:thread-1',
+          token: 3,
+        });
         act(() => transcript.set(true));
         takeOver(
           next.container.querySelector(
@@ -246,7 +289,7 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
       // Bounded in time too.
       disconnect.mockClear();
       transcript.settled = false;
-      renderDetail({ threadId: 'station:thread-1', token: 2 });
+      await renderDetail({ threadId: 'station:thread-1', token: 2 });
       act(() => transcript.set(true));
       act(() => {
         vi.advanceTimersByTime(1_000);
@@ -258,15 +301,15 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     }
   });
 
-  test('a reveal after the conversation already settled scrolls once only', () => {
+  test('a reveal after the conversation already settled scrolls once only', async () => {
     transcript.settled = true;
-    const view = renderDetail({ threadId: 'station:thread-1', token: 1 });
+    const view = await renderDetail({ threadId: 'station:thread-1', token: 1 });
     view.rerenderReveal({ threadId: 'station:thread-1', token: 1 });
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
-  test('does not re-fire on later renders with the same token', () => {
-    const view = renderDetail({ threadId: 'station:thread-1', token: 1 });
+  test('does not re-fire on later renders with the same token', async () => {
+    const view = await renderDetail({ threadId: 'station:thread-1', token: 1 });
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
     // The reader moves on; a re-render with the same standing prop (new
@@ -280,8 +323,8 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     expect(document.activeElement).not.toBe(region);
   });
 
-  test('a fresh activation token fires again', () => {
-    const view = renderDetail({ threadId: 'station:thread-1', token: 1 });
+  test('a fresh activation token fires again', async () => {
+    const view = await renderDetail({ threadId: 'station:thread-1', token: 1 });
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
     view.rerenderReveal({ threadId: 'station:thread-1', token: 2 });
@@ -292,8 +335,8 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     );
   });
 
-  test('ignores a reveal addressed to a different session', () => {
-    renderDetail({ threadId: 'station:someone-else', token: 1 });
+  test('ignores a reveal addressed to a different session', async () => {
+    await renderDetail({ threadId: 'station:someone-else', token: 1 });
 
     expect(
       (screen.getByTestId('session-details-disclosure') as HTMLDetailsElement)
@@ -306,8 +349,8 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     );
   });
 
-  test('mounting with no reveal does nothing: Details stays collapsed', () => {
-    renderDetail(undefined);
+  test('mounting with no reveal does nothing: Details stays collapsed', async () => {
+    await renderDetail(undefined);
 
     expect(
       (screen.getByTestId('session-details-disclosure') as HTMLDetailsElement)
@@ -318,51 +361,5 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     expect(document.activeElement).not.toBe(
       screen.getByTestId('session-evidence-region'),
     );
-  });
-});
-
-describe('MutableSessionDetail error hand-off', () => {
-  const initialDetailState = { ...detailState };
-  beforeEach(() => {
-    Object.assign(detailState, initialDetailState);
-  });
-
-  /** A failed send with the composer shown: the state that offers hand-off. */
-  function sendFailed(overrides: Partial<typeof detailState> = {}) {
-    Object.assign(detailState, {
-      input: 'Keep my draft',
-      hideGenericCompose: false,
-      isStreaming: false,
-      sendTurn: {
-        isPending: false,
-        error: Object.assign(new Error('failed'), {
-          context: { authorization: 'Bearer secret-value' },
-        }),
-        mutate: vi.fn(),
-      },
-      ...overrides,
-    });
-  }
-
-  test('appends a redacted reviewable draft without sending', () => {
-    sendFailed();
-    detailState.setInput.mockClear();
-    renderDetail();
-    fireEvent.click(screen.getByRole('button', { name: 'Ask agent to help' }));
-    const update = detailState.setInput.mock.calls[0][0];
-    const next = update('Keep my draft');
-    expect(next).toContain('Keep my draft\n\nHelp me diagnose');
-    expect(next).not.toContain('secret-value');
-    expect(detailState.sendTurn.mutate).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Send input to session')).toBeTruthy();
-  });
-
-  test('does not offer hand-off when the composer is hidden', () => {
-    // Same failed send as above; the hidden composer is the only difference.
-    sendFailed({ hideGenericCompose: true });
-    renderDetail();
-    expect(
-      screen.queryByRole('button', { name: 'Ask agent to help' }),
-    ).toBeNull();
   });
 });

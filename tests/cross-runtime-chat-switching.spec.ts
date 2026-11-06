@@ -1054,6 +1054,29 @@ async function selectProductPath(page: Page, path: ProductPath) {
   return { activeChat, projectContext };
 }
 
+async function openConversationHistoryFromInbox(
+  page: Page,
+  chatList: ReturnType<Page['getByRole']>,
+) {
+  await chatList
+    .getByRole('button', { name: 'Inbox actions', exact: true })
+    .click();
+  await page
+    .getByRole('menu', { name: 'Inbox actions', exact: true })
+    .getByRole('menuitem', { name: 'Browse all conversations', exact: true })
+    .click();
+}
+
+async function expandOpenShelf(chatList: ReturnType<Page['getByRole']>) {
+  const toggle = chatList.getByRole('button', {
+    name: /^Open(?: · \d+)?$/,
+  });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute('aria-expanded')) === 'false')
+    await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
+
 async function selectInventoryConversation(
   page: Page,
   {
@@ -1063,9 +1086,7 @@ async function selectInventoryConversation(
   }: { title: string; runtimeName: string; project?: string },
 ) {
   const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-  await chatList
-    .getByRole('button', { name: 'Find conversations', exact: true })
-    .click();
+  await openConversationHistoryFromInbox(page, chatList);
   await page
     .locator('.conversation-history .session-item__content', {
       hasText: title,
@@ -1348,9 +1369,7 @@ async function assertConversationHistory(
   page: Page,
   chatList: ReturnType<Page['getByRole']>,
 ) {
-  await chatList
-    .getByRole('button', { name: 'Find conversations', exact: true })
-    .click();
+  await openConversationHistoryFromInbox(page, chatList);
   const history = page.locator('.conversation-history');
   await expect(history).toContainText('Claude Alpha Chat');
   await expect(history).toContainText('Codex Beta Chat');
@@ -1410,7 +1429,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await page.goto('/projects/alpha?dock=open&chat=conv-managed-alpha');
 
     const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-    await chatList.getByRole('button', { name: 'Earlier' }).click();
+    await expandOpenShelf(chatList);
     await expect(
       chatList
         .getByRole('button', { name: /^Station Chat/ })
@@ -1561,7 +1580,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       project: 'Alpha Project',
     });
     const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-    await chatList.getByRole('button', { name: 'Earlier' }).click();
+    await expandOpenShelf(chatList);
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     const send = page.getByRole('button', { name: 'Send', exact: true });
     const observations: UiObservation[] = [];
@@ -1593,10 +1612,9 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
-    await page
-      .getByRole('complementary', { name: 'Inbox chats' })
-      .getByRole('button', { name: 'Earlier' })
-      .click();
+    await expandOpenShelf(
+      page.getByRole('complementary', { name: 'Inbox chats' }),
+    );
     await selectProductPath(page, path);
     const assistantRowsBefore = await assistantRows(page).count();
     const commandBinding = await submitExactTurn({
@@ -1623,10 +1641,9 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await seedCrossRuntimeRoutes(page);
 
     await page.goto('/projects/alpha?dock=open&chat=conv-managed-alpha');
-    await page
-      .getByRole('complementary', { name: 'Inbox chats' })
-      .getByRole('button', { name: 'Earlier' })
-      .click();
+    await expandOpenShelf(
+      page.getByRole('complementary', { name: 'Inbox chats' }),
+    );
     await expect(
       page
         .getByRole('complementary', { name: 'Inbox chats' })
@@ -1658,7 +1675,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     await seedCrossRuntimeRoutes(page, executionRequests);
     await page.goto('/projects/alpha?dock=open&chat=conv-managed-alpha');
     const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-    await chatList.getByRole('button', { name: 'Earlier' }).click();
+    await expandOpenShelf(chatList);
     await expect(
       chatList
         .getByRole('button', { name: /^Station Chat/ })

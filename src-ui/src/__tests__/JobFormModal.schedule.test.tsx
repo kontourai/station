@@ -345,8 +345,9 @@ describe('JobFormModal schedule compatibility', () => {
     );
 
     expect(screen.getByRole('alert').textContent).toBe(
-      "Job 'daily-report' already exists",
+      'Try again in a moment.',
     );
+    expect(screen.queryByText("Job 'daily-report' already exists")).toBeNull();
     expect(screen.getByRole('dialog', { name: 'New automation' })).toBeTruthy();
   });
 

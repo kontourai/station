@@ -21,6 +21,10 @@ import {
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
+import {
+  ConversationManagedPolicyProvider,
+  useOptionalConversationConnection,
+} from '../conversation/ConversationConnectionContext';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -115,7 +119,7 @@ interface ApprovalModeChipProps {
  * when the active session changes — its local confirm state is not reset by
  * prop changes alone (archive#727).
  */
-export function ApprovalModeChip({
+function ApprovalModeChipContent({
   engineConnectionId,
   isNewSession = false,
   toolPolicyDelivery,
@@ -129,6 +133,7 @@ export function ApprovalModeChip({
   onChange,
 }: ApprovalModeChipProps) {
   const account = useAccountPreferences();
+  const target = useOptionalConversationConnection();
   const policySummary = useManagedPolicySummary();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -149,7 +154,11 @@ export function ApprovalModeChip({
     agentDefault: notApplied ? undefined : agentDefault,
     projectDefault: !notApplied && isNewSession ? projectDefault : undefined,
     projectDefaultUnavailable:
-      !notApplied && isNewSession && projectDefaultUnavailable === true,
+      (!target?.station ||
+        target.station.capabilities.personalDefaults.state === 'allowed') &&
+      !notApplied &&
+      isNewSession &&
+      projectDefaultUnavailable === true,
     stationDefault: notApplied ? undefined : stationDefault,
     personalDefault:
       !notApplied &&
@@ -328,5 +337,13 @@ export function ApprovalModeChip({
         />
       )}
     </>
+  );
+}
+
+export function ApprovalModeChip(props: ApprovalModeChipProps) {
+  return (
+    <ConversationManagedPolicyProvider>
+      <ApprovalModeChipContent {...props} />
+    </ConversationManagedPolicyProvider>
   );
 }

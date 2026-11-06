@@ -4666,6 +4666,75 @@ enforcement evidence.
 
 ## OutboundDispatchModule
 
+### Station connection ownership
+
+The [connection registry](../../src-ui/src/connections/station-connection-registry.ts)
+leases one authority-bound host, direct or relayed connection. The
+[resolver](../../src-ui/src/connections/resolve-station-connection.ts) prefers a
+verified direct candidate for new chats; a persisted binding pins the original
+principal and route. [StationConnectionsContext](../../src-ui/src/connections/StationConnectionsContext.tsx)
+retires leases at the authority boundary. No surface switches the selected profile
+to borrow its credential. Native preparation still requires that profile's exact
+host binding; missing custody and unsupported broker routes are unavailable.
+JS fixtures do not establish installed-shell qualification.
+
+[ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx),
+[useConversationController](../../src-ui/src/components/conversation/useConversationController.ts)
+and the [transport](../../src-ui/src/components/conversation/conversation-transport.ts)
+own the dock, Activity, attached-session and coding-tab conversation composition.
+Record density changes framing; the adapters retain read-only access and explicit
+continuation into an owned child. [SharedTaskHistoryList](../../src-ui/src/components/conversation/SharedTaskHistoryList.tsx)
+receives owner/member/guest history projections and paging ports without changing
+their publication or redaction rules. [useInboxPanelController](../../src-ui/src/components/chat-dock/useInboxPanelController.ts)
+owns activation currency, search, snooze, dismissal and undo for both Inbox shells.
+
+The owning connection also scopes the managed approval-policy summary; remote
+controls never inherit the host's ceiling. Shared Stop awaits its action and
+retains translated failures, including a failed Task-stop confirmation. Child-work
+snapshots, retained reporter aliases and result notices stay in their Station
+partition; a structured tool return can replace a provider summary while retaining
+result provenance. [Merge integration fixtures](../../src-ui/src/components/conversation/__tests__/merge-integration.test.tsx)
+exercise these boundaries without qualifying native shells or physical devices.
+
+[describeStationFailure](../../src-ui/src/utils/stationFailure.ts) translates request
+failures at this boundary, composing provider repair policy with source/target
+attribution. A relay refusal needs the source-authored observation, current lease,
+expected target and original mutation key before it proves non-delivery. Unknown
+response text remains diagnostic. Locally authored validation and fixed domain
+translations use [StationUiError](../../src-ui/src/utils/StationUiError.ts) to retain
+actionable copy without promoting caught diagnostics into UI text. This marker
+does not prove delivery or refusal. The [surface manifest](../../scripts/conversation-surfaces.json)
+registers shared owners and error publishers; its exact host/domain and diagnostic
+contracts are structural scope declarations, not permission or runtime evidence.
+
+[Orchestration streams](../../src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts)
+and [work observation](../../src-ui/src/contexts/work-observation.ts) partition
+runtime state by Station and authority. Peer snapshots cannot prune host chats,
+and peer streams cannot publish general host-shell events. Retirement fences late
+responses/chunks and clears only the retired partition; host authority teardown
+clears all runtime partitions. Bounded initial history and SSE resume replace
+the former peer transcript polling loop.
+
+Outbox rows, claims, terminal evidence and lookup/flush operations carry Station,
+principal and conversation identity. Edit, reorder, merge, undo and discard controls
+pass that same Station and conversation to the durable queue. Dismissing an
+unsent message removes its matching durable copy, without touching colliding
+host or other-conversation keys. The [mounted queue tests](../../src-ui/src/__tests__/OutboundQueuedMessages.station.test.tsx)
+exercise these actions against persisted queue state.
+
+[OutboundQueueFlushMount](../../src-ui/src/hooks/OutboundQueueFlushMount.tsx)
+keeps a stable supervisor per retained connection; a host flusher cannot adopt a
+peer row. Remote uncertain work requires explicit delivery lookup, not automatic
+replay. Legacy rows without an original namespace remain held. The
+[legacy recovery view](../../src-ui/src/components/conversation/LegacyConversationRecovery.tsx)
+requires source confirmation before durable import, then commits the canonical chat
+before activation. Preview off retains content/drafts while stopping remote work.
+
+The [real browser specs](../../tests/station-connection-chat.spec.ts) and
+[surface adoption spec](../../tests/conversation-surfaces.spec.ts) use disposable
+Stations and a deterministic HTTP provider. Their execution receipts, rather than
+file presence or structural drift scans, establish the exercised journey limits.
+
 An offline message is a draft until transport may have started it. After that, the [durable browser queue](../../src-ui/src/lib/outboundQueue.ts) retains evidence instead of silently resending. The [flush hook](../../src-ui/src/hooks/useOutboundQueueFlush.ts) supplies the live conversation and send adapter.
 
 **Interface.** `outboundDispatch.enqueue(intent)`, `flush(transport)`, `open()`, projection subscription, and the safe pre-effect `edit`, `retry`, `discard`, reorder, merge, and unmerge operations, plus the user's explicit `dismissUnconfirmed` and the read-only `rowStatus` and `retiredKeys` (which the projection uses to drop a discarded message's bubble, and record a started one, in every window), form the UI's durable outbound Interface. `recordUnanswered(intent, error)` records a request that already ran without a receipt as `invoking`, released for lookup, even when it had no live row. `beginLive(intent)` records a composer or queue-drain send `invoking` (`origin: 'live'`) before its request and returns the send's hold on that row (`accepted`, `refused`, `undeliverable`, `unanswered`, `indeterminate`, `hold`, `notSent`, `observed`); `reconcile(lookup, { station })` and `check(clientTurnId, lookup)` settle rows by Station's delivery lookup; `syncHeld(intents)` keeps the durable copies of a renderer's held follow-ups (`heldBy`). `flush` supplies a state-bound `OutboundDispatchClaim` to its transport Adapter. The adapter returns `accepted(providerTurnId)`, `queued`, `not-invoked`, or `deferred`. A durable inbox `queued` receipt retires the browser row without waiting for a provider turn. The last two are pre-provider outcomes: `not-invoked` consumes an attempt, while a temporary `deferred` gate does not. After invocation it throws or records `indeterminate`. It receives neither IndexedDB storage nor a claim token, and callers cannot place a provider turn id on an intent.

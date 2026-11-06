@@ -137,25 +137,31 @@ test('mounted details share one host stream, hydrate before it opens, isolate th
     updatedAt: '2026-10-22T00:00:00.000Z',
   };
   let authorityCurrent = true;
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
   const detail = render(
-    <OrchestrationSessionsContext.Provider
-      value={{
-        scope: {
-          apiBase: origin,
-          authorityKey: 'detail-authority',
-          isCurrent: () => authorityCurrent,
-        },
-        streamLive: false,
-      }}
-    >
-      <SessionDetail
-        apiBase={origin}
-        session={session}
-        onTaskChanged={() => {}}
-        onAdopted={() => {}}
-        getSelectionIntent={() => 0}
-      />
-    </OrchestrationSessionsContext.Provider>,
+    <QueryClientProvider client={client}>
+      <OrchestrationSessionsContext.Provider
+        value={{
+          scope: {
+            apiBase: origin,
+            authorityKey: 'detail-authority',
+            isCurrent: () => authorityCurrent,
+          },
+          streamLive: false,
+        }}
+      >
+        <SessionDetail
+          apiBase={origin}
+          session={session}
+          onTaskChanged={() => {}}
+          onAdopted={() => {}}
+          getSelectionIntent={() => 0}
+        />
+      </OrchestrationSessionsContext.Provider>
+    </QueryClientProvider>,
   );
   const first = renderHook(() => useSessionEventStream(origin, 'first', true));
   const second = renderHook(() =>

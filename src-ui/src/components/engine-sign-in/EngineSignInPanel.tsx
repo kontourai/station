@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { openExternalLink } from '../../platform/openExternalLink';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { TerminalPanel } from '../coding-layout/TerminalPanel';
 import { hostActionCopy } from '../host-action/host-action-copy';
@@ -306,10 +307,7 @@ function ScopedEngineSignInPanel({
 
   const data = view.data;
   const running = current?.state === 'running';
-  const error =
-    (check.error as Error | null)?.message ??
-    (signIn.error as Error | null)?.message ??
-    (credential.error as Error | null)?.message;
+  const error = check.error || signIn.error || credential.error;
   const methods = data.methods ?? [];
   const paired = presentation?.deviceClass === 'paired';
 
@@ -445,7 +443,7 @@ function ScopedEngineSignInPanel({
       )}
       {error && (
         <p role="alert" className="engine-sign-in__error">
-          {error}
+          {describeStationFailure(error).body}
         </p>
       )}
     </section>

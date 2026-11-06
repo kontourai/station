@@ -1,6 +1,10 @@
 import type { ManagedPolicyStatus } from '@kontourai/station-contracts/managed-policy-status';
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import { type ApiRequestScope, authenticatedFetch } from '../client/http';
+import {
+  captureConnectionReadTarget,
+  connectionQueryKey,
+} from '../connection-read-target';
 import { type QueryConfig, resolveApiBase, useApiQuery } from '../query-core';
 
 /**
@@ -12,10 +16,12 @@ import { type QueryConfig, resolveApiBase, useApiQuery } from '../query-core';
  */
 export async function fetchManagedPolicyStatus(
   apiBase?: string,
+  options?: { requestScope?: ApiRequestScope; signal?: AbortSignal },
 ): Promise<ManagedPolicyStatus> {
   const base = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
     `${base}/api/settings/managed-policy`,
+    { signal: options?.signal, requestScope: options?.requestScope },
   );
   if (response.status === 404) return { state: 'none' };
   const result = (await response.json()) as {
@@ -38,9 +44,16 @@ export function useManagedPolicyStatusQuery(
   apiBase?: string,
   config?: QueryConfig<ManagedPolicyStatus>,
 ) {
+  const target = captureConnectionReadTarget(config?.readTarget);
   return useApiQuery(
-    ['managed-policy', apiBase ?? 'default'],
-    () => fetchManagedPolicyStatus(apiBase),
+    target
+      ? connectionQueryKey('managed-policy', target)
+      : ['managed-policy', apiBase ?? 'default'],
+    (signal) =>
+      fetchManagedPolicyStatus(target?.targetApiBase ?? apiBase, {
+        requestScope: target?.requestScope,
+        signal,
+      }),
     { staleTime: Number.POSITIVE_INFINITY, ...config },
   );
 }

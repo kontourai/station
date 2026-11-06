@@ -14,7 +14,32 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+## Project settings
+
+Open a Project's settings to change its defaults, sources and access. Desktop
+uses the same vertical section navigation as Settings; on a narrow screen,
+choose a section from the picker. One section is shown at a time. Section
+links remain bookmarkable, and moving between sections keeps unsaved edits.
+
+**Save** applies project defaults. Layout, source, access and knowledge actions
+apply separately when confirmed. A saved model connection that is no longer
+available stays visible until you choose a replacement; an unrelated edit does
+not reset it to the Station default.
+
+Folder paths identify the Station that owns them. A path shown while using a
+phone or remote browser belongs to that Station, rather than to the viewing
+device. **Sources** shows repository links and checkout locations. Use
+**Add a repository** to attach a checkout and **Advanced: checkout repair**
+for filesystem repair. **Workspace** edits the Project's local working folder.
+
 ## Feature previews
+
+**Paired Station chats** lets New Chat use another paired Station. Choose its
+Project; the chat header says **Via <Station>**. Full access, folder selection,
+mentions, offline copies and local integrations are unavailable over relay.
+Turning it off keeps text and drafts visible and stops remote chat operations.
+Older held chats require confirmed **Reconnect chat** before continuing. See
+[starting a chat](getting-started.md#start-your-first-chat).
 
 Feature previews are features that are still being evaluated. Each one has a
 switch, a name and a description of what turning it on does. A preview is listed
@@ -53,6 +78,7 @@ only when this Station's build can run it; if none is, the section says
 | `member-passkeys` | Member passkeys | Lets invited people with Station accounts create an account, sign in and recover with a passkey (see [member passkeys](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#member-passkeys-feature-preview)). | Passkeys work only at the configured sign-in address, selected in Settings or supplied by `STATION_AUTHENTICATION_ORIGIN`; changing its hostname orphans them. Turning it off keeps stored passkeys, but they cannot sign in. |
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
 | `chat-apps` | Chat apps | Shows integration capability status in Connections and write-back history in Task Details. | Status checks can run `gh auth status` on the Station host; an unverified result does not prove delivery. |
+| `repository-auth-details` | Repository sign-in details | Shows the current Station’s GitHub CLI account, health and reported scopes in Project Sources. | Runs a bounded `gh auth status --json hosts --no-refresh`; no token refresh, credential transfer or repository-permission proof. |
 | `continue-interrupted-turn` | Continue after restart | Offers **Continue** on a chat turn a Station restart cut off, which sends the agent a short note to pick up where it stopped. | Continue starts an ordinary agent turn, once per interrupted turn; it is never sent on its own. |
 | `continue-unattended-after-restart` | Continue unattended work after restart | After a restart, continues Task and delegated work the restart cut off, once, with the restart note, oldest Task first. | Starts an agent turn per interrupted turn on its own; never for your chats, Automations or Tasks that are done, canceled or blocked. Waits for engine-start capacity. |
 | `paired-station-chats` | Paired Station chats | Starts text chats on a paired Station from New Chat, with that Station’s Project picker, transcript, replies and approvals. | Personal hosts only. Uses the destination’s providers and credits. Off disables reads and new operations; saved tabs and unconfirmed messages remain. Existing remote Tasks keep their separate flow. |

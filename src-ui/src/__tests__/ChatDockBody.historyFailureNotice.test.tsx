@@ -226,7 +226,10 @@ function buildOrchestrationSession(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-function renderDock(session: ChatSession = buildSession()) {
+function renderDock(
+  session: ChatSession = buildSession(),
+  recordRead: { read?: 'error'; retry?: () => void } = {},
+) {
   agentsMock.current = [{ slug: agentId('codex'), name: 'Codex' }];
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -236,6 +239,8 @@ function renderDock(session: ChatSession = buildSession()) {
       <ChatDockBody
         activeSession={activeSession}
         activeOrchestrationSession={buildOrchestrationSession()}
+        activeOrchestrationSessionRead={recordRead.read}
+        onRetryOrchestrationSessions={recordRead.retry}
         chatFontSize={14}
         dockHeight={400}
         showStatsPanel={false}
@@ -320,6 +325,30 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     );
     expect(markup).toContain('tool-call-batch__summary');
     expect(markup).not.toContain('Pending standalone calls');
+  });
+
+  test('Resync refreshes both the failed transcript and the failed execution record', async () => {
+    const retryRecord = vi.fn();
+    transcriptStateMock.current.enabled = true;
+    transcriptStateMock.current.error = new Error(
+      'Observation was disconnected',
+    );
+    transcriptStateMock.current.messages = [
+      { role: 'user', content: 'Retained message', timestamp: 1 },
+    ];
+    renderDock(buildSession({ orchestrationSessionStarted: true }), {
+      read: 'error',
+      retry: retryRecord,
+    });
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Status unavailable — resync this conversation',
+      }),
+    );
+    await waitFor(() => {
+      expect(transcriptStateMock.current.reload).toHaveBeenCalledOnce();
+      expect(retryRecord).toHaveBeenCalledOnce();
+    });
   });
 
   test('a stalled real SDK history reload aborts, releases Resync and permits a slow successful retry', async () => {
@@ -417,9 +446,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
       await vi.advanceTimersByTimeAsync(120_000);
     });
     expect(stalledSignal?.aborted).toBe(true);
-    expect(
-      screen.getByText(/Session history read timed out after 120 seconds/),
-    ).toBeTruthy();
+    expect(screen.getByText(/Try again in a moment/)).toBeTruthy();
     const retry = screen.getByRole('button', {
       name: 'Status unavailable — resync this conversation',
     });
@@ -439,7 +466,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     expect(
       screen.queryByRole('button', { name: /resync this conversation/ }),
     ).toBeNull();
-    expect(screen.queryByText(/Session history read timed out/)).toBeNull();
+    expect(screen.queryByText(/Try again in a moment/)).toBeNull();
   });
 
   test.each(['caught-up', 'closed'] as const)(
@@ -483,7 +510,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  test('renders the recorded cause verbatim, with the shared secondary-button Retry affordance', () => {
+  test('renders a safe connection failure, with the shared secondary-button Retry affordance', () => {
     transcriptStateMock.current.enabled = true;
     transcriptStateMock.current.error = new Error('ECONNREFUSED host:8443');
     // The banner (as opposed to the empty-state variant handed to the
@@ -497,7 +524,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     const notice = screen.getByRole('alert');
     expect(notice.className).toBe('session-history-error');
     expect(notice.textContent).toBe(
-      'Session history is unavailable. ECONNREFUSED host:8443Retry',
+      'Session history is unavailable. Could not reach Station. Check the connection, then try again.Retry',
     );
 
     const retry = screen.getByRole('button', { name: 'Retry' });

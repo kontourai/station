@@ -221,7 +221,9 @@ describe('TrustPanel', () => {
     bundlesState.error = new Error('scan failed');
     render(<TrustPanel projectSlug="dev" />);
     expandPanel();
-    expect(screen.getByRole('alert').textContent).toContain('scan failed');
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Try again in a moment.',
+    );
   });
 
   // archive#3092 — a project (or bundle) switch must not blank a populated

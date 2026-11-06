@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useAnalytics } from '../../contexts/AnalyticsContext';
 import { useModels } from '../../contexts/ModelsContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   CalendarGlyph,
   ChartGlyph,
@@ -165,7 +166,7 @@ export function UsageStatsPanel() {
           <WarningGlyph />
         </div>
         <div className="usage-stats-error-message">
-          Error: {(error as Error)?.message ?? String(error)}
+          Error: {describeStationFailure(error).body}
         </div>
         <button
           type="button"

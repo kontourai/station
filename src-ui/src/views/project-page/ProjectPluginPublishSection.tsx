@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { PluginPublishDialog } from './PluginPublishDialog';
 import {
   fetchPluginPublishInspection,
@@ -96,7 +97,7 @@ export function ProjectPluginPublishSection({ slug }: { slug: string }) {
         >
           <p role={detail.isError ? 'alert' : 'status'}>
             {detail.isError
-              ? detail.error.message
+              ? describeStationFailure(detail.error).body
               : detail.data
                 ? 'This folder no longer holds a valid plugin.'
                 : 'Checking the folder…'}

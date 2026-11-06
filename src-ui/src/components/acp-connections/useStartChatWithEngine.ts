@@ -112,9 +112,9 @@ export function useStartChatWithEngine() {
     } catch (error) {
       setPending(false);
       setNotice(
-        `Could not start a chat with ${engineName}: ${
-          error instanceof Error ? userFacingErrorMessage(error) : String(error)
-        }`,
+        `Could not start a chat with ${engineName}: ${userFacingErrorMessage(
+          error,
+        )}`,
       );
     }
   };

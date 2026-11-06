@@ -4,7 +4,7 @@
 // ACPChatPanel.viewport.test.tsx (which deliberately stubs out
 // ChatMessageList to isolate the viewport-boundary behavior it actually
 // tests), this file renders the REAL ChatMessageList/MessageBubble tree so
-// deleting `owner={owner}` at ACPChatPanel.tsx's own ChatMessageList call
+// deleting `owner={owner}` at ACPChatPanel.tsx's shared ConversationBody call
 // site fails a test, not just a narrower unit that never exercises
 // ACPChatPanel's own wiring.
 
@@ -12,7 +12,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useAgentsQuery: () => ({ data: [] }),
   useEngineConnectionsQuery: () => ({ data: [] }),
   useProjectQuery: () => ({ data: undefined, isLoading: false }),
   // #2144 slice 6: the panel reads the Station-scope default approval
@@ -50,6 +52,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [{ slug: 'codex', name: 'Codex' }],
+  useAgentsLoaded: () => true,
 }));
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { alias: 'operator', name: 'Operator Person' } }),
@@ -87,7 +90,13 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
 }));
 vi.mock('../hooks/useChatInput', () => ({
-  useChatInput: () => ({}),
+  useChatInput: () => ({
+    quotes: [],
+    input: '',
+    attachments: [],
+    attachmentStages: [],
+    slashCommands: [],
+  }),
 }));
 vi.mock('../components/chat/ChatInputArea', () => ({
   ChatInputArea: () => <div data-testid="acp-composer" />,
@@ -96,20 +105,63 @@ vi.mock('../components/chat/SessionSummaryCard', () => ({
   SessionSummaryCard: () => null,
 }));
 
+vi.mock('../hooks/useShareReceiver', () => ({ useShareReceiver: () => {} }));
+vi.mock('../hooks/useSTT', () => ({
+  useSTT: () => ({
+    supported: false,
+    state: 'idle',
+    transcript: '',
+    startListening: vi.fn(),
+    stopListening: vi.fn(),
+  }),
+}));
+vi.mock('../hooks/useTTS', () => ({
+  useTTS: () => ({
+    supported: false,
+    speaking: false,
+    speak: vi.fn(),
+    cancel: vi.fn(),
+  }),
+}));
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigationActions: () => ({ navigate: vi.fn() }),
+  useNavigation: () => ({ navigate: vi.fn() }),
+}));
+vi.mock('../contexts/MessageContextContext', () => ({
+  useMessageContextContext: () => ({ getComposedContext: () => '' }),
+}));
+vi.mock('../components/conversation/useConversationController', () => ({
+  useConversationController: () => ({
+    transcript: {
+      enabled: false,
+      events: [],
+      messages: acpFixture.messages,
+      loading: false,
+      settled: true,
+      hasMore: false,
+    },
+    turnInFlight: false,
+    streamStatus: undefined,
+  }),
+}));
+
 import { ACPChatPanel } from '../components/acp-connections/ACPChatPanel';
+import { PreviewProvider } from '../contexts/PreviewContext';
 
 describe('ACPChatPanel Station attribution wiring (station#2585)', () => {
-  test('a real assistant row names the active saved Station, never the OS alias', () => {
+  test('a real assistant row names the active saved Station, never the OS alias', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     render(
       <QueryClientProvider client={queryClient}>
-        <ACPChatPanel projectSlug="station" agentSlug="codex" tabId="tab-1" />
+        <PreviewProvider>
+          <ACPChatPanel projectSlug="station" agentSlug="codex" tabId="tab-1" />
+        </PreviewProvider>
       </QueryClientProvider>,
     );
 
-    expect(screen.getByText('Build is green.')).toBeTruthy();
+    expect(await screen.findByText('Build is green.')).toBeTruthy();
     expect(screen.getByText('via Kontour')).toBeTruthy();
     expect(screen.queryByText(/operator/i)).toBeNull();
   });

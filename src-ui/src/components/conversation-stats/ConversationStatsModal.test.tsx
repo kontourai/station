@@ -270,7 +270,8 @@ describe('ConversationStatsModal read failure', () => {
     expect(
       screen.getByText('Unable to load conversation statistics'),
     ).toBeTruthy();
-    expect(screen.getByText('stats read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('stats read failed')).toBeNull();
 
     screen.getByRole('button', { name: 'Retry' }).click();
     expect(onRetry).toHaveBeenCalledTimes(1);

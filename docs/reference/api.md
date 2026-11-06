@@ -1,5 +1,43 @@
 # Station API Documentation
 
+## Paired Station conversation tunnel
+
+On a personal host with **Paired Station chats** enabled,
+`GET /api/environments/peers/:id/chat-connection` returns `{success:true,data}`
+containing version 1, verified `environmentId`, `stationName`, `principalNamespace`,
+receiver `delegationLocalConversationV1` and the source `read`/`operate`/locality
+ceiling. It contains no credentials. Public capability `peerChatTunnelV1` advertises
+this source protocol; missing receiver support does not enable a polling fallback.
+
+`/api/environments/peers/:id/chat-api/<receiver path>` admits only the exact
+methods, bounded queries and bodies in the [policy](../../src-server/routes/environments/peer-chat-policy.ts).
+Families include chat/continue, commands/receipts, open/event-window/live events,
+inbox/delivery lookup, requests/content, checkpoints, usage, projected catalogs
+and attachment staging/media. The exact `GET /api/settings/managed-policy` reads
+the receiver's approval-policy summary; settings writes remain denied.
+Command discriminants are `interruptTurn`,
+`steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`, `stopSession`
+and `discardDraft`. Arbitrary session mutations and onward remote execution are
+denied. Foreground targets must explicitly select the current receiver; its
+continue/inbox locality guard also checks saved/default execution state.
+
+The source authenticates its current owner Device/operator, rechecks the preview
+and saved peer grant, verifies R's identity and forwards only its saved delegation
+credential. Peer enrollment and credential administration remain operator-only.
+SSE uses streaming byte forwarding, abort/backpressure and idle revocation checks;
+revocation closes the connection rather than emitting a synthetic auth event.
+Attachment uploads authenticate S normally and carry the separate receiver upload
+grant in the staging header; media responses retain bounded binary bytes.
+
+R's 401/403 refusal becomes source-authored HTTP **424** with a version-1
+[refusal observation](../../packages/contracts/src/peer-chat.ts): target environment,
+`failureAuthority:'target'`, `remoteStatus`, `disposition:'refused-before-dispatch'`
+and the original mutation key when applicable. Only a verified source envelope
+bound to that target/key proves definite non-delivery. Raw upstream errors remain
+relayed, without source authority; loss/unknown outcomes stay uncertain. Source
+401 still means reconnect to S. See the [threat model](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)
+and [connection design](../design/station-connection.md) for limits and evidence.
+
 ## Session Goals
 
 While the default-off **Session goals** Feature Preview is enabled,
@@ -710,6 +748,24 @@ on the host; its success does not establish repository permissions. Discord
 reports gateway state, and webhooks report configuration and active start
 grants; neither proves delivery. Slack is not implemented, and Linear and Jira
 are waiting on tracker support. Probe diagnostics do not expose credentials.
+
+`?include=github-authentication` additionally requests optional `authentication`
+on the GitHub connection: `{state, observedAt, account?, scopes?}`. `observedAt`
+is Unix milliseconds. The **Repository sign-in details** preview is off by default;
+an authorized request while off returns 404 with `code: feature_preview_disabled`,
+`previewId: repository-auth-details`, and its Settings path. Authority and preview
+choice are checked before the probe and response release. Default requests keep
+the earlier closed response shape, so older parsers receive no new fields.
+An older host may ignore the opt-in and omit metadata; omission is not a healthy
+account or a repository permission result.
+
+The metadata read runs the Station’s `gh auth status --hostname github.com --json
+hosts --no-refresh`, never `--show-token`. It selects one active account, refuses
+malformed/beyond-bound metadata, and projects only health, account and scopes.
+Process/output bounds are five seconds/8 KiB and results cache for ten seconds.
+JSON-mode exit zero alone is not sign-in proof. No credential refresh, login,
+repository read/write, scoped credential binding or Peer aggregation is performed.
+
 
 `GET /api/tasks/:taskId/write-back` requires the personal Task room's current
 person and Task scope and paired `orchestration:read` where applicable. It is

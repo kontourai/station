@@ -11,6 +11,7 @@ import { ArrowDownGlyph } from '../../components/icons/Glyph';
 import { PageHeaderScope } from '../../components/page-frame';
 import { Empty, SkeletonList } from '../../components/state';
 import type { Tool } from '../../types';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { AgentToolApproval } from './AgentToolApproval';
 import { AgentToolConnection } from './AgentToolDiscovery';
 import { ToolAccountPanel } from './ToolAccountPanel';
@@ -507,7 +508,9 @@ export function AgentToolLibrary({
             )}
           </div>
         </details>
-        {change.isError && <p role="alert">{change.error.message}</p>}
+        {change.isError && (
+          <p role="alert">{describeStationFailure(change.error).body}</p>
+        )}
       </div>
     );
   }
@@ -587,7 +590,9 @@ export function AgentToolLibrary({
       {matching.length === 0 && (
         <Empty variant="compact" label="Nothing matches." />
       )}
-      {change.isError && <p role="alert">{change.error.message}</p>}
+      {change.isError && (
+        <p role="alert">{describeStationFailure(change.error).body}</p>
+      )}
       {view.operator && (
         <details className="agent-tool-picker__details">
           <summary>

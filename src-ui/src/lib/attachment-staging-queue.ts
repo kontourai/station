@@ -76,9 +76,8 @@ export async function stageComposerAttachments(
 ): Promise<ComposerAttachmentDispatch> {
   const inputs = attachments.map(inputFor);
   if (inputs.length === 0) return { kind: 'legacy-inline', attachments: [] };
-  // Refuse before asking the selected Station for staging grants. The eventual
-  // upload uses raw XHR/fetch and cannot travel through the broker application
-  // channel, even when an explicit grant is supplied by the prepare response.
+  // Broker routes cannot spend staging grants through raw upload egress.
+  // Relay uploads use the source scope and report only measurable progress.
   assertClientRawEgressAllowed(apiBase, 'attachment upload', requestScope);
   for (const input of inputs)
     observer?.({

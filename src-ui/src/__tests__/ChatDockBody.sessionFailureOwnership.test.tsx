@@ -728,6 +728,7 @@ describe('#2309 the dock queue: "Send now" and Retry are explicit sends', () => 
       expect.any(String),
       'failure-ownership-session',
       'pending-id',
+      undefined,
     );
   });
 
@@ -751,6 +752,7 @@ describe('#2309 the dock queue: "Send now" and Retry are explicit sends', () => 
       'failure-ownership-session',
       true,
       true,
+      undefined,
     );
   });
 });

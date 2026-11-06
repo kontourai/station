@@ -1,12 +1,17 @@
 import type { InboundWebhookConfiguration } from '@kontourai/station-contracts/inbound-webhook';
 import type {
+  GitHubCliAuthentication,
   IntegrationAction,
   IntegrationActionState,
   IntegrationActionStatus,
   IntegrationConnectionStatus,
   IntegrationStatus,
 } from '@kontourai/station-contracts/integration-status';
-import { INTEGRATION_STATUS_LIMITS } from '@kontourai/station-contracts/integration-status';
+import {
+  INTEGRATION_STATUS_LIMITS,
+  parseGitHubCliAuthentication,
+} from '@kontourai/station-contracts/integration-status';
+import { z } from 'zod/v3';
 import {
   managedCapabilityDenial,
   webhookAutomationsAllowedByManagedPolicy,
@@ -18,14 +23,18 @@ const GH_TIMEOUT_MS = 5_000;
 const GH_CACHE_MS = 10_000;
 
 export interface IntegrationStatusProbe {
-  run(): Promise<IntegrationConnectionStatus>;
+  run(options?: {
+    includeGithubAuthentication?: boolean;
+  }): Promise<IntegrationConnectionStatus>;
 }
 
 export function createIntegrationStatusReader(
   probes: readonly IntegrationStatusProbe[],
 ) {
-  return async (): Promise<IntegrationStatus> => ({
-    connections: await Promise.all(probes.map((probe) => probe.run())),
+  return async (options?: {
+    includeGithubAuthentication?: boolean;
+  }): Promise<IntegrationStatus> => ({
+    connections: await Promise.all(probes.map((probe) => probe.run(options))),
   });
 }
 
@@ -38,7 +47,61 @@ function actions(
   return names.map((action) => ({ action, computedBy, state, reason }));
 }
 
-type GitHubResult = { state: 'signed-in' | 'failed'; reason: string };
+type GitHubResult = {
+  state: 'signed-in' | 'failed';
+  reason: string;
+  authentication?: GitHubCliAuthentication;
+};
+
+const githubHosts = z.object({
+  hosts: z.object({
+    'github.com': z
+      .array(
+        z.object({
+          state: z.string(),
+          active: z.boolean(),
+          login: z.string().optional(),
+          scopes: z.string().optional(),
+        }),
+      )
+      .max(20),
+  }),
+});
+
+function githubAuthentication(
+  stdout: string,
+  observedAt: number,
+): GitHubCliAuthentication {
+  const unknown: GitHubCliAuthentication = { state: 'unknown', observedAt };
+  try {
+    const parsed = githubHosts.safeParse(JSON.parse(stdout));
+    if (!parsed.success) return unknown;
+    const active = parsed.data.hosts['github.com'].filter(
+      (account) => account.active,
+    );
+    if (active.length !== 1)
+      return active.length === 0 ? { state: 'failed', observedAt } : unknown;
+    const account = active[0];
+    if (account.state !== 'success') return { state: 'failed', observedAt };
+    return (
+      parseGitHubCliAuthentication({
+        state: 'signed-in',
+        observedAt,
+        ...(account.login !== undefined ? { account: account.login } : {}),
+        ...(account.scopes !== undefined
+          ? {
+              scopes: account.scopes
+                .split(',')
+                .map((scope) => scope.trim())
+                .filter(Boolean),
+            }
+          : {}),
+      }) ?? unknown
+    );
+  } catch {
+    return unknown;
+  }
+}
 
 function githubFailure(error: unknown): string {
   const failure =
@@ -66,30 +129,46 @@ export function createIntegrationStatusProbes(deps: {
   const now = deps.now ?? Date.now;
   const timeoutMs = deps.githubTimeoutMs ?? GH_TIMEOUT_MS;
   const cacheMs = deps.githubCacheMs ?? GH_CACHE_MS;
-  let cached: { expiresAt: number; result: GitHubResult } | undefined;
-  let pending: Promise<GitHubResult> | undefined;
+  const cache = new Map<boolean, { expiresAt: number; result: GitHubResult }>();
+  const inFlight = new Map<boolean, Promise<GitHubResult>>();
 
-  const checkGithub = (): Promise<GitHubResult> => {
+  const checkGithub = (
+    includeAuthentication = false,
+  ): Promise<GitHubResult> => {
+    const cached = cache.get(includeAuthentication);
     if (cached && now() < cached.expiresAt)
       return Promise.resolve(cached.result);
-    if (pending) return pending;
-    pending = (async () => {
+    const existing = inFlight.get(includeAuthentication);
+    if (existing) return existing;
+    const pending = (async (): Promise<GitHubResult> => {
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
       let timedOut = false;
       try {
-        await Promise.race([
-          exec('gh', ['auth', 'status', '--hostname', 'github.com'], {
-            timeout: timeoutMs,
-            maxBuffer: 8_192,
-            windowsHide: true,
-            signal: controller.signal,
-            env: {
-              GH_PROMPT_DISABLED: '1',
-              GH_NO_UPDATE_NOTIFIER: '1',
-              NO_COLOR: '1',
+        const output = await Promise.race([
+          exec(
+            'gh',
+            [
+              'auth',
+              'status',
+              '--hostname',
+              'github.com',
+              ...(includeAuthentication
+                ? ['--json', 'hosts', '--no-refresh']
+                : []),
+            ],
+            {
+              timeout: timeoutMs,
+              maxBuffer: 8_192,
+              windowsHide: true,
+              signal: controller.signal,
+              env: {
+                GH_PROMPT_DISABLED: '1',
+                GH_NO_UPDATE_NOTIFIER: '1',
+                NO_COLOR: '1',
+              },
             },
-          }),
+          ),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
               timedOut = true;
@@ -98,6 +177,18 @@ export function createIntegrationStatusProbes(deps: {
             }, timeoutMs);
           }),
         ]);
+        if (includeAuthentication) {
+          const authentication = githubAuthentication(output.stdout, now());
+          return {
+            authentication,
+            state:
+              authentication.state === 'signed-in' ? 'signed-in' : 'failed',
+            reason:
+              authentication.state === 'signed-in'
+                ? 'GitHub CLI is signed in to github.com; repository permissions have not been checked.'
+                : 'GitHub CLI sign-in could not be confirmed. Check gh auth status on this Station.',
+          };
+        }
         return {
           state: 'signed-in',
           reason:
@@ -106,6 +197,14 @@ export function createIntegrationStatusProbes(deps: {
       } catch (error) {
         return {
           state: 'failed',
+          ...(includeAuthentication
+            ? {
+                authentication: {
+                  state: 'unknown' as const,
+                  observedAt: now(),
+                },
+              }
+            : {}),
           reason: timedOut
             ? 'GitHub authentication check timed out.'
             : githubFailure(error),
@@ -114,21 +213,25 @@ export function createIntegrationStatusProbes(deps: {
         if (timer) clearTimeout(timer);
       }
     })().then((result) => {
-      cached = { result, expiresAt: now() + cacheMs };
-      pending = undefined;
+      cache.set(includeAuthentication, { result, expiresAt: now() + cacheMs });
+      inFlight.delete(includeAuthentication);
       return result;
     });
+    inFlight.set(includeAuthentication, pending);
     return pending;
   };
 
   return [
     {
-      async run() {
-        const result = await checkGithub();
+      async run(options) {
+        const result = await checkGithub(options?.includeGithubAuthentication);
         const computedBy = 'github.gh-auth-status';
         return {
           connectionId: 'github',
           provider: 'github',
+          ...(result.authentication
+            ? { authentication: result.authentication }
+            : {}),
           actions: [
             ...actions(
               ['read', 'write', 'link-pr'],

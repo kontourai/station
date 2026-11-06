@@ -3,6 +3,7 @@ import {
   fetchOrchestrationSessions,
 } from '@kontourai/station-sdk';
 import { useEffect } from 'react';
+import { chatBelongsToStation } from '../connections/station-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 
 type PersistedChats = ReturnType<typeof activeChatsStore.getSnapshot>;
@@ -37,6 +38,8 @@ function holdsPendingWork(chat: PersistedChats[string]): boolean {
 function removeMissing(entries: PersistedChatEntry[], durableIds: Set<string>) {
   for (const [sessionId, chat] of entries) {
     if (
+      activeChatsStore.getSnapshot()[sessionId] === chat &&
+      chatBelongsToStation(chat) &&
       chat.conversationId &&
       !durableIds.has(chat.conversationId) &&
       !holdsPendingWork(chat)
@@ -89,7 +92,8 @@ export function usePruneActiveChats() {
   useEffect(() => {
     const chats = activeChatsStore.getSnapshot();
     const entries = Object.entries(chats).filter(
-      ([, chat]) => chat.conversationId && chat.agentSlug,
+      ([, chat]) =>
+        chatBelongsToStation(chat) && chat.conversationId && chat.agentSlug,
     );
     if (entries.length === 0) {
       return;

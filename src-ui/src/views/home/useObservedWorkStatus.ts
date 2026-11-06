@@ -22,9 +22,13 @@ export function useOptionalObservedWorkStatus(
   now: number,
   facts?: WorkFacts,
 ): WorkStatus | null {
-  const id = item ? (item.conversationId ?? item.id) : undefined;
+  const id =
+    item && facts?.hostDetails !== false
+      ? (item.conversationId ?? item.id)
+      : undefined;
   const observation = useWorkObservation(id);
-  if (!item || !id) return null;
+  if (!item) return null;
+  if (!id) return workStatus(item, now, facts);
   return workStatus(
     item,
     now,

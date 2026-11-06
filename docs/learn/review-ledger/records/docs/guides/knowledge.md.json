@@ -136,7 +136,9 @@
 
     "src-server/tools/station-control-operations-tools.ts",
 
-    "src-server/tools/__tests__/station-control-operations-tools.test.ts"
+    "src-server/tools/__tests__/station-control-operations-tools.test.ts",
+
+    "src-ui/src/__tests__/KnowledgeStoreSection.test.tsx"
   ],
 
   "checks": [

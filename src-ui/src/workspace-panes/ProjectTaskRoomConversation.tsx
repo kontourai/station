@@ -3,10 +3,7 @@ import {
   useCreateTaskReferenceMutation,
   useTaskTurnReferencesQuery,
 } from '@kontourai/station-sdk';
-import {
-  continueDelegatedTask,
-  interruptDelegatedTask,
-} from '@kontourai/station-sdk/client';
+import { continueDelegatedTask } from '@kontourai/station-sdk/client';
 import {
   useProjectTaskRoomDiscoveryQuery,
   useProjectTaskRoomHistoryQuery,
@@ -18,18 +15,27 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { LazyMarkdown } from '../components/chat/LazyMarkdown';
+import { ConversationStopControl } from '../components/conversation/ConversationStopControl';
+import {
+  projectTaskHistory,
+  SharedTaskHistoryList,
+  SharedTaskHistoryRecord,
+  SharedTaskHistoryText,
+} from '../components/conversation/SharedTaskHistoryList';
+import { createTaskConversationActions } from '../components/conversation/task-conversation-actions';
+import { taskHistoryReadDenied } from '../components/conversation/task-history-policy';
 import { IconButton } from '../components/IconButton';
 import { CloseGlyph } from '../components/icons/Glyph';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
-import { Empty, SkeletonBlock, SkeletonList } from '../components/state';
+import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useElapsedClock } from '../hooks/useElapsedClock';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { describeStationFailure } from '../utils/stationFailure';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
-import { RoomAvatar } from './ProjectTaskRoomPresence';
 import { TaskRoomAttachmentComposer } from './TaskRoomAttachmentComposer';
 import { TaskRoomAttachmentImages } from './TaskRoomAttachmentImages';
 import { TaskRoomComposer } from './TaskRoomComposer';
@@ -132,14 +138,17 @@ export function ProjectTaskRoomConversation({
   const shared = useProjectTaskRoomContext(taskId);
   const history = useProjectTaskRoomHistoryQuery(taskId);
   const room = shared?.discovery ?? discover;
-  const pages = history.data?.pages ?? [];
-  const records = pages
-    .flatMap((page) => (page.kind === 'available' ? page.records : []))
-    .sort((a, b) => a.sequence - b.sequence);
   const capabilities =
     room.data?.kind === 'opened' || room.data?.kind === 'existing'
       ? room.data.capabilities
       : undefined;
+  const readable =
+    scope?.isCurrent() === true &&
+    capabilities?.historyRead === true &&
+    !taskHistoryReadDenied(history.error);
+  const pages = history.data?.pages ?? [];
+  const historyProjection = projectTaskHistory(pages);
+  const records = readable ? historyProjection.records : [];
   const writable =
     capabilities?.messageWrite === true && shared?.stream !== 'terminal';
   const requests = useTaskRoomAgentRequestsQuery(
@@ -217,13 +226,19 @@ export function ProjectTaskRoomConversation({
   // The history contract pages forward through a fixed checkpoint. Read to that
   // checkpoint before presenting its newest messages; reveal older rows locally.
   useEffect(() => {
-    if (history.hasNextPage && !history.isFetching && !history.isError)
+    if (
+      readable &&
+      history.hasNextPage &&
+      !history.isFetching &&
+      !history.isError
+    )
       void history.fetchNextPage({ cancelRefetch: false });
   }, [
     history.hasNextPage,
     history.isFetching,
     history.isError,
     history.fetchNextPage,
+    readable,
   ]);
   const loadEarlier = () => {
     previousHeight.current = messages.current?.scrollHeight;
@@ -249,14 +264,9 @@ export function ProjectTaskRoomConversation({
       try {
         attachments = await replyAttachments.prepare();
       } catch (error) {
-        throw Object.assign(
-          new Error(
-            error instanceof Error
-              ? error.message
-              : 'Files could not be uploaded.',
-          ),
-          { code: 'task_room_reply_refused' },
-        );
+        throw Object.assign(new Error(describeStationFailure(error).body), {
+          code: 'task_room_reply_refused',
+        });
       }
       if (!scope.isCurrent()) throw new Error('Task connection changed.');
       replyOperation.current ??= randomCorrelationId();
@@ -306,23 +316,28 @@ export function ProjectTaskRoomConversation({
         code === 'receiver_execution_authority_changed';
       setUncertain(!notSent);
       setNotice(
-        `Not delivered · ${error.message}${notSent ? '' : ' Check the full run before resending.'}`,
+        `Not delivered · ${describeStationFailure(error).body}${notSent ? '' : ' Check the full run before resending.'}`,
       );
     },
   });
   const followupPending = useRef(followup.isPending);
   followupPending.current = followup.isPending;
+  const stopCapability =
+    writable && scope?.isCurrent()
+      ? { state: 'allowed' as const }
+      : { state: 'denied' as const, reason: 'permission-required' as const };
+  const taskActions = createTaskConversationActions({
+    apiBase: scope?.apiBase ?? '',
+    requestScope: scope,
+    capabilities: {
+      stop: stopCapability,
+      approvalAnswer: { state: 'denied', reason: 'permission-required' },
+    },
+  });
   const stop = useMutation({
     mutationFn: async (sessionId: string) => {
-      if (!scope?.isCurrent()) throw new Error('Task connection changed.');
-      return interruptDelegatedTask(
-        scope.apiBase,
-        sessionId,
-        {},
-        { requestScope: scope },
-      );
+      return taskActions.stop(sessionId);
     },
-    onError: (error) => setNotice(error.message),
   });
   const retryFailed = useMutation({
     mutationFn: async (sessionId: string) => {
@@ -355,7 +370,7 @@ export function ProjectTaskRoomConversation({
       void history.refetch();
       void requests.refetch();
     },
-    onError: (error) => setNotice(error.message),
+    onError: (error) => setNotice(describeStationFailure(error).body),
   });
   const roots = new Map<string, number>();
   for (const record of records)
@@ -438,7 +453,6 @@ export function ProjectTaskRoomConversation({
         (record.actor.id ?? record.actor.label) &&
       previous.actor.kind === record.actor.kind;
     const execution = record.execution;
-    const mention = /^\*\*@(.+?)\*\*\s+/.exec(record.body.text);
     const replies = execution
       ? records.filter(
           (item) =>
@@ -448,64 +462,21 @@ export function ProjectTaskRoomConversation({
         ).length
       : 0;
     return (
-      <li
-        className={`task-room-message${grouped ? ' task-room-message--grouped' : ''}`}
+      <SharedTaskHistoryRecord
         key={record.sequence}
-      >
-        {!grouped && (
-          <RoomAvatar
-            name={authorLabel}
-            agent={record.actor.kind === 'agent'}
-          />
-        )}
-        <article>
-          <header>
-            {!grouped && (
-              <>
-                <strong>{authorLabel}</strong>
-                {record.actor.kind === 'agent' && (
-                  <span className="task-room-agent-badge">Agent</span>
-                )}
-              </>
-            )}
-            <Time at={record.occurredAt} compact={grouped} />
-          </header>
+        record={record}
+        previous={previous?.system ? undefined : previous}
+        authorLabel={authorLabel}
+        header={<Time at={record.occurredAt} compact={grouped} />}
+        attachments={
           <TaskRoomAttachmentImages
             attachments={record.body.attachments}
             taskId={taskId}
             taskCreatedAt={taskCreatedAt ?? ''}
           />
-          <div className="task-room-message-content">
-            {execution ? (
-              <RoomAnswer
-                text={record.body.text}
-                expanded={expanded.has(record.sequence)}
-                onToggle={() => {
-                  anchored.current = false;
-                  setExpanded((current) => {
-                    const next = new Set(current);
-                    if (next.has(record.sequence)) next.delete(record.sequence);
-                    else next.add(record.sequence);
-                    return next;
-                  });
-                }}
-              />
-            ) : (
-              <div className="task-room-message-text">
-                {mention ? (
-                  <>
-                    <span className="task-room-mention">@{mention[1]}</span>
-                    <LazyMarkdown>
-                      {record.body.text.slice(mention[0].length)}
-                    </LazyMarkdown>
-                  </>
-                ) : (
-                  <LazyMarkdown>{record.body.text}</LazyMarkdown>
-                )}
-              </div>
-            )}
-          </div>
-          {execution && (
+        }
+        actions={
+          execution && (
             <ActionRow
               className="task-room-message-actions"
               primary={
@@ -552,11 +523,7 @@ export function ProjectTaskRoomConversation({
                       );
                       setNotice('Answer kept in Results.');
                     } catch (error) {
-                      setNotice(
-                        error instanceof Error
-                          ? error.message
-                          : 'Could not keep this answer.',
-                      );
+                      setNotice(describeStationFailure(error).body);
                     }
                   }}
                 >
@@ -580,9 +547,27 @@ export function ProjectTaskRoomConversation({
                 },
               ]}
             />
-          )}
-        </article>
-      </li>
+          )
+        }
+      >
+        {execution ? (
+          <RoomAnswer
+            text={record.body.text}
+            expanded={expanded.has(record.sequence)}
+            onToggle={() => {
+              anchored.current = false;
+              setExpanded((current) => {
+                const next = new Set(current);
+                if (next.has(record.sequence)) next.delete(record.sequence);
+                else next.add(record.sequence);
+                return next;
+              });
+            }}
+          />
+        ) : (
+          <SharedTaskHistoryText text={record.body.text} />
+        )}
+      </SharedTaskHistoryRecord>
     );
   };
   const changeThread = (next?: string) => {
@@ -739,39 +724,30 @@ export function ProjectTaskRoomConversation({
               loadEarlier();
           }}
         >
-          {allVisible.length > historyWindow && (
-            <Button variant="ghost" onClick={loadEarlier}>
-              Load earlier messages
-            </Button>
-          )}
-          {history.isLoading && (
-            <SkeletonList count={2} label="Loading messages" />
-          )}
-          {history.isError && (
-            <p role="alert">
-              Room history is unavailable.{' '}
-              <Button onClick={() => void history.refetch()}>Retry</Button>
-            </p>
-          )}
-          {capabilities && !capabilities.historyRead && (
-            <p role="status">History is not shared with this connection.</p>
-          )}
-          {!visible.length &&
-            !history.isLoading &&
-            !history.hasNextPage &&
-            !history.isError &&
-            capabilities?.historyRead && (
-              <Empty
-                variant="compact"
-                label="Start the conversation"
-                description="Share a thought, shape the brief, or ask an agent to work on this Task."
-              />
-            )}
-          <ol aria-live="polite" aria-label="Task room history">
-            {visible.map((record, index) =>
-              message(record, visible[index - 1]),
-            )}
-          </ol>
+          <SharedTaskHistoryList
+            records={visible}
+            readable={readable}
+            pending={history.isLoading}
+            failed={history.isError}
+            outcome={historyProjection.outcome}
+            hasEarlier={
+              allVisible.length > historyWindow || history.hasNextPage
+            }
+            loadingEarlier={history.isFetchingNextPage}
+            onLoadEarlier={() =>
+              allVisible.length > historyWindow
+                ? loadEarlier()
+                : void history.fetchNextPage()
+            }
+            onRetry={() =>
+              void (history.isFetchNextPageError
+                ? history.fetchNextPage()
+                : history.refetch())
+            }
+            renderRecord={(record, previous) => message(record, previous)}
+            label="Task room history"
+            emptyLabel="Start the conversation"
+          />
           {running.map((participant) => (
             <div
               className="task-room-running"
@@ -816,21 +792,18 @@ export function ProjectTaskRoomConversation({
                   >
                     Watch
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={!writable || stop.isPending}
-                    onClick={() => stop.mutate(participant.work.sessionId)}
-                  >
-                    Stop
-                  </Button>
+                  <ConversationStopControl
+                    intent={{ kind: 'task', name: participant.actor.label }}
+                    capability={stopCapability}
+                    stopPending={stop.isPending}
+                    onCancel={() =>
+                      stop.mutateAsync(participant.work.sessionId)
+                    }
+                  />
                 </>
               )}
             </div>
           ))}
-          {pages.some((page) => page.kind === 'gap') && (
-            <p role="alert">Earlier room history is unavailable.</p>
-          )}
         </div>
         {jumpToLatest && (
           <Button variant="ghost" className="task-room-jump" onClick={goLatest}>
@@ -890,18 +863,28 @@ export function ProjectTaskRoomConversation({
   );
 }
 
-export function TaskRoomHistoryDetails({ taskId }: { taskId: string }) {
+export function TaskRoomHistoryDetails({
+  taskId,
+  requestScope,
+}: {
+  taskId: string;
+  requestScope: ReturnType<typeof useHostRequestAuthorityScope>;
+}) {
   const history = useProjectTaskRoomHistoryQuery(taskId);
+  const readable =
+    requestScope?.isCurrent() === true && !taskHistoryReadDenied(history.error);
   return (
     <details
       className="task-workspace__record-details"
       aria-busy={history.isFetching}
       onToggle={(event) => {
-        if (event.currentTarget.open) void history.refetch();
+        if (readable && event.currentTarget.open) void history.refetch();
       }}
     >
       <summary>Raw room history</summary>
-      {history.isError ? (
+      {!readable ? (
+        <p role="status">History is not shared with this connection.</p>
+      ) : history.isError ? (
         <p role="alert">Room history unavailable.</p>
       ) : (
         <pre>{JSON.stringify(history.data?.pages ?? [], null, 2)}</pre>
