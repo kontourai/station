@@ -1474,16 +1474,23 @@ describe('dependency lifecycle policy', () => {
     }
   });
 
-  it.skipIf(process.platform !== 'linux')(
-    'builds a reviewed native hook from the CI Node headers without a header download',
-    () => {
+  it
+    .skipIf(process.platform !== 'linux')
+    .each(['generic', 'source', 'pinned'] as const)(
+    'honors reviewed native source/prebuild policy with CI headers (%s)',
+    (mode) => {
       const fixtureRoot = makeTempDir('station-native-headers-');
-      const packageRoot = resolve(fixtureRoot, 'node_modules/header-probe');
+      const name = mode === 'generic' ? 'header-probe' : 'node-pty';
+      const target = mode === 'generic' ? 'header_probe' : 'pty';
+      const packageRoot = resolve(fixtureRoot, 'node_modules', name);
+      const prebuild = `prebuilds/linux-${process.arch}/pty.node`;
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const variables = [
         'GITHUB_ACTIONS',
         'npm_config_nodedir',
         'npm_config_devdir',
         'npm_config_disturl',
+        'npm_config_build_from_source',
       ];
       const original = variables.map((key) => [key, process.env[key]] as const);
       try {
@@ -1492,19 +1499,56 @@ describe('dependency lifecycle policy', () => {
         writeFileSync(
           resolve(packageRoot, 'package.json'),
           JSON.stringify({
-            name: 'header-probe',
+            name,
             version: '1.0.0',
             scripts: { install: hook },
           }),
         );
-        writeFileSync(
-          resolve(packageRoot, 'scripts/prebuild.js'),
-          'process.exit(1);',
-        );
+        if (mode === 'generic') {
+          writeFileSync(
+            resolve(packageRoot, 'scripts/prebuild.js'),
+            'process.exit(1);',
+          );
+        } else {
+          copyFileSync(
+            resolve(root, 'node_modules/node-pty/scripts/prebuild.js'),
+            resolve(packageRoot, 'scripts/prebuild.js'),
+          );
+          mkdirSync(resolve(packageRoot, `prebuilds/linux-${process.arch}`), {
+            recursive: true,
+          });
+          const archivePrebuild = Buffer.from(
+            'archive binary is not source-build approval',
+          );
+          writeFileSync(resolve(packageRoot, prebuild), archivePrebuild);
+          const manifestDir = resolve(
+            fixtureRoot,
+            'packaging/node-pty-prebuilds',
+          );
+          mkdirSync(manifestDir, { recursive: true });
+          writeFileSync(
+            resolve(manifestDir, 'manifest.json'),
+            JSON.stringify({
+              schemaVersion: 1,
+              package: 'node-pty',
+              version: '1.0.0',
+              artifacts:
+                mode === 'pinned'
+                  ? {
+                      [`linux-${process.arch}`]: {
+                        sha256: createHash('sha256')
+                          .update(archivePrebuild)
+                          .digest('hex'),
+                      },
+                    }
+                  : {},
+            }),
+          );
+        }
         writeFileSync(
           resolve(packageRoot, 'binding.gyp'),
           JSON.stringify({
-            targets: [{ target_name: 'header_probe', sources: ['probe.cc'] }],
+            targets: [{ target_name: target, sources: ['probe.cc'] }],
           }),
         );
         writeFileSync(
@@ -1512,6 +1556,7 @@ describe('dependency lifecycle policy', () => {
           '#include <node.h>\nNODE_MODULE_INIT() {}\n',
         );
         process.env.GITHUB_ACTIONS = 'true';
+        process.env.npm_config_build_from_source = 'false';
         delete process.env.npm_config_nodedir;
         process.env.npm_config_devdir = resolve(
           fixtureRoot,
@@ -1524,39 +1569,50 @@ describe('dependency lifecycle policy', () => {
               {
                 scope: 'root',
                 lock: 'package-lock.json',
-                path: 'node_modules/header-probe',
-                name: 'header-probe',
+                path: `node_modules/${name}`,
+                name,
                 version: '1.0.0',
                 decision: 'execute',
                 platform: { os: [], cpu: [] },
                 hooks: [{ name: 'install', command: hook }],
                 artifact: {
-                  path: 'build/Release/header_probe.node',
-                  proof: 'fixture',
+                  path:
+                    mode === 'pinned'
+                      ? prebuild
+                      : `build/Release/${target}.node`,
+                  proof: mode === 'generic' ? 'fixture' : 'node-pty-smoke',
                 },
               },
             ],
           },
           { cwd: fixtureRoot },
         );
-        execFileSync(
-          process.execPath,
-          [
-            '-e',
-            'require(process.argv[1])',
-            resolve(packageRoot, 'build/Release/header_probe.node'),
-          ],
-          {
-            windowsHide: true,
-            timeout: 10_000,
-            stdio: 'ignore',
-          },
-        );
+        const built = resolve(packageRoot, `build/Release/${target}.node`);
+        if (mode === 'pinned') {
+          expect(existsSync(built)).toBe(false);
+          expect(readFileSync(resolve(packageRoot, prebuild), 'utf8')).toBe(
+            'archive binary is not source-build approval',
+          );
+        } else {
+          expect(existsSync(built)).toBe(true);
+          execFileSync(
+            process.execPath,
+            ['-e', 'require(process.argv[1])', built],
+            {
+              windowsHide: true,
+              timeout: 10_000,
+              stdio: 'ignore',
+            },
+          );
+          if (mode === 'source')
+            expect(existsSync(resolve(packageRoot, 'prebuilds'))).toBe(false);
+        }
         expect(
-          existsSync(resolve(packageRoot, 'build/Release/header_probe.node')),
-        ).toBe(true);
+          warn.mock.calls.some((call) => String(call[0]).includes('DEGRADED')),
+        ).toBe(false);
         expect(existsSync(process.env.npm_config_devdir)).toBe(false);
       } finally {
+        warn.mockRestore();
         for (const [key, value] of original) {
           if (value === undefined) delete process.env[key];
           else process.env[key] = value;
