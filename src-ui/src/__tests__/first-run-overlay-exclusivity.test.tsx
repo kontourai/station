@@ -164,6 +164,8 @@ vi.mock('../contexts/AgentsContext', () => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
+  // #4519: the connected Station has no managed policy.
+  useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   useDevicePresentation: () => undefined,
   // The engines step's one enable path (archive#3627). Nothing here confirms
   // a batch; it exists so the step can mount.

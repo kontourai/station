@@ -1,5 +1,12 @@
+import { pluginTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
+import { parseTelemetryFeedback } from '@kontourai/station-shared/product-telemetry';
 import { expect, test } from 'vitest';
-import { admitLiteObservation, ipFamily, networkKey } from '../lite-core.js';
+import {
+  admitLiteObservation,
+  ipFamily,
+  networkKey,
+  parseLiteSource,
+} from '../lite-core.js';
 import { dailyPing } from './lite-fixture.js';
 
 // Both receivers dedupe a retry by comparing this canonical JSON, so engine
@@ -58,3 +65,54 @@ test('IPv6 addresses with a zone ID key by prefix, not as unavailable', () => {
   for (const invalid of ['fe80::1%', '%eth0', '1.2.3.4%eth0', 'fe80::1%eth0%x'])
     expect(networkKey(invalid, 64)).toBe('unavailable');
 });
+
+// Source provisioning and feedback cross separate validators in the receiver.
+test.each([
+  ['publisher:writer', true],
+  [pluginTelemetryPublisherId(`sha256:${'a'.repeat(64)}`, 'writer'), true],
+  [
+    pluginTelemetryPublisherId(`sha256:${'a'.repeat(64)}`, 'w'.repeat(128)),
+    true,
+  ],
+  [
+    pluginTelemetryPublisherId(`sha256:${'a'.repeat(64)}`, 'writer_1.2:beta-3'),
+    true,
+  ],
+  ['publisher:constructor', false],
+  ['publisher:prototype', false],
+  ['publisher:__proto__', false],
+  [`publisher:${'a'.repeat(24)}/constructor`, false],
+  [`publisher:${'a'.repeat(24)}/prototype`, false],
+  [`publisher:${'A'.repeat(24)}/writer`, false],
+  [`publisher:${'a'.repeat(24)}/Writer`, false],
+  [`publisher:${'g'.repeat(24)}/writer`, false],
+  [`publisher:${'a'.repeat(24)}/${'w'.repeat(129)}`, false],
+  [`publisher:${'a'.repeat(24)}/writer/extra`, false],
+  ['publisher:@scope/plugin', false],
+] as const)(
+  'source and feedback admission for %s is %s',
+  (publisher, accepted) => {
+    const input = {
+      id: 'public-source',
+      publisher,
+      channels: ['stable'],
+      registryIds: [],
+      releaseVersions: [],
+      versionPolicy: 'catalog' as const,
+    };
+    const feedback = { publisher, action: 'tier-lowered', reason: 'privacy' };
+    if (accepted) {
+      const source = parseLiteSource(input);
+      expect(source.publisher).toBe(publisher);
+      expect(admitLiteObservation(feedback, source)).toEqual({
+        kind: 'feedback',
+        feedback,
+      });
+    } else {
+      expect(() => parseLiteSource(input)).toThrow('invalid_source');
+      expect(() => parseTelemetryFeedback(feedback)).toThrow(
+        'Invalid telemetry feedback',
+      );
+    }
+  },
+);

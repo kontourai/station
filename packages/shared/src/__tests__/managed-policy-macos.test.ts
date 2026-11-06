@@ -1,0 +1,1087 @@
+import { execFileSync } from 'node:child_process';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+import {
+  loadManagedPolicyFromSources,
+  ManagedPolicyInvalidError,
+  macosProfileSource,
+  managedPolicyFileSource,
+  systemManagedPolicySources,
+} from '../managed-policy.js';
+import {
+  binaryPlistKeyScanProblem,
+  duplicatePlistKeyPath,
+  MACOS_MANAGED_PREFERENCES_PATH,
+  managedPreferencesDocument,
+  type PlistConverter,
+  plistKeyScanProblem,
+  plutilConverter,
+} from '../managed-policy-macos.js';
+import { managedPolicyMobileconfig } from '../managed-policy-templates.js';
+
+const makeTempDir = trackTempDirs();
+const FIXTURES = join(import.meta.dirname, 'fixtures', 'managed-policy');
+const PLUTIL = '/usr/bin/plutil';
+const hasPlutil = process.platform === 'darwin' && existsSync(PLUTIL);
+
+/** A converter for hosts without plutil: the fixture's JSON twin. */
+const jsonConverter =
+  (value: unknown): PlistConverter =>
+  () => ({ ok: true, json: JSON.stringify(value) });
+
+describe('managedPreferencesDocument', () => {
+  const policy = { schemaVersion: 1, organization: 'Acme' };
+
+  test('drops only the profile metadata macOS writes beside the keys', () => {
+    expect(
+      managedPreferencesDocument({
+        ...policy,
+        PayloadUUID: 'X',
+        PayloadIdentifier: 'io.kontourai.station.policy.payload',
+        _manualProfile: true,
+      }),
+    ).toEqual(policy);
+    // Anything else stays, so the parser refuses it.
+    expect(managedPreferencesDocument({ ...policy, PayloadExtra: 1 })).toEqual({
+      ...policy,
+      PayloadExtra: 1,
+    });
+  });
+
+  test('unwraps exactly one Forced mcx_preference_settings entry', () => {
+    expect(
+      managedPreferencesDocument({
+        Forced: [{ mcx_preference_settings: policy }],
+      }),
+    ).toEqual(policy);
+    for (const wrapped of [
+      { Forced: [{ mcx_preference_settings: policy }], organization: 'X' },
+      { Forced: [{ mcx_preference_settings: policy }, {}] },
+      { Forced: [{ mcx_preference_settings: policy, mcx_data_timestamp: 1 }] },
+      { Set_Once: [{ mcx_preference_settings: policy }] },
+    ])
+      expect(managedPreferencesDocument(wrapped)).toEqual(wrapped);
+  });
+});
+
+function profilePath(fixture: string): string {
+  const path = join(
+    makeTempDir('station-policy-profile-'),
+    'io.kontourai.station.plist',
+  );
+  writeFileSync(path, readFileSync(join(FIXTURES, fixture)));
+  return path;
+}
+
+describe('the macOS profile source', () => {
+  test('is a system source on macOS only, at the device-level path', () => {
+    expect(
+      systemManagedPolicySources('darwin').map((source) => source.descriptor),
+    ).toEqual([
+      {
+        kind: 'file',
+        location: '/Library/Application Support/Station/policy.json',
+      },
+      { kind: 'macos-profile', location: MACOS_MANAGED_PREFERENCES_PATH },
+    ]);
+    expect(MACOS_MANAGED_PREFERENCES_PATH).toBe(
+      '/Library/Managed Preferences/io.kontourai.station.plist',
+    );
+    expect(
+      systemManagedPolicySources('linux').map(
+        (source) => source.descriptor.kind,
+      ),
+    ).toEqual(['file']);
+  });
+
+  test.skipIf(!hasPlutil)(
+    'decodes a custom-payload plist, binary or XML, through /usr/bin/plutil',
+    () => {
+      const xml = profilePath('managed-preferences-custom-payload.plist');
+      const binary = profilePath('managed-preferences-custom-payload.plist');
+      // macOS stores installed managed preferences as binary property lists.
+      execFileSync(PLUTIL, ['-convert', 'binary1', binary]);
+      expect(readFileSync(binary).subarray(0, 8).toString()).toBe('bplist00');
+      for (const path of [xml, binary]) {
+        const loaded = loadManagedPolicyFromSources([
+          macosProfileSource(path, null),
+        ]);
+        expect(loaded?.source).toEqual({
+          kind: 'macos-profile',
+          location: path,
+        });
+        expect(loaded?.document).toEqual({
+          schemaVersion: 1,
+          organization: 'Acme Corp',
+          supportUrl: 'https://help.acme.example/station',
+          limits: {
+            telemetry: false,
+            webhookAutomations: false,
+            registries: {
+              allowedUrls: ['https://plugins.acme.example/catalog'],
+              unsignedPackages: false,
+            },
+          },
+        });
+      }
+    },
+  );
+
+  test.skipIf(!hasPlutil)('decodes the MCX Forced shape', () => {
+    const loaded = loadManagedPolicyFromSources([
+      macosProfileSource(
+        profilePath('managed-preferences-mcx-forced.plist'),
+        null,
+      ),
+    ]);
+    expect(loaded?.document).toEqual({
+      schemaVersion: 1,
+      organization: 'Acme Corp',
+      limits: { telemetry: false },
+    });
+  });
+
+  test.skipIf(!hasPlutil)(
+    'a plist value with no JSON form (a date) is refused',
+    () => {
+      const path = join(makeTempDir('station-policy-profile-'), 'p.plist');
+      writeFileSync(
+        path,
+        '<?xml version="1.0"?><plist version="1.0"><dict><key>organization</key><date>2026-01-01T00:00:00Z</date></dict></plist>',
+      );
+      expect(() =>
+        loadManagedPolicyFromSources([macosProfileSource(path, null)]),
+      ).toThrow(
+        /STATION_MANAGED_POLICY_INVALID.*not a property list Station can read/,
+      );
+    },
+  );
+
+  test('an unknown key in the profile is refused by the same parser', () => {
+    const path = profilePath('managed-preferences-mcx-forced.plist');
+    expect(() =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(
+          path,
+          null,
+          jsonConverter({
+            schemaVersion: 1,
+            organization: 'Acme',
+            allowAll: true,
+          }),
+        ),
+      ]),
+    ).toThrow('allowAll: unknown key');
+  });
+
+  test('a converter that cannot run fails closed', () => {
+    const path = profilePath('managed-preferences-mcx-forced.plist');
+    expect(() =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(path, null, plutilConverter('/nonexistent/plutil')),
+      ]),
+    ).toThrow(
+      /STATION_MANAGED_POLICY_INVALID.*\/nonexistent\/plutil could not run \(ENOENT\)/,
+    );
+  });
+
+  test('the profile gets the policy file checks: a writable folder is refused', () => {
+    const path = profilePath('managed-preferences-mcx-forced.plist');
+    const dir = join(path, '..');
+    chmodSync(dir, 0o777);
+    expect(() =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(
+          path,
+          { ownerUid: process.getuid?.() ?? 0, trustedRoot: dir },
+          jsonConverter({ schemaVersion: 1, organization: 'Acme' }),
+        ),
+      ]),
+    ).toThrow('must not be writable by its group or other users');
+  });
+
+  test('a profile and a policy file both present is a startup error', () => {
+    const profile = profilePath('managed-preferences-mcx-forced.plist');
+    const file = join(makeTempDir('station-policy-file-'), 'policy.json');
+    writeFileSync(
+      file,
+      JSON.stringify({ schemaVersion: 1, organization: 'Acme' }),
+    );
+    expect(() =>
+      loadManagedPolicyFromSources([
+        managedPolicyFileSource(file),
+        macosProfileSource(
+          profile,
+          null,
+          jsonConverter({ schemaVersion: 1, organization: 'Acme' }),
+        ),
+      ]),
+    ).toThrow(
+      `${file} and ${profile}: more than one policy source is installed`,
+    );
+  });
+});
+
+describe('a generated .mobileconfig round-trips through the reader', () => {
+  const document = {
+    schemaVersion: 1 as const,
+    organization: 'Acme & Sons <IT>',
+    supportUrl: 'https://help.acme.example/station?team=it&x=1',
+    settings: {},
+    limits: {
+      telemetry: false as const,
+      webhookAutomations: false as const,
+      registries: {
+        allowedUrls: ['https://plugins.acme.example/catalog'],
+        unsignedPackages: false as const,
+        defaultSkillRegistries: false as const,
+        acpRegistryInstalls: false as const,
+      },
+    },
+  };
+
+  test('refuses a document holding null, which a plist cannot carry', () => {
+    const result = managedPolicyMobileconfig({
+      ...document,
+      settings: { theme: { value: null, locked: true } },
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason:
+        'settings.theme.value is null, which a configuration profile cannot hold; deploy this policy as a file instead',
+    });
+  });
+
+  test.skipIf(!hasPlutil)(
+    'profile → installed payload → reader → the same document',
+    () => {
+      const result = managedPolicyMobileconfig(document);
+      if (!result.ok) throw new Error(result.reason);
+      const dir = makeTempDir('station-policy-roundtrip-');
+      const profile = join(dir, 'station.mobileconfig');
+      writeFileSync(profile, result.profile);
+      const parsed = JSON.parse(
+        execFileSync(PLUTIL, ['-convert', 'json', '-o', '-', profile], {
+          encoding: 'utf8',
+        }),
+      ) as {
+        PayloadContent: Array<Record<string, unknown>>;
+        PayloadScope: string;
+      };
+      expect(parsed.PayloadScope).toBe('System');
+      expect(parsed.PayloadContent).toHaveLength(1);
+      // What macOS installs for a custom payload: its keys, as a binary plist.
+      const installed = join(dir, 'io.kontourai.station.plist');
+      writeFileSync(installed, JSON.stringify(parsed.PayloadContent[0]));
+      execFileSync(PLUTIL, ['-convert', 'binary1', installed]);
+      const loaded = loadManagedPolicyFromSources([
+        macosProfileSource(installed, null),
+      ]);
+      expect(loaded?.document).toEqual(document);
+    },
+  );
+
+  test('regenerating one document yields one profile', () => {
+    expect(managedPolicyMobileconfig(document)).toEqual(
+      managedPolicyMobileconfig(document),
+    );
+  });
+});
+
+describe('duplicatePlistKeyPath', () => {
+  const plist = (body: string) =>
+    `<?xml version="1.0"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "x"><plist version="1.0">${body}</plist>`;
+
+  test.each([
+    ['<dict><key>limits</key><dict/><key>limits</key><dict/></dict>', 'limits'],
+    [
+      '<dict><key>limits</key><dict><key>telemetry</key><false/><key>telemetry</key><true/></dict></dict>',
+      'limits.telemetry',
+    ],
+    // Equal after decoding: an entity, CDATA, or a comment inside the key.
+    [
+      '<dict><key>a&amp;b</key><true/><key><![CDATA[a&b]]></key><true/></dict>',
+      'a&b',
+    ],
+    [
+      '<dict><key>limits</key><true/><key>lim<!-- x -->its</key><true/></dict>',
+      'limits',
+    ],
+    [
+      '<dict><key>l</key><array><dict><key>x</key><true/><key>x</key><true/></dict></array></dict>',
+      'l.x',
+    ],
+  ])('finds %s', (body, path) => {
+    expect(duplicatePlistKeyPath(plist(body))).toBe(path);
+  });
+
+  test.each([
+    '<dict><key>a</key><dict><key>a</key><true/></dict><key>b</key><true/></dict>',
+    '<dict><key>l</key><array><dict><key>x</key><true/></dict><dict><key>x</key><true/></dict></array></dict>',
+    '<dict><key>s</key><string><![CDATA[<key>s</key>]]></string><!-- <key>s</key> --></dict>',
+  ])('passes distinct keys %s', (body) => {
+    expect(duplicatePlistKeyPath(plist(body))).toBeNull();
+  });
+
+  // #4515 fix round 1: a key tag in any form plutil reads as a key must be
+  // seen by the scan, and markup the scan cannot tokenize refuses the
+  // profile rather than being skipped.
+  test.each([
+    [
+      '<dict><key >limits</key><true/><key>limits</key><true/></dict>',
+      'limits',
+    ],
+    [
+      '<dict><key>limits</key><true/><key\n\t>limits</key ><true/></dict>',
+      'limits',
+    ],
+  ])(
+    'finds a repeat whatever the whitespace in the key tag: %s',
+    (body, path) => {
+      expect(duplicatePlistKeyPath(plist(body))).toBe(path);
+    },
+  );
+
+  test.each([
+    ['an attribute on a key', '<dict><key id="x">limits</key><true/></dict>'],
+    ['an unknown element', '<dict><keys>limits</keys><true/></dict>'],
+    ['a namespaced key', '<dict><p:key>limits</p:key><true/></dict>'],
+    ['a stray <', '<dict><key>a</key><true/>< key>limits</key><true/></dict>'],
+    ['a tag inside a key', '<dict><key>li<string/>mits</key><true/></dict>'],
+    ['an unclosed key', '<dict><key>limits'],
+  ])('refuses %s instead of skipping it', (_name, body) => {
+    expect(plistKeyScanProblem(plist(body))).not.toBeNull();
+    expect(duplicatePlistKeyPath(plist(body))).toBeNull();
+  });
+
+  test('refuses a DOCTYPE internal subset, which could define entities', () => {
+    expect(
+      plistKeyScanProblem(
+        '<?xml version="1.0"?><!DOCTYPE plist [<!ENTITY l "limits">]><plist version="1.0"><dict/></plist>',
+      ),
+    ).not.toBeNull();
+  });
+
+  test.skipIf(!hasPlutil)(
+    'plutil reads <key > as a key and keeps the last one, which is why the scan must see it',
+    () => {
+      const path = join(makeTempDir('station-policy-plutil-key-'), 'p.plist');
+      writeFileSync(
+        path,
+        plist(
+          '<dict><key >limits</key><dict><key>telemetry</key><false/></dict><key>limits</key><dict/></dict>',
+        ),
+      );
+      const json = JSON.parse(
+        execFileSync(PLUTIL, ['-convert', 'json', '-o', '-', path], {
+          encoding: 'utf8',
+        }),
+      );
+      expect(json).toEqual({ limits: {} });
+    },
+  );
+
+  test("the reviewer's profile (<key > limits with telemetry off, then a second limits) is refused as invalid", () => {
+    const path = join(makeTempDir('station-policy-profile-'), 'p.plist');
+    writeFileSync(
+      path,
+      plist(
+        '<dict><key>schemaVersion</key><integer>1</integer><key>organization</key><string>Acme</string><key >limits</key><dict><key>telemetry</key><false/></dict><key>limits</key><dict/></dict>',
+      ),
+    );
+    const load = () =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(
+          path,
+          null,
+          // The conversion plutil would give: the second `limits` wins.
+          hasPlutil
+            ? plutilConverter()
+            : jsonConverter({
+                schemaVersion: 1,
+                organization: 'Acme',
+                limits: {},
+              }),
+        ),
+      ]);
+    expect(load).toThrow(ManagedPolicyInvalidError);
+    expect(load).toThrow('duplicate key limits');
+  });
+
+  test('a profile that repeats a key is refused before conversion', () => {
+    const path = join(makeTempDir('station-policy-profile-'), 'p.plist');
+    writeFileSync(
+      path,
+      plist(
+        '<dict><key>schemaVersion</key><integer>1</integer><key>organization</key><string>Acme</string><key>limits</key><dict><key>telemetry</key><false/></dict><key>limits</key><dict/></dict>',
+      ),
+    );
+    expect(() =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(
+          path,
+          null,
+          jsonConverter({ schemaVersion: 1, organization: 'Acme' }),
+        ),
+      ]),
+    ).toThrow('duplicate key limits');
+  });
+});
+
+/**
+ * A `bplist00` writer for the shapes these tests need: dicts, arrays, ASCII
+ * strings and booleans. Objects are written in order; `ref` is an index.
+ */
+type BplistObject =
+  | { dict: Array<[number, number]> }
+  | { array: number[] }
+  | { string: string }
+  | { utf16: string }
+  | { bool: boolean }
+  | { int: number };
+
+function bplist(objects: BplistObject[], top = 0): Buffer {
+  const lengthBytes = (marker: number, count: number) =>
+    count < 15
+      ? Buffer.from([marker | count])
+      : Buffer.from([marker | 0x0f, 0x10, count]);
+  const bodies = objects.map((object) => {
+    if ('dict' in object)
+      return Buffer.concat([
+        lengthBytes(0xd0, object.dict.length),
+        Buffer.from(object.dict.map(([key]) => key)),
+        Buffer.from(object.dict.map(([, value]) => value)),
+      ]);
+    if ('array' in object)
+      return Buffer.concat([
+        lengthBytes(0xa0, object.array.length),
+        Buffer.from(object.array),
+      ]);
+    if ('string' in object)
+      return Buffer.concat([
+        lengthBytes(0x50, object.string.length),
+        Buffer.from(object.string, 'latin1'),
+      ]);
+    if ('utf16' in object) {
+      const raw = Buffer.from(object.utf16, 'utf16le');
+      raw.swap16();
+      return Buffer.concat([lengthBytes(0x60, object.utf16.length), raw]);
+    }
+    if ('int' in object) return Buffer.from([0x10, object.int]);
+    return Buffer.from([object.bool ? 0x09 : 0x08]);
+  });
+  const offsets: number[] = [];
+  let at = 8;
+  for (const body of bodies) {
+    offsets.push(at);
+    at += body.length;
+  }
+  // Offsets are as wide as the body needs (plutil does the same): a
+  // one-byte table would wrap past 255 and point at the wrong objects.
+  const offsetSize = at > 0xff ? 2 : 1;
+  const table = Buffer.alloc(offsets.length * offsetSize);
+  offsets.forEach((offset, i) =>
+    table.writeUIntBE(offset, i * offsetSize, offsetSize),
+  );
+  const trailer = Buffer.alloc(32);
+  trailer[6] = offsetSize;
+  trailer[7] = 1; // object reference size
+  trailer.writeBigUInt64BE(BigInt(objects.length), 8);
+  trailer.writeBigUInt64BE(BigInt(top), 16);
+  trailer.writeBigUInt64BE(BigInt(at), 24);
+  return Buffer.concat([Buffer.from('bplist00'), ...bodies, table, trailer]);
+}
+
+// #4515 fix round 2: duplicate validation covers every encoding plutil
+// accepts, before conversion merges the keys.
+describe('every property list encoding is scanned for a repeated key', () => {
+  // { schemaVersion: 1, organization: "Acme", limits: { telemetry: false },
+  //   limits: {} } in binary: the second limits would erase the first.
+  const duplicateLimits = bplist([
+    /* 0 */ {
+      dict: [
+        [1, 2],
+        [3, 4],
+        [5, 6],
+        [5, 8],
+      ],
+    },
+    /* 1 */ { string: 'schemaVersion' },
+    /* 2 */ { int: 1 },
+    /* 3 */ { string: 'organization' },
+    /* 4 */ { string: 'Acme' },
+    /* 5 */ { string: 'limits' },
+    /* 6 */ { dict: [[7, 9]] },
+    /* 7 */ { string: 'telemetry' },
+    /* 8 */ { dict: [] },
+    /* 9 */ { bool: false },
+  ]);
+
+  test('a binary dict that repeats a key is found, at any depth, ASCII or UTF-16', () => {
+    expect(binaryPlistKeyScanProblem(duplicateLimits)).toBe(
+      'it repeats the key limits',
+    );
+    const nested = bplist([
+      { dict: [[1, 2]] },
+      { string: 'limits' },
+      {
+        dict: [
+          [3, 4],
+          [5, 4],
+        ],
+      },
+      { string: 'telemetry' },
+      { bool: false },
+      { utf16: 'telemetry' },
+    ]);
+    expect(binaryPlistKeyScanProblem(nested)).toBe(
+      'it repeats the key limits.telemetry',
+    );
+    const inArray = bplist([
+      { array: [1] },
+      {
+        dict: [
+          [2, 3],
+          [2, 3],
+        ],
+      },
+      { string: 'x' },
+      { bool: true },
+    ]);
+    expect(binaryPlistKeyScanProblem(inArray)).toBe('it repeats the key x');
+  });
+
+  test('distinct keys pass, and what the scan cannot read is refused', () => {
+    expect(
+      binaryPlistKeyScanProblem(
+        bplist([
+          {
+            dict: [
+              [1, 2],
+              [3, 2],
+            ],
+          },
+          { string: 'a' },
+          { bool: true },
+          { string: 'b' },
+        ]),
+      ),
+    ).toBeNull();
+    // A key that is not a string.
+    expect(
+      binaryPlistKeyScanProblem(bplist([{ dict: [[1, 1]] }, { bool: true }])),
+    ).not.toBeNull();
+    // A cycle: the dict holds itself.
+    expect(
+      binaryPlistKeyScanProblem(bplist([{ dict: [[1, 0]] }, { string: 'a' }])),
+    ).not.toBeNull();
+    // A truncated table.
+    expect(
+      binaryPlistKeyScanProblem(duplicateLimits.subarray(0, 30)),
+    ).not.toBeNull();
+  });
+
+  test.skipIf(!hasPlutil)(
+    'plutil accepts the binary duplicate without a word and keeps one of the two, which is why the scan must run first',
+    () => {
+      const path = join(makeTempDir('station-bplist-plutil-'), 'p.plist');
+      writeFileSync(path, duplicateLimits);
+      const json = JSON.parse(
+        execFileSync(PLUTIL, ['-convert', 'json', '-o', '-', path], {
+          encoding: 'utf8',
+        }),
+      );
+      // No error, and one `limits` silently gone: which one depends on the
+      // order in the file (here the first is kept), so neither is safe.
+      expect(Object.keys(json).sort()).toEqual([
+        'limits',
+        'organization',
+        'schemaVersion',
+      ]);
+      expect([{}, { telemetry: false }]).toContainEqual(json.limits);
+    },
+  );
+
+  test("the reviewer's binary profile with two limits keys is refused as invalid", () => {
+    const path = join(makeTempDir('station-policy-bplist-'), 'p.plist');
+    writeFileSync(path, duplicateLimits);
+    const load = () =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(
+          path,
+          null,
+          hasPlutil
+            ? plutilConverter()
+            : jsonConverter({
+                schemaVersion: 1,
+                organization: 'Acme',
+                limits: {},
+              }),
+        ),
+      ]);
+    expect(load).toThrow(ManagedPolicyInvalidError);
+    expect(load).toThrow('duplicate key limits');
+  });
+
+  test("the reviewer's JSON-form profile is refused: it is not what macOS writes", () => {
+    const path = join(makeTempDir('station-policy-jsonform-'), 'p.plist');
+    writeFileSync(
+      path,
+      '{"schemaVersion":1,"organization":"Acme","limits":{"engines":{"allowed":[]}},"limits":{}}',
+    );
+    const load = () =>
+      loadManagedPolicyFromSources([
+        macosProfileSource(
+          path,
+          null,
+          hasPlutil
+            ? plutilConverter()
+            : jsonConverter({
+                schemaVersion: 1,
+                organization: 'Acme',
+                limits: {},
+              }),
+        ),
+      ]);
+    expect(load).toThrow(ManagedPolicyInvalidError);
+    expect(load).toThrow('it is not an XML or binary property list');
+  });
+});
+
+// #4515 fix round 3: shared references in a binary plist must not make the
+// startup scan exponential. The reviewer's 273-byte profile: 34 nested arrays,
+// each referencing the next twice (under the size and depth bounds), ran past
+// 12 seconds and had to be killed.
+describe('a binary plist that shares references is scanned in bounded work', () => {
+  const shared = (levels: number) =>
+    bplist([
+      ...Array.from({ length: levels }, (_, i) => ({ array: [i + 1, i + 1] })),
+      { bool: true },
+    ]);
+
+  test("the reviewer's 34-level shape finishes in well under a second", () => {
+    const bytes = shared(34);
+    // The reported structure (34 arrays, each referencing the next twice:
+    // 2^34 paths), in this builder's narrowest encoding.
+    expect(bytes.length).toBeLessThan(1024);
+    const started = performance.now();
+    expect(binaryPlistKeyScanProblem(bytes)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(500);
+  }, 5_000);
+
+  // #4515 fix round 4: a budget proportional to the object count refused
+  // valid native profiles, whose strings are shared. With finished objects
+  // remembered the scan is linear in the references the file stores, so
+  // there is no separate budget.
+  test('a profile that shares strings many times over reads', () => {
+    // 20 arrays of 200 references to one string: 22 objects, 4021 steps,
+    // which the round 3 budget (344) refused.
+    const top = { array: Array.from({ length: 20 }, (_, i) => i + 1) };
+    const arrays = Array.from({ length: 20 }, () => ({
+      array: Array.from({ length: 200 }, () => 21),
+    }));
+    expect(
+      binaryPlistKeyScanProblem(bplist([top, ...arrays, { string: 'x' }])),
+    ).toBeNull();
+  });
+
+  test('maximal sharing stays linear in the file: 50 levels of 200 references each', () => {
+    // 200^50 paths, 10,000 stored references.
+    const bytes = bplist([
+      ...Array.from({ length: 50 }, (_, i) => ({
+        array: Array.from({ length: 200 }, () => i + 1),
+      })),
+      { bool: true },
+    ]);
+    const started = performance.now();
+    expect(binaryPlistKeyScanProblem(bytes)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(500);
+  }, 5_000);
+
+  // The reviewer's profile: a valid policy that offers the same 100 Agents
+  // in 20 projects, written by the real plutil as macOS writes it.
+  test.skipIf(!hasPlutil)(
+    "the reviewer's native binary profile with shared slugs loads",
+    () => {
+      const dir = makeTempDir('station-policy-shared-');
+      const slugs = Array.from(
+        { length: 100 },
+        (_, i) => `<string>agent-${String(i).padStart(3, '0')}</string>`,
+      ).join('');
+      const project = (j: number) =>
+        `<key>project:p${String(j).padStart(2, '0')}</key><dict><key>agents</key><dict><key>slugs</key><array>${slugs}</array></dict><key>enabled</key><true/></dict>`;
+      const xml = `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>organization</key><string>Acme</string><key>schemaVersion</key><integer>1</integer><key>settings</key><dict><key>contribution</key><dict><key>locked</key><true/><key>value</key><dict>${Array.from({ length: 20 }, (_, j) => project(j)).join('')}</dict></dict></dict></dict></plist>`;
+      writeFileSync(join(dir, 'p.xml'), xml);
+      const path = join(dir, 'p.plist');
+      execFileSync('/usr/bin/plutil', [
+        '-convert',
+        'binary1',
+        '-o',
+        path,
+        join(dir, 'p.xml'),
+      ]);
+      const bytes = readFileSync(path);
+      // As the reviewer measured: binary, about 4 KB, ~216 objects.
+      expect(bytes.subarray(0, 8).toString('latin1')).toBe('bplist00');
+      expect(Number(bytes.readBigUInt64BE(bytes.length - 24))).toBeLessThan(
+        300,
+      );
+      expect(binaryPlistKeyScanProblem(bytes)).toBeNull();
+      const loaded = loadManagedPolicyFromSources([
+        macosProfileSource(path, null, plutilConverter()),
+      ]);
+      expect(loaded?.document.organization).toBe('Acme');
+      const value = loaded?.document.settings?.contribution?.value as Record<
+        string,
+        { agents: { slugs: string[] } }
+      >;
+      expect(Object.keys(value)).toHaveLength(20);
+      expect(value['project:p19']?.agents.slugs).toHaveLength(100);
+    },
+    30_000,
+  );
+
+  // The reviewer found the 34-level shape passes the scan, then takes plutil
+  // past its timeout. A timeout refuses the profile: it never loads as
+  // "no policy".
+  test.skipIf(process.platform === 'win32')(
+    'a plutil timeout refuses the profile with the invalid-policy marker',
+    () => {
+      const dir = makeTempDir('station-policy-plutil-timeout-');
+      const slow = join(dir, 'slow-plutil');
+      writeFileSync(slow, '#!/bin/sh\nsleep 5\n', { mode: 0o755 });
+      const path = join(dir, 'p.plist');
+      writeFileSync(path, shared(34));
+      const load = () =>
+        loadManagedPolicyFromSources([
+          macosProfileSource(path, null, plutilConverter(slow, 200)),
+        ]);
+      expect(load).toThrow(ManagedPolicyInvalidError);
+      expect(load).toThrow(/^STATION_MANAGED_POLICY_INVALID: .*ETIMEDOUT/);
+    },
+    10_000,
+  );
+});
+
+/**
+ * A binary plist from raw parts: the object area (written from offset 8),
+ * the offset of every index (absolute), the reference width and the top
+ * index. Lets a test alias indices onto one object, or overlap objects.
+ */
+function rawBplist(input: {
+  area: Buffer;
+  offsets: readonly number[];
+  refSize: 1 | 2;
+  top: number;
+}): Buffer {
+  const tableOffset = 8 + input.area.length;
+  const max = Math.max(...input.offsets);
+  const offsetSize = max > 0xffff ? 3 : max > 0xff ? 2 : 1;
+  const table = Buffer.alloc(input.offsets.length * offsetSize);
+  input.offsets.forEach((offset, i) =>
+    table.writeUIntBE(offset, i * offsetSize, offsetSize),
+  );
+  const trailer = Buffer.alloc(32);
+  trailer[6] = offsetSize;
+  trailer[7] = input.refSize;
+  trailer.writeBigUInt64BE(BigInt(input.offsets.length), 8);
+  trailer.writeBigUInt64BE(BigInt(input.top), 16);
+  trailer.writeBigUInt64BE(BigInt(tableOffset), 24);
+  return Buffer.concat([Buffer.from('bplist00'), input.area, table, trailer]);
+}
+
+/** An array header with a two-byte count, then `refs` as two-byte refs. */
+function wideArray(refs: readonly number[]): Buffer {
+  const body = Buffer.alloc(4 + refs.length * 2);
+  body[0] = 0xaf;
+  body[1] = 0x11;
+  body.writeUInt16BE(refs.length, 2);
+  refs.forEach((ref, i) => body.writeUInt16BE(ref, 4 + i * 2));
+  return body;
+}
+
+// #4515 fix round 5: the scan keys an object by its encoded bytes (its
+// offset), not its index. The reviewer's 192 KB profile aliased 16,000
+// indices onto one array of 16,000 references: keyed by index, that array
+// was expanded 16,000 times (256M steps, 5.18 s, before plutil runs).
+describe('a binary plist whose offset table aliases or overlaps objects', () => {
+  test('16,000 indices aliasing one array of 16,000 references is scanned once', () => {
+    const n = 16_000;
+    // index 0: the top array of indices 1..n; indices 1..n: one array of
+    // n references to the leaf; index n + 1: the leaf.
+    const top = wideArray(Array.from({ length: n }, (_, i) => i + 1));
+    const shared = wideArray(Array.from({ length: n }, () => n + 1));
+    const area = Buffer.concat([top, shared, Buffer.from([0x09])]);
+    const sharedAt = 8 + top.length;
+    const bytes = rawBplist({
+      area,
+      offsets: [
+        8,
+        ...Array.from({ length: n }, () => sharedAt),
+        8 + top.length + shared.length,
+      ],
+      refSize: 2,
+      top: 0,
+    });
+    const started = performance.now();
+    expect(binaryPlistKeyScanProblem(bytes)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(500);
+  }, 10_000);
+
+  test('containers that overlap in the file are refused before the scan reads past the file', () => {
+    // Every 4-byte unit is an array header whose count covers the units
+    // after it, and each is a distinct offset: n overlapping containers of
+    // up to 2n references, ~n^2 steps, from a file of ~6n bytes.
+    const n = 15_000;
+    const leafIndex = 0xaf11; // the header pair, read as a reference
+    const unitIndex = (i: number) => 45_000 + i;
+    const top = wideArray(Array.from({ length: n }, (_, i) => unitIndex(i)));
+    const units = Buffer.alloc(4 * n);
+    for (let i = 0; i < n; i += 1) {
+      units[4 * i] = 0xaf;
+      units[4 * i + 1] = 0x11;
+      units.writeUInt16BE(2 * (n - 1 - i), 4 * i + 2);
+    }
+    const area = Buffer.concat([top, units, Buffer.from([0x08])]);
+    const leafAt = 8 + area.length - 1;
+    const offsets = Array.from({ length: 45_000 + n }, () => leafAt);
+    offsets[1] = 8;
+    for (let i = 0; i < n; i += 1)
+      offsets[unitIndex(i)] = 8 + top.length + 4 * i;
+    expect(offsets[leafIndex]).toBe(leafAt);
+    const bytes = rawBplist({ area, offsets, refSize: 2, top: 1 });
+    expect(bytes.length).toBeLessThan(1024 * 1024);
+    const started = performance.now();
+    expect(binaryPlistKeyScanProblem(bytes)).toBe(
+      'it is a binary property list Station cannot read',
+    );
+    expect(performance.now() - started).toBeLessThan(500);
+  }, 10_000);
+
+  // Index-keyed cycle tracking also refuses this, one step later (or at the
+  // depth limit), with the same message, so this pins the refusal, not the
+  // offset keying (the aliasing case above pins that).
+  test('a cycle through two indices that alias one array is still refused', () => {
+    // index 0: [1]; indices 1 and 2: the same array, [2].
+    const area = Buffer.from([0xa1, 0x01, 0xa1, 0x02]);
+    expect(
+      binaryPlistKeyScanProblem(
+        rawBplist({ area, offsets: [8, 10, 10], refSize: 1, top: 0 }),
+      ),
+    ).toBe('it is a binary property list Station cannot read');
+  });
+
+  test('a dict two indices alias is one dict: its own repeated key is still found', () => {
+    // index 0: [1, 2]; indices 1 and 2: one dict { k: true, k: true }.
+    const dict = (keys: [number, number]) => Buffer.from([0xd2, ...keys, 4, 4]);
+    const build = (keys: [number, number], second: number) =>
+      rawBplist({
+        // 0: array [1, 2] at 8; dict at 11; "k" at 16; "j" at 18; true at 20
+        area: Buffer.concat([
+          Buffer.from([0xa2, 0x01, 0x02]),
+          dict(keys),
+          Buffer.from([0x51, 0x6b]),
+          Buffer.from([0x51, 0x6a]),
+          Buffer.from([0x09]),
+        ]),
+        offsets: [8, 11, second, 16, 20, 18],
+        refSize: 1,
+        top: 0,
+      });
+    expect(binaryPlistKeyScanProblem(build([3, 3], 11))).toBe(
+      'it repeats the key k',
+    );
+    expect(binaryPlistKeyScanProblem(build([3, 5], 11))).toBeNull();
+  });
+});
+
+// #4515 fix round 6: key strings are decoded once per offset, and their
+// bytes are charged against the object area with the references. Each case
+// runs through the real profile source, as startup does; the converter
+// records whether the scan let the profile through.
+describe('key strings are bounded by the object area', () => {
+  const throughSource = (bytes: Buffer) => {
+    const path = join(makeTempDir('station-policy-strings-'), 'p.plist');
+    writeFileSync(path, bytes);
+    let converted = false;
+    const started = performance.now();
+    let error = '';
+    try {
+      macosProfileSource(path, null, () => {
+        converted = true;
+        return { ok: false, reason: 'stub converter' };
+      }).read();
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : String(caught);
+    }
+    return { converted, error, ms: performance.now() - started };
+  };
+
+  /** The reviewer's attack A: n dicts sharing one key string of `length`. */
+  const sharedKey = (n: number, length: number, utf16: boolean) => {
+    const refSize = 2;
+    const top = Buffer.alloc(6 + n * refSize);
+    top[0] = 0xaf;
+    top[1] = 0x12;
+    top.writeUInt32BE(n, 2);
+    for (let i = 0; i < n; i += 1) top.writeUInt16BE(i + 1, 6 + i * refSize);
+    const dictLength = 1 + 2 * refSize;
+    const dicts = Buffer.alloc(n * dictLength);
+    for (let i = 0; i < n; i += 1) {
+      dicts[i * dictLength] = 0xd1;
+      dicts.writeUInt16BE(n + 1, i * dictLength + 1);
+      dicts.writeUInt16BE(n + 2, i * dictLength + 1 + refSize);
+    }
+    const header = Buffer.from([utf16 ? 0x6f : 0x5f, 0x12, 0, 0, 0, 0]);
+    header.writeUInt32BE(length, 2);
+    const text = utf16
+      ? Buffer.alloc(2 * length).fill(Buffer.from([0x00, 0x61]))
+      : Buffer.alloc(length, 0x61);
+    const area = Buffer.concat([top, dicts, header, text, Buffer.from([0x09])]);
+    const dictsAt = 8 + top.length;
+    return rawBplist({
+      area,
+      offsets: [
+        8,
+        ...Array.from({ length: n }, (_, i) => dictsAt + i * dictLength),
+        dictsAt + dicts.length,
+        8 + area.length - 1,
+      ],
+      refSize,
+      top: 0,
+    });
+  };
+
+  test.each([
+    ['ASCII, 600K characters', 600_000, false],
+    ['UTF-16, 300K characters', 300_000, true],
+  ])(
+    'one %s key shared by 40,000 dicts is decoded once and passes the scan',
+    (_name, length, utf16) => {
+      const bytes = sharedKey(40_000, length, utf16);
+      expect(bytes.length).toBeLessThan(1024 * 1024);
+      const outcome = throughSource(bytes);
+      // A well-formed file: the scan lets it through to the converter.
+      expect(outcome.converted, outcome.error).toBe(true);
+      expect(outcome.ms).toBeLessThan(500);
+    },
+    20_000,
+  );
+
+  test("4,000 overlapping long keys in one dict are refused before they are hashed (the reviewer's attack B)", () => {
+    // One dict; key i is a string at unit i whose characters run over the
+    // later units and a tail, all of one length past V8's hashing limit.
+    const keys = 4_000;
+    const length = 16_400;
+    const header = Buffer.from([0xdf, 0x11, 0, 0]);
+    header.writeUInt16BE(keys, 2);
+    const refs = Buffer.alloc(4 * keys);
+    for (let i = 0; i < keys; i += 1) {
+      refs.writeUInt16BE(i + 1, i * 2);
+      refs.writeUInt16BE(keys + 1, (keys + i) * 2);
+    }
+    const units = Buffer.alloc(4 * keys);
+    for (let i = 0; i < keys; i += 1) {
+      units[4 * i] = 0x5f;
+      units[4 * i + 1] = 0x11;
+      units.writeUInt16BE(length, 4 * i + 2);
+    }
+    const tail = Buffer.alloc(length);
+    for (let i = 0; i < length; i += 1) tail[i] = 0x30 + (i % 7);
+    const area = Buffer.concat([
+      header,
+      refs,
+      units,
+      tail,
+      Buffer.from([0x09]),
+    ]);
+    const unitsAt = 8 + header.length + refs.length;
+    const bytes = rawBplist({
+      area,
+      offsets: [
+        8,
+        ...Array.from({ length: keys }, (_, i) => unitsAt + 4 * i),
+        8 + area.length - 1,
+      ],
+      refSize: 2,
+      top: 0,
+    });
+    const outcome = throughSource(bytes);
+    expect(outcome.converted).toBe(false);
+    expect(outcome.error).toMatch(
+      /^STATION_MANAGED_POLICY_INVALID: .*it is a binary property list Station cannot read/,
+    );
+    expect(outcome.ms).toBeLessThan(500);
+  }, 20_000);
+
+  // The reviewer's realistic files, written by the real plutil: a 200 KB
+  // string among many shared ones, and 70,000 strings (4-byte references).
+  test.skipIf(!hasPlutil)(
+    'plutil profiles with a 200 KB string and with 70,000 strings pass the scan',
+    () => {
+      const dir = makeTempDir('station-policy-plutil-strings-');
+      const plist = (body: string) =>
+        `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0">${body}</plist>`;
+      const files = {
+        big: plist(
+          `<dict><key>big</key><string>${'x'.repeat(200_000)}</string><key>allowedModels</key><array>${'<string>claude-opus</string><string>gpt</string>'.repeat(4_000)}</array><key>projects</key><array>${Array.from({ length: 3_000 }, (_, i) => `<dict><key>name</key><string>proj${i % 50}</string><key>enabled</key><true/><key>limits</key><dict><key>max</key><integer>${i}</integer></dict></dict>`).join('')}</array></dict>`,
+        ),
+        many: plist(
+          `<dict><key>items</key><array>${Array.from({ length: 70_000 }, (_, i) => `<string>${i}</string>`).join('')}</array></dict>`,
+        ),
+      };
+      for (const [name, xml] of Object.entries(files)) {
+        writeFileSync(join(dir, `${name}.xml`), xml);
+        const out = join(dir, `${name}.plist`);
+        execFileSync('/usr/bin/plutil', [
+          '-convert',
+          'binary1',
+          '-o',
+          out,
+          join(dir, `${name}.xml`),
+        ]);
+        const bytes = readFileSync(out);
+        if (name === 'many') expect(bytes[bytes.length - 32 + 7]).toBe(4);
+        const outcome = throughSource(bytes);
+        expect(outcome.converted, `${name}: ${outcome.error}`).toBe(true);
+        expect(outcome.ms).toBeLessThan(500);
+      }
+    },
+    60_000,
+  );
+});
+
+// #4515 round 6 review (F1): references are charged in bytes, count *
+// refSize. Here two containers overlap with 2-byte references: B's header is
+// A's first two reference slots, so B's references are A's. Charged in
+// bytes they exceed the object area; counted as references they would not.
+test('overlapping containers with 2-byte references are refused by the byte charge', () => {
+  const n = 100;
+  // index 0: [1, 2]; 1: A, n refs; 2: B, inside A; everything else: the leaf.
+  // A's first two refs are B's header: 0xaf11 (the leaf) and n - 2 (B's
+  // count, also the leaf), then n - 2 refs to the leaf that B shares.
+  const leaf = 3;
+  const a = wideArray([
+    0xaf11,
+    n - 2,
+    ...Array.from({ length: n - 2 }, () => leaf),
+  ]);
+  const top = wideArray([1, 2]);
+  const area = Buffer.concat([top, a, Buffer.from([0x09])]);
+  const aAt = 8 + top.length;
+  const leafAt = 8 + area.length - 1;
+  const offsets = Array.from({ length: 0xaf11 + 1 }, () => leafAt);
+  offsets[0] = 8;
+  offsets[1] = aAt;
+  offsets[2] = aAt + 4;
+  const bytes = rawBplist({ area, offsets, refSize: 2, top: 0 });
+  // Pinned: references counted alone fit the area; in bytes they do not.
+  const references = 2 + n + (n - 2);
+  expect(references).toBeLessThanOrEqual(area.length);
+  expect(references * 2).toBeGreaterThan(area.length);
+  expect(binaryPlistKeyScanProblem(bytes)).toBe(
+    'it is a binary property list Station cannot read',
+  );
+});

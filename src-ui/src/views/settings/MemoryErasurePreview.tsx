@@ -5,7 +5,7 @@ import {
   useFeaturePreviewsQuery,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod/v3';
 import { Button } from '../../components/Button';
@@ -154,6 +154,7 @@ function RecordImpact({
 }
 
 export function MemoryErasurePreview() {
+  const queryClient = useQueryClient();
   const scope = useHostRequestAuthorityScope();
   const previews = useFeaturePreviewsQuery();
   const enabled = previews.data?.some(
@@ -293,6 +294,7 @@ export function MemoryErasurePreview() {
       setId('');
       setNotice('');
       void proposals.refetch();
+      void queryClient.invalidateQueries({ queryKey: ['memory'] });
     },
     onError: (error) => {
       if (

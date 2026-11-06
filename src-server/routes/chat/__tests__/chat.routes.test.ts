@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { Agent } from '@voltagent/core';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -13,7 +13,8 @@ import type { ITool, RuntimeContext } from '../../../runtime/types.js';
 import { createProjectNativeToolLoader } from '../../../services/projects/project-native-tools.js';
 import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 
-vi.mock('../chat-request-preparation.js', () => ({
+vi.mock('../chat-request-preparation.js', async (importActual) => ({
+  ...(await importActual<typeof import('../chat-request-preparation.js')>()),
   prepareChatRequest: vi.fn(async () => ({
     options: { model: 'gpt-5.4' },
     resolvedProviderConn: null,
@@ -44,6 +45,12 @@ const { resolveChatAgentModelOverride } = await import(
 const realModelOverride = await vi.importActual<
   typeof import('../chat-model-override.js')
 >('../chat-model-override.js');
+const { installManagedEngineLimits } = await import(
+  '../../../security/managed-engine-limits.js'
+);
+const { parseManagedPolicyDocument, summarizeManagedPolicy } = await import(
+  '@kontourai/station-contracts/managed-policy'
+);
 const makeTempDir = trackTempDirs();
 
 type ProjectChatFixture = Pick<
@@ -86,6 +93,7 @@ describe('Chat Routes', () => {
   test.each(['station', 'reader'])(
     '/%s/chat retains its registered tools, memory and approval hooks when selecting another model',
     async (publicSlug) => {
+      const configurationRevision = { value: 0 };
       const runtimeKey = publicSlug === 'station' ? 'default' : publicSlug;
       const home = makeTempDir('chat-model-override-');
       const memory = new FileMemoryAdapter({ projectHomeDir: home });
@@ -101,6 +109,7 @@ describe('Chat Routes', () => {
       };
       const framework = new VoltAgentFramework();
       const registered = await framework.createTempAgent({
+        purpose: 'agent-run',
         agentId: publicSlug,
         name: runtimeKey,
         instructions: 'Keep my registered instructions',
@@ -155,7 +164,7 @@ describe('Chat Routes', () => {
           listProviderConnections: () => [provider],
           resolveModelForProvider: async (_id, model) => model,
         },
-        getAgentConfigurationRevision: () => 0,
+        getAgentConfigurationRevision: () => configurationRevision.value,
         commitAgentConfigurationRead: async (_revision, operation) =>
           operation(),
         framework: {
@@ -236,6 +245,78 @@ describe('Chat Routes', () => {
       }
       expect(ctx.activeAgents.size).toBe(2);
       expect(ctx.activeAgents.get(runtimeKey)).toBe(registered);
+
+      // A memory brief is settled by what happens to the turn: a refusal this route
+      // makes abandons it; otherwise it is handed to the stream, which delivers it.
+      const post = () =>
+        app.request(`/${publicSlug}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input: 'hello',
+            options: { model: 'model-a' },
+          }),
+        });
+      const makeDelivery = () => ({
+        delivered: vi.fn(),
+        abandoned: vi.fn(),
+        invokeIfCurrent: async <T>(invoke: () => T) => ({
+          current: true as const,
+          result: invoke(),
+        }),
+      });
+      const prepared = (delivery: ReturnType<typeof makeDelivery>) => ({
+        options: { model: 'model-a' },
+        resolvedProviderConn: provider,
+        injectContext: null,
+        ragContext: null,
+        contextInjection: {},
+        memoryBriefDelivery: delivery,
+      });
+      const refused = makeDelivery();
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(refused));
+      vi.mocked(resolveChatAgentModelOverride).mockResolvedValueOnce({
+        error: 'A configured provider connection is required.',
+        status: 400,
+      } as never);
+      expect((await post()).status).toBe(400);
+      expect(refused.abandoned).toHaveBeenCalledTimes(1);
+      expect(refused.delivered).not.toHaveBeenCalled();
+
+      const sent = makeDelivery();
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(sent));
+      vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
+        realModelOverride.resolveChatAgentModelOverride,
+      );
+      streamPrimaryAgentChat.mockClear();
+      expect((await post()).status).toBe(200);
+      // The stream is the one that reports delivery; the route only hands it over.
+      expect(streamPrimaryAgentChat.mock.calls[0]?.[0].memoryBrief).toBe(sent);
+      expect(sent.abandoned).not.toHaveBeenCalled();
+
+      // The configuration changing while the turn was prepared is refused (409) after
+      // preparation has already reserved the brief: it is still given back.
+      const stale = makeDelivery();
+      vi.mocked(prepareChatRequest).mockImplementationOnce(async () => {
+        configurationRevision.value += 1;
+        return prepared(stale);
+      });
+      expect((await post()).status).toBe(409);
+      expect(stale.abandoned).toHaveBeenCalledTimes(1);
+      expect(stale.delivered).not.toHaveBeenCalled();
+      configurationRevision.value = 0;
+
+      // A stream that throws before starting hands nothing over: the brief is abandoned.
+      const broken = makeDelivery();
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(broken));
+      vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
+        realModelOverride.resolveChatAgentModelOverride,
+      );
+      streamPrimaryAgentChat.mockImplementationOnce(() => {
+        throw new Error('stream refused');
+      });
+      expect((await post()).status).toBe(500);
+      expect(broken.abandoned).toHaveBeenCalledTimes(1);
     },
   );
 
@@ -257,6 +338,7 @@ describe('Chat Routes', () => {
       };
       const framework = new VoltAgentFramework();
       const wrapper = await framework.createTempAgent({
+        purpose: 'agent-run',
         agentId: publicSlug,
         name: slug,
         instructions: 'Preserve my prompt',
@@ -1367,5 +1449,182 @@ describe('Chat Routes: the Station-agent relay thread (#2589)', () => {
     expect(
       streamPrimaryAgentChat.mock.calls[0]?.[0].orchestrationThreadId,
     ).toBe(expected);
+  });
+});
+
+// #4515 fix round 3: direct chat runs Station's own agent runtime, or the
+// engine an Agent is bound to. Its engine is decided before any path that
+// could start it: the active-agent path and the model-override rescue (which
+// builds a temp Station agent) skipped the managed check before.
+describe('Chat Routes: the managed engine allow list (#4515)', () => {
+  const install = (limits: Record<string, unknown> | undefined) => {
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      ...(limits ? { limits } : {}),
+    });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+    installManagedEngineLimits({
+      document: parsed.document,
+      summary: summarizeManagedPolicy(parsed.document),
+    });
+  };
+  afterEach(() => {
+    installManagedEngineLimits(null);
+    vi.mocked(prepareChatRequest).mockImplementation(
+      async () =>
+        ({
+          options: { model: 'gpt-5.4' },
+          resolvedProviderConn: null,
+          injectContext: null,
+          ragContext: null,
+        }) as any,
+    );
+  });
+
+  /** A codex-bound Agent and an active Station agent, as the runtime has them. */
+  const routes = (options: { codexEnabled: boolean }) => {
+    const createModel = vi.fn(async () => ({ id: 'resolved-model' }));
+    const createTempAgent = vi.fn(async () => ({ id: 'override-agent' }));
+    const app = createChatRoutes({
+      acpBridge: { hasAgent: () => false },
+      storageAdapter: { getProject: vi.fn() },
+      providerService: {
+        getLaunchabilityRevision: () => 0,
+        listProviderConnections: vi.fn(() => []),
+      },
+      configLoader: {
+        getProjectHomeDir: () => '/tmp/station-test-home',
+        getLaunchabilityRevision: () => 0,
+        loadAgent: vi.fn(async (slug: string) => {
+          if (slug === 'codex-lab')
+            return {
+              name: 'Codex Lab',
+              prompt: '',
+              execution: { agentConnectionId: 'codex' },
+            };
+          throw new Error('Agent not found');
+        }),
+      },
+      connectionService: {
+        // A disallowed engine reads as off, as the inspector reports it.
+        listRuntimeConnections: vi.fn(async () => [
+          {
+            id: 'codex',
+            kind: 'agent',
+            type: 'codex',
+            name: 'Codex',
+            enabled: options.codexEnabled,
+            capabilities: ['agent-runtime'],
+            config: { provider: 'codex', engineId: 'codex' },
+            status: 'ready',
+            prerequisites: [],
+          },
+        ]),
+      },
+      appConfig: { defaultMaxTurns: 9 },
+      replaceTemplateVariables: (text: string) => text,
+      framework: { createModel, createTempAgent },
+      modelCatalog: undefined,
+      activeAgents: new Map([['default', { id: 'station-agent' }]]),
+      getAgentConfigurationRevision: () => 0,
+      logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+      agentSpecs: new Map(),
+      memoryAdapters: new Map(),
+    } as any);
+    return { app, createModel, createTempAgent };
+  };
+  const post = (
+    app: ReturnType<typeof routes>['app'],
+    slug: string,
+    model?: string,
+  ) => {
+    vi.mocked(prepareChatRequest).mockClear();
+    vi.mocked(prepareChatRequest).mockImplementation(
+      async () =>
+        ({
+          options: model ? { model } : {},
+          resolvedProviderConn: null,
+          injectContext: null,
+          ragContext: null,
+        }) as any,
+    );
+    return app.request(`/${slug}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: 'ping', options: model ? { model } : {} }),
+    });
+  };
+  const refusal = (engine: string) =>
+    expect.objectContaining({
+      success: false,
+      code: 'managed-policy-engine-refused',
+      error: expect.stringContaining(
+        `Acme's policy manages which engines run on this computer: ${engine} is not allowed`,
+      ),
+    });
+
+  test.each([
+    ['a disabled Codex Agent, no override', 'codex-lab', undefined, 'codex'],
+    [
+      'a disabled Codex Agent with options.model',
+      'codex-lab',
+      'gpt-5.4',
+      'codex',
+    ],
+    ['the active Station agent', 'station', undefined, 'station-agent'],
+  ])(
+    'with no engine allowed, %s answers 403 and nothing starts',
+    async (_name, slug, model, engine) => {
+      install({ engines: { allowed: [] } });
+      streamPrimaryAgentChat.mockClear();
+      const { app, createModel, createTempAgent } = routes({
+        codexEnabled: false,
+      });
+      const response = await post(app, slug, model);
+      expect(response.status).toBe(403);
+      expect(await json(response)).toEqual(refusal(engine));
+      // Refused before the turn is prepared, as well as before it starts.
+      expect(prepareChatRequest).not.toHaveBeenCalled();
+      expect(streamPrimaryAgentChat).not.toHaveBeenCalled();
+      expect(createModel).not.toHaveBeenCalled();
+      expect(createTempAgent).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a model override does not move a disallowed engine onto Station’s runtime', async () => {
+    install({ engines: { allowed: ['station-agent'] } });
+    streamPrimaryAgentChat.mockClear();
+    const { app, createTempAgent } = routes({ codexEnabled: false });
+    const response = await post(app, 'codex-lab', 'gpt-5.4');
+    expect(response.status).toBe(403);
+    expect(await json(response)).toEqual(refusal('codex'));
+    expect(createTempAgent).not.toHaveBeenCalled();
+    expect(streamPrimaryAgentChat).not.toHaveBeenCalled();
+  });
+
+  test('control: with station-agent allowed, the active Station agent streams', async () => {
+    install({ engines: { allowed: ['station-agent'] } });
+    streamPrimaryAgentChat.mockClear();
+    const { app } = routes({ codexEnabled: false });
+    await post(app, 'station');
+    expect(streamPrimaryAgentChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slug: 'station',
+        agent: { id: 'station-agent' },
+      }),
+    );
+  });
+
+  test('control: an engine the user turned off, with no allow list, keeps its plain answer', async () => {
+    install(undefined);
+    streamPrimaryAgentChat.mockClear();
+    const { app } = routes({ codexEnabled: false });
+    const response = await post(app, 'codex-lab');
+    expect(response.status).toBe(409);
+    const body = await json(response);
+    expect(body).not.toHaveProperty('code');
+    expect(JSON.stringify(body)).not.toContain('policy');
+    expect(streamPrimaryAgentChat).not.toHaveBeenCalled();
   });
 });

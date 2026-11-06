@@ -6,6 +6,7 @@ import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { SqliteVecIndexProvider } from '../../../knowledge-index/sqlite-vec-index-provider.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { MemoryErasureCoordinator } from '../../../knowledge-store/memory-erasure-coordinator.js';
+import { MemoryReviewService } from '../../../knowledge-store/memory-review.js';
 import { MemoryRootManager } from '../../../knowledge-store/memory-root.js';
 import { createMemoryRoutes } from '../memory-routes.js';
 
@@ -39,6 +40,8 @@ test('erasure route requires owner confirmation and returns the actual proposal 
   const app = createMemoryRoutes({
     manager,
     erasure,
+    review: new MemoryReviewService({ manager, home }),
+    reviewerKind: () => 'human',
     enabled: () => enabled,
     authority: (request, action) => {
       const user = request.headers.get('x-test-user');
@@ -168,6 +171,8 @@ test('memory routes require the preview and owner, and expose proposals only exp
       allowRead &&
       request.headers.get('x-test-user') === 'owner' &&
       root.readPolicy?.ownerId === owner.userId,
+    review: new MemoryReviewService({ manager, home }),
+    reviewerKind: () => 'agent',
     guardReadResponse: async (_request, _roots, response) => response,
   });
   const headers = {

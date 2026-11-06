@@ -879,6 +879,8 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
   cannot confirm that such a copy runs at all, let alone that it is current.
 - The installed executable runs when Station cannot read the bundled version, so an unreadable
   Agent SDK never silently downgrades a working installation.
+- On a machine whose [managed policy](managed-policy.md#pinned-launch-fields) pins `binaryPath`
+  for Claude, Station runs that program and never the bundled copy; if it cannot, chats are refused.
 
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
@@ -912,6 +914,11 @@ how it is distributed, its builds and packages, the command connecting would
 run, and any settings it recommends. Station does not apply those settings:
 the registry is not Station's own catalogue, and an environment variable can
 change what a program runs.
+
+On a machine whose [managed policy](managed-policy.md#capability-switches)
+sets `limits.registries.acpRegistryInstalls: false`, connecting an engine from
+the public registry is refused with the policy's message. Station's own engines
+are unaffected.
 
 **Review** opens the confirm step, which shows the exact command line (an
 argument with a space, or an empty one, is shown in quotes),
@@ -993,7 +1000,10 @@ under the Station home, readable only by its owner), never in
 only that it is saved. The value is added to that one connection's engine
 processes, overriding the same variable in Station's own environment.
 Removing the connection attempts to remove its keys. Station logs a warning
-if that cleanup fails; the connection removal still completes.
+if that cleanup fails; the connection removal still completes. While the
+machine's [managed policy](managed-policy.md#engines) does not allow the
+engine, its keys are not read, the panel's view and a new key are refused,
+and removing a key still works.
 
 **Who may sign in.** Reading the panel needs read access; **Check again**
 needs permission to operate Station. Starting or cancelling a sign-in and
@@ -1058,6 +1068,10 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
   `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
   station-managed app-home opt-in (`useAppHome`); a selected credential
   profile still wins over both.
+
+On a machine whose [managed policy](managed-policy.md#pinned-launch-fields)
+locks the engine's environment, `env`, `configHome` and **Connect through** are
+not applied.
 
 For example, if your local proxy expects a placeholder token:
 
@@ -1586,6 +1600,13 @@ loopback, a private range or `localhost`) cannot be added unless the operator
 sets `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. The same check runs
 on every address the server's name resolves to when Station connects, so a
 name that later points at a private address is refused.
+
+On a machine whose [managed policy](managed-policy.md#capability-switches)
+sets `limits.registries.allowedUrls`, a subregistry URL that is not listed is
+never fetched; its row shows the policy's message and nothing can be added
+from it. With `unsignedPackages: false`, no entry can be added from it at all,
+because a tool-server definition carries no signature. Station's curated
+servers are unaffected.
 
 ### Tools after untrusted content
 

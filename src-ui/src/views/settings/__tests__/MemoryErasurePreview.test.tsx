@@ -282,6 +282,7 @@ test('requires confirmation of the plan and renders the returned receipt', async
   );
   vi.stubGlobal('fetch', fetcher);
   mount();
+  clients[0].setQueryData(['memory', 'queue', 'owner'], { items: ['old'] });
   fireEvent.change(screen.getByLabelText('ID'), {
     target: { value: 'record-1' },
   });
@@ -305,6 +306,9 @@ test('requires confirmation of the plan and renders the returned receipt', async
   expect(within(receipt).getByText('Proposals cleared')).toBeTruthy();
   expect(within(receipt).getByText('record-4')).toBeTruthy();
   expect(within(receipt).queryByText('record-2')).toBeNull();
+  expect(
+    clients[0].getQueryState(['memory', 'queue', 'owner'])?.isInvalidated,
+  ).toBe(true);
 });
 
 test('stale confirmation refreshes the preview and requires confirmation again', async () => {

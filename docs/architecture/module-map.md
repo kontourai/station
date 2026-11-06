@@ -3277,10 +3277,25 @@ in Monument before the effect. Cleanup is replayed on startup and reconciles
 tombstones after purge. A Station root lease fences Station-mediated rebuilds;
 an outside writer can race publication until [corpus#74](https://github.com/kontourai/corpus/issues/74).
 Search and private Neo4j graph responses recheck records at delivery. This does not
-provide review or distillation.
+provide distillation.
 [Memory tests](../../src-server/knowledge-store/__tests__/memory-root.test.ts)
 and [route tests](../../src-server/routes/knowledge/__tests__/memory.routes.test.ts)
 exercise local fixtures; they do not qualify a live model provider.
+
+[`MemoryReviewService`](../../src-server/knowledge-store/memory-review.ts) reads
+the root's distilled claims (the Knowledge Kit's envelope, decoded by
+[`memory-envelope.ts`](../../src-server/knowledge-store/memory-envelope.ts)), routes
+them with the Kit, labels them with the Kit's `presentMemoryClaims`, and keeps the
+person's Survey decisions and review-time events in
+[`MemoryReviewStore`](../../src-server/knowledge-store/memory-review-store.ts), one
+atomic file per owner beside the Corpus store. The reviewer kind comes only from
+[`memoryReviewerKindForRequest`](../../src-server/security/memory-reviewer-kind.ts).
+The first turn of a new Station-engine chat reads the brief through
+[`createMemoryBriefProvider`](../../src-server/knowledge-store/memory-brief-provider.ts),
+which repeats the route's authority, access and delivery checks. The public client is
+`createPrivateMemoryClient` in the SDK;
+[review route tests](../../src-server/routes/knowledge/__tests__/memory-review.routes.test.ts)
+pin the rules above, including the refusals.
 
 The separate [Neo4j graph routes](../../src-server/routes/knowledge/neo4j-graph-routes.ts)
 require current access to the exact registered root. Graph and shortest-path

@@ -224,7 +224,7 @@
         "operator": { "enum": ["off", "lite", "full"] }
       },
       "patternProperties": {
-        "^publisher:(?!(?:constructor|prototype)$)[a-z0-9][a-z0-9._:-]{0,127}$": {
+        "^publisher:(?:[a-f0-9]{24}/)?(?!(?:constructor|prototype)$)[a-z0-9][a-z0-9._:-]{0,127}(?![\\s\\S])": {
           "enum": ["off", "lite", "full"]
         }
       },

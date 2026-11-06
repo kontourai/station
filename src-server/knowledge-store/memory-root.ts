@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstatSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   assertAdapterBoundTo,
   type KitRecord as CorpusRecord,
   type CreateInput,
+  type KitCreateProposal,
   KitDefaultStoreAdapter,
   type ProposeEvidence,
 } from '@kontourai/corpus-store';
@@ -32,8 +33,14 @@ import {
   assertKnowledgeWriteAuthority,
   withKnowledgeWriteAuthority,
 } from './knowledge-write-authority.js';
+import { MemoryErasureIntentStore } from './memory-erasure-intent.js';
 
 export const MEMORY_ADAPTER_ID = 'corpus-private-memory';
+
+/** The one derivation of an owner's directory and root id; review records use the same key. */
+export function memoryOwnerHash(owner: string): string {
+  return createHash('sha256').update(owner).digest('hex');
+}
 
 /** Corpus tombstones are not ordinary Knowledge records. The erasure surface owns their projection. */
 function readableRecord(record: CorpusRecord): KitRecord | null {
@@ -337,6 +344,7 @@ export class MemoryRootManager {
         | 'rootBinding'
         | 'get'
         | 'getProposal'
+        | 'listProposals'
         | 'previewPurge'
         | 'previewPurgeProposal'
         | 'purge'
@@ -353,6 +361,7 @@ export class MemoryRootManager {
           rootBinding: () => adapter.rootBinding(),
           get: (id) => adapter.get(id),
           getProposal: (id) => adapter.getProposal(id),
+          listProposals: () => adapter.listProposals(),
           previewPurge: (ids) => adapter.previewPurge(ids),
           previewPurgeProposal: (id) => adapter.previewPurgeProposal(id),
           purge: (ids, evidence, options) =>
@@ -443,6 +452,54 @@ export class MemoryRootManager {
     return this.withOwner(authority, root, assertCurrent, (adapter) =>
       adapter.listProposals(),
     );
+  }
+
+  async withProposals<T>(
+    authority: SessionReadAuthority,
+    root: KnowledgeStoreRoot,
+    assertCurrent: () => void,
+    operation: (proposals: KitCreateProposal[]) => Promise<T>,
+  ): Promise<T> {
+    return this.withOwner(authority, root, assertCurrent, async (adapter) => {
+      if (
+        existsSync(join(this.home, 'data', 'memory-erasure', 'intents.sqlite'))
+      ) {
+        const journal = new MemoryErasureIntentStore(this.home);
+        try {
+          const open = journal.open();
+          if (
+            open.kind !== 'entries' ||
+            open.entries.some(
+              (entry) => journal.decode(entry).rootId === root.id,
+            )
+          )
+            throw new Error('Memory erasure cleanup is pending.');
+        } finally {
+          await journal.close();
+        }
+      }
+      const proposals = await adapter.listProposals();
+      const checked = new Map<string, boolean>();
+      const readable: KitCreateProposal[] = [];
+      for (const proposal of proposals) {
+        const sources = new Set([
+          ...(proposal.candidate.provenance?.source_ids ?? []),
+          ...(proposal.candidate.links ?? [])
+            .filter((link) => link.kind === 'source')
+            .map((link) => link.target_id),
+        ]);
+        let permitted = true;
+        for (const id of sources) {
+          if (!checked.has(id)) {
+            const record = await adapter.get(id);
+            checked.set(id, Boolean(record && record.status !== 'purged'));
+          }
+          if (!checked.get(id)) permitted = false;
+        }
+        if (permitted) readable.push(proposal);
+      }
+      return operation(readable);
+    });
   }
 
   /** Fence Station-mediated writes while the index snapshots and publishes. */

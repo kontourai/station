@@ -49,6 +49,7 @@ const memoryErasureIntentSchema = z
     targetId: id,
     revision: z.string().min(1).max(512),
     impact: recordImpact.optional(),
+    reviewItems: z.array(z.string().min(1).max(512)).optional(),
   })
   .strict();
 export type MemoryErasureIntent = z.infer<typeof memoryErasureIntentSchema>;

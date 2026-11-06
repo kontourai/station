@@ -1,3 +1,4 @@
+import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from '@kontourai/station-contracts/managed-policy';
 import type {
   PluginInstallationRevision,
   PluginManifest,
@@ -12,6 +13,7 @@ import { observePluginGrantRevisions } from '../../services/plugins/plugin-permi
 import {
   isRegistryAcquisitionRefusal,
   registryAcquisitionRefusalDetails,
+  registryAcquisitionRefusalStatus,
 } from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { isRecord } from '../../utils/is-record.js';
@@ -32,8 +34,10 @@ import { mcpSubregistryIntegrationProviders } from '../../providers/registries/m
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
+  integrationCatalogManagedDenial,
 } from '../../providers/registries/registry.js';
 import {
+  ManagedRegistryRefusal,
   RegistryCatalogRefusal,
   readRegistryCatalogSelection,
   registrySourceManager,
@@ -58,6 +62,7 @@ import {
 } from '../../services/plugins/plugin-install-consent.js';
 import {
   installPluginFromSource,
+  isRegistryPluginRemovalTarget,
   type PluginLifecycleEventBus,
   readRegistryPluginAvailability,
   resolvePluginRegistryInstall,
@@ -131,6 +136,20 @@ const CATALOG_REFUSAL_MESSAGES: Record<RegistryCatalogRefusal['code'], string> =
     'item-unavailable': 'Selected marketplace item is no longer available.',
     'source-forbidden': 'Selected marketplace is not available to this caller.',
   };
+
+/**
+ * A catalog refusal's fixed outward text, except a managed policy refusal
+ * (#4521), which carries the policy's own sentence and the managed code.
+ */
+function catalogRefusalBody(error: RegistryCatalogRefusal) {
+  return error instanceof ManagedRegistryRefusal
+    ? { success: false, code: error.managedCode, message: error.denial }
+    : {
+        success: false,
+        code: error.code,
+        message: CATALOG_REFUSAL_MESSAGES[error.code],
+      };
+}
 
 /** Remove display-only bracket qualifiers without a lazy wildcard regex.
  * Integration manifests are local project input, so this must make one pass
@@ -215,7 +234,16 @@ export function createRegistryRoutes(
           { success: true, data: sources.add(await c.req.json()) },
           201,
         );
-      } catch {
+      } catch (error) {
+        if (error instanceof ManagedRegistryRefusal)
+          return c.json(
+            {
+              success: false,
+              code: error.managedCode,
+              error: error.denial,
+            },
+            403,
+          );
         return c.json(
           {
             success: false,
@@ -241,7 +269,16 @@ export function createRegistryRoutes(
           success: true,
           data: sources.setEnabled(param(c, 'id'), body.enabled),
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof ManagedRegistryRefusal)
+          return c.json(
+            {
+              success: false,
+              code: error.managedCode,
+              error: error.denial,
+            },
+            403,
+          );
         return c.json(
           {
             success: false,
@@ -261,7 +298,16 @@ export function createRegistryRoutes(
           success: true,
           data: await sources.refresh(param(c, 'id')),
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof ManagedRegistryRefusal)
+          return c.json(
+            {
+              success: false,
+              code: error.managedCode,
+              error: error.denial,
+            },
+            403,
+          );
         return c.json(
           { success: false, error: 'Marketplace is unavailable or disabled.' },
           409,
@@ -600,6 +646,11 @@ export function createRegistryRoutes(
         try {
           registryPlugin = await resolvePluginRegistryInstall(id);
         } catch (error: unknown) {
+          if (isRegistryAcquisitionRefusal(error))
+            return c.json(
+              { success: false, ...registryAcquisitionRefusalDetails(error) },
+              registryAcquisitionRefusalStatus(error),
+            );
           return c.json({ success: false, message: errorMessage(error) }, 500);
         }
         if (registryPlugin) {
@@ -653,9 +704,14 @@ export function createRegistryRoutes(
     // install created. An id the plugin registry does not resolve falls
     // through to the provider, exactly as before.
     if (pluginInstallDeps) {
-      let registryPlugin: { source: string } | null = null;
+      // #4521: a removal lookup, not an acquisition, so no managed limit
+      // refuses it.
+      let registryPlugin = false;
       try {
-        registryPlugin = await resolvePluginRegistryInstall(id);
+        registryPlugin = await isRegistryPluginRemovalTarget(
+          id,
+          pluginInstallDeps.projectHomeDir,
+        );
       } catch (error: unknown) {
         return c.json({ success: false, message: errorMessage(error) }, 500);
       }
@@ -784,7 +840,27 @@ export function createRegistryRoutes(
             definition: (await provider.getToolDef(id)) ?? undefined,
           };
       const result = installed.result;
-      if (!result.success) return c.json(result, 500);
+      if (!result.success) {
+        // #4521: refused catalogs were left out of the provider, so an entry
+        // only they list is not found; say the policy is why.
+        const managedDenial = integrationCatalogManagedDenial();
+        if (
+          managedDenial !== undefined &&
+          !(await provider.listAvailable().catch(() => [])).some(
+            (item) => item.id === id,
+          )
+        )
+          return c.json(
+            {
+              success: false,
+              code: MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
+              error: managedDenial,
+              retryable: false,
+            },
+            403,
+          );
+        return c.json(result, 500);
+      }
 
       // Auto-generate integration.json from provider metadata
       const toolDef = installed.definition;
@@ -994,11 +1070,7 @@ export function createRegistryRoutes(
     } catch (error) {
       if (error instanceof RegistryCatalogRefusal)
         return c.json(
-          {
-            success: false,
-            code: error.code,
-            message: CATALOG_REFUSAL_MESSAGES[error.code],
-          },
+          catalogRefusalBody(error),
           error.code === 'source-forbidden' ? 403 : 409,
         );
       if (!(error instanceof UnsupportedRegistrySkillFormatError))
@@ -1116,14 +1188,7 @@ export function createRegistryRoutes(
         error instanceof RegistryCatalogRefusal &&
         error.code === 'source-forbidden'
       )
-        return c.json(
-          {
-            success: false,
-            code: error.code,
-            message: CATALOG_REFUSAL_MESSAGES[error.code],
-          },
-          403,
-        );
+        return c.json(catalogRefusalBody(error), 403);
       return c.json(
         {
           success: false,
@@ -1428,7 +1493,7 @@ export function createRegistryRoutes(
             success: false,
             ...registryAcquisitionRefusalDetails(error),
           },
-          409,
+          registryAcquisitionRefusalStatus(error),
         );
       if (error instanceof PluginInstallationPending)
         return c.json(
