@@ -17,7 +17,8 @@ const { cancelAttachmentStage, reconcileAttachmentStages } = vi.hoisted(() => ({
 vi.mock('../../lib/attachment-staging-queue', () => ({
   stageComposerAttachments,
 }));
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   cancelAttachmentStage,
   reconcileAttachmentStages,
   xhrAttachmentStageUpload: vi.fn(),
@@ -923,6 +924,7 @@ describe('useComposerAttachments', () => {
         }),
       ]),
     );
+    expect(result.current.error).toBe('Try again in a moment.');
   });
 });
 
