@@ -433,8 +433,19 @@ cache data, refresh on mount, do not retain previous results, and do not retry
 automatically. The Task query also partitions by Task ID and may be disabled
 until the history is opened.
 
+Set `includeGithubAuthentication: true` on either integration reader to request
+`?include=github-authentication`; the query key separates this opt-in from the
+legacy status read. The GitHub connection may carry bounded `authentication`
+with `state`, Unix-millisecond `observedAt`, optional `account` and `scopes`.
+Missing metadata on an older host stays missing. A preview-disabled 404 preserves
+its typed `StationHttpError.code`, `previewId`, `settingsPath` and enablement
+message; it is not converted to a host-update instruction. Metadata needs the
+owning Station’s operator and enabled Repository sign-in details preview. These
+facts describe the machine CLI, not Project credentials or repository permissions.
+
+
 Both readers validate the bounded response and reject malformed data. The
-status reader throws `IntegrationStatusUnsupportedError` on 404; the Task
+status reader throws `IntegrationStatusUnsupportedError` on an ordinary 404; the Task
 reader's 404 can mean a refused or absent Task, or an older host. Neither
 reader substitutes an empty or working result for a failure. These exports
 require an SDK version and Station host containing them. See the

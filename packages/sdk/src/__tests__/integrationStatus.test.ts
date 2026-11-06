@@ -62,3 +62,36 @@ describe('integration status SDK', () => {
     ).rejects.toBeInstanceOf(IntegrationStatusUnsupportedError);
   });
 });
+
+test('CLI metadata is an explicit request; an older response remains readable with missing metadata', async () => {
+  vi.mocked(fetch).mockResolvedValue(
+    Response.json({ success: true, data: { connections: [] } }),
+  );
+  expect(
+    await fetchIntegrationStatus('https://station.example', {
+      includeGithubAuthentication: true,
+    }),
+  ).toEqual({ connections: [] });
+  expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
+    'https://station.example/api/integrations/status?include=github-authentication',
+  );
+});
+
+test('preview-off metadata preserves the Settings remedy instead of telling the user to update the host', async () => {
+  vi.mocked(fetch).mockResolvedValue(
+    Response.json(
+      {
+        success: false,
+        code: 'feature_preview_disabled',
+        error:
+          'Enable Repository sign-in details in Settings → Advanced → Feature previews.',
+      },
+      { status: 404 },
+    ),
+  );
+  await expect(
+    fetchIntegrationStatus('https://station.example', {
+      includeGithubAuthentication: true,
+    }),
+  ).rejects.toThrow('Enable Repository sign-in details');
+});

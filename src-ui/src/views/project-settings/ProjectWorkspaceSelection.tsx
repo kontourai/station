@@ -1,4 +1,7 @@
-import type { ProjectExecutionRootMutationRequest } from '@kontourai/station-contracts/project-identity';
+import {
+  type ProjectExecutionRootMutationRequest,
+  selectPrimaryResource,
+} from '@kontourai/station-contracts/project-identity';
 import {
   useProjectIdentityQuery,
   useProjectResolutionQuery,
@@ -58,14 +61,16 @@ export function ProjectWorkspaceSelection({
     return true;
   });
   const view = identity.data;
-  const primary =
-    view?.identity.repos.find((repo) => repo.role === 'primary') ??
-    (view?.identity.repos.length === 1 ? view.identity.repos[0] : undefined);
-  const currentRepo = view?.identity.executionRoot?.repoId ?? primary?.id ?? '';
+  const primary = view ? selectPrimaryResource(view.identity.repos) : undefined;
+  const currentRepo =
+    view?.identity.executionRoot?.repoId ??
+    (primary?.ok ? primary.resource.id : '');
   const selectedRepo = draft?.repoId ?? currentRepo;
   const selectedPath = draft?.path ?? view?.identity.executionRoot?.path ?? '.';
   const resources =
-    resolution.data?.posture === 'backing' ? resolution.data.resources : [];
+    !resolution.isError && resolution.data?.posture === 'backing'
+      ? resolution.data.resources
+      : [];
   const busy = save.isPending || save.isError;
   function change(repoId: string, path: string) {
     if (!view || busy) return;
@@ -136,7 +141,8 @@ export function ProjectWorkspaceSelection({
                   )
                 }
               >
-                {repo.id}
+                {repo.label ||
+                  (repo.kind === 'git' ? repo.canonicalRemote : 'Local folder')}
               </option>
             ))}
           </select>

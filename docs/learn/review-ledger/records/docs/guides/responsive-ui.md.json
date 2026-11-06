@@ -162,7 +162,9 @@
 
     "src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx",
 
-    "src-ui/src/__tests__/ProjectSidebarBoards.coarseGeometry.test.tsx"
+    "src-ui/src/__tests__/ProjectSidebarBoards.coarseGeometry.test.tsx",
+
+    "src-ui/src/views/ProjectSettingsView.css"
   ],
 
   "checks": [

@@ -1,11 +1,17 @@
+import { useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageSection } from '../../components/PageSection';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import {
+  useActiveStationName,
+  useCachedStationStatus,
+} from '../../hooks/useActiveStationName';
 import { LearningReviewPanel } from '../learning-review/LearningReviewPanel';
 import { ProjectKnowledgeSources } from './ProjectKnowledgeSources';
 import { ProjectOperatorSetup } from './ProjectOperatorSetup';
 import { ProjectRepositoryAttachment } from './ProjectRepositoryAttachment';
+import { ProjectRepositorySources } from './ProjectRepositorySources';
 import { ProjectS3Sources } from './ProjectS3Sources';
 import { ProjectWorkingConfiguration } from './ProjectWorkingConfiguration';
 import { ProjectWorkspaceSelection } from './ProjectWorkspaceSelection';
@@ -15,7 +21,7 @@ import './ProjectSourcesSection.css';
 export function ProjectSourcesSection({
   slug,
   projectId,
-  stationName,
+  stationName: suppliedStationName,
   onNavigateToSection,
   hrefForSection,
 }: {
@@ -25,8 +31,17 @@ export function ProjectSourcesSection({
   onNavigateToSection?: (section: string) => void;
   hrefForSection?: (section: string) => string;
 }) {
+  const [repairOpen, setRepairOpen] = useState(false);
+  const repairSummary = useRef<HTMLElement>(null);
   const authority = useHostRequestAuthorityScope();
   const { navigate } = useNavigation();
+  const station = useActiveStationName();
+  const reportedHost = useCachedStationStatus()?.devicePresentation?.hostName;
+  const host = suppliedStationName ?? reportedHost;
+  const stationName =
+    [station, host && host !== station ? host : undefined]
+      .filter(Boolean)
+      .join(' · ') || 'Connected Station (name unavailable)';
   return (
     <PageSection
       id="section-resources"
@@ -38,27 +53,43 @@ export function ProjectSourcesSection({
           key={`${projectId}:${slug}:${authority.apiBase}:${authority.authorityKey}`}
           className="project-sources"
         >
-          <ProjectKnowledgeSources
-            slug={slug}
-            projectId={projectId}
-            authority={authority}
-          />
-          <details className="project-sources__group">
-            <summary>Repositories and folders</summary>
-            <p className="project-sources__hint">
-              Bring in code when you need it. Other Project files and
-              connections stay available.
-            </p>
+          <section
+            className="project-sources__group"
+            aria-label="Project repositories"
+          >
             {projectId && (
-              <ProjectRepositoryAttachment
+              <ProjectRepositorySources
                 slug={slug}
                 projectId={projectId}
                 authority={authority}
                 stationName={stationName}
+                onRepair={() => {
+                  setRepairOpen(true);
+                  repairSummary.current?.focus();
+                  repairSummary.current?.scrollIntoView({ block: 'start' });
+                }}
               />
             )}
             <details className="project-sources__diagnostics">
-              <summary>Working copies and repair</summary>
+              <summary>Add a repository</summary>
+              {projectId && (
+                <ProjectRepositoryAttachment
+                  slug={slug}
+                  projectId={projectId}
+                  authority={authority}
+                  stationName={stationName}
+                />
+              )}
+            </details>
+            <details
+              className="project-sources__diagnostics"
+              open={repairOpen}
+              onToggle={(event) => setRepairOpen(event.currentTarget.open)}
+            >
+              <summary ref={repairSummary}>Advanced: checkout repair</summary>
+              <p className="project-sources__hint">
+                Filesystem paths below belong to {stationName}.
+              </p>
               <ResourcesSection
                 slug={slug}
                 requestScope={authority}
@@ -72,7 +103,13 @@ export function ProjectSourcesSection({
                 embedded
               />
             </details>
-          </details>
+          </section>
+          <ProjectKnowledgeSources
+            slug={slug}
+            projectId={projectId}
+            authority={authority}
+          />
+
           <section
             className="project-sources__group"
             aria-label="Connected services"
@@ -110,7 +147,7 @@ export function ProjectSourcesSection({
           )}
           {projectId && (
             <details className="project-sources__group">
-              <summary>Where Agent work starts</summary>
+              <summary>Where new chats start</summary>
               <ProjectWorkspaceSelection
                 slug={slug}
                 projectId={projectId}

@@ -1,6 +1,7 @@
 import type { ProjectStartIntent } from '@kontourai/station-contracts/project';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { useNewProjectFormSubmit } from '../../hooks/useNewProjectFormSubmit';
 import type { useNewProjectModalState } from '../../hooks/useNewProjectModalState';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
@@ -115,10 +116,12 @@ function NewProjectFormActions({
 function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
   const { draft, starter, submission } = state;
   const profile = usePlatformProfile();
+  const stationName = useActiveStationName() ?? 'the connected Station';
   if (!hasLocalStationForProfile(profile)) return null;
   return (
     <NewProjectDirectoryField
       directory={draft.directory}
+      stationName={stationName}
       error={submission.directoryError}
       notice={submission.directoryNotice}
       onDirectoryChange={(directory) => {
@@ -275,6 +278,11 @@ function NewProjectDetails({
       )}
       {draft.startIntent === 'workspace' && (
         <NewProjectDirectoryInput state={state} />
+      )}
+      {draft.startIntent === 'workspace' && (
+        <p className="editor-hint">
+          Start with one repository. Add more in Project Sources after creation.
+        </p>
       )}
       {draft.startIntent === 'knowledge' && (
         <p>

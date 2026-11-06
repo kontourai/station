@@ -17,7 +17,7 @@ export function ProjectRepositoryAttachment({
   slug,
   projectId,
   authority,
-  stationName,
+  stationName = 'the connected Station',
 }: {
   slug: string;
   projectId: string;
@@ -90,7 +90,7 @@ export function ProjectRepositoryAttachment({
       {selection && (
         <>
           <p>
-            Selected working copy:{' '}
+            Selected checkout:{' '}
             <StationPath path={selection.path} stationName={stationName} />
           </p>
           <label className="project-sources__consent" htmlFor={checkboxId}>
