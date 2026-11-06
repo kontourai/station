@@ -6,15 +6,17 @@
  * its own; the parent is the only process that sees its exit status. The
  * floor keeps the file only when the invocation failed.
  *
- * Only the Vitest main process records: a worker or a test's child that
- * inherits the preload changes nothing.
+ * Only the Vitest main process records: it is the first to load this and
+ * takes the variable out of its environment, so a worker or a test's child
+ * that inherits the preload finds none and changes nothing.
  */
 import { appendFileSync } from 'node:fs';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { basename } from 'node:path';
 
 const log = process.env.STATION_FLOOR_WORKER_EXIT_LOG;
-if (log && basename(process.argv[1] ?? '') === 'vitest.mjs') {
+delete process.env.STATION_FLOOR_WORKER_EXIT_LOG;
+if (log) {
   const childProcess = createRequire(import.meta.url)('node:child_process');
   const fork = childProcess.fork;
   childProcess.fork = function recordedFork(...args) {
