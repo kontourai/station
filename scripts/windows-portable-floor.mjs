@@ -43,6 +43,11 @@ export function planFloorInvocations(args) {
 /**
  * Runs every invocation in order and returns each one's outcome; a failure
  * never stops the ones after it.
+ * @param {string[][]} invocations
+ * @param {object} options
+ * @param {string} options.root
+ * @param {(command: string, args: string[], options: import('node:child_process').SpawnSyncOptions) => Pick<import('node:child_process').SpawnSyncReturns<Buffer>, 'status' | 'signal' | 'error'>} [options.spawnSync]
+ * @param {(message: string) => void} [options.log]
  */
 export function runFloorInvocations(
   invocations,

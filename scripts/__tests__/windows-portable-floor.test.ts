@@ -52,11 +52,11 @@ describe('the Windows portable floor runner', () => {
 
   it('runs every invocation after one fails and reports each failure, a crash and a signal included', () => {
     const results = [
-      { status: 0 },
-      { status: 1 },
-      { status: null, signal: 'SIGTERM' },
-      { status: null, error: new Error('spawn EPERM') },
-      { status: 0 },
+      { status: 0, signal: null },
+      { status: 1, signal: null },
+      { status: null, signal: 'SIGTERM' as const },
+      { status: null, signal: null, error: new Error('spawn EPERM') },
+      { status: 0, signal: null },
     ];
     const spawnSync = vi.fn(() => results.shift()!);
     const invocations = ['a', 'b', 'c', 'd', 'e'].map((file) => [
@@ -66,7 +66,7 @@ describe('the Windows portable floor runner', () => {
     ]);
     const outcomes = runFloorInvocations(invocations, {
       root,
-      spawnSync: spawnSync as never,
+      spawnSync,
       log: () => {},
     });
     expect(spawnSync).toHaveBeenCalledTimes(5);
