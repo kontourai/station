@@ -307,14 +307,14 @@ before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
 stop (#3994). After a successful `taskkill` both hosts wait for the exit.
-node-pty's public Windows `kill()` waits for first output. On every exit,
-natural or not, the adapter therefore releases the native agent directly and
-closes its owned pipes, including for a silent or paused process. Its console
-process listing is answered empty: after exit the listing helper cannot attach,
-and its delayed fallback could signal a reused shell PID (#3994). Startup
-failures already released by the producer do not receive a second native kill.
-Before exit, the public `kill()` remains only the reported fallback for a tree
-`taskkill` that could not end the shell.
+After an admitted shell exits, the adapter releases it at most once and closes
+its owned pipes, including for a silent or paused process. Its console process
+listing is answered empty: after exit the listing helper cannot attach, and its
+delayed fallback could signal a reused shell PID (#3994). A PID-zero startup
+failure already released by the producer does not receive a second native kill;
+positive-PID failure cleanup retains one release owner. Before exit, public
+`kill()` remains only the reported fallback for a tree `taskkill` that could not
+end the shell.
 `taskkill` follows
 parent links, so a descendant whose parent already exited is not found
 (from its documented behavior; not exercised here).

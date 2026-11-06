@@ -225,6 +225,16 @@ every other route. These rules make it a region rather than a special case
     removes is unplaced, as when Home's row takes the page, without asking
     that surface's own unsaved-changes guards (no surface that declares
     `main` registers one today).
+
+    When one dialog replaces another at the same URL, the replacement can mount
+    before the old layer's Back traversal finishes. Its history publication waits
+    for that owned native traversal and any orphan skips. One subsequent user Back
+    then closes the replacement. Synthetic navigation events do not settle that
+    traversal. Removed views, changed captured URLs and failed history writes cancel
+    unpublished registrations; they do not move an old dialog onto a new route.
+    See [the history owner](../../src-ui/src/components/dialog-history.ts) and its
+    [Chromium handoff tests](../../src-ui/src/__tests__/dialog-history.browser.test.tsx).
+
 - **`main` has no toolbar control on any device** (it is always visible;
   since #2143 the toolbar is per DOCK region). A surface that declares `main`
   (Activity) also reaches it through its place row (above) and **Move to Main**,
