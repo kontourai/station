@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -1081,6 +1081,18 @@ test('erasing one of two identical proposals does not transfer its decision to t
       })
     ).status,
   ).toBe(201);
+  // A decision created before proposal bindings were introduced must be migrated
+  // before erasure, not inherited by the duplicate afterward.
+  const reviewPath = join(
+    h.home,
+    'knowledge',
+    'memory-review',
+    memoryOwnerHash(OWNER),
+    'review.json',
+  );
+  const legacy = JSON.parse(readFileSync(reviewPath, 'utf8'));
+  delete legacy.bindings;
+  writeFileSync(reviewPath, JSON.stringify(legacy));
   const index = new SqliteVecIndexProvider({
     dbPath: join(h.home, 'index.db'),
   });
