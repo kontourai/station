@@ -130,6 +130,110 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     return freshRenderer();
   }
 
+  it('failed recovery lookups pause automatic observation and preserve the message without resending', async () => {
+    const queue = await killedMidSend();
+    const lookup = vi.fn(async () => {
+      throw new Error('The requested conversation is unavailable.');
+    });
+    for (let attempt = 0; attempt < 3; attempt++)
+      await queue.outboundDispatch.reconcile(lookup);
+    const [row] = await queue.outboundDispatch.snapshot();
+    expect(row).toMatchObject({
+      status: 'may-have-started',
+      lastError: expect.stringContaining('conversation is unavailable'),
+    });
+    await queue.outboundDispatch.reconcile(lookup);
+    expect(lookup).toHaveBeenCalledTimes(3);
+    const send = vi.fn();
+    await queue.outboundDispatch.flush(send);
+    expect(send).not.toHaveBeenCalled();
+    await expect(
+      queue.outboundDispatch.check(intent.clientTurnId, lookup),
+    ).rejects.toThrow('conversation is unavailable');
+  });
+
+  it('manual delivery refresh never releases an automatic resend of an unanswered request', async () => {
+    const queue = await killedMidSend();
+    await queue.outboundDispatch.check(
+      intent.clientTurnId,
+      lookupAnswering('not-received'),
+    );
+    expect((await queue.outboundDispatch.snapshot())[0]?.status).toBe('failed');
+    const send = vi.fn();
+    await queue.outboundDispatch.flush(send);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('pauses only the owning Station when saved message keys collide', async () => {
+    const first = await freshRenderer();
+    const stationA = { apiBase: 'http://a.test', environmentId: 'env-a' };
+    const stationB = { apiBase: 'http://b.test', environmentId: 'env-b' };
+    await first.outboundDispatch.beginLive({ ...intent, station: stationA });
+    await first.outboundDispatch.beginLive({ ...intent, station: stationB });
+    kill();
+    const queue = await freshRenderer();
+    const failedLookup = vi.fn(async () => {
+      throw new Error('Unavailable');
+    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect(
+        await queue.outboundDispatch.reconcile(failedLookup, {
+          station: stationA,
+        }),
+      ).toEqual({ received: 0, lookupFailed: attempt < 2 ? 1 : 0 });
+    }
+    const rows = await queue.outboundDispatch.snapshot();
+    expect(
+      rows.find((row) => row.station?.environmentId === 'env-a'),
+    ).toMatchObject({ status: 'may-have-started', deliveryLookupFailures: 3 });
+    expect(
+      rows.find((row) => row.station?.environmentId === 'env-b'),
+    ).toMatchObject({ status: 'invoking' });
+    expect(
+      rows.find((row) => row.station?.environmentId === 'env-b')
+        ?.deliveryLookupFailures,
+    ).toBeUndefined();
+    const lookup = lookupAnswering('started');
+    await queue.outboundDispatch.check(
+      intent.clientTurnId,
+      lookup,
+      stationA,
+      intent.conversationId,
+    );
+    expect(await queue.outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({ station: stationB, status: 'invoking' }),
+    ]);
+    await queue.outboundDispatch.reconcile(lookup, { station: stationB });
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it.each([
+    'not-received',
+    'started',
+    'received',
+    'queued',
+    'inbox-accepted',
+  ] as const)(
+    'rejects a %s answer for another conversation even with the same message key',
+    async (outcome) => {
+      const queue = await killedMidSend();
+      await queue.outboundDispatch.reconcile(async () => ({
+        outcome,
+        conversationId: 'other-chat',
+        clientTurnId: intent.clientTurnId,
+      }));
+      expect(await queue.outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          status: 'invoking',
+          deliveryLookupFailures: 1,
+        }),
+      ]);
+      const send = vi.fn();
+      await queue.outboundDispatch.flush(send);
+      expect(send).not.toHaveBeenCalled();
+    },
+  );
+
   it('not-received: replays with the identical key, exactly once', async () => {
     const second = await killedMidSend();
     const lookup = lookupAnswering('not-received');
@@ -190,20 +294,35 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(transport).not.toHaveBeenCalled();
   });
 
-  it('received: left alone and reported, so the caller asks again later', async () => {
-    const second = await killedMidSend();
-    expect(
-      await second.outboundDispatch.reconcile(lookupAnswering('received')),
-    ).toEqual({ received: 1, lookupFailed: 0 });
-    const [row] = await second.outboundDispatch.snapshot();
-    expect(row).toMatchObject({
-      status: 'invoking',
-      deliveryCheck: { outcome: 'received' },
-    });
-    const transport = vi.fn();
-    await second.outboundDispatch.flush(transport);
-    expect(transport).not.toHaveBeenCalled();
-  });
+  it.each(['received', 'queued'] as const)(
+    '%s resets consecutive lookup failures while preserving the send fence',
+    async (outcome) => {
+      const second = await killedMidSend();
+      const failedLookup = async () => {
+        throw new Error('Temporary lookup failure');
+      };
+      await second.outboundDispatch.reconcile(failedLookup);
+      await second.outboundDispatch.reconcile(failedLookup);
+      expect(
+        await second.outboundDispatch.reconcile(lookupAnswering(outcome)),
+      ).toEqual({ received: 1, lookupFailed: 0 });
+      const [row] = await second.outboundDispatch.snapshot();
+      expect(row).toMatchObject({
+        status: 'invoking',
+      });
+      expect(row?.deliveryLookupFailures).toBeUndefined();
+      if (outcome === 'received')
+        expect(row?.deliveryCheck?.outcome).toBe('received');
+      await second.outboundDispatch.reconcile(failedLookup);
+      await second.outboundDispatch.reconcile(failedLookup);
+      expect((await second.outboundDispatch.snapshot())[0]?.status).toBe(
+        'invoking',
+      );
+      const transport = vi.fn();
+      await second.outboundDispatch.flush(transport);
+      expect(transport).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(['indeterminate', 'expired', 'unknown'] as const)(
     '%s: kept as possible-effect evidence, never resent',

@@ -1471,7 +1471,7 @@ describe('useOutboundQueueFlush', () => {
       'pagehide then hidden pageshow',
       'pagehide then reconnect',
     ] as const)(
-      'pauses lookup backoff while %s and resumes immediately at two seconds',
+      'pauses lookup backoff while %s and resumes before the failure limit',
       async (pause) => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
         let visibility: DocumentVisibilityState = 'visible';
@@ -1569,7 +1569,11 @@ describe('useOutboundQueueFlush', () => {
             await vi.advanceTimersByTimeAsync(1);
           });
           await settleImports();
-          expect(getTurnDelivery).toHaveBeenCalledTimes(4);
+          expect(getTurnDelivery).toHaveBeenCalledTimes(3);
+          expect((await outboundDispatch.snapshot())[0]?.status).toBe(
+            'may-have-started',
+          );
+          expect(vi.getTimerCount()).toBe(0);
           expect(sendMessage).not.toHaveBeenCalled();
         } finally {
           view.unmount();
@@ -1699,7 +1703,7 @@ describe('useOutboundQueueFlush', () => {
       next.unmount();
     });
 
-    it('backs failed lookups off to 60 seconds and cancels on unmount', async () => {
+    it('backs failed lookups off, then pauses after three failures without resending', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
       await orphanedLiveRow();
       getTurnDelivery.mockRejectedValue(new Error('lookup unavailable'));
@@ -1707,9 +1711,7 @@ describe('useOutboundQueueFlush', () => {
       try {
         await settleImports();
         let calls = 1;
-        for (const delay of [
-          2_000, 4_000, 8_000, 16_000, 32_000, 60_000, 60_000,
-        ]) {
+        for (const delay of [2_000, 4_000]) {
           await act(async () => {
             await vi.advanceTimersByTimeAsync(delay - 1);
           });
@@ -1721,8 +1723,15 @@ describe('useOutboundQueueFlush', () => {
           await settleImports();
           expect(getTurnDelivery).toHaveBeenCalledTimes(++calls);
         }
-        view.unmount();
-        await vi.advanceTimersByTimeAsync(120_000);
+        expect((await outboundDispatch.snapshot())[0]).toMatchObject({
+          status: 'may-have-started',
+          lastError: expect.stringContaining(
+            'Automatic delivery checks paused',
+          ),
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(120_000);
+        });
         await settleImports();
         expect(getTurnDelivery).toHaveBeenCalledTimes(calls);
         expect(sendMessage).not.toHaveBeenCalled();

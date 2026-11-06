@@ -15,6 +15,11 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { projectOutboundQueueEntries } from '../hooks/outboundQueueProjection';
 import type { QueuedOutboundTurn } from '../lib/outboundQueue';
 
+const recheckOutboundTurnMock = vi.fn();
+vi.mock('../lib/deliveryLookup', () => ({
+  recheckOutboundTurn: (...args: unknown[]) => recheckOutboundTurnMock(...args),
+}));
+
 const discardOutboundTurnMock = vi.fn();
 const editOutboundTurnMock = vi.fn();
 const reorderOutboundTurnMock = vi.fn();
@@ -43,6 +48,54 @@ vi.mock('../lib/outboundQueue', async (importOriginal) => ({
 import { OutboundQueuedMessages } from '../components/chat/OutboundQueuedMessages';
 
 describe('OutboundQueuedMessages (station#2522)', () => {
+  it.each(['indeterminate', 'error'])(
+    'refresh delivery reports %s without resending',
+    async (outcome) => {
+      if (outcome === 'error')
+        recheckOutboundTurnMock.mockRejectedValueOnce(
+          new Error('The requested conversation is unavailable.'),
+        );
+      else recheckOutboundTurnMock.mockResolvedValueOnce(outcome);
+      const retry = vi.fn();
+      render(
+        <OutboundQueuedMessages
+          sessionId="chat-1"
+          turns={[
+            {
+              clientTurnId: 'uncertain',
+              content: 'continue',
+              status: 'may-have-started',
+              lastError: 'Automatic delivery checks paused.',
+            },
+          ]}
+          onError={vi.fn()}
+          onRetry={retry}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            outcome === 'error'
+              ? 'Try again in a moment.'
+              : 'Station still can’t confirm it.',
+          ),
+        ).toBeTruthy(),
+      );
+      expect(
+        screen.queryByText(/The requested conversation is unavailable/),
+      ).toBeNull();
+      expect(retry).not.toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: 'Copy message' })).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More delivery actions' }),
+      );
+      expect(
+        screen.getByRole('menuitem', { name: 'Copy message' }),
+      ).toBeTruthy();
+    },
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
     discardOutboundTurnMock.mockResolvedValue(undefined);

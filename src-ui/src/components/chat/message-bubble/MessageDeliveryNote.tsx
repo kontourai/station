@@ -280,6 +280,12 @@ export function MessageDeliveryNote({
                         const outcome = await port.check?.();
                         if (outcome === undefined)
                           return 'Nothing new to check right now.';
+                        if (outcome === 'not-received')
+                          return 'Station did not receive it. Retry sends it with the same message key.';
+                        if (outcome === 'received' || outcome === 'queued')
+                          return 'Station has the message. The agent has not started it yet.';
+                        if (outcome === 'started')
+                          return 'The agent started this message.';
                         return outcome === 'indeterminate' ||
                           outcome === 'expired' ||
                           outcome === 'unknown'
@@ -291,16 +297,30 @@ export function MessageDeliveryNote({
                     Check
                   </button>
                 )}
-                {port.edit && (
+                {(port.edit || port.copy) && (
                   <ActionOverflowMenu
                     label="More delivery actions"
                     actions={[
-                      {
-                        key: 'edit-copy',
-                        label: 'Edit a copy',
-                        disabled: busy,
-                        onSelect: () => void run(() => port.edit!()),
-                      },
+                      ...(port.edit
+                        ? [
+                            {
+                              key: 'edit-copy',
+                              label: 'Edit a copy',
+                              disabled: busy,
+                              onSelect: () => void run(() => port.edit!()),
+                            },
+                          ]
+                        : []),
+                      ...(port.copy
+                        ? [
+                            {
+                              key: 'copy-message',
+                              label: 'Copy message',
+                              disabled: busy,
+                              onSelect: () => void run(() => port.copy!()),
+                            },
+                          ]
+                        : []),
                     ]}
                   />
                 )}

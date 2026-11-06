@@ -11,6 +11,7 @@ export interface DeliveryPort {
   retry?(): Promise<void>;
   release?(): Promise<void>;
   edit?(): Promise<string | null>;
+  copy?(): Promise<string>;
   discard?(kind?: 'not-sent' | 'unconfirmed'): Promise<string | null>;
 }
 

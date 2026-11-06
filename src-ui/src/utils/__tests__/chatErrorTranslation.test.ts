@@ -56,6 +56,15 @@ describe('translateChatError', () => {
     expect(translateChatError({ message }).hint).toMatch(/retrying may help/i);
   });
 
+  it('does not suggest retrying an unavailable conversation', () => {
+    const result = translateChatError({
+      message: 'The requested conversation is unavailable.',
+    });
+    expect(result.retryable).toBe(false);
+    expect(result.title).toMatch(/could not be resumed/);
+    expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
+  });
+
   it('classifies an ended-session refusal by backend code as a Station-side end, not an error', () => {
     const result = translateChatError({
       code: 'session_ended',

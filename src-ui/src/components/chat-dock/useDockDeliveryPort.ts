@@ -2,7 +2,9 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { outboundStationIdentity } from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useRecheckMessageDelivery } from '../../hooks/useMessageDeliveryState';
+import { copyToClipboard } from '../../lib/clipboard';
 import type { MessageDeliveryState } from '../../utils/messageDeliveryState';
+import { StationUiError } from '../../utils/StationUiError';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import type { DeliveryPort } from '../conversation/DeliveryPort';
 
@@ -74,6 +76,13 @@ export function useDockDeliveryPort(
   return {
     savedOnDevice,
     canDiscardUnconfirmed: knownDiscardable ?? discardable,
+    copy: async () => {
+      if (!(await copyToClipboard(text)))
+        throw new StationUiError(
+          'Could not copy this message. Select its text to copy it.',
+        );
+      return 'Copied';
+    },
     check: () => {
       current();
       return check(clientTurnId);
