@@ -343,15 +343,17 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
             full: 'Detailed usage to help improve Station',
           }[value.tier];
       const notice =
-        value.reason === 'DNT'
-          ? '; Do Not Track is on, so nothing is shared'
-          : name === 'kontour' && value.fullAvailable === false
-            ? '; This build has no Station usage destination, so nothing is sent to Kontour'
-            : value.reason === 'disclosure'
-              ? plugin
-                ? "; Detailed plugin sharing is waiting for this publisher's confirmation"
-                : '; Detailed sharing is waiting for your review in Privacy & sharing'
-              : '';
+        value.reason === 'managed'
+          ? `; ${value.managedDenial ?? 'A managed policy turns usage sharing off.'}`
+          : value.reason === 'DNT'
+            ? '; Do Not Track is on, so nothing is shared'
+            : name === 'kontour' && value.fullAvailable === false
+              ? '; This build has no Station usage destination, so nothing is sent to Kontour'
+              : value.reason === 'disclosure'
+                ? plugin
+                  ? "; Detailed plugin sharing is waiting for this publisher's confirmation"
+                  : '; Detailed sharing is waiting for your review in Privacy & sharing'
+                : '';
       const environment =
         name === 'operator' && value.reason === 'environment'
           ? '; environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.'

@@ -202,6 +202,10 @@ describe('offline CLI reads under a managed policy', () => {
     expect(read.status, read.stderr).toBe(0);
     expect(read.stdout).toContain('40');
     expect(read.stdout).not.toMatch(/\b7\b/);
+    // #4515: the live read's note, from the same installed policy.
+    expect(read.stderr).toContain(
+      '  (managed by Acme; it cannot be changed here)',
+    );
     expect(f.stored().defaultMaxTurns).toBe(7);
   }, 120_000);
 
@@ -221,6 +225,8 @@ describe('offline CLI reads under a managed policy', () => {
     );
     expect(read.status, read.stderr).toBe(0);
     expect(read.stdout.trim()).toBe('null');
+    // The user's own decision: no managed note.
+    expect(read.stderr).not.toContain('Acme');
     // With the key absent, the managed default applies.
     f.writeApp({});
     const unset = f.run(
@@ -231,6 +237,9 @@ describe('offline CLI reads under a managed policy', () => {
     );
     expect(unset.status, unset.stderr).toBe(0);
     expect(unset.stdout.trim()).toBe('codex');
+    expect(unset.stderr).toContain(
+      '  (default from Acme; set a value to replace it)',
+    );
     expect(f.stored()).toEqual({});
   }, 180_000);
 

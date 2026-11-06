@@ -121,11 +121,13 @@ const PRIVACY_INVENTORY: readonly PrivacyInventoryEntry[] = [
     usedForTracking: false,
     purpose: 'App Functionality',
     collection:
-      'When the default-off Private memory preview is enabled, an operator may stage memory content and evidence in an author-private root associated with the owner identity. Pending proposals are excluded from ordinary record lists and index rebuilds. Disabling the preview retains the stored proposals. A configured embedding provider receives search queries and, when existing memory records are explicitly indexed, their chunks.',
+      'When the default-off Private memory preview is enabled, an operator may stage memory content and evidence in an author-private root associated with the owner identity. Pending proposals are excluded from ordinary record lists and index rebuilds. The operator’s review decisions, any correction text they type and the time spent on each review are stored beside it. Disabling the preview retains the stored proposals and decisions. A configured embedding provider receives search queries and, when existing memory records are explicitly indexed, their chunks. The first message of a new Station-engine chat carries a short brief of confirmed memory, so it reaches that chat’s model provider.',
     destination:
-      'The user’s Station storage and, for searches or explicit indexing, the configured embedding provider. Pending proposals are not sent to that provider by index rebuild.',
+      'The user’s Station storage and, for searches or explicit indexing, the configured embedding provider. Pending proposals are not sent to that provider by index rebuild. The brief goes to the model provider the chat uses.',
     evidence: [
       'src-server/knowledge-store/memory-root.ts',
+      'src-server/knowledge-store/memory-review.ts',
+      'src-server/knowledge-store/memory-brief-provider.ts',
       'src-server/routes/knowledge/memory-routes.ts',
       'src-server/runtime/routes/runtime-routes.ts',
       'src-server/knowledge-index/sqlite-vec-index-provider.ts',

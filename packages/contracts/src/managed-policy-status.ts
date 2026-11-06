@@ -1,19 +1,41 @@
 /**
- * The client-facing half of the managed policy contract (#4515): the value-free
- * summary a server publishes, its status envelope and boundary parser, and the
- * approval-ceiling helpers (#4518). Kept free of the settings registries the
- * document parser needs, so the UI's first-load bundle does not carry them.
+ * The browser-facing half of the managed policy contract (#4515): the limit
+ * and summary types, the value-free summary's status envelope and boundary
+ * parser with one reader per limit (`MANAGED_POLICY_SUMMARY_LIMIT_READERS`),
+ * the denial and "Managed by" text helpers, the refusal codes, the
+ * approval-ceiling helpers (#4518), and the predicates clients use. Nothing here imports the settings registries or
+ * the document checks the policy parser needs, so the UI's first-load bundle
+ * does not carry them.
  * `@kontourai/station-contracts/managed-policy` re-exports all of it.
  */
 import {
-  type ApprovalMode,
-  approvalModeBreadth,
+  type ManagedPolicyEngineLimits,
+  type ManagedPolicyEngineSummary,
+  parseManagedEngineSummary,
+} from './managed-policy-engines.js';
+import {
   type ConcreteApprovalMode,
   isConcreteApprovalMode,
 } from './provider.js';
+import { isRecord, ownMember } from './record-guard.js';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+export * from './managed-policy-controls.js';
+
+/**
+ * #4522: how Station on this machine updates itself. Every key is optional;
+ * an absent key keeps Station's own behavior.
+ */
+export interface ManagedPolicyUpdatesLimit {
+  /** `off` stops every update check, download and install. */
+  mode?: 'auto' | 'off';
+  /**
+   * An https mirror of approved releases that replaces Station's default
+   * release download location on every update surface. It may carry an
+   * access token in its path, so it never reaches the client summary.
+   */
+  feedUrl?: string;
+  /** `false` makes the nightly channel unavailable. */
+  allowNightly?: boolean;
 }
 
 /**
@@ -26,6 +48,51 @@ export interface ManagedPolicyLimits {
    * A concrete mode only: `connection-default` is not a posture.
    */
   maxApprovalMode?: ConcreteApprovalMode;
+  /** #4521: `false` turns off usage data and OTel export. */
+  telemetry?: false;
+  /** #4521: `false` stops inbound webhook automations from running. */
+  webhookAutomations?: false;
+  /** #4521: narrows where plugins and skills may be acquired from. */
+  registries?: ManagedPolicyRegistryLimits;
+  /** #4519: the client kinds that may reach this machine's servers. */
+  clients?: ManagedPolicyClientKind[];
+  /** #4522: how Station on this machine updates itself. */
+  updates?: ManagedPolicyUpdatesLimit;
+  /** #4520: which engines may run, and how the ones Station launches start. */
+  engines?: ManagedPolicyEngineLimits;
+}
+
+/**
+ * #4521: the capability switches. Each one can only take something away, so a
+ * policy can turn a capability off but never force it on.
+ */
+export const MANAGED_POLICY_CAPABILITY_LIMIT_KEYS = [
+  'telemetry',
+  'webhookAutomations',
+  'registries',
+] as const;
+
+/**
+ * #4521: `limits.registries`. Each key narrows the host's own registry trust
+ * (`registryTrust`, the configured marketplaces); none adds a trust anchor.
+ */
+export interface ManagedPolicyRegistryLimits {
+  /**
+   * The only registry locations plugins and skills may be acquired from,
+   * as https URLs (an http entry is refused at load). Station's bundled catalog is always allowed; any other
+   * catalog, a local folder included, must be listed. Empty allows none.
+   */
+  allowedUrls?: string[];
+  /**
+   * `false`: a plugin from a registry must carry a signature from a key the
+   * host's `registryTrust` already trusts, and skills (which cannot be
+   * signed) are not acquired from registries.
+   */
+  unsignedPackages?: false;
+  /** `false`: Station's built-in skill registries are not registered. */
+  defaultSkillRegistries?: false;
+  /** `false`: engines cannot be installed from the public ACP registry. */
+  acpRegistryInstalls?: false;
 }
 
 /**
@@ -38,11 +105,54 @@ export interface ManagedPolicySummary {
   organization: string;
   supportUrl: string | null;
   lockedSettings: string[];
-  limits: ManagedPolicyLimits;
+  /** Every limit except `engines`, whose launch values are withheld. */
+  limits: ManagedPolicySummaryLimits;
+  /** #4520: `limits.engines` without values; absent when the policy sets none. */
+  engines?: ManagedPolicyEngineSummary;
 }
 
-/** Where a loaded policy came from. More kinds arrive with later sources. */
-export type ManagedPolicySourceKind = 'file' | 'test-override';
+/**
+ * #4522: what clients learn about `limits.updates`. `mirror` says whether a
+ * feed is set; the feed URL itself is never sent, because it may carry an
+ * access token.
+ */
+export interface ManagedPolicyUpdatesSummary {
+  mode: 'auto' | 'off';
+  mirror: boolean;
+  allowNightly: boolean;
+}
+
+/** The effective limits a client sees: {@link ManagedPolicyLimits} without secrets. */
+export type ManagedPolicySummaryLimits = Omit<
+  ManagedPolicyLimits,
+  'updates' | 'engines'
+> & {
+  updates?: ManagedPolicyUpdatesSummary;
+};
+
+/**
+ * Where a loaded policy came from: the policy file, a macOS configuration
+ * profile (#4523), the Windows Policies registry key (#4524), or the
+ * test-only override.
+ */
+export type ManagedPolicySourceKind =
+  | 'file'
+  | 'macos-profile'
+  | 'windows-registry'
+  | 'test-override';
+
+export const MANAGED_POLICY_SOURCE_KINDS: readonly ManagedPolicySourceKind[] = [
+  'file',
+  'macos-profile',
+  'windows-registry',
+  'test-override',
+];
+
+function isManagedPolicySourceKind(
+  value: unknown,
+): value is ManagedPolicySourceKind {
+  return (MANAGED_POLICY_SOURCE_KINDS as readonly unknown[]).includes(value);
+}
 
 export interface ManagedPolicySourceDescriptor {
   kind: ManagedPolicySourceKind;
@@ -83,7 +193,7 @@ export function parseManagedPolicyStatus(
   const { source, digest, summary } = value;
   if (
     !isRecord(source) ||
-    (source.kind !== 'file' && source.kind !== 'test-override') ||
+    !isManagedPolicySourceKind(source.kind) ||
     typeof source.location !== 'string' ||
     !isManagedPolicyDigest(digest) ||
     !isRecord(summary) ||
@@ -92,11 +202,19 @@ export function parseManagedPolicyStatus(
     !Array.isArray(summary.lockedSettings) ||
     !summary.lockedSettings.every((path) => typeof path === 'string') ||
     !isRecord(summary.limits) ||
-    (summary.limits.maxApprovalMode !== undefined &&
-      !isConcreteApprovalMode(summary.limits.maxApprovalMode))
+    // #4520: engines are summarized beside `limits`, never inside it.
+    ownMember(summary.limits, 'engines') !== undefined
   ) {
     return null;
   }
+  const limits = managedPolicySummaryLimitsOf(summary.limits);
+  if (limits === null) return null;
+  const engineSummary = ownMember(summary, 'engines');
+  const engines =
+    engineSummary === undefined
+      ? undefined
+      : parseManagedEngineSummary(engineSummary);
+  if (engines === null) return null;
   return {
     state: 'loaded',
     source: { kind: source.kind, location: source.location },
@@ -105,120 +223,201 @@ export function parseManagedPolicyStatus(
       organization: summary.organization,
       supportUrl: summary.supportUrl,
       lockedSettings: [...summary.lockedSettings],
-      limits: isConcreteApprovalMode(summary.limits.maxApprovalMode)
-        ? { maxApprovalMode: summary.limits.maxApprovalMode }
-        : {},
+      limits,
+      ...(engines ? { engines } : {}),
     },
   };
 }
 
-/** "Managed by <organization>", the label beside a managed control. */
-export function managedByLabel(summary: ManagedPolicySummary): string {
-  return `Managed by ${summary.organization}`;
+/** `undefined` when absent, `null` when malformed. */
+function parseUpdatesSummary(
+  value: unknown,
+): ManagedPolicyUpdatesSummary | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const { mode, mirror, allowNightly } = value;
+  if (
+    (mode !== 'auto' && mode !== 'off') ||
+    typeof mirror !== 'boolean' ||
+    typeof allowNightly !== 'boolean'
+  )
+    return null;
+  return { mode, mirror, allowNightly };
 }
 
 /**
- * The one sentence every surface uses to refuse a change the policy forbids,
- * e.g. `managedPolicyDenial(summary, 'this setting')` gives "Acme's policy
- * manages this setting. For help, visit https://…".
+ * Reads one limit from a summary a server sent: `undefined` when absent,
+ * `null` when malformed, which refuses the whole status so a client never
+ * acts on half of it. Each checks the value's shape, not every document
+ * rule: the server validated the policy before it published the summary,
+ * and a newer server may enforce values this build refuses in a document.
  */
-export function managedPolicyDenial(
-  summary: ManagedPolicySummary,
-  subject: string,
-): string {
-  const help = summary.supportUrl
-    ? ` For help, visit ${summary.supportUrl}`
-    : ' Contact your administrator for help.';
-  return `${managedPolicyStatement(summary, subject)}${help}`;
+type SummaryLimitReader<V> = (value: unknown) => V | undefined | null;
+
+function offOnlyReader(value: unknown): false | undefined | null {
+  if (value === undefined) return undefined;
+  return value === false ? false : null;
+}
+
+function registriesSummaryReader(
+  value: unknown,
+): ManagedPolicyRegistryLimits | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const result: ManagedPolicyRegistryLimits = {};
+  const allowedUrls = ownMember(value, 'allowedUrls');
+  if (allowedUrls !== undefined) {
+    // Each entry must still read as an https URL: a client compares
+    // locations against it, and an http registry can be altered in transit.
+    if (
+      !Array.isArray(allowedUrls) ||
+      !allowedUrls.every(
+        (url) =>
+          typeof url === 'string' &&
+          normalizeManagedRegistryUrl(url)?.startsWith('https://') === true,
+      )
+    )
+      return null;
+    result.allowedUrls = [...allowedUrls];
+  }
+  for (const key of [
+    'unsignedPackages',
+    'defaultSkillRegistries',
+    'acpRegistryInstalls',
+  ] as const) {
+    const off = offOnlyReader(ownMember(value, key));
+    if (off === null) return null;
+    if (off === false) result[key] = false;
+  }
+  return result;
+}
+
+function maxApprovalModeSummaryReader(
+  value: unknown,
+): ConcreteApprovalMode | undefined | null {
+  if (value === undefined) return undefined;
+  return isConcreteApprovalMode(value) ? value : null;
+}
+
+function clientsSummaryReader(
+  value: unknown,
+): ManagedPolicyClientKind[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (
+    !Array.isArray(value) ||
+    new Set(value).size !== value.length ||
+    !value.every((kind) =>
+      (MANAGED_POLICY_CLIENT_KINDS as readonly unknown[]).includes(kind),
+    )
+  )
+    return null;
+  return MANAGED_POLICY_CLIENT_KINDS.filter((kind) => value.includes(kind));
 }
 
 /**
- * The first sentence of {@link managedPolicyDenial}, without the help
- * sentence, for a surface that offers the support link as a link.
+ * One reader per limit a summary can carry. The mapped type makes every key
+ * of {@link ManagedPolicySummaryLimits} required here, so a slice that adds a
+ * limit without a reader does not compile; the document side of each slice
+ * is `MANAGED_POLICY_LIMIT_SLICES` in `./managed-policy.js`.
  */
-export function managedPolicyStatement(
-  summary: Pick<ManagedPolicySummary, 'organization'>,
-  subject: string,
-): string {
-  return `${summary.organization}'s policy manages ${subject}.`;
-}
-
-/**
- * #4518: the refusal code for an approval posture broader than the managed
- * ceiling: a pick, a turn on a thread recorded above it, or a raised
- * default. Clients key on it to show the managed message instead of
- * offering a retry.
- */
-export const MANAGED_POLICY_APPROVAL_CEILING_CODE =
-  'managed-policy-approval-ceiling' as const;
-
-/** The approval picker's words for each posture (`APPROVAL_MODE_OPTIONS`). */
-const APPROVAL_MODE_NAMES: Readonly<Record<ConcreteApprovalMode, string>> = {
-  ask: 'Ask first',
-  auto: 'Auto',
-  never: 'Full access',
+export const MANAGED_POLICY_SUMMARY_LIMIT_READERS: {
+  readonly [K in keyof Required<ManagedPolicySummaryLimits>]: SummaryLimitReader<
+    ManagedPolicySummaryLimits[K]
+  >;
+} = {
+  maxApprovalMode: maxApprovalModeSummaryReader,
+  telemetry: offOnlyReader,
+  webhookAutomations: offOnlyReader,
+  registries: registriesSummaryReader,
+  clients: clientsSummaryReader,
+  updates: parseUpdatesSummary,
 };
 
-/** The approval picker's name for `mode`, e.g. "Ask first" for `ask`. */
-export function managedApprovalModeName(mode: ConcreteApprovalMode): string {
-  return APPROVAL_MODE_NAMES[mode];
+/** The limits of a summary read from a server, or null when one is malformed. */
+function managedPolicySummaryLimitsOf(
+  limits: Record<string, unknown>,
+): ManagedPolicySummaryLimits | null {
+  const result: Record<string, unknown> = {};
+  for (const [key, read] of Object.entries(
+    MANAGED_POLICY_SUMMARY_LIMIT_READERS,
+  ) as Array<[string, SummaryLimitReader<unknown>]>) {
+    const value = read(ownMember(limits, key));
+    if (value === null) return null;
+    if (value !== undefined) result[key] = value;
+  }
+  return result as ManagedPolicySummaryLimits;
 }
+
+// ---------------------------------------------------------------------------
+// #4521: capability switches (`limits.telemetry`, `limits.webhookAutomations`,
+// `limits.registries`). A switch can only turn a capability off: `false`
+// restricts and any other value is refused, so a policy can never force
+// telemetry, webhooks or a registry on.
+// ---------------------------------------------------------------------------
 
 /**
- * The ceiling a summary enforces, or `undefined` when it restricts nothing:
- * no `maxApprovalMode`, or `never`, the broadest posture there is.
+ * A registry location as the allow list compares it: an http(s) URL with no
+ * credentials, query or fragment, without a trailing slash. `github:o/r`
+ * (the key Station gives a GitHub skill catalog) reads as
+ * `https://github.com/o/r`. Anything else, such as a local path, is null.
  */
-export function managedApprovalCeiling(
-  summary: Pick<ManagedPolicySummary, 'limits'> | null | undefined,
-): ConcreteApprovalMode | undefined {
-  const ceiling = summary?.limits.maxApprovalMode;
-  return ceiling && ceiling !== 'never' ? ceiling : undefined;
+export function normalizeManagedRegistryUrl(value: string): string | null {
+  const github = /^github:([^/\s]+\/[^/\s]+)$/.exec(value);
+  let url: URL;
+  try {
+    url = new URL(github ? `https://github.com/${github[1]}` : value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  if (url.username || url.password || url.search || url.hash) return null;
+  const path = url.pathname.replace(/\/+$/, '');
+  return `${url.protocol}//${url.host}${path}`;
 }
 
-/** Whether `mode` is broader than `ceiling`; nothing exceeds an absent ceiling. */
-export function approvalModeExceedsCeiling(
-  mode: ConcreteApprovalMode,
-  ceiling: ConcreteApprovalMode | undefined,
+/** Whether the limits leave telemetry to each user (no `telemetry: false`). */
+export function managedTelemetryAllowed(
+  limits: ManagedPolicyLimits | undefined,
 ): boolean {
-  return (
-    ceiling !== undefined &&
-    approvalModeBreadth(mode) > approvalModeBreadth(ceiling)
-  );
+  return limits?.telemetry !== false;
+}
+
+/** Whether the limits leave inbound webhook automations running. */
+export function managedWebhookAutomationsAllowed(
+  limits: ManagedPolicyLimits | undefined,
+): boolean {
+  return limits?.webhookAutomations !== false;
 }
 
 /**
- * `mode`, lowered to `ceiling` when it is broader. `connection-default` is
- * returned unchanged: it is not a posture, so the caller resolves it to the
- * posture it stands for and clamps that.
+ * Whether a registry at `location` may supply plugins or skills. `bundled`
+ * is Station's own catalog, shipped in the install, which the allow list
+ * never removes. Without `allowedUrls` every location is allowed; with it, a
+ * location must normalize to a listed URL, so a local folder is refused.
  */
-export function clampApprovalModeToCeiling<M extends ApprovalMode>(
-  mode: M,
-  ceiling: ConcreteApprovalMode | undefined,
-): M | ConcreteApprovalMode {
-  if (!isConcreteApprovalMode(mode) || ceiling === undefined) return mode;
-  return approvalModeExceedsCeiling(mode, ceiling) ? ceiling : mode;
+export function managedRegistryLocationAllowed(
+  registries: ManagedPolicyRegistryLimits | undefined,
+  location: string | undefined,
+  bundled = false,
+): boolean {
+  const allowed = registries?.allowedUrls;
+  if (!allowed || bundled) return true;
+  const normalized =
+    location === undefined ? null : normalizeManagedRegistryUrl(location);
+  if (normalized === null) return false;
+  return allowed.some((url) => normalizeManagedRegistryUrl(url) === normalized);
 }
 
 /**
- * The one sentence every surface uses to refuse a posture above the
- * ceiling, e.g. "Acme's policy manages approval modes: the broadest allowed
- * is Auto. For help, visit https://…".
+ * #4519: how a client reaches the server. `desktop` is the desktop app's own
+ * server, `local-browser` a browser on this machine, and `remote` anything
+ * off the machine: paired phones and computers, the relay, LAN discovery and
+ * Tailscale Serve.
  */
-export function managedApprovalCeilingDenial(
-  summary: ManagedPolicySummary,
-  ceiling: ConcreteApprovalMode,
-): string {
-  return managedPolicyDenial(summary, approvalCeilingSubject(ceiling));
-}
+export type ManagedPolicyClientKind = 'desktop' | 'local-browser' | 'remote';
 
-/** {@link managedApprovalCeilingDenial} without its help sentence. */
-export function managedApprovalCeilingStatement(
-  summary: Pick<ManagedPolicySummary, 'organization'>,
-  ceiling: ConcreteApprovalMode,
-): string {
-  return managedPolicyStatement(summary, approvalCeilingSubject(ceiling));
-}
-
-function approvalCeilingSubject(ceiling: ConcreteApprovalMode): string {
-  return `approval modes: the broadest allowed is ${APPROVAL_MODE_NAMES[ceiling]}`;
-}
+export const MANAGED_POLICY_CLIENT_KINDS: readonly ManagedPolicyClientKind[] = [
+  'desktop',
+  'local-browser',
+  'remote',
+];

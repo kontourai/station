@@ -128,6 +128,38 @@
     {
       "scope": "root",
       "lock": "pnpm-lock.yaml",
+      "path": "node_modules/koffi",
+      "name": "koffi",
+      "version": "3.3.6",
+      "integrity": "sha512-pPqCZg8o4laLvzxySGEju/T1Fd+eCJTVnJmcH6h1u98HFRoBQ9EokNuBSj3NxIQdzkEPRxPnHKjhBVkLeB+X0g==",
+      "hooks": [
+        {
+          "name": "install",
+          "command": "node ./cnoke.cjs -P . -D src/koffi --prebuild --release"
+        }
+      ],
+      "decision": "deny",
+      "owner": "station-security",
+      "reason": "The managed policy reads the Windows registry and ACLs through koffi (#4524). Its loader takes the prebuilt binary from the per-platform @koromix/koffi-<os>-<arch> optional package first, so the build-from-source install hook is never needed.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": {
+        "path": "index.cjs",
+        "capability": "koffi",
+        "proof": "no-build-fallback"
+      },
+      "purl": "pkg:npm/koffi@3.3.6",
+      "reviewedAt": "2026-11-04",
+      "expiresAt": "2027-02-02",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "koffi advisory",
+        "managed policy registry reader change"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/libxmljs2",
       "name": "libxmljs2",
       "version": "0.37.0",

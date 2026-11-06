@@ -667,7 +667,11 @@ permissions. Ordinary Device-use grants, including running commands and full
 access, remain available; protected promotions keep their separate operator path.
 
 At the end of onboarding or in the Connections modal, choose **Connect another device** to invite a phone
-to the selected Station server. The panel asks the Station for its reachable
+to the selected Station server. A host that cannot pair other devices (its
+[managed policy](../guides/managed-policy.md#network-exposure) allows no
+remote clients) passes its explanation as `pairingRefusal`: the modal then
+disables **Connect another device** and **Approve another device**, and shows
+the explanation in place of the pairing panel. The panel asks the Station for its reachable
 routes (`GET /api/system/routes`) and opens straight to a pre-approved code on
 the first HTTPS one (a code carries a secret, and the phone's decoder accepts
 only HTTPS, so cleartext LAN and Tailscale IP routes are not listed); choosing

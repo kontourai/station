@@ -8,10 +8,15 @@
  * and permissions, and forwards non-reserved JSON-RPC messages both ways.
  */
 import { randomBytes } from 'node:crypto';
+import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
 import { buildHtmlReplyProxyDocument } from '@kontourai/station-shared/html-reply-document';
 import { MCP_UI_NETWORK_BOOTSTRAP_TAG } from '@kontourai/station-shared/mcp-ui-csp';
 import { Hono } from 'hono';
+import {
+  gateServerUntilAdmitted,
+  type ListenerAdmissionGate,
+} from '../../security/listener-admission-gate.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { mcpUiFrameServeTotal } from '../../telemetry/metrics.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
@@ -359,10 +364,29 @@ export interface MCPUIFrameServer {
   close: () => Promise<void>;
 }
 
+/**
+ * Thrown when `admit` refuses the bound frame origin (#4519). Unlike a bind
+ * failure, which degrades to the opaque-origin render, a refusal stops
+ * startup; the caller rethrows `cause`.
+ */
+export class McpUiFrameAdmissionRefused extends Error {
+  constructor(readonly refusal: unknown) {
+    super('MCP Apps frame origin refused by managed admission');
+    this.name = 'McpUiFrameAdmissionRefused';
+  }
+}
+
 export async function startMcpUiFrameServer(opts: {
   port: number;
   stationPort: number;
   stationHost?: string;
+  /**
+   * #4519: run once the port is bound and before any request is served.
+   * Until it resolves every request is held; if it throws, held requests
+   * are dropped, accepted sockets destroyed, the server closed, and the
+   * start rejects with `McpUiFrameAdmissionRefused`.
+   */
+  admit?: (listener: { host: string; port: number }) => Promise<void>;
   logger?: {
     info?: (msg: string, meta?: Record<string, unknown>) => void;
     warn?: (msg: string, meta?: Record<string, unknown>) => void;
@@ -375,8 +399,9 @@ export async function startMcpUiFrameServer(opts: {
       host: opts.stationHost,
     }),
   });
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let settled = false;
+    let gate: ListenerAdmissionGate | undefined;
     try {
       const server = serve(
         { fetch: app.fetch, port: opts.port, hostname: host },
@@ -384,16 +409,31 @@ export async function startMcpUiFrameServer(opts: {
           if (settled) return;
           settled = true;
           const origin = `http://${host}:${info.port}`;
-          opts.logger?.info?.('MCP Apps sandbox proxy listening', { origin });
-          resolve({
-            origin,
-            close: () =>
-              new Promise<void>((done) => {
-                server.close(() => done());
-              }),
-          });
+          const close = () =>
+            new Promise<void>((done) => {
+              server.close(() => done());
+            });
+          void (async () => {
+            try {
+              await opts.admit?.({ host, port: info.port });
+            } catch (error) {
+              gate?.refused();
+              await close();
+              reject(new McpUiFrameAdmissionRefused(error));
+              return;
+            }
+            gate?.admitted();
+            opts.logger?.info?.('MCP Apps sandbox proxy listening', {
+              origin,
+            });
+            resolve({ origin, close });
+          })();
         },
       );
+      // `serve` attaches the request handler and starts listening; the
+      // first connection is accepted on a later turn, so the gate is in
+      // place before anything can arrive.
+      if (opts.admit) gate = gateServerUntilAdmitted(server as Server);
       (server as { on?: (e: string, cb: (err: unknown) => void) => void }).on?.(
         'error',
         (error) => {

@@ -27,6 +27,11 @@ import {
   mayRunCommandsOnHost,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
+import {
+  assertEngineAllowedByManagedPolicy,
+  isManagedEngineRefusal,
+  managedEngineRefusalBody,
+} from '../../security/managed-engine-limits.js';
 import { grantedPairingScope } from '../../security/pairing-route-scopes.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { registryAuthFor } from '../../services/acp/acp-engine-descriptors.js';
@@ -146,6 +151,37 @@ async function readMethodId(c: Context): Promise<string | null> {
     : null;
 }
 
+/**
+ * #4515: the managed refusal for an ACP connection the policy does not let
+ * run (ACP engines not allowed, or a public-registry agent under
+ * `acpRegistryAgents: false`), or null. Its sign-in reads and setup writes
+ * answer with it before the credential store is touched.
+ */
+function managedRefusal(config: ACPConnectionConfig): Error | null {
+  try {
+    assertEngineAllowedByManagedPolicy('acp', config);
+    return null;
+  } catch (error) {
+    if (isManagedEngineRefusal(error)) return error as Error;
+    throw error;
+  }
+}
+
+/**
+ * After a key is removed for a connection the policy refuses: the view the
+ * client parses, built without reading the credential store or running the
+ * engine. Nothing is listed and nothing may be started.
+ */
+function managedView(config: ACPConnectionConfig): EngineSignInView {
+  return {
+    connectionId: config.id,
+    engineName: config.name,
+    status: { state: 'unknown', source: 'none', checkable: false },
+    credentials: [],
+    allowed: { signIn: false, terminal: false },
+  };
+}
+
 export function createACPSignInRoutes(input: {
   ctx: Pick<RuntimeContext, 'configLoader'>;
   service: EngineSignInService;
@@ -161,6 +197,8 @@ export function createACPSignInRoutes(input: {
   app.get('/connections/:id/sign-in', async (c) => {
     const config = await connection(c);
     if (!config) return notFound(c);
+    const refused = managedRefusal(config);
+    if (refused) return c.json(managedEngineRefusalBody(refused), 403);
     return c.json({
       success: true,
       data: await viewFor(c, service, config, false),
@@ -172,6 +210,8 @@ export function createACPSignInRoutes(input: {
     if (requestMayBeAnAgent(c.req.raw)) return c.json(SIGN_IN_NOT_GRANTED, 403);
     const config = await connection(c);
     if (!config) return notFound(c);
+    const refused = managedRefusal(config);
+    if (refused) return c.json(managedEngineRefusalBody(refused), 403);
     await service.refreshMethods(config);
     return c.json({
       success: true,
@@ -183,6 +223,8 @@ export function createACPSignInRoutes(input: {
     if (!maySignInEngines(c)) return c.json(SIGN_IN_NOT_GRANTED, 403);
     const config = await connection(c);
     if (!config) return notFound(c);
+    const refused = managedRefusal(config);
+    if (refused) return c.json(managedEngineRefusalBody(refused), 403);
     const methodId = await readMethodId(c);
     if (!methodId)
       return c.json({ success: false, error: 'Choose a way to sign in.' }, 400);
@@ -229,6 +271,8 @@ export function createACPSignInRoutes(input: {
     if (!maySignInEngines(c)) return c.json(SIGN_IN_NOT_GRANTED, 403);
     const config = await connection(c);
     if (!config) return notFound(c);
+    const refused = managedRefusal(config);
+    if (refused) return c.json(managedEngineRefusalBody(refused), 403);
     const store = engineCredentials();
     if (!store)
       return c.json(
@@ -269,6 +313,9 @@ export function createACPSignInRoutes(input: {
     } catch (error) {
       return failure(c, error);
     }
+    // #4515: removal is never refused; the answer reads nothing back.
+    if (managedRefusal(config))
+      return c.json({ success: true, data: managedView(config) });
     return c.json({
       success: true,
       data: await viewFor(c, service, config, true),

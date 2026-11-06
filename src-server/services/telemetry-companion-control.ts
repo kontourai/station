@@ -18,6 +18,7 @@ import { z } from 'zod/v3';
 import PINNED_KEYS from '../../config/release-manifest-keys.json' with {
   type: 'json',
 };
+import { admitManagedListener } from '../security/managed-network-exposure.js';
 import { runInProcessGroup } from '../utils/process-group-exec.js';
 import { readTelemetryCompanionHost } from './telemetry-companion.js';
 import {
@@ -232,6 +233,33 @@ async function latestAction(home: string, installationId: string) {
     return action;
   } catch (error) {
     if (companionErrno(error, 'ENOENT')) return null;
+    throw error;
+  }
+}
+
+/**
+ * #4519 round 2: the host ports the current installation publishes, read
+ * from its saved deployment, or none when nothing is installed. The startup
+ * Serve check includes them, so a companion already running (it outlives
+ * Station) is covered too; a stopped one is checked again on Start.
+ */
+export async function readTelemetryCompanionSavedPorts(
+  home: string,
+): Promise<number[]> {
+  const installationId = await currentId(home);
+  if (!installationId) return [];
+  try {
+    const directory = join(await roots(home), installationId);
+    return deploymentSchema.parse(
+      JSON.parse(
+        (
+          await readCompanionFile(join(directory, 'deployment.json'), 64 * 1024)
+        ).toString(),
+      ),
+    ).ports;
+  } catch (error) {
+    // Installed but never deployed: nothing is published.
+    if (companionErrno(error, 'ENOENT')) return [];
     throw error;
   }
 }
@@ -645,8 +673,18 @@ export async function controlTelemetryCompanion(
       input.requireOperator,
       signal,
     );
-    if (input.action === 'start')
+    if (input.action === 'start') {
       await verifyManagedArtifact(context, input.verification);
+      // #4519 round 2: Docker publishes these on 127.0.0.1. A Serve route
+      // may have been added since installation, so they are admitted again
+      // before every start, before any effect.
+      for (const port of context.state.ports)
+        await admitManagedListener({
+          name: 'telemetry companion',
+          host: '127.0.0.1',
+          port,
+        });
+    }
     const actions = join(context.directory, 'actions');
     await companionPrivateDirectory(actions, true);
     const operationDirectory = join(actions, input.operationId);

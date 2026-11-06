@@ -35,6 +35,7 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { managedEngineRefusalFor } from '../../security/managed-engine-limits.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -233,6 +234,10 @@ export async function verifyEnrolment(
   deps: EnrolmentDeps = defaultEnrolmentDeps(),
   homeEnv: Record<string, string> = enrolmentHomeEnv(engine, profileDir),
 ): Promise<EnrolmentVerification> {
+  // #4515: an engine the managed policy does not allow is never run, not
+  // even for its sign-in status (the Accounts and app-home reads).
+  const managed = managedEngineRefusalFor(engine);
+  if (managed) return { state: 'unknown', detail: managed.message };
   const [command, args] =
     engine === 'claude'
       ? ['claude', ['auth', 'status']]

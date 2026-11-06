@@ -21,6 +21,7 @@ import type {
 } from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import { selectEngineAgentAdoption } from '../../domain/agent-registry.js';
+import { managedEngineRefusalFor } from '../../security/managed-engine-limits.js';
 import { agentDefinitionFingerprint } from '../../services/agents/agent-definition-fingerprint.js';
 import {
   agentProfileCapabilities,
@@ -292,10 +293,17 @@ export function externalEngineUnavailable(
   }
   const engine = connection.name?.trim() || 'This agent\u2019s engine';
   if (!connection.enabled) {
-    return {
-      reason: `${engine} is turned off.`,
-      fix: { kind: 'engine-disabled', target: id },
-    };
+    // #4515: an engine the managed policy does not allow reads as off; say
+    // that the policy is why, as every engine refusal does.
+    // The fix is `policy`: there is nothing a person can turn on, and the
+    // execution-target resolver answers it with the managed refusal.
+    const managed = managedEngineRefusalFor(connection.type);
+    return managed
+      ? { reason: managed.message, fix: { kind: 'policy', target: id } }
+      : {
+          reason: `${engine} is turned off.`,
+          fix: { kind: 'engine-disabled', target: id },
+        };
   }
   // A fresh passed smoke is real proof: neither its passing summary nor the
   // unproven sentence is truthful for a connection that is CURRENTLY

@@ -363,7 +363,7 @@
     "@kontourai/ferry": "0.6.0",
     "@kontourai/fieldwork": "0.15.0",
     "@kontourai/flow": "5.4.0",
-    "@kontourai/flow-agents": "9.11.0",
+    "@kontourai/flow-agents": "9.12.0",
     "@kontourai/agent-runtime": "0.1.0",
     "@kontourai/monument": "^0.1.0",
     "@kontourai/relay": "0.7.1",
@@ -373,8 +373,8 @@
     "@kontourai/station-contracts": "^0.13.0",
     "@kontourai/station-sdk": "^0.13.0",
     "@kontourai/station-shared": "^0.13.0",
-    "@kontourai/surface": "6.2.1",
-    "@kontourai/survey": "8.2.1",
+    "@kontourai/surface": "6.3.0",
+    "@kontourai/survey": "8.4.0",
     "@kontourai/thread": "0.5.0",
     "@kontourai/ui": "^1.19.0",
     "@kontourai/veritas": "1.12.1",
@@ -446,7 +446,8 @@
     "zod-to-json-schema": "^3.25.2",
     "@better-auth/passkey": "1.7.15",
     "@simplewebauthn/browser": "14.0.0",
-    "@kontourai/bearing": "0.2.0"
+    "@kontourai/bearing": "0.2.0",
+    "koffi": "3.3.6"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.7",

@@ -12,7 +12,12 @@ channel-scoped keys. It does not require different manifest/artifact origins or
 fetch a trust key from a third authority. Signature and hash checks identify the
 signer and artifact bytes, not every aspect of freshness or safe execution.
 See the [manifest contract](../../packaging/manifest/README.md) for version checks
-and the explicit fixture-key override boundary.
+and the explicit fixture-key override boundary. With
+`STATION_INSTALL_MIRROR_URL`, which `station upgrade` and the service's update
+set from a [managed policy's](managed-policy.md#update-control) mirror, the
+manifest must come from the mirror and every archive it names is downloaded
+from the mirror, following a redirect only within the mirror's own scheme,
+host and port; `install.sh` then downloads nothing else.
 
 The [cask renderer](../../packaging/homebrew/README.md) requires a schema-v1
 manifest with a macOS artifact. Rendering a cask does not create a tap or install
