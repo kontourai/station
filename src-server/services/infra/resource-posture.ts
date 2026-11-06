@@ -1,5 +1,6 @@
 import {
   PROVIDER_FAILURE_KINDS,
+  RESOURCE_ENGINE_START_CANCELLED_CODE,
   RESOURCE_ENGINE_START_CAPACITY_CODE,
 } from '@kontourai/station-contracts/provider-failure';
 import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
@@ -190,13 +191,17 @@ export function deriveRuntimeResourcePosture(
 }
 
 /**
- * #4568: a person's Stop cancelled their engine start while it waited for the
- * start lease, before any provider start. Nothing ran, so this is not a
- * failure of the Session being started.
+ * #4568: a person's Stop cancelled their engine start, while it waited for
+ * the start lease or before its provider start. Nothing ran: a typed refusal,
+ * so a start boundary records "not started", and not a failure of the Session.
  */
-export class EngineStartCancelledError extends Error {
+export class EngineStartCancelledError extends ProviderRefusalError {
+  readonly code = RESOURCE_ENGINE_START_CANCELLED_CODE;
   constructor() {
-    super('The engine start was cancelled before it began.');
+    super(
+      'The engine start was cancelled before it began.',
+      PROVIDER_FAILURE_KINDS[RESOURCE_ENGINE_START_CANCELLED_CODE],
+    );
     this.name = 'EngineStartCancelledError';
   }
 }

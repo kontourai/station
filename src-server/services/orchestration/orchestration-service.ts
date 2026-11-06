@@ -60,6 +60,7 @@ import type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandReceipt,
   OrchestrationConversationEventWindow,
+  OrchestrationEngineStartWaitFrame,
   OrchestrationPeerPendingRequest,
   OrchestrationSendTurnInput,
   OrchestrationSessionDetail,
@@ -493,6 +494,7 @@ import {
 import { servingInstanceIdentity } from './serving-instance.js';
 import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
 import {
+  type PendingStartOwner,
   type PersonalConversationAccess,
   SessionAuthorization,
 } from './session-authorization.js';
@@ -599,6 +601,20 @@ function telemetryEngine(
   return terminalEngineFamily(
     provider,
   ) satisfies UsageTelemetryProperties<'engine_turn'>['engine'];
+}
+
+/** #4568: a person's engine start queued behind another engine start. */
+interface EngineStartWaitRecord {
+  observation: EngineStartWaitObservation;
+  /** Whom the wait may be shown to; captured when the start queued. */
+  canRead: (scope: SessionReadScope) => boolean;
+}
+
+/** #4568: a person's engine start that their Stop may still cancel. */
+interface EngineStartCancel {
+  controller: AbortController;
+  /** A fresh start's owner; absent when a Session record answers for it. */
+  owner?: PendingStartOwner;
 }
 
 /** #4568: the admission an engine start for an existing Session runs under. */
@@ -2561,15 +2577,13 @@ export class OrchestrationService {
    * #4568: a person's engine start queued behind another engine start, by
    * the thread it starts. Process memory, published on the session summary.
    */
-  private readonly engineStartWaits = new Map<
-    string,
-    EngineStartWaitObservation
-  >();
+  private readonly engineStartWaits = new Map<string, EngineStartWaitRecord>();
   /**
-   * #4568: the Stop a person's cold-follow-up respawn listens to, by thread,
-   * from its materialization until its provider start is invoked.
+   * #4568: the Stop a person's engine start listens to, by thread, from its
+   * admission until its provider start settles. `owner` is set for a fresh
+   * start, which no Session record answers for until it starts.
    */
-  private readonly engineStartCancels = new Map<string, AbortController>();
+  private readonly engineStartCancels = new Map<string, EngineStartCancel>();
   /** Flow run / policy hooks / workflow sidecar (epic archive#4024, archive#4218). */
   private readonly flowPolicy: FlowPolicySidecar;
   private readonly recoveryCoordinator?: SessionRecoveryCoordinator;
@@ -2993,7 +3007,8 @@ export class OrchestrationService {
       canUserReadSession: (threadId, authority) =>
         this.canUserReadSession(threadId, authority),
       readTurnProgress: (threadId) => this.turnProgress.read(threadId),
-      readEngineStartWait: (threadId) => this.engineStartWaits.get(threadId),
+      readEngineStartWait: (threadId) =>
+        this.engineStartWaits.get(threadId)?.observation,
       readChildWork: this.readChildWork,
       readConversationActivity: (threadId) =>
         this.conversationActivity?.readForThread(threadId),
@@ -3202,7 +3217,7 @@ export class OrchestrationService {
           ),
           engineStartWait: this.engineStartWaits.get(
             persisted?.threadId ?? loaded?.threadId ?? '',
-          ),
+          )?.observation,
           readChildWork: this.readChildWork,
           answerability: this.observeAnswerability(
             persisted?.threadId ?? loaded?.threadId ?? '',
@@ -5207,7 +5222,7 @@ export class OrchestrationService {
           eventCount,
           ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
           turnProgress: this.turnProgress.read(threadId),
-          engineStartWait: this.engineStartWaits.get(threadId),
+          engineStartWait: this.engineStartWaits.get(threadId)?.observation,
           readChildWork: this.readChildWork,
           ...(openRequestIdsByThread
             ? { openRequestIds: openRequestIdsByThread.get(threadId) ?? [] }
@@ -5810,7 +5825,7 @@ export class OrchestrationService {
         eventCount: this.options.eventStore?.countEventsByThread(threadId) ?? 0,
         ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
         turnProgress: this.turnProgress.read(threadId),
-        engineStartWait: this.engineStartWaits.get(threadId),
+        engineStartWait: this.engineStartWaits.get(threadId)?.observation,
         readChildWork: this.readChildWork,
         ...(conversationActivity ? { conversationActivity } : {}),
         ...(conversationFirstPromptedTurn
@@ -8469,136 +8484,166 @@ export class OrchestrationService {
               resolve,
             });
           }
-          const admissionLease = await admitEngineStartForIntent(
-            this.options.resourcePosture,
-            this.options.logger,
-            internal?.resourceAdmissionIntent ?? 'interactive_user',
-            {
-              binding: input.threadId,
-              signal: input.signal,
-            },
-          );
+          const intent =
+            internal?.resourceAdmissionIntent ?? 'interactive_user';
+          // #4568: a fresh start has no Session record until it starts, so
+          // its wait and its Stop are owned by the caller the server
+          // authenticated for this command, never by request input.
+          const owner: PendingStartOwner | undefined = context.userId
+            ? {
+                userId: context.userId,
+                ...(context.tenantExecutionContext
+                  ? { tenantExecutionContext: context.tenantExecutionContext }
+                  : {}),
+              }
+            : undefined;
+          const cancel =
+            intent === 'interactive_user'
+              ? this.registerEngineStartCancel(
+                  input.threadId,
+                  input.signal,
+                  owner,
+                )
+              : undefined;
+          const startSignal = cancel?.signal ?? input.signal;
           let session: ProviderSession;
           try {
-            throwIfAborted(input.signal);
-            const invoke = async () => {
-              // #2873: the folder is decided again here, after every
-              // preceding await. From the check to the adapter call nothing
-              // yields: the start boundary below claims synchronously. It
-              // runs outside that boundary, which would record a throw as
-              // an uncertain start.
-              await this.retainedSessionAdmittedWorkspace(input);
-              const localProjectId =
-                input.metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
-              const projectSlug = input.metadata?.projectSlug;
-              if (
-                typeof localProjectId === 'string' &&
-                typeof projectSlug === 'string' &&
-                input.cwd &&
-                !internal?.foregroundInvocationAdmission
-                  ?.provisionedWorkspace &&
-                !readExecutionWorkspaceBinding(internal?.executionWorkspace) &&
-                !internal?.receiverExecutionAdmission?.admitted &&
-                !input.metadata?.worktree
-              )
-                await this.options.resolveProjectSessionDirectory?.(
-                  projectSlug,
-                  {
-                    localProjectId,
-                    cwd: input.cwd,
-                  },
-                );
-              const binding = context.dispatchCwdAdmission
-                ? await this.dispatchCwdBinding(input, internal)
-                : undefined;
-              this.assertDispatchCwdAtSpawn(
-                input,
-                context.dispatchCwdAdmission,
-                binding,
-              );
-              return withTenantExecutionContext(
-                context.tenantExecutionContext,
-                () =>
-                  this.runEngineSessionStart(
-                    input.threadId,
-                    () =>
-                      withEngineMcpAccountOwner(
-                        effectiveOwnerAttribution(context) ||
-                          input.metadata?.ownerAttribution ===
-                            'unattributed-agent'
-                          ? undefined
-                          : context.userId,
-                        () => {
-                          this.assertForkContextAtProviderStart(
-                            input,
-                            internal?.forkContextRequester ?? context,
-                          );
-                          internal?.beforeProviderStart?.(input.threadId);
-                          return adapter.startSession(input);
-                        },
-                      ),
-                    internal?.sessionStartAdmission,
-                    input,
-                  ),
-              );
-            };
-            // #484 phase A: the receiver-owned offer/binding recheck runs
-            // INSIDE the provider-effect path — after every preceding await
-            // and adjacent to the adapter invocation — so a withdrawn offer
-            // or lost binding refuses instead of starting a session it no
-            // longer authorizes. The ACTUAL prepared input is then verified
-            // against the admitted coordinate (a re-derived cwd or
-            // re-targeted thread refuses BEFORE the adapter runs).
-            // Carried as the effect closure passed into the foreground
-            // admission when both are present, so neither guard is bypassed.
-            // The admitted coordinate is OWNED (snapshotted) before the
-            // recheck await — the post-await verify must answer for the
-            // association the effect was admitted for, never a mutated one.
-            const invokeWithReceiverAdmission = () => {
-              const startAdmission = internal?.receiverExecutionAdmission;
-              const admittedSnapshot = startAdmission?.admitted
-                ? { ...startAdmission.admitted }
-                : undefined;
-              return startAdmission
-                ? startAdmission
-                    .recheck()
-                    .then(() =>
-                      verifyReceiverStartEffect(
-                        admittedSnapshot
-                          ? {
-                              admitted: admittedSnapshot,
-                              recheck: startAdmission.recheck,
-                            }
-                          : undefined,
-                        {
-                          threadId: input.threadId,
-                          cwd: input.cwd,
-                          projectSlug: input.metadata?.projectSlug,
-                          consent: portableConsentOfStartedMetadata(
-                            input.metadata && typeof input.metadata === 'object'
-                              ? (input.metadata as Record<string, unknown>)
-                              : undefined,
-                          ),
-                        },
-                      ),
-                    )
-                    .then(invoke)
-                : invoke();
-            };
-            session = await (internal?.foregroundInvocationAdmission
-              ? internal.foregroundInvocationAdmission.invoke(
-                  'start',
-                  {
-                    threadId: input.threadId,
-                    cwd: input.cwd,
-                    agentId: input.metadata?.agentSlug,
-                    projectSlug: input.metadata?.projectSlug,
-                  },
-                  invokeWithReceiverAdmission,
+            const admissionLease = await this.admitObservedEngineStart(
+              input.threadId,
+              intent,
+              startSignal,
+              owner,
+            );
+            try {
+              throwIfAborted(startSignal);
+              const invoke = async () => {
+                // #2873: the folder is decided again here, after every
+                // preceding await. From the check to the adapter call nothing
+                // yields: the start boundary below claims synchronously. It
+                // runs outside that boundary, which would record a throw as
+                // an uncertain start.
+                await this.retainedSessionAdmittedWorkspace(input);
+                const localProjectId =
+                  input.metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
+                const projectSlug = input.metadata?.projectSlug;
+                if (
+                  typeof localProjectId === 'string' &&
+                  typeof projectSlug === 'string' &&
+                  input.cwd &&
+                  !internal?.foregroundInvocationAdmission
+                    ?.provisionedWorkspace &&
+                  !readExecutionWorkspaceBinding(
+                    internal?.executionWorkspace,
+                  ) &&
+                  !internal?.receiverExecutionAdmission?.admitted &&
+                  !input.metadata?.worktree
                 )
-              : invokeWithReceiverAdmission());
+                  await this.options.resolveProjectSessionDirectory?.(
+                    projectSlug,
+                    {
+                      localProjectId,
+                      cwd: input.cwd,
+                    },
+                  );
+                const binding = context.dispatchCwdAdmission
+                  ? await this.dispatchCwdBinding(input, internal)
+                  : undefined;
+                this.assertDispatchCwdAtSpawn(
+                  input,
+                  context.dispatchCwdAdmission,
+                  binding,
+                );
+                // #4568: after the last await before the provider start; from
+                // here to the adapter call nothing yields, so a Stop that
+                // arrived after admission never launches the engine.
+                throwIfAborted(startSignal);
+                return withTenantExecutionContext(
+                  context.tenantExecutionContext,
+                  () =>
+                    this.runEngineSessionStart(
+                      input.threadId,
+                      () =>
+                        withEngineMcpAccountOwner(
+                          effectiveOwnerAttribution(context) ||
+                            input.metadata?.ownerAttribution ===
+                              'unattributed-agent'
+                            ? undefined
+                            : context.userId,
+                          () => {
+                            this.assertForkContextAtProviderStart(
+                              input,
+                              internal?.forkContextRequester ?? context,
+                            );
+                            internal?.beforeProviderStart?.(input.threadId);
+                            return adapter.startSession(input);
+                          },
+                        ),
+                      internal?.sessionStartAdmission,
+                      input,
+                    ),
+                );
+              };
+              // #484 phase A: the receiver-owned offer/binding recheck runs
+              // INSIDE the provider-effect path — after every preceding await
+              // and adjacent to the adapter invocation — so a withdrawn offer
+              // or lost binding refuses instead of starting a session it no
+              // longer authorizes. The ACTUAL prepared input is then verified
+              // against the admitted coordinate (a re-derived cwd or
+              // re-targeted thread refuses BEFORE the adapter runs).
+              // Carried as the effect closure passed into the foreground
+              // admission when both are present, so neither guard is bypassed.
+              // The admitted coordinate is OWNED (snapshotted) before the
+              // recheck await — the post-await verify must answer for the
+              // association the effect was admitted for, never a mutated one.
+              const invokeWithReceiverAdmission = () => {
+                const startAdmission = internal?.receiverExecutionAdmission;
+                const admittedSnapshot = startAdmission?.admitted
+                  ? { ...startAdmission.admitted }
+                  : undefined;
+                return startAdmission
+                  ? startAdmission
+                      .recheck()
+                      .then(() =>
+                        verifyReceiverStartEffect(
+                          admittedSnapshot
+                            ? {
+                                admitted: admittedSnapshot,
+                                recheck: startAdmission.recheck,
+                              }
+                            : undefined,
+                          {
+                            threadId: input.threadId,
+                            cwd: input.cwd,
+                            projectSlug: input.metadata?.projectSlug,
+                            consent: portableConsentOfStartedMetadata(
+                              input.metadata &&
+                                typeof input.metadata === 'object'
+                                ? (input.metadata as Record<string, unknown>)
+                                : undefined,
+                            ),
+                          },
+                        ),
+                      )
+                      .then(invoke)
+                  : invoke();
+              };
+              session = await (internal?.foregroundInvocationAdmission
+                ? internal.foregroundInvocationAdmission.invoke(
+                    'start',
+                    {
+                      threadId: input.threadId,
+                      cwd: input.cwd,
+                      agentId: input.metadata?.agentSlug,
+                      projectSlug: input.metadata?.projectSlug,
+                    },
+                    invokeWithReceiverAdmission,
+                  )
+                : invokeWithReceiverAdmission());
+            } finally {
+              admissionLease?.release();
+            }
           } finally {
-            admissionLease?.release();
+            cancel?.release();
           }
           adapterSessionStartDuration.record(performance.now() - startedAt, {
             provider: adapter.provider,
@@ -8719,6 +8764,8 @@ export class OrchestrationService {
         error instanceof SessionStartRefusedError ||
         error instanceof SessionReattachConflictError ||
         error instanceof ConcurrentEngineStartCapacityError ||
+        // #4568: the person's Stop cancelled the start before it ran.
+        error instanceof EngineStartCancelledError ||
         // #2873: a refusal to start, with nothing run.
         error instanceof DispatchCwdRefusedError ||
         // #4520: the managed policy refused the engine before it ran.
@@ -9081,7 +9128,8 @@ export class OrchestrationService {
         commandThreadId,
         context.userId,
         context.tenantExecutionContext,
-      )
+      ) &&
+      !this.stopsOwnPendingStart(command, context)
     ) {
       const rejectedReceipt = { ...receipt, status: 'rejected' as const };
       this.persistReceipt(rejectedReceipt, 'authorization');
@@ -10536,7 +10584,7 @@ export class OrchestrationService {
           // admission, so the answer stays `pending-turn-start`.
           this.engineStartCancels
             .get(command.threadId)
-            ?.abort(new EngineStartCancelledError());
+            ?.controller.abort(new EngineStartCancelledError());
           // archive#3493 residual 1: mid-materialisation there IS work to
           // cancel — the turn that triggered the start is about to be
           // announced, and the dormant branch would answer `no-active-turn`
@@ -16197,17 +16245,20 @@ export class OrchestrationService {
   }
 
   /**
-   * #4568: engine-start admission for a Session that already exists, with
-   * its capacity wait published on the Session's summary for exactly as long
-   * as the start is queued. The wait clears on admission, cancellation,
-   * timeout and failure alike.
+   * #4568: engine-start admission with its capacity wait published for
+   * exactly as long as the start is queued: on the Session's summary, and as
+   * an `orchestration:engine-start-wait` frame for the readers `owner`
+   * names. A fresh start passes its owner, since no Session record answers
+   * for it yet; any other start is shown to the Session's readers. The wait
+   * clears on admission, cancellation, timeout and failure alike.
    */
   private async admitObservedEngineStart(
     threadId: string,
     intent: RuntimeEngineStartIntent,
     signal?: AbortSignal,
+    owner?: PendingStartOwner,
   ): Promise<RuntimeEngineStartLease | undefined> {
-    let observed: EngineStartWaitObservation | undefined;
+    let observed: EngineStartWaitRecord | undefined;
     try {
       return await admitEngineStartForIntent(
         this.options.resourcePosture,
@@ -16217,25 +16268,108 @@ export class OrchestrationService {
           binding: threadId,
           ...(signal ? { signal } : {}),
           onWaiting: () => {
-            observed = { since: new Date().toISOString() };
+            observed = {
+              observation: { since: new Date().toISOString() },
+              canRead: owner
+                ? (scope) => this.sessionAuthz.canReadPendingStart(owner, scope)
+                : (scope) => this.canUserReadSession(threadId, scope),
+            };
             this.engineStartWaits.set(threadId, observed);
-            this.publishEngineStartWaitChange(threadId);
+            this.publishEngineStartWaitChange(threadId, observed);
           },
         },
       );
     } finally {
       if (observed && this.engineStartWaits.get(threadId) === observed) {
         this.engineStartWaits.delete(threadId);
-        this.publishEngineStartWaitChange(threadId);
+        this.publishEngineStartWaitChange(threadId, observed, true);
       }
     }
   }
 
-  private publishEngineStartWaitChange(threadId: string): void {
+  private publishEngineStartWaitChange(
+    threadId: string,
+    record: EngineStartWaitRecord,
+    cleared = false,
+  ): void {
     this.options.eventBus.emit(
       SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
       { threadId },
     );
+    this.options.eventBus.emit(
+      SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED,
+      {
+        frame: {
+          threadId,
+          wait: cleared ? null : record.observation,
+        } satisfies OrchestrationEngineStartWaitFrame,
+        canRead: record.canRead,
+      },
+    );
+  }
+
+  /**
+   * #4568: the engine-start waits `scope` may see, for a stream that just
+   * opened: a reconnect replaces whatever its client held.
+   */
+  readableEngineStartWaits(
+    scope: SessionReadScope,
+  ): OrchestrationEngineStartWaitFrame[] {
+    return [...this.engineStartWaits]
+      .filter(([, record]) => record.canRead(scope))
+      .map(([threadId, record]) => ({
+        threadId,
+        wait: record.observation,
+      }));
+  }
+
+  /**
+   * #4568: register the Stop a person's start listens to until its provider
+   * start settles. Returns the signal the start must honour and the release.
+   */
+  /**
+   * #4568: a person's Stop reaches their own fresh start, which no Session
+   * record answers for until it starts. Only `interruptTurn`, and only by the
+   * start's owner under the same rule as a Session read.
+   */
+  private stopsOwnPendingStart(
+    command: OrchestrationCommand,
+    context: {
+      userId?: string;
+      tenantExecutionContext?: TenantExecutionContext;
+    },
+  ): boolean {
+    if (command.type !== 'interruptTurn') return false;
+    const owner = this.engineStartCancels.get(command.threadId)?.owner;
+    return (
+      owner !== undefined &&
+      this.sessionAuthz.canCommandPendingStart(
+        owner,
+        context.userId,
+        context.tenantExecutionContext,
+      )
+    );
+  }
+
+  private registerEngineStartCancel(
+    threadId: string,
+    signal: AbortSignal | undefined,
+    owner?: PendingStartOwner,
+  ): { signal: AbortSignal; release: () => void } {
+    const cancel: EngineStartCancel = {
+      controller: new AbortController(),
+      ...(owner ? { owner } : {}),
+    };
+    this.engineStartCancels.set(threadId, cancel);
+    return {
+      signal: signal
+        ? AbortSignal.any([signal, cancel.controller.signal])
+        : cancel.controller.signal,
+      release: () => {
+        if (this.engineStartCancels.get(threadId) === cancel)
+          this.engineStartCancels.delete(threadId);
+      },
+    };
   }
 
   /**
@@ -16310,8 +16444,9 @@ export class OrchestrationService {
     // #4568: a person's respawn may wait for the start lease; their Stop
     // (`interruptTurn`) cancels it until the provider start is invoked.
     const cancel =
-      intent === 'interactive_user' ? new AbortController() : undefined;
-    if (cancel) this.engineStartCancels.set(threadId, cancel);
+      intent === 'interactive_user'
+        ? this.registerEngineStartCancel(threadId, undefined)
+        : undefined;
     const started = this.materializeRecoveredSessionOnce(
       threadId,
       admission,
@@ -16320,8 +16455,7 @@ export class OrchestrationService {
     ).finally(() => {
       this.materializingSessions.delete(threadId);
       this.materializingIntents.delete(threadId);
-      if (cancel && this.engineStartCancels.get(threadId) === cancel)
-        this.engineStartCancels.delete(threadId);
+      cancel?.release();
     });
     this.materializingSessions.set(threadId, started);
     this.materializingIntents.set(threadId, intent);
@@ -16713,7 +16847,7 @@ export class OrchestrationService {
         loaded,
         events,
         turnProgress: this.turnProgress.read(id),
-        engineStartWait: this.engineStartWaits.get(id),
+        engineStartWait: this.engineStartWaits.get(id)?.observation,
         readChildWork: this.readChildWork,
         answerability: this.observeAnswerability(
           id,

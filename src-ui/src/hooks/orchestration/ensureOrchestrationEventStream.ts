@@ -1,3 +1,4 @@
+import type { OrchestrationEngineStartWaitFrame } from '@kontourai/station-contracts/orchestration';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -8,6 +9,10 @@ import type { QueryClient } from '@tanstack/react-query';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { workObservation } from '../../contexts/work-observation';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
+import {
+  applyEngineStartWaitFrame,
+  clearEngineStartWaits,
+} from './engineStartWaits';
 import {
   handleOrchestrationEvent,
   settleSemanticDeliveryBuffer,
@@ -601,6 +606,8 @@ function connectOrchestrationEventStream(
           streamModes.set(apiBase, false);
           if (generalOwners.has(apiBase)) startLegacyGeneral(apiBase);
         }
+        // #4568: Station re-sends every wait still queued after it opens.
+        clearEngineStartWaits(apiBase);
         sharedOrchestrationStreamOpened(apiBase, response);
       },
       onMessage: (raw) => {
@@ -711,6 +718,14 @@ function connectOrchestrationEventStream(
           }
           hasReceivedSnapshot = true;
           basesWithSnapshot.add(apiBase);
+        } else if (
+          raw.event === SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED
+        ) {
+          const frame = JSON.parse(
+            raw.data,
+          ) as OrchestrationEngineStartWaitFrame;
+          if (typeof frame?.threadId === 'string')
+            applyEngineStartWaitFrame(apiBase, frame);
         } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {
           const payload = JSON.parse(raw.data) as {
             conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;

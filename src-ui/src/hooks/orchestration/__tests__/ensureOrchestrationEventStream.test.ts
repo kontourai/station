@@ -38,6 +38,10 @@ vi.mock('../../../contexts/active-chats-store', () => ({
 }));
 
 import {
+  readEngineStartWait,
+  resetEngineStartWaitsForTests,
+} from '../engineStartWaits';
+import {
   ensureOrchestrationEventStream,
   registerOrchestrationStreamQueryClient,
 } from '../ensureOrchestrationEventStream';
@@ -444,6 +448,39 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       conversationId: 'root',
       asOfSequence: 9,
     });
+  });
+
+  test("#4568: wait frames set and clear a Station's waits, and a reopened stream starts from none", () => {
+    const apiBase = 'https://engine-start-wait.example.test';
+    const release = ensureOrchestrationEventStream(apiBase);
+    try {
+      const options = mocks.fetchSSE.mock.calls.at(-1)?.[1] as FetchSseOptions;
+      const open = () => options.onOpen?.(new Response(null));
+      const frame = (wait: { since: string } | null) =>
+        capturedOnMessage()({
+          event: 'orchestration:engine-start-wait',
+          data: JSON.stringify({ threadId: 'fresh', wait }),
+        });
+      open();
+      frame({ since: '2026-11-06T12:00:00.000Z' });
+      expect(readEngineStartWait(apiBase, [undefined, 'fresh'])).toEqual({
+        since: '2026-11-06T12:00:00.000Z',
+      });
+      // Another Station's chat with the same id sees nothing.
+      expect(
+        readEngineStartWait('https://other.example.test', ['fresh']),
+      ).toBeUndefined();
+      frame(null);
+      expect(readEngineStartWait(apiBase, ['fresh'])).toBeUndefined();
+      frame({ since: '2026-11-06T12:00:05.000Z' });
+      // A reconnect: Station re-sends whatever still waits, so nothing stale
+      // survives the reopen.
+      open();
+      expect(readEngineStartWait(apiBase, ['fresh'])).toBeUndefined();
+    } finally {
+      release();
+      resetEngineStartWaitsForTests();
+    }
   });
 
   test('station#2301: the orchestration stream sets a stall deadline of 2.5 server keepalives', () => {

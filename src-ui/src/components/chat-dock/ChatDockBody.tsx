@@ -45,6 +45,7 @@ import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContext';
 import { useWorkObservation } from '../../contexts/work-observation';
+import { useEngineStartWait } from '../../hooks/orchestration/engineStartWaits';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
@@ -1173,10 +1174,17 @@ export function ChatDockBody({
     ? activeSession.conversationActivity.progressSilence
     : activeOrchestrationSession?.turnProgress?.progressSilence;
   // #4568: Station's record that this chat's engine start is queued behind
-  // another engine start. Only while a send is in flight, so a stale read
-  // after the send settled claims nothing; the composer's Stop cancels it.
+  // another engine start: the Session's summary, or, for a brand-new chat
+  // whose first start has no Session yet, the stream's wait frame for the id
+  // it was sent under. Only while a send is in flight, so a stale read after
+  // the send settled claims nothing; the composer's Stop cancels it.
+  const streamedEngineStartWait = useEngineStartWait(apiBase, [
+    activeSession.currentSessionId,
+    activeSession.conversationId,
+    activeSession.id,
+  ]);
   const engineStartWait = isTurnInFlight(activeSession)
-    ? activeOrchestrationSession?.engineStartWait
+    ? (activeOrchestrationSession?.engineStartWait ?? streamedEngineStartWait)
     : undefined;
 
   // TTS readback when streaming ends

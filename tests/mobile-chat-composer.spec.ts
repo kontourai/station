@@ -1505,6 +1505,113 @@ test('shows the engine-start capacity wait while Station holds a send, and clear
   releaseSend();
 });
 
+// #4568: a brand-new chat's first start has no Session summary yet. Station
+// reports its queued start on the orchestration stream, for the id the chat
+// sent; Stop cancels it through the ordinary interrupt command.
+test("shows a brand-new chat's first-start wait from the stream, and Stop cancels it", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const sessionId = 'claude:1760000000000';
+  await page.route('**/api/orchestration/coordinator', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill(json({ success: true, data: { designation: null } }))
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    `**/api/orchestration/conversations/${encodeURIComponent(sessionId)}/**`,
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'This capacity fixture does not emit provider events',
+        }),
+      }),
+  );
+  const commands: Array<Record<string, unknown>> = [];
+  await page.route('**/api/orchestration/commands', async (route) => {
+    commands.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill(
+      json({
+        success: true,
+        data: { outcome: 'pending-turn-start', threadId: sessionId },
+      }),
+    );
+  });
+  let releaseSend!: () => void;
+  const sendHeld = new Promise<void>((resolve) => {
+    releaseSend = resolve;
+  });
+  const dispatched: Array<Record<string, unknown>> = [];
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched.push(route.request().postDataJSON() as Record<string, unknown>);
+    await sendHeld;
+    await route
+      .fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          code: 'resource_engine_start_cancelled',
+          error: 'The engine start was cancelled before it began.',
+        }),
+      })
+      .catch(() => undefined);
+  });
+
+  const textarea = await openComposer(page);
+  await textarea.fill('Start the review.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(() => expect(dispatched).toHaveLength(1)).toPass({
+    timeout: 10_000,
+  });
+  // The brand-new chat names itself; Station's frame answers for that id.
+  expect(dispatched[0]).toMatchObject({ conversationId: sessionId });
+  await emitMockOrchestrationEvent(page, 'orchestration:engine-start-wait', {
+    threadId: sessionId,
+    wait: { since: '2026-11-06T12:00:01.000Z' },
+  });
+  const badge = page.getByTestId('chat-dock-engine-start-wait');
+  await expect(badge).toContainText('Waiting for another engine to start', {
+    timeout: 10_000,
+  });
+
+  for (const [width, height] of [
+    [390, 844],
+    [1440, 900],
+  ] as const) {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme });
+      await expect(badge).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `engine-start-wait-new-chat-${width}-${colorScheme}.png`,
+        ),
+        animations: 'disabled',
+      });
+    }
+  }
+
+  await page.getByRole('button', { name: 'Stop the current turn' }).click();
+  await expect(() =>
+    expect(commands).toContainEqual(
+      expect.objectContaining({ type: 'interruptTurn', threadId: sessionId }),
+    ),
+  ).toPass({ timeout: 10_000 });
+  await emitMockOrchestrationEvent(page, 'orchestration:engine-start-wait', {
+    threadId: sessionId,
+    wait: null,
+  });
+  releaseSend();
+  await expect(badge).toHaveCount(0, { timeout: 10_000 });
+});
+
 // archive#3344. The whole paste path against the STATION engine — the one an
 // unbound Station agent uses, and the one whose composer used to refuse every
 // image because no signal it read said yes. Three claims, each of which failed

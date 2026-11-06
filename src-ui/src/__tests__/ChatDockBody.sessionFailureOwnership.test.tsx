@@ -19,6 +19,10 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import {
+  applyEngineStartWaitFrame,
+  resetEngineStartWaitsForTests,
+} from '../hooks/orchestration/engineStartWaits';
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -669,6 +673,25 @@ describe('ChatDockBody engine-start capacity wait (#4568)', () => {
     view.unmount();
     renderDock(buildSession({ status: 'sending' }), waitingSummary());
     expect(screen.queryByTestId('chat-dock-engine-start-wait')).toBeNull();
+  });
+
+  test("a brand-new chat's first start, with no Session summary yet, shows the wait the stream reported", () => {
+    applyEngineStartWaitFrame('http://localhost:3242', {
+      threadId: 'failure-ownership-session',
+      wait: { since: '2026-11-06T12:00:00.000Z' },
+    });
+    try {
+      const view = renderDock(buildSession({ status: 'sending' }), null);
+      expect(
+        screen.getByTestId('chat-dock-engine-start-wait').textContent,
+      ).toContain('Waiting for another engine to start');
+      view.unmount();
+      // Once the send settled, the reported wait claims nothing.
+      renderDock(buildSession({ status: 'idle' }), null);
+      expect(screen.queryByTestId('chat-dock-engine-start-wait')).toBeNull();
+    } finally {
+      resetEngineStartWaitsForTests();
+    }
   });
 
   test('a stale wait on the summary is not shown once the send has settled', () => {

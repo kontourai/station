@@ -1,14 +1,20 @@
 /**
- * #4568: person-first engine-start capacity for the starts an existing
- * Session needs — a cold follow-up's respawn and a credential-profile
- * restart — through the real OrchestrationService, a real EventStore and the
- * real start-lease controller. The status assertions read the Session's
- * published summary, the projection the composer renders.
+ * #4568: person-first engine-start capacity through the real
+ * OrchestrationService, a real EventStore and the real start-lease controller:
+ * a brand-new chat's first start, a cold follow-up's respawn and a
+ * credential-profile restart. Waits are observed only through what Station
+ * publishes: the `orchestration:engine-start-wait` frame (and the readers it
+ * names), the Session summary and the stream-open replay.
  */
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { OrchestrationEngineStartWaitFrame } from '@kontourai/station-contracts/orchestration';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
@@ -23,6 +29,7 @@ import {
 } from '../../infra/resource-posture.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import type { SessionReadScope } from '../orchestration-service.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
 const operator: ClientOrigin = {
@@ -30,6 +37,9 @@ const operator: ClientOrigin = {
   actor: { kind: 'operator' },
   reported: { version: 1, surface: 'web', build: '1' },
 };
+
+const reader = (userId: string) =>
+  sessionReadAuthorityFromRequest(userId, undefined, undefined);
 
 function deferred() {
   let release!: () => void;
@@ -45,8 +55,12 @@ afterEach(async () => {
   while (cleanups.length) await cleanups.pop()?.();
 });
 
+const PROJECT = { slug: 'demo', id: 'project-demo' };
+
 async function harness(options: { engineStartWaitMs?: number } = {}) {
   const tmp = makeTempDir('engine-start-recovery-');
+  // A real directory: workspace reauthorization compares canonical paths.
+  const projectRoot = realpathSync(makeTempDir('engine-start-project-'));
   const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
   const eventBus = new EventBus();
   const adapter = new GateTestAdapter();
@@ -60,6 +74,24 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
     }
     return original(input);
   });
+  /**
+   * The production Project-directory resolver every start awaits to
+   * reauthorize a Project workspace after admission. A test arms one hold to
+   * stop a start exactly there, between the lease and the provider start.
+   */
+  let held: { reached: () => void; release: Promise<void> } | undefined;
+  const resolveProjectSessionDirectory = vi.fn(
+    async (slug: string, binding?: { localProjectId: string; cwd: string }) => {
+      if (binding && held) {
+        const hold = held;
+        held = undefined;
+        hold.reached();
+        await hold.release;
+      }
+      if (slug !== PROJECT.slug) return undefined;
+      return binding ? binding.cwd : projectRoot;
+    },
+  );
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus,
@@ -69,6 +101,10 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
         ? { engineStartWaitMs: options.engineStartWaitMs }
         : {},
     ),
+    listProjects: () => [
+      { slug: PROJECT.slug, id: PROJECT.id, workingDirectory: projectRoot },
+    ],
+    resolveProjectSessionDirectory,
     logger: { debug: vi.fn(), warn: vi.fn() },
   });
   cleanups.push(async () => {
@@ -76,25 +112,34 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
     await service.shutdown();
   });
 
+  /** Every wait frame Station published, with the readers it named. */
+  const frames: Array<{
+    frame: OrchestrationEngineStartWaitFrame;
+    canRead: (scope: SessionReadScope) => boolean;
+  }> = [];
+  eventBus.subscribe((event) => {
+    if (event.event === SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED)
+      frames.push(event.data as (typeof frames)[number]);
+  });
+
   /**
-   * Resolves on the projection change the composer refreshes from, published
-   * for `threadId` once its capacity wait is `present` (or gone). Other
-   * projection changes for the thread (turn progress) do not count.
+   * Resolves with the next published wait frame for `threadId` whose wait is
+   * `present` (a queued start) or gone (`null`).
    */
   const waitPublished = (threadId: string, present: boolean) =>
-    new Promise<void>((resolve) => {
+    new Promise<(typeof frames)[number]>((resolve) => {
       const unsubscribe = eventBus.subscribe((event) => {
         if (
-          event.event ===
-            SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED &&
-          (event.data as { threadId?: unknown } | undefined)?.threadId ===
-            threadId &&
-          (
-            service as unknown as { engineStartWaits: Map<string, unknown> }
-          ).engineStartWaits.has(threadId) === present
+          event.event !== SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED
+        )
+          return;
+        const published = event.data as (typeof frames)[number];
+        if (
+          published.frame.threadId === threadId &&
+          (published.frame.wait !== null) === present
         ) {
           unsubscribe();
-          resolve();
+          resolve(published);
         }
       });
     });
@@ -105,14 +150,36 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
     );
 
   /** A session restored at boot with no engine: the parked/interrupted case. */
-  const restoreDormant = async (threadId: string) => {
+  const restoreDormant = async (
+    threadId: string,
+    options: { project?: true } = {},
+  ) => {
     eventStore.upsertSession({
       provider: 'claude',
       threadId,
       status: 'ready',
       resumeCursor: { cursor: `resume-${threadId}` },
+      ...(options.project ? { cwd: projectRoot } : {}),
       createdAt: '2026-11-01T00:00:00.000Z',
       updatedAt: '2026-11-01T00:00:05.000Z',
+    });
+    eventStore.appendEvent({
+      eventId: `${threadId}-started`,
+      provider: 'claude',
+      threadId,
+      method: 'session.started',
+      sessionId: threadId,
+      createdAt: '2026-11-01T00:00:00.000Z',
+      metadata: {
+        userId: 'owner',
+        ...(options.project
+          ? {
+              projectSlug: PROJECT.slug,
+              localProjectId: PROJECT.id,
+              cwd: projectRoot,
+            }
+          : {}),
+      },
     });
     service.initialize();
     await awaitSessionRecoveryCompleted(service);
@@ -137,6 +204,38 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
     };
   };
 
+  /**
+   * Hold the next post-admission Project workspace reauthorization. Arm it
+   * while the start is still queued, so the hold lands after the lease.
+   */
+  const holdWorkspaceAuthorization = () => {
+    const reached = deferred();
+    const release = deferred();
+    held = { reached: reached.release, release: release.promise };
+    return { reached: reached.promise, release: release.release };
+  };
+
+  /** A person's brand-new chat: a first start no Session record answers for. */
+  const freshStart = (
+    threadId: string,
+    userId = 'owner',
+    options: { project?: true } = {},
+  ) =>
+    service.startSessionInternal(
+      {
+        type: 'start-session',
+        input: {
+          threadId,
+          provider: 'claude',
+          ...(options.project
+            ? { cwd: projectRoot, metadata: { projectSlug: PROJECT.slug } }
+            : {}),
+        },
+      },
+      { userId },
+      { resourceAdmissionIntent: 'interactive_user' },
+    );
+
   const startsFor = (threadId: string) =>
     vi
       .mocked(adapter.startSession)
@@ -145,11 +244,14 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
   return {
     adapter,
     eventStore,
+    frames,
     service,
     waitPublished,
     summary,
     restoreDormant,
     holdStartLease,
+    holdWorkspaceAuthorization,
+    freshStart,
     startsFor,
   };
 }
@@ -298,6 +400,30 @@ describe('a cold follow-up respawn (#4568)', () => {
     expect(h.startsFor('parked')).toBe(0);
     await lease.release();
   });
+  test("a person's Stop after admission but before the provider start still launches no engine", async () => {
+    const h = await harness();
+    await h.restoreDormant('parked', { project: true });
+    const lease = await h.holdStartLease();
+    const waiting = h.waitPublished('parked', true);
+    const turn = h.service.dispatch(
+      { type: 'sendTurn', input: { threadId: 'parked', input: 'continue' } },
+      { clientOrigin: operator },
+    );
+    const rejected = expect(turn).rejects.toMatchObject({
+      message: new EngineStartCancelledError().message,
+    });
+    await waiting;
+    const hold = h.holdWorkspaceAuthorization();
+    const admitted = h.waitPublished('parked', false);
+    await lease.release();
+    await admitted;
+    await hold.reached;
+    await h.service.dispatch({ type: 'interruptTurn', threadId: 'parked' });
+    hold.release();
+    await rejected;
+    await settle();
+    expect(h.startsFor('parked')).toBe(0);
+  });
 });
 
 describe('a credential-profile restart (#4568)', () => {
@@ -367,6 +493,34 @@ describe('a credential-profile restart (#4568)', () => {
     expect(h.startsFor('live')).toBe(2);
   });
 
+  test('a restart cancelled after admission but before the provider start launches no engine', async () => {
+    const h = await harness();
+    await h.restoreDormant('live', { project: true });
+    expect(
+      await h.service.dispatch(
+        { type: 'sendTurn', input: { threadId: 'live', input: 'first' } },
+        { clientOrigin: operator },
+      ),
+    ).toMatchObject({ turnId: 'turn-1' });
+    expect(h.startsFor('live')).toBe(1);
+    const lease = await h.holdStartLease();
+    const cancel = new AbortController();
+    const waiting = h.waitPublished('live', true);
+    const restarted = restart(h, cancel.signal, 'interactive');
+    const rejected = expect(restarted).rejects.toThrow('recovery cancelled');
+    await waiting;
+    const hold = h.holdWorkspaceAuthorization();
+    const admitted = h.waitPublished('live', false);
+    await lease.release();
+    await admitted;
+    await hold.reached;
+    cancel.abort(new Error('recovery cancelled'));
+    hold.release();
+    await rejected;
+    await settle();
+    expect(h.startsFor('live')).toBe(1);
+  });
+
   test.each(['automation', undefined] as const)(
     'a restart of a %s turn keeps the immediate refusal',
     async (origin) => {
@@ -381,4 +535,111 @@ describe('a credential-profile restart (#4568)', () => {
       await lease.release();
     },
   );
+});
+
+describe("a brand-new chat's first start (#4568)", () => {
+  test('waits behind a background start, publishes its wait only to its owner, and clears on admission', async () => {
+    const h = await harness();
+    h.service.initialize();
+    const lease = await h.holdStartLease();
+    const waiting = h.waitPublished('fresh', true);
+    const start = h.freshStart('fresh');
+    const published = await waiting;
+    expect(published.frame).toEqual({
+      threadId: 'fresh',
+      wait: { since: expect.any(String) },
+    });
+    expect(published.canRead(reader('owner'))).toBe(true);
+    expect(published.canRead(reader('stranger'))).toBe(false);
+    // What a stream that opens now is sent first: only the owner sees it.
+    expect(h.service.readableEngineStartWaits(reader('owner'))).toEqual([
+      published.frame,
+    ]);
+    expect(h.service.readableEngineStartWaits(reader('stranger'))).toEqual([]);
+    // Nothing pretends a Session exists before the start.
+    expect(await h.summary('fresh')).toBeUndefined();
+    await settle();
+    expect(h.startsFor('fresh')).toBe(0);
+
+    const cleared = h.waitPublished('fresh', false);
+    await lease.release();
+    expect((await cleared).canRead(reader('stranger'))).toBe(false);
+    expect((await start).status).toBe('accepted');
+    expect(h.startsFor('fresh')).toBe(1);
+    expect(h.service.readableEngineStartWaits(reader('owner'))).toEqual([]);
+  });
+
+  test("its owner's Stop cancels the wait and no engine starts; another person's Stop is refused", async () => {
+    const h = await harness();
+    h.service.initialize();
+    const lease = await h.holdStartLease();
+    const waiting = h.waitPublished('fresh', true);
+    const start = h.freshStart('fresh');
+    await waiting;
+    await expect(
+      h.service.dispatch(
+        { type: 'interruptTurn', threadId: 'fresh' },
+        { userId: 'stranger' },
+      ),
+    ).rejects.toThrow('Session not found: fresh');
+    expect(h.service.readableEngineStartWaits(reader('owner'))).toHaveLength(1);
+
+    const cleared = h.waitPublished('fresh', false);
+    await h.service.dispatch(
+      { type: 'interruptTurn', threadId: 'fresh' },
+      { userId: 'owner' },
+    );
+    expect(await start).toMatchObject({
+      status: 'rejected',
+      code: 'resource_engine_start_cancelled',
+    });
+    await cleared;
+    await lease.release();
+    await settle();
+    expect(h.startsFor('fresh')).toBe(0);
+    expect(h.service.readableEngineStartWaits(reader('owner'))).toEqual([]);
+  });
+
+  test('a wait that times out is refused and its wait clears', async () => {
+    const h = await harness({ engineStartWaitMs: 25 });
+    h.service.initialize();
+    const lease = await h.holdStartLease();
+    const waiting = h.waitPublished('fresh', true);
+    const start = h.freshStart('fresh');
+    await waiting;
+    const cleared = h.waitPublished('fresh', false);
+    expect(await start).toMatchObject({
+      status: 'rejected',
+      code: 'resource_engine_start_capacity',
+    });
+    await cleared;
+    expect(h.startsFor('fresh')).toBe(0);
+    expect(h.service.readableEngineStartWaits(reader('owner'))).toEqual([]);
+    await lease.release();
+  });
+
+  test("its owner's Stop after admission but before the provider start launches no engine", async () => {
+    const h = await harness();
+    h.service.initialize();
+    const lease = await h.holdStartLease();
+    const waiting = h.waitPublished('fresh', true);
+    const start = h.freshStart('fresh', 'owner', { project: true });
+    await waiting;
+    const hold = h.holdWorkspaceAuthorization();
+    const admitted = h.waitPublished('fresh', false);
+    await lease.release();
+    await admitted;
+    await hold.reached;
+    await h.service.dispatch(
+      { type: 'interruptTurn', threadId: 'fresh' },
+      { userId: 'owner' },
+    );
+    hold.release();
+    expect(await start).toMatchObject({
+      status: 'rejected',
+      code: 'resource_engine_start_cancelled',
+    });
+    await settle();
+    expect(h.startsFor('fresh')).toBe(0);
+  });
 });
