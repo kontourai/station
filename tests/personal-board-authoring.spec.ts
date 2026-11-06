@@ -881,6 +881,19 @@ for (const width of [390, 1440]) {
           exact: true,
         });
         await expect(projectPicker).toHaveCSS('color-scheme', colorScheme);
+        await page.evaluate(async () => {
+          await Promise.all(
+            document
+              .getAnimations()
+              .filter(
+                (animation) =>
+                  animation.playState === 'running' &&
+                  animation.effect?.getTiming().iterations !== Infinity &&
+                  animation.timeline === document.timeline,
+              )
+              .map((animation) => animation.finished.catch(() => {})),
+          );
+        });
         const pickerBox = await projectPicker.boundingBox();
         expect(pickerBox).not.toBeNull();
         expect(pickerBox!.height).toBeGreaterThanOrEqual(44);

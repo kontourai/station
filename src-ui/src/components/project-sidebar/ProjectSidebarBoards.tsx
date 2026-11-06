@@ -627,19 +627,6 @@ export function ProjectSidebarBoards({
         });
         return (
           <div className="sidebar__board-row" key={board.slug}>
-            {/* The row's own line — the Board button (or its rename input)
-                and the absolutely-positioned menu trigger — wrapped so the
-                trigger is centred on THAT box and not on the whole row.
-
-                Without this wrapper the trigger centres on
-                `.sidebar__board-row`, which grows from 44px to ~138px when a
-                menu opens below, sliding the trigger down on top of the
-                menu's first item: a tap on Rename hit the trigger and closed
-                the menu instead (#2062 review F1, measured in Chromium at
-                33x27px of overlap). The projects list already solves this the
-                same way — `.sidebar__project-row-main` in `ProjectSidebar.css`
-                wraps its button and absolute controls with the expanded
-                content outside it. */}
             <div className="sidebar__board-row-main">
               {renaming ? (
                 <input
