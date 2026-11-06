@@ -914,10 +914,10 @@ remains for inspection. A message with attachments or a visual skill keeps its d
 until Station answers instead.
 
 If Station cannot confirm delivery after three automatic checks, the row shows
-**Delivery unconfirmed** and pauses those checks. **Refresh delivery** asks what
+**May have reached the agent** and pauses those checks. **Check** asks what
 happened and shows the result without resending. If Station confirms it never
 received the message, **Retry** sends it with the same identity. **Copy message**
-is in **More message actions**; **Discard** removes the saved row.
+is in **More delivery actions**; **Discard…** removes the saved row after confirmation.
 
 Once Station confirms a turn started, a late network error does not queue that
 message again.
