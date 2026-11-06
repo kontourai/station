@@ -1,0 +1,11 @@
+{
+  "revision": "4e0dc1d5c08a4df9797b6c1da161a8b7d1de5c9f",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the new main dependency pin from #4633: package.json, pnpm-lock.yaml and the lifecycle policy agree on node-pty 1.2.0-beta.18. Updated only four independent live-lock expected identities; production graph traversal, platform selection, pruning and tarball-integrity limits are unchanged. The SBOM owner suite first failed on the old pin, then passed 40/40 after the literal update.","inputs":["docs/design/pnpm-workspace-installation.md","scripts/__tests__/release-sbom-generation.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the SBOM generation/assembly section after merging main and its Windows PTY repair. The independent expected node-pty identity now matches the reviewed 1.2.0-beta.18 pin; no generator, fragment, CLI or artifact admission behavior changed. Exact equality, completeness and schema checks remain intact and the owner file passes 40/40.","inputs":["docs/reference/cli.md","scripts/__tests__/release-sbom-generation.test.ts"]},
+
+    {"path":"scripts/__tests__/fixtures/sbom/README.md","note":"Reviewed the four live-lock node-pty identity updates after #4633. The pinned SPDX schema, license, CycloneDX schema source and offline validation remain unchanged; all 40 owner tests pass. No schema provenance statement needs a prose change.","inputs":["scripts/__tests__/fixtures/sbom/README.md","scripts/__tests__/release-sbom-generation.test.ts"]}
+  ]
+}
