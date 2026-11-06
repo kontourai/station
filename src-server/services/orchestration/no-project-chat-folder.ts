@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
+import {
+  canonicalPathThroughExistingAncestor,
+  isCanonicalPathWithin,
+} from '../../utils/path-containment.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import {
   isManagedEngineWorkspace,
@@ -40,20 +44,23 @@ function noProjectChatScratchRoot(
   return join(resolve(stationHome), 'scratch');
 }
 
-function isContainedBy(parent: string, candidate: string): boolean {
-  const child = relative(parent, candidate);
-  return child === '' || (!child.startsWith('..') && !isAbsolute(child));
-}
-
 /** Whether `cwd` is a scratch folder this Station home made for a chat. */
 function isNoProjectChatScratch(
   cwd: string,
   stationHome: string = resolveHomeDir(),
 ): boolean {
   if (!isAbsolute(cwd)) return false;
-  const root = noProjectChatScratchRoot(stationHome);
-  const candidate = resolve(cwd);
-  return candidate !== root && isContainedBy(root, candidate);
+  try {
+    // Preparation returns real paths even when the configured home is an alias (#4478).
+    const home = canonicalPathThroughExistingAncestor(resolve(stationHome));
+    const root = join(home, 'scratch');
+    const candidate = canonicalPathThroughExistingAncestor(cwd);
+    return (
+      relative(root, candidate) !== '' && isCanonicalPathWithin(root, candidate)
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
