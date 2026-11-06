@@ -13043,7 +13043,14 @@ export class EventStore {
       this.reserveEventAppendWriter();
       const lineage =
         this.conversationSessionLineage.sessionForExecution(threadId);
-      if (!existing && lineage?.predecessorSessionId) {
+      // A peer can materialize the reserved child before this writer is acquired.
+      if (
+        !existing &&
+        lineage?.predecessorSessionId &&
+        !this.db
+          .prepare('SELECT 1 FROM provider_session_state WHERE thread_id = ?')
+          .get(threadId)
+      ) {
         this.db.exec('RELEASE SAVEPOINT mark_session_closed_lineage');
         return;
       }
