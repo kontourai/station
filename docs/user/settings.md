@@ -209,7 +209,7 @@ sources, rules, open episodes and recent deliveries. Each count is the number
 of rows listed under it. A delivery held by a limit shows `suppressed` with the
 reason. An exhausted episode offers **Retry episode**, which allows exactly one
 more attempt under the rule as it is now. Creating and editing rules uses
-`station automation`; see the [CLI reference](../reference/cli.md#automation).
+`station automation`; see the [CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#automation).
 
 ## Shared answers
 
