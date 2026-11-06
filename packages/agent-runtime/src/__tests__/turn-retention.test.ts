@@ -62,7 +62,7 @@ it('retention bounds open and settle while draining 10 terminal turns with 80 ef
   await retentionBacklog(10, 80);
 });
 
-it('settlement leaves WAL checkpoint work for idle maintenance without delaying durable visibility', async () => {
+it('settlement leaves small WAL writes durable without foreground checkpoints', async () => {
   const f = await turnFixture();
   try {
     f.database.exec(
@@ -88,7 +88,7 @@ it('settlement leaves WAL checkpoint work for idle maintenance without delaying 
     }
     await setImmediate();
     const idle = f.database.prepare('PRAGMA wal_checkpoint(NOOP)').get();
-    expect(idle?.checkpointed).toBe(idle?.log);
+    expect(idle?.checkpointed).toBe(0);
     expect(f.database.prepare('PRAGMA synchronous').get()?.synchronous).toBe(2);
   } finally {
     await f.close();
@@ -129,6 +129,37 @@ it('a failed settlement commit rolls back terminal state and restores the host c
       f.database.prepare('SELECT state FROM agent_steps_terminal').get()?.state,
     ).toBe('completed');
   } finally {
+    await f.close();
+  }
+});
+
+it('a pinned WAL reader refuses more growth until checkpointing can resume', async () => {
+  const f = await turnFixture();
+  let reader: DatabaseSync | undefined;
+  try {
+    f.database.exec(
+      'PRAGMA wal_autocheckpoint=0; CREATE TABLE checkpoint_padding(bytes BLOB); INSERT INTO checkpoint_padding VALUES(1)',
+    );
+    reader = new DatabaseSync(f.database.location()!);
+    reader.exec('BEGIN');
+    reader.prepare('SELECT * FROM checkpoint_padding').all();
+    f.database
+      .prepare('INSERT INTO checkpoint_padding VALUES(?)')
+      .run(Buffer.alloc(5 * 1024 * 1024));
+    await expect(f.lease.assertCurrent()).rejects.toThrow(
+      'DURABLE_AGENT_CHECKPOINT_BUSY',
+    );
+    expect(
+      f.database.prepare('SELECT count(*) AS n FROM agent_steps_turns').get()
+        ?.n,
+    ).toBe(1);
+    reader.exec('ROLLBACK');
+    await f.lease.assertCurrent();
+    expect(
+      f.database.prepare('PRAGMA wal_autocheckpoint').get()?.wal_autocheckpoint,
+    ).toBe(0);
+  } finally {
+    reader?.close();
     await f.close();
   }
 });

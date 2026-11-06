@@ -46,6 +46,7 @@ import {
   isDurableNativeOutputFacts,
 } from '../native-output-turn-grant.js';
 import type { IStreamChunk, IStreamResult } from '../types.js';
+import { durableAgentCheckpoint } from './durable-agent-checkpoint.js';
 import {
   DurableForegroundChannel,
   encodeDurableAgentFrame,
@@ -237,7 +238,10 @@ function createStationOwner(home: string) {
         database.exec('PRAGMA cache_size=-65536');
         handle = {
           database,
-          journal: openSqliteAgentJournal({ database }),
+          journal: openSqliteAgentJournal({
+            database,
+            checkpoint: durableAgentCheckpoint(database),
+          }),
           inode: statSync(path).ino,
         };
       } catch (error) {
