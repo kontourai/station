@@ -132,6 +132,11 @@ const {
   connectionState: {
     status: 'connected',
     reason: null as string | null,
+    pendingApproval: null as null | {
+      requestKind: 'direct' | 'code';
+      expiresAt: number;
+      remainingMs: number;
+    },
   },
   coreUpdateStatus: {
     data: undefined as
@@ -215,6 +220,8 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
     status: connectionState.status,
     reason: connectionState.reason,
   }),
+  // The same pending-request fact the header chip reads.
+  usePendingPairingApproval: () => connectionState.pendingApproval,
 }));
 // The launch update check reads its connected-server context through real
 // react-query (#2032), and this file renders App without a QueryClient. A
@@ -941,6 +948,29 @@ describe('App home route resolution', () => {
     // the connect package don't false-fail this wiring test.
     expect(screen.getByText(/isn't accepting this device/)).toBeTruthy();
     expect(screen.queryByText(/offline/i)).toBeNull();
+  });
+
+  // Field report: the header read "Awaiting approval" while this card read
+  // "isn't accepting this device" — every probe 401s until approval. Both now
+  // derive from the one pending-request fact.
+  test('a pending access request reads as waiting, not as a refusal', async () => {
+    connectionState.status = 'error';
+    connectionState.reason = 'authentication-failed';
+    connectionState.pendingApproval = {
+      requestKind: 'direct',
+      expiresAt: Date.now() + 120_000,
+      remainingMs: 120_000,
+    };
+    hooks.projects = { data: [], isLoading: false, isError: true };
+    try {
+      render(<App />);
+      await act(async () => undefined);
+
+      expect(screen.getByText(/^Waiting for approval on /)).toBeTruthy();
+      expect(screen.queryByText(/isn't accepting this device/)).toBeNull();
+    } finally {
+      connectionState.pendingApproval = null;
+    }
   });
 
   // #928 slice C: App's `navigateToView` no longer intercepts an `activity`

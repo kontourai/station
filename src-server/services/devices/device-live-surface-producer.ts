@@ -1,5 +1,8 @@
 import {
   type LiveSurfaceCodec,
+  type LiveSurfaceDisplay,
+  type LiveSurfaceFold,
+  type LiveSurfaceFoldInput,
   type LiveSurfaceFrameHeader,
   type LiveSurfaceFrameRotation,
   type LiveSurfaceH264Sequence,
@@ -33,6 +36,8 @@ import type {
   DeviceHubConnectResult,
 } from './device-hub-endpoint.js';
 import {
+  androidFoldFromHub,
+  androidFoldPosture,
   androidKeycodeForKey,
   cancelSlidePath,
   deviceButtonCommand,
@@ -43,11 +48,16 @@ import {
   hidUsageForCode,
   IOS_MSG_BUTTON,
   IOS_MSG_HARDWARE_KEYBOARD,
+  IOS_MSG_HINGE_CONTROL,
   IOS_MSG_KEY,
   IOS_MSG_ORIENTATION,
   IOS_MSG_TOUCH,
+  IOS_TAG_HINGE_REPLY,
   IOS_TAG_SCREEN_CONFIG,
+  iosFoldFromScreenConfig,
+  iosHingeCommand,
   iosPacket,
+  iosPanelForDisplay,
   surfacePointToRawUnit,
   toIosOrientation,
   type UnitPoint,
@@ -119,6 +129,8 @@ export class DeviceInputError extends Error {
       | 'input-channel-down'
       | 'button-unsupported'
       | 'text-unsupported'
+      | 'fold-unsupported'
+      | 'fold-refused'
       | 'surface-size-unknown'
       | 'dispatch-timeout'
       | 'send-failed'
@@ -203,6 +215,8 @@ interface PendingFrame {
   body: Uint8Array;
   width: number;
   height: number;
+  /** A foldable's display the frame came from. */
+  display?: LiveSurfaceDisplay;
 }
 
 interface VideoRun {
@@ -313,6 +327,20 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   private videoMode: LiveSurfaceVideoMode = 'live';
   private videoDegradedReason: LiveSurfaceVideoDegradedReason | undefined;
   private orientation: LiveSurfaceOrientation | undefined;
+  /** A foldable's hinge state, as its helper last reported it. */
+  private fold: LiveSurfaceFold | undefined;
+  /**
+   * iOS: stream the active display's own panel. Cleared when the helper
+   * refuses panel streams, so the device's main stream is used instead.
+   */
+  private panelStreams = true;
+  /** Aborts the current MJPEG read alone, to switch displays. */
+  private mjpegRead: AbortController | null = null;
+  private nextHingeRequestId = 1;
+  private readonly hingeReplies = new Map<
+    number,
+    { resolve: () => void; reject: (error: Error) => void }
+  >();
   /** The iOS helper's screen config (the stream's size), when pushed. */
   private iosScreen: { width: number; height: number } | null = null;
   /** The size and turn of the frame input is aimed at. */
@@ -323,8 +351,6 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   } | null = null;
   /** The raw-unit point a touch is held at, or null. */
   private touchDown: UnitPoint | null = null;
-  /** Keys pressed and not released (for a cancel). */
-  private readonly heldKeys = new Map<string, { key: string; code: string }>();
 
   private run: VideoRun | null = null;
   private runGeneration = 0;
@@ -343,7 +369,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         options.platform === 'android'
           ? ['jpeg', 'png', 'h264']
           : ['jpeg', 'png'],
-      input: ['pointer', 'key', 'text', 'device-button', 'rotate'],
+      input: ['pointer', 'key', 'text', 'device-button', 'rotate', 'fold'],
     };
     this.now = options.now ?? Date.now;
     this.dispatchTimeoutMs = options.dispatchTimeoutMs ?? 3_000;
@@ -362,6 +388,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         ? { videoDegradedReason: this.videoDegradedReason }
         : {}),
       ...(this.orientation ? { orientation: this.orientation } : {}),
+      ...(this.fold ? { fold: this.fold } : {}),
     };
   }
 
@@ -466,6 +493,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
           () => {},
         );
       this.setInputChannel('connected');
+      if (this.options.platform === 'android') void this.readAndroidFold();
     });
     socket.on('message', (data, isBinary) => {
       if (this.inputSocket !== socket || !isBinary) return;
@@ -478,7 +506,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
       if (this.inputSocket !== socket) return;
       this.inputSocket = null;
       this.touchDown = null;
-      this.heldKeys.clear();
+      this.failHingeReplies('device input disconnected');
       this.inputFailed(generation);
     };
     socket.on('close', lost);
@@ -571,7 +599,11 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   }
 
   private onIosHelperMessage(bytes: Uint8Array): void {
-    if (bytes.length < 2 || bytes[0] !== IOS_TAG_SCREEN_CONFIG) return;
+    if (
+      bytes.length < 2 ||
+      (bytes[0] !== IOS_TAG_SCREEN_CONFIG && bytes[0] !== IOS_TAG_HINGE_REPLY)
+    )
+      return;
     let config: unknown;
     try {
       config = JSON.parse(new TextDecoder().decode(bytes.subarray(1)));
@@ -579,6 +611,11 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
       return;
     }
     if (typeof config !== 'object' || config === null) return;
+    if (bytes[0] === IOS_TAG_HINGE_REPLY) {
+      this.onHingeReply(config as Record<string, unknown>);
+      return;
+    }
+    this.setFold(iosFoldFromScreenConfig(config as Record<string, unknown>));
     const { width, height, orientation } = config as Record<string, unknown>;
     if (
       typeof width === 'number' &&
@@ -596,10 +633,192 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     }
   }
 
+  // ---- foldables -------------------------------------------------------------
+
+  /**
+   * Adopt a newly observed fold state. When the lit display changes, the
+   * iOS video switches to that display's own stream: the current read is
+   * aborted and `readMjpeg` reconnects to the new panel.
+   */
+  private setFold(next: LiveSurfaceFold | undefined): void {
+    const previous = this.fold;
+    if (JSON.stringify(previous) === JSON.stringify(next)) return;
+    this.fold = next;
+    if (
+      previous &&
+      next &&
+      previous.activeDisplay !== next.activeDisplay &&
+      this.panelStreams
+    )
+      this.mjpegRead?.abort();
+    this.notify();
+  }
+
+  private onHingeReply(reply: Record<string, unknown>): void {
+    const { requestId, ok, error } = reply;
+    if (typeof requestId !== 'number') return;
+    const waiter = this.hingeReplies.get(requestId);
+    if (!waiter) return;
+    this.hingeReplies.delete(requestId);
+    if (ok === true) waiter.resolve();
+    else
+      waiter.reject(
+        new DeviceInputError(
+          'fold-refused',
+          typeof error === 'string' && error.length <= 200
+            ? error
+            : 'the device could not change its fold',
+        ),
+      );
+  }
+
+  private failHingeReplies(message: string): void {
+    const waiters = [...this.hingeReplies.values()];
+    this.hingeReplies.clear();
+    for (const waiter of waiters)
+      waiter.reject(new DeviceInputError('input-channel-down', message));
+  }
+
+  /**
+   * One hinge command, resolved only by the helper's correlated reply (not
+   * by the socket accepting the bytes): a fold the simulator refused is
+   * reported as refused. The dispatch deadline bounds the wait.
+   */
+  private async foldIos(
+    input: LiveSurfaceFoldInput,
+    guard: LiveSurfaceDispatchContext | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<void> {
+    const fold = this.fold;
+    if (!fold)
+      throw new DeviceInputError(
+        'fold-unsupported',
+        'this device does not fold',
+      );
+    if ('hingeAngle' in input && !fold.angleControl)
+      throw new DeviceInputError(
+        'fold-unsupported',
+        'this device takes named stands only',
+      );
+    if ('facing' in input && fold.facingControl !== true)
+      throw new DeviceInputError(
+        'fold-unsupported',
+        'this device cannot be laid face up or down',
+      );
+    if ('posture' in input && !fold.postures.includes(input.posture))
+      throw new DeviceInputError(
+        'fold-unsupported',
+        `this device cannot be put in the ${input.posture} stand`,
+      );
+    const requestId = this.nextHingeRequestId++;
+    const replied = new Promise<void>((resolve, reject) => {
+      this.hingeReplies.set(requestId, { resolve, reject });
+      signal?.addEventListener('abort', () => {
+        this.hingeReplies.delete(requestId);
+        reject(new DeviceInputError('dispatch-timeout', 'no fold reply'));
+      });
+    });
+    replied.catch(() => {});
+    try {
+      await this.sendIos(
+        IOS_MSG_HINGE_CONTROL,
+        { requestId, command: iosHingeCommand(input) },
+        guard,
+      );
+    } catch (error) {
+      this.hingeReplies.delete(requestId);
+      throw error;
+    }
+    await replied;
+  }
+
+  private foldPath(): string {
+    return `/vendor/serve-emu/api/fold?device=${encodeURIComponent(this.options.deviceId)}`;
+  }
+
+  /** Read an Android emulator's hinge (once per input connection). */
+  private async readAndroidFold(): Promise<void> {
+    try {
+      const resolution = await this.options.hub.connect();
+      if (!resolution.ok || this.disposed) return;
+      const response = await resolution.connection.request(
+        'GET',
+        this.foldPath(),
+        { signal: AbortSignal.timeout(this.dispatchTimeoutMs * 2) },
+      );
+      if (!response.ok) return;
+      if (!this.disposed)
+        this.setFold(androidFoldFromHub(await response.json()));
+    } catch (error) {
+      this.reportError('device fold state could not be read', error);
+    }
+  }
+
+  private async foldAndroid(
+    input: LiveSurfaceFoldInput,
+    guard: LiveSurfaceDispatchContext | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<void> {
+    const posture = this.fold ? androidFoldPosture(input) : null;
+    if (!posture)
+      throw new DeviceInputError(
+        'fold-unsupported',
+        this.fold
+          ? 'this emulator can only be folded closed or opened flat'
+          : 'this device does not fold',
+      );
+    // The fence, disposal and the dispatch deadline are asked again after
+    // every wait and immediately before the fold is sent: a person who took
+    // control (or a close, or a timeout) while the hub connection was being
+    // resolved stops it, rather than the emulator folding for a stale
+    // controller.
+    const stillCurrent = () => {
+      if (this.disposed)
+        throw new DeviceInputError('disposed', 'device closed');
+      if (signal?.aborted)
+        throw new DeviceInputError('dispatch-timeout', 'the fold timed out');
+      if (guard && !guard.isCurrent())
+        throw new DeviceInputError('interrupted', 'control changed hands');
+    };
+    stillCurrent();
+    const resolution = await this.options.hub.connect();
+    if (!resolution.ok)
+      throw new DeviceInputError(
+        'input-channel-down',
+        'device hub unavailable',
+      );
+    stillCurrent();
+    const response = await resolution.connection.request(
+      'POST',
+      this.foldPath(),
+      {
+        body: JSON.stringify({ posture }),
+        headers: { 'content-type': 'application/json' },
+        ...(signal ? { signal } : {}),
+      },
+    );
+    const reply: unknown = await response.json().catch(() => null);
+    const fold = response.ok ? androidFoldFromHub(reply) : undefined;
+    if (!fold)
+      throw new DeviceInputError(
+        'fold-refused',
+        'the emulator did not confirm the fold',
+      );
+    this.setFold(fold);
+  }
+
   // ---- video --------------------------------------------------------------
 
-  private mjpegPath(): string {
-    return `/vendor/serve-sim/helper/${encodeURIComponent(this.options.deviceId)}/stream.mjpeg`;
+  /** The display this read streams: the lit one, when panels are in use. */
+  private mjpegDisplay(): LiveSurfaceDisplay | undefined {
+    return this.fold && this.panelStreams ? this.fold.activeDisplay : undefined;
+  }
+
+  private mjpegPath(display = this.mjpegDisplay()): string {
+    const device = encodeURIComponent(this.options.deviceId);
+    return display
+      ? `/vendor/serve-sim/helper/${device}/panel/${iosPanelForDisplay(display)}/stream.mjpeg`
+      : `/vendor/serve-sim/helper/${device}/stream.mjpeg`;
   }
 
   async start(
@@ -729,17 +948,43 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
       return;
     }
     let delivered = false;
+    let switched = false;
+    const display = this.mjpegDisplay();
+    const read = new AbortController();
+    const onRunAbort = () => read.abort();
+    run.abort.signal.addEventListener('abort', onRunAbort);
+    this.mjpegRead = read;
     try {
       const response = await resolution.connection.request(
         'GET',
-        this.mjpegPath(),
-        { signal: run.abort.signal },
+        this.mjpegPath(display),
+        { signal: read.signal },
       );
+      // A helper without per-display streams answers the panel path with a
+      // client error: use the main stream from now on.
+      if (
+        display &&
+        !response.ok &&
+        response.status >= 400 &&
+        response.status < 500
+      ) {
+        await response.body?.cancel().catch(() => {});
+        this.panelStreams = false;
+        switched = true;
+        throw new Error(`device panel stream refused (${response.status})`);
+      }
       const boundary = multipartBoundary(response.headers.get('content-type'));
       if (!response.ok || !response.body || !boundary)
         throw new Error(`device MJPEG stream refused (${response.status})`);
       const parser = new MjpegMultipartParser(boundary);
       const reader = response.body.getReader();
+      // An abort is not guaranteed to reach a read already waiting on the
+      // body; cancelling the reader ends it (a display switch relies on it).
+      read.signal.addEventListener(
+        'abort',
+        () => void reader.cancel().catch(() => {}),
+        { once: true },
+      );
       // The helper answers a new stream connection with the frame it last
       // buffered, captured whenever capture last ran — seconds or minutes
       // ago when nobody was watching (live: a home screen replayed while
@@ -759,17 +1004,31 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
               continue;
             }
             delivered = true;
-            this.offer(run, { codec: 'jpeg', body: part, ...size });
+            this.offer(run, {
+              codec: 'jpeg',
+              body: part,
+              ...size,
+              ...(display ? { display } : {}),
+            });
           }
         }
       } finally {
         await reader.cancel().catch(() => {});
       }
     } catch (error) {
-      if (this.run === run)
+      // A display switch aborts this read on purpose.
+      if (display !== this.mjpegDisplay()) switched = true;
+      else if (this.run === run)
         this.reportError('device MJPEG stream failed', error);
+    } finally {
+      run.abort.signal.removeEventListener('abort', onRunAbort);
+      if (this.mjpegRead === read) this.mjpegRead = null;
     }
     if (this.run !== run) return;
+    if (switched) {
+      void this.readMjpeg(run, 0);
+      return;
+    }
     this.later(
       run,
       this.delay(delivered ? 0 : attempt),
@@ -1077,6 +1336,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         deviceScaleFactor: 1,
         capturedAt: this.now(),
         ...(rotation === 0 ? {} : { rotation }),
+        ...(frame.display ? { display: frame.display } : {}),
       },
       frame.body,
     );
@@ -1138,10 +1398,10 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     await this.bounded((signal) => this.dispatchNow(input, context, signal));
   }
 
-  async cancelHeldInput(_held: LiveSurfaceHeldInput): Promise<void> {
+  async cancelHeldInput(held: LiveSurfaceHeldInput): Promise<void> {
     // The registry runs a cancel at a handoff on behalf of NO controller:
     // it is not fenced, and must not be.
-    await this.bounded(() => this.cancelNow());
+    await this.bounded(() => this.cancelNow(held));
   }
 
   /**
@@ -1307,17 +1567,16 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         }
         if (!this.touchDown) return;
         const point = await this.toRawUnit(input);
-        this.touchDown = null;
+        // Still down until the lift is delivered: a failed lift is
+        // cancelled later, never forgotten.
         await this.touch('up', point, guard);
+        this.touchDown = null;
         return;
       }
-      case 'key': {
-        const id = input.code || input.key;
-        if (input.type === 'down') this.heldKeys.set(id, input);
-        else this.heldKeys.delete(id);
+      case 'key':
+        // What is held is the registry's account (`cancelHeldInput`).
         await this.sendKey(input.type, input.key, input.code, guard);
         return;
-      }
       case 'text':
         await this.sendText(input.text, guard);
         return;
@@ -1367,6 +1626,11 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         );
         return;
       }
+      case 'fold':
+        if (this.options.platform === 'ios')
+          await this.foldIos(input, guard, signal);
+        else await this.foldAndroid(input, guard, signal);
+        return;
     }
   }
 
@@ -1435,23 +1699,36 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   }
 
   /**
-   * End what the previous controller held WITHOUT completing it. The hub has
-   * no touch-cancel, so a held touch slides a short way parallel to the
+   * End what the registry says is held WITHOUT completing it (`held` is the
+   * registry's account, the authority on what to release). The hub has no
+   * touch-cancel, so a held touch slides a short way parallel to the
    * nearest edge and lifts there (`cancelSlidePath`): never a tap where it
-   * was pressed, and not an edge swipe. Held keys are released.
+   * was pressed, and not an edge swipe. Each held key is released. Every
+   * release is tried, a lift is forgotten only once delivered, and the
+   * cancel fails if any release was not, so the registry tries again (sending a release
+   * twice is harmless; never sending it leaves the key down).
    */
-  private async cancelNow(): Promise<void> {
+  private async cancelNow(held: LiveSurfaceHeldInput): Promise<void> {
+    const failures: unknown[] = [];
     const press = this.touchDown;
-    this.touchDown = null;
-    if (press) {
-      const path = cancelSlidePath(press);
-      for (const point of path) await this.touch('move', point, undefined);
-      await this.touch('up', path[path.length - 1]!, undefined);
+    if (press && held.buttons.includes('left')) {
+      try {
+        const path = cancelSlidePath(press);
+        for (const point of path) await this.touch('move', point, undefined);
+        await this.touch('up', path[path.length - 1]!, undefined);
+        this.touchDown = null;
+      } catch (error) {
+        failures.push(error);
+      }
     }
-    const keys = [...this.heldKeys.values()];
-    this.heldKeys.clear();
-    for (const { key, code } of keys)
-      await this.sendKey('up', key, code, undefined);
+    for (const { key, code } of held.keys) {
+      try {
+        await this.sendKey('up', key, code, undefined);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) throw failures[0];
   }
 
   // ---- lifecycle ------------------------------------------------------------
@@ -1469,6 +1746,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     } catch {
       // already closing
     }
+    this.failHingeReplies('device closed');
     this.setInputChannel('down');
     await this.stop();
     this.listeners.clear();

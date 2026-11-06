@@ -188,8 +188,20 @@ export function nativeProfileBootstrapRecoveryError(): string | undefined {
   return nativeBootstrapRecoveryError;
 }
 
+/**
+ * The shell's answer to "which platform am I", resolved once per page through
+ * the adapter's document-ready boundary. The profile and the fold source share
+ * this initial resolution, so fold adds no capability report of its own.
+ */
+const platformResolution: Promise<PlatformProfile> = resolvePlatformProfile();
+
+/** The compile target this page resolved (`web` or `unknown` included). */
+export function resolvedPlatformTarget(): Promise<PlatformProfile['target']> {
+  return platformResolution.then((profile) => profile.target);
+}
+
 let cachedProfile: PlatformProfile | null = null;
-const profileReady: Promise<PlatformProfile> = resolvePlatformProfile().then(
+const profileReady: Promise<PlatformProfile> = platformResolution.then(
   async (profile) => {
     if (profile.isTauri) {
       const [{ nativeStationProfileStorage }] = await Promise.all([

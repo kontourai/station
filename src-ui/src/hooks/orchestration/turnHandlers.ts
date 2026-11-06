@@ -8,6 +8,7 @@ import {
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
   isStationMemoryContinuationTurn,
+  MUSE_SERVE_UNAVAILABLE_CODE,
 } from '@kontourai/station-contracts/provider';
 import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import {
@@ -813,12 +814,56 @@ export function handleRuntimeErrorEvent(
   }
 }
 
+/**
+ * Warnings that state how the whole session runs, not something that just
+ * happened: the engine keeps its own approval posture instead of asking
+ * Station. They belong with the conversation they describe. As a floating
+ * toast, the four-line Muse notice sat over the person's own first message
+ * on a phone; in the transcript it takes its own row and has its own ×.
+ */
+const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
+  MUSE_SERVE_UNAVAILABLE_CODE,
+  ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+]);
+
+/**
+ * Put a session-posture warning in its chat's transcript, once. Returns false
+ * when no open chat owns the session (the dispatcher drops such events today),
+ * so the caller would still say it as a toast.
+ */
+function noteSessionPostureWarning(
+  threadId: string,
+  message: string,
+  station?: StationStateScope,
+) {
+  const chatStore = activeChatsStore.forStation(station);
+  const chatKey = chatStore.getChatKeyForExecutionSession(threadId);
+  if (!chatKey) return false;
+  const chat = chatStore.getSnapshot()[chatKey];
+  const shown = chat?.ephemeralMessages?.some(
+    (notice) => notice.role === 'system' && notice.content === message,
+  );
+  if (!shown)
+    chatStore.addEphemeralMessage(chatKey, {
+      role: 'system',
+      content: message,
+    });
+  return true;
+}
+
 export function handleRuntimeWarningEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.warning' }>,
   station?: StationStateScope,
 ) {
   const chatStore = activeChatsStore.forStation(station);
-  if (!isReplayThread(event.threadId)) {
+  if (
+    !isReplayThread(event.threadId) &&
+    !(
+      event.code !== undefined &&
+      SESSION_POSTURE_WARNING_CODES.has(event.code) &&
+      noteSessionPostureWarning(event.threadId, event.message, station)
+    )
+  ) {
     toastStore.upsert({
       message: event.message,
       sessionId: event.threadId,

@@ -796,7 +796,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Agent and Model selectors show their selected values without repeating the field labels.
   Their accessible names and tooltips retain the field name, exact Provider/model identity,
   selection source, and any unavailable reason. A long value ends in an ellipsis inside
-  its chip. When the Agent is reached through a model route ("via model-proxy
+  its chip. The Agent chip keeps its name whole up to half the row; the chips beside it
+  give way first. With no model reported the Model chip reads **Model**, and its
+  accessible name keeps "Model & effort". When the Agent is reached through a model route ("via model-proxy
   (home-server)"), a narrow composer drops that route before the Agent's name (#3050); the
   chip's accessible name and tooltip keep it. Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP

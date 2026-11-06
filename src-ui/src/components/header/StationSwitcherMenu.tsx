@@ -15,6 +15,7 @@ import {
 import { createPortal } from 'react-dom';
 import { navigationStore } from '../../contexts/navigation-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClientsRefusal';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
@@ -65,6 +66,7 @@ export function StationSwitcherMenu({
   onClose,
   onManage,
   onPairPhone,
+  activeDisplayName,
 }: {
   anchor: HTMLElement;
   connections: SavedConnection[];
@@ -78,6 +80,8 @@ export function StationSwitcherMenu({
   onClose: () => void;
   onManage: () => void;
   onPairPhone?: () => void;
+  /** The active Station's name as the header chip shows it. */
+  activeDisplayName?: string;
 }) {
   // #4519: under the managed limit "Pair phone" is disabled, and the
   // policy's sentence and Get help link show below it, as on every other
@@ -85,6 +89,7 @@ export function StationSwitcherMenu({
   const remoteClientsLimit = useManagedRemoteClientsLimit();
   const pairPhoneNoteId = useId();
   const conditions = useStationConditions();
+  const isMobile = useIsMobile();
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   const filterRef = useRef<HTMLInputElement>(null);
   const [position, setPosition] = useState({ right: 12, top: 0 });
@@ -359,7 +364,14 @@ export function StationSwitcherMenu({
                   : probed === 'online'
                     ? 'connected'
                     : 'idle';
-              const name = connection.name || connection.url;
+              // One display name: the active row says what the chip that
+              // opened this menu says (#4402 reads the seeded "Default" as the
+              // machine's name). Only the active Station's host is known
+              // here; every other row shows the name it was saved as.
+              const name =
+                (current ? activeDisplayName : undefined) ||
+                connection.name ||
+                connection.url;
               const label = statusLabel(connection);
               const armed = armedId === connection.id;
               // A healthy peer says so with its dot alone; text is for the
@@ -487,7 +499,9 @@ export function StationSwitcherMenu({
                   onPairPhone();
                 }}
               >
-                Pair phone
+                {/* A phone is not going to pair "a phone"; it brings another
+                    device to this Station (a computer, a tablet). */}
+                {isMobile ? 'Connect another device' : 'Pair phone'}
               </button>
             )}
             <button

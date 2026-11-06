@@ -362,6 +362,13 @@
   font-weight: 600;
 }
 
+/* On desktop a state that needs action shows its state/remedy text and the
+   identity instead of the compact name; the phone block below shows the name
+   in every state. */
+.app-toolbar__conn:not(.app-toolbar__conn--compact) .app-toolbar__conn-label {
+  display: none;
+}
+
 /* archive#3311: the connection surface is self-describing — the state is
    visible text beside the dot, with the identity after it.
    station#4474: `connStateLabel` (HeaderActions.tsx) is one of five strings
@@ -3041,13 +3048,20 @@
 }
 .station-switcher__footer {
   display: flex;
+  /* A phone's "Connect another device" is longer than "Pair phone": a row
+     wraps whole rather than breaking a label over three lines. */
+  flex-wrap: wrap;
   margin-top: var(--k-space-2);
 }
 .station-switcher__footer > .menu-row {
-  flex: 1;
+  /* Basis from the label, not `.menu-row`'s full width, so the three share
+     one row whenever their labels fit. */
+  flex: 1 0 max-content;
+  width: auto;
   justify-content: center;
   padding: 0 var(--k-space-2);
   color: var(--k-text-muted);
+  white-space: nowrap;
 }
 
 /* The Agent/Model/Mode rail has no fill of its own and sits flush on the
@@ -3218,15 +3232,43 @@
        `.chat-dock__mobile-conn`). */
     padding: 4px 6px;
   }
-  /* Keep the status control touchable without spending phone width on its
-     name. Holding the dot reveals the name; tapping opens the Station chooser. */
-  .app-toolbar__conn {
+  /* Every state shows the dot and a short Station name: a bare dot told a
+     phone user nothing about which Station it was. The state lives in the
+     dot, the accessible name and the chooser. The name sits in a fixed-width
+     slot, so a state change never moves the controls after it (#4474); it
+     truncates before the row would grow, and holding the chip reveals it
+     whole. */
+  .app-toolbar__conn,
+  .app-toolbar__conn.app-toolbar__conn--compact {
     box-sizing: border-box;
-    width: 44px;
+    width: auto;
     min-width: 44px;
-    flex: 0 0 44px;
+    flex: 0 0 auto;
+    gap: var(--space-2);
+    justify-content: center;
+    padding-inline: var(--k-space-2);
   }
-  .app-toolbar__conn-label,
+  .app-toolbar__conn .app-toolbar__conn-label,
+  .app-toolbar__conn:not(.app-toolbar__conn--compact) .app-toolbar__conn-label {
+    display: inline-block;
+    width: min(28vw, 120px);
+    max-width: min(28vw, 120px);
+    /* Beside its dot, not centred in the reserved slot. */
+    text-align: start;
+  }
+  /* The notice mark overlays the dot instead of taking inline width, so a
+     Station with notices keeps the same chip width as one without. */
+  .app-toolbar__conn {
+    position: relative;
+  }
+  .app-toolbar__conn .app-toolbar__conn-notice {
+    position: absolute;
+    top: 6px;
+    inset-inline-start: calc(var(--k-space-2) + 6px);
+    font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
+  }
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
     display: none;

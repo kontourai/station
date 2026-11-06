@@ -121,9 +121,9 @@ const PENDING_SELECTION = 'pending-selection';
  * The shape to hold for `view`, given its registered frame and whether the
  * viewport is currently the mobile one.
  *
- * `isMobile` comes in as an argument because it is a `matchMedia`
- * subscription — the caller owns it via `useIsMobile`, the same hook
- * `SplitPaneLayout` uses, so both read one breakpoint. The two storage reads
+ * `isMobile` (the split is stacked) comes in as an argument because it is a
+ * `matchMedia` subscription — the caller owns it via `useStackedListDetail`,
+ * the same hook `SplitPaneLayout` uses, so both read one breakpoint. The two storage reads
  * are made here rather than passed in because they are the same synchronous
  * reads the arriving view will make, from the same keys.
  */

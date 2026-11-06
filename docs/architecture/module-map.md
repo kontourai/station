@@ -5561,7 +5561,11 @@ listener coverage. This boundary does not isolate arbitrary same-OS-user code.
 
 **Callers and lifecycle.** `BrowserPreviewWorkspacePane.tsx` resolves bound
 Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
-`browserPaneApi.ts` own the human workflow. `BrowserTabs.tsx` persists bounded,
+`browserPaneApi.ts` own the human workflow. The session's viewport, zoom and
+appearance are registry-applied emulation shared by every viewer and Agent; the
+pane sizes a page it just opened from a narrow stage once and announces changes
+it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
+`BrowserTabs.tsx` persists bounded,
 ordered exact-session references through the pane wrapper, and discovers popup
 sessions. The Chromium host adopts the actual popup target and original request;
 the registry records its opener and profile without retargeting an Agent. Human
@@ -5656,8 +5660,13 @@ buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
 A producer may refuse an event for a reason the viewer can act on
 (`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
 page dialog waits for its person), which reaches the viewer as that code
-rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
-already in flight.
+rather than `dispatch-failed`. Any other producer error is logged (surface,
+input kind and type, bounded cause; never key or text) and reaches the viewer
+as `dispatch-failed`. The event that failed may already have applied, so the
+canvas says the input may not have reached the page and sends nothing again.
+Retry is offered only for a batch the host refused before dispatching any of it
+(`surface-busy`), kept whole as one gesture with the control epoch it was made
+at, and dropped when control changes hands. The registry cannot cancel an arbitrary producer effect already in flight.
 
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the
@@ -5678,7 +5687,10 @@ to the stream params, whatever resolution its body has; viewers draw it
 scaled to that box, so a tap from any viewer lands on the same device point. Server-side ffmpeg
 decoding runs only while an image viewer is attached; otherwise image viewers
 get a labelled PNG-poll fallback. A successful Device dispatch means
-the hub socket accepted bytes, not that the application applied them. The
+the hub socket accepted bytes, not that the application applied them; an iOS
+`fold` input is the exception, settled by the helper's correlated reply. A
+foldable reports its hinge, stand and lit display as producer `fold` status,
+and iOS video follows the lit display's own panel stream. The
 shared live-surface Agent grant path admits both Browser and Device tools through
 independently minted, in-process grants. Device grants recheck the bound caller,
 operator opt-in, host/device identity and current Project/device shares; a bare
@@ -5686,7 +5698,9 @@ principal or client-supplied object cannot authorize a surface.
 
 `routes/live-surface.ts` serves one authenticated frame response per viewer and
 separate input/lease requests. `?codec=h264` asks for access units; a producer
-without them sends images. A refused frames request names the key it was
+without them sends images. `?fold=1` asks for a foldable's `fold` state and
+display-tagged frames; without it a viewer gets the records a released shell
+validates, and a host older than the key is asked again without it. A refused frames request names the key it was
 refused for (`field`): a key the route knows, `stream-params`, or `unknown`,
 never the caller's own query text. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
@@ -5708,10 +5722,28 @@ reconnects for a keyframe (at most every 2 s, deferring rather than dropping a
 request), and after three failures with no picture between them switches the
 viewer to images.
 `LiveSurfaceCanvas.tsx` is used by the Browser pane, Device pane and
-float-over-chat, and shows the codec it draws. When the origin, surface ID or
+float-over-chat. The codec it draws is a `data-codec` diagnostic on its root,
+not shown. It owns the one viewer for
+every surface kind: viewer-only zoom (`liveSurfaceZoom.ts`, a CSS transform
+whose client rect the pointer mapping already reads), touch presses held back
+until they are not a pinch, and immersive mode (`useImmersive.ts`, the same
+element over the viewport, with the Fullscreen API where it is granted; while
+active it marks itself `data-escape-owner`, so Escape leaves full screen and
+the app's own Escape shortcuts yield). The
+shared chrome is `LiveSurfaceViewerControls.tsx`; below 480 pixels wide it is
+one row with a More controls panel. A surface kind extends the full-screen bar
+only through `renderImmersiveActions(api)` (kept in the row) and
+`renderImmersiveMenu(api)` (behind More controls when compact), for example a
+browser's address and navigation or a device's stand picker and fold
+settings. A host may also pass a `projection` that draws the frame (and may
+set its fit aspect) and maps points back to it; the Device pane, its
+full-screen view and its float use one to draw a foldable's display. Such a
+host reads the surface's producer status through `onProducerStatus`, which
+keeps reporting in immersive mode, where `renderHeader` is not mounted. When the origin, surface ID or
 Project context changes, the viewer discards queued input and ignores
 responses from the previous target. This does not yet bind the queue to a
-credential generation.
+credential generation; [input safety](../plans/live-surface-input-safety.md)
+records the requirements for its redesign.
 Shown-source tracking avoids
 duplicating the same pane in its floater, but there is no single multiplexed
 frame transport across all visible viewers. The admission cap meets
@@ -5748,10 +5780,11 @@ for a configured local endpoint, an already-consented managed helper, or an
 operator-managed SSH host. Hosted tenant execution does not mount this path.
 Resolving a connection may start a consented helper; helper installation and
 process ownership remain with the toolchain/host services. Managed device tools
-resolve a user-installed Node.js 24 or later and its matching npm through
-[device-tool-runtime.ts](../../src-server/services/devices/toolchain/device-tool-runtime.ts).
+resolve Node.js 24 or later and its matching npm through
+[device-tool-runtime.ts](../../src-server/services/devices/toolchain/device-tool-runtime.ts):
+the first Node on PATH, else the archive Node running Station.
 Missing prerequisites block device setup with guidance; the desktop's private
-Node continues to run bundled Station services. There is no peer Station device
+Node runs bundled Station services and is never selected. There is no peer Station device
 transport merely because the resolver is extensible.
 
 [Mobile-device routes](../../src-server/routes/mobile-device.ts) check current

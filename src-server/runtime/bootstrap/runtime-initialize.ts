@@ -67,7 +67,7 @@ import {
   PAIRING_WS_SCOPES,
 } from '../../security/pairing-route-scopes.js';
 import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
-import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
+import { stationOriginPolicy } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
@@ -1324,7 +1324,7 @@ export async function initializeRuntime(
         credential,
       ),
     limiter: new RuntimeAuthFailureLimiter(),
-    allowedBrowserOrigins: resolveStationBrowserOrigins({ port, host }),
+    browserOrigins: stationOriginPolicy({ port, host }),
     audit: (record) => logger.warn('Voice authentication denied', record),
   });
   // Defer Claude-transcript follow so the first event-loop turns can answer

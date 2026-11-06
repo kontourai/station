@@ -19,6 +19,7 @@
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_SCOPE,
+  DEVICE_REQUESTABLE_EXTRA_SCOPES,
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_PRESETS,
@@ -37,6 +38,20 @@ export const DEVICE_ACTIVE_WINDOW_MS = 2 * 60_000;
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * Everything a paired device can be given: Standard plus the elevated
+ * permissions a device may ask for. The Station app and browser ask for this;
+ * scoping a device down is the exception, done when approving. One definition
+ * for the request ("asks for full device access") and the grant label below.
+ */
+const FULL_DEVICE_ACCESS_TOKENS: ReadonlySet<string> = new Set([
+  ...PAIRING_SCOPE_PRESETS.standard,
+  ...DEVICE_REQUESTABLE_EXTRA_SCOPES,
+]);
+export const FULL_DEVICE_ACCESS_SCOPE = PAIRING_SCOPES.filter((token) =>
+  FULL_DEVICE_ACCESS_TOKENS.has(token),
+).join(' ');
 
 function scopeSetsMatch(scope: string, preset: readonly string[]): boolean {
   const parsed = parsePairingScope(scope);
@@ -71,6 +86,12 @@ export function describeDeviceScope(scope: string): string {
   }
   if (scopeSetsMatch(scope, PAIRING_SCOPES)) {
     return 'Full access';
+  }
+  // What the request said it asked for, approved as asked; without this the
+  // same grant read "full device access" in the request and "Custom access"
+  // in the device list.
+  if (scopeSetsMatch(scope, FULL_DEVICE_ACCESS_SCOPE.split(' '))) {
+    return 'Full device access';
   }
   if (scopeSetsMatch(scope, PAIRING_SCOPE_PRESETS['read-only'])) {
     return 'Read-only';

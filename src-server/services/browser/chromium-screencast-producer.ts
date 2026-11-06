@@ -568,9 +568,13 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       return;
     }
     const button = input.button;
+    // A press counts from when it is sent; a release only once delivered.
     if (input.type === 'down' && button)
       this.heldButtons |= BUTTON_BITS[button];
-    if (input.type === 'up' && button) this.heldButtons &= ~BUTTON_BITS[button];
+    const buttons =
+      input.type === 'up' && button
+        ? this.heldButtons & ~BUTTON_BITS[button]
+        : this.heldButtons;
     await this.send('Input.dispatchMouseEvent', {
       type:
         input.type === 'down'
@@ -581,11 +585,12 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       x: input.x,
       y: input.y,
       button: input.type === 'move' ? 'none' : (button ?? 'left'),
-      buttons: this.heldButtons,
+      buttons,
       clickCount: input.type === 'move' ? 0 : (input.clickCount ?? 1),
       modifiers: modifierBits(input.modifiers),
       ...(input.pointerType === 'pen' ? { pointerType: 'pen' } : {}),
     });
+    this.heldButtons = buttons;
   }
 
   async cancelHeldInput(held: LiveSurfaceHeldInput): Promise<void> {
@@ -605,14 +610,14 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       }
     };
     if (touchButtons.length > 0 || this.touchActive) {
-      this.touchActive = false;
-      // Ends the gesture without a tap.
-      await attempt(() =>
-        this.send('Input.dispatchTouchEvent', {
+      // Ends the gesture without a tap; still active until that is delivered.
+      await attempt(async () => {
+        await this.send('Input.dispatchTouchEvent', {
           type: 'touchCancel',
           touchPoints: [],
-        }),
-      );
+        });
+        this.touchActive = false;
+      });
     }
     if (mouseButtons.length > 0) {
       // Leave the page with the buttons still down, THEN release: a release
@@ -626,16 +631,17 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
         }),
       );
       for (const button of mouseButtons) {
-        this.heldButtons &= ~BUTTON_BITS[button];
-        await attempt(() =>
-          this.send('Input.dispatchMouseEvent', {
+        const buttons = this.heldButtons & ~BUTTON_BITS[button];
+        await attempt(async () => {
+          await this.send('Input.dispatchMouseEvent', {
             type: 'mouseReleased',
             ...OFF_PAGE,
             button,
-            buttons: this.heldButtons,
+            buttons,
             clickCount: 1,
-          }),
-        );
+          });
+          this.heldButtons = buttons;
+        });
       }
     }
     for (const { key, code } of held.keys)
@@ -690,9 +696,12 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     y: number,
     modifiers: LiveSurfaceModifiers | undefined,
   ): Promise<void> {
-    if (type === 'move' && !this.touchActive) return;
+    // Only a down starts a touch. With none in progress there is nothing to
+    // move or lift, and Chromium refuses a `touchEnd` ("Must send a
+    // TouchStart first"). A viewer sends such a lift for a second finger,
+    // or after its press was cancelled at a handoff; it is not a failure.
+    if (type !== 'down' && !this.touchActive) return;
     if (type === 'down') this.touchActive = true;
-    if (type === 'up') this.touchActive = false;
     await this.send('Input.dispatchTouchEvent', {
       type:
         type === 'down'
@@ -703,6 +712,8 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       touchPoints: type === 'up' ? [] : [{ x, y, id: 0 }],
       modifiers: modifierBits(modifiers),
     });
+    // A lift counts only once delivered: a failed one is cancelled later.
+    if (type === 'up') this.touchActive = false;
   }
 
   /**

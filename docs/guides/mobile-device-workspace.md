@@ -13,9 +13,9 @@ Limits, refusal codes, the single-frame API and evidence live in the
 1. Use a personal Station. Hosted Stations do not offer devices.
 2. On the device host, install Xcode with a simulator runtime (iOS) or the
    Android SDK with an emulator image (Android).
-3. Install Node.js 24 or later with npm, on the PATH Station starts with.
-4. Open **Device** and follow setup to turn on Station's device helper.
-   Restart Station if you change its PATH.
+3. Open **Device** and follow setup to turn on Station's device helper.
+   Station installs it with its own bundled Node.js and npm, so a current
+   Station needs no separate Node.js installation.
 
 To use another machine as a device host, add it under **Settings →
 Advanced → Device hosts**. See
@@ -29,6 +29,10 @@ Advanced → Device hosts**. See
 2. Choose the host and device, then start it or open its live session.
 3. Tap or type on the screen. While you hold control, Agents cannot send
    input. Use **Home**, and **Back** on Android or **Rotate** on iOS.
+4. Pinch to zoom the view. The corner **Full screen** button fits the device
+   screen to yours; tap **⋯** there for Exit, control, the keyboard and the
+   device buttons. See
+   [viewing a live surface](../reference/browser-and-devices.md#viewing-a-live-surface-zoom-full-screen-and-the-chat-floater).
 
 Everything else is in **⋯**: **Save screenshot**, **Record to Task**, **Logs**,
 **Apps**, **Device settings**, **Recents** (Android), **Float over chat** and
@@ -66,6 +70,70 @@ Agents use `device_install_app`, `device_launch_app`, `device_terminate_app`
 and `device_open_url`. If a connection drops during an install, check the
 device before retrying. See
 [Install and inspect an app](../reference/browser-and-devices.md#install-and-inspect-an-app).
+
+## Foldable devices
+
+A device whose helper reports a hinge carries a `fold` state in its live
+surface's stream state: the lit display (`cover` or `inner`), the hinge
+angle (0 closed to 180 flat, or null when unknown), the named stand
+(`closed`, `open`, `book`, `laptop`, `tent`, or null between stands), the
+stands it can be put into, whether a hinge angle can be set, and table mode
+when reported. A phone that does not fold has no `fold`; Station never
+infers one from a frame's shape.
+
+- **iOS dual-display simulators** (for example an iPhone Duo runtime):
+  the managed helper (expo-device-hub 0.19.1) reports the hinge in its
+  screen configuration. Every stand, a hinge angle and table mode can be
+  set, and a simulator that supports physical orientation can be laid face
+  up or down (the hub reports face down as table mode; which way the device
+  faces is not otherwise reported, so these are actions, not a toggle).
+  Resting on some stands (tent) can leave the cover lit at a half-open angle;
+  the view draws whichever display is lit. A `fold` input is settled by the helper's correlated reply, so a
+  stand the simulator refused is reported as a failed input, unlike a tap,
+  whose success means only that the socket accepted it. Video streams
+  the lit display's own panel and switches when the device hands off between
+  displays; each frame names its `display`. A helper that refuses panel
+  streams falls back to the device's main stream, whose frames carry no
+  `display`.
+- **Android foldable emulators**: the helper reads the emulator's hinge
+  sensor and posture when the input channel connects, and can fold an
+  emulator closed or unfold it flat (`closed` and `open` only). Other
+  stands and hinge angles are refused before anything is sent. Folding goes
+  only through this fold input, under the control lease; the device hub
+  proxy refuses it. A fold made
+  outside Station (the emulator's own controls) is not observed until the
+  input channel reconnects.
+
+The Device pane draws the lit inner display flat with a line at its crease,
+which splits the frame's longer side. **3D view** instead bends each half
+about the crease under a perspective (shrunk to stay inside its box), and
+**Rotate picture to fit** turns a landscape display a quarter to fill a
+portrait screen. Both are this viewer's preferences, kept on this device and
+never sent to the device. A touch is mapped back through either to the flat
+display point under it; touches outside the drawn display send nothing.
+
+The fold controls (stands, a hinge slider, table mode and face up/down) send
+`fold` input through the surface's control lease like any other input. The
+selected stand is the one the device reports, or the shut or flat state its
+hinge plainly reports. The slider moves the drawing while it is dragged,
+settles on a stand's angle within six degrees, and sends one angle when
+released. The pane's **Full screen** view and the float over chat draw the
+same display. Below 480 pixels wide, the full-screen bar is one row (who is
+in control, Take or Release, the stand picker, More controls and Exit), and
+the other controls are behind More controls.
+
+With no chat open, as on a phone where the dock shows one pane at a time,
+**Float in the next chat you open** floats the device in the next chat
+opened within two minutes.
+
+`fold` input is also available to bound agents through `device_input`,
+under the same lease and authority checks as other input.
+
+The iOS behaviour was checked through Station against an iPhone Duo simulator
+(iOS 27.1, hub 0.19.1): the lit display's video and its handoff, every stand,
+hinge angle, table mode, face up/down, rotation of the inner display, and
+taps on the cover and on both bent halves. Rotation on the cover display and
+any Android foldable emulator have only fixture evidence.
 
 ## Screenshots, recordings and logs
 
