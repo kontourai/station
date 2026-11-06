@@ -368,6 +368,122 @@ test('an invalid source discards refused input and registers again only for a ne
   unmount();
 });
 
+test.each(['refusal', 'transport failure'] as const)(
+  'registration %s discards pending input and recovers on a new action',
+  async (failure) => {
+    const sourceId = '00000000-0000-4000-8000-000000000002';
+    let attempts = 0;
+    let finishRegistration!: () => void;
+    const registration = new Promise<void>((resolve) => {
+      finishRegistration = resolve;
+    });
+    const sent: unknown[][] = [];
+    const transport = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/frames'))
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                init?.signal?.addEventListener(
+                  'abort',
+                  () =>
+                    controller.error(new DOMException('aborted', 'AbortError')),
+                  { once: true },
+                );
+              },
+            }),
+          );
+        const body = JSON.parse(String(init?.body));
+        if (url.endsWith('/lease')) {
+          if (body.action === 'open-input-source') {
+            attempts += 1;
+            if (attempts === 1) {
+              await registration;
+              if (failure === 'transport failure')
+                throw new TypeError('temporary transport outage');
+              return Response.json(
+                { success: false, code: 'invalid-request' },
+                { status: 409 },
+              );
+            }
+            return Response.json({ success: true, data: { sourceId } });
+          }
+          if (
+            body.action === 'close-input-source' &&
+            body.sourceId === sourceId
+          )
+            return Response.json({ success: true });
+          throw new Error(`Unexpected lease action: ${body.action}`);
+        }
+        if (!url.endsWith('/input')) throw new Error('Unexpected input route');
+        expect(body.sourceId).toBe(sourceId);
+        sent.push(body.events);
+        return Response.json({
+          success: true,
+          data: {
+            ok: true,
+            accepted: body.events.length,
+            lease: {
+              surfaceId: 'first',
+              epoch: 1,
+              holder: {
+                kind: 'human',
+                principal: 'human:test',
+                device: 'device:test',
+              },
+              expiresAt: 1000,
+            },
+          },
+        });
+      },
+    );
+    const visibilityRef = createRef<Element>();
+    const { result, unmount } = renderHook(() =>
+      useLiveSurface({
+        apiBase: 'http://station.test',
+        surfaceId: 'first',
+        visibilityRef,
+        onFrame: () => {},
+        transport,
+        now: () => 0,
+      }),
+    );
+    act(() =>
+      result.current.sendInput([
+        { kind: 'key', type: 'down', key: 'Shift', code: 'ShiftLeft' },
+      ]),
+    );
+    await waitFor(() => expect(attempts).toBe(1));
+    act(() =>
+      result.current.sendInput([
+        { kind: 'text', text: 'queued before refusal' },
+      ]),
+    );
+    await act(async () => {
+      finishRegistration();
+      await registration;
+    });
+    await waitFor(() =>
+      expect(result.current.inputNotice).toBe('input-failed'),
+    );
+    expect(result.current.retryableInput).toBe(false);
+    expect(sent).toEqual([]);
+    await act(async () =>
+      result.current.sendInput([
+        { kind: 'key', type: 'up', key: 'Shift', code: 'ShiftLeft' },
+      ]),
+    );
+    expect(attempts).toBe(1);
+    expect(sent).toEqual([]);
+    act(() => result.current.sendInput([{ kind: 'text', text: 'new action' }]));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(attempts).toBe(2);
+    expect(sent).toEqual([[{ kind: 'text', text: 'new action' }]]);
+    unmount();
+  },
+);
+
 test('changing only the transport aborts the old frame stream and observes the replacement', async () => {
   const streams: {
     name: string;

@@ -692,6 +692,16 @@ export function useLiveSurface(
     },
     [],
   );
+  const discardRefusedInput = useCallback(
+    (notice: LiveSurfaceInputNotice) => {
+      queueRef.current = [];
+      keepUndelivered([]);
+      for (const id of pressedRef.current) orphanedRef.current.add(id);
+      pressedRef.current.clear();
+      setInputNotice(notice);
+    },
+    [keepUndelivered],
+  );
   const sourceRef = useRef<{
     open: Promise<string | null> | null;
     retired: boolean;
@@ -818,8 +828,8 @@ export function useLiveSurface(
         generation !== targetGenerationRef.current
       ) {
         if (generation === targetGenerationRef.current) {
-          queueRef.current = [];
-          setInputNotice('input-failed');
+          source.open = null;
+          discardRefusedInput('input-failed');
         }
         return;
       }
@@ -855,21 +865,13 @@ export function useLiveSurface(
         );
       } else if (result && !result.ok && result.code === 'invalid-source') {
         source.open = null;
-        queueRef.current = [];
-        keepUndelivered([]);
-        for (const id of pressedRef.current) orphanedRef.current.add(id);
-        pressedRef.current.clear();
-        setInputNotice('input-failed');
+        discardRefusedInput('input-failed');
       } else if (
         result &&
         !result.ok &&
         (result.code === 'stale-epoch' || result.code === 'stale-fence')
       ) {
-        queueRef.current = [];
-        keepUndelivered([]);
-        for (const id of pressedRef.current) orphanedRef.current.add(id);
-        pressedRef.current.clear();
-        setInputNotice('control-changed');
+        discardRefusedInput('control-changed');
       } else if (result && !result.ok && result.code === 'page-dialog-open') {
         queueRef.current = [];
         keepUndelivered([]);
@@ -894,7 +896,7 @@ export function useLiveSurface(
         inFlightRef.current = false;
     }
     if (queueRef.current.length > 0) void flush();
-  }, [adoptLease, showHostBusy, keepUndelivered]);
+  }, [adoptLease, showHostBusy, keepUndelivered, discardRefusedInput]);
 
   const sendInput = useCallback(
     (events: LiveSurfaceInput[]) => {

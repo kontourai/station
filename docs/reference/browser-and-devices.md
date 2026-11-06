@@ -289,6 +289,8 @@ If input is refused because its source is no longer valid, the viewer discards
 that input and its queued follow-ups. A new person-initiated action registers a
 fresh source; the refused action is never replayed automatically. Replacing the
 viewer's transport also reconnects its frame stream under the new transport.
+Failed registration is discarded too: another user action may register again
+after a refusal or transport failure, without replaying the earlier input.
 The existing producer, authority and control contracts still apply.
 
 **Let agents run JavaScript in this Project's pages** (**Settings → Advanced →
