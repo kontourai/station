@@ -568,6 +568,17 @@ describe('POST /api/tasks/:taskId/resume through the runtime composition', () =>
     );
     expect(readOnly.status).toBe(403);
     expect(e.graphBytes()).toBe(bytes);
+    // The confirmation's GET is read-tier, but the person must also be able
+    // to dispatch this Task: a read-only device at the host is refused.
+    const readOnlyView = await e.call(
+      e.bearer(e.reader.credential),
+      'GET',
+      `/api/tasks/${done.id}/resume`,
+    );
+    expect(readOnlyView).toMatchObject({
+      status: 403,
+      json: { code: 'task_resume_not_permitted' },
+    });
 
     // The owner's own operate device is the operator in person (#3994).
     const device = e.pairDevice(
