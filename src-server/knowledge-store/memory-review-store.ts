@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import type { ReviewDecision, ReviewSessionEvent } from '@kontourai/survey';
@@ -20,7 +20,7 @@ import { assertExistingPathInside } from '../utils/path-containment.js';
  *
  * Records hold only identifiers, decision fields and, for a correction, the
  * reviewer's own value. When the memory they refer to is erased they are
- * filtered on reads. Station erasure and reconciliation prune them and remove
+ * filtered on reads. Station erasure and reconciliation prune them and rewrite
  * the prior copy before completing cleanup. External copies have their own retention.
  */
 export interface MemoryReviewState {
@@ -156,12 +156,8 @@ export class MemoryReviewStore {
           result: undefined,
         };
       },
+      { rewritePrevious: true },
     );
-    try {
-      unlinkSync(`${this.file}.previous`);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
   }
 
   /** Runs `change` on the current state under the lock and writes the state it returns. `change` may read other stores: the lock is held across it. */
@@ -172,6 +168,7 @@ export class MemoryReviewStore {
     ) =>
       | { state: MemoryReviewState; result: T }
       | Promise<{ state: MemoryReviewState; result: T }>,
+    options: { rewritePrevious?: boolean } = {},
   ): Promise<T> {
     this.ensureDirectory();
     assertCurrent();
@@ -188,6 +185,9 @@ export class MemoryReviewStore {
         throw new Error('Memory review history is full.');
       assertCurrent();
       this.json.write(state);
+      // The shared JSON owner retains the prior value on each durable write.
+      // A second write makes that recoverable copy contain the pruned state too.
+      if (options.rewritePrevious) this.json.write(state);
       return result;
     } finally {
       await release();

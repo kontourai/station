@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -894,6 +894,7 @@ test('erasure removes review decisions and keeps a re-proposed claim unreviewed'
       memoryOwnerHash(OWNER),
       'review.json',
     );
+    expect(existsSync(`${reviewPath}.previous`)).toBe(true);
     for (const path of [reviewPath, `${reviewPath}.previous`]) {
       if (existsSync(path)) {
         const bytes = readFileSync(path, 'utf8');
@@ -901,6 +902,8 @@ test('erasure removes review decisions and keeps a re-proposed claim unreviewed'
         expect(bytes).not.toContain('unique-erased-rationale');
       }
     }
+    // A missing primary falls back to the retained copy, which must be pruned too.
+    rmSync(reviewPath);
     await h.seed(memory);
     const after = await h.json(await h.get('/memory/recall'));
     expect(after.entries[0].review.label).toBe('unreviewed');
