@@ -121,6 +121,10 @@ function mount(
 test.each(['host', 'direct', 'relay'] as const)(
   '%s record sends once through its bound continuation',
   async (route) => {
+    // Plain HTTP devices do not expose the secure-context randomUUID API.
+    vi.stubGlobal('crypto', {
+      getRandomValues: crypto.getRandomValues.bind(crypto),
+    });
     const requests: { url: string; body: unknown }[] = [];
     vi.stubGlobal(
       'fetch',

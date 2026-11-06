@@ -37,9 +37,6 @@ export interface TranscriptTurnViewport {
   readonly activeStartVisible: boolean;
 }
 
-const ROW_SELECTOR =
-  ':scope > .chat-message-anchor[data-chat-message-key], :scope > .chat-messages > .chat-message-anchor[data-chat-message-key], :scope > .conversation-reader > .chat-messages > .chat-message-anchor[data-chat-message-key], [data-transcript-row]';
-
 /**
  * Follows the transcript's scroll position in turns. The in-view marks on the
  * rail and its viewport band are written to the DOM from the scroll handler,
@@ -82,7 +79,9 @@ export function useTranscriptTurnViewport({
     let first = Number.POSITIVE_INFINITY;
     let last = -1;
     let centre = -1;
-    for (const node of element.querySelectorAll<HTMLElement>(ROW_SELECTOR)) {
+    for (const node of element.querySelectorAll<HTMLElement>(
+      ':scope > .chat-message-anchor[data-chat-message-key], :scope > .chat-messages > .chat-message-anchor[data-chat-message-key], :scope > .conversation-reader > .chat-messages > .chat-message-anchor[data-chat-message-key], [data-transcript-row]',
+    )) {
       const key = node.dataset.transcriptRow ?? node.dataset.chatMessageKey;
       if (!key) continue;
       // The live streaming row is the newest turn's reply.

@@ -1555,6 +1555,10 @@
 }
 
 @media (max-width: 768px) {
+  .project-page__header--member {
+    flex-direction: column;
+    gap: var(--k-space-3);
+  }
   /* Keep the whole row tappable. Nothing else changes: `flex: 1 1 12rem` on
      the body already keeps the icon and the title on one line at 390px and
      lets only the chip and the call to action drop below, and the title's own

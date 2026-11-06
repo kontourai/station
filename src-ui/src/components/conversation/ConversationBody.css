@@ -29,22 +29,3 @@
   flex: none;
   padding: var(--k-space-3);
 }
-
-/* Record rows have no Basis chip. Keep their hover actions beside attribution
-   instead of reserving an empty footer beneath the answer. */
-@media (min-width: 769px) and (hover: hover) {
-  .conversation-body--record .message.assistant {
-    position: relative;
-  }
-
-  .conversation-body--record .message.assistant > .turn-footer {
-    position: absolute;
-    inset-block-start: var(--k-space-1);
-    inset-inline-end: var(--k-space-2);
-    margin: 0;
-  }
-
-  .conversation-body--record .message.assistant .message__sender {
-    padding-inline-end: calc(var(--k-space-8) * 4);
-  }
-}

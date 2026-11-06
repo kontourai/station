@@ -1139,17 +1139,6 @@
   .message-delivery__glyph {
   display: block;
 }
-@media (max-width: 640px), (pointer: coarse) {
-  .message-delivery--inline
-    :is(
-      .message-delivery__action,
-      .unconfirmed-discard__button,
-      .action-overflow__trigger
-    ) {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
 /* Phone: every delivery action is a full 44px target. */
 .message-row--compact .message-delivery__action,
 .message-row--compact .unconfirmed-discard__button {
@@ -1487,6 +1476,15 @@
    The class is DOUBLED so this beats index.css's single-class base rule on
    specificity rather than on which sheet the bundler emitted last. */
 @media (max-width: 768px), (pointer: coarse) {
+  .message-delivery--inline
+    :is(
+      .message-delivery__action,
+      .unconfirmed-discard__button,
+      .action-overflow__trigger
+    ) {
+    min-width: 44px;
+    min-height: 44px;
+  }
   .composer-attachments__chip {
     min-height: 44px;
   }
@@ -2496,6 +2494,31 @@
 }
 
 @media (hover: hover) {
+  /* Record rows have no Basis chip. Their shared reader decides whether the
+     transcript is compact; only its desktop form overlays hover actions. */
+  .conversation-body--record
+    .conversation-reader[data-transcript-mobile="false"]
+    .message.assistant {
+    position: relative;
+  }
+
+  .conversation-body--record
+    .conversation-reader[data-transcript-mobile="false"]
+    .message.assistant
+    > .turn-footer {
+    position: absolute;
+    inset-block-start: var(--k-space-1);
+    inset-inline-end: var(--k-space-2);
+    margin: 0;
+  }
+
+  .conversation-body--record
+    .conversation-reader[data-transcript-mobile="false"]
+    .message.assistant
+    .message__sender {
+    padding-inline-end: calc(var(--k-space-8) * 4);
+  }
+
   .turn-footer__actions {
     opacity: 0;
     /* Reserve the action row so hover and keyboard focus never move messages. */

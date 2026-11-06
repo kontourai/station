@@ -1,4 +1,5 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import { outboundStationIdentity } from '../../connections/station-state';
@@ -138,7 +139,7 @@ export function useRecordConversationController({
         return;
       pending.current.add(conversationId);
       const text = retry?.content ?? input;
-      const clientTurnId = retry?.clientTurnId ?? crypto.randomUUID();
+      const clientTurnId = retry?.clientTurnId ?? randomCorrelationId();
       let live:
         | Awaited<
             ReturnType<

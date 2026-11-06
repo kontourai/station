@@ -1935,11 +1935,9 @@
   font-size: var(--k-text-sm);
   font-weight: 400;
 }
-@media (max-width: 640px), (pointer: coarse) {
-  .task-room-running > .button {
-    min-width: 44px;
-    min-height: 44px;
-  }
+.task-room-running > .button {
+  min-width: var(--touch-target-min, auto);
+  min-height: var(--touch-target-min, var(--k-space-6));
 }
 .task-room-status .button {
   border-radius: var(--k-radius-md);
