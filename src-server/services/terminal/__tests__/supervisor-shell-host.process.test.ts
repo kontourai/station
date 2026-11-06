@@ -6,6 +6,7 @@
  * `TerminalSessions` instance; disposing one and creating the next on the
  * same home is a core restart.
  */
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { mkdir, readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -17,6 +18,7 @@ import type {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
+import type { IPtyAdapter, IPtyProcess } from '../../../domain/pty-adapter.js';
 import { createACPBridgeClient } from '../../acp/acp-bridge-client.js';
 import { AcpSessionTerminals } from '../../acp/acp-session-terminals.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
@@ -289,6 +291,70 @@ describe('terminals as supervisor workloads (real PTYs)', () => {
     expect(pidAlive(info.pid)).toBe(false);
     await vi.waitFor(() => expect(pidAlive(grandchild)).toBe(false), WAIT);
   }, 60_000);
+
+  it.skipIf(!windows)(
+    'ends a shell with taskkill and never kills it through node-pty while its exit is late',
+    async () => {
+      // A real process stands in for the shell so taskkill really ends it;
+      // the PTY's exit event arrives 3.5 s later, past the old 3 s grace, as
+      // on a loaded host. node-pty's kill() then would signal the old pid
+      // five seconds on, when Windows may have reused it (#3994).
+      const dir = makeTempDir('workload-late-exit-');
+      const shell = spawn(
+        process.execPath,
+        ['-e', 'setInterval(()=>{},1000)'],
+        { stdio: 'ignore', windowsHide: true },
+      );
+      await new Promise((resolve) => shell.once('spawn', resolve));
+      const exits = new Set<
+        (event: { exitCode: number; signal: null }) => void
+      >();
+      shell.once('exit', () =>
+        setTimeout(() => {
+          for (const listener of [...exits])
+            listener({ exitCode: 1, signal: null });
+        }, 3_500),
+      );
+      const kill = vi.fn();
+      const proc: IPtyProcess = {
+        pid: shell.pid!,
+        onData: () => () => {},
+        onExit: (listener) => {
+          exits.add(listener);
+          return () => exits.delete(listener);
+        },
+        write: () => {},
+        resize: () => {},
+        kill,
+      };
+      const pty: IPtyAdapter = { spawn: async () => proc };
+      const host = new PtyWorkloadHost({ pty, emit: () => {} });
+      hosts.push(host);
+      try {
+        await host.handle({
+          op: 'spawn',
+          workloadId: 'late-exit',
+          kind: 'interactive',
+          candidates: [{ command: SHELL, args: [] }],
+          cwd: dir,
+          env: { ...process.env } as Record<string, string>,
+          cols: 80,
+          rows: 24,
+          journal: { directory: join(dir, 'journal') },
+        });
+        const ended = (await host.handle({
+          op: 'terminate',
+          workloadId: 'late-exit',
+        })) as WorkloadInfo;
+        expect(ended.state).toBe('exited');
+        expect(shell.exitCode !== null || shell.signalCode !== null).toBe(true);
+        expect(kill).not.toHaveBeenCalled();
+      } finally {
+        if (shell.exitCode === null && shell.signalCode === null) shell.kill();
+      }
+    },
+    30_000,
+  );
 
   it('ends a command at its output cap and journals no more than the cap', async () => {
     const dir = makeTempDir('workload-cap-');

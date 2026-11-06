@@ -128,6 +128,7 @@ import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
   SessionApprovalModeSetEvent,
+  TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isProviderTriggeredTurn,
@@ -428,6 +429,7 @@ import {
   type DurableTurnHandoff,
   type InterruptedTurnMemoryAdapter,
   InterruptedTurnRecovery,
+  type RecoveredInterruptedTurn,
 } from './interrupted-turn-recovery.js';
 import { memoryExhaustionRecoveryNote } from './memory-exhaustion-recovery.js';
 import {
@@ -495,6 +497,7 @@ import {
   type SessionCommandModule,
   type SessionCommandOutcome,
 } from './session-command-module.js';
+import { readSessionDispatchFacts } from './session-dispatch-facts.js';
 import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
@@ -651,6 +654,27 @@ interface OrchestrationDispatchInternalOptions {
   /** #3323: see `SessionCommandInternalOptions.delegationProvenance`. */
   delegationProvenance?: SessionCommandInternalOptions['delegationProvenance'];
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
+  /**
+   * #4512: who caused this `sendTurn`, as the server-side caller knows it
+   * (the delegation start, the conversation inbox's placement). Stamped on
+   * the turn's `turn.started` as `dispatchOrigin`. Absent, the service
+   * classifies the send from its client origin (`classifyTurnDispatchOrigin`).
+   */
+  dispatchOrigin?: TurnDispatchOrigin;
+}
+
+/**
+ * #4512: the `dispatchOrigin` a `sendTurn` records. A server caller's own
+ * classification wins; otherwise a send from a person's client (operator or
+ * paired device) is `interactive` and everything else is `unknown`.
+ */
+export function classifyTurnDispatchOrigin(
+  dispatchOrigin: TurnDispatchOrigin | undefined,
+  clientOrigin: ClientOrigin | undefined,
+): TurnDispatchOrigin {
+  if (dispatchOrigin) return dispatchOrigin;
+  const actor = clientOrigin?.actor.kind;
+  return actor === 'operator' || actor === 'device' ? 'interactive' : 'unknown';
 }
 
 function chatStartGateReason(error: unknown): string {
@@ -2631,6 +2655,20 @@ export class OrchestrationService {
     return { promise, settle };
   })();
 
+  /**
+   * #4512: settled once THIS runtime's boot interrupted-turn recovery has
+   * finished (or given up), with the turns it settled as interrupted.
+   */
+  private readonly interruptedTurnsSettled = (() => {
+    let settle: (turns: readonly RecoveredInterruptedTurn[]) => void = () => {};
+    const promise = new Promise<readonly RecoveredInterruptedTurn[]>(
+      (resolve) => {
+        settle = resolve;
+      },
+    );
+    return { promise, settle };
+  })();
+
   private readonly stopSessionDeletionNotifications?: () => void;
   private readonly sessionDeletionReaders = new Set<SessionReadScope>();
 
@@ -3821,12 +3859,19 @@ export class OrchestrationService {
         // recovery-intent reconciliation just above — a failure here must
         // never surface as an unhandled rejection after attachment state
         // has already settled; unwritten banners simply retry next boot.
-        void this.interruptedTurns.consume().catch((error) => {
-          this.options.logger.warn(
-            'Interrupted-turn boundary consumption did not complete',
-            { error: errorMessage(error) },
+        void this.interruptedTurns
+          .consume()
+          .catch((error) => {
+            this.options.logger.warn(
+              'Interrupted-turn boundary consumption did not complete',
+              { error: errorMessage(error) },
+            );
+          })
+          .finally(() =>
+            this.interruptedTurnsSettled.settle(
+              this.interruptedTurns.recoveredTurns(),
+            ),
           );
-        });
       });
   }
 
@@ -4443,6 +4488,17 @@ export class OrchestrationService {
    */
   whenSessionAttachmentSettled(): Promise<void> {
     return this.sessionAttachmentSettledSignal.promise;
+  }
+
+  /**
+   * #4512: the turns this runtime's boot recovery settled as interrupted
+   * (banner written, boundary resolved), once that recovery has finished.
+   * Never settles if `initialize()` is never called.
+   */
+  whenInterruptedTurnsRecovered(): Promise<
+    readonly RecoveredInterruptedTurn[]
+  > {
+    return this.interruptedTurnsSettled.promise;
   }
 
   /**
@@ -5827,6 +5883,24 @@ export class OrchestrationService {
       authority,
       requested,
     );
+  }
+
+  /**
+   * #4512: what a Session's own record says about whom it works for (Task
+   * binding, Station-derived delegated child, its newest non-result turn's
+   * origin). Without a store it says nothing unattended.
+   */
+  sessionDispatchFacts(
+    threadId: string,
+  ): ReturnType<typeof readSessionDispatchFacts> {
+    const store = this.options.eventStore;
+    if (!store)
+      return {
+        taskBound: false,
+        delegatedChild: false,
+        priorOrigin: () => 'unknown',
+      };
+    return readSessionDispatchFacts(store, threadId);
   }
 
   currentConversationSessionId(conversationId: string): string {
@@ -9476,6 +9550,10 @@ export class OrchestrationService {
                         | SkillExperienceInvocationReferenceV1
                         | undefined;
                       let experienceContext: string | undefined;
+                      const dispatchOrigin = classifyTurnDispatchOrigin(
+                        internal?.dispatchOrigin,
+                        context?.clientOrigin,
+                      );
                       if (internal?.skillExperience) {
                         if (
                           !this.skillExperienceRuntime ||
@@ -9547,6 +9625,7 @@ export class OrchestrationService {
                           context?.principal,
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
+                          dispatchOrigin,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -9890,6 +9969,7 @@ export class OrchestrationService {
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
                           turnInput.invocationId,
+                          dispatchOrigin,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);

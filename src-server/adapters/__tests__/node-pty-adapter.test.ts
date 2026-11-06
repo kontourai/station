@@ -1,4 +1,5 @@
 import { ChildProcess, execFile } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { NodePtyAdapter } from '../node-pty-adapter.js';
@@ -86,6 +87,48 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
       expect.objectContaining({ cwd: '/tmp', cols: 80, rows: 24 }),
     );
   });
+});
+
+describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
+  /** node-pty runs each ConPTY's output reader on a worker thread. */
+  const workerThreads = () =>
+    process.getActiveResourcesInfo().filter((name) => name === 'MessagePort')
+      .length;
+
+  test.each(['taskkill close', 'natural exit'] as const)(
+    'a %s releases the ConPTY and never signals the old shell pid later',
+    async (ending) => {
+      const before = workerThreads();
+      const signalled: number[] = [];
+      const signal = process.kill.bind(process);
+      const kill = vi.spyOn(process, 'kill').mockImplementation((pid, name) => {
+        signalled.push(Number(pid));
+        return signal(pid, name);
+      });
+      try {
+        const proc = await new NodePtyAdapter().spawn({
+          shell: process.env.COMSPEC ?? 'cmd.exe',
+          cwd: tmpdir(),
+          cols: 80,
+          rows: 24,
+          env: process.env,
+        });
+        const exited = new Promise((resolve) => proc.onExit(resolve));
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        if (ending === 'taskkill close') await proc.terminate!();
+        else proc.write('exit\r');
+        await exited;
+        // node-pty's console-list fallback signals five seconds after kill();
+        // its output reader thread is released a second after the release.
+        await new Promise((resolve) => setTimeout(resolve, 6_500));
+        expect(signalled).not.toContain(proc.pid);
+        expect(workerThreads()).toBe(before);
+      } finally {
+        kill.mockRestore();
+      }
+    },
+    30_000,
+  );
 });
 
 describe.skipIf(process.platform === 'win32')(

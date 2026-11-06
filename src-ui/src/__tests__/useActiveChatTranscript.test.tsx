@@ -5043,3 +5043,55 @@ describe('useActiveChatTranscript stored memory kill', () => {
     },
   );
 });
+
+describe("useActiveChatTranscript: Station's continuation after a restart (#4512)", () => {
+  beforeEach(() => {
+    resetSequencedLiveEventsForTests();
+    vi.clearAllMocks();
+    fetchWindow.mockReset();
+    recoveryBudget.clear();
+    fetchCapability.mockResolvedValue(true);
+  });
+
+  test("a stored continuation Station sent reads as Station's; the person's own Continue does not", async () => {
+    const started = (turnId: string, kind: string) =>
+      event(`e-${turnId}`, 'turn.started', {
+        turnId,
+        prompt: 'Station restarted while you were working.',
+        clientTurnId: `continue-interrupted:turn-boundary:${turnId}`,
+        clientOrigin: {
+          version: 1,
+          actor: { kind },
+          reported: { surface: 'unknown' },
+        },
+      });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 20,
+      hasMore: false,
+      events: [
+        started('turn-1', 'internal'),
+        event('e-c1', 'turn.completed', { turnId: 'turn-1' }),
+        started('turn-2', 'operator'),
+        event('e-c2', 'turn.completed', { turnId: 'turn-2' }),
+      ],
+    });
+    const view = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    await waitFor(() =>
+      expect(
+        view.result.current.messages.filter((m) => m.role === 'user'),
+      ).toHaveLength(2),
+    );
+    const users = view.result.current.messages.filter(
+      (message) => message.role === 'user',
+    );
+    expect(users.map((message) => message.stationRestartContinuation)).toEqual([
+      true,
+      undefined,
+    ]);
+    view.unmount();
+  });
+});

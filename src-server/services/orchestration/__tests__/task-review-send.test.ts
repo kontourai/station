@@ -15,6 +15,7 @@ import type {
   ProviderSendTurnInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
+import { inboxPlacementStartPort } from '../../../runtime/routes/conversation-start-ports.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -35,6 +36,8 @@ const write = {
   beforeCommit: () => true,
 };
 let sends: ProviderSendTurnInput[] = [];
+/** #4512: the origin the production start port gave each placement. */
+let placedOrigins: unknown[] = [];
 let birth = 0;
 class CountingAdapter extends GateTestAdapter {
   steerTurn = vi.fn();
@@ -97,20 +100,33 @@ function boot(path: string, indeterminate: boolean | 'refused' = false): World {
       ) === owner,
     inspectDelivery: (id, key) =>
       service.inspectTurnDelivery(id, key, INTERNAL_SESSION_READ_SCOPE),
-    start: async ({ threadId, payload, clientTurnId }) => {
+    start: async (placement) => {
       if (indeterminate === 'refused')
         throw new Error('Start refused before effect');
       if (indeterminate) return { outcome: 'indeterminate' };
-      const started = (await service.dispatch({
-        type: 'sendTurn',
-        input: { threadId, input: payload.message, clientTurnId },
-      })) as ProviderTurnStartResult;
-      return {
-        outcome: 'started',
-        conversationId: threadId,
-        sessionId: threadId,
-        turnId: started.turnId,
-      };
+      // Production's start port (#4512 dispatch origin included); only the
+      // foreground execution behind it is this direct dispatch.
+      return inboxPlacementStartPort({
+        readProjectTaskRoomExecutionBinding: (sessionId) =>
+          store.readProjectTaskRoomExecutionBinding(sessionId),
+        continueAsRecordedActor: async (input, threadId) => {
+          placedOrigins.push(input.dispatchOrigin);
+          const started = (await service.dispatch({
+            type: 'sendTurn',
+            input: {
+              threadId,
+              input: input.message,
+              clientTurnId: input.clientTurnId,
+            },
+          })) as ProviderTurnStartResult;
+          return {
+            outcome: 'started',
+            conversationId: threadId,
+            sessionId: threadId,
+            turnId: started.turnId,
+          };
+        },
+      })(placement);
     },
     subscribe: (listener) =>
       bus.subscribe((frame) => {
@@ -263,6 +279,16 @@ describe('Task review send over the durable inbox', () => {
         },
       }).success,
     ).toBe(true);
+    // The lead is the Task's Session: Station's own entry there would read
+    // as Task work, but this one is a person's review (#4512).
+    expect(
+      await w.store.bindProjectTaskRoomExecution({
+        projectId: write.projectId,
+        taskId: write.taskId,
+        sessionId: LEAD,
+      }),
+    ).toEqual({ kind: 'bound' });
+    placedOrigins = [];
     const result = await send(w, id);
     expect(result).toMatchObject({
       success: true,
@@ -273,6 +299,7 @@ describe('Task review send over the durable inbox', () => {
     });
     await w.inbox.idle();
     expect(sends).toHaveLength(1);
+    expect(placedOrigins).toEqual(['interactive']);
     const text = sends[0]!.input;
     for (const value of [
       id,

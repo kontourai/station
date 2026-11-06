@@ -9,8 +9,9 @@
  * and the same settled-page definition. Anything suite-specific — console
  * budgets, screenshots, failure accounting — stays in the suites.
  */
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { arch, cpus, platform, release, totalmem } from 'node:os';
 import { join } from 'node:path';
 
 /**
@@ -63,6 +64,27 @@ export function runStation(root, args, { timeoutMs, env }) {
       resolvePromise({ code, output });
     });
   });
+}
+
+/**
+ * The checkout revision and host a live result came from: a measurement or
+ * journey result means little without them.
+ */
+export function runProvenance(root) {
+  const git = (args) =>
+    execFileSync('git', args, { cwd: root, windowsHide: true })
+      .toString()
+      .trim();
+  return {
+    revision: git(['rev-parse', 'HEAD']),
+    uncommittedChanges: git(['status', '--porcelain']) !== '',
+    environment: {
+      platform: `${platform()} ${release()} ${arch()}`,
+      cpus: `${cpus().length} × ${cpus()[0]?.model ?? 'unknown'}`,
+      memoryGiB: Math.round(totalmem() / 2 ** 30),
+      node: process.version,
+    },
+  };
 }
 
 export async function poll(description, timeoutMs, probe) {
