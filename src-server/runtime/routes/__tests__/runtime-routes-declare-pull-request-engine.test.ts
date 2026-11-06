@@ -675,6 +675,9 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     await vi.waitFor(() =>
       expect(e.taskGraph.readTask(task.id)?.status).toBe('done'),
     );
+    // #4554: close-on-merge writes the end time in the same write as done.
+    const closed = e.taskGraph.readTask(task.id)!;
+    expect(closed.endedAt).toBe(closed.updatedAt);
     // Clean, and its branch has no commit of its own: removed and forgotten.
     await vi.waitFor(() => {
       expect(existsSync(worktree.path)).toBe(false);

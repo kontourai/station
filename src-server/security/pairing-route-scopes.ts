@@ -3823,6 +3823,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // merge. It mutates only that Task's own record, so the task family's
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
+    // #4554 resume an ended Task. The task family's operate tier (read for
+    // the confirmation's GET) is necessary, never sufficient: the handler
+    // also requires the operator in person and not an agent
+    // (`isOperatorInPersonNotAgent`) and current Task read and execution
+    // authority. No station-control tool names either leaf.
+    { method: 'GET', path: '/api/tasks/:taskId/resume' },
+    { method: 'POST', path: '/api/tasks/:taskId/resume' },
     // #4003 Start Task on a board item, and the Task's linked-item header.
     // Both read one tracker item through the Station host's own `gh` login.
     // The POST reads only a ref the Project's board offers when it is

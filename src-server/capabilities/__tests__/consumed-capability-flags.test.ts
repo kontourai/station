@@ -26,6 +26,7 @@ import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createTaskResumeRoutes } from '../../routes/orchestration/task-resume.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
@@ -42,6 +43,7 @@ import {
   resolveStationCapabilityFlags,
   STATION_CAPABILITY_FLAGS,
   servesCoordinatorSession,
+  servesTaskResume,
 } from '../station-capability-flags.js';
 import { TABLED_CAPABILITY_FLAGS } from './consumed-capability-flag-names.js';
 
@@ -371,6 +373,42 @@ const CONSUMED_FLAGS: Record<
       eventStore.close();
     }
   },
+  // #4554: GET /api/tasks/:taskId/resume answers only where the runtime
+  // mounts it, from the same predicate as the flag (personal mode), with the
+  // `task-resume` preview on and a permitted person.
+  taskResume: async (deployment) => {
+    const task = {
+      id: 'task-1',
+      projectId: 'project-1',
+      title: 'Done',
+      description: '',
+      priority: 'normal',
+      status: 'done',
+      createdBy: 'user',
+      createdAt: '2026-11-01T00:00:00.000Z',
+      updatedAt: '2026-11-02T00:00:00.000Z',
+      endedAt: '2026-11-02T00:00:00.000Z',
+      workItemRef: 'github:o/r#1',
+      workItemProvenance: 'project-board',
+    } as const;
+    const app = new Hono();
+    if (servesTaskResume(deployment))
+      app.route(
+        '/api/tasks',
+        createTaskResumeRoutes({
+          service: { readTaskView: () => task } as never,
+          enabled: () => true,
+          inPersonPrincipal: () => 'owner',
+          authorizeTask: () => true,
+          isTaskSessionTurnActive: () => false,
+          leadOwnerOf: () => undefined,
+          followUps: () => [],
+          clientOrigin: () => undefined,
+        }),
+      );
+    const response = await app.request('/api/tasks/task-1/resume');
+    return response.status === 200;
+  },
   // GET /api/system/routes answers the Station routes only where runtime
   // route support composes a resolver, from the same predicate as the flag.
   connectionRoutes: async ({ hosted }) => {
@@ -585,6 +623,7 @@ describe('consumed capability flags match what their routes serve', () => {
     connectionRoutes: { personal: true, hosted: false },
     coordinatorSession: { personal: true, hosted: false },
     troubleshootPrepare: { personal: true, hosted: true },
+    taskResume: { personal: true, hosted: false },
   };
 
   test('every flag a deployment withdraws has a row', () => {

@@ -1399,6 +1399,13 @@ export interface StationCapabilityFlags {
    * agent" only on this flag.
    */
   troubleshootPrepare?: boolean;
+  /**
+   * #4554: `GET` and `POST /api/tasks/:taskId/resume` exist, so the Station
+   * operator in person can resume an ended Task. A static fact about this
+   * build: whether the route answers is the `task-resume` Feature Preview's,
+   * which refuses with `task_resume_unavailable`. Withdrawn in hosted mode.
+   */
+  taskResume?: boolean;
 }
 
 export interface PublicStationHandshake {

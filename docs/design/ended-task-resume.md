@@ -1,13 +1,13 @@
 # Resuming ended Tasks
 
-Status: proposal awaiting an owner decision in
-[#4554](https://github.com/kontourai/station/issues/4554). Nothing here is
-implemented or approved. The open questions are recorded in
-[the decision record](../decisions/ended-task-resume.md) (`needs-decision`).
-Until the owner decides, `done` and `canceled` Tasks stay ended, as
-[#4508 decision 4](../decisions/task-tracker-followups.md) says, and the
-current behavior is described in
-[Tracker follow-ups](tracker-backed-tasks.md#tracker-follow-ups).
+Status: implemented behind the default-off `task-resume` Feature Preview
+(personal Stations only), following the revised option B the owner approved on
+2026-11-06 in [the decision record](../decisions/ended-task-resume.md) for
+[#4554](https://github.com/kontourai/station/issues/4554). Choices the design
+left open and the evidence are in [Implementation](#implementation). Sections
+up to it are the reviewed design; where the implementation differs it says so
+there. Focused route and service tests are the evidence; no release, provider
+or runtime qualification is claimed.
 
 ## The question
 
@@ -395,7 +395,8 @@ attachment each fail a named test when removed.
 
 ## Acceptance for an implementation
 
-- The owner has approved the decision record, and it is `current`.
+- The owner has approved the decision record, and it is `current`
+  (2026-11-06).
 - With the preview off, nothing changes: no route answers, no flag is
   advertised, the UI shows no Resume.
 - Every refusal and approval in [Tests required](#tests-required) passes at
@@ -409,7 +410,7 @@ attachment each fail a named test when removed.
 
 1. **`endedAt`.** Write it on every move into an ended status and use it in
    the follow-up poller. This fixes the poller's edit-extends-following gap
-   whatever the owner decides.
+   on its own.
 2. **Resume.** The service mutation, resume record, route, preview,
    capability flag, close-on-merge clearing, custody, and the
    cleared lead attachment, with the boundary tests and storage migration.
@@ -420,6 +421,79 @@ attachment each fail a named test when removed.
 Not proposed here, each needing its own decision: delivering retained
 follow-ups into a still-live earlier lead instead of a new dispatch, and
 automatic resume from GitHub once an identity link exists.
+
+## Implementation
+
+Where the code lives: the contract and the shared refusal reading
+([`task-resume.ts`](../../packages/contracts/src/task-resume.ts)),
+`TaskGraphService.resumeTask` and the store decoder
+([`task-graph-service.ts`](../../src-server/services/projects/task-graph-service.ts)),
+the route ([`task-resume.ts`](../../src-server/routes/orchestration/task-resume.ts))
+and its authority composition in `runtime-routes.ts`, the SDK client
+([`task-resume.ts`](../../packages/sdk/src/task-resume.ts)) and the UI section
+([`TaskResumeSection.tsx`](../../src-ui/src/views/task-workspace/TaskResumeSection.tsx)).
+
+Choices and differences from the sections above:
+
+- **Who.** "Current authority" is four checks, all read again under the store
+  lock immediately before the write or any replay disclosure:
+  `isOperatorInPersonNotAgent`, the request principal still current, the
+  canonical Task read (`canonicalTaskSourceMayRead`), Project execution
+  (`canUseTaskSource(..., execute = true)`), and the request's own scope for
+  `POST /api/tasks/:taskId/dispatch`. The operator in person includes the
+  operator's own paired devices (#3994); ordinary account members are not in
+  person. Membership lives in its own store, so this is a recheck, not a
+  transaction across stores.
+- **Which Tasks.** "A GitHub `workItemRef`" is a canonical GitHub ref the
+  Project's board checked (`workItemProvenance: 'project-board'`), the same
+  rule tracker reads follow. `createdBy` `external-monitor` is refused with
+  `automation-rule`.
+- **Turns and worktrees.** The turn check asks whether any Session this
+  incarnation dispatched, or its conversation's current Session, has an open
+  turn; an unknown answer counts as running. The kept worktree's occupancy is
+  the finalizer's own `isWorkspaceBusy`; an unreadable worktree store or an
+  unknown occupancy answer refuses. A resumed Task's first dispatch
+  refuses to reuse a kept worktree that has a running turn (the turn may have
+  started after the resume); a later dispatch reuses it.
+- **Capability flag.** `taskResume` is a static fact about the build, withdrawn
+  in hosted mode, as `sessionPersonReads` is: with the preview off the route
+  answers `task_resume_unavailable` rather than the handshake dropping the
+  flag, so an older host's 404 and an off preview stay distinguishable. The UI
+  shows nothing while the preview is off.
+- **Own account.** The follow-up store does not record whether an item was
+  written with Station's own `gh` account, so the confirmation shows the class
+  and association but not that fact.
+- **CLI.** None: a `station` CLI call on the host carries the same home
+  credential an agent's shell command could, so it cannot present a witness
+  the server can tell apart from an agent. `scripts/cli-mcp-parity.json`
+  records the exemption. There is no MCP tool.
+- **Storage.** `endedAt` and `resumes` are new `TaskRecord` fields in
+  `task-graph.json`. The first write that adds either copies the file to
+  `task-graph.json.pre-task-resume` (refusing the write if the copy fails),
+  and later writes keep that first copy. An older build refuses the new
+  document as a whole (its decoder accepts an exact field list) rather than
+  dropping fields. To downgrade, stop Station and put the
+  `.pre-task-resume` copy back as `task-graph.json`, which loses Task changes
+  made since; there is no conversion tool.
+- **Custody.** The worktree custody queue is process-local; the store write is
+  serialized across processes by its file lock, but the custody ordering holds
+  only with one lifecycle writer per Station home, as today.
+
+Evidence (focused tests, run on the implementing branch):
+`task-resume.service.test.ts` (end time, storage migration, every refusal
+writing nothing, authority read under the lock, replay after restart and
+dispatch, concurrency, reservation expiry, worktree busy and custody order),
+`task-resume-wakes.test.ts` (queued and new Task-question and tracker wakes
+after resume, with the production placement rule), `task-follow-ups.test.ts`
+(the poller follows by `endedAt`), `runtime-routes-task-resume.test.ts` (the
+mounted route through `configureRuntimeRoutes`: preview off, operator resume,
+dispatch and replay, Station Control and internal-token refusal, read-only and
+revoked devices), `consumed-capability-flags.test.ts`,
+`runtime-routes-declare-pull-request-engine.test.ts` (close-on-merge writes
+`endedAt`), `task-brief.test.ts`, the SDK and UI tests.
+`runtime-routes-task-room-members.test.ts` verifies that an account contributor
+can read the shared Task room but is refused by the account-device boundary
+on both resume routes. Behavior across two Station processes is not verified.
 
 ## Limitations
 

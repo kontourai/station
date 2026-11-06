@@ -1,5 +1,6 @@
 import type { ClientOrigin } from './client-origin.js';
 import type { EngineId, ProviderSession } from './provider.js';
+import type { TaskResumeRecord } from './task-resume.js';
 
 /**
  * Station's task status vocabulary (roadmap #581, part of epic #580).
@@ -686,6 +687,18 @@ export interface TaskRecord {
    * Absent means off.
    */
   closeOnMerge?: boolean;
+  /**
+   * When the Task moved into `done` or `canceled` (#4554), written in the
+   * same store write as that move and never changed by edits. Absent on a
+   * Task that is not ended, and on one that ended before the field existed
+   * (its end time is unknown).
+   */
+  endedAt?: string;
+  /**
+   * Resumes of this incarnation, oldest first (#4554), each written in the
+   * same store write as its `done` -> `ready` move. Absent when none.
+   */
+  resumes?: TaskResumeRecord[];
   /** Deliverable hierarchy, independent of execution Sessions and status. */
   parent?: TaskIdentity;
   relationshipRevision?: number;

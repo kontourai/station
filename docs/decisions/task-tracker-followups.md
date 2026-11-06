@@ -18,7 +18,7 @@ The owner approved the following behavior in [#4508](https://github.com/kontoura
 1. **Freshness.** A new feature preview, off by default, permits bounded polling at approximately five-minute intervals using the existing scheduler or monitor infrastructure. Only Tasks with a GitHub `workItemRef` that are live or ended within 14 days are observed. There is no new daemon, webhook, or ingress.
 2. **Delivery.** Comments and reviews on the Task's own followed items from authors whose GitHub `author_association` is `OWNER`, `MEMBER`, or `COLLABORATOR` wake its lead Session through the durable Task question inbox path. Delivery queues behind a running turn, starts a turn when idle, and skips done or canceled Tasks and stopped leads. A failing check conclusion on a followed PR also wakes the lead unless the Task is blocked. GitHub Apps, logins ending in `[bot]`, and other authors are recorded and shown in the Task brief but never wake the lead.
 3. **Text.** Actor text is data, quoted under a line identifying its author as in the existing Task brief. Each excerpt is bounded to approximately 1,000 characters. A wake entry carries identities and the bounded quoted excerpt, never unbounded raw text.
-4. **Ended Tasks.** Resuming done or canceled Tasks is out of scope. Their observations are recorded and visible without changing Task status. Resume is tracked separately in [#4554](https://github.com/kontourai/station/issues/4554), whose open questions are in [Resuming ended tracker-backed Tasks](ended-task-resume.md) (`needs-decision`).
+4. **Ended Tasks.** Resuming done or canceled Tasks is out of scope. Their observations are recorded and visible without changing Task status. Resume is tracked separately in [#4554](https://github.com/kontourai/station/issues/4554); the owner approved a person-only resume of `done` Tasks in [Resuming ended tracker-backed Tasks](ended-task-resume.md), implemented behind the `task-resume` preview.
 5. **Followed PRs.** Follow the primary work item and PRs a person kept on the Task under the existing keep rule. A Session declaration alone does not start following a PR. A kept PR is followed only when its repository is the board-checked primary item's repository (canonical, case-insensitive). Its owner, repository and number come from a Session's declaration, which an agent or text it read can steer, so a kept PR in any other repository is never read with the host's `gh` login; it is recorded and shown in the Task brief as not followed (different repository). This same-repository rule was added in review of the first slice.
 
 ## Implementation status
@@ -28,8 +28,9 @@ decisions behind the `task-tracker-follow-ups` preview: polling, durable
 per-Task observations, the Task brief's "Tracker follow-ups" section, and the
 lead wake. Choices the decision left open:
 
-- An ended Task's end time is its `updatedAt`, since a Task record keeps no
-  end time.
+- An ended Task's end time was its `updatedAt`, since a Task record kept no
+  end time. Since #4554 it is `TaskRecord.endedAt`; `updatedAt` stands in only
+  for a Task that ended before that field existed.
 - Hosted mode does not offer the preview, since hosted tenants have no host
   `gh` login of their own.
 - One wake per poll carries every new waking item of the Task (at most eight

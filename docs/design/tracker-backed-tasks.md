@@ -48,12 +48,13 @@ and backs off for 15 minutes (a restart tries again).
 
 - **Eligible Tasks.** A Task whose `workItemRef` is a github.com ref the
   Project's board offered (`workItemProvenance: 'project-board'`), live or
-  `done`/`canceled` within 14 days. A Task record keeps no end time, so an
-  ended Task's `updatedAt` stands for it; an edit after the end can extend
-  following, never shorten it. Polling never changes a Task's status.
-  Whether a person may resume a `done` Task after a follow-up is an open
-  decision ([proposal](ended-task-resume.md),
-  [record](../decisions/ended-task-resume.md)).
+  `done`/`canceled` within 14 days of its `endedAt`, written with the move
+  into the ended status and never moved by an edit. A Task that ended before
+  Station recorded end times has none; for it alone `updatedAt` stands in, so
+  an edit after its end can extend following, never shorten it. Polling never
+  changes a Task's status. With the `task-resume` preview on, the Station
+  operator in person can resume a `done` Task after reading its follow-ups
+  ([Resuming ended Tasks](ended-task-resume.md)).
 - **Followed items.** The primary work item and each github.com pull request
   a person kept on the Task (the keep rule close-out uses) in the same
   repository as the primary item, at most ten. A pull request a Session only

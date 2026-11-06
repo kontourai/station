@@ -9,6 +9,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
@@ -101,6 +102,12 @@ async function fixture() {
     resolveProjectWorkspace: () => undefined,
   });
   const app = new Hono();
+  const featurePreviews = new FeaturePreviewRegistry(home, {
+    info() {},
+    warn() {},
+    error() {},
+    debug() {},
+  } as never);
   const context = deepStub({
     app,
     port: 4321,
@@ -121,6 +128,7 @@ async function fixture() {
     knowledgeStoreProvider: new KnowledgeStoreProvider(storage),
     projectService: projects,
     taskGraphService: graph,
+    featurePreviews,
     orchestrationEventStore: store,
     environmentSecurityService: security,
     eventBus: new EventBus(),
@@ -291,8 +299,56 @@ async function fixture() {
     privateTask,
     people,
     request,
+    graph,
+    featurePreviews,
   };
 }
+
+test('an account contributor with current shared Task access cannot resume it (#4554)', async () => {
+  const f = await fixture();
+  await f.featurePreviews.setEnabled('task-resume', true);
+  const { task } = await f.graph.createTaskForWorkItem(
+    {
+      projectId: f.task.projectId,
+      title: 'Ended tracker Task',
+      workItemRef: 'github:example/widgets#42',
+    },
+    '2026-11-01T00:00:00.000Z',
+  );
+  await f.graph.updateTaskStatus(task.id, 'in_progress');
+  await f.graph.updateTaskStatus(task.id, 'done');
+  const done = f.graph.readTask(task.id)!;
+  f.membership.sharedTasks.share({
+    scope: f.scope,
+    taskId: done.id,
+    taskCreatedAt: done.createdAt,
+    sharedBy: operator.id,
+  });
+  const member = f.people[0]!;
+  const read = await f.request(member, `/api/tasks/${done.id}/room`);
+  expect(read.status, await read.clone().text()).toBe(200);
+  for (const method of ['GET', 'POST']) {
+    const response = await f.request(member, `/api/tasks/${done.id}/resume`, {
+      method,
+      ...(method === 'POST'
+        ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              resumeId: 'member-resume',
+              expectedCreatedAt: done.createdAt,
+              expectedEndedAt: done.endedAt,
+              reason: 'A contributor asks for more work',
+            }),
+          }
+        : {}),
+    });
+    expect(response.status, await response.clone().text()).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+  }
+  expect(f.graph.readTask(done.id)).toEqual(done);
+});
 
 function readUntil(
   reader: ReadableStreamDefaultReader<Uint8Array>,
