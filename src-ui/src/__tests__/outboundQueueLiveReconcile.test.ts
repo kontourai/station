@@ -217,11 +217,21 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     'rejects a %s answer for another conversation even with the same message key',
     async (outcome) => {
       const queue = await killedMidSend();
-      await queue.outboundDispatch.reconcile(async () => ({
-        outcome,
-        conversationId: 'other-chat',
-        clientTurnId: intent.clientTurnId,
-      }));
+      await queue.outboundDispatch.reconcile(async () => {
+        const identity = {
+          conversationId: 'other-chat',
+          clientTurnId: intent.clientTurnId,
+        };
+        if (outcome === 'inbox-accepted') return { ...identity, outcome };
+        if (outcome === 'started')
+          return {
+            ...identity,
+            outcome,
+            sessionId: 'other-chat',
+            turnId: 'other-turn',
+          };
+        return { ...identity, outcome };
+      });
       expect(await queue.outboundDispatch.snapshot()).toEqual([
         expect.objectContaining({
           status: 'invoking',
