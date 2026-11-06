@@ -845,7 +845,7 @@ describe('the device toolbar', () => {
     expect(rows('Tools')).toEqual(['Apps', 'Device settings']);
     expect(rows('Session')).toEqual([
       'Recents',
-      'Float over chat (open a chat first)',
+      'Float in the next chat you open',
       'Close',
     ]);
     // The rows that stop the device for everyone stand apart, last.
@@ -1172,6 +1172,25 @@ describe('the device toolbar', () => {
     expect(document.activeElement).toBe(buttons.at(-1));
   });
 
+  test('with no chat open (a phone shows one pane at a time), the device floats in the next chat opened', async () => {
+    activeProject.slug = 'alpha';
+    await live(IOS_DEVICE);
+    await chooseDeviceMenuItem('Float in the next chat you open');
+    const { menu } = await openDeviceMenu();
+    within(menu).getByRole('menuitem', {
+      name: 'Floats in the next chat you open',
+    });
+    // A chat opens: its floater takes the device.
+    act(() => {
+      registerFloatHost();
+    });
+    expect(takeFloatRequest()?.source).toMatchObject({
+      kind: 'device',
+      deviceId: IOS_DEVICE.deviceId,
+      projectSlug: 'alpha',
+    });
+  });
+
   test('#90 D9: Float over chat waits for a chat, says why while it cannot, and lets go only once a chat has TAKEN the device (the session stays open)', async () => {
     activeProject.slug = 'alpha';
     const { log, surfaceId } = await live(IOS_DEVICE);
@@ -1182,12 +1201,12 @@ describe('the device toolbar', () => {
     });
     // On screen here: the float-over-chat hides this device.
     expect(isSourceShown(key)).toBe(true);
-    // No chat can float it yet: the action says so rather than doing nothing.
+    // No chat can float it yet: the action says it will float in the next
+    // chat opened (a phone shows one pane at a time), not "Float over chat".
     const { menu } = await openDeviceMenu();
-    const disabled = within(menu).getByRole('menuitem', {
-      name: 'Float over chat (open a chat first)',
+    within(menu).getByRole('menuitem', {
+      name: 'Float in the next chat you open',
     });
-    expect(disabled).toHaveProperty('disabled', true);
     expect(
       within(menu).queryByRole('menuitem', { name: 'Float over chat' }),
     ).toBeNull();

@@ -42,7 +42,11 @@ import {
   DEVICE_TOOL_PINS,
   type DeviceToolPin,
 } from './device-tool-pins.js';
-import { resolveDeviceToolRuntime } from './device-tool-runtime.js';
+import {
+  DEVICE_TOOL_RUNTIME_SETUP,
+  type DeviceToolRuntimeOptions,
+  resolveDeviceToolRuntime,
+} from './device-tool-runtime.js';
 import { verifyInstalledTree } from './device-tool-verify.js';
 
 const DEVICE_TOOL_IDS: readonly DeviceToolId[] = [
@@ -155,12 +159,13 @@ export function createNpmCiInstaller(
     timeoutMs?: number;
     spawn?: SpawnInstaller;
     env?: NodeJS.ProcessEnv;
-  } = {},
+  } & DeviceToolRuntimeOptions = {},
 ): DeviceToolInstaller {
   const resolveNpm =
     options.resolveNpm ??
     (async () =>
-      (await resolveDeviceToolRuntime(options.env ?? process.env)).npm);
+      (await resolveDeviceToolRuntime(options.env ?? process.env, options))
+        .npm);
   const timeoutMs = options.timeoutMs ?? INSTALL_TIMEOUT_MS;
   const spawnChild: SpawnInstaller = options.spawn ?? spawn;
   return {
@@ -181,7 +186,7 @@ export function createNpmCiInstaller(
           reject(
             new DeviceToolInstallError(
               'package-manager-unavailable',
-              'Install Node.js 24 or later with npm and make node available on your PATH to use device tools.',
+              DEVICE_TOOL_RUNTIME_SETUP,
               false,
             ),
           );
@@ -195,6 +200,9 @@ export function createNpmCiInstaller(
             'ci',
             '--ignore-scripts',
             '--omit=dev',
+            // Prebuilt native binaries (node-datachannel's per-platform
+            // packages) are optional, and WebRTC is refused: none installed.
+            '--omit=optional',
             '--no-audit',
             '--no-fund',
             '--no-update-notifier',

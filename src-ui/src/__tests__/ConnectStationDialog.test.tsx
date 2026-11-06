@@ -506,12 +506,14 @@ describe('Connect Station grant composition', () => {
     mount(false, store);
     await identify();
     expect(screen.queryByText(/Station access changed/)).toBeNull();
+    // No controlling Station: nothing to name, no peer choice to weigh, and
+    // so no second confirmation before the one Device request.
+    expect(document.body.textContent).not.toContain('No controlling Station');
+    expect(screen.queryByText(/Sending Station:/)).toBeNull();
+    expect(screen.queryByLabelText(/send work to/)).toBeNull();
     expect(
-      screen.getByLabelText(/Let .* send work to https:\/\/destination.test/),
-    ).toHaveProperty('disabled', true);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Request selected access' }),
-    );
+      screen.queryByRole('button', { name: 'Request selected access' }),
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole('button', { name: 'Approve device transport' }),
     );
@@ -523,6 +525,56 @@ describe('Connect Station grant composition', () => {
     expect(store.getCredential(paired!.id)).toBe('device-grant');
     expect(wire.start).not.toHaveBeenCalled();
     expect(wire.get).not.toHaveBeenCalled();
+  });
+
+  test('a first Device request reports waiting, then saved, from the real request and connection state', async () => {
+    wire.unbound = true;
+    const values = new Map<string, string>();
+    const storage: StorageAdapter = {
+      get: (key) => values.get(key) ?? null,
+      set: (key, value) => {
+        values.set(key, value);
+      },
+      remove: (key) => {
+        values.delete(key);
+      },
+    };
+    const store = new ConnectionStore({ storage, credentialStorage: storage });
+    globalThis.localStorage.clear();
+    mount(false, store);
+    const address = screen.getByLabelText('Station address');
+    expect(address.getAttribute('inputmode')).toBe('url');
+    expect(address.getAttribute('autocapitalize')).toBe('none');
+    fireEvent.change(address, {
+      target: { value: 'https://destination.test' },
+    });
+    // Return in the field submits, like Continue.
+    fireEvent.submit(address.closest('form')!);
+    await screen.findByText('remote-station');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Submit device request' }),
+    );
+    expect(
+      await screen.findByText(
+        'Waiting for approval on https://destination.test…',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Device access requested/)).toBeNull();
+
+    // The shell's completion saves access to the target; the line follows.
+    const target = store
+      .getAll()
+      .find((connection) => connection.url === 'https://destination.test')!;
+    act(() => {
+      store.setCredential(target.id, 'device-grant');
+    });
+    expect(
+      await screen.findByText(
+        'Device access saved. This Station is available in Stations.',
+      ),
+    ).toBeTruthy();
+    globalThis.localStorage.clear();
   });
 
   test.each(['immediate', 'pending'] as const)(
@@ -613,7 +665,6 @@ describe('Connect Station grant composition', () => {
           <ConnectionsProvider store={store}>
             <PendingPairingReconciler
               pending={pendingExchange}
-              enabled
               onCompleted={completed}
               onTerminalFailure={vi.fn()}
               onConnectionWaiting={vi.fn()}
@@ -815,7 +866,6 @@ describe('Connect Station grant composition', () => {
           <ConnectionsProvider store={store}>
             <PendingPairingReconciler
               pending={pendingExchange}
-              enabled
               onCompleted={vi.fn()}
               onTerminalFailure={failure}
               onConnectionWaiting={vi.fn()}

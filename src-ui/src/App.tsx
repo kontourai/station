@@ -3,7 +3,9 @@ import {
   connectionFailureCopy,
   useConnectionStatus,
   useConnections,
+  usePendingPairingApproval,
 } from '@kontourai/station-connect';
+import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import {
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
@@ -120,6 +122,7 @@ const loadServerEventsMount = () =>
 
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useFocusReporter } from './hooks/useFocusReporter';
+import { useFoldSplit } from './hooks/useFoldSplit';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
 import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
@@ -630,6 +633,10 @@ function App({
   // the same key an in-app navigation and a browser Back both land on.
   const contentViewRef = useRef<HTMLDivElement>(null);
   useScrollRestoration(contentViewRef, window.location.pathname);
+  // On a folded display the route outlet keeps its column off the crease
+  // (`.fold-avoid-crease`); a split layout inside it snaps to the crease
+  // itself instead.
+  useFoldSplit(contentViewRef);
 
   // The routed view. Built once: it is what every route other than `/`
   // renders, and what `/` renders once the home surface has resolved.
@@ -776,7 +783,10 @@ function App({
                   inert={isAmbientMobileDockFullscreen || undefined}
                   aria-hidden={isAmbientMobileDockFullscreen || undefined}
                 >
-                  <div className="content-view" ref={contentViewRef}>
+                  <div
+                    className="content-view fold-avoid-crease"
+                    ref={contentViewRef}
+                  >
                     {[
                       'home',
                       'task',
@@ -856,6 +866,38 @@ function HomeRouteHostUnavailable({
         variant="prominent"
         label="Connect to a Station to get started"
         description="Choose a saved Station or add its address."
+      />
+    );
+  }
+  return <HomeRouteHostFailure reason={reason} host={host} address={address} />;
+}
+
+function HomeRouteHostFailure({
+  reason,
+  host,
+  address,
+}: {
+  reason: ConnectionFailureReason | null;
+  host: string;
+  address: string;
+}) {
+  // The header chip reads this same pending-request fact; without it the
+  // card said "isn't accepting this device" (every probe 401s until approval)
+  // while the header said "Awaiting approval".
+  const pendingApproval = usePendingPairingApproval(address);
+  if (pendingApproval) {
+    return (
+      <Empty
+        variant="prominent"
+        label={
+          pairingStateCopy(
+            pendingApproval.requestKind === 'code'
+              ? 'waiting-for-code-approval'
+              : 'waiting-for-approval',
+            host,
+          ).message
+        }
+        description="This device connects as soon as it is approved."
       />
     );
   }
