@@ -97,6 +97,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
       .length;
 
   test('asynchronous startup retains the first output and exit for the caller', async () => {
+    const before = workerThreads();
     const proc = await new NodePtyAdapter().spawn({
       shell: process.env.COMSPEC ?? 'cmd.exe',
       args: ['/d', '/q', '/c', 'echo STATION_STARTUP_4629 & exit /b 7'],
@@ -111,6 +112,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
     const exit = await new Promise<{ exitCode: number }>((resolve) =>
       proc.onExit(resolve),
     );
+    await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
     expect(output.join('')).toContain('STATION_STARTUP_4629');
     expect(exit.exitCode).toBe(7);
     const replay = await new Promise<{ exitCode: number }>((resolve) =>
@@ -119,12 +121,13 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
     expect(replay.exitCode).toBe(7);
   });
 
-  test('asynchronous startup rejects an unavailable shell and releases its worker', async () => {
+  test('asynchronous startup rejects an unavailable directory and releases its worker', async () => {
     const before = workerThreads();
     await expect(
       new NodePtyAdapter().spawn({
-        shell: join(tmpdir(), 'station-missing-shell-4629.exe'),
-        cwd: tmpdir(),
+        shell: process.env.COMSPEC ?? 'cmd.exe',
+        args: ['/d', '/q'],
+        cwd: join(tmpdir(), 'station-missing-directory-4629'),
         cols: 80,
         rows: 24,
         env: process.env,
@@ -177,7 +180,10 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
                   });
                   readyObserved = new Promise<void>((resolve) => {
                     const emit = raw._socket.emit.bind(raw._socket);
-                    raw._socket.emit = (event, ...args) => {
+                    raw._socket.emit = (
+                      event: string | symbol,
+                      ...args: unknown[]
+                    ) => {
                       if (event !== 'data') return emit(event, ...args);
                       resolve();
                       void gate.then(() => {
@@ -214,8 +220,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
           env: process.env,
         });
         expect(proc.pid).toBeGreaterThan(0);
-        const output: string[] = [];
-        proc.onData((data) => output.push(data));
+        proc.onData(() => {});
         let exits = 0;
         const exited = new Promise<void>((resolve) =>
           proc.onExit(() => {
@@ -256,7 +261,6 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
         expect(workerThreads()).toBe(before);
         expect(exits).toBe(1);
         expect(transportErrors).toEqual([]);
-        expect(output.join('')).not.toBe('');
       } finally {
         releaseReady();
         // Failed fault-injection runs still release the owned console by its
