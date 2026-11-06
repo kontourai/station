@@ -1,5 +1,40 @@
 [
   {
+    "timestampUtc": "2026-11-06T21:17:20Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261106.42293637428",
+    "sha": "83f8b7e88a1f443906d0f0ab762a5b550b203a3f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42293637428",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261106.42293637428 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "bdc985adba464252a8a1bf812e3e2065542f75f6",
+      "groups": {
+        "feat": [
+          "[#4621](https://github.com/kontourai/station/pull/4621) feat(apps): add a personal Board library and launcher"
+        ],
+        "fix": [
+          "[#4657](https://github.com/kontourai/station/pull/4657) fix(terminal): wait for pending stops during disposal",
+          "[#4640](https://github.com/kontourai/station/pull/4640) fix(agent-runtime): bound WAL with asynchronous host checkpoints",
+          "[#4627](https://github.com/kontourai/station/pull/4627) fix(updates): unify status summaries and actionable indicators"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4645](https://github.com/kontourai/station/pull/4645) test(lineage): start legacy child before timestamp migration"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-11-06T15:39:30Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.20261106.42242672641",
