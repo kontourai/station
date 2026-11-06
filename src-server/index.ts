@@ -14,9 +14,15 @@ import { fileURLToPath } from 'node:url';
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
 import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
-import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
+import {
+  CORE_STARTUP_REFUSED_EXIT_CODE,
+  HANDOFF_DEFAULTS,
+} from '@kontourai/station-supervisor/protocol';
 import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
-import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
+import {
+  ensureStationHomeSchemaSync,
+  StationHomeResetRequiredError,
+} from './domain/home-schema-gate.js';
 import { assertManagedSettingsValid } from './domain/managed-settings.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
@@ -223,7 +229,15 @@ async function main() {
   // particular, installing the durable log sink first creates logs/server in
   // an otherwise fresh home and makes that home look like incompatible
   // marker-less application data.
-  ensureStationHomeSchemaSync(projectHomeDir);
+  try {
+    ensureStationHomeSchemaSync(projectHomeDir);
+  } catch (error) {
+    if (!(error instanceof StationHomeResetRequiredError)) throw error;
+    processLifecycle.observeShutdown('startup_failure');
+    processLifecycle.observeExit(CORE_STARTUP_REFUSED_EXIT_CODE);
+    console.error(error.message);
+    process.exit(CORE_STARTUP_REFUSED_EXIT_CODE);
+  }
 
   // Root logger + durable NDJSON sink, wired as early as possible — before
   // the runtime (and every module-scope logger it transitively imports)
@@ -248,7 +262,7 @@ async function main() {
   let managedPolicy: LoadedManagedPolicy | null;
   const refuseStartup: (error: unknown) => never = (error) => {
     processLifecycle.observeShutdown('startup_failure');
-    processLifecycle.observeExit(1);
+    processLifecycle.observeExit(CORE_STARTUP_REFUSED_EXIT_CODE);
     // One line that starts with the marker: the desktop sidecar matches it
     // to stop retrying, and the CLI's failed-start report prints it.
     console.error(error instanceof Error ? error.message : String(error));
@@ -259,7 +273,7 @@ async function main() {
       flushLogSink,
       buildProvenanceSnapshot,
     );
-    return process.exit(1);
+    return process.exit(CORE_STARTUP_REFUSED_EXIT_CODE);
   };
   try {
     // The same load the OTel bootstrap read before `main()` (#4521).

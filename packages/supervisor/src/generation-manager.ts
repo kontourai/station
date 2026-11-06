@@ -15,6 +15,7 @@
 import { EventEmitter } from 'node:events';
 import { isRecord } from './ndjson.ts';
 import {
+  CORE_STARTUP_REFUSED_EXIT_CODE,
   type GenerationState,
   type GenerationStatus,
   HANDOFF_DEFAULTS,
@@ -951,6 +952,10 @@ export class GenerationManager {
       this.failedDrainMs(this.handoffConfig.drainDeadlineMs),
     );
     this.trial = null;
+    if (gen.exitCode === CORE_STARTUP_REFUSED_EXIT_CODE) {
+      this.log(`generation ${gen.id} refused startup; not retrying`);
+      this.giveUp(1);
+    }
     return null;
   }
 
@@ -966,13 +971,13 @@ export class GenerationManager {
     this.setState(state);
     if (crashed && !(await this.recordFailureAndWait())) return;
     for (;;) {
-      if (this.stopping) return;
+      if (this.stopping || this.gaveUp) return;
       const gen = await this.launchActive(this.entry);
       if (gen) {
         this.commitActive(gen);
         return;
       }
-      if (this.stopping) return;
+      if (this.stopping || this.gaveUp) return;
       if (!(await this.recordFailureAndWait())) return;
     }
   }
@@ -1055,7 +1060,7 @@ export class GenerationManager {
         bootId: gen.bootId ?? undefined,
       };
     }
-    if (!this.stopping) void this.bringUp('restarting', true);
+    if (!this.stopping && !this.gaveUp) void this.bringUp('restarting', true);
     return {
       outcome: 'rolled-back',
       reason: `${reason}; previous entry failed to start, restarting`,

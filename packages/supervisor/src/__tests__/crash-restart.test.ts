@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import { startLoad, startSupervisor, writeCoreVariant } from './harness.ts';
@@ -59,6 +60,31 @@ describe('supervisor crash restart (real processes)', () => {
       await load.stop();
     }
   }, 60_000);
+
+  it.each(['STATION_MANAGED_POLICY_INVALID', 'STATION_HOME_RESET_REQUIRED'])(
+    'stops after one %s startup refusal and retains its diagnostic',
+    async (marker) => {
+      const entry = join(makeTempDir('sup-refused-entry-'), 'core.mjs');
+      writeFileSync(
+        entry,
+        `console.error('${marker}: repair required'); process.exit(78);`,
+      );
+      const supervisor = await startSupervisor({
+        home: makeTempDir('sup-refused-'),
+        entry,
+        args: ['--restart-backoff-ms', '20', '--restart-max-failures', '3'],
+        waitForServing: false,
+      });
+      expect(await supervisor.exited).toEqual({ code: 1, signal: null });
+      const output = supervisor.output();
+      expect(output).toContain(`${marker}: repair required`);
+      expect(output.match(/generation \d+ started/g)).toHaveLength(1);
+      expect(output).toContain('refused startup; not retrying');
+      expect(output).not.toContain('restarting in');
+      expect(existsSync(supervisor.endpoint.tokenPath)).toBe(false);
+    },
+    60_000,
+  );
 
   it('gives a first boot the boot park deadline, not the handoff one', async () => {
     const home = makeTempDir('sup-slow-park-');
