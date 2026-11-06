@@ -1238,11 +1238,17 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       ).toBeHidden();
       await expect(pending).toBeHidden();
       expect(openReads).toBe(1);
+      const historyNotice = page.getByRole('alert').filter({
+        hasText: 'Session history is unavailable.',
+      });
+      await expect(historyNotice).toBeVisible({ timeout: 15_000 });
+      await expect(historyNotice).toContainText('Try again in a moment.');
       await expect(
-        page.getByText('Recovery fixture history unavailable', {
-          exact: false,
-        }),
-      ).toBeVisible({ timeout: 15_000 });
+        historyNotice.getByRole('button', { name: 'Retry', exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('Recovery fixture history unavailable', { exact: false }),
+      ).toHaveCount(0);
       const failedHistoryReads = historyReads;
       expect(failedHistoryReads).toBeGreaterThan(0);
       historyFailed = false;
@@ -1255,11 +1261,7 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       await expect(
         page.getByText('Recovered conversation transcript', { exact: true }),
       ).toBeVisible();
-      await expect(
-        page.getByText('Recovery fixture history unavailable', {
-          exact: false,
-        }),
-      ).toBeHidden();
+      await expect(historyNotice).toBeHidden();
       await expect(resync).toBeHidden();
       await expect(
         page.getByRole('group', { name: 'Message composer', exact: true }),
