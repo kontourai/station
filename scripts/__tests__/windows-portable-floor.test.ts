@@ -106,6 +106,13 @@ describe('the Windows portable floor runner', () => {
           [
             JSON.stringify({ pid: 7, code: 0, signal: null }),
             JSON.stringify({ pid: 8, code: 3221225477, signal: null }),
+            // Vitest's own teardown: a SIGTERM it asked for is no death.
+            JSON.stringify({
+              pid: 9,
+              code: null,
+              signal: 'SIGTERM',
+              stopRequestedAt: '2026-11-06T00:00:00.000Z',
+            }),
             '',
           ].join('\n'),
         );
@@ -138,12 +145,12 @@ describe('the Windows portable floor runner', () => {
     expect(summary).toMatchObject({
       files: ['src/fail.test.ts'],
       status: 1,
-      workers: [{ pid: 7 }, { pid: 8, code: 3221225477 }],
+      workers: [{ pid: 7 }, { pid: 8, code: 3221225477 }, { pid: 9 }],
       applicationEvents: [{ Id: 1000 }],
     });
     expect(crashEvents).toHaveBeenCalledOnce();
     expect(logged.at(-1)).toContain(
-      '1 worker(s) ended abnormally (pid 8 exit 3221225477)',
+      '1 worker(s) exited before Vitest stopped them (pid 8 exit 3221225477)',
     );
   });
 

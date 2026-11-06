@@ -175,8 +175,12 @@ export function runFloorInvocations(
       return outcome;
     }
     const workers = readWorkerExits(workerExits);
+    // A worker Vitest stopped (`stopRequestedAt`) ended normally, whatever its
+    // signal; one that exited before that, other than cleanly, died.
     const abnormal = workers.filter(
-      (worker) => worker.code !== 0 || worker.signal !== null,
+      (worker) =>
+        !worker.stopRequestedAt &&
+        (worker.code !== 0 || worker.signal !== null),
     );
     const summary = {
       ...outcome,
@@ -199,7 +203,7 @@ export function runFloorInvocations(
       )
       .join(', ');
     log(
-      `[windows-portable-floor] evidence in ${evidence}: ${abnormal.length} worker(s) ended abnormally${ended ? ` (${ended})` : ''}, ${summary.reports.length} Node report(s), ${summary.applicationEvents.length} Application log entr(ies)`,
+      `[windows-portable-floor] evidence in ${evidence}: ${abnormal.length} worker(s) exited before Vitest stopped them${ended ? ` (${ended})` : ''}, ${summary.reports.length} Node report(s), ${summary.applicationEvents.length} Application log entr(ies)`,
     );
     return outcome;
   });

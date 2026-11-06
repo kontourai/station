@@ -22,6 +22,14 @@ if (log) {
   childProcess.fork = function recordedFork(...args) {
     const child = fork.apply(this, args);
     const startedAt = new Date().toISOString();
+    // Vitest stops every worker it is done with by `kill()` (SIGTERM): an
+    // exit after that is its normal teardown, not a worker that died.
+    let stopRequestedAt = null;
+    const kill = child.kill;
+    child.kill = function recordedKill(...killArgs) {
+      stopRequestedAt ??= new Date().toISOString();
+      return kill.apply(this, killArgs);
+    };
     child.once('exit', (code, signal) => {
       try {
         appendFileSync(
@@ -32,6 +40,7 @@ if (log) {
             code,
             signal,
             startedAt,
+            stopRequestedAt,
             exitedAt: new Date().toISOString(),
           })}\n`,
         );

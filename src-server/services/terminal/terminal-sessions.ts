@@ -1926,11 +1926,15 @@ export class TerminalSessions<Principal> {
     if (session.process.terminate) {
       let deadline: ReturnType<typeof setTimeout> | undefined;
       const expired = new Promise<never>((_resolve, reject) => {
-        deadline = setTimeout(
-          () =>
-            reject(new Error('Terminal process-group cleanup did not settle')),
-          6000,
-        );
+        deadline = setTimeout(() => {
+          // Name the step still pending, so a missed deadline is evidence.
+          const pending = session.process.describeTermination?.();
+          reject(
+            new Error(
+              `Terminal process-group cleanup did not settle${pending ? ` (${pending})` : ''}`,
+            ),
+          );
+        }, 6000);
       });
       try {
         await Promise.race([
