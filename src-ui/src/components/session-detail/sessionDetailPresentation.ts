@@ -46,7 +46,3 @@ export function sessionChatOpenTarget(session: OrchestrationSessionSummary) {
 
 /** The peer rule lives with the open policy that also applies it. */
 export { isPeerDelegationRecord } from '../../views/home/work-item-open-policy';
-
-/** Same sentence the delegated-work coordinator shows for a peer record. */
-export const PEER_TRANSCRIPT_ELSEWHERE =
-  "Station tracks this peer task's lifecycle here. Its transcript and final answer remain on the paired Station.";

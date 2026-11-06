@@ -108,9 +108,9 @@ export interface ClientRawEgressPolicy {
   isCurrent: () => boolean;
 }
 
-export type ClientRawEgressPolicyResolver = () =>
-  | ClientRawEgressPolicy
-  | undefined;
+export type ClientRawEgressPolicyResolver = (
+  selector?: ClientRequestSelector,
+) => ClientRawEgressPolicy | undefined;
 
 let rawEgressPolicyResolver: ClientRawEgressPolicyResolver | undefined;
 
@@ -122,8 +122,10 @@ export function setClientRawEgressPolicyResolver(
 }
 
 /** Read the current explicit route policy without inspecting transport presence. */
-export function getClientRawEgressPolicy(): ClientRawEgressPolicy | undefined {
-  return rawEgressPolicyResolver?.();
+export function getClientRawEgressPolicy(
+  selector?: ClientRequestSelector,
+): ClientRawEgressPolicy | undefined {
+  return rawEgressPolicyResolver?.(selector);
 }
 
 export type ClientRawEgressChannel = 'attachment upload' | 'terminal' | 'voice';
@@ -144,7 +146,10 @@ export function assertClientRawEgressAllowed(
   channel: ClientRawEgressChannel,
   expected?: string | ApiRequestScope,
 ): void {
-  const policy = getClientRawEgressPolicy();
+  const policy = getClientRawEgressPolicy({
+    url: apiBase,
+    ...(typeof expected === 'object' ? { requestScope: { ...expected } } : {}),
+  });
   if (!policy) return;
   if (!policy.isCurrent()) throw new StationRequestAuthorityError();
   if (policy.kind === 'broker' && sameOrigin(apiBase, policy.apiBase)) {
@@ -664,10 +669,14 @@ export async function readJsonBody(response: Response): Promise<unknown> {
   }
 }
 
-export type ClientCredentialResolver = () =>
-  | ClientCredential
-  | undefined
-  | Promise<ClientCredential | undefined>;
+export interface ClientRequestSelector {
+  url: string;
+  requestScope?: ApiRequestScope;
+}
+
+export type ClientCredentialResolver = (
+  selector?: ClientRequestSelector,
+) => ClientCredential | undefined | Promise<ClientCredential | undefined>;
 
 let credentialResolver: ClientCredentialResolver | undefined;
 
@@ -760,12 +769,164 @@ function bindRequestAuthority(
 }
 
 /** Guard owned body readers as well as the request/response boundary. */
+function guardResponseStream(
+  body: ReadableStream<Uint8Array>,
+  assertCurrent: () => void,
+): ReadableStream<Uint8Array> {
+  return new Proxy(body, {
+    get(target, property) {
+      if (property === 'getReader') {
+        return (...args: unknown[]) => {
+          assertCurrent();
+          const reader = Reflect.apply(target.getReader, target, args);
+          return new Proxy(reader, {
+            get(ownedReader, readerProperty) {
+              const value = Reflect.get(
+                ownedReader,
+                readerProperty,
+                ownedReader,
+              );
+              if (readerProperty === 'read') {
+                return async (...readArgs: unknown[]) => {
+                  try {
+                    assertCurrent();
+                    const chunk: unknown = await Reflect.apply(
+                      value,
+                      ownedReader,
+                      readArgs,
+                    );
+                    assertCurrent();
+                    return chunk;
+                  } catch (error) {
+                    // A tee branch's cancellation waits for its sibling; it
+                    // must not hold this reader's authority refusal open.
+                    void ownedReader.cancel(error).catch(() => {});
+                    throw error;
+                  }
+                };
+              }
+              return typeof value === 'function'
+                ? value.bind(ownedReader)
+                : value;
+            },
+          });
+        };
+      }
+      if (property === 'tee') {
+        return () => {
+          assertCurrent();
+          return target
+            .tee()
+            .map((branch) => guardResponseStream(branch, assertCurrent));
+        };
+      }
+      if (property === 'values' || property === Symbol.asyncIterator) {
+        return (...args: unknown[]) => {
+          assertCurrent();
+          const iterator: unknown = Reflect.apply(
+            Reflect.get(target, property, target),
+            target,
+            args,
+          );
+          if (!iterator || typeof iterator !== 'object')
+            throw new TypeError('Invalid response body iterator');
+          const guardedIterator: object = new Proxy(iterator, {
+            get(ownedIterator, iteratorProperty) {
+              if (iteratorProperty === Symbol.asyncIterator)
+                return () => guardedIterator;
+              const value = Reflect.get(
+                ownedIterator,
+                iteratorProperty,
+                ownedIterator,
+              );
+              if (iteratorProperty === 'next')
+                return async (...nextArgs: unknown[]) => {
+                  try {
+                    assertCurrent();
+                    const chunk: unknown = await Reflect.apply(
+                      value,
+                      ownedIterator,
+                      nextArgs,
+                    );
+                    assertCurrent();
+                    return chunk;
+                  } catch (error) {
+                    void Promise.resolve(
+                      Reflect.apply(
+                        Reflect.get(ownedIterator, 'return', ownedIterator),
+                        ownedIterator,
+                        [],
+                      ),
+                    ).catch(() => {});
+                    throw error;
+                  }
+                };
+              return typeof value === 'function'
+                ? value.bind(ownedIterator)
+                : value;
+            },
+          });
+          return guardedIterator;
+        };
+      }
+      if (property === 'pipeTo' || property === 'pipeThrough') {
+        return (...args: unknown[]) => {
+          assertCurrent();
+          const reader = target.getReader();
+          const guarded = new ReadableStream<Uint8Array>(
+            {
+              async pull(controller) {
+                try {
+                  assertCurrent();
+                  const chunk = await reader.read();
+                  assertCurrent();
+                  if (chunk.done) {
+                    controller.close();
+                    reader.releaseLock();
+                  } else controller.enqueue(chunk.value);
+                } catch (error) {
+                  controller.error(error);
+                  await reader.cancel(error).catch(() => {});
+                  reader.releaseLock();
+                }
+              },
+              cancel: (reason) =>
+                reader.cancel(reason).finally(() => reader.releaseLock()),
+            },
+            { highWaterMark: 0 },
+          );
+          const result = Reflect.apply(
+            Reflect.get(guarded, property, guarded),
+            guarded,
+            args,
+          );
+          if (property !== 'pipeThrough') return result;
+          if (!(result instanceof ReadableStream))
+            throw new TypeError('Invalid response body transform');
+          return guardResponseStream(result, assertCurrent);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 function guardResponseAuthority(
   response: Response,
   assertCurrent: () => void,
 ): Response {
+  let guardedBody: ReadableStream<Uint8Array> | null | undefined;
   return new Proxy(response, {
     get(target, property) {
+      if (property === 'body') {
+        assertCurrent();
+        if (guardedBody === undefined)
+          guardedBody = target.body
+            ? guardResponseStream(target.body, assertCurrent)
+            : null;
+        return guardedBody;
+      }
       if (
         property === 'json' ||
         property === 'text' ||
@@ -836,13 +997,17 @@ function needsAuthorityGuard(
  * header builder and the reporters.
  */
 async function resolveRequestCredential(
+  url: string,
   opts?: ClientRequestOptions,
 ): Promise<ClientCredential | undefined> {
   // An explicitly supplied per-call credential opts OUT of the ambient
   // resolver: it carries no transport and no callbacks, and the ambient
   // connection it does not belong to must not be told anything about it.
   if (opts?.credential && opts.credentialOrigin) return undefined;
-  return credentialResolver?.();
+  return credentialResolver?.({
+    url,
+    ...(opts?.requestScope ? { requestScope: { ...opts.requestScope } } : {}),
+  });
 }
 
 function resolveRequestHeaders(
@@ -1044,6 +1209,7 @@ async function settleCredentialResponse(
  * pass `timeoutMs: null` to opt out of the host default.
  */
 export type AuthenticatedFetchInit = RequestInit & {
+  requestScope?: ApiRequestScope;
   /** Opt-in header/body inactivity timeout with a five-minute total cap; supersedes timeoutMs. */
   progressTimeoutMs?: number;
   timeoutMs?: number | null;
@@ -1073,13 +1239,24 @@ async function dispatchAuthenticatedFetch(
     timeoutMs: initTimeoutMs,
     progressTimeoutMs,
     readOnly,
+    requestScope: suppliedScope,
     ...rest
   } = args[0] ?? {};
+  const opts = snapshotRequestOptions(
+    suppliedScope ? { requestScope: suppliedScope } : undefined,
+  );
   const progressTimeout = normalizeTimeout(progressTimeoutMs);
   const init = args[0] === undefined ? undefined : (rest as RequestInit);
   const hasInitArgument = args.length > 0;
   const url = input instanceof Request ? input.url : input.toString();
-  const configured = await credentialResolver?.();
+  const configured = await resolveRequestCredential(url, opts);
+  const assertAuthority = bindRequestAuthority(url, opts, configured);
+  assertAuthority();
+  if (
+    opts?.requestScope &&
+    (!configured || !sameOrigin(url, configured.origin))
+  )
+    throw new StationRequestAuthorityError();
   const timeoutMs = resolveTimeoutMs({
     ...(initTimeoutMs !== undefined ? { timeoutMs: initTimeoutMs } : {}),
     ...(init?.signal ? { signal: init.signal } : {}),
@@ -1179,8 +1356,6 @@ async function dispatchAuthenticatedFetch(
     request !== fetch,
   );
   if (originHeaders) requestInit.headers = originHeaders;
-  const assertAuthority = bindRequestAuthority(url, undefined, configured);
-  assertAuthority();
   const transportInit = nativeTransportInit(
     requestInit,
     undefined,
@@ -1210,7 +1385,7 @@ async function dispatchAuthenticatedFetch(
     { authentication: 'required' },
     assertAuthority,
   );
-  return needsAuthorityGuard(url, undefined, configured)
+  return needsAuthorityGuard(url, opts, configured)
     ? guardResponseAuthority(response, assertAuthority)
     : response;
 }
@@ -1272,7 +1447,7 @@ export async function getJson(
   return getJsonWithResolvedCredential(
     url,
     requestOptions,
-    await resolveRequestCredential(requestOptions),
+    await resolveRequestCredential(url, requestOptions),
   );
 }
 
@@ -1406,12 +1581,22 @@ export async function mutateBinary(
   return mutateBody(url, method, opts, body, 'binary');
 }
 
+/** Text uploads retain scoped credential selection and transport/currentness guards. */
+export async function mutateText(
+  url: string,
+  method: string,
+  opts: ClientRequestOptions | undefined,
+  body: string,
+): Promise<Response> {
+  return mutateBody(url, method, opts, body, 'text');
+}
+
 async function mutateBody(
   url: string,
   method: string,
   opts: ClientRequestOptions | undefined,
   body: unknown,
-  kind: 'json' | 'binary',
+  kind: 'json' | 'binary' | 'text',
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
   const maximum = requestOptions?.maxResponseBytes;
@@ -1426,13 +1611,15 @@ async function mutateBody(
                 'Content-Type':
                   kind === 'json'
                     ? 'application/json'
-                    : 'application/octet-stream',
+                    : kind === 'text'
+                      ? 'text/plain;charset=utf-8'
+                      : 'application/octet-stream',
               }
             : {}),
           ...(requestOptions?.headers || {}),
         }
       : undefined;
-  const configured = await resolveRequestCredential(requestOptions);
+  const configured = await resolveRequestCredential(url, requestOptions);
   const assertAuthority = bindRequestAuthority(url, requestOptions, configured);
   const headers = withClientOriginHeaders(
     resolveRequestHeaders(url, configured, {
@@ -1451,7 +1638,12 @@ async function mutateBody(
     init.headers = headers;
   }
   if (hasBody) {
-    init.body = kind === 'json' ? JSON.stringify(body) : (body as Blob);
+    init.body =
+      kind === 'json'
+        ? JSON.stringify(body)
+        : kind === 'text'
+          ? (body as string)
+          : (body as Blob);
   }
   const timeoutMs = resolveTimeoutMs(requestOptions);
   const request =
@@ -1923,6 +2115,11 @@ export function fetchSSE(
   url: string,
   opts: FetchSseOptions,
 ): FetchSseConnection {
+  opts = {
+    ...opts,
+    ...(opts.requestScope ? { requestScope: { ...opts.requestScope } } : {}),
+    ...(opts.headers ? { headers: { ...opts.headers } } : {}),
+  };
   const controller = new AbortController();
   const abort = () => controller.abort();
   // Resolve this once per browser-owned stream. A non-persisted pagehide is

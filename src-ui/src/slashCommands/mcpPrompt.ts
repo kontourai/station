@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/mcp-prompts';
 import { runAgentMcpPrompt } from '@kontourai/station-sdk';
 import { assignSkillVariableArgs } from '../utils/skill-commands';
+import { describeStationFailure } from '../utils/stationFailure';
 
 /**
  * #3284: run an MCP server prompt typed as `/<server>:<prompt>`. Loaded on
@@ -61,7 +62,7 @@ export async function runMcpPromptCommand(
     };
   } catch (error) {
     return {
-      refusal: `Could not run /${prompt.command}: ${error instanceof Error ? error.message : 'unknown error'}`,
+      refusal: `Could not run /${prompt.command}: ${describeStationFailure(error).body}`,
     };
   }
 }

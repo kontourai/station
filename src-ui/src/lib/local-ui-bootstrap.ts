@@ -1,4 +1,6 @@
 import { PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH } from '@kontourai/station-contracts/environment-security';
+import { StationUiError } from '../utils/StationUiError';
+import { describeStationFailure } from '../utils/stationFailure';
 import {
   LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS,
   localUiSessionIdentityDeadlineMs,
@@ -82,7 +84,7 @@ export function captureLocalUiBootstrapToken(): string | undefined {
  * — one `Error` for every throw on this path — is exactly what conflated a
  * refusal with a host that could not be reached.
  */
-class LocalUiBootstrapRefusedError extends Error {}
+class LocalUiBootstrapRefusedError extends StationUiError {}
 
 /**
  * NO ANSWER AT ALL: the launcher-token exchange never reached a responder. Says
@@ -324,7 +326,7 @@ export function resolveLocalUiSession(
       }
       return {
         kind: 'access-required',
-        message: error instanceof Error ? error.message : String(error),
+        message: describeStationFailure(error).body,
       };
     }
   })();

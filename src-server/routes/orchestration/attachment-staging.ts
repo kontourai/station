@@ -18,7 +18,7 @@ import {
 } from '../../services/orchestration/attachment-staging-service.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 
-const descriptorSchema = z.object({
+export const attachmentStageDescriptorSchema = z.object({
   clientAttachmentId: z.string().min(1).max(128),
   kind: z.enum(['image', 'file']),
   name: z.string().max(160),
@@ -36,7 +36,7 @@ const descriptorSchema = z.object({
   size: z.number().int(),
 });
 
-const reconcileSchema = z.object({
+export const attachmentStageReconcileSchema = z.object({
   stageIds: z.array(z.string().min(1).max(128)).max(CHAT_ATTACHMENT_MAX_COUNT),
 });
 
@@ -66,7 +66,7 @@ export function createAttachmentStagingRoutes(
   };
 
   app.get('/capability', (c) => c.json(capability));
-  app.post('/prepare', validate(descriptorSchema), (c) => {
+  app.post('/prepare', validate(attachmentStageDescriptorSchema), (c) => {
     try {
       return c.json(
         deps.service.prepare(
@@ -108,7 +108,7 @@ export function createAttachmentStagingRoutes(
       return stageError(c, error);
     }
   });
-  app.post('/reconcile', validate(reconcileSchema), (c) => {
+  app.post('/reconcile', validate(attachmentStageReconcileSchema), (c) => {
     try {
       const body = getBody(c);
       return c.json(

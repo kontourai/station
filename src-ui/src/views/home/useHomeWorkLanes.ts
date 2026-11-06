@@ -1,9 +1,13 @@
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { conversationStateKey } from '../../connections/station-state';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import {
   clearSnooze,
+  migrateSnoozeKey,
   readSnoozes,
-  type SnoozeMap,
+  snoozesVersion,
+  subscribeSnoozes,
   writeSnooze,
 } from '../../utils/activity-snooze-store';
 import {
@@ -64,10 +68,31 @@ export function useHomeWorkLanes(
   // Lane windows re-derive on the shared coarse clock, so terminal linger /
   // snooze wake / pill expiry progress without another prop change forcing
   // it — and every Home surface ages on the same tick.
+  const { namespace } = useAuthorityPersistence();
   const now = useCoarseNow();
-  const [snoozeMap, setSnoozeMap] = useState<SnoozeMap>(() =>
-    readSnoozes(Date.now()),
+  const version = useSyncExternalStore(
+    subscribeSnoozes,
+    snoozesVersion,
+    snoozesVersion,
   );
+  const snoozeMap = useMemo(() => {
+    void version;
+    return readSnoozes(now, namespace);
+  }, [now, namespace, version]);
+  useLayoutEffect(() => {
+    for (const item of items) {
+      if (!item.chatSessionId || !item.conversationId) continue;
+      migrateSnoozeKey(
+        conversationStateKey(
+          workFacts?.get(item.id)?.chatBinding,
+          item.chatSessionId,
+        ),
+        item.id,
+        now,
+        namespace,
+      );
+    }
+  }, [items, workFacts, now, namespace]);
   const identityAliasRef = useRef(new Map<string, string>());
   const orderRef = useRef<string[]>([]);
   const wokeAtRef = useRef(new Map<string, number>());
@@ -146,14 +171,14 @@ export function useHomeWorkLanes(
     now,
     isWoken: (id: string) => wokeAtRef.current.has(id),
     snooze: (id: string, wakeAt: number) => {
-      setSnoozeMap(writeSnooze(id, wakeAt, Date.now()));
+      writeSnooze(id, wakeAt, Date.now(), namespace);
     },
     wake: (id: string) => {
       // An explicit wake dismisses silently rather than showing "woke from
       // snooze" for something the user just un-snoozed themselves.
       wokeAtRef.current.delete(id);
       explicitWakeRef.current.add(id);
-      setSnoozeMap(clearSnooze(id, Date.now()));
+      clearSnooze(id, Date.now(), namespace);
     },
   };
 }

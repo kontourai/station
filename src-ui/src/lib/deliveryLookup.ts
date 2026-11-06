@@ -1,5 +1,9 @@
 import type { TurnDeliveryOutcome } from '@kontourai/station-contracts/orchestration';
-import type { OutboundDeliveryLookup } from './outboundQueue';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import type {
+  OutboundDeliveryLookup,
+  OutboundStationIdentity,
+} from './outboundQueue';
 
 /**
  * Station's delivery lookup (`GET …/turn-deliveries/:key`) as the outbox and
@@ -13,7 +17,10 @@ export const IN_FLIGHT_FIRST_CHECK_MS = 5_000;
 export const DELIVERY_CHECK_MAX_INTERVAL_MS = 30_000;
 
 /** The conversation id a send named; a first send names its chat's id. */
-export function lookupTurnDelivery(apiBase: string): OutboundDeliveryLookup {
+export function lookupTurnDelivery(
+  apiBase: string,
+  requestScope?: ApiRequestScope,
+): OutboundDeliveryLookup {
   return async (turn) => {
     const { getTurnDelivery, listConversationInbox } = await import(
       '@kontourai/station-sdk/client'
@@ -21,7 +28,11 @@ export function lookupTurnDelivery(apiBase: string): OutboundDeliveryLookup {
     if (turn.inboxSteerHead) {
       if (!turn.conversationId)
         throw new Error('The steer has no conversation identity.');
-      const entries = await listConversationInbox(apiBase, turn.conversationId);
+      const entries = await listConversationInbox(
+        apiBase,
+        turn.conversationId,
+        { requestScope },
+      );
       const entry = entries.find(
         (item) => item.clientTurnId === turn.clientTurnId,
       );
@@ -52,7 +63,10 @@ export function lookupTurnDelivery(apiBase: string): OutboundDeliveryLookup {
       apiBase,
       turn.conversationId ?? turn.sessionId,
       turn.clientTurnId,
-      turn.projectSlug ? { projectSlug: turn.projectSlug } : undefined,
+      {
+        ...(turn.projectSlug ? { projectSlug: turn.projectSlug } : {}),
+        requestScope,
+      },
     );
   };
 }
@@ -67,6 +81,7 @@ export function lookupTurnDelivery(apiBase: string): OutboundDeliveryLookup {
  */
 export function watchInFlightDelivery(input: {
   apiBase: string;
+  requestScope?: ApiRequestScope;
   conversationId: string;
   clientTurnId: string;
   projectSlug?: string;
@@ -75,7 +90,7 @@ export function watchInFlightDelivery(input: {
 }): () => void {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const lookup = lookupTurnDelivery(input.apiBase);
+  const lookup = lookupTurnDelivery(input.apiBase, input.requestScope);
   const schedule = (delay: number) => {
     timer = setTimeout(async () => {
       if (stopped) return;
@@ -120,14 +135,21 @@ export function watchInFlightDelivery(input: {
  */
 export async function recheckOutboundTurn(
   clientTurnId: string,
+  owner?: {
+    station: OutboundStationIdentity;
+    requestScope: ApiRequestScope;
+    conversationId?: string;
+  },
 ): Promise<TurnDeliveryOutcome | undefined> {
   const { outboundDispatch, currentOutboundStation } = await import(
     './outboundQueue'
   );
-  const station = currentOutboundStation();
+  const station = owner?.station ?? currentOutboundStation();
   if (!station) throw new Error('Reconnect before checking this message.');
   return outboundDispatch.check(
     clientTurnId,
-    lookupTurnDelivery(station.apiBase),
+    lookupTurnDelivery(station.apiBase, owner?.requestScope),
+    station,
+    owner?.conversationId,
   );
 }

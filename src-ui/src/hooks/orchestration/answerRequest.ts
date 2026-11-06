@@ -17,6 +17,7 @@ class ApprovalDeliveryUnconfirmedError extends Error {
 export type OrchestrationAnswerOutcome = 'answered' | 'already-settled';
 export interface ApprovalAnswerReference {
   apiBase: string;
+  authorityKey?: string;
   threadId: string;
   requestId: string;
   requestEventId?: string;
@@ -35,26 +36,50 @@ interface ApprovalAnswerState {
  * surface that never loaded the content cannot allow it.
  */
 const viewedContentDigests = new Map<string, string>();
-const contentKey = (threadId: string, requestEventId: string) =>
-  JSON.stringify([threadId, requestEventId]);
+const contentKey = (
+  threadId: string,
+  requestEventId: string,
+  authorityKey = '',
+  apiBase = '',
+) =>
+  JSON.stringify([
+    authorityKey ? apiBase : '',
+    authorityKey,
+    threadId,
+    requestEventId,
+  ]);
 export function recordViewedContentDigest(
   threadId: string,
   requestEventId: string,
   digest: string,
+  authorityKey?: string,
+  apiBase?: string,
 ) {
   if (viewedContentDigests.size >= 256)
     viewedContentDigests.delete(viewedContentDigests.keys().next().value!);
-  viewedContentDigests.set(contentKey(threadId, requestEventId), digest);
+  viewedContentDigests.set(
+    contentKey(threadId, requestEventId, authorityKey, apiBase),
+    digest,
+  );
 }
-function viewedContentDigestFor(request: {
-  threadId: string;
-  requestEventId?: string;
-  decision: 'accept' | 'acceptForSession' | 'decline';
-}): string | undefined {
+function viewedContentDigestFor(
+  apiBase: string,
+  request: {
+    requestScope?: ApiRequestScope;
+    threadId: string;
+    requestEventId?: string;
+    decision: 'accept' | 'acceptForSession' | 'decline';
+  },
+): string | undefined {
   if (request.decision === 'decline' || !request.requestEventId)
     return undefined;
   return viewedContentDigests.get(
-    contentKey(request.threadId, request.requestEventId),
+    contentKey(
+      request.threadId,
+      request.requestEventId,
+      request.requestScope?.authorityKey,
+      apiBase,
+    ),
   );
 }
 
@@ -71,8 +96,15 @@ export function requestContentRefreshForTest(
   requestContentRefresh(threadId, requestEventId);
 }
 
-function requestContentRefresh(threadId: string, requestEventId: string) {
-  viewedContentDigests.delete(contentKey(threadId, requestEventId));
+function requestContentRefresh(
+  threadId: string,
+  requestEventId: string,
+  authorityKey?: string,
+  apiBase?: string,
+) {
+  viewedContentDigests.delete(
+    contentKey(threadId, requestEventId, authorityKey, apiBase),
+  );
   bumpContentRefresh(threadId, requestEventId);
 }
 
@@ -97,10 +129,17 @@ const pendingAnswers = new Map<
 >();
 const answerKey = (
   apiBase: string,
-  request: { threadId: string; requestId: string; requestEventId?: string },
+  request: {
+    threadId: string;
+    requestId: string;
+    requestEventId?: string;
+    authorityKey?: string;
+    requestScope?: ApiRequestScope;
+  },
 ) =>
   JSON.stringify([
     apiBase,
+    request.requestScope?.authorityKey ?? request.authorityKey,
     request.threadId,
     request.requestId,
     request.requestEventId,
@@ -268,7 +307,7 @@ async function sendAnswer(
     requestScope?: ApiRequestScope;
   },
 ): Promise<OrchestrationAnswerOutcome> {
-  const viewedContentDigest = viewedContentDigestFor(request);
+  const viewedContentDigest = viewedContentDigestFor(apiBase, request);
   try {
     await resolveOrchestrationRequest({
       apiBase,
@@ -297,7 +336,12 @@ async function sendAnswer(
       'code' in error &&
       error.code === 'request_content_not_loaded'
     ) {
-      requestContentRefresh(request.threadId, request.requestEventId);
+      requestContentRefresh(
+        request.threadId,
+        request.requestEventId,
+        request.requestScope?.authorityKey,
+        apiBase,
+      );
       throw new Error(
         'Station is loading more of this request. Review it, then allow it again.',
       );

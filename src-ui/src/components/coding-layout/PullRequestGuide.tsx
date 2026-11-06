@@ -8,6 +8,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { Empty } from '../state';
 import './PullRequestGuide.css';
@@ -72,7 +73,8 @@ export function PullRequestGuide({
   const result = query.data;
   if (!scope?.isCurrent()) return <p>Reconnect to read this guide.</p>;
   if (query.isPending) return <p role="status">Reading guide…</p>;
-  if (query.error) return <p role="alert">{query.error.message}</p>;
+  if (query.error)
+    return <p role="alert">{describeStationFailure(query.error).body}</p>;
   if (!result?.enabled)
     return (
       <p>Enable Review guides in Station settings to read AI-written tours.</p>
@@ -92,7 +94,9 @@ export function PullRequestGuide({
               : 'Write guide'}
         </Button>
       </div>
-      {write.error && <p role="alert">{write.error.message}</p>}
+      {write.error && (
+        <p role="alert">{describeStationFailure(write.error).body}</p>
+      )}
       {result.run?.state === 'Failed' && (
         <p role="alert">{result.run.detail}</p>
       )}

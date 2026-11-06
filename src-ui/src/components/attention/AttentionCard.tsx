@@ -28,7 +28,6 @@ import {
   acceptFlowException,
   DevicePairingRequestActionError,
   evaluateFlowGate,
-  sendOrchestrationTurn,
   useAcknowledgeAttentionItemMutation,
   useConfirmDevicePairingRequestMutation,
   useDenyDevicePairingRequestMutation,
@@ -37,10 +36,6 @@ import {
   useQueryClient,
   useSystemStatusForApiBaseQuery,
 } from '@kontourai/station-sdk';
-import {
-  continueDelegatedTask,
-  respondToDelegatedTaskRequest,
-} from '@kontourai/station-sdk/client';
 import { operatorCliCommand } from '@kontourai/station-shared/ports';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -66,7 +61,9 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
+import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { DecisionError } from '../notifications/DecisionError';
@@ -554,7 +551,7 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
             </p>
           )}
           <MutationError
-            error={describePairingActionError(
+            safeDescription={describePairingActionError(
               reviewUrl ? null : confirmMutation.error,
               item,
               'approve',
@@ -564,7 +561,7 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
             )}
           />
           <MutationError
-            error={describePairingActionError(
+            safeDescription={describePairingActionError(
               denyMutation.error,
               item,
               'deny',
@@ -630,27 +627,20 @@ function describePairingActionError(
   action: 'approve' | 'deny',
   operatorCli: string,
   kept: ReadonlySet<PairingScope>,
-): unknown {
+): string | null {
   if (error == null) return null;
-  if (!(error instanceof DevicePairingRequestActionError)) return error;
+  if (!(error instanceof DevicePairingRequestActionError))
+    return describeStationFailure(error).body;
   if (error.status === 401) {
-    return new Error(
-      "This device's access to this Station needs review. Reconnect it, then try again.",
-    );
+    return "This device's access to this Station needs review. Reconnect it, then try again.";
   }
   if (error.status === 403 && action === 'approve') {
-    return new Error(
-      pairingApprovalRemedy(item, operatorCli, kept, elevatedLabels(kept)),
-    );
+    return pairingApprovalRemedy(item, operatorCli, kept, elevatedLabels(kept));
   }
   if (error.status === 404 || error.status === 410) {
-    return new Error(
-      'That access request has already expired or been removed.',
-    );
+    return 'That access request has already expired or been removed.';
   }
-  return new Error(
-    `This Station could not ${action} that access request. Try again.`,
-  );
+  return `This Station could not ${action} that access request. Try again.`;
 }
 
 /**
@@ -880,21 +870,13 @@ function PeerRequestDecisionActions({
   reference: AttentionPeerRequestReference;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const answer = useApprovalAnswering(scope?.apiBase ?? '');
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: (decision: 'accept' | 'decline') => {
       if (!scope?.isCurrent())
         throw new Error('Reconnect to this Station to decide this request.');
-      return respondToDelegatedTaskRequest(
-        scope.apiBase,
-        reference.taskId,
-        {
-          requestId: reference.requestId,
-          decision,
-          environmentId: reference.environmentId,
-        },
-        { requestScope: scope },
-      );
+      return answer.task(reference, decision, scope);
     },
     onSuccess: async () => {
       await Promise.all([
@@ -909,7 +891,9 @@ function PeerRequestDecisionActions({
         <NoticeAction
           type="button"
           className="notice-action--primary"
-          disabled={mutation.isPending || mutation.isSuccess}
+          disabled={
+            !scope?.isCurrent() || mutation.isPending || mutation.isSuccess
+          }
           onClick={() => mutation.mutate('accept')}
         >
           Allow
@@ -917,7 +901,9 @@ function PeerRequestDecisionActions({
         <NoticeAction
           type="button"
           className="notice-action--danger"
-          disabled={mutation.isPending || mutation.isSuccess}
+          disabled={
+            !scope?.isCurrent() || mutation.isPending || mutation.isSuccess
+          }
           onClick={() => mutation.mutate('decline')}
         >
           Deny
@@ -947,26 +933,14 @@ function PeerInputAnswer({
   itemId: string;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const answering = useApprovalAnswering(scope?.apiBase ?? '');
   const queryClient = useQueryClient();
   const [answer, setAnswer] = useState('');
   const mutation = useMutation({
     mutationFn: (message: string) => {
       if (!scope?.isCurrent())
         throw new Error('Reconnect to this Station to answer this request.');
-      return continueDelegatedTask(
-        scope.apiBase,
-        reference.taskId,
-        {
-          message,
-          environmentId: reference.environmentId,
-          expectedInputRequest: {
-            threadId: reference.threadId,
-            requestId: reference.requestId,
-            requestEventId: reference.requestEventId,
-          },
-        },
-        { requestScope: scope },
-      );
+      return answering.taskInput(reference, message, scope);
     },
     onSuccess: async () => {
       setAnswer('');
@@ -1045,50 +1019,14 @@ function ScopedInputReply({
   );
 }
 function LegacyNeedsInputAction({ item }: { item: NeedsInputAttentionItem }) {
-  const [answer, setAnswer] = useState('');
-  const queryClient = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: (text: string) =>
-      sendOrchestrationTurn({ threadId: item.source.threadId, text }),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['attention'] }),
-        queryClient.invalidateQueries({ queryKey: ['orchestration-sessions'] }),
-      ]);
-    },
-  });
   return (
     <>
-      <form
-        className="attention-answer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (answer.trim()) mutation.mutate(answer);
-        }}
-      >
-        <label htmlFor={`attention-answer-${item.id}`}>
-          Answer this session
-        </label>
-        <textarea
-          id={`attention-answer-${item.id}`}
-          value={answer}
-          onChange={(event) => setAnswer(event.target.value)}
-        />
-        <NoticeAction
-          type="submit"
-          className="notice-action--primary"
-          disabled={!answer.trim() || mutation.isPending}
-        >
-          Send answer
-        </NoticeAction>
-      </form>
+      <p>Open the session to answer this request.</p>
       <OpenSessionLink href={item.openHref} />
-      <MutationError error={mutation.error} />
     </>
   );
 }
 
-/** Without an exact request reference, review continues in the session. */
 function OpenSessionAction({ item }: { item: ReviewPendingAttentionItem }) {
   return (
     <a className="attention-open-link" href={item.openHref}>
@@ -1384,11 +1322,17 @@ function OpenModelConnectionsLink({ href }: { href: string }) {
   );
 }
 
-function MutationError({ error }: { error: unknown }) {
-  if (error == null) return null;
+function MutationError({
+  error,
+  safeDescription,
+}: {
+  error?: unknown;
+  safeDescription?: string | null;
+}) {
+  if (error == null && safeDescription == null) return null;
   return (
     <p className="attention-error" role="alert">
-      {error instanceof Error ? error.message : 'Unable to update inbox item.'}
+      {safeDescription ?? describeStationFailure(error).body}
     </p>
   );
 }

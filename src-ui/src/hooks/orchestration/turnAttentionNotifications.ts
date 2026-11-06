@@ -1,6 +1,10 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { showChatPageOrDock } from '../../app-shell/chat-placement';
+import {
+  type StationStateScope,
+  stationStateKey,
+} from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/NavigationContext';
 import { stripAnsi, toastStore } from '../../contexts/ToastContext';
@@ -95,8 +99,14 @@ function settledBeforeThisLoad(key: string): boolean {
   return settledBeforeLoad.has(key);
 }
 
-function turnKey(threadId: string, turnId: string): string {
-  return `${threadId}\u0000${turnId}`;
+function turnKey(
+  threadId: string,
+  turnId: string,
+  station?: StationStateScope,
+): string {
+  return station && station.binding.affinity.kind !== 'host'
+    ? JSON.stringify([stationStateKey(station.binding), threadId, turnId])
+    : `${threadId}\u0000${turnId}`;
 }
 
 function remember(set: Set<string>, key: string): void {
@@ -192,6 +202,7 @@ function describeTurnOutcome(
 }
 
 export type TurnTerminal = {
+  station?: StationStateScope;
   threadId: string;
   turnId: string | undefined;
   provider: EngineId;
@@ -233,13 +244,17 @@ function isOwnStop(key: string, turnId: string, chatKey?: string): boolean {
 }
 
 function show(terminal: TurnTerminal & { turnId: string }): void {
-  const key = turnKey(terminal.threadId, terminal.turnId);
+  const station = terminal.station;
+  if (station && !station.isCurrent()) return;
+  const key = turnKey(terminal.threadId, terminal.turnId, station);
   settle(key);
   const outcome = outcomeFor(terminal, key);
   if (!outcome) return;
   const chatKey =
-    activeChatsStore.getChatKeyForExecutionSession(terminal.threadId) ??
-    terminal.threadId;
+    activeChatsStore.getChatKeyForExecutionSession(
+      terminal.threadId,
+      station,
+    ) ?? terminal.threadId;
   const chat = activeChatsStore.getSnapshot()[chatKey];
   if (
     isChatInForeground({
@@ -274,13 +289,18 @@ function show(terminal: TurnTerminal & { turnId: string }): void {
 export function notifyTurnTerminal(terminal: TurnTerminal): void {
   const { threadId, turnId } = terminal;
   if (!turnId || isReplayThread(threadId)) return;
-  const key = turnKey(threadId, turnId);
+  const station = terminal.station;
+  if (station && !station.isCurrent()) return;
+  const key = turnKey(threadId, turnId, station);
   if (handledTurns.has(key) || pendingTurns.has(key)) return;
   if (settledBeforeThisLoad(key)) {
     remember(handledTurns, key);
     return;
   }
-  const chatKey = activeChatsStore.getChatKeyForExecutionSession(threadId);
+  const chatKey = activeChatsStore.getChatKeyForExecutionSession(
+    threadId,
+    station,
+  );
   if (isOwnStop(key, turnId, chatKey)) {
     settle(key);
     return;
@@ -311,13 +331,16 @@ export function notifyTurnTerminal(terminal: TurnTerminal): void {
  * predate the field, when only users could stop) is this user's own act, not
  * news. A stall-watchdog stop is not, and still toasts.
  */
-export function observeStopSettled(event: {
-  threadId: string;
-  turnId?: string;
-  initiatedBy?: 'user' | 'stall';
-}): void {
+export function observeStopSettled(
+  event: {
+    threadId: string;
+    turnId?: string;
+    initiatedBy?: 'user' | 'stall';
+  },
+  station?: StationStateScope,
+): void {
   if (!event.turnId) return;
-  const key = turnKey(event.threadId, event.turnId);
+  const key = turnKey(event.threadId, event.turnId, station);
   if (event.initiatedBy === 'stall') {
     remember(stallStoppedTurns, key);
     return;

@@ -1,3 +1,4 @@
+import { conversationConnection } from '../components/conversation/__tests__/fixtures';
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -513,4 +514,65 @@ test('omitted tool history is disclosed beside the retained running count', () =
   expect(
     screen.getByRole('heading', { name: 'Running (1 shown)' }),
   ).toBeTruthy();
+});
+
+test('a peer background sheet selects its Station partition and never invokes host-only child controls', () => {
+  interruptTask.mockReset();
+  stopProviderTask.mockReset();
+  useOrchestrationSessionActivityQuery.mockReturnValue({ data: undefined });
+  useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
+  useInterruptDelegatedTaskMutation.mockReturnValue({
+    mutate: interruptTask,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+  });
+  useStopProviderTaskMutation.mockReturnValue({
+    mutate: stopProviderTask,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+  });
+  const station = conversationConnection('relay');
+  useChatBackgroundTasks.mockReturnValue({
+    running: [
+      runningEntry({
+        kind: 'agent',
+        source: 'delegate-session',
+        delegateThreadId: 'peer-child',
+        stop: { kind: 'delegate-interrupt' },
+      }),
+    ],
+    finished: [],
+  });
+  render(
+    <BackgroundTasksSheet
+      chatThreadId="peer-tab"
+      station={station}
+      apiBase={station.targetApiBase}
+      anchorRef={createRef<HTMLElement>()}
+      onOpenTranscript={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  expect(useChatBackgroundTasks).toHaveBeenCalledWith('peer-tab', station);
+  expect(screen.getByText('Via Receiver')).toBeTruthy();
+  const stop = screen.getByRole('button', { name: 'Stop' });
+  expect(stop.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(stop);
+  expect(interruptTask).not.toHaveBeenCalled();
+  expect(
+    screen
+      .getByRole('button', { name: 'View transcript' })
+      .hasAttribute('disabled'),
+  ).toBe(true);
+  expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
+    'peer-child',
+    station.targetApiBase,
+    expect.objectContaining({
+      readTarget: expect.objectContaining({
+        targetApiBase: station.targetApiBase,
+      }),
+    }),
+  );
 });

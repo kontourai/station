@@ -1,27 +1,52 @@
+import { resolve } from 'node:path';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { Page } from '@playwright/test';
 import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
+import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
+import { shellStubs } from './transcript-turn-rail-fixture';
 
 const sessionFixture = (
   sibling: 'above' | 'below' | null = null,
   { initialHeight = 2000, preserveReading = false } = {},
 ) =>
-  scrollBrowserFixture(`
-    import React, {useRef, useState} from 'react';
+  scrollBrowserFixture(
+    `
+    import React, {useRef, useState, useEffect} from 'react';
     import {createRoot} from 'react-dom/client';
-    import {useSessionTranscriptScroll} from './src-ui/src/components/session-detail/useSessionTranscriptScroll';
+    import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+    import {agentId} from '@kontourai/station-contracts/agent-identity';
+    import type {ChatSession} from './src-ui/src/types';
+    import {ChatMessageList} from './src-ui/src/components/chat/ChatMessageList';
+    import {ConversationConnectionProvider} from './src-ui/src/components/conversation/ConversationConnectionContext';
     function App(){
-      const scrollRef = useRef(null), contentRef = useRef(null);
+      const scrollRef = useRef(null);
+      const [mounted,setMounted]=useState(false);useEffect(()=>setMounted(true),[]);
       const [height, setHeight] = useState(${initialHeight});
       const [identity, setIdentity] = useState('session'), [ready, setReady] = useState(true);
-      const {atLatest, jumpToLatest} = useSessionTranscriptScroll({identity,scrollRef,contentRef,ready,contentVersion:height,preserveReading:${preserveReading}});
-      return <>{!atLatest && <button onClick={jumpToLatest}>Jump to latest</button>}<button onClick={()=>setHeight(h=>h+100)}>Grow</button><button onClick={()=>{setIdentity('next');setReady(false);setHeight(200)}}>Switch session</button><button onClick={()=>{setReady(true);setHeight(2400)}}>Load</button><div id="scroll" tabIndex={0} ref={scrollRef} style={{height:300,overflow:'auto'}}><div id="above" style={{height:${sibling === 'above' ? 200 : 0}}}/><div id="content" ref={contentRef} style={{height}}>Transcript</div><div id="below" style={{height:${sibling === 'below' ? 200 : 0}}}/></div></>;
+      const session:ChatSession={id:identity,agentSlug:agentId('reader'),agentName:'Reader',title:'Record',source:'manual',
+        messages:ready?[{id:'height-row',role:'assistant',content:'x'.repeat(height)}]:[],input:'',attachments:[],queuedMessages:[],inputHistory:[],status:'idle',error:null,createdAt:0,updatedAt:0,hasUnread:false};
+      return <QueryClientProvider client={new QueryClient()}><ConversationConnectionProvider value={{apiBase:'http://station.test',record:{readOnly:true}}}>
+        <button onClick={()=>setHeight(h=>h+100)}>Grow</button><button onClick={()=>{setIdentity('next');setReady(false);setHeight(200)}}>Switch session</button><button onClick={()=>{setReady(true);setHeight(2400)}}>Load</button>
+        <div id="scroll" tabIndex={0} ref={scrollRef} style={{height:300,overflow:'auto'}}>
+          <div id="above" style={{height:${sibling === 'above' ? 200 : 0}}}/>
+          {mounted && <ChatMessageList activeSession={session} fontSize={14} showReasoning={false} showToolDetails={false}
+            externalScrollContainerRef={scrollRef} preserveReading={${preserveReading}} emptyState={<div id="content" style={{height}}/>}/> }
+          <div id="below" style={{height:${sibling === 'below' ? 200 : 0}}}/>
+        </div>
+      </ConversationConnectionProvider></QueryClientProvider>;
     }
     createRoot(document.getElementById('root')).render(<App/>);
-  `);
+  `,
+    [shellStubs, messageLeaf],
+  ).then(async (fixture) => {
+    await fixture.page.addStyleTag({
+      content: '.chat-scroll-to-bottom{position:absolute}',
+    });
+    return fixture;
+  });
 
 async function startGrowth(
   page: Page,
@@ -84,7 +109,7 @@ test('a small upward wheel pauses transcript follow until the reader reaches the
       () => document.querySelector('#scroll')?.scrollTop === 1688,
     );
     expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      await page.getByRole('button', { name: 'Scroll to bottom' }).isVisible(),
     ).toBe(true);
     await page.waitForTimeout(250);
     await page.getByRole('button', { name: 'Grow' }).click();
@@ -141,7 +166,9 @@ test.each(['ArrowUp', 'PageUp', 'Home'])(
         await page.locator('#scroll').evaluate((element) => element.scrollTop),
       ).toBeLessThanOrEqual(1640);
       expect(
-        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+        await page
+          .getByRole('button', { name: 'Scroll to bottom' })
+          .isVisible(),
       ).toBe(true);
       expect(errors).toEqual([]);
     } finally {
@@ -201,8 +228,8 @@ test('AttachedSessionDetail resumes following when wheeled back to the bottom du
         ),
     );
     expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
-    ).toBe(true);
+      await page.getByRole('button', { name: 'Scroll to bottom' }).isVisible(),
+    ).toBe(false);
     // Interleave one resize before the hook receives two of the native tail
     // scrolls, so tail intent cannot depend on timer luck.
     await page.locator('#scroll').evaluate((element) => {
@@ -249,7 +276,9 @@ test('AttachedSessionDetail resumes following when wheeled back to the bottom du
         ).toBe('false');
       expect(await tailGap(page)).toBe(0);
       expect(
-        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+        await page
+          .getByRole('button', { name: 'Scroll to bottom' })
+          .isVisible(),
       ).toBe(false);
     }
     await finishGrowth(page);
@@ -287,7 +316,7 @@ test('a 30px upward wheel escapes follow during growth', async () => {
       await page.locator('#scroll').evaluate((element) => element.scrollTop),
     ).toBe(Number(readerTop));
     expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      await page.getByRole('button', { name: 'Scroll to bottom' }).isVisible(),
     ).toBe(true);
     expect(errors).toEqual([]);
   } finally {
@@ -329,7 +358,8 @@ const messageLeaf: Plugin = {
       namespace: 'attached-leaf',
     }));
     builder.onLoad({ filter: /.*/, namespace: 'attached-leaf' }, () => ({
-      contents: 'export const MessageBubble=({msg})=><div>{msg.content}</div>;',
+      contents:
+        "export const MessageBubble=({msg})=><div id={msg.id==='height-row'?'content':undefined} style={msg.id==='height-row'?{height:msg.content.length}:undefined}>{msg.id==='height-row'?'Transcript':msg.content}</div>;",
       loader: 'tsx',
       resolveDir: process.cwd(),
     }));
@@ -382,26 +412,41 @@ async function attachedFixture() {
     import {createRoot} from 'react-dom/client';
     import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
     import {ToastProvider} from './src-ui/src/contexts/ToastContext';
+    import {PreviewProvider} from './src-ui/src/contexts/PreviewContext';
     import {useMobileVisualViewport} from './src-ui/src/hooks/useMobileVisualViewport';
     import {AttachedSessionDetail} from './src-ui/src/components/session-detail/AttachedSessionDetail';
     const client = new QueryClient({defaultOptions:{queries:{retry:false}}});
-    function App(){return <QueryClientProvider client={client}><ToastProvider><AttachedSessionDetail apiBase="http://station.test" session={${JSON.stringify(attachedSession)}} events={${JSON.stringify(attachedEvents)}} connected={true} historyLoaded={true} onAdopted={()=>{}} getSelectionIntent={()=>0} visualViewport={useMobileVisualViewport()}/></ToastProvider></QueryClientProvider>}
+    function App(){return <QueryClientProvider client={client}><ToastProvider><PreviewProvider><AttachedSessionDetail apiBase="http://station.test" session={${JSON.stringify(attachedSession)}} events={${JSON.stringify(attachedEvents)}} connected={true} historyLoaded={true} onAdopted={()=>{}} getSelectionIntent={()=>0} visualViewport={useMobileVisualViewport()}/></PreviewProvider></ToastProvider></QueryClientProvider>}
     createRoot(document.getElementById('root')).render(<App/>);
   `,
-    [messageLeaf],
+    [shellStubs, messageLeaf],
   );
   await fixture.page.addStyleTag({
     content:
-      '.chat-messages{height:300px;overflow:auto;overflow-anchor:none}.sessions-detail__transcript{height:2000px}',
-  });
-  await fixture.page.locator('.chat-messages').evaluate((element) => {
-    element.id = 'scroll';
+      '.conversation-body__scroll{height:300px;overflow:auto;overflow-anchor:none}.conversation-reader{height:2000px}.chat-scroll-to-bottom{position:absolute}',
   });
   await fixture.page
-    .locator('[data-testid="attached-session-transcript"]')
+    .locator('.conversation-body__scroll')
+    .evaluate((element) => {
+      element.id = 'scroll';
+    });
+  await fixture.page
+    .locator('[data-testid="session-transcript"]')
     .evaluate((element) => {
       element.id = 'content';
     });
+  await fixture.page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await fixture.page.addStyleTag({
+    content: resolveCssImports(
+      resolve('src-ui/src/components/chat/TranscriptTurnRail.css'),
+    ),
+  });
+  expect(fixture.errors).toEqual([]);
   return fixture;
 }
 
@@ -409,24 +454,21 @@ test('AttachedSessionDetail keeps following when a reader clicks its streaming t
   const { browser, page, errors } = await attachedFixture();
   try {
     await page.waitForFunction(
-      () => document.querySelector('.chat-messages')?.scrollTop === 1700,
+      () =>
+        document.querySelector('.conversation-body__scroll')?.scrollTop ===
+        1700,
     );
-    await startGrowth(
-      page,
-      100,
-      10,
-      '[data-testid="attached-session-transcript"]',
-    );
-    await page.getByRole('log', { name: 'Conversation messages' }).click();
+    await startGrowth(page, 100, 10, '[data-testid="session-transcript"]');
+    await page.locator('#scroll').click({ position: { x: 10, y: 290 } });
     await finishGrowth(page);
-    expect(await tailGap(page, '.chat-messages')).toBe(0);
+    expect(await tailGap(page, '.conversation-body__scroll')).toBe(0);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
   }
 });
 
-test('native anchoring preserves a paused reader near the tail without resuming follow', async () => {
+test('a paused reader stays within the growing row without resuming follow', async () => {
   const { browser, page, errors } = await sessionFixture();
   try {
     await page.waitForFunction(
@@ -457,16 +499,20 @@ test('native anchoring preserves a paused reader near the tail without resuming 
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         ),
     );
-    expect(
-      await page.locator('#scroll').evaluate((element) => element.scrollTop),
-    ).toBe(1708);
+    const anchoredTop = await page
+      .locator('#scroll')
+      .evaluate((element) => element.scrollTop);
+    expect(anchoredTop).toBeGreaterThanOrEqual(1688);
+    expect(anchoredTop).toBeLessThanOrEqual(1708);
     await startGrowth(page, 100, 10);
     await finishGrowth(page);
+    const retainedTop = await page
+      .locator('#scroll')
+      .evaluate((element) => element.scrollTop);
+    expect(retainedTop).toBeGreaterThanOrEqual(1688);
+    expect(retainedTop).toBeLessThanOrEqual(1708);
     expect(
-      await page.locator('#scroll').evaluate((element) => element.scrollTop),
-    ).toBe(1708);
-    expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      await page.getByRole('button', { name: 'Scroll to bottom' }).isVisible(),
     ).toBe(true);
     expect(errors).toEqual([]);
   } finally {
@@ -495,7 +541,7 @@ test('a new session still opens at the tail after its loading content clamps the
       await page.locator('#scroll').evaluate((element) => element.scrollTop),
     ).toBe(2100);
     expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      await page.getByRole('button', { name: 'Scroll to bottom' }).isVisible(),
     ).toBe(false);
     expect(errors).toEqual([]);
   } finally {
@@ -524,7 +570,9 @@ test.each(['above', 'below'] as const)(
           ),
       );
       expect(
-        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+        await page
+          .getByRole('button', { name: 'Scroll to bottom' })
+          .isVisible(),
       ).toBe(false);
       await page.getByRole('button', { name: 'Grow' }).click();
       expect(await tailGap(page)).toBe(0);
@@ -556,7 +604,7 @@ test('a one-pixel ArrowDown reaching the old tail resumes follow across interlea
   try {
     expect(await tailGap(page)).toBe(1);
     expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      await page.getByRole('button', { name: 'Scroll to bottom' }).isVisible(),
     ).toBe(true);
     await page.locator('#scroll').focus();
     await page.locator('#scroll').evaluate((scroll) => {
@@ -584,7 +632,7 @@ test('a one-pixel ArrowDown reaching the old tail resumes follow across interlea
     );
     expect(await tailGap(page)).toBe(0);
     expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      await page.getByRole('button', { name: 'Scroll to bottom' }).isVisible(),
     ).toBe(false);
     await startGrowth(page, 100, 3);
     await finishGrowth(page);
@@ -617,19 +665,25 @@ test.each([
         up,
       );
       expect(
-        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+        await page
+          .getByRole('button', { name: 'Scroll to bottom' })
+          .isVisible(),
       ).toBe(true);
       await startGrowth(page, interval, ticks);
       await page.keyboard.press(key);
       await page.waitForTimeout(500);
       expect(await tailGap(page)).toBe(0);
       expect(
-        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+        await page
+          .getByRole('button', { name: 'Scroll to bottom' })
+          .isVisible(),
       ).toBe(false);
       await finishGrowth(page);
       expect(await tailGap(page)).toBe(0);
       expect(
-        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+        await page
+          .getByRole('button', { name: 'Scroll to bottom' })
+          .isVisible(),
       ).toBe(false);
       expect(errors).toEqual([]);
     } finally {
@@ -654,7 +708,7 @@ test('DOM growth keeps follow pinned at the next microtask before ResizeObserver
       });
     expect(gap).toBe(0);
     expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      await page.getByRole('button', { name: 'Scroll to bottom' }).isVisible(),
     ).toBe(false);
     expect(errors).toEqual([]);
   } finally {
@@ -688,14 +742,18 @@ test.each(['above', 'below'] as const)(
         .locator('#scroll')
         .evaluate((element) => element.scrollTop);
       expect(
-        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+        await page
+          .getByRole('button', { name: 'Scroll to bottom' })
+          .isVisible(),
       ).toBe(true);
       await page.getByRole('button', { name: 'Grow' }).click();
       expect(
         await page.locator('#scroll').evaluate((element) => element.scrollTop),
       ).toBe(pausedTop);
       expect(
-        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+        await page
+          .getByRole('button', { name: 'Scroll to bottom' })
+          .isVisible(),
       ).toBe(true);
       expect(errors).toEqual([]);
     } finally {
@@ -738,7 +796,7 @@ test('an upward wheel pauses follow when DOM growth interleaves before its scrol
       await page.locator('#scroll').evaluate((scroll) => scroll.scrollTop),
     ).toBe(1688);
     expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      await page.getByRole('button', { name: 'Scroll to bottom' }).isVisible(),
     ).toBe(true);
     await page.getByRole('button', { name: 'Grow' }).click();
     expect(

@@ -5,6 +5,11 @@
 // registry) and recomputes the merged selector only when either snapshot
 // actually changes.
 import { useCallback, useRef, useSyncExternalStore } from 'react';
+import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
+import {
+  type StationStateSource,
+  stationPartitionKey,
+} from '../connections/station-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   type BackgroundTaskEntry,
@@ -46,8 +51,14 @@ function subscribeBoth(listener: () => void, apiBase?: string) {
  */
 export function useChatBackgroundTasks(
   chatThreadId: string | null,
-  apiBase?: string,
+  source?: StationStateSource,
 ): ChatBackgroundTasksView {
+  let apiBase =
+    typeof source === 'object' ? stationPartitionKey(source) : source;
+  const target = useOptionalConversationConnection();
+  if (target?.station && (apiBase === undefined || apiBase === target.apiBase))
+    apiBase = stationPartitionKey(target.station);
+
   const cacheRef = useRef<{
     chatThreadId: string;
     apiBase: string | undefined;
@@ -172,12 +183,14 @@ export function useChatBackgroundTasks(
  * thread that carries entries but no chat still reads its own.
  */
 export function useChatStoreKey(chatId: string | null): string | null {
+  const station = useOptionalConversationConnection()?.station;
   const getSnapshot = useCallback(
     () =>
       chatId
-        ? (activeChatsStore.getChatKeyForExecutionSession(chatId) ?? chatId)
+        ? (activeChatsStore.getChatKeyForExecutionSession(chatId, station) ??
+          chatId)
         : null,
-    [chatId],
+    [chatId, station],
   );
   return useSyncExternalStore(
     activeChatsStore.subscribe,
@@ -189,8 +202,14 @@ export function useChatStoreKey(chatId: string | null): string | null {
 /** Running-count only, for the entry-point badge. */
 export function useChatBackgroundTasksRunningCount(
   chatThreadId: string | null,
-  apiBase?: string,
+  source?: StationStateSource,
 ): number {
+  let apiBase =
+    typeof source === 'object' ? stationPartitionKey(source) : source;
+  const target = useOptionalConversationConnection();
+  if (target?.station && (apiBase === undefined || apiBase === target.apiBase))
+    apiBase = stationPartitionKey(target.station);
+
   const getSnapshot = useCallback(() => {
     if (!chatThreadId) return 0;
     return selectChatBackgroundTasks(
@@ -207,13 +226,23 @@ export function useChatBackgroundTasksRunningCount(
           ),
     ).running.length;
   }, [chatThreadId, apiBase]);
-  return useSyncExternalStore(subscribeBoth, getSnapshot, getSnapshot);
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeBoth(listener, apiBase),
+    [apiBase],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 export function useChatBackgroundTasksLimited(
   chatThreadId: string | null,
-  apiBase?: string,
+  source?: StationStateSource,
 ): boolean {
+  let apiBase =
+    typeof source === 'object' ? stationPartitionKey(source) : source;
+  const target = useOptionalConversationConnection();
+  if (target?.station && (apiBase === undefined || apiBase === target.apiBase))
+    apiBase = stationPartitionKey(target.station);
+
   const getSnapshot = useCallback(
     () =>
       !!chatThreadId &&

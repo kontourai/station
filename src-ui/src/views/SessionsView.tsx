@@ -1,7 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import {
   fetchOrchestrationSession,
-  interruptOrchestrationTurn,
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
 import {
@@ -28,6 +27,9 @@ import {
   useReferenceableConversations,
 } from '../components/chat/conversationReferenceDrag';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
+import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
+import { ConversationStopControl } from '../components/conversation/ConversationStopControl';
+import { createRecordConversationTransport } from '../components/conversation/conversation-transport';
 import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
 import { ElapsedDuration } from '../components/ElapsedDuration';
 import { AgentIcon } from '../components/icons/AgentIcon';
@@ -37,7 +39,6 @@ import {
 } from '../components/inbox-row/InboxRowStatus';
 import { WorkGroupLabel } from '../components/inbox-row/WorkGroupLabel';
 import { workGroupLabelText } from '../components/inbox-row/work-group-label';
-import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { useIsPageFramed } from '../components/page-frame';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { SessionPullRequestConflictChip } from '../components/session/SessionPullRequestConflictChip';
@@ -73,6 +74,7 @@ import {
   sessionRecency,
   sessionTitle,
 } from '../utils/sessionDisplay';
+import { describeStationFailure } from '../utils/stationFailure';
 import { ActivityFilterBar } from './activity/ActivityFilterBar';
 import {
   type ActivityRowAction,
@@ -836,9 +838,12 @@ export function SessionsView({
   const [stopTarget, setStopTarget] =
     useState<OrchestrationSessionSummary | null>(null);
   const stopReturnFocusRef = useRef<HTMLElement | null>(null);
+  const stopConnection = useOptionalConversationConnection();
   const stopTask = useMutation({
     mutationFn: (target: { apiBase: string; threadId: string }) =>
-      interruptOrchestrationTurn(target),
+      createRecordConversationTransport(
+        stopConnection ?? { apiBase: target.apiBase },
+      ).stop({ threadId: target.threadId }),
     onSuccess: () => {
       setStopTarget(null);
       void refetch();
@@ -1256,7 +1261,7 @@ export function SessionsView({
             <ErrorState
               title="This activity isn't in the current list"
               description={
-                routedSession.error?.message ??
+                describeStationFailure(routedSession.error).body ??
                 'Station did not return the requested activity item.'
               }
               action={
@@ -1428,29 +1433,23 @@ export function SessionsView({
         }}
       />
 
-      <ConfirmModal
-        isOpen={stopTarget !== null}
-        role="alertdialog"
-        variant="danger"
-        title="Stop this turn?"
-        message={
-          stopTarget
+      <ConversationStopControl
+        intent={{ kind: 'turn' }}
+        confirmation={{
+          open: stopTarget !== null,
+          onClose: closeStopConfirm,
+          message: stopTarget
             ? `“${sessionTitle(stopTarget)}” stops working on its current turn. You can send it a new message afterwards.`
-            : ''
-        }
-        confirmLabel="Stop"
-        pending={stopTask.isPending}
-        error={
-          stopTask.error
-            ? stopTask.error instanceof Error
-              ? stopTask.error.message
-              : 'Unable to stop this turn'
-            : null
-        }
-        onCancel={closeStopConfirm}
-        onConfirm={() => {
+            : '',
+        }}
+        stopPending={stopTask.isPending}
+        error={stopTask.error}
+        onCancel={async () => {
           if (!stopTarget || stopTask.isPending) return;
-          stopTask.mutate({ apiBase, threadId: stopTarget.threadId });
+          await stopTask.mutateAsync({
+            apiBase,
+            threadId: stopTarget.threadId,
+          });
         }}
       />
     </>

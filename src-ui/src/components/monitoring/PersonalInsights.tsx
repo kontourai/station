@@ -20,6 +20,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { Empty, SkeletonBlock } from '../state';
@@ -36,12 +37,8 @@ function errorText(error: unknown) {
       return 'Sync this source before querying the selected window.';
     if (error.code === 'saved_view_conflict')
       return 'This view changed elsewhere. Reload it before saving again.';
-    if (error.status === 401 || error.status === 403)
-      return 'Access changed. Check your signed-in person and source authorization.';
   }
-  return error instanceof Error
-    ? error.message
-    : 'This request could not be completed.';
+  return describeStationFailure(error).body;
 }
 const groupLabels: Record<AnalyticsViewDefinition['groupBy'], string> = {
   engine: 'Engine',
@@ -436,9 +433,7 @@ function SourceResults({
                   setSyncError(
                     e instanceof DOMException && e.name === 'AbortError'
                       ? 'Sync stopped. The unfinished page can be resumed.'
-                      : e instanceof Error
-                        ? e.message
-                        : 'Sync unavailable',
+                      : describeStationFailure(e).body,
                   );
                 } finally {
                   onBusy(false);

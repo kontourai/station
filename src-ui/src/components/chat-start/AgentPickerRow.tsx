@@ -55,6 +55,7 @@ function AgentPickerRow({
   modelUnavailable,
   onOpenModel,
   interactionDisabled,
+  selectionOnly = false,
   fixLabel,
   fixDisabled,
   onFix,
@@ -69,6 +70,8 @@ function AgentPickerRow({
   /** Handed the trigger, so the picker returns focus to it on close. */
   onOpenModel: (trigger: HTMLElement) => void;
   interactionDisabled?: boolean;
+  /** Choosing a draft profile does not launch it; its engine may be elsewhere. */
+  selectionOnly?: boolean;
   /** Set when this host knows Enable cannot be the repair — see the cell. */
   fixLabel?: 'Enable' | 'Connect' | 'Set up';
   fixDisabled?: boolean;
@@ -116,7 +119,7 @@ function AgentPickerRow({
         className={`new-chat-modal__agent ${isSelected ? 'new-chat-modal__agent--selected' : ''}`}
         onMouseEnter={onHover}
         onClick={onSelect}
-        disabled={interactionDisabled || !runnable}
+        disabled={interactionDisabled || (!selectionOnly && !runnable)}
         aria-describedby={
           unavailability ? `agent-${agent.slug}-unavailable` : undefined
         }
@@ -257,6 +260,7 @@ export function AgentPickerGroups({
   modelUnavailableFor,
   onOpenModel,
   interactionDisabled,
+  selectionOnly,
   fixDisabledFor,
   onFix,
 }: {
@@ -270,6 +274,7 @@ export function AgentPickerGroups({
   modelUnavailableFor: (agent: AgentData) => boolean;
   onOpenModel: (agent: AgentData, trigger: HTMLElement) => void;
   interactionDisabled?: boolean;
+  selectionOnly?: boolean;
   fixDisabledFor: (agent: AgentData) => boolean | undefined;
   onFix: (agent: AgentData, route: AgentFixRoute) => void;
 }) {
@@ -300,6 +305,7 @@ export function AgentPickerGroups({
                 modelUnavailable={modelUnavailableFor(agent)}
                 onOpenModel={(trigger) => onOpenModel(agent, trigger)}
                 interactionDisabled={interactionDisabled}
+                selectionOnly={selectionOnly}
                 fixDisabled={fixDisabledFor(agent)}
                 onFix={(route) => onFix(agent, route)}
               />

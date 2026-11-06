@@ -5,6 +5,7 @@ import {
   useToolRequests,
 } from '@kontourai/station-sdk/tool-library';
 import { lazy, Suspense, useState } from 'react';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { AgentToolConnection } from '../../views/agent-editor/AgentToolDiscovery';
 import { useToolLibraryClient } from '../../views/agent-editor/ToolLibraryContext';
 import { Button } from '../Button';
@@ -91,7 +92,9 @@ export function ToolRequestsPanel({ requestId }: { requestId?: string }) {
           {request.error && <p role="status">{request.error}</p>}
         </div>
       ))}
-      {change.isError && <p role="alert">{change.error.message}</p>}
+      {change.isError && (
+        <p role="alert">{describeStationFailure(change.error).body}</p>
+      )}
       {connection && (
         <Dialog
           title={`Set up ${connection.sourceName}`}

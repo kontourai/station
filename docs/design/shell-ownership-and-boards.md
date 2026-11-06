@@ -211,8 +211,8 @@ backups retain their stored section values for compatibility.
   **Jump to latest** resumes following. Pending decisions stay above the
   transcript, and errors or attention take priority over following. A failed
   conversation-window read shows its error and Retry rather than an empty
-  conversation. The Station-owned detail's live indicator reads the app-wide
-  transcript stream; session metadata and the raw event log stay collapsed.
+  conversation. The Station-owned detail's live indicator reads its owning
+  connection's transcript stream; session metadata and the raw event log stay collapsed.
   Explicit evidence links still open and focus the evidence disclosure.
   Follow-up drafts use the canonical device draft store under the selected
   Station URL and exact session identity. Switching sessions preserves each
@@ -223,7 +223,8 @@ backups retain their stored section values for compatibility.
   the requested identity is admitted. If that read fails, Activity discloses
   that the item is not in the current list, offers Retry, and can return to the
   list through a fresh Activity surface intent; it does not infer deletion.
-  Owners: [`SessionTranscript`](../../src-ui/src/components/session-detail/SessionTranscript.tsx),
+  Owners: [`ConversationBody`](../../src-ui/src/components/conversation/ConversationBody.tsx),
+  [`ConversationReader`](../../src-ui/src/components/conversation/ConversationReader.tsx),
   [`MutableSessionDetail`](../../src-ui/src/components/session-detail/MutableSessionDetail.tsx),
   and [`useSessionTranscriptEvents`](../../src-ui/src/hooks/orchestration/useSessionTranscriptEvents.ts).
 - **Apps** is the project-less section following Projects. The

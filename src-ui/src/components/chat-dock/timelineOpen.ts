@@ -1,4 +1,5 @@
 import type { ApiRequestScope } from '@kontourai/station-sdk';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 let opening: Promise<void> | null = null;
 
@@ -45,9 +46,7 @@ export function openTimeline(
     })
     .then(() => undefined)
     .catch((error: unknown) => {
-      notify(
-        error instanceof Error ? error.message : 'Could not open history.',
-      );
+      notify(describeStationFailure(error).body);
     })
     .finally(() => {
       dismiss(toastId);

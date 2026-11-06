@@ -340,9 +340,7 @@ describe('Connect Station grant composition', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Request selected access' }),
     );
-    await screen.findByText(
-      'Connection lost before reservation was acknowledged',
-    );
+    await screen.findByText('Try again in a moment.');
     const reservation = wire.start.mock.calls[0][1].id;
     expect(reservation).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,

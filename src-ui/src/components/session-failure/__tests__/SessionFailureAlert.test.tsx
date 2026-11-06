@@ -84,12 +84,7 @@ describe('SessionFailureAlert', () => {
 describe('the session detail renders that same component', () => {
   test('its failure banner is the shared one, not a local copy', () => {
     render(
-      <SessionDetailErrors
-        failureText="ECONNREFUSED api.example.com:443"
-        stopTaskError={null}
-        sendTurnError={null}
-        respondError={null}
-      />,
+      <SessionDetailErrors failureText="ECONNREFUSED api.example.com:443" />,
     );
 
     const banner = screen.getByTestId('session-failure');
@@ -100,17 +95,16 @@ describe('the session detail renders that same component', () => {
     expect(banner.querySelector('.session-failure__note')).toBeNull();
   });
 
-  test('mutation errors are unaffected and still render alongside it', () => {
+  test('a dismissed-failure mutation uses safe Station copy', () => {
     render(
       <SessionDetailErrors
-        failureText={null}
-        stopTaskError={new Error('Unable to stop')}
-        sendTurnError={null}
-        respondError={null}
+        failureText="Recorded failure"
+        dismissFailureError={new Error('internal_machine_code')}
       />,
     );
 
-    expect(screen.queryByTestId('session-failure')).toBeNull();
-    expect(screen.getByText('Unable to stop')).toBeTruthy();
+    expect(screen.getByTestId('session-failure')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('internal_machine_code')).toBeNull();
   });
 });

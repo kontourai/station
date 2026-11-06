@@ -11,6 +11,7 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { TelemetryDestinationGrants } from './TelemetryDestinationGrants';
 
 type Backend = 'env' | 'keychain' | 'op';
@@ -150,11 +151,7 @@ export function SecretBindingsSection() {
       }
       resetForm();
     } catch (submissionError) {
-      setMessage(
-        submissionError instanceof Error
-          ? submissionError.message
-          : 'Secret binding could not be saved.',
-      );
+      setMessage(describeStationFailure(submissionError).body);
     }
   };
   return (
@@ -365,11 +362,7 @@ export function SecretBindingsSection() {
               setRevokeTarget(null);
             })
             .catch((revokeError) => {
-              setMessage(
-                revokeError instanceof Error
-                  ? revokeError.message
-                  : 'Secret binding could not be revoked.',
-              );
+              setMessage(describeStationFailure(revokeError).body);
               setRevokeTarget(null);
             });
         }}

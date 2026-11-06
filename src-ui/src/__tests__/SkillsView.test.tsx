@@ -218,7 +218,8 @@ describe('SkillsView', () => {
     expect(screen.queryByText('No installed skills yet')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Unable to load skills')).toBeTruthy();
-    expect(screen.getByText('skills read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('skills read failed')).toBeNull();
   });
 
   test('retries the skills read from the failure state', () => {
@@ -273,8 +274,9 @@ describe('SkillsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import 1' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'Import route unavailable',
+      'Try again in a moment.',
     );
+    expect(screen.queryByText('Import route unavailable')).toBeNull();
   });
 
   // #2708: the import fetcher's refusal carries `details`; the dialog shows
@@ -922,7 +924,8 @@ describe('SkillsView', () => {
 
       expect(screen.getByRole('alert')).toBeTruthy();
       expect(screen.getByText('Unable to load skill')).toBeTruthy();
-      expect(screen.getByText('detail read failed')).toBeTruthy();
+      expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+      expect(screen.queryByText('detail read failed')).toBeNull();
       expect(
         (
           screen.getByRole('button', {

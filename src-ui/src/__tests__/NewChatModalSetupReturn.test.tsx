@@ -813,7 +813,10 @@ test('a refused setup navigation restores the draft with feedback instead of lea
   );
   try {
     fireEvent.click(screen.getByRole('button', { name: 'Connect Assistant' }));
-    await screen.findByText(/Could not open setup/);
+    await screen.findByRole('alert');
+    expect(screen.getByRole('alert').textContent).toBe(
+      "Couldn't recheck chat setupTry again in a moment.Retry connections",
+    );
     expect(screen.getByRole('region', { name: 'New Chat' })).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Return to New Chat' }),

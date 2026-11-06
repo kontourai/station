@@ -26,6 +26,7 @@ import {
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { MAX_TERMINAL_QUOTE_CHARS } from '../../utils/answer-quotes';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { browserPaneApi } from '../../workspace-panes/browser-pane/browserPaneApi';
 import { Button } from '../Button';
 import { ErrorState } from '../state';
@@ -182,7 +183,11 @@ export function TerminalPanel({
         }
         if (current.error?.code === 'pty-unavailable')
           setUnavailableReason(current.error.message);
-        else setWsError(current.error?.message ?? 'Terminal unavailable.');
+        else
+          setWsError(
+            describeStationFailure(current.error).body ??
+              'Terminal unavailable.',
+          );
         return;
       }
       if (current.status === 'exited' || current.status === 'failed') {
@@ -261,11 +266,7 @@ export function TerminalPanel({
       });
       setHandoffError(null);
     } catch (error) {
-      setHandoffError(
-        error instanceof Error
-          ? error.message
-          : 'Output was not added to chat.',
-      );
+      setHandoffError(describeStationFailure(error).body);
     }
   };
 
@@ -292,9 +293,7 @@ export function TerminalPanel({
           setHandoffError(describeOpenInRegionRefusal(outcome.reason));
         }
       } catch (error) {
-        setHandoffError(
-          error instanceof Error ? error.message : 'The link could not open.',
-        );
+        setHandoffError(describeStationFailure(error).body);
       }
       return;
     }
@@ -345,8 +344,8 @@ export function TerminalPanel({
       onRestarted?.();
     } catch (error) {
       setHandoffError(
-        error instanceof Error && error.message
-          ? error.message
+        error instanceof Error && describeStationFailure(error).body
+          ? describeStationFailure(error).body
           : 'This terminal could not restart.',
       );
     } finally {

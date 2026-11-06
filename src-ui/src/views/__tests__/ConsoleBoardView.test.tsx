@@ -428,7 +428,7 @@ describe('ConsoleBoardView — the pane path (epic station#4142 M4a)', () => {
     render(<ConsoleBoardView projectSlug="demo" />);
 
     expect(screen.getByText('Could not load projects')).toBeTruthy();
-    expect(screen.getByText('projects unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(
       screen.queryByText('This host has no Project with that slug.'),
     ).toBeNull();

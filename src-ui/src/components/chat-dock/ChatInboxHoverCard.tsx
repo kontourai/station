@@ -319,11 +319,12 @@ function ChatInboxCardBody({
   showTitle?: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const hostDetails = facts?.hostDetails !== false;
   const status = useObservedWorkStatus(item, now, facts);
 
   // Git facts resolve against the row's LOCAL working directory, supplied by
   // the host (see the prop docblock).
-  const git = useGitStatusQuery(gitLocation ?? null);
+  const git = useGitStatusQuery(hostDetails ? (gitLocation ?? null) : null);
   // The owner's rule for this surface: pull requests are listed for projects
   // that have Git. A checkout the endpoint positively reported as a non-repo
   // suppresses the section; "unknown yet" does not (explicit and Task-kept
@@ -334,20 +335,24 @@ function ChatInboxCardBody({
       'conversation-pull-request-links',
       scope?.apiBase,
       scope?.authorityKey,
-      item.conversationId,
+      item.id,
     ],
     queryFn: ({ signal }) =>
       getConversationPullRequestLinks(scope!.apiBase, item.conversationId!, {
         signal,
         requestScope: scope!,
       }),
-    enabled: !!scope?.isCurrent() && !!item.conversationId && !gitIsNonRepo,
+    enabled:
+      hostDetails &&
+      !!scope?.isCurrent() &&
+      !!item.conversationId &&
+      !gitIsNonRepo,
     retry: false,
     staleTime: 15_000,
     refetchOnMount: false,
   });
 
-  const basisSessionId = item.orchestrationThreadId;
+  const basisSessionId = hostDetails ? item.orchestrationThreadId : undefined;
   const basisScope = useMemo(
     () =>
       basisSessionId
@@ -377,6 +382,7 @@ function ChatInboxCardBody({
   // silence. The heading appears only while a read is in flight (named gap),
   // after a failed read (named gap), or over real facts.
   const gitSectionVisible =
+    hostDetails &&
     !!gitLocation &&
     (git.isLoading || !!git.error || git.data?.isRepo === true);
   const gitSection = gitSectionVisible ? (
@@ -397,8 +403,9 @@ function ChatInboxCardBody({
     </section>
   ) : null;
 
-  const prLinks = links.data?.links ?? [];
+  const prLinks = hostDetails ? (links.data?.links ?? []) : [];
   const prSectionVisible =
+    hostDetails &&
     !!item.conversationId &&
     !gitIsNonRepo &&
     (links.isPending || !!links.error || prLinks.length > 0);

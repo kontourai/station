@@ -13,6 +13,7 @@ import {
   UNREPORTED_MEASUREMENT_TEXT,
 } from '@kontourai/station-shared/usage-measurement';
 import { Button } from '../Button';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -102,6 +103,7 @@ export function ConversationStatsModal({
   usageTreeLoading,
   usageTreeError,
 }: ConversationStatsModalProps) {
+  const target = useOptionalConversationConnection();
   if (!isVisible) return null;
 
   const unreportedNote = stats
@@ -557,7 +559,9 @@ export function ConversationStatsModal({
       ) : (
         <div>No stats available</div>
       )}
-      {context && <ContextCompactionControl {...context} />}
+      {context && (!target?.station || target.station.routeKind === 'host') && (
+        <ContextCompactionControl {...context} />
+      )}
     </ResponsiveDialogSurface>
   );
 }

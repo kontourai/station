@@ -27,6 +27,7 @@ import {
   readRecentStations,
   type StationReachability,
 } from '../../lib/stationSwitcher';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ManagedRemoteClientsNote } from '../managed/ManagedRemoteClientsNote';
 import { useStationConditions } from '../notifications/StationConditions';
 import { openStationDetails } from '../notifications/stationDetailsEvents';
@@ -37,7 +38,7 @@ import './HeaderMenu.css';
 const FILTER_THRESHOLD = 5;
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return describeStationFailure(error).body;
 }
 
 function isUnavailable(connection: SavedConnection): boolean {

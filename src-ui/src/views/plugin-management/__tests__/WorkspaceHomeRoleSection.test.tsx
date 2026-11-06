@@ -151,7 +151,7 @@ test('on a native-broker host the grant opens NO popup and hands the transaction
   );
 });
 
-test('a native-broker refusal surfaces its message instead of granting silently', async () => {
+test('a native-broker refusal surfaces safe recovery without granting', async () => {
   sdk.createRequest.mockResolvedValue({
     id: 'req-refused',
     status: 'pending',
@@ -167,9 +167,7 @@ test('a native-broker refusal surfaces its message instead of granting silently'
   fireEvent.click(screen.getByRole('button', { name: 'Use as Home…' }));
 
   await waitFor(() =>
-    expect(
-      screen.queryByText('The approval could not be reviewed'),
-    ).not.toBeNull(),
+    expect(screen.queryByText('Try again in a moment.')).not.toBeNull(),
   );
   expect(open).not.toHaveBeenCalled();
 });

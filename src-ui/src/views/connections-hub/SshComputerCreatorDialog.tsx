@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../../utils/stationFailure';
 /**
  * D7 — the SSH computer creator (audit CI-R1, CI-R14, CI-R19).
  *
@@ -92,11 +93,7 @@ export function SshComputerCreatorDialog({
     try {
       setEvidence(await probe.mutateAsync(trimmedHost));
     } catch (cause) {
-      setFailure(
-        cause instanceof Error
-          ? cause.message
-          : 'The connection test could not run.',
-      );
+      setFailure(describeStationFailure(cause).body);
     }
   }
 
@@ -112,11 +109,7 @@ export function SshComputerCreatorDialog({
       });
       onClose();
     } catch (cause) {
-      setFailure(
-        cause instanceof Error
-          ? cause.message
-          : 'This computer could not be saved.',
-      );
+      setFailure(describeStationFailure(cause).body);
     }
   }
 

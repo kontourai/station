@@ -2,11 +2,18 @@
  * @vitest-environment jsdom
  */
 
+import { AUTHORITY_OBSERVATION_SCHEMA_VERSION } from '@kontourai/station-contracts/authority-observation';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  conversationCapabilitiesFromAuthority,
+  type StationConnection,
+} from '../connections/station-connection';
+import { outboundStationIdentity } from '../connections/station-state';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
 import {
   _resetOutboundQueueChangeChannel,
   _resetOutboundQueueStorage,
@@ -41,8 +48,238 @@ import { projectOutboundQueueEntries } from '../hooks/outboundQueueProjection';
 import { useOutboundQueueFlush } from '../hooks/useOutboundQueueFlush';
 
 describe('useOutboundQueueFlush', () => {
+  function target(id: string): StationConnection {
+    return {
+      environmentId: id,
+      stationName: id,
+      stationKey: id,
+      runtimeKey: `runtime-${id}`,
+      routeKind: 'relay',
+      targetApiBase: `https://source.test/relay/${id}`,
+      authorityNamespace: `principal-${id}`,
+      requestScope: {
+        apiBase: 'https://source.test',
+        authorityKey: 'source-owner',
+      },
+      binding: {
+        version: 1,
+        environmentId: id,
+        stationName: id,
+        affinity: {
+          kind: 'peer',
+          sourceEnvironmentId: 'source',
+          sourceConnectionId: 'source-profile',
+          principalNamespace: `principal-${id}`,
+        },
+      },
+      capabilities: conversationCapabilitiesFromAuthority(
+        {
+          schemaVersion: AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+          environmentId: id,
+          principal: { kind: 'human', id: 'human:owner' },
+          grant: {
+            kind: 'device',
+            deviceId: id,
+            grantedScopes: ['orchestration:read', 'orchestration:operate'],
+          },
+        },
+        { remote: true, mutationAllowed: true },
+      ),
+      isCurrent: () => true,
+    };
+  }
+
+  it('waits for B’s own stream and uses B’s lookup/sender while another supervisor is mounted', async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, update) => {
+        stored = update(stored);
+      },
+    });
+    const a = target('a');
+    const b = target('b');
+    activeChatsStore.updateChat('session-1', {
+      stationBinding: b.binding,
+      conversationId: 'conversation-b',
+    });
+    await outboundDispatch.recordUnanswered({
+      station: outboundStationIdentity(b),
+      clientTurnId: 'b-key',
+      sessionId: 'session-1',
+      conversationId: 'conversation-b',
+      agentSlug: 'codex',
+      content: 'B only',
+    });
+    setStreamConnectionState(a.targetApiBase, 'caught-up');
+    setStreamConnectionState(b.targetApiBase, 'interrupted');
+    getTurnDelivery.mockResolvedValue({
+      outcome: 'not-received',
+      conversationId: 'conversation-b',
+      clientTurnId: 'b-key',
+    });
+    sendMessage.mockResolvedValue({ kind: 'queued' });
+    renderHook(() => useOutboundQueueFlush(a.targetApiBase, a));
+    renderHook(() => useOutboundQueueFlush(b.targetApiBase, b));
+    await waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot()['session-1']?.outboundQueuedTurns?.[0]
+          ?.clientTurnId,
+      ).toBe('b-key'),
+    );
+    expect(getTurnDelivery).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    act(() => {
+      setStreamConnectionState(b.targetApiBase, 'caught-up');
+    });
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+    expect(getTurnDelivery).toHaveBeenCalledWith(
+      b.targetApiBase,
+      'conversation-b',
+      'b-key',
+      { requestScope: b.requestScope },
+    );
+    expect(sendMessage.mock.calls[0]?.[7]).toMatchObject({ connection: b });
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toEqual([]),
+    );
+  });
+
+  it('syncs only B’s held intents without allowing A to adopt or erase them', async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, update) => {
+        stored = update(stored);
+      },
+    });
+    const a = target('held-a');
+    const b = target('held-b');
+    activeChatsStore.updateChat('session-1', {
+      stationBinding: b.binding,
+      conversationId: 'conversation-b',
+      queuedMessages: ['B follow-up'],
+      queuedMessageMetadata: [{ id: 'held-b-key', mode: 'queue' }],
+    });
+    setStreamConnectionState(a.targetApiBase, 'caught-up');
+    setStreamConnectionState(b.targetApiBase, 'caught-up');
+    const bMount = renderHook(() => useOutboundQueueFlush(b.targetApiBase, b));
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          station: outboundStationIdentity(b),
+          clientTurnId: 'held-b-key',
+          heldHere: true,
+        }),
+      ]),
+    );
+    renderHook(() => useOutboundQueueFlush(a.targetApiBase, a));
+    activeChatsStore.initChat('a-held-tab', {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'A',
+      stationBinding: a.binding,
+    });
+    act(() =>
+      activeChatsStore.updateChat('a-held-tab', {
+        queuedMessages: ['A follow-up'],
+        queuedMessageMetadata: [{ id: 'held-a-key', mode: 'queue' }],
+      }),
+    );
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toHaveLength(2),
+    );
+    bMount.unmount();
+    expect(await outboundDispatch.snapshot()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          station: outboundStationIdentity(b),
+          clientTurnId: 'held-b-key',
+          heldHere: true,
+        }),
+        expect.objectContaining({
+          station: outboundStationIdentity(a),
+          clientTurnId: 'held-a-key',
+          heldHere: true,
+        }),
+      ]),
+    );
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('lets A flush while B’s supervised send is still awaiting its answer', async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, update) => {
+        stored = update(stored);
+      },
+    });
+    const a = target('overlap-a');
+    const b = target('overlap-b');
+    activeChatsStore.updateChat('session-1', { stationBinding: b.binding });
+    activeChatsStore.initChat('a-held-tab', {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'A',
+      stationBinding: a.binding,
+    });
+    await outboundDispatch.enqueue({
+      station: outboundStationIdentity(b),
+      sessionId: 'session-1',
+      agentSlug: 'codex',
+      clientTurnId: 'b-overlap',
+      content: 'B',
+    });
+    await outboundDispatch.enqueue({
+      station: outboundStationIdentity(a),
+      sessionId: 'a-held-tab',
+      agentSlug: 'codex',
+      clientTurnId: 'a-overlap',
+      content: 'A',
+    });
+    let release = () => {};
+    const answer = new Promise<{ kind: 'queued' }>((resolve) => {
+      release = () => resolve({ kind: 'queued' });
+    });
+    sendMessage.mockImplementation((sessionId: string) =>
+      sessionId === 'session-1' ? answer : Promise.resolve({ kind: 'queued' }),
+    );
+    setStreamConnectionState(a.targetApiBase, 'caught-up');
+    setStreamConnectionState(b.targetApiBase, 'caught-up');
+    renderHook(() => useOutboundQueueFlush(b.targetApiBase, b));
+    try {
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+      renderHook(() => useOutboundQueueFlush(a.targetApiBase, a));
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2));
+      expect(sendMessage.mock.calls[1]?.[7]).toMatchObject({ connection: a });
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toEqual([
+          expect.objectContaining({
+            clientTurnId: 'b-overlap',
+            status: 'invoking',
+          }),
+        ]),
+      );
+    } finally {
+      release();
+    }
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toEqual([]),
+    );
+  });
   beforeEach(() => {
     vi.clearAllMocks();
+    sendMessage.mockReset();
     connection.status = 'connected';
     _setOutboundQueueStorage({
       getItem: async () => [],
@@ -60,6 +297,7 @@ describe('useOutboundQueueFlush', () => {
 
   afterEach(() => {
     activeChatsStore.removeChat('session-1');
+    activeChatsStore.removeChat('a-held-tab');
     _resetOutboundQueueStorage();
   });
 
@@ -169,6 +407,7 @@ describe('useOutboundQueueFlush', () => {
         message: 'change course',
         expectedHead: '["session-1",1]',
       },
+      { requestScope: undefined },
     );
     expect(sendMessage).not.toHaveBeenCalled();
   });
@@ -1025,7 +1264,7 @@ describe('useOutboundQueueFlush', () => {
           content: 'held one',
           status: 'pending',
           heldBy: expect.objectContaining({ bootId: expect.any(String) }),
-          station: { apiBase: 'http://api.test' },
+          station: { apiBase: 'http://api.test', host: true },
         }),
       ]),
     );
@@ -1585,7 +1824,7 @@ describe('useOutboundQueueFlush', () => {
         'http://api.test',
         'session-1',
         'key-orphan',
-        undefined,
+        { requestScope: undefined },
       );
       expect(sendMessage.mock.calls[0]?.[6]).toBe('key-orphan');
       expect(sendMessage.mock.calls[0]?.[3]).toBe('sent as the app closed');

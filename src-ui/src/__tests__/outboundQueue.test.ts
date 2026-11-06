@@ -11,9 +11,194 @@ import {
   OutboundDispatchCapacityError,
   type OutboundDispatchTransportResult,
   type OutboundQueueStorage,
+  type OutboundStationIdentity,
   outboundDispatch,
   type QueuedOutboundTurn,
 } from '../lib/outboundQueue';
+
+const stationA: OutboundStationIdentity = {
+  apiBase: 'https://a.test',
+  environmentId: 'a',
+  authorityNamespace: 'owner-a',
+};
+const stationB: OutboundStationIdentity = {
+  apiBase: 'https://source.test/relay/b',
+  environmentId: 'b',
+  authorityNamespace: 'relay-b',
+};
+
+describe('Station-owned delivery evidence', () => {
+  beforeEach(() => _setOutboundQueueStorage(memoryStorage().storage));
+  afterEach(() => _resetOutboundQueueStorage());
+
+  it('retains an old imported draft while the canonical migration has not committed', async () => {
+    await outboundDispatch.importLegacy(
+      {
+        ...turn('old-import'),
+        station: stationB,
+        createdAt: Date.now() - OUTBOUND_QUEUE_MAX_AGE_MS - 1,
+      },
+      false,
+    );
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'old-import',
+        legacyImport: true,
+        status: 'pending',
+      }),
+    ]);
+    await outboundDispatch.syncHeld([], { station: stationB });
+    expect(await outboundDispatch.snapshot()).toHaveLength(1);
+  });
+
+  it('keeps colliding dispatch and terminal ids independent across Stations', async () => {
+    await outboundDispatch.enqueue({ ...turn('same'), station: stationA });
+    await outboundDispatch.enqueue({ ...turn('same'), station: stationB });
+    const sendA = vi.fn(async () => accepted('same-provider-turn'));
+    const sendB = vi.fn(async () => accepted('same-provider-turn'));
+    await outboundDispatch.flush(sendA, { station: stationA });
+    expect(sendA).toHaveBeenCalledOnce();
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({ station: stationA, status: 'accepted' }),
+      expect.objectContaining({ station: stationB, status: 'pending' }),
+    ]);
+    await outboundDispatch.completeAcceptedTurn(
+      'session-a',
+      'same-provider-turn',
+      stationB,
+    );
+    expect(await outboundDispatch.snapshot()).toHaveLength(2);
+    await outboundDispatch.flush(sendB, { station: stationB });
+    expect(sendB).toHaveBeenCalledOnce();
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({ station: stationA }),
+    ]);
+    await outboundDispatch.completeAcceptedTurn(
+      'session-a',
+      'same-provider-turn',
+      stationA,
+    );
+    expect(await outboundDispatch.snapshot()).toEqual([]);
+    expect(await outboundDispatch.retiredKeys(stationA)).toEqual({
+      accepted: ['same'],
+      discarded: [],
+    });
+    expect(await outboundDispatch.retiredKeys(stationB)).toEqual({
+      accepted: ['same'],
+      discarded: [],
+    });
+  });
+
+  it('never checks an uncertain relay row through a new direct principal', async () => {
+    await outboundDispatch.recordUnanswered({
+      ...turn('same'),
+      conversationId: 'conversation',
+      station: stationB,
+    });
+    const lookup = vi.fn(async () => ({
+      outcome: 'started' as const,
+      conversationId: 'conversation',
+      clientTurnId: 'same',
+      sessionId: 'execution',
+      turnId: 'provider',
+    }));
+    const direct = {
+      ...stationB,
+      apiBase: 'https://b.test',
+      authorityNamespace: 'direct-device-b',
+    };
+    expect(
+      await outboundDispatch.check('same', lookup, direct),
+    ).toBeUndefined();
+    await outboundDispatch.reconcile(lookup, { station: direct });
+    expect(lookup).not.toHaveBeenCalled();
+    expect(await outboundDispatch.snapshot()).toHaveLength(1);
+    expect(await outboundDispatch.check('same', lookup, stationB)).toBe(
+      'started',
+    );
+    expect(await outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it('partitions the same client key across conversations and refuses an ambiguous user check', async () => {
+    await outboundDispatch.recordUnanswered({
+      ...turn('collision'),
+      station: stationB,
+      conversationId: 'one',
+    });
+    await outboundDispatch.recordUnanswered({
+      ...turn('collision'),
+      station: stationB,
+      conversationId: 'two',
+    });
+    const lookup = vi.fn(async () => ({
+      outcome: 'started' as const,
+      conversationId: 'one',
+      clientTurnId: 'collision',
+      sessionId: 'execution',
+      turnId: 'provider',
+    }));
+    await expect(
+      outboundDispatch.check('collision', lookup, stationB),
+    ).rejects.toThrow('Choose the conversation');
+    expect(lookup).not.toHaveBeenCalled();
+    await outboundDispatch.check('collision', lookup, stationB, 'one');
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({ conversationId: 'two', status: 'invoking' }),
+    ]);
+    expect(
+      await outboundDispatch.retiredKeys(stationB, { conversationId: 'two' }),
+    ).toEqual({ accepted: [], discarded: [] });
+    expect(
+      await outboundDispatch.retiredKeys(stationB, { conversationId: 'one' }),
+    ).toEqual({ accepted: ['collision'], discarded: [] });
+  });
+
+  it('does not remove another supervisor’s held messages', async () => {
+    await outboundDispatch.syncHeld([{ ...turn('same'), station: stationA }], {
+      station: stationA,
+    });
+    await outboundDispatch.syncHeld([{ ...turn('same'), station: stationB }], {
+      station: stationB,
+    });
+    await outboundDispatch.syncHeld([], { station: stationA });
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({ station: stationB, heldHere: true }),
+    ]);
+    await outboundDispatch.sendHeld('same', stationA);
+    expect((await outboundDispatch.snapshot())[0]?.heldBy).toBeDefined();
+    await outboundDispatch.sendHeld('same', stationB);
+    const send = vi.fn(async () => accepted());
+    await outboundDispatch.flush(send, { station: stationA });
+    expect(send).not.toHaveBeenCalled();
+    await outboundDispatch.flush(send, { station: stationB });
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('holds unqualified legacy rows away from peers, then binds them to their host', async () => {
+    _setOutboundQueueStorage(
+      memoryStorage([
+        {
+          ...turn('legacy'),
+          createdAt: Date.now(),
+          attempts: 0,
+          status: 'pending',
+        },
+      ]).storage,
+    );
+    const send = vi.fn(async () => accepted());
+    await outboundDispatch.flush(send, { station: stationB });
+    expect(send).not.toHaveBeenCalled();
+    const host = { ...stationA, host: true };
+    await outboundDispatch.bindLegacyHost(host);
+    expect((await outboundDispatch.snapshot())[0]?.station).toBeUndefined();
+    await outboundDispatch.bindLegacyHost(host, host);
+    await outboundDispatch.flush(send, { station: stationB });
+    expect(send).not.toHaveBeenCalled();
+    await outboundDispatch.flush(send, { station: host });
+    expect(send).toHaveBeenCalledOnce();
+    expect((await outboundDispatch.snapshot())[0]?.station).toEqual(host);
+  });
+});
 
 function turn(
   clientTurnId: string,

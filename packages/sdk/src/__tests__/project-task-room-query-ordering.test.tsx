@@ -1,11 +1,13 @@
 /** @vitest-environment jsdom */
 
+import type { ProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { type ReactNode, useLayoutEffect, useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 const feedbackAppend = vi.hoisted(() => vi.fn());
+const historyRead = vi.hoisted(() => vi.fn());
 
 let resolveDocument: ((value: unknown) => void) | undefined;
 let documentSignal: AbortSignal | undefined;
@@ -67,7 +69,7 @@ vi.mock('../client/project-task-rooms', () => ({
   appendProjectTaskRoomOutputFeedback: feedbackAppend,
   commandProjectTaskRoomLive: vi.fn(),
   discoverProjectTaskRoom: vi.fn(),
-  fetchProjectTaskRoomHistory: vi.fn(),
+  fetchProjectTaskRoomHistory: historyRead,
   planProjectTaskRoomEdit: vi.fn(),
   submitProjectTaskRoomBatch: vi.fn(),
 }));
@@ -79,6 +81,7 @@ import {
   refetchAuthoritativeProjectTaskRoomDocument,
   useAppendProjectTaskRoomOutputFeedbackMutation,
   useProjectTaskRoomDocumentQuery,
+  useProjectTaskRoomHistoryQuery,
   useProjectTaskRoomStream,
 } from '../query-domains/projectTaskRooms';
 
@@ -89,6 +92,113 @@ afterEach(() => {
   callbacks = undefined;
   streamConnections.splice(0);
 });
+
+test.each(['in-flight', 'failed'] as const)(
+  'a history page retains explicit recovery when a snapshot arrives while %s',
+  async (phase) => {
+    const first: ProjectTaskRoomBrowserHistory = {
+      kind: 'available',
+      records: [
+        {
+          sequence: 1,
+          actor: { kind: 'human', label: 'Owner' },
+          body: { kind: 'human-message', text: 'Already admitted' },
+          integrity: 'L0',
+          digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+        },
+      ],
+      checkpoint: {
+        throughSeq: 1,
+        checkpointDigest: 'b'.repeat(64),
+        retainedAnchorSeq: 0,
+        retainedAnchorDigest: 'c'.repeat(64),
+      },
+      hasMore: true,
+      nextCursor: 'next-page',
+      integrity: 'L0',
+    };
+    const second: ProjectTaskRoomBrowserHistory = {
+      ...first,
+      records: [],
+      hasMore: false,
+    };
+    let rejectPage!: (error: Error) => void;
+    historyRead
+      .mockReset()
+      .mockRejectedValue(new Error('Unexpected extra history read'))
+      .mockResolvedValueOnce(first)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectPage = reject;
+          }),
+      )
+      .mockResolvedValueOnce(second);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: 2, retryDelay: 0 } },
+    });
+    const view = renderHook(
+      () => {
+        useProjectTaskRoomStream('paged-task');
+        return useProjectTaskRoomHistoryQuery('paged-task');
+      },
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
+    );
+    try {
+      await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+      let pending!: Promise<unknown>;
+      act(() => {
+        pending = view.result.current.fetchNextPage();
+      });
+      await waitFor(() => expect(rejectPage).toBeDefined());
+      await waitFor(() => expect(callbacks).toBeDefined());
+      if (phase === 'in-flight') {
+        await act(async () => {
+          callbacks!.onEvent({ kind: 'room', value: {} });
+          callbacks!.onEvent({ kind: 'snapshot', value: {} });
+        });
+        expect(historyRead).toHaveBeenCalledTimes(2);
+      }
+      await act(async () => {
+        rejectPage(new Error('History unavailable'));
+        await pending;
+      });
+      await waitFor(() =>
+        expect(view.result.current.isFetchNextPageError).toBe(true),
+      );
+      expect(historyRead).toHaveBeenCalledTimes(2);
+      expect(view.result.current.data?.pages).toEqual([first]);
+      await waitFor(() => expect(callbacks).toBeDefined());
+      await act(async () => {
+        callbacks!.onEvent({ kind: 'room', value: {} });
+        callbacks!.onEvent({ kind: 'snapshot', value: {} });
+      });
+      expect(
+        client.getQueryState(
+          projectTaskRoomQueries.history('paged-task').queryKey,
+        )?.isInvalidated,
+      ).toBe(true);
+      expect(view.result.current.isFetchNextPageError).toBe(true);
+      expect(historyRead).toHaveBeenCalledTimes(2);
+      expect(
+        client.getQueryData(
+          projectTaskRoomQueries.history('paged-task').queryKey,
+        ),
+      ).toEqual(view.result.current.data);
+      await act(() => view.result.current.fetchNextPage());
+      await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+      expect(view.result.current.data?.pages).toEqual([first, second]);
+      expect(historyRead).toHaveBeenCalledTimes(3);
+    } finally {
+      view.unmount();
+      client.clear();
+    }
+  },
+);
 
 test('committed settlement replaces only its exact observed document object', () => {
   const client = new QueryClient();
