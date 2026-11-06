@@ -304,6 +304,8 @@ the fallback for a tree `taskkill` could not end, which is reported.
 `taskkill` follows
 parent links, so a descendant whose parent already exited is not found
 (from its documented behavior; not exercised here).
+The managed [node-pty 1.1.0 patch](../../patches/node-pty-1.1.0.patch) keeps output-socket close observation independent of pipe readiness. A native exit can occur before the first output byte, so release after a known native exit does not wait for that byte; late readiness cannot reconnect a destroyed socket. The adapter's [Windows release cases](../../src-server/adapters/__tests__/node-pty-adapter.test.ts) hold the real worker's readiness notification across termination and check one public exit, released worker ports, and no later signal to the old shell PID. The process-group cleanup deadline remains unchanged.
+
 The real PTY tests qualify macOS cleanup of the tested descendants and, on
 ConPTY, of an attached, a `windowsHide` and a detached descendant. Other POSIX
 hosts and already-daemonized workloads are not newly qualified;
