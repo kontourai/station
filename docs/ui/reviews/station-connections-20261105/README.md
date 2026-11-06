@@ -1,6 +1,6 @@
 # Station conversation review captures
 
-Retention: keep as historical PR evidence; supersede with a linked review rather than relabeling these captures.
+Retention: until 2027-04-30
 
 These PNGs contain isolated Station homes and controlled sample data. They are
 review assets, not a release receipt or current screenshot baseline.
