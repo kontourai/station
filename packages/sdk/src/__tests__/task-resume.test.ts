@@ -36,6 +36,18 @@ afterEach(() => {
 });
 
 describe('task resume client (#4554)', () => {
+  test('an unreadable capability handshake refuses before sending a resume request', async () => {
+    const fetchMock = vi.fn(
+      async (_url: string) => new Response('{}', { status: 503 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      resumeTask('task-1', REQUEST, { apiBase: 'http://station.test' }),
+    ).rejects.toMatchObject({ code: 'task_resume_unavailable', status: 503 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('/resume');
+  });
+
   test('a host without taskResume is reported as unable to resume, and no resume request is sent', async () => {
     const fetchMock = vi.fn(async (url: string) =>
       url.includes('/.well-known/')

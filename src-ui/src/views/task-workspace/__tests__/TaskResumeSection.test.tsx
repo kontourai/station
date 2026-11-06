@@ -36,6 +36,7 @@ vi.mock('@kontourai/station-sdk/task-resume', async (original) => ({
 }));
 
 import { TaskResumeError } from '@kontourai/station-sdk/task-resume';
+import { toastStore } from '../../../contexts/ToastContext';
 import { TaskResumeSection } from '../TaskResumeSection';
 
 const TASK: TaskRecord = {
@@ -97,6 +98,7 @@ function renderSection(task: TaskRecord = TASK) {
 
 describe('TaskResumeSection (#4554)', () => {
   beforeEach(() => {
+    toastStore.clear();
     fixture.flags = new Set(['task-resume']);
     fixture.view.mockReset().mockResolvedValue(VIEW);
     fixture.resume.mockReset().mockResolvedValue({
@@ -161,6 +163,29 @@ describe('TaskResumeSection (#4554)', () => {
       taskId: TASK.id,
       dispatch: { agentId: 'agent-1' },
     });
+  });
+
+  test('dispatch failure remains visible after the resumed Task removes the section', async () => {
+    fixture.dispatch.mockRejectedValueOnce(new Error('Engine unavailable'));
+    const { unmount } = renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Why resume it?'), {
+      target: { value: 'Go again' },
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Resume and dispatch' }),
+    );
+    await screen.findByText(/Resumed, but dispatch failed: Engine unavailable/);
+    unmount();
+    expect(toastStore.getSnapshot()).toEqual([
+      expect.objectContaining({
+        message:
+          'Task resumed, but dispatch failed. Dispatch it from the Task when ready.',
+        type: 'error',
+        duration: 0,
+      }),
+    ]);
   });
 
   test('a refusal disables Resume and says why; a failed read offers Retry', async () => {

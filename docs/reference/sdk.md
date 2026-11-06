@@ -752,6 +752,8 @@ hosted deployment) throws `TaskResumeError` with `code: 'unsupported'` and a
 message that names updating Station as one remedy, and no resume request is
 sent. A host refusal throws `TaskResumeError` with its `task_resume_*` code.
 Only the Station operator in person can resume; the host decides who is asking.
+If the capability handshake cannot be read, the client refuses with
+`task_resume_unavailable` before sending a resume request.
 Retry an uncertain resume with the same `resumeId` and inputs: the host answers
 the stored record with `replayed: true` and the Task as it is now. Resuming
 starts nothing; dispatch the Task separately.

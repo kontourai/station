@@ -451,7 +451,8 @@ Choices and differences from the sections above:
 - **Turns and worktrees.** The turn check asks whether any Session this
   incarnation dispatched, or its conversation's current Session, has an open
   turn; an unknown answer counts as running. The kept worktree's occupancy is
-  the finalizer's own `isWorkspaceBusy`. A resumed Task's first dispatch
+  the finalizer's own `isWorkspaceBusy`; an unreadable worktree store or an
+  unknown occupancy answer refuses. A resumed Task's first dispatch
   refuses to reuse a kept worktree that has a running turn (the turn may have
   started after the resume); a later dispatch reuses it.
 - **Capability flag.** `taskResume` is a static fact about the build, withdrawn
@@ -489,9 +490,10 @@ mounted route through `configureRuntimeRoutes`: preview off, operator resume,
 dispatch and replay, Station Control and internal-token refusal, read-only and
 revoked devices), `consumed-capability-flags.test.ts`,
 `runtime-routes-declare-pull-request-engine.test.ts` (close-on-merge writes
-`endedAt`), `task-brief.test.ts`, the SDK and UI tests. Not verified: an
-ordinary account member's request at the mounted route (the in-person witness
-itself is the canonical one) and behavior across two Station processes.
+`endedAt`), `task-brief.test.ts`, the SDK and UI tests.
+`runtime-routes-task-room-members.test.ts` verifies that an account contributor
+can read the shared Task room but is refused by the account-device boundary
+on both resume routes. Behavior across two Station processes is not verified.
 
 ## Limitations
 

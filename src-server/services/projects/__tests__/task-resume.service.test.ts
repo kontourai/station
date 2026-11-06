@@ -55,6 +55,7 @@ type Deps = ConstructorParameters<typeof TaskGraphService>[1];
 function serviceDeps(homeDir: string, deps: Deps = {}): Deps {
   return {
     projectService: projectService as never,
+    isWorkspaceBusy: () => false,
     resolveProjectWorkspace: () => homeDir,
     assignmentClaimService: {
       claim: async () => ({
@@ -360,6 +361,12 @@ describe('resume (#4554 slice 2)', () => {
     await run(
       'task_resume_turn_running',
       graph.resumeTask(
+        input(done, { isTaskSessionTurnActive: () => undefined as never }),
+      ),
+    );
+    await run(
+      'task_resume_turn_running',
+      graph.resumeTask(
         input(done, {
           isTaskSessionTurnActive: () => {
             throw new Error('unknown');
@@ -562,6 +569,42 @@ describe('exactly once (#4554)', () => {
 });
 
 describe('dispatch after resume (#4554)', () => {
+  test('unreadable worktree custody refuses resume and subsequent dispatch without changing the Task', async () => {
+    const { graph, homeDir } = world();
+    const done = await endedTask(graph);
+    const worktreePath = join(homeDir, 'task-worktrees.json');
+    writeFileSync(worktreePath, '{');
+    const bytes = storeBytes(homeDir);
+    expect(await refusal(graph.resumeTask(input(done)))).toBe(
+      'task_resume_turn_running',
+    );
+    expect(storeBytes(homeDir)).toBe(bytes);
+    writeFileSync(worktreePath, JSON.stringify({ version: 1, entries: {} }));
+    await graph.resumeTask(input(done));
+    const resumedBytes = storeBytes(homeDir);
+    writeFileSync(worktreePath, '{');
+    const adapters = graph.createTaskDispatchAdapters({
+      orchestrationService: {} as never,
+      resolveAgentStart: async () =>
+        ({
+          agentId: 'agent',
+          provider: 'codex',
+          cwd: homeDir,
+          workspaceIsolation: { mode: 'worktree' },
+          metadata: {},
+        }) as never,
+    });
+    expect(
+      await adapters.remoteSessions.prepare!(done.id, {
+        agentId: 'agent',
+      } as never),
+    ).toMatchObject({
+      kind: 'refused',
+      reason: expect.stringContaining('worktree store could not be read'),
+    });
+    expect(storeBytes(homeDir)).toBe(resumedBytes);
+  });
+
   test('a dispatch reservation that expires restores the empty attachment, never the earlier lead', async () => {
     const { graph, homeDir } = world();
     const done = await endedTask(graph);

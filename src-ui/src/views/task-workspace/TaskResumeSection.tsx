@@ -18,6 +18,7 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { toastStore } from '../../contexts/ToastContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import './TaskResumeSection.css';
 
@@ -214,6 +215,13 @@ function TaskResumeDialog({
             dispatch: { agentId: task.agentId, sourceSurface: 'task-resume' },
           });
         } catch (error) {
+          // The ready Task refresh unmounts this section; keep the failure visible.
+          toastStore.upsert({
+            message:
+              'Task resumed, but dispatch failed. Dispatch it from the Task when ready.',
+            tone: 'error',
+            duration: 0,
+          });
           setDispatchError(
             error instanceof Error ? error.message : 'Dispatch failed.',
           );

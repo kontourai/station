@@ -3243,11 +3243,12 @@ export class TaskGraphService {
         ];
         let busy = true;
         try {
-          const worktree = this.taskWorktrees.read(taskId, task.createdAt);
+          const worktree = this.taskWorktrees.readState(taskId, task.createdAt);
           busy =
-            input.isTaskSessionTurnActive(sessionIds) ||
-            (worktree !== undefined &&
-              this.isWorkspaceBusy?.(worktree.worktree.path) === true);
+            worktree.state === 'unreadable' ||
+            input.isTaskSessionTurnActive(sessionIds) !== false ||
+            (worktree.state === 'recorded' &&
+              this.isWorkspaceBusy?.(worktree.entry.worktree.path) !== false);
         } catch {
           busy = true;
         }
@@ -5382,7 +5383,14 @@ export class TaskGraphService {
       if (!task) throw new Error(`Task not found: ${taskId}`);
       if (isTerminalTaskStatus(task.status))
         throw new Error(`Task is ${task.status}`);
-      const recorded = this.taskWorktrees.read(taskId, task.createdAt);
+      const worktreeState = this.taskWorktrees.readState(
+        taskId,
+        task.createdAt,
+      );
+      if (task.resumes?.length && worktreeState.state === 'unreadable')
+        throw new Error('The Task worktree store could not be read');
+      const recorded =
+        worktreeState.state === 'recorded' ? worktreeState.entry : undefined;
       // #4554: a resumed Task's first dispatch may find the kept worktree
       // still occupied by an earlier Session's turn (one that started after
       // the resume). It refuses rather than share the checkout; a later
@@ -5391,7 +5399,7 @@ export class TaskGraphService {
         recorded &&
         task.resumes?.length &&
         task.dispatchedAt === undefined &&
-        this.isWorkspaceBusy?.(recorded.worktree.path) === true
+        this.isWorkspaceBusy?.(recorded.worktree.path) !== false
       )
         throw new Error(
           "The Task's kept worktree has a running turn; dispatch it again once that turn ends",

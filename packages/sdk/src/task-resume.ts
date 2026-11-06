@@ -95,8 +95,15 @@ const UNSUPPORTED =
   'This Station cannot resume Tasks. Updating Station is one way to get it.';
 
 async function assertSupported(apiBase: string): Promise<void> {
-  if ((await taskResumeHostSupport(apiBase)) === 'unsupported')
+  const support = await taskResumeHostSupport(apiBase);
+  if (support === 'unsupported')
     throw new TaskResumeError('unsupported', 404, UNSUPPORTED);
+  if (support === 'unknown')
+    throw new TaskResumeError(
+      'task_resume_unavailable',
+      503,
+      'Station capabilities could not be read. Check the connection and try again.',
+    );
 }
 
 async function read<T>(response: Response): Promise<T> {
