@@ -82,7 +82,17 @@
 
     "src-ui/src/components/chat/UnsentMessages.tsx",
 
-    "src-ui/src/__tests__/OutboundQueuedMessages.station.test.tsx"
+    "src-ui/src/__tests__/OutboundQueuedMessages.station.test.tsx",
+
+    "src-ui/src/components/conversation/__tests__/RecordConversationBody.test.tsx",
+
+    "src-ui/src/components/conversation/ConversationBody.css",
+
+    "src-ui/src/components/chat/chat.css",
+
+    "src-ui/src/views/TaskWorkspaceView.css",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.tsx"
   ],
 
   "checks": [
