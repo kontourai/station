@@ -572,7 +572,7 @@ export function ProjectSidebarBoards({
   const content = (
     <>
       <div className="sidebar__section-label sidebar__section-label--boards">
-        <span className="sidebar__section-label-text">Personal Boards</span>
+        <span className="sidebar__section-label-text">Apps</span>
         <button
           type="button"
           className="sidebar__section-add"
@@ -602,11 +602,11 @@ export function ProjectSidebarBoards({
           </svg>
         </button>
       </div>
-      {isPending && <SkeletonBlock count={2} label="Loading personal Boards" />}
+      {isPending && <SkeletonBlock count={2} label="Loading apps" />}
       {isError && (
         <ErrorState
           variant="compact"
-          title="Unable to load personal Boards"
+          title="Unable to load apps"
           action={
             <Button size="sm" onClick={() => void refetch()}>
               Retry
@@ -925,8 +925,8 @@ export function ProjectSidebarBoards({
         ref={navigatorTriggerRef}
         type="button"
         className="sidebar__boards-trigger"
-        aria-label="Personal Boards"
-        title="Personal Boards"
+        aria-label="Apps"
+        title="Apps"
         aria-haspopup="dialog"
         aria-expanded={navigatorOpen}
         onPointerDown={(event) => {
@@ -939,7 +939,7 @@ export function ProjectSidebarBoards({
       <SidebarPopover
         open={collapsed && !isMobile && navigatorOpen}
         anchorRef={navigatorTriggerRef}
-        label="Personal Boards"
+        label="Apps"
         onClose={closeNavigator}
       >
         <div className="sidebar__boards-popover">{content}</div>

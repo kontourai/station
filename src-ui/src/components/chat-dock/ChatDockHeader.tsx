@@ -428,16 +428,14 @@ export function ChatDockHeader({
     <>
       {workspaceControls &&
       !(workspaceControls.showInboxToggle && workspaceControls.isInboxOpen) ? (
-        <div className="chat-dock__new-split">
-          <LazyBoundary
-            load={loadChatDockWorkspaceActions}
-            pending={null}
-            componentProps={{
-              ...workspaceControls,
-              iconOnly: true,
-            }}
-          />
-        </div>
+        <LazyBoundary
+          load={loadChatDockWorkspaceActions}
+          pending={null}
+          componentProps={{
+            ...workspaceControls,
+            iconOnly: true,
+          }}
+        />
       ) : null}
       {/* #800: the COLLAPSED bar's one affordance, a real action: the same
           New chat action every other chrome uses, icon-only and named, so

@@ -158,7 +158,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const rows = items([FRESH, WORKED]);
     const { onCloseChat } = renderPanel(rows);
 
-    const drafts = screen.getByRole('region', { name: 'Drafts' });
+    const drafts = screen.getByRole('region', { name: 'Open' });
     fireEvent.click(
       within(drafts).getByRole('button', {
         name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
@@ -296,55 +296,42 @@ describe('#2312 discarding Drafts from the inbox', () => {
     expect((await screen.findByRole('alert')).textContent).toBe(BUSY);
   });
 
-  it('a Draft untouched for more than a day folds under "N older drafts" until opened', () => {
+  it('keeps older drafts directly available in Open and discardable', () => {
     const rows = items([FRESH, STALE]);
     renderPanel(rows);
-    const drafts = screen.getByRole('region', { name: 'Drafts' });
+    const open = screen.getByRole('region', { name: 'Open' });
+    expect(within(open).getByText(titleOf(rows, FRESH.threadId))).toBeTruthy();
     const staleTitle = titleOf(rows, STALE.threadId);
-    // Fixture guard: both are Drafts with distinct titles.
-    expect(staleTitle).not.toBe(titleOf(rows, FRESH.threadId));
-
+    expect(within(open).getByText(staleTitle)).toBeTruthy();
     expect(
-      within(drafts).getByText(titleOf(rows, FRESH.threadId)),
+      within(open).getByRole('button', { name: `Discard draft ${staleTitle}` }),
     ).toBeTruthy();
-    expect(within(drafts).queryByText(staleTitle)).toBeNull();
-    const toggle = within(drafts).getByRole('button', {
-      name: /1 older draft$/,
-    });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-
-    fireEvent.click(toggle);
-
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(within(drafts).getByText(staleTitle)).toBeTruthy();
-    // Folded, not hidden from action: the older Draft is still discardable.
-    expect(
-      within(drafts).getByRole('button', {
-        name: `Discard draft ${staleTitle}`,
-      }),
-    ).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Drafts' })).toBeNull();
   });
 
-  it('folds by creation, not by clocks a stop or engine housekeeping moves', () => {
-    // #2312 review: stopping an idle engine rewrites `updatedAt`, and engine
-    // notifications move `lastEventAt`; neither is anyone touching the Draft.
+  it('engine housekeeping does not erase an unsent session’s Draft status', () => {
     const restarted = {
       ...draft('grok-build:restarted', 30 * HOUR, 'restarted-agent'),
       updatedAt: iso(HOUR),
       lastEventAt: iso(HOUR),
     };
-    const rows = items([FRESH, restarted]);
+    const rows = items([restarted]);
     renderPanel(rows);
-    const drafts = screen.getByRole('region', { name: 'Drafts' });
+    const open = screen.getByRole('region', { name: 'Open' });
     expect(
-      within(drafts).queryByText(titleOf(rows, restarted.threadId)),
-    ).toBeNull();
+      within(open).getByText(titleOf(rows, restarted.threadId)),
+    ).toBeTruthy();
     expect(
-      within(drafts).getByRole('button', { name: /1 older draft$/ }),
+      within(open).getByText('Draft', { selector: '.inbox-row__word' }),
+    ).toBeTruthy();
+    expect(
+      within(open).getByRole('button', {
+        name: `Discard draft ${titleOf(rows, restarted.threadId)}`,
+      }),
     ).toBeTruthy();
   });
 
-  it('the mobile switcher offers the same discard and the same fold', async () => {
+  it('the mobile inbox keeps older drafts Open and offers server discard', async () => {
     dispatch.mockResolvedValue(accepted(STALE.threadId));
     const rows = items([FRESH, STALE]);
     render(
@@ -362,9 +349,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
       { wrapper: withQueryClient },
     );
     const staleTitle = titleOf(rows, STALE.threadId);
-    expect(screen.queryByText(staleTitle)).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: /1 older draft$/ }));
+    expect(screen.getByText(staleTitle)).toBeTruthy();
     // The picker keeps one ⋯ per row (#3144); Discard is in its sheet.
     fireEvent.click(
       screen.getByRole('button', { name: `Details for ${staleTitle}` }),

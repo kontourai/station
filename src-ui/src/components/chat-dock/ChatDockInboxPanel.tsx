@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -15,7 +15,7 @@ import {
 } from '../../views/home/work-item-open-policy';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
-import { MessageGlyph, RefreshGlyph } from '../icons/Glyph';
+import { MessageGlyph, RefreshGlyph, SearchGlyph } from '../icons/Glyph';
 import { NewChatAction } from '../NewChatAction';
 import { Empty, ErrorState } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
@@ -156,7 +156,8 @@ function ChatDockInboxPanelImpl({
   // The live groups (held lifecycles, live snoozes): the same hook the
   // inbox toggle's Needs-you count reads, so the two cannot disagree.
   const scope = useInboxScope(items, now, workFacts);
-  const groups = useInboxGroups(scope.items, now, workFacts);
+  const [query, setQuery] = useState('');
+  const groups = useInboxGroups(scope.items, now, workFacts, query);
   const dismissals = useInboxDismissActions(items, workFacts);
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
@@ -171,20 +172,22 @@ function ChatDockInboxPanelImpl({
   return (
     <aside
       ref={panelRef}
+      data-coarse-pointer={coarsePointer || undefined}
       className={`chat-dock-inbox${exiting ? ' chat-dock-inbox--exiting' : ''}`}
       aria-label="Inbox chats"
       tabIndex={-1}
     >
       <div className="chat-dock-inbox__toolbar">
-        <Button
-          variant="ghost"
-          aria-label="Find conversations"
-          title="Find conversations"
-          onClick={onOpenHistory}
-        >
-          <MessageGlyph />
-        </Button>
-        <span className="chat-dock-inbox__toolbar-title">Inbox</span>
+        <label className="chat-dock-inbox__search">
+          <SearchGlyph />
+          <input
+            type="search"
+            aria-label="Search inbox"
+            placeholder="Search inbox"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
         {onNewChat && <NewChatAction iconOnly onClick={onNewChat} />}
         <ActionOverflowMenu
           label="Inbox actions"
@@ -227,9 +230,11 @@ function ChatDockInboxPanelImpl({
           <Empty
             variant="compact"
             label={
-              scope.value === 'all'
-                ? 'Nothing here yet.'
-                : 'No work in this filter.'
+              query.trim()
+                ? 'No matching chats or tasks.'
+                : scope.value === 'all'
+                  ? 'Nothing here yet.'
+                  : 'No work in this filter.'
             }
           />
         )}
@@ -247,7 +252,13 @@ function ChatDockInboxPanelImpl({
             projectIconBySlug={projectIconBySlug}
             workFacts={workFacts}
             chrome={coarsePointer ? 'touch' : 'hover'}
-            collapsible={{ sections, onToggle: toggleSection }}
+            collapsible={{
+              sections,
+              onToggle: toggleSection,
+              order: sections.order,
+              onReorder: (order) =>
+                setDeviceSetting('inboxSections', { ...sections, order }),
+            }}
             onActivate={(item) => {
               // station#3687 seam 4: acknowledge only after the click did
               // something. Acknowledging first moved a row the user could

@@ -59,6 +59,7 @@ import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useShowSurface } from './contexts/useShowSurface';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
+import { isMainDesktopWindow } from './platform/native/mainWindow';
 import { foldedDockRegion } from './regions/region-model';
 
 /**
@@ -176,6 +177,7 @@ function App({
   loadServerEvents?: typeof loadServerEventsMount;
 } = {}) {
   const { apiBase: API_BASE } = useApiBase();
+  const [isSecondaryWindow] = useState(() => !isMainDesktopWindow());
   // The saved connection's display identity for unavailable-state copy —
   // `connectionFailureCopy`'s contract wants the short name the user saved,
   // with the URL as the address it actually tried (archive#3713).
@@ -240,7 +242,7 @@ function App({
   const queryClient = useQueryClient();
   const {
     data: projects = [],
-    isLoading: projectsLoading,
+    isPending: projectsLoading,
     isError: projectsError,
   } = useScopedProjectsQuery();
   const appConfig = useConfig();
@@ -351,11 +353,14 @@ function App({
     matchedRequestedProject?.slug || projects[0]?.slug || '';
   const {
     data: firstProjectLayouts = [],
-    isLoading: firstProjectLayoutsLoading,
+    isPending: firstProjectLayoutsPending,
     isError: firstProjectLayoutsError,
   } = useProjectLayoutsQuery(firstProjectSlug, {
     enabled: !!firstProjectSlug,
   });
+
+  const firstProjectLayoutsLoading =
+    Boolean(firstProjectSlug) && firstProjectLayoutsPending;
 
   // Apply the `/?project=<name>` deep-link exactly once, after projects (and,
   // when matched, that project's layouts) have loaded. On a match this uses
@@ -458,6 +463,8 @@ function App({
 
   const displayCurrentView: NavigationView =
     window.location.pathname === '/' ? { type: 'home' } : currentView;
+  const isPanePopOut =
+    isSecondaryWindow && displayCurrentView.type === 'workspace-pane';
   const selectedLayoutProjectSlug =
     displayCurrentView.type === 'layout'
       ? displayCurrentView.projectSlug
@@ -503,8 +510,9 @@ function App({
   // This prevents even a loading frame from owning both the dock and the
   // full-screen Chat layout's event listeners/state machine.
   const showAmbientChatDock =
-    displayCurrentView.type !== 'layout' ||
-    (!selectedLayoutUnknown && !isChatWorkspaceLayout);
+    !isPanePopOut &&
+    (displayCurrentView.type !== 'layout' ||
+      (!selectedLayoutUnknown && !isChatWorkspaceLayout));
   /**
    * A full-screen mobile dock owns the whole viewport (archive#4460: any
    * occupant, not just Chat — `ChatDockMobileHeader` already carries the app
@@ -513,14 +521,16 @@ function App({
    * view instead, even while a persisted dock snap is being restored on
    * navigation.
    */
-  const isAmbientMobileDockFullscreen = isMobileDockFullscreenState({
-    isMobile: isMobileViewport,
-    isDockOpen: renderedDockState ? renderedDockState.visible : isDockOpen,
-    isDockMaximized: renderedDockState
-      ? renderedDockState.maximized
-      : isDockMaximized,
-    isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
-  });
+  const isAmbientMobileDockFullscreen =
+    !isPanePopOut &&
+    isMobileDockFullscreenState({
+      isMobile: isMobileViewport,
+      isDockOpen: renderedDockState ? renderedDockState.visible : isDockOpen,
+      isDockMaximized: renderedDockState
+        ? renderedDockState.maximized
+        : isDockMaximized,
+      isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
+    });
   const isMobileDockFullscreen =
     isAmbientMobileDockFullscreen ||
     (isMobileViewport && isChatWorkspaceLayout);
@@ -544,7 +554,7 @@ function App({
     ['cmd', 'shift'],
     'Developer',
     useCallback(() => navigate('/developer'), [navigate]),
-    true,
+    !isPanePopOut,
     10,
   );
 
@@ -561,6 +571,7 @@ function App({
         navigateToView({ type: 'settings' });
       }
     }, [displayCurrentView.type, returnToOutlet, navigateToView]),
+    !isPanePopOut,
   );
 
   useKeyboardShortcut(
@@ -571,6 +582,7 @@ function App({
     useCallback(() => {
       navigateToView({ type: 'project-new' });
     }, [navigateToView]),
+    !isPanePopOut,
   );
 
   useKeyboardShortcut(
@@ -606,7 +618,7 @@ function App({
     useCallback(() => {
       if (parentView) navigateToView(parentView);
     }, [navigateToView, parentView]),
-    parentView !== null,
+    !isPanePopOut && parentView !== null,
     -100,
   );
 
@@ -626,6 +638,7 @@ function App({
       if (!next) return;
       regionModel?.placeSurface('chat', next);
     }, [availableDockSlotPlacements, effectiveDockSlotPlacement, regionModel]),
+    !isPanePopOut,
   );
 
   // SHELL-07: `.content-view` is the shell's one scroll container, so its
@@ -719,7 +732,11 @@ function App({
               pending={null}
               componentProps={{}}
             />
-            <div className="app app--with-sidebar">
+            <div
+              className={
+                isPanePopOut ? 'app app--pane-pop-out' : 'app app--with-sidebar'
+              }
+            >
               {/* SHELL-14: the shell chrome is already first in DOM order
               (measured: sidebar → toolbar → route → dock), so the keyboard
               defect was not the order — it was that there is no way PAST the
@@ -739,7 +756,7 @@ function App({
               >
                 Skip to content
               </button>
-              <ProjectSidebar />
+              {!isPanePopOut && <ProjectSidebar />}
               <div
                 className={`app__main${
                   isMobileDockFullscreen
@@ -747,10 +764,12 @@ function App({
                     : ''
                 }`}
               >
-                <Header
-                  currentView={displayCurrentView}
-                  onNavigate={navigateToView}
-                />
+                {!isPanePopOut && (
+                  <Header
+                    currentView={displayCurrentView}
+                    onNavigate={navigateToView}
+                  />
+                )}
                 <ConnectionBannerSource />
                 <StationRouteLearning />
                 <StationDetailsHost />
@@ -818,11 +837,13 @@ function App({
                 </main>
 
                 {showAmbientChatDock && <RegionShells />}
-                <LazyBoundary
-                  load={loadDeferredAppOverlays}
-                  componentProps={{}}
-                  pending={null}
-                />
+                {!isPanePopOut && (
+                  <LazyBoundary
+                    load={loadDeferredAppOverlays}
+                    componentProps={{}}
+                    pending={null}
+                  />
+                )}
                 <NativeContextMenuGuard />
                 {/* Single floating voice affordance: the S2S pill. The separate STT
               FAB was unmounted here first — having both rendered two floating
@@ -831,7 +852,7 @@ function App({
               deleted, so no caller can bring the second mic back. STT while
               typing remains available via the inline VoiceOrb in the chat
               input. */}
-                {featureSettings.voiceS2SEnabled && (
+                {!isPanePopOut && featureSettings.voiceS2SEnabled && (
                   <LazyBoundary
                     load={loadVoicePill}
                     componentProps={{}}

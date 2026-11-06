@@ -19,6 +19,8 @@ interface DialogHistoryEntry {
   close: () => void;
   host: DialogHistoryHost | null;
   cleanupToken?: object;
+  published: boolean;
+  adoptLiveEntry: boolean;
   /**
    * The URL this dialog's layer was pushed at, which is also the URL the entry
    * underneath still carries. Ordinary cleanup may only fold the layer away by
@@ -150,7 +152,6 @@ function adoptStrandedLayer(id: string) {
   ) {
     return false;
   }
-  orphanedMarkers.delete(stranded.id);
   window.history.replaceState(
     {
       ...(window.history.state as Record<string, unknown>),
@@ -159,7 +160,43 @@ function adoptStrandedLayer(id: string) {
     '',
     window.location.href,
   );
+  orphanedMarkers.delete(stranded.id);
   return true;
+}
+
+function publishDialogEntry(entry: DialogHistoryEntry) {
+  const onLiveEntry =
+    entry.adoptLiveEntry && markerFromState(window.history.state) === entry.id;
+  if (!onLiveEntry && !adoptStrandedLayer(entry.id)) pushDialogEntry(entry.id);
+  entry.published = true;
+  orphanedMarkers.delete(entry.id);
+}
+
+function cancelInvalidPendingEntries() {
+  for (const entry of [...entries]) {
+    if (entry.published || entry.cleanupToken) continue;
+    if (entry.host?.removed || window.location.href !== entry.pushedUrl) {
+      entries.splice(entries.indexOf(entry), 1);
+      entry.close();
+    }
+  }
+}
+
+function flushPendingEntries() {
+  cancelInvalidPendingEntries();
+  for (const entry of entries) {
+    if (entry.published || entry.cleanupToken) continue;
+    try {
+      publishDialogEntry(entry);
+    } catch (error) {
+      for (const pending of [...entries]) {
+        if (pending.published) continue;
+        entries.splice(entries.indexOf(pending), 1);
+        if (!pending.cleanupToken) pending.close();
+      }
+      throw error;
+    }
+  }
 }
 
 function skipOrphanedMarker() {
@@ -169,10 +206,17 @@ function skipOrphanedMarker() {
   return true;
 }
 
-function handlePopState() {
+function handlePopState(event: PopStateEvent) {
   if (suppressNextPop) {
+    // NavigationStore also emits popstate after a push. Only the browser's
+    // traversal can settle the cleanup Back and its complete orphan chain.
+    if (!event.isTrusted) {
+      cancelInvalidPendingEntries();
+      return;
+    }
+    if (skipOrphanedMarker()) return;
     suppressNextPop = false;
-    skipOrphanedMarker();
+    flushPendingEntries();
     return;
   }
 
@@ -242,6 +286,8 @@ export function registerDialogHistory(
     close,
     host,
     pushedUrl: window.location.href,
+    published: false,
+    adoptLiveEntry: options.adoptLiveEntry === true,
   };
   entry.close = close;
   entry.host = host;
@@ -249,11 +295,10 @@ export function registerDialogHistory(
 
   if (!existing) {
     entries.push(entry);
-    const onLiveEntry =
-      options.adoptLiveEntry === true &&
-      markerFromState(window.history.state) === id;
-    if (onLiveEntry) orphanedMarkers.delete(id);
-    else if (!adoptStrandedLayer(id)) pushDialogEntry(id);
+    // A push before the asynchronous cleanup Back lands can be traversed
+    // away by that Back. Activate the dialog now and publish only after all
+    // cleanup-owned traversals finish, preserving registration order.
+    if (!suppressNextPop) publishDialogEntry(entry);
   }
 
   return () => {
@@ -264,6 +309,7 @@ export function registerDialogHistory(
       const index = entries.indexOf(entry);
       if (index < 0) return;
       entries.splice(index, 1);
+      if (!entry.published) return;
 
       if (markerFromState(window.history.state) !== id) {
         markOrphaned(id);

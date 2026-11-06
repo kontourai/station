@@ -13,7 +13,7 @@ import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
-import { migrateSnoozeKey } from '../utils/activity-snooze-store';
+import { migrateSnoozeKey, writeSnooze } from '../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { buildOrchestrationItems } from '../views/home/home-view-model';
 import { peerRecordSummary } from './fixtures/peer-delegation-record';
@@ -95,15 +95,14 @@ describe('ChatDockInboxPanel', () => {
     // Empty live groups (Idle here) are omitted; the historic groups keep
     // their always-present headers.
     expect(labels).toEqual([
-      'Needs you',
-      'Running',
+      'Needs attention',
+      'Working',
       'Just finished',
-      'Snoozed · 0',
-      'Earlier',
+      'Settled · 1',
     ]);
     // The Running row's chip says the lane's word, never "Active".
     expect(
-      within(screen.getByRole('region', { name: 'Running' })).getByText(
+      within(screen.getByRole('region', { name: 'Working' })).getByText(
         'Running',
         { selector: '.inbox-row__word' },
       ),
@@ -124,9 +123,9 @@ describe('ChatDockInboxPanel', () => {
     });
 
     const rowName = 'ready title, ready project';
-    const idle = screen.getByRole('region', { name: 'Idle' });
+    const idle = screen.getByRole('region', { name: 'Open' });
     expect(within(idle).getByRole('button', { name: rowName })).not.toBeNull();
-    const running = screen.getByRole('region', { name: 'Running' });
+    const running = screen.getByRole('region', { name: 'Working' });
     expect(within(running).queryByRole('button', { name: rowName })).toBeNull();
     expect(
       within(running).getByRole('button', {
@@ -134,7 +133,7 @@ describe('ChatDockInboxPanel', () => {
       }),
     ).not.toBeNull();
     expect(
-      within(screen.getByRole('region', { name: 'Needs you' })).getByRole(
+      within(screen.getByRole('region', { name: 'Needs attention' })).getByRole(
         'button',
         { name: 'attention title, attention project' },
       ),
@@ -147,12 +146,11 @@ describe('ChatDockInboxPanel', () => {
       ),
     ).map((node) => node.textContent?.replace(/^[+−]/, ''));
     expect(labels).toEqual([
-      'Needs you',
-      'Running',
-      'Idle',
+      'Needs attention',
+      'Working',
+      'Open',
       'Just finished',
-      'Snoozed · 0',
-      'Earlier',
+      'Settled · 1',
     ]);
   });
 
@@ -193,14 +191,14 @@ describe('ChatDockInboxPanel', () => {
       );
       // Held: still under Running and still focused, no jump yet.
       expect(
-        within(screen.getByRole('region', { name: 'Running' })).getByRole(
+        within(screen.getByRole('region', { name: 'Working' })).getByRole(
           'button',
           { name: rowName },
         ),
       ).toBe(document.activeElement);
       settleHold();
-      expect(screen.queryByRole('region', { name: 'Running' })).toBeNull();
-      const idle = screen.getByRole('region', { name: 'Idle' });
+      expect(screen.queryByRole('region', { name: 'Working' })).toBeNull();
+      const idle = screen.getByRole('region', { name: 'Open' });
       expect(document.activeElement).toBe(
         within(idle).getByRole('button', { name: rowName }),
       );
@@ -231,7 +229,7 @@ describe('ChatDockInboxPanel', () => {
         />,
       );
       settleHold();
-      expect(screen.getByRole('region', { name: 'Idle' })).toBeTruthy();
+      expect(screen.getByRole('region', { name: 'Open' })).toBeTruthy();
       expect(document.activeElement).toBe(document.body);
     });
 
@@ -263,7 +261,7 @@ describe('ChatDockInboxPanel', () => {
       );
       settleHold();
       expect(document.activeElement).toBe(
-        within(screen.getByRole('region', { name: 'Idle' })).getByRole(
+        within(screen.getByRole('region', { name: 'Open' })).getByRole(
           'button',
           { name: rowName },
         ),
@@ -288,24 +286,38 @@ describe('ChatDockInboxPanel', () => {
         chatDraftsStore.clear(key);
     });
 
-    it('marks a row whose open chat holds unsent composer text, and clears with the text', () => {
-      const ready = item('ready', 'Ready', NOW - 30 * 60_000);
-      chatDraftsStore.set('ready', 'half a thought');
-      renderPanel({ items: [ready], openChatSessionIds: ['ready'] });
+    it.each([
+      { lifecycle: 'Ready', snoozed: false },
+      { lifecycle: 'Running', snoozed: false },
+      { lifecycle: 'Needs attention', snoozed: false },
+      { lifecycle: 'Completed', snoozed: false },
+      { lifecycle: 'Ready', snoozed: true },
+    ] as const)(
+      'marks and clears unsent text in $lifecycle work (snoozed: $snoozed)',
+      ({ lifecycle, snoozed }) => {
+        const ready = item('ready', lifecycle, NOW - 30 * 60_000);
+        if (snoozed) writeSnooze('ready', NOW + 60_000, NOW);
+        chatDraftsStore.set('ready', 'half a thought');
+        renderPanel({ items: [ready], openChatSessionIds: ['ready'] });
+        if (snoozed)
+          fireEvent.click(screen.getByRole('button', { name: /^Snoozed/ }));
+        else if (lifecycle === 'Completed')
+          fireEvent.click(screen.getByRole('button', { name: /^Settled/ }));
 
-      const row = screen.getByRole('button', {
-        name: 'ready title, ready project, unsent draft',
-      });
-      expect(within(row).getByTitle('Unsent draft')).not.toBeNull();
+        const row = screen.getByRole('button', {
+          name: 'ready title, ready project, unsent draft',
+        });
+        expect(within(row).getByTitle('Unsent draft')).not.toBeNull();
 
-      // The cue reads the composer's own store: sending/clearing the text
-      // removes it without a re-render from the host.
-      act(() => chatDraftsStore.clear('ready'));
-      expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
-      expect(
-        screen.getByRole('button', { name: 'ready title, ready project' }),
-      ).not.toBeNull();
-    });
+        // The cue reads the composer's own store: sending/clearing the text
+        // removes it without a re-render from the host.
+        act(() => chatDraftsStore.clear('ready'));
+        expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
+        expect(
+          screen.getByRole('button', { name: 'ready title, ready project' }),
+        ).not.toBeNull();
+      },
+    );
 
     it('reads the chat store key (chatSessionId), not the row id', () => {
       // Real merged rows carry a conversation id as `id` and the composer's
@@ -335,7 +347,7 @@ describe('ChatDockInboxPanel', () => {
     });
   });
 
-  it('#2310: lists a Draft under its own group, chipped, not in a live group, and still openable', async () => {
+  it('keeps an unsent conversation in Open with its draft indicator and chat action', async () => {
     const onFocusChat = vi.fn();
     const draft = item('never-prompted', 'Draft', NOW - 5 * 60_000);
     renderPanel({
@@ -351,16 +363,15 @@ describe('ChatDockInboxPanel', () => {
       ),
     ).map((node) => node.textContent?.replace(/^[+−]/, ''));
     expect(labels).toEqual([
-      'Needs you',
-      'Running',
-      'Drafts',
+      'Needs attention',
+      'Working',
+      'Open',
       'Just finished',
-      'Snoozed · 0',
-      'Earlier',
+      'Settled · 1',
     ]);
 
     const rowName = 'never-prompted title, never-prompted project';
-    for (const live of ['Needs you', 'Running']) {
+    for (const live of ['Needs attention', 'Working']) {
       expect(
         within(screen.getByRole('region', { name: live })).queryByRole(
           'button',
@@ -368,7 +379,7 @@ describe('ChatDockInboxPanel', () => {
         ),
       ).toBeNull();
     }
-    const drafts = screen.getByRole('region', { name: 'Drafts' });
+    const drafts = screen.getByRole('region', { name: 'Open' });
     expect(within(drafts).getByText('Draft')).not.toBeNull();
 
     fireEvent.click(within(drafts).getByRole('button', { name: rowName }));
@@ -778,7 +789,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Attached session, station, Claude Code, read only',
+        name: 'Attached session, station, Claude Code, third-party session',
       }),
     );
 
@@ -854,9 +865,70 @@ describe('ChatDockInboxPanel', () => {
     expect(screen.getByTestId('inbox-row-status').textContent).toBe('Idle');
   });
 
+  it('moves a collapsed Working shelf below expanded work and keeps Settled last', () => {
+    renderPanel({ items: [...items, item('ready', 'Ready', NOW)] });
+    fireEvent.click(screen.getByRole('button', { name: /^Working/ }));
+    expect(
+      screen.queryByRole('button', { name: 'active title, active project' }),
+    ).toBeNull();
+    const groups = screen
+      .getAllByRole('region')
+      .map((group) => group.getAttribute('aria-labelledby'));
+    expect(groups.indexOf('chat-dock-inbox-running')).toBeGreaterThan(
+      groups.indexOf('chat-dock-inbox-idle'),
+    );
+    expect(groups.at(-1)).toBe('chat-dock-inbox-earlier');
+    fireEvent.click(screen.getByRole('button', { name: /^Working/ }));
+    expect(
+      screen.getByRole('button', { name: 'active title, active project' }),
+    ).toBeTruthy();
+  });
+
+  it('arranges shelves with the keyboard menu and preserves the choice after reload', () => {
+    const first = renderPanel();
+    const trigger = screen.getByRole('button', {
+      name: 'Arrange Working section',
+    });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const up = screen.getByRole('menuitem', { name: 'Move up' });
+    const down = screen.getByRole('menuitem', { name: 'Move down' });
+    expect(document.activeElement).toBe(up);
+    fireEvent.keyDown(up, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(down);
+    fireEvent.keyDown(down, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(up);
+    fireEvent.click(up);
+    const expectWorkingFirst = () => {
+      const working = screen.getByRole('region', { name: 'Working' });
+      const attention = screen.getByRole('region', { name: 'Needs attention' });
+      expect(
+        working.compareDocumentPosition(attention) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    };
+    expectWorkingFirst();
+    expect(
+      screen
+        .getByRole('button', { name: /^Settled/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+    first.unmount();
+    deviceSettingsStore.reloadFromStorage();
+    renderPanel();
+    expectWorkingFirst();
+    fireEvent.click(screen.getByRole('button', { name: 'Working' }));
+    const collapsed = screen.getByRole('region', { name: /^Working/ });
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    expect(
+      attention.compareDocumentPosition(collapsed) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('persists collapsible section state', () => {
     const first = renderPanel();
-    const earlier = screen.getByRole('button', { name: 'Earlier' });
+    const earlier = screen.getByRole('button', { name: /^Settled/ });
     expect(earlier.getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(earlier);
@@ -866,7 +938,7 @@ describe('ChatDockInboxPanel', () => {
     renderPanel();
     expect(
       screen
-        .getByRole('button', { name: 'Earlier' })
+        .getByRole('button', { name: /^Settled/ })
         .getAttribute('aria-expanded'),
     ).toBe('true');
     expect(

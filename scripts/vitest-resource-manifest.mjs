@@ -177,8 +177,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
-  // Loads node-pty with a fake PTY and mocked child-process observations;
-  // on Windows two real ConPTY shells, one at a time, in the OS temp directory.
+  // Fake startup/cleanup owners and real Windows ConPTY releases;
+  // an owned child exercises 30 concurrent native shell exits and resizes.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
@@ -694,6 +694,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and a symlink to prove `invokedDirectly` reaches the script body.
   // Bounded single-shot children per case.
   'scripts/__tests__/module-entry.test.ts',
+  // Real coordinator/fork processes verify worker exit diagnostics and fatal behavior.
+  'scripts/__tests__/windows-portable-floor.test.ts',
   // #2682: runs the real a11y ratchet (one Biome lint over the tree) as a
   // child process with an empty PATH to prove it needs no npx shim.
   'scripts/__tests__/a11y-ratchet.test.ts',
