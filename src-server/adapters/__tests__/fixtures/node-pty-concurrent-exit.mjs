@@ -80,15 +80,15 @@ try {
   await Promise.race([Promise.all(spawns), failure]);
   await Promise.race([allReady, failure]);
   phase = 'exiting';
-  for (const state of states) {
-    state.process.write('exit\r');
+  for (const state of states) state.process.write('exit\r');
+  let round = 0;
+  do {
     for (const active of states) {
-      if (active.exited) continue;
       try {
-        active.process.resize(81 + (state.index % 11), 25 + (state.index % 7));
+        active.process.resize(81 + (round % 11), 25 + (round % 7));
         resizes++;
       } catch (error) {
-        // The agent sees native exit before the adapter's output-flush exit event.
+        // A resize racing with an observed native exit must remain a safe refusal.
         if (
           !(error instanceof Error) ||
           error.message !== 'Cannot resize a pty that has already exited'
@@ -97,7 +97,12 @@ try {
         resizeAfterExit++;
       }
     }
-  }
+    round++;
+    await Promise.race([
+      new Promise((resolve) => setTimeout(resolve, 1)),
+      failure,
+    ]);
+  } while (exited < count || round < 30);
   await Promise.race([allExited, failure]);
 } catch (error) {
   problem = error;

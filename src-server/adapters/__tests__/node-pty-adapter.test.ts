@@ -192,6 +192,20 @@ describe('pending native PTY startup admission', () => {
     await vi.waitFor(() => expect(backend.launch.close).toHaveBeenCalledOnce());
   });
 
+  test('releases a quiet Windows backend after its admitted process exits', async () => {
+    const backend = await pendingBackend();
+    const pending = backend.adapter.spawn(SPAWN_INPUT);
+    await vi.waitFor(() => expect(backend.spawn).toHaveBeenCalledOnce());
+    backend.pty.pid = 9321;
+    backend.socket.emit('ready_datapipe');
+    const proc = await pending;
+    expect(proc.pid).toBe(9321);
+    backend.exit();
+    await vi.waitFor(() => expect(backend.launch.close).toHaveBeenCalledOnce());
+    expect(backend.pty._agent.kill).toHaveBeenCalledOnce();
+    expect(backend.pty.kill).not.toHaveBeenCalled();
+  });
+
   test.each([
     'error',
     'error during ready',
@@ -288,19 +302,17 @@ describe('pending native PTY startup admission', () => {
 describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
   const makeTempDir = trackTempDirs();
 
-  test('concurrent native exits and resizes survive through process retirement (#4626)', async () => {
+  async function runNativeFixture(fixture: URL, schema: string, label: string) {
     const execution = executeOwnedCommand(
       process.execPath,
       [
         '--import',
         import.meta.resolve('tsx'),
-        fileURLToPath(
-          new URL('./fixtures/node-pty-concurrent-exit.mjs', import.meta.url),
-        ),
-        makeTempDir('node-pty-concurrent-exit-'),
+        fileURLToPath(fixture),
+        makeTempDir('node-pty-native-lifecycle-'),
       ],
       spawn,
-      'native PTY concurrent exit regression',
+      label,
       {
         cwd: fileURLToPath(new URL('../../../', import.meta.url)),
         windowsHide: true,
@@ -332,7 +344,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
         waitForSuiteSettlement,
         terminationGraceMs: 1_000,
         terminationForceMs: 2_000,
-        processLabel: 'native PTY concurrent exit regression',
+        processLabel: label,
       });
     }
     const output = capture.finish();
@@ -356,18 +368,40 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
     expect(execution.isAlive(), diagnostic).toBe(false);
     const receipts = output.stdout.text
       .split(/\r?\n/)
-      .filter((line) =>
-        line.startsWith('{"schema":"station-pty-concurrent-exit/1"'),
-      );
+      .filter((line) => line.startsWith(`{"schema":"${schema}"`));
     expect(receipts, diagnostic).toHaveLength(1);
     const receipt = JSON.parse(receipts[0]);
+    expect(receipt, diagnostic).toMatchObject({ status: 'PASS' });
+    return { receipt, diagnostic };
+  }
+
+  test('concurrent native exits and resizes survive through process retirement (#4626)', async () => {
+    const { receipt, diagnostic } = await runNativeFixture(
+      new URL('./fixtures/node-pty-concurrent-exit.mjs', import.meta.url),
+      'station-pty-concurrent-exit/1',
+      'native PTY concurrent exit regression',
+    );
     expect(receipt, diagnostic).toMatchObject({
-      status: 'PASS',
       started: 30,
       ready: 30,
       exited: 30,
     });
     expect(receipt.resizes, diagnostic).toBeGreaterThan(0);
+  }, 30_000);
+
+  test('a silent native child exits and releases its output reader', async () => {
+    const { receipt, diagnostic } = await runNativeFixture(
+      new URL('./fixtures/node-pty-quiet-exit.mjs', import.meta.url),
+      'station-pty-quiet-exit/1',
+      'native PTY quiet exit regression',
+    );
+    expect(Number.isInteger(receipt.pid), diagnostic).toBe(true);
+    expect(receipt.pid, diagnostic).toBeGreaterThan(0);
+    expect(receipt, diagnostic).toMatchObject({ outputBytes: 0, exitCode: 0 });
+    expect([null, 0], diagnostic).toContain(receipt.signal);
+    expect(receipt.readerPortsAfter, diagnostic).toBeLessThanOrEqual(
+      receipt.readerPortsBefore,
+    );
   }, 30_000);
 
   /** node-pty runs each ConPTY's output reader on a worker thread. */
