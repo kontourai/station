@@ -5,8 +5,6 @@
  * real start-lease controller. The status assertions read the Session's
  * published summary, the projection the composer renders.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -17,6 +15,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   ConcurrentEngineStartCapacityError,
   createRuntimeResourcePostureController,
@@ -40,13 +39,14 @@ function deferred() {
   return { promise, release };
 }
 
+const makeTempDir = trackTempDirs();
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
   while (cleanups.length) await cleanups.pop()?.();
 });
 
 async function harness(options: { engineStartWaitMs?: number } = {}) {
-  const tmp = mkdtempSync(join(tmpdir(), 'engine-start-recovery-'));
+  const tmp = makeTempDir('engine-start-recovery-');
   const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
   const eventBus = new EventBus();
   const adapter = new GateTestAdapter();
@@ -74,7 +74,6 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
   cleanups.push(async () => {
     backgroundGate.release();
     await service.shutdown();
-    rmSync(tmp, { recursive: true, force: true });
   });
 
   /**

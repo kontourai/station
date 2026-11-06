@@ -443,9 +443,9 @@ describe('SessionRecoveryCoordinator', () => {
     '#4568: a profile restart of a source turn recorded as %s carries origin %s',
     async (recorded, carried) => {
       vi.useFakeTimers();
-      const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
-      dirs.push(dir);
-      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const store = new EventStore(
+        join(makeTempDir('recovery-coordinator-'), 'orchestration.sqlite'),
+      );
       const now = new Date('2026-07-29T12:00:00.000Z');
       const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
       const coordinator = new SessionRecoveryCoordinator({
