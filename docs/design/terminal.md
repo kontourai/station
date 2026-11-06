@@ -288,6 +288,11 @@ The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
 unknown or changed tty identity refuses all census signals; the adapter kills
 its owned shell handle and reports the cleanup failure instead of guessing
 at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
+Before any census signal, a new POSIX child may still be attaching its
+controlling tty. The adapter retains the native fork's device name and waits
+within the existing census/deadline bounds for that exact binding. A different
+concrete device, an unknown binding after admission, or an ownership change
+still refuses signals; a missing binding never becomes successful cleanup.
 On Windows the adapter waits for node-pty to connect its output pipe and wire
 socket-close to the exit event. It waits for pipe wiring rather than the
 shell's first output; killing before that wiring can lose the exit observation.

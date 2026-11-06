@@ -203,7 +203,7 @@ describe.skipIf(process.platform === 'win32')(
       census.read.mockReset();
     });
 
-    async function backend() {
+    async function backend(nativeTty?: string) {
       vi.useFakeTimers();
       const exits: ((event: { exitCode: number; signal?: number }) => void)[] =
         [];
@@ -227,6 +227,7 @@ describe.skipIf(process.platform === 'win32')(
         pause: vi.fn(),
         resume: vi.fn(),
       } satisfies import('node-pty').IPty;
+      if (nativeTty !== undefined) Object.assign(pty, { _pty: nativeTty });
       const native =
         await vi.importActual<typeof import('node-pty')>('node-pty');
       const adapter = new NodePtyAdapter(async () => ({
@@ -257,6 +258,19 @@ describe.skipIf(process.platform === 'win32')(
         expect(signal).not.toHaveBeenCalled();
       },
     );
+
+    test('the native tty binding admits cleanup only after the child attaches to it', async () => {
+      const { proc, pty } = await backend('/dev/ttys3994');
+      census.read
+        .mockResolvedValueOnce({ stdout: '4242 1 4242 ??\n' })
+        .mockResolvedValue({ stdout: '4242 1 4242 ttys3994\n' });
+      const signal = vi.spyOn(process, 'kill').mockReturnValue(true);
+      const stopped = expect(proc.terminate!()).resolves.toBeUndefined();
+      await vi.advanceTimersByTimeAsync(10);
+      await stopped;
+      expect(signal).toHaveBeenCalledWith(-4242, 'SIGKILL');
+      expect(pty.kill).not.toHaveBeenCalled();
+    });
 
     test('paused observation retries cap backoff at one second', async () => {
       const { proc, pty } = await backend();

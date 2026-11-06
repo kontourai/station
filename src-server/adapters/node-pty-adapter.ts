@@ -72,6 +72,7 @@ class NodePtyProcess implements IPtyProcess {
   private exited = false;
   private termination?: Promise<void>;
   private readonly outputPipeReady: Promise<void>;
+  private readonly controllingTty: string | undefined;
   readonly terminate?: () => Promise<void>;
   private paused = false;
   private pauseEpoch = 0;
@@ -79,6 +80,9 @@ class NodePtyProcess implements IPtyProcess {
   private pauseWatch?: ReturnType<typeof setTimeout>;
 
   constructor(private pty: import('node-pty').IPty) {
+    const tty = '_pty' in pty ? pty._pty : undefined;
+    this.controllingTty =
+      typeof tty === 'string' ? tty.replace(/^\/dev\//, '') : undefined;
     const socket = '_socket' in pty ? pty._socket : undefined;
     let finishPipeWait: (() => void) | undefined;
     // node-pty 1.1 wires Windows socket-close to exit only after this event.
@@ -190,7 +194,11 @@ class NodePtyProcess implements IPtyProcess {
   private terminateGroups(): Promise<void> {
     this.termination ??= (async () => {
       try {
-        await terminatePtyProcessGroups(this.pid, () => !this.exited);
+        await terminatePtyProcessGroups(
+          this.pid,
+          () => !this.exited,
+          this.controllingTty,
+        );
       } catch (error) {
         if (!this.exited) this.pty.kill('SIGKILL');
         throw error;
