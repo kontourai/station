@@ -305,9 +305,22 @@ describe('EventStore concurrent-home boot', () => {
     }
   });
 
-  test.each([false, true])(
-    'boot repairs legacy successor stubs but retains a started session (started=%s)',
-    (started) => {
+  test.each([
+    ['empty', undefined],
+    ['started', undefined],
+    ['continuation', "continuation_source_thread_id = 'root'"],
+    ['adoption', "adoption_idempotency_key = 'retained-adoption'"],
+    ['persistent', 'persist_session = 1'],
+    ['ephemeral', 'ephemeral = 1'],
+    ['external-control', "control_mode = 'read-only-attached'"],
+    [
+      'attached',
+      `attached_source = '{"kind":"codex-session","externalSessionId":"retained"}'`,
+    ],
+  ] as const)(
+    'boot repairs only empty successor projections and retains %s metadata',
+    (kind, metadataSql) => {
+      const started = kind === 'started';
       const path = join(dir, 'legacy-reservation.sqlite');
       const store = new EventStore(path);
       store.upsertSession({
@@ -356,12 +369,16 @@ describe('EventStore concurrent-home boot', () => {
       legacy.exec(
         "INSERT OR REPLACE INTO provider_session_state(thread_id,provider,status,created_at,updated_at) VALUES ('child','codex','closed','2026-11-02T00:01:00.000Z','2026-11-02T00:02:00.000Z')",
       );
+      if (metadataSql)
+        legacy.exec(
+          `UPDATE provider_session_state SET ${metadataSql} WHERE thread_id = 'child'`,
+        );
       legacy.close();
       const reopened = new EventStore(path);
       try {
-        if (started)
-          expect(reopened.readSessionByThread('child')).toBeDefined();
-        else expect(reopened.readSessionByThread('child')).toBeUndefined();
+        if (kind === 'empty')
+          expect(reopened.readSessionByThread('child')).toBeUndefined();
+        else expect(reopened.readSessionByThread('child')).toBeDefined();
         expect(reopened.readSessionByThread('root')).toBeDefined();
         expect(reopened.conversationSessions('root').at(-1)?.sessionId).toBe(
           'child',

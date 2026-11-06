@@ -3031,6 +3031,9 @@ export class EventStore {
         DELETE FROM provider_session_state
         WHERE status = 'closed' AND model IS NULL AND cwd IS NULL
           AND resume_cursor IS NULL AND tenant_execution_context IS NULL
+          AND control_mode = 'station-owned' AND attached_source IS NULL
+          AND continuation_source_thread_id IS NULL AND adoption_idempotency_key IS NULL
+          AND persist_session = 0 AND ephemeral = 0
           AND thread_id IN (
             SELECT session_id FROM orchestration_conversation_sessions
             WHERE predecessor_session_id IS NOT NULL
