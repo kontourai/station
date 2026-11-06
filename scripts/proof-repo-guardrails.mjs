@@ -1644,7 +1644,7 @@ if (connectionBannerSource.includes('/api/system/status')) {
 const projectSettingsView = readRequiredSource(
   '../src-ui/src/views/ProjectSettingsView.tsx',
 );
-if (projectSettingsView.includes('fetch(')) {
+if (hasRawFetchCall(projectSettingsView)) {
   errors.push('ProjectSettingsView must not issue raw fetch() calls.');
 }
 if (

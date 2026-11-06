@@ -197,6 +197,12 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
       'onClick={() => void refetch()}',
       "onClick={() => void fetch('/api/monitoring/events')}",
     ],
+    [
+      'ProjectSettingsView',
+      'src-ui/src/views/ProjectSettingsView.tsx',
+      'onClick={() => void modelConnectionsQuery.refetch()}',
+      "onClick={() => void fetch('/api/model-connections')}",
+    ],
   ])(
     '%s distinguishes raw fetch from SDK query refetch',
     (name, path, retry, rawFetch) => {
