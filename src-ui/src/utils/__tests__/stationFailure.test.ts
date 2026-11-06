@@ -1,3 +1,4 @@
+import { TerminalSessionError } from '@kontourai/station-sdk';
 import { ChatHttpError, StationHttpError } from '@kontourai/station-sdk/client';
 import { describe, expect, it } from 'vitest';
 import type { StationConnection } from '../../connections/station-connection';
@@ -31,6 +32,19 @@ const refusal = (remoteStatus: 401 | 403 | 409, overrides = {}) =>
   );
 
 describe('Station authority failure translation', () => {
+  it.each([
+    ['raw-egress-unavailable', 'direct Station connection'],
+    ['credential-unavailable', 'Reconnect to Station'],
+    ['unsupported-host', 'Update the host'],
+    ['refused', 'Terminal access was refused.'],
+  ] as const)('keeps safe terminal guidance for %s', (code, copy) => {
+    const result = describeStationFailure(
+      new TerminalSessionError(code, 'raw_credential_machine_diagnostic'),
+    );
+    expect(result.body).toContain(copy);
+    expect(result.body).not.toContain('raw_credential_machine_diagnostic');
+    expect(result.delivery).toBe('uncertain');
+  });
   it('does not mistake a credential-management read failure for model authentication', () => {
     expect(
       describeStationFailure(new Error('credential recovery unavailable')).body,

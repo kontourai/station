@@ -7,6 +7,19 @@ import {
 } from './chatErrorTranslation';
 import { isStationTransportFailure } from './stationTransportFailure';
 
+const TERMINAL_RECOVERY_COPY = new Map([
+  [
+    'raw-egress-unavailable',
+    'Terminals need a direct Station connection. Select a direct connection and try again.',
+  ],
+  ['credential-unavailable', 'Reconnect to Station to use this terminal.'],
+  [
+    'unsupported-host',
+    'This host does not support terminal sessions. Update the host to use this feature.',
+  ],
+  ['refused', 'Terminal access was refused.'],
+]);
+
 export interface StationFailure extends ChatErrorTranslation {
   authority: 'source' | 'target' | 'unknown';
   delivery: 'refused' | 'uncertain';
@@ -68,7 +81,17 @@ export function describeStationFailure(
     'Attachments must complete supervised staging before Send.',
     'Choose the file again before sending this attachment.',
   ].find((copy) => copy === message);
-  const domain = code ? translateChatError({ code, message }) : undefined;
+  // TerminalSessionError carries terminal transport codes, not model errors.
+  // Use fixed recovery copy; even a typed error's message may be diagnostic.
+  const terminalCopy =
+    value?.name === 'TerminalSessionError' && code
+      ? TERMINAL_RECOVERY_COPY.get(code)
+      : undefined;
+  const domain = terminalCopy
+    ? { title: 'Terminal unavailable', body: terminalCopy, retryable: false }
+    : code
+      ? translateChatError({ code, message })
+      : undefined;
   if (code === 'approval_delivery_unconfirmed')
     return {
       title: 'Decision not confirmed',
