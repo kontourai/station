@@ -973,7 +973,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn untrusted_windows_policy_ancestor_cannot_select_an_update_mirror() {
+    fn trusted_windows_policy_can_select_a_mirror_but_writable_ancestors_cannot() {
         use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::Foundation::LocalFree;
         use windows_sys::Win32::Security::Authorization::{
@@ -1034,20 +1034,67 @@ mod tests {
                 );
             }
         }
-        let dir = scratch("untrusted-windows-policy");
+        // A unique owned fixture at the system drive root reaches the complete
+        // production trust chain without changing any existing directory ACL.
+        struct Fixture {
+            path: PathBuf,
+            live: bool,
+        }
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                if self.live {
+                    let _ = std::fs::remove_dir_all(&self.path);
+                }
+            }
+        }
+        let system =
+            PathBuf::from(std::env::var_os("SystemRoot").expect("Windows system directory"));
+        let drive = system.ancestors().last().expect("Windows drive root");
+        let dir = drive.join(format!(
+            "station-policy-acl-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&dir).expect("claim a new Windows policy fixture");
+        let mut fixture = Fixture {
+            path: dir.clone(),
+            live: true,
+        };
         let path = dir.join("policy.json");
         std::fs::write(&path, r#"{"schemaVersion":1,"organization":"Acme","limits":{"updates":{"feedUrl":"https://mirror.example/station"}}}"#).unwrap();
-        set_fixture_acl(&path, "O:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)");
         set_fixture_acl(
             &dir,
-            "O:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;FW;;;BU)",
+            "O:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;0x1200a9;;;BU)",
         );
+        set_fixture_acl(&path, "O:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;FR;;;BU)");
         let ownership = Ownership {
             uid: 0,
             root: PathBuf::from("/"),
         };
+        let trusted = load_from(&path, Some(&ownership), None);
+        assert!(
+            matches!(trusted, InstalledPolicy::Limited(_)),
+            "{trusted:?}"
+        );
+        let mirrored = route(&trusted, "stable", &[STABLE.to_string()]);
+        assert!(
+            matches!(mirrored, UpdateRoute::Mirror { .. }),
+            "{mirrored:?}"
+        );
+        assert!(download_allowed(
+            &mirrored,
+            "https://mirror.example/station/stable-desktop/update.exe"
+        ));
+        set_fixture_acl(
+            &dir,
+            "O:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;FW;;;BU)",
+        );
         let policy = load_from(&path, Some(&ownership), None);
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&fixture.path).expect("remove the owned policy fixture");
+        fixture.live = false;
         let InstalledPolicy::Unusable(problem) = &policy else {
             panic!("untrusted fixture path admitted: {policy:?}");
         };
