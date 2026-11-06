@@ -431,16 +431,19 @@ describe('release SBOM generation', () => {
     expect(lifecycle.purlsByScope).toEqual({
       portable: [
         'pkg:npm/esbuild@0.28.2',
+        'pkg:npm/koffi@3.3.6',
         'pkg:npm/node-pty@1.1.0',
         'pkg:npm/protobufjs@7.6.5',
       ],
       desktop: [
         'pkg:npm/esbuild@0.28.2',
+        'pkg:npm/koffi@3.3.6',
         'pkg:npm/node-pty@1.1.0',
         'pkg:npm/protobufjs@7.6.5',
       ],
       mobile: [
         'pkg:npm/esbuild@0.28.2',
+        'pkg:npm/koffi@3.3.6',
         'pkg:npm/node-pty@1.1.0',
         'pkg:npm/protobufjs@7.6.5',
       ],
@@ -451,6 +454,7 @@ describe('release SBOM generation', () => {
         'pkg:npm/cpu-features@0.0.10',
         'pkg:npm/esbuild@0.25.12',
         'pkg:npm/esbuild@0.28.2',
+        'pkg:npm/koffi@3.3.6',
         'pkg:npm/libxmljs2@0.37.0',
         'pkg:npm/node-pty@1.1.0',
         'pkg:npm/protobufjs@7.6.5',
