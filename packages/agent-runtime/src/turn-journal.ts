@@ -1295,8 +1295,14 @@ export function openSqliteAgentJournal(options: {
       if (closed) throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
       if (maintenanceError) throw maintenanceError;
       const command = commandSchema.parse(raw);
-      const pending = checkpoint.beforeTransaction();
-      if (pending) await pending;
+      let pending = checkpoint.beforeTransaction();
+      while (pending) {
+        await pending;
+        if (closed || !database.isOpen)
+          throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
+        // Earlier checkpoint waiters may have committed more WAL before this one resumed.
+        pending = checkpoint.beforeTransaction();
+      }
       if (closed || !database.isOpen)
         throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
       if (maintenanceError) throw maintenanceError;

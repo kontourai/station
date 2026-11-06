@@ -3,6 +3,7 @@ import { retentionBacklog } from './turn-retention-fixture.js';
 import {
   activeTurnWalBacklog,
   checkpointEventLoop,
+  concurrentCheckpointWaiters,
 } from './turn-wal-fixture.js';
 
 // Full backlog coverage belongs to the resource-classified process-heavy lane.
@@ -16,4 +17,8 @@ it('one active turn cannot prevent bounded WAL across 300 turns with 20 effects 
 
 it('checkpointing a large WAL keeps the main event loop responsive', async () => {
   await checkpointEventLoop();
+}, 60_000);
+
+it('concurrent checkpoint waiters recheck the WAL bound before writing', async () => {
+  await concurrentCheckpointWaiters();
 }, 60_000);

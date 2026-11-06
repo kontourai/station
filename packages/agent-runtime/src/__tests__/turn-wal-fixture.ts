@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { copyFileSync, statSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 import { join } from 'node:path';
@@ -134,6 +134,41 @@ export async function checkpointEventLoop() {
     expect(metrics.eventLoopMaxMs).toBeLessThan(50);
   } finally {
     histogram.disable();
+    await f.close();
+  }
+}
+
+export async function concurrentCheckpointWaiters() {
+  const f = await turnFixture();
+  const path = f.database.location()!;
+  try {
+    f.database.exec(
+      'PRAGMA wal_autocheckpoint=0; CREATE TABLE checkpoint_padding(bytes BLOB); INSERT INTO checkpoint_padding VALUES(zeroblob(5242880))',
+    );
+    let maxWalBytes = 0;
+    const replies = await Promise.all(
+      Array.from({ length: 256 }, (_, index) =>
+        f.lease
+          .frame(
+            `queued:${index}`,
+            `data: ${randomBytes(16384).toString('hex')}\n\n`,
+          )
+          .then((reply) => {
+            maxWalBytes = Math.max(maxWalBytes, statSync(`${path}-wal`).size);
+            return reply;
+          }),
+      ),
+    );
+    const metrics = { maxWalBytes, replies: replies.length };
+    if (process.env.STATION_AGENT_RUNTIME_CONCURRENT_REPORT)
+      writeFileSync(
+        process.env.STATION_AGENT_RUNTIME_CONCURRENT_REPORT,
+        JSON.stringify(metrics),
+      );
+    console.info('concurrent WAL bytes', JSON.stringify(metrics));
+    expect(replies).toHaveLength(256);
+    expect(maxWalBytes).toBeLessThan(8 * 1024 * 1024);
+  } finally {
     await f.close();
   }
 }
