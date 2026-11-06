@@ -218,15 +218,15 @@ test('requires deletion confirmation and retains the Board when authority refuse
   );
   expect(requests.some((entry) => entry.method === 'DELETE')).toBe(false);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Delete Board', exact: true }),
+    screen.getByRole('button', { name: 'Delete Board' }),
   );
   await screen.findByText('Access refused');
   expect(boards.some((board) => board.slug === 'daily')).toBe(true);
   denied = false;
   fireEvent.click(
-    screen.getByRole('button', { name: 'Delete Board', exact: true }),
+    screen.getByRole('button', { name: 'Delete Board' }),
   );
-  await screen.findByRole('dialog', { name: 'Apps', exact: true });
+  await screen.findByRole('dialog', { name: 'Apps' });
   await waitFor(() =>
     expect(
       screen.queryByRole('button', {
@@ -248,7 +248,7 @@ test('successful deletion closes its confirmation after newer navigation superse
       await screen.findByRole('button', { name: 'Delete Daily brief' }),
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Delete Board', exact: true }),
+      screen.getByRole('button', { name: 'Delete Board' }),
     );
     await waitFor(() =>
       expect(
@@ -261,7 +261,7 @@ test('successful deletion closes its confirmation after newer navigation superse
       release();
       await deleteResponse;
     });
-    await screen.findByRole('dialog', { name: 'Apps', exact: true });
+    await screen.findByRole('dialog', { name: 'Apps' });
     expect(screen.queryByRole('dialog', { name: 'Delete Board?' })).toBeNull();
     expect(
       screen.queryByRole('button', {
@@ -306,7 +306,7 @@ test('route cancellation preserves metadata and discard closes the editor and re
   act(() => navigationStore.navigate('/apps-review-target'));
   let decision = await screen.findByRole('dialog', { name: 'Unsaved Changes' });
   fireEvent.click(
-    within(decision).getByRole('button', { name: 'Cancel', exact: true }),
+    within(decision).getByRole('button', { name: 'Cancel' }),
   );
   expect(window.location.pathname).toBe('/apps-review-start');
   expect(
@@ -316,7 +316,7 @@ test('route cancellation preserves metadata and discard closes the editor and re
   act(() => navigationStore.navigate('/apps-review-target'));
   decision = await screen.findByRole('dialog', { name: 'Unsaved Changes' });
   fireEvent.click(
-    within(decision).getByRole('button', { name: 'Discard', exact: true }),
+    within(decision).getByRole('button', { name: 'Discard' }),
   );
   await waitFor(() =>
     expect(window.location.pathname).toBe('/apps-review-target'),
