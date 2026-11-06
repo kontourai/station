@@ -1001,6 +1001,17 @@ establishes a retry. New text, reasoning, tool progress and terminal events clea
 transient waiting/retry status; raw logs and engine error payloads are not chat
 activity labels.
 
+A follow-up into a parked or interrupted Session may need its engine started
+while another engine start holds the one start slot (#4568). For a person's
+send, Station queues the start for up to 60 seconds and records
+`engineStartWait` on that Session's summary. While the send is in flight, the
+dock shows **Waiting for another engine to start** as a status badge. The
+composer's Stop cancels a start that is still waiting, and no engine starts.
+The badge clears when the start is admitted, cancelled, times out or fails. A
+timeout returns the usual "Another engine is already starting" refusal. An
+automatic send keeps the immediate refusal and shows no wait. A brand-new chat
+has no Session summary yet, so its start can wait without the badge.
+
 ### Return on this device
 
 **Chat settings → Return in chat** is saved in the existing device-settings
