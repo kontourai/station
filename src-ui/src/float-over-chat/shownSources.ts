@@ -1,6 +1,7 @@
 import {
   type RefObject,
   useEffect,
+  useId,
   useState,
   useSyncExternalStore,
 } from 'react';
@@ -26,6 +27,7 @@ import {
  */
 
 const counts = new Map<string, number>();
+const inlineOwners = new Map<string, string[]>();
 const listeners = new Set<() => void>();
 let version = 0;
 
@@ -50,7 +52,7 @@ export function announceShownSource(key: string): () => void {
 }
 
 export function isSourceShown(key: string): boolean {
-  return (counts.get(key) ?? 0) > 0;
+  return (counts.get(key) ?? 0) > 0 || (inlineOwners.get(key)?.length ?? 0) > 0;
 }
 
 function subscribe(listener: () => void) {
@@ -106,4 +108,52 @@ export function useAnnounceShownSource(
     if (key === null || !onScreen) return;
     return announceShownSource(key);
   }, [key, onScreen]);
+}
+
+/** Inline yields to a pane, and announces only while its own element is visible. */
+export function useInlineSourceVisibility(
+  key: string | null,
+  ref: RefObject<Element | null>,
+): { visible: boolean; paneShown: boolean; onScreen: boolean } {
+  const owner = useId();
+  useSyncExternalStore(
+    subscribe,
+    () => version,
+    () => version,
+  );
+  const paneShown = key !== null && (counts.get(key) ?? 0) > 0;
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    if (key === null) return;
+    const element = ref.current;
+    if (!element || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry) setVisible(entry.isIntersecting);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, key]);
+  useEffect(() => {
+    if (!key || !visible || paneShown) return;
+    inlineOwners.set(key, [...(inlineOwners.get(key) ?? []), owner]);
+    emit();
+    return () => {
+      const remaining = (inlineOwners.get(key) ?? []).filter(
+        (id) => id !== owner,
+      );
+      if (remaining.length) inlineOwners.set(key, remaining);
+      else inlineOwners.delete(key);
+      emit();
+    };
+  }, [key, visible, paneShown, owner]);
+  return {
+    visible:
+      visible &&
+      !paneShown &&
+      key !== null &&
+      inlineOwners.get(key)?.[0] === owner,
+    paneShown,
+    onScreen: visible,
+  };
 }

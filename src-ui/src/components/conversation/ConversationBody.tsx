@@ -42,6 +42,7 @@ import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContext';
 import { useWorkObservation } from '../../contexts/work-observation';
+import { BoundBrowserActivityProvider } from '../../float-over-chat/BoundBrowserActivityProvider';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
@@ -583,7 +584,9 @@ function LiveConversationBody({
     apiBase,
     requestScope: mentionRequestScope,
     station,
+    record: connectionRecord,
   } = useConversationConnection();
+  const visibilityFlags = useSurfaceVisibilityFlags();
   const { transport, transcript, streamStatus, turnInFlight } =
     useConversationController(activeSession);
   const secondaryActions =
@@ -1291,7 +1294,7 @@ function LiveConversationBody({
   // device) names the same turn and the server admits it once. It leaves the
   // composer alone. The local set only covers the tap before the send's own
   // row renders.
-  const continueInterruptedEnabled = useSurfaceVisibilityFlags().has(
+  const continueInterruptedEnabled = visibilityFlags.has(
     CONTINUE_INTERRUPTED_TURN_PREVIEW_ID,
   );
   const sendComposedRef = useRef(chatInput.sendComposedMessage);
@@ -1957,55 +1960,66 @@ function LiveConversationBody({
         </div>
       )}
       {displayedTranscriptMessages.length > 0 && (
-        <LazyBoundary
-          load={loadChatMessageList}
-          pending={CHAT_MESSAGE_LIST_PENDING}
-          componentProps={{
-            activeSession: renderedSession,
-            recordAgents: agents,
-            suppressStreamingRow: transcript.openTurnProjected,
-            fontSize: chatFontSize,
-            layoutHeight: dockHeight,
-            scrollControlsTarget,
-            showReasoning,
-            showToolDetails,
-            renderOverride,
-            renderAfterMessage,
-            emptyState: historyFailureNotice,
-            historyNotice: historyElisionNotice,
-            hasOlderMessages: transcript.enabled && transcript.hasMore,
-            // #2316: the pending-approvals strip derives from the window's
-            // events inside the lazily loaded list.
-            approvalEvents: transcript.enabled ? transcript.events : undefined,
-            approvalEventsSettled: transcript.settled,
-            historyLoading: transcript.loading,
-            // The status pill owns turn activity for a live chat.
-            suppressActivity: statusInPill || Boolean(streamStatus),
-            statusShownElsewhere: statusInPill,
-            // #2309: the stall notice below presents the silence (with its
-            // Stop action); the streaming row does not repeat it.
-            progressSilenceShownElsewhere: Boolean(
-              turnProgressSilence && turnInFlight,
-            ),
-            onLoadOlder: transcript.loadOlder,
-            onLoadTurn: transcript.loadTurn,
-            onOpenBackgroundTasks,
-            liveStatusUnavailable: activeSession.replay
-              ? observationUnavailable
-              : (workObservation?.unavailable(
-                  activeSession.conversationId ?? activeSession.id,
-                ) ?? observationUnavailable),
-            accountableHuman,
-            owner,
-            onQuote: quoteMessage,
-            onForkFromTurn: forkFromTurn,
-            onNewChatFromMessage: onNewChat ? newChatFromMessage : undefined,
-            onResendFromMessage: resendFromMessage,
-            // The dock's header gear opens ChatSettingsPanel, which carries the
-            // Summarize entry point (#3310).
-            hasSettingsEntryPoint: true,
-          }}
-        />
+        <BoundBrowserActivityProvider
+          enabled={visibilityFlags.has('inline-browser-activity')}
+          apiBase={apiBase}
+          requestScope={mentionRequestScope}
+          routeKind={station?.routeKind}
+          readOnly={Boolean(activeSession.replay || connectionRecord?.readOnly)}
+          session={activeSession}
+        >
+          <LazyBoundary
+            load={loadChatMessageList}
+            pending={CHAT_MESSAGE_LIST_PENDING}
+            componentProps={{
+              activeSession: renderedSession,
+              recordAgents: agents,
+              suppressStreamingRow: transcript.openTurnProjected,
+              fontSize: chatFontSize,
+              layoutHeight: dockHeight,
+              scrollControlsTarget,
+              showReasoning,
+              showToolDetails,
+              renderOverride,
+              renderAfterMessage,
+              emptyState: historyFailureNotice,
+              historyNotice: historyElisionNotice,
+              hasOlderMessages: transcript.enabled && transcript.hasMore,
+              // #2316: the pending-approvals strip derives from the window's
+              // events inside the lazily loaded list.
+              approvalEvents: transcript.enabled
+                ? transcript.events
+                : undefined,
+              approvalEventsSettled: transcript.settled,
+              historyLoading: transcript.loading,
+              // The status pill owns turn activity for a live chat.
+              suppressActivity: statusInPill || Boolean(streamStatus),
+              statusShownElsewhere: statusInPill,
+              // #2309: the stall notice below presents the silence (with its
+              // Stop action); the streaming row does not repeat it.
+              progressSilenceShownElsewhere: Boolean(
+                turnProgressSilence && turnInFlight,
+              ),
+              onLoadOlder: transcript.loadOlder,
+              onLoadTurn: transcript.loadTurn,
+              onOpenBackgroundTasks,
+              liveStatusUnavailable: activeSession.replay
+                ? observationUnavailable
+                : (workObservation?.unavailable(
+                    activeSession.conversationId ?? activeSession.id,
+                  ) ?? observationUnavailable),
+              accountableHuman,
+              owner,
+              onQuote: quoteMessage,
+              onForkFromTurn: forkFromTurn,
+              onNewChatFromMessage: onNewChat ? newChatFromMessage : undefined,
+              onResendFromMessage: resendFromMessage,
+              // The dock's header gear opens ChatSettingsPanel, which carries the
+              // Summarize entry point (#3310).
+              hasSettingsEntryPoint: true,
+            }}
+          />
+        </BoundBrowserActivityProvider>
       )}
       {streamStatus && !statusInPill && streamStatus.kind !== 'restored' && (
         <div

@@ -51,7 +51,10 @@ import {
   useOptionalKeyboardShortcuts,
 } from '../../contexts/KeyboardShortcutsContext';
 import { navigationStore } from '../../contexts/navigation-store';
-import { browserFloatSourceKey } from '../../float-over-chat/floatSource';
+import {
+  browserFloatSourceKey,
+  browserShownSourceKey,
+} from '../../float-over-chat/floatSource';
 import {
   isFloatSourceOpen,
   requestFloat,
@@ -884,7 +887,11 @@ function BrowserSessionPane({
       !session.isError &&
       record?.state === 'live' &&
       record.surfaceId
-      ? browserFloatSourceKey(record.browserSessionId)
+      ? browserShownSourceKey(
+          record.browserSessionId,
+          apiBase,
+          requestScope?.authorityKey,
+        )
       : null,
     stageRef,
   );

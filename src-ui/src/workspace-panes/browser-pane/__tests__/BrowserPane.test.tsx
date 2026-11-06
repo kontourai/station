@@ -93,7 +93,10 @@ import {
   useShortcutRegistry,
 } from '../../../contexts/KeyboardShortcutsContext';
 import { navigationStore } from '../../../contexts/navigation-store';
-import { browserFloatSourceKey } from '../../../float-over-chat/floatSource';
+import {
+  browserFloatSourceKey,
+  browserShownSourceKey,
+} from '../../../float-over-chat/floatSource';
 import {
   dismissFloat,
   openFloat,
@@ -351,11 +354,19 @@ describe('BrowserPane honest states', () => {
         request?.onTaken?.();
       });
       await waitFor(() =>
-        expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(false),
+        expect(
+          isSourceShown(
+            browserShownSourceKey(SESSION, 'http://station.test', 'fixture'),
+          ),
+        ).toBe(false),
       );
       act(() => dismissFloat('test-chat', browserFloatSourceKey(SESSION)));
       await waitFor(() =>
-        expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(true),
+        expect(
+          isSourceShown(
+            browserShownSourceKey(SESSION, 'http://station.test', 'fixture'),
+          ),
+        ).toBe(true),
       );
     } finally {
       release();
@@ -754,7 +765,11 @@ describe('BrowserPane honest states', () => {
   });
 
   test('while its live view is on screen the pane announces the session, so the float-over-chat hides (#90 D9)', async () => {
-    const key = browserFloatSourceKey(SESSION);
+    const key = browserShownSourceKey(
+      SESSION,
+      'http://station.test',
+      'fixture',
+    );
     expect(isSourceShown(key)).toBe(false);
     renderPane({
       'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,

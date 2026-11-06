@@ -5570,6 +5570,15 @@ Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
 appearance are registry-applied emulation shared by every viewer and Agent; the
 pane sizes a page it just opened from a narrow stage once and announces changes
 it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
+The off-by-default **Inline browser activity** preview places the same browser
+beside its qualified transcript calls. The conversation boundary supplies the
+Station request scope; exact session selection also requires the Project,
+principal and conversation binding. Inline and floating placements share
+`float-over-chat/BrowserSessionSurface.tsx`, including input, page dialogs and
+navigation. Existing source-visibility arbitration suppresses duplicate viewers.
+Settled activities summarize tool history without inventing historical frames;
+recording remains explicit. The [delivery plan](../plans/browser-activity-inline.md)
+names the owners, limitations and verification cases.
 `BrowserTabs.tsx` persists bounded,
 ordered exact-session references through the pane wrapper, and discovers popup
 sessions. The Chromium host adopts the actual popup target and original request;
