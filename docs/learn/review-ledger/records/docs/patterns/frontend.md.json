@@ -108,7 +108,19 @@
 
     "scripts/unsaved-guard-gate.mjs",
 
-    "src-ui/src/components/modals/ConfirmModal.tsx"
+    "src-ui/src/components/modals/ConfirmModal.tsx",
+
+    "src-ui/src/components/StatusSummary.tsx",
+
+    "src-ui/src/components/StatusSummary.css",
+
+    "src-ui/src/styles/layout-recipes.css",
+
+    "src-ui/src/styles/control-recipes.css",
+
+    "src-ui/src/components/ActionRow.tsx",
+
+    "src-ui/src/components/ActionRow.css"
   ],
 
   "checks": [

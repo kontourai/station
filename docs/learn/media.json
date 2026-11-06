@@ -700,6 +700,90 @@
       "documents": [
         "docs/guides/deployment-authentication.md"
       ]
+    },
+    {
+      "path": "docs/learn/media/updates-before-390-dark.png",
+      "kind": "image",
+      "digest": "7deb95cdb471067f79967d29631ffec60869dd85bdaf6fcdbd9f668314ca9311",
+      "alt": "Historical Updates panel before shared summaries.",
+      "caption": "Historical Updates panel before shared summaries.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Historical comparison from base c8e900950601c2cd7913a7fe4ad9a3fcc7375608. It intentionally retains the older-server notice and missing-archive state reported by the user; it does not represent current provider state. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "c8e900950601c2cd7913a7fe4ad9a3fcc7375608",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-after-390-dark.png",
+      "kind": "image",
+      "digest": "2b931008809ae86118a9b555b99ee3eb14a52867fa157e2f301f41dbfe313d7a",
+      "alt": "Updates panel with shared summaries.",
+      "caption": "Updates panel with shared summaries.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-before-1440-light.png",
+      "kind": "image",
+      "digest": "379f4b6bebd3a96170b226619591ba72a8df7637d46dca2084a6c76d5e9f8248",
+      "alt": "Historical Updates panel before shared summaries.",
+      "caption": "Historical Updates panel before shared summaries.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 1440px, light theme. Native updater, connection identity and query responses are controlled data. Historical comparison from base c8e900950601c2cd7913a7fe4ad9a3fcc7375608. It intentionally retains the older-server notice and missing-archive state reported by the user; it does not represent current provider state. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "c8e900950601c2cd7913a7fe4ad9a3fcc7375608",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-after-1440-light.png",
+      "kind": "image",
+      "digest": "cb9780e9d1d618115378cddd50b28390048dad8329fb67253b091249faf582f8",
+      "alt": "Updates panel with shared summaries.",
+      "caption": "Updates panel with shared summaries.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 1440px, light theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-history-after-390-dark.png",
+      "kind": "image",
+      "digest": "314b3e4fc50b06b7a4707c5787bb45f90b35eb32b1f8d6e7ce8ea02e242d9336",
+      "alt": "Release history using the published styled select.",
+      "caption": "Release history using the published styled select.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, dark theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/updates-notes-after-390-light.png",
+      "kind": "image",
+      "digest": "683d1a5812dddd07c754de03f07136c57d7ec1060f72d2c8b15baebf076225f7",
+      "alt": "Installed-version changelog using the recovered exact archive notes.",
+      "caption": "Installed-version changelog using the recovered exact archive notes.",
+      "scenario": "Updates: status hierarchy and changelogs",
+      "evidence": "Actual production React components and shipped styles in a controlled Chromium fixture at 390px, light theme. Native updater, connection identity and query responses are controlled data. Inspected summary, notes/history and Settings render matrices at 390/1440 in both themes; the release picker measured 44px high, selection and keyboard focus/Tab worked, and no dialog overflow or page errors occurred. No real download, restart, installation or native-shell qualification is claimed. The separately approved archive-only publication is evidenced by its provider readback, not this image. Retained as reviewed UI evidence until this Updates layout is superseded.",
+      "capturedRevision": "b418ed2fb2cf2f697f25ef827d58a1eeec13ebb2",
+      "documents": [
+        "docs/guides/nightly.md",
+        "docs/patterns/frontend.md"
+      ]
     }
   ]
 }

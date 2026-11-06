@@ -61,7 +61,7 @@ describe('SystemSection', () => {
       ).not.toBeNull();
       // The desktop card is its own catalog row, rendered above the server.
       const desktopCard = screen
-        .getByText('Desktop app updates')
+        .getByRole('button', { name: 'Check for desktop app updates' })
         .closest('[data-catalog-id]');
       const serverCard = screen.getByRole('region', {
         name: 'Server · station',

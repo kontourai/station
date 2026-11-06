@@ -37,6 +37,8 @@ For performance or test cleanup, use the [journey profiling and mutation route](
 
 For compact value pickers, reuse `.choice-trigger`, `.choice-caret`, and `ArrowDownGlyph`; keep picker behavior in its existing owner. Use `Button` for standard actions and `Dialog` for standard dialog chrome. `ResponsiveDialogSurface` supplies behavior and geometry only; a custom consumer must own its overlay, background, and foreground styles. Preserve visible keyboard focus and 44px mobile targets. Validate shared-style changes in each affected surface, including narrow widths and both themes.
 
+Before writing feature CSS, inspect the published `@kontourai/ui/react` primitives and the [shared presentation recipes](../docs/patterns/frontend.md#styling-and-responsive-behavior). In the shell, use `ActionRow` for primary/secondary command groups, `Field`/`Select` for ordinary form choices, `StatusSummary` for identity/status/check metadata, and `content-stack` for semantic flow. Pane packages keep the published-package boundary and must not import these shell modules. Reuse one owner across equivalent surfaces; do not recreate its badge, spacing, or control chrome locally.
+
 | Conversation surface | Shared owner |
 | --- | --- |
 | Dock, Activity, attached session, coding tab | `components/conversation/ConversationBody` |
