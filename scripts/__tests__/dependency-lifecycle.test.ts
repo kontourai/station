@@ -1739,6 +1739,59 @@ describe('dependency lifecycle policy', () => {
       }
     });
 
+    it('removes an unapproved bundled Linux target so the install hook must compile', () => {
+      const { fixtureRoot, packageRoot } = stagingFixture();
+      const bundled = resolve(packageRoot, 'prebuilds/linux-x64');
+      const other = resolve(packageRoot, 'prebuilds/darwin-arm64');
+      try {
+        mkdirSync(bundled, { recursive: true });
+        mkdirSync(other, { recursive: true });
+        writeFileSync(
+          resolve(bundled, 'pty.node'),
+          'unapproved upstream binary',
+        );
+        writeFileSync(resolve(other, 'pty.node'), 'other platform');
+        const result = stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+          platform: 'linux',
+          arch: 'x64',
+          env: {},
+        });
+        expect(result.staged).toBe(false);
+        expect(existsSync(bundled)).toBe(false);
+        expect(readFileSync(resolve(other, 'pty.node'), 'utf8')).toBe(
+          'other platform',
+        );
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it.skipIf(process.platform === 'win32')(
+      'refuses a redirected unapproved target without deleting outside the package',
+      () => {
+        const { fixtureRoot, packageRoot } = stagingFixture();
+        const outside = resolve(fixtureRoot, 'outside');
+        try {
+          mkdirSync(outside);
+          writeFileSync(resolve(outside, 'pty.node'), 'retained');
+          mkdirSync(resolve(packageRoot, 'prebuilds'));
+          symlinkSync(outside, resolve(packageRoot, 'prebuilds/linux-x64'));
+          expect(() =>
+            stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+              platform: 'linux',
+              arch: 'x64',
+              env: {},
+            }),
+          ).toThrow(/redirected by a symlink/);
+          expect(readFileSync(resolve(outside, 'pty.node'), 'utf8')).toBe(
+            'retained',
+          );
+        } finally {
+          rmSync(fixtureRoot, { recursive: true, force: true });
+        }
+      },
+    );
+
     it('aborts on a digest mismatch instead of staging a tampered artifact', () => {
       const { fixtureRoot, packageRoot } = stagingFixture({
         digest: 'a'.repeat(64),
