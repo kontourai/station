@@ -1507,7 +1507,7 @@ describe('dependency lifecycle policy', () => {
         if (mode === 'generic') {
           writeFileSync(
             resolve(packageRoot, 'scripts/prebuild.js'),
-            'process.exit(1);',
+            "require('node:fs').writeFileSync('source-option.marker', process.env.npm_config_build_from_source); process.exit(1);",
           );
         } else {
           copyFileSync(
@@ -1588,6 +1588,11 @@ describe('dependency lifecycle policy', () => {
           { cwd: fixtureRoot },
         );
         expect(process.env.npm_config_build_from_source).toBe('false');
+        if (mode === 'generic') {
+          expect(
+            readFileSync(resolve(packageRoot, 'source-option.marker'), 'utf8'),
+          ).toBe('false');
+        }
         const built = resolve(packageRoot, `build/Release/${target}.node`);
         if (mode === 'pinned') {
           expect(existsSync(built)).toBe(false);
