@@ -75,11 +75,18 @@ export async function completeVerifiedPairing(
     );
   }
   const active = deps.activeConnection;
+  // The selected Station IS the target and this device holds no access to it
+  // yet, so the approval has nothing to replace. Absence of access is the test,
+  // not `'required'`: a loopback address normalizes to `'not-required'`
+  // without granting anything, and a fresh phone's first Station is selected
+  // the moment it is saved. A reported identity is fine when it matches.
   const firstDeviceCandidate =
     target.preserveSelectedStation === false &&
     active?.id === target.connectionId &&
-    !active.environmentId &&
-    active.credentialState === 'required';
+    new URL(active.url).origin === new URL(target.endpoint).origin &&
+    active.credentialState !== 'saved' &&
+    active.credentialState !== 'device-session' &&
+    (!active.environmentId || active.environmentId === result.environmentId);
   if (
     target.bindApprovedEndpoint &&
     target.activate === false &&

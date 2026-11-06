@@ -603,7 +603,9 @@ for (const fixture of [
       .getByRole('button', { name: 'Request access', exact: true })
       .click();
     await expect(
-      setupDialog.getByText(/Device access requested/),
+      setupDialog
+        .getByRole('status')
+        .filter({ hasText: /^Waiting for approval on / }),
     ).toBeVisible();
     expect(
       await page.evaluate(() =>

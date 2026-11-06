@@ -79,7 +79,9 @@
    route names no item, which is the list. The other case — the route names an
    item, so the pane opens on its detail — is not a variant of this layout and
    is the `detail-sheet` shape above. */
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+/* SplitPaneLayout's stacked query (LIST_DETAIL_STACKED_QUERY), not the phone
+   breakpoint: a foldable open in portrait shows both panes. */
+@media (max-width: 599px), (max-height: 540px) and (pointer: coarse) {
   .route-pending__rail {
     width: 100%;
     flex: 1 1 auto;

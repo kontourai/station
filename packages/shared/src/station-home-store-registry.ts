@@ -120,6 +120,8 @@ export const STATION_HOME_ROOTS: Readonly<
   runtime: 'state',
   'runtime-auth-health.json': 'state',
   scheduler: 'state',
+  // POSIX and legacy Windows chat files remain part of home backups/rollback.
+  scratch: 'state',
   security: 'state',
   'session-summaries': 'state',
   'setup-imports.json': 'state',

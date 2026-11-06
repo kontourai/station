@@ -310,3 +310,17 @@
   .action-overflow__trigger[aria-expanded="true"] {
   opacity: 1;
 }
+
+/* A folded display (Book posture) with the dock open across the crease: the
+   Inbox takes exactly the side before it and the conversation starts after
+   it, so neither list rows nor the transcript run across the valley.
+   `useFoldSplit` on `.chat-dock__workspace` writes the lengths. The panel's
+   own width bounds yield to the crease, like SplitPaneLayout's list. */
+.chat-dock__workspace[data-fold-split="vertical"]
+  > .chat-dock-inbox:not(.chat-dock-inbox--exiting) {
+  --chat-dock-inbox-width: var(--fold-split-start);
+  flex: 0 0 var(--fold-split-start);
+  min-width: 0;
+  max-width: none;
+  margin-right: var(--fold-split-gap);
+}

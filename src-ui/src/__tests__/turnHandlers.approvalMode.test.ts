@@ -374,6 +374,52 @@ describe('#3290: a pick OpenCode could not be switched to', () => {
 describe('runtime warning notifications', () => {
   beforeEach(() => toastStore.clear());
 
+  /**
+   * Duo audit: Muse's "approval channel could not be used" notice is a fact
+   * about how the whole session runs, and as a floating toast it covered the
+   * person's own first message on a phone. It is the chat's: a transcript
+   * notice (its own row, its own ×), said once however often the engine
+   * repeats it. A warning about something that just happened stays a toast.
+   */
+  test('a session-posture warning lands in its chat’s transcript once, not over it', () => {
+    const POSTURE_THREAD = 'muse-posture-thread';
+    activeChatsStore.removeChat(POSTURE_THREAD);
+    activeChatsStore.initChat(POSTURE_THREAD, {
+      agentSlug: 'muse',
+      agentName: 'Muse Code',
+      title: 'Muse chat',
+    });
+    const warning = {
+      provider: 'muse' as const,
+      threadId: POSTURE_THREAD,
+      createdAt: '2026-11-04T16:35:00.000Z',
+      method: 'runtime.warning' as const,
+      severity: 'warning' as const,
+      message:
+        "Muse's approval channel (`muse serve`) could not be used, so this session runs through `muse exec`.",
+      code: 'muse-serve-unavailable',
+    };
+    handleOrchestrationEvent('http://localhost', warning);
+    handleOrchestrationEvent('http://localhost', warning);
+    const notices = (
+      activeChatsStore.getSnapshot()[POSTURE_THREAD].ephemeralMessages ?? []
+    ).filter((notice) => notice.content === warning.message);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ role: 'system', ephemeral: true });
+    expect(toastStore.getSnapshot()).toEqual([]);
+
+    // Something that just happened in the same chat is still a toast.
+    handleOrchestrationEvent('http://localhost', {
+      ...warning,
+      code: 'adapter-event-stream-interrupted',
+      message: 'Agent event observation was interrupted.',
+    });
+    expect(toastStore.getSnapshot()).toMatchObject([
+      { sessionId: POSTURE_THREAD, type: 'warning' },
+    ]);
+    activeChatsStore.removeChat(POSTURE_THREAD);
+  });
+
   test('reconnect warnings group within a session without hiding other sessions or causes', () => {
     const warning = {
       provider: 'acp' as const,

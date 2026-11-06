@@ -19,6 +19,7 @@ import {
 
 import type { ConnectionHealthCheckResult } from '../core/ConnectionHealthCoordinator';
 import {
+  clearPendingExchange,
   loadPendingExchange,
   type PendingPairingExchange,
   savePendingExchange,
@@ -91,6 +92,7 @@ export function ConnectionManagerModalContent({
   returnFocusTarget,
   onPairingSucceeded,
   onApprovalPending,
+  onApprovalCancelled,
   pairingRefusal,
 }: ConnectionManagerModalContentProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -598,6 +600,8 @@ export function ConnectionManagerModalContent({
     .filter(
       (pending): pending is PendingPairingExchange =>
         pending !== null &&
+        // A held attempt is past approval; its row shows the access remedy.
+        !pending.exchangeAttempt &&
         typeof pending.targetConnectionId === 'string' &&
         typeof pending.targetConnectionLabel === 'string',
     )
@@ -855,6 +859,17 @@ export function ConnectionManagerModalContent({
             getStatus={statusForConn}
             activeHealth={activeHealth}
             pendingConnectionId={pendingForConnections?.targetConnectionId}
+            onCancelPendingApproval={
+              pendingForConnections
+                ? () => {
+                    onApprovalCancelled?.(pendingForConnections);
+                    clearPendingExchange(
+                      pendingForConnections.endpoint,
+                      pendingForConnections.requestKind,
+                    );
+                  }
+                : undefined
+            }
             onSelect={(connection) => {
               const proceed = () => {
                 void setActiveConnection(connection.id)
@@ -1015,6 +1030,7 @@ export function ConnectionManagerModalContent({
               onApprovalPending(persisted);
               onCloseRef.current();
             }}
+            onApprovalCancelled={onApprovalCancelled}
           />
         )}
 
@@ -1033,8 +1049,11 @@ export function ConnectionManagerModalContent({
               };
               savePendingExchange(persisted);
               onApprovalPending(persisted);
-              onCloseRef.current();
+              // Stay on the panel's waiting view: the shell owns completion
+              // and closes this manager once the request settles.
+              return persisted;
             }}
+            onApprovalCancelled={onApprovalCancelled}
           />
         )}
 
@@ -1052,8 +1071,11 @@ export function ConnectionManagerModalContent({
               };
               savePendingExchange(persisted);
               onApprovalPending(persisted);
-              onCloseRef.current();
+              // Stay on the panel's waiting view: the shell owns completion
+              // and closes this manager once the request settles.
+              return persisted;
             }}
+            onApprovalCancelled={onApprovalCancelled}
           />
         )}
 

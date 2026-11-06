@@ -141,6 +141,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Spawns short-lived fake-Chromium shell scripts through the production
+  // launcher (owned process group, CDP pipe); each exits immediately.
+  'src-server/routes/__tests__/browser-launch-failure.routes.test.ts',
   // Owns a production AccountEntry Vite bundle and pinned Chromium lifecycle.
   'src-ui/src/__tests__/AccountEntryView.browser.test.tsx',
   // Full 4,800-effect WAL/FULL retention backlog; the small case stays ordinary.
@@ -817,6 +820,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/devices/toolchain/__tests__/device-hub.real.test.ts',
   // Builds fixture archives with the host tar executable; bounded, private output.
   'scripts/__tests__/portable-server-archive.test.ts',
+  // Stages a fixture Node distribution (this host's node and npm) with the
+  // host tar, then runs that npm's `ci` against a loopback registry.
+  'scripts/__tests__/portable-node-device-install.process.test.ts',
   // Runs copied user Node executables and shell-free npm/hub entry fixtures.
   'src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
@@ -1525,11 +1531,23 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // (the icon-only Open in pane beside OK and Cancel) against the real
   // cascade, in the float's compact card and the pane's card.
   'src-ui/src/workspace-panes/browser-pane/__tests__/BrowserPageDialog.touch-target.test.tsx',
+  // Owns Chromium to measure the Open failure notice's "How to fix" link as
+  // a 44px row against the real cascade.
+  'src-ui/src/workspace-panes/browser-pane/__tests__/BrowserOpenFailureNotice.touch-target.test.tsx',
   // #2760: owns Chromium and a local HTTP/1.1 server that holds every
   // response open, to measure input against a real browser connection pool.
   'src-ui/src/live-surface/__tests__/liveSurfaceInputHeadroom.browser.test.ts',
   // #4418: owns Chromium to decode a recorded H.264 stream with WebCodecs.
   'src-ui/src/live-surface/__tests__/liveSurfaceVideoDecoder.browser.test.ts',
+  // Owns Chromium to lay out the live view's input notice (slim banner,
+  // z-order, immersive placement) against the real cascade.
+  'src-ui/src/live-surface/__tests__/liveSurfaceInputNotice.browser.test.tsx',
+  // Owns Chromium to style the full-screen bar's compact stand picker
+  // against the real cascade in both themes.
+  'src-ui/src/workspace-panes/device/__tests__/devicePostureSelect.browser.test.tsx',
+  // Owns Chromium to lay out a pane route's top-bar crumb at desktop and
+  // phone width against the real cascade.
+  'src-ui/src/components/header/__tests__/HeaderPaneCrumb.browser.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved

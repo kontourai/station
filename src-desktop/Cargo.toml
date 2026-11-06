@@ -155,6 +155,10 @@ jni = "0.21"
 ndk-context = "0.1"
 
 [target."cfg(target_os = \"ios\")".dependencies]
+# Hinge geometry and posture for foldable iPhones (iOS 27.1+), read by the
+# WebView's fold store (src-ui/src/platform/fold). iOS-only: Android and
+# desktop WebViews use the CSS Viewport Segments API where they have it.
+tauri-plugin-station-fold = { path = "plugins/station-fold" }
 block2 = "=0.6.2"
 dispatch2 = "=0.3.1"
 objc2 = "=0.6.4"

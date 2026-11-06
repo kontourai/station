@@ -291,22 +291,28 @@ describe('server-owned peer enrollment through Station routes', () => {
     ).not.toContain(credential!);
   });
 
-  test.each([
+  // Names the receiver's own address (the Origin it refused) and both remedies.
+  const originRefusal = (apiBase: string) =>
+    `Receiver does not trust its own address ${apiBase}; on the receiver, add ${apiBase} to ALLOWED_ORIGINS (or --allowed-origin) and restart, or update it to a Station that trusts its own Tailscale Serve address (Funnel off, nothing else served there), then start a new peer request`;
+  test.each<{
+    name: string;
+    status: number;
+    body: unknown;
+    guidance: string | ((apiBase: string) => string);
+  }>([
     {
       name: 'nested origin refusal',
       status: 403,
       body: {
         error: { code: 'origin_forbidden', message: '/private/receiver' },
       },
-      guidance:
-        'Receiver blocked this Station address; ask its operator to configure the published address as a trusted origin, then start a new peer request',
+      guidance: originRefusal,
     },
     {
       name: 'flat origin refusal',
       status: 403,
       body: { error: 'origin_forbidden' },
-      guidance:
-        'Receiver blocked this Station address; ask its operator to configure the published address as a trusted origin, then start a new peer request',
+      guidance: originRefusal,
     },
     {
       name: 'rate limit',
@@ -342,12 +348,14 @@ describe('server-owned peer enrollment through Station routes', () => {
       const response = await h.start();
       expect(response.status).toBe(201);
       const enrollment = (await readEnrollment(response)).data;
+      const expected =
+        typeof guidance === 'function' ? guidance(h.input.apiBase) : guidance;
       expect(enrollment.status).toBe('failed');
-      expect(enrollment.error).toBe(guidance);
+      expect(enrollment.error).toBe(expected);
       expect(h.pairing.listRequests()).toEqual([]);
       expect(h.store.list()).toEqual([]);
       expect((await h.service.get(h.input.id, () => true)).error).toBe(
-        guidance,
+        expected,
       );
     },
   );
