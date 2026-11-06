@@ -494,6 +494,48 @@ describe('ChromiumScreencastProducer input', () => {
 });
 
 describe('ChromiumScreencastProducer held-input cancel', () => {
+  test('cancelling a viewer key leaves another viewer touch active', async () => {
+    const { fake, producer: p } = producer();
+    await p.dispatch({
+      kind: 'key',
+      type: 'down',
+      key: 'Shift',
+      code: 'ShiftLeft',
+    });
+    await p.dispatch({
+      kind: 'pointer',
+      type: 'down',
+      x: 4,
+      y: 4,
+      button: 'left',
+      pointerType: 'touch',
+    });
+    fake.calls.length = 0;
+    await p.cancelHeldInput({
+      buttons: [],
+      keys: [{ key: 'Shift', code: 'ShiftLeft' }],
+      pointer: { x: 4, y: 4 },
+      pointerType: 'touch',
+      buttonPointerTypes: {},
+    });
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]).toMatchObject({
+      method: 'Input.dispatchKeyEvent',
+      params: { type: 'keyUp', key: 'Shift' },
+    });
+    await p.dispatch({
+      kind: 'pointer',
+      type: 'move',
+      x: 6,
+      y: 8,
+      pointerType: 'touch',
+    });
+    expect(fake.calls.at(-1)).toMatchObject({
+      method: 'Input.dispatchTouchEvent',
+      params: { type: 'touchMove', touchPoints: [{ x: 6, y: 8, id: 0 }] },
+    });
+  });
+
   test('a held touch is cancelled with touchCancel, never a touchEnd tap', async () => {
     const { fake, producer: p } = producer();
     await p.dispatch({

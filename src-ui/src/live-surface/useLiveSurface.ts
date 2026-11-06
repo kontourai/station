@@ -490,7 +490,7 @@ export function useLiveSurface(
     const stream = async (url: string, h264: boolean, fold: boolean) => {
       let response: Response;
       try {
-        response = await transportRef.current(url, {
+        response = await transport(url, {
           signal: abort.signal,
           timeoutMs: null,
           readOnly: true,
@@ -658,6 +658,7 @@ export function useLiveSurface(
     declineFoldFor,
     adoptLease,
     observeEpoch,
+    transport,
   ]);
 
   const declineH264 = useCallback(
@@ -852,6 +853,13 @@ export function useLiveSurface(
         setInputNotice((current) =>
           current === 'host-busy' && undeliveredRef.current ? current : null,
         );
+      } else if (result && !result.ok && result.code === 'invalid-source') {
+        source.open = null;
+        queueRef.current = [];
+        keepUndelivered([]);
+        for (const id of pressedRef.current) orphanedRef.current.add(id);
+        pressedRef.current.clear();
+        setInputNotice('input-failed');
       } else if (
         result &&
         !result.ok &&

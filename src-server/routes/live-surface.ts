@@ -136,7 +136,7 @@ const KNOWN_FRAMES_QUERY_KEYS: ReadonlySet<string> = new Set([
 function failure(
   c: Context,
   code: LiveSurfaceRouteErrorCode,
-  status: 400 | 403 | 404 | 413 | 503,
+  status: 400 | 403 | 404 | 409 | 413 | 503,
   /** The query key a frames request was refused for (#4418). */
   field?: string,
 ) {

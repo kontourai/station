@@ -287,3 +287,156 @@ test('unmount without input does not register or close a source', () => {
     transport.mock.calls.every(([url]) => String(url).endsWith('/frames')),
   ).toBe(true);
 });
+
+test('an invalid source discards refused input and registers again only for a new action', async () => {
+  const ids = [
+    '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+  ];
+  let registrations = 0;
+  const inputs: { sourceId: string; events: unknown[] }[] = [];
+  const transport = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/frames'))
+        return new Response(new ReadableStream());
+      const body = JSON.parse(String(init?.body));
+      if (String(input).endsWith('/lease')) {
+        if (body.action === 'open-input-source')
+          return Response.json({
+            success: true,
+            data: { sourceId: ids[registrations++] },
+          });
+        if (body.action === 'close-input-source')
+          return Response.json({ success: true });
+        throw new Error(`Unexpected lease action: ${body.action}`);
+      }
+      if (!String(input).endsWith('/input'))
+        throw new Error('Unexpected input route');
+      inputs.push(body);
+      const ok = body.sourceId === ids[1];
+      return Response.json(
+        {
+          success: ok,
+          data: {
+            ok,
+            ...(ok ? {} : { code: 'invalid-source' }),
+            accepted: ok ? body.events.length : 0,
+            lease: {
+              surfaceId: 'first',
+              epoch: ok ? 1 : 0,
+              holder: ok
+                ? {
+                    kind: 'human',
+                    principal: 'human:test',
+                    device: 'device:test',
+                  }
+                : null,
+              expiresAt: ok ? 1000 : null,
+            },
+          },
+        },
+        { status: ok ? 200 : 409 },
+      );
+    },
+  );
+  const visibilityRef = createRef<Element>();
+  const { result, unmount } = renderHook(() =>
+    useLiveSurface({
+      apiBase: 'http://station.test',
+      surfaceId: 'first',
+      visibilityRef,
+      onFrame: () => {},
+      transport,
+      now: () => 0,
+    }),
+  );
+  act(() =>
+    result.current.sendInput([{ kind: 'text', text: 'refused action' }]),
+  );
+  await waitFor(() => expect(result.current.inputNotice).toBe('input-failed'));
+  expect(result.current.retryableInput).toBe(false);
+  expect(registrations).toBe(1);
+  expect(inputs).toHaveLength(1);
+  act(() => result.current.sendInput([{ kind: 'text', text: 'new action' }]));
+  await waitFor(() => expect(inputs).toHaveLength(2));
+  expect(registrations).toBe(2);
+  expect(inputs.map(({ sourceId }) => sourceId)).toEqual(ids);
+  expect(inputs.flatMap(({ events }) => events)).toEqual([
+    { kind: 'text', text: 'refused action' },
+    { kind: 'text', text: 'new action' },
+  ]);
+  unmount();
+});
+
+test('changing only the transport aborts the old frame stream and observes the replacement', async () => {
+  const streams: {
+    name: string;
+    controller: ReadableStreamDefaultController<Uint8Array>;
+    signal: AbortSignal | undefined;
+  }[] = [];
+  const makeTransport = (name: string) =>
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).endsWith('/frames'))
+        throw new Error('Only viewing is expected');
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streams.push({
+              name,
+              controller,
+              signal: init?.signal ?? undefined,
+            });
+            init?.signal?.addEventListener(
+              'abort',
+              () => controller.error(new DOMException('aborted', 'AbortError')),
+              { once: true },
+            );
+          },
+        }),
+      );
+    });
+  const first = makeTransport('first');
+  const second = makeTransport('second');
+  const visibilityRef = createRef<Element>();
+  const { result, rerender, unmount } = renderHook(
+    ({ transport }) =>
+      useLiveSurface({
+        apiBase: 'http://station.test',
+        surfaceId: 'first',
+        visibilityRef,
+        onFrame: () => {},
+        transport,
+      }),
+    { initialProps: { transport: first } },
+  );
+  const pushLease = async (index: number, epoch: number) => {
+    await act(async () =>
+      streams[index]!.controller.enqueue(
+        encodeLiveSurfaceRecord({
+          kind: 'state',
+          state: {
+            surfaceId: 'first',
+            lease: { surfaceId: 'first', epoch, holder: null, expiresAt: null },
+            effectiveParams: {
+              maxFps: 10,
+              quality: 70,
+              maxWidth: 1280,
+              maxHeight: 1280,
+            },
+            viewer: { principal: 'human:test', device: 'device:test' },
+          },
+        }),
+      ),
+    );
+  };
+  await waitFor(() => expect(streams).toHaveLength(1));
+  await pushLease(0, 1);
+  await waitFor(() => expect(result.current.lease?.epoch).toBe(1));
+  rerender({ transport: second });
+  await waitFor(() => expect(streams).toHaveLength(2));
+  expect(streams[0]!.signal?.aborted).toBe(true);
+  expect(streams.map(({ name }) => name)).toEqual(['first', 'second']);
+  await pushLease(1, 2);
+  await waitFor(() => expect(result.current.lease?.epoch).toBe(2));
+  unmount();
+});

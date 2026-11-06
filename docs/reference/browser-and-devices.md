@@ -285,6 +285,10 @@ blocks further input as `surface-wedged` until an authorized whole-surface
 neutral cleanup succeeds. An unrelated empty source close does not clear that
 fence. Registration is bounded to 128 sources per live-surface entry; opening
 also retires idle sources older than five minutes only when they hold no input.
+If input is refused because its source is no longer valid, the viewer discards
+that input and its queued follow-ups. A new person-initiated action registers a
+fresh source; the refused action is never replayed automatically. Replacing the
+viewer's transport also reconnects its frame stream under the new transport.
 The existing producer, authority and control contracts still apply.
 
 **Let agents run JavaScript in this Project's pages** (**Settings → Advanced →
