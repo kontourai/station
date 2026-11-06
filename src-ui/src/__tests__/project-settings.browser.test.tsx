@@ -11,7 +11,7 @@ const fixtures: Plugin = {
   setup(builder) {
     const modules: Record<string, string> = {
       '@kontourai/station-sdk': `
-        export const useManagedPolicyStatusQuery=()=>({data:undefined}); export const telemetry={track:()=>{}}; export const layoutCatalogErrorReason=()=>undefined;
+        export const telemetry={track:()=>{}}; export const layoutCatalogErrorReason=()=>undefined;
         const project={id:'demo-id',slug:'demo',name:'Demo project',workingDirectory:'/home/developer/projects/station',description:'A workspace for product development'};
         const agents=[{slug:'builder',name:'Builder'},{slug:'reviewer',name:'Reviewer'}];
         const query=data=>({data,isLoading:false,isError:false,refetch:()=>{}});
