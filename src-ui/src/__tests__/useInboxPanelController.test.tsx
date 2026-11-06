@@ -177,6 +177,28 @@ function mount(
   return { failures, acknowledge, unmount: rendered.unmount };
 }
 
+test('mobile search focuses when mounted and never steals a later keyboard selection', async () => {
+  const open = vi.fn<Open>(async () => true);
+  mount('mobile', open);
+  const frames: FrameRequestCallback[] = [];
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    frames.push(callback);
+    return frames.length;
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+  const search = screen.getByRole('searchbox');
+  expect(document.activeElement).toBe(search);
+  const row = screen.getByRole('button', { name: 'First selection, Workshop' });
+  row.focus();
+  act(() =>
+    frames.splice(0).forEach((callback) => callback(performance.now())),
+  );
+  expect(document.activeElement).toBe(row);
+  await userEvent.setup().keyboard('{Enter}');
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(open.mock.calls[0]?.[0]).toBe('first');
+});
+
 test('mobile restores focus when the host closes Inbox while opening its reader', async () => {
   mount(
     'mobile',

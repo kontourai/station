@@ -139,6 +139,10 @@ export function MobileInboxPanel({
       panelRef.current?.querySelector('select')?.focus();
   }, [open, triggerRef]);
 
+  useLayoutEffect(() => {
+    if (searchOpen) searchRef.current?.focus();
+  }, [searchOpen]);
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -177,9 +181,7 @@ export function MobileInboxPanel({
           aria-expanded={searchOpen}
           onClick={() => {
             setSearchOpen((shown) => !shown);
-            if (!searchOpen)
-              requestAnimationFrame(() => searchRef.current?.focus());
-            else setQuery('');
+            if (searchOpen) setQuery('');
           }}
         >
           <SearchGlyph />

@@ -808,13 +808,10 @@ for (const layout of ['desktop', 'mobile'] as const) {
             })
           : rejectUnexpectedFixtureRequest(route),
       );
-      let releaseFirst: () => void = () => {},
-        firstRequested: () => void = () => {};
+      let releaseFirst: () => void = () => {};
+      let firstRequestObserved = false;
       const released = new Promise<void>((resolve) => {
         releaseFirst = resolve;
-      });
-      const requested = new Promise<void>((resolve) => {
-        firstRequested = resolve;
       });
       for (const [index, session] of summaries.entries()) {
         const id = encodeURIComponent(session.threadId);
@@ -840,7 +837,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
             if (route.request().method() !== 'GET')
               return rejectUnexpectedFixtureRequest(route);
             if (index === 0) {
-              firstRequested();
+              firstRequestObserved = true;
               await released;
             }
             return route.fulfill({
@@ -867,6 +864,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       const search = inbox.getByRole('searchbox', {
         name: 'Search chats and tasks',
       });
+      if (layout === 'mobile') await expect(search).toBeFocused();
       await search.fill('First cold');
       await expect(
         inbox.getByRole('button', { name: /Latest cold selection,/ }),
@@ -874,26 +872,27 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await inbox
         .getByRole('button', { name: /First cold selection,/ })
         .focus();
-      const oldResponse = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname ===
-          '/api/orchestration/sessions/' +
-            encodeURIComponent(summaries[0]!.threadId),
-      );
       await page.keyboard.press('Enter');
       try {
-        await requested;
+        await expect.poll(() => firstRequestObserved).toBe(true);
         if (layout === 'mobile') await ensureConnectionInboxOpen(page);
         await search.fill('Latest cold');
         const latest = inbox.getByRole('button', {
           name: /Latest cold selection,/,
         });
         await latest.focus();
+        await expect(latest).toBeFocused();
         await page.keyboard.press('Enter');
         await expect(page.getByTestId('session-detail')).toContainText(
           'Latest reader response',
         );
         const committedUrl = page.url();
+        const oldResponse = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname ===
+            '/api/orchestration/sessions/' +
+              encodeURIComponent(summaries[0]!.threadId),
+        );
         releaseFirst();
         expect((await oldResponse).status()).toBe(200);
         await expect(page.getByTestId('session-detail')).toContainText(
