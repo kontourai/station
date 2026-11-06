@@ -35,7 +35,8 @@ describe('Station authority failure translation', () => {
   it.each([
     'This Station cannot be forgotten here.',
     "This app's own Station cannot be forgotten.",
-  ])('retains exact local Station-profile refusal copy: %s', (copy) => {
+    'Learning review is unsupported on this host. Enable its Feature Preview or update this Station.',
+  ])('retains exact safe local guidance: %s', (copy) => {
     const failure = describeStationFailure(new Error(copy));
     expect(failure.body).toBe(copy);
     expect(failure.retryable).toBe(false);

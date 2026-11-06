@@ -354,7 +354,8 @@ export function useChatDockActions({
         return false;
       }
       if (options.beforeFocus && !options.beforeFocus()) {
-        if (stillOwned) removeChat(sessionId);
+        if (stillOwned && options.isCurrent?.() === false)
+          removeChat(sessionId);
         return false;
       }
       setActiveSessionId(sessionId);

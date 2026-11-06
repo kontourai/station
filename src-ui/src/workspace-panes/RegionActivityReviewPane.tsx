@@ -282,7 +282,15 @@ function ActivityReviewPane({ id }: { id: string }) {
         <SkeletonBlock label="Loading activity review" count={3} />
       ) : query.error ? (
         <ErrorState
-          title="Station could not load this activity"
+          title={
+            query.error instanceof StationHttpError &&
+            query.error.status === 403
+              ? 'Station denied access to this activity'
+              : query.error instanceof StationHttpError &&
+                  query.error.status === 404
+                ? 'This activity is no longer available'
+                : 'Station could not load this activity'
+          }
           description={describeStationFailure(query.error).body}
           action={<Button onClick={() => void query.refetch()}>Retry</Button>}
         />

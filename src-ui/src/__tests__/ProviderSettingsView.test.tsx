@@ -487,7 +487,8 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         'anthropic-1',
       );
     });
-    expect(screen.getByText('Deletion refused')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('Deletion refused')).toBeNull();
     expect(screen.getByLabelText('Name')).toHaveProperty(
       'value',
       'Unsaved name',

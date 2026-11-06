@@ -238,7 +238,7 @@ describe('the conversation approval sheet', () => {
     },
   );
 
-  test('leaves both decisions available after a transport refusal and exposes details', async () => {
+  test('leaves both decisions available after a transport failure with safe recovery copy', async () => {
     const approve = vi.fn(async () => {
       throw Object.assign(new Error('Station host could not be resolved.'), {
         code: 'transport_dns',
@@ -256,9 +256,12 @@ describe('the conversation approval sheet', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Allow Once' }));
     const error = await within(sheet).findByRole('alert');
     expect(error.textContent).toContain(
-      'Station address could not be resolved',
+      'Could not reach Station. Check the connection, then try again.',
     );
-    expect(within(error).getByText('Details')).toBeTruthy();
+    expect(error.textContent).not.toContain(
+      'Station host could not be resolved',
+    );
+    expect(within(error).queryByText('Details')).toBeNull();
     expect(
       within(sheet)
         .getByRole('button', { name: 'Allow Once' })

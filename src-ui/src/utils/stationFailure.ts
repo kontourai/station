@@ -82,6 +82,7 @@ export function describeStationFailure(
     'Choose the file again before sending this attachment.',
     'This Station cannot be forgotten here.',
     "This app's own Station cannot be forgotten.",
+    'Learning review is unsupported on this host. Enable its Feature Preview or update this Station.',
   ].find((copy) => copy === message);
   // TerminalSessionError carries terminal transport codes, not model errors.
   // Use fixed recovery copy; even a typed error's message may be diagnostic.

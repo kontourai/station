@@ -912,7 +912,8 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expectPageFullRoot(container);
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Could not load project settings')).toBeTruthy();
-    expect(screen.getByText('Project not found')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('Project not found')).toBeNull();
     expect(screen.queryByLabelText('Loading project')).toBeNull();
     expect(container.querySelectorAll('.skeleton')).toHaveLength(0);
 
@@ -1208,7 +1209,8 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toBeTruthy();
     expect(screen.getByText('Could not save project settings')).toBeTruthy();
-    expect(screen.getByText('Name rejected by policy')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('Name rejected by policy')).toBeNull();
     expect(screen.getByText('unsaved')).toBeTruthy();
   });
 
@@ -1271,8 +1273,9 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'Station connection was interrupted',
+      'Try again in a moment.',
     );
+    expect(screen.queryByText('Station connection was interrupted')).toBeNull();
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(navigationMocks.navigate).not.toHaveBeenCalled();
     expect(navigationMocks.showSurface).not.toHaveBeenCalled();

@@ -186,7 +186,13 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
             model,
             updated,
             undefined,
-            { signal: abort.signal, isCurrent: current, beforeFocus: current },
+            {
+              // A later selection retires focus, not history for this authority.
+              isCurrent: () =>
+                latest.current.authorityKey === authorityKey &&
+                authority?.isCurrent() !== false,
+              beforeFocus: current,
+            },
           );
         },
       });

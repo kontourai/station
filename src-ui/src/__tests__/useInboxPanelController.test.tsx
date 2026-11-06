@@ -249,6 +249,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
       fireEvent.click(
         screen.getByRole('button', { name: 'Second selection, Workshop' }),
       );
+      const firstActivation = open.mock.calls[0]?.[7];
+      expect(firstActivation?.isCurrent?.()).toBe(true);
+      expect(firstActivation?.beforeFocus?.()).toBe(false);
       await act(async () => resolves.get('second')!());
       expect(new URL(window.location.href).searchParams.get('chat')).toBe(
         'second',
@@ -259,6 +262,8 @@ for (const layout of ['desktop', 'mobile'] as const) {
       );
       expect(acknowledge).toHaveBeenCalledTimes(1);
       expect(acknowledge).toHaveBeenCalledWith(items[1]);
+      fireEvent.click(screen.getByRole('button', { name: 'Switch Station' }));
+      expect(firstActivation?.isCurrent?.()).toBe(false);
     },
   );
 

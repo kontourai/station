@@ -498,7 +498,8 @@ describe('loading and error states use the canonical primitives', () => {
     expect(
       screen.getByText("Could not read this project's resources"),
     ).toBeTruthy();
-    expect(screen.getByText('the server said no')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('the server said no')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
@@ -507,7 +508,7 @@ describe('loading and error states use the canonical primitives', () => {
 // ── archive#1502 ────────────────────────────────────────────────
 
 describe('MEDIUM-4 — the refusal path, driven through the real callbacks', () => {
-  it("shows the server's reason VERBATIM under its own title", () => {
+  it('keeps a failed checkout binding visible without exposing raw paths', () => {
     const { container } = renderResource(UNBOUND);
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '/Users/dev/code/api' } });
@@ -518,9 +519,8 @@ describe('MEDIUM-4 — the refusal path, driven through the real callbacks', () 
     act(() => bindOptions?.onError?.(new Error(reason), '/Users/dev/code/api'));
 
     expect(screen.getByText('That checkout was not recorded')).toBeTruthy();
-    // Verbatim: a refusal reason is the whole value of an honest unavailable,
-    // so it is never summarized, retried, or replaced.
-    expect(screen.getByText(reason)).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText(reason)).toBeNull();
   });
 
   // #2708 A-2: the error the REAL bind fetcher throws for the route's
@@ -572,12 +572,13 @@ describe('MEDIUM-4 — the refusal path, driven through the real callbacks', () 
     fireEvent.change(input, { target: { value: '/one' } });
     fireEvent.click(screen.getByRole('button', { name: 'Point at checkout' }));
     act(() => bindOptions?.onError?.(new Error('first refusal'), '/one'));
-    expect(screen.getByText('first refusal')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('first refusal')).toBeNull();
 
     fireEvent.change(input, { target: { value: '/two' } });
     fireEvent.click(screen.getByRole('button', { name: 'Point at checkout' }));
 
-    expect(screen.queryByText('first refusal')).toBeNull();
+    expect(screen.queryByText('Try again in a moment.')).toBeNull();
     expect(screen.queryByText('That checkout was not recorded')).toBeNull();
   });
 
@@ -687,12 +688,13 @@ describe('LOW-1 — a state transition remounts the repair form', () => {
     const view = render(<ResourcesSection slug="acme" />);
     fireEvent.click(screen.getByRole('button', { name: 'Re-point' }));
     act(() => bindOptions?.onError?.(new Error('stale refusal'), '~/code/api'));
-    expect(screen.getByText('stale refusal')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('stale refusal')).toBeNull();
 
     queryState = { data: backing([DRIFTED]) };
     view.rerender(<ResourcesSection slug="acme" />);
 
-    expect(screen.queryByText('stale refusal')).toBeNull();
+    expect(screen.queryByText('Try again in a moment.')).toBeNull();
   });
 });
 

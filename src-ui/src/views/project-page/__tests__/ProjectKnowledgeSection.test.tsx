@@ -92,7 +92,8 @@ describe('ProjectKnowledgeSection — rules query error threading (#771)', () =>
     fireEvent.click(screen.getByRole('button', { name: 'Rules' }));
 
     expect(screen.getByText("Couldn't load project rules")).toBeTruthy();
-    expect(screen.getByText('project rules unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('project rules unavailable')).toBeNull();
     expect(screen.queryByRole('textbox')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -108,7 +109,8 @@ describe('ProjectKnowledgeSection — rules query error threading (#771)', () =>
     });
 
     expect(screen.getByText("Couldn't load project knowledge")).toBeTruthy();
-    expect(screen.getByText('knowledge list unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('knowledge list unavailable')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetryDocs).toHaveBeenCalledTimes(1);
@@ -131,12 +133,10 @@ describe('ProjectKnowledgeSection — rules query error threading (#771)', () =>
     });
 
     expect(await screen.findByText("Couldn't upload notes.md")).toBeTruthy();
-    expect(
-      screen.getByText('notes.md: knowledge service unavailable'),
-    ).toBeTruthy();
+    expect(screen.getByText('notes.md: Try again in a moment.')).toBeTruthy();
     expect(
       screen
-        .getByText('notes.md: knowledge service unavailable')
+        .getByText('notes.md: Try again in a moment.')
         .closest('[role="alert"]'),
     ).toBeTruthy();
   });
