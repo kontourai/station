@@ -1622,6 +1622,13 @@ for (const [width, height] of [
     });
     // The brand-new chat names itself; Station's frame answers for that id.
     expect(dispatched[0]).toMatchObject({ conversationId: sessionId });
+    await page.emulateMedia({ colorScheme: 'light' });
+    const before = `engine-start-wait-new-chat-${width}-before-light.png`;
+    await page.screenshot({
+      path: testInfo.outputPath(before),
+      animations: 'disabled',
+    });
+    await copyFile(testInfo.outputPath(before), join(renderRoot, before));
     await emitMockOrchestrationEvent(page, 'orchestration:engine-start-wait', {
       threadId: sessionId,
       wait: { since: '2026-11-06T12:00:01.000Z' },
