@@ -173,7 +173,7 @@ it('a failed final checkpoint closes SQLite and releases the owner without losin
     await expect(closing).rejects.toThrow('ENOENT');
     renameSync(`${path}.held`, path);
     expect(close).toHaveBeenCalledOnce();
-    expect(close.mock.contexts[0].isOpen).toBe(false);
+    expect(close.mock.contexts[0]).toHaveProperty('isOpen', false);
     await expect(owner.pause()).rejects.toThrow('ENOENT');
     const replacement = stationAgentRuntimeOwner(home);
     try {
