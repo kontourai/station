@@ -1,5 +1,6 @@
 import { ChildProcess, execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { NodePtyAdapter } from '../node-pty-adapter.js';
@@ -95,10 +96,47 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
     process.getActiveResourcesInfo().filter((name) => name === 'MessagePort')
       .length;
 
+  test('asynchronous startup retains the first output and exit for the caller', async () => {
+    const proc = await new NodePtyAdapter().spawn({
+      shell: process.env.COMSPEC ?? 'cmd.exe',
+      args: ['/d', '/q', '/c', 'echo STATION_STARTUP_4629 & exit /b 7'],
+      cwd: tmpdir(),
+      cols: 80,
+      rows: 24,
+      env: process.env,
+    });
+    expect(proc.pid).toBeGreaterThan(0);
+    const output: string[] = [];
+    proc.onData((data) => output.push(data));
+    const exit = await new Promise<{ exitCode: number }>((resolve) =>
+      proc.onExit(resolve),
+    );
+    expect(output.join('')).toContain('STATION_STARTUP_4629');
+    expect(exit.exitCode).toBe(7);
+    const replay = await new Promise<{ exitCode: number }>((resolve) =>
+      proc.onExit(resolve),
+    );
+    expect(replay.exitCode).toBe(7);
+  });
+
+  test('asynchronous startup rejects an unavailable shell and releases its worker', async () => {
+    const before = workerThreads();
+    await expect(
+      new NodePtyAdapter().spawn({
+        shell: join(tmpdir(), 'station-missing-shell-4629.exe'),
+        cwd: tmpdir(),
+        cols: 80,
+        rows: 24,
+        env: process.env,
+      }),
+    ).rejects.toThrow('Terminal shell exited before startup');
+    await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
+  });
+
   test.each([
     'taskkill close',
     'natural exit',
-    'close before pipe ready',
+    'close before first output',
   ] as const)(
     'a %s releases the ConPTY and never signals the old shell pid later',
     async (ending) => {
@@ -109,6 +147,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
       let readyObserved = Promise.resolve();
       type ConptyTarget = import('node-pty').IPty & {
         on(event: 'error', listener: (error: Error) => void): void;
+        _socket: import('node:net').Socket;
         _agent: {
           exitCode?: number;
           kill(): void;
@@ -122,7 +161,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
       };
       let held: ConptyTarget | undefined;
       const load =
-        ending === 'close before pipe ready'
+        ending === 'close before first output'
           ? async () => {
               const backend = await import('node-pty');
               return {
@@ -130,23 +169,25 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
                 spawn: (...args: Parameters<typeof backend.spawn>) => {
                   const raw = backend.spawn(...args) as ConptyTarget;
                   held = raw;
-                  // node-pty 1.1 transport fault: the real worker is ready, but its
-                  // connection notification reaches the parent only after cleanup.
+                  // Hold the real socket's first output notification across
+                  // cleanup, so kill cannot rely on its readiness callback.
                   const worker = raw._agent._conoutSocketWorker;
                   const gate = new Promise<void>((resolve) => {
                     releaseReady = resolve;
                   });
                   readyObserved = new Promise<void>((resolve) => {
-                    const fire = worker._onReady.fire.bind(worker._onReady);
-                    worker._onReady.fire = () => {
+                    const emit = raw._socket.emit.bind(raw._socket);
+                    raw._socket.emit = (event, ...args) => {
+                      if (event !== 'data') return emit(event, ...args);
                       resolve();
                       void gate.then(() => {
                         try {
-                          fire();
+                          emit(event, ...args);
                         } catch (error) {
                           transportErrors.push(error);
                         }
                       });
+                      return true;
                     };
                   });
                   raw.on('error', (error) => transportErrors.push(error));
@@ -172,6 +213,9 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
           rows: 24,
           env: process.env,
         });
+        expect(proc.pid).toBeGreaterThan(0);
+        const output: string[] = [];
+        proc.onData((data) => output.push(data));
         let exits = 0;
         const exited = new Promise<void>((resolve) =>
           proc.onExit(() => {
@@ -179,7 +223,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
             resolve();
           }),
         );
-        if (ending === 'close before pipe ready') await readyObserved;
+        if (ending === 'close before first output') await readyObserved;
         else await new Promise((resolve) => setTimeout(resolve, 1_000));
         if (ending === 'natural exit') proc.write('exit\r');
         else {
@@ -192,7 +236,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
                   () =>
                     reject(
                       new Error(
-                        'ConPTY exit was not delivered before pipe readiness',
+                        'ConPTY exit was not delivered before first output',
                       ),
                     ),
                   6_000,
@@ -212,6 +256,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
         expect(workerThreads()).toBe(before);
         expect(exits).toBe(1);
         expect(transportErrors).toEqual([]);
+        expect(output.join('')).not.toBe('');
       } finally {
         releaseReady();
         // Failed fault-injection runs still release the owned console by its

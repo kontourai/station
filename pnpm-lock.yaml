@@ -65,7 +65,7 @@ patchedDependencies:
   http-cache-semantics@4.3.0: 88d463d98aef02aa04f4263556dea7fe3fb8cf07121e1ea7a8e424e8bbeb7c15
   js-yaml@3.15.2: aaa638645f3fd548080d82130060918173c4ead501413be8c5a20478a13b1992
   node-forge@1.4.0: c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e
-  node-pty@1.1.0: ca970e8ee99295c35ab63a7407d4728a8cf947dcd641e2d7b324d379babf34f0
+  node-pty@1.2.0-beta.18: 8610a0b6c1765be945696c2b3b826d08938cf65b18890fc7b4662d07e88228b1
 
 importers:
 
@@ -363,8 +363,8 @@ importers:
         specifier: ^6.3.0
         version: 6.3.0
       node-pty:
-        specifier: ^1.1.0
-        version: 1.1.0(patch_hash=ca970e8ee99295c35ab63a7407d4728a8cf947dcd641e2d7b324d379babf34f0)
+        specifier: 1.2.0-beta.18
+        version: 1.2.0-beta.18(patch_hash=8610a0b6c1765be945696c2b3b826d08938cf65b18890fc7b4662d07e88228b1)
       pdfjs-dist:
         specifier: ^6.5.438
         version: 6.5.438
@@ -7305,8 +7305,8 @@ packages:
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
 
-  node-pty@1.1.0:
-    resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
+  node-pty@1.2.0-beta.18:
+    resolution: {integrity: sha512-3Rej3788OnasAwoSmTZhlCeUraJ9CQldtL5b571b9+3Nv47+PaxA5VPIGOOs+16OYQePTrC1Lrs8a9/df5WPRg==}
 
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
@@ -16133,7 +16133,7 @@ snapshots:
 
   node-int64@0.4.0: {}
 
-  node-pty@1.1.0(patch_hash=ca970e8ee99295c35ab63a7407d4728a8cf947dcd641e2d7b324d379babf34f0):
+  node-pty@1.2.0-beta.18(patch_hash=8610a0b6c1765be945696c2b3b826d08938cf65b18890fc7b4662d07e88228b1):
     dependencies:
       node-addon-api: 7.1.1
 

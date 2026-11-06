@@ -76,11 +76,16 @@ class NodePtyProcess implements IPtyProcess {
   private pauseEpoch = 0;
   private outputIncomplete = false;
   private pauseWatch?: ReturnType<typeof setTimeout>;
+  private exitEvent?: { exitCode: number; signal?: number };
 
-  constructor(private pty: import('node-pty').IPty) {
-    pty.onExit(() => {
+  constructor(
+    private pty: import('node-pty').IPty,
+    private startupReadPaused = false,
+  ) {
+    pty.onExit((event) => {
+      this.exitEvent = event;
       this.exited = true;
-      if (this.paused) this.outputIncomplete = true;
+      if (this.paused || this.startupReadPaused) this.outputIncomplete = true;
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
       if (process.platform === 'win32') this.releaseConpty();
@@ -89,6 +94,19 @@ class NodePtyProcess implements IPtyProcess {
       process.platform === 'win32'
         ? () => this.terminateTree()
         : () => this.terminateGroups();
+  }
+
+  async waitForStart(): Promise<void> {
+    const deadline = Date.now() + 6_000;
+    while (this.pty.pid <= 0) {
+      if (this.exitEvent)
+        throw new Error(
+          `Terminal shell exited before startup (exit code ${this.exitEvent.exitCode})`,
+        );
+      if (Date.now() >= deadline)
+        throw new Error('Terminal shell did not finish starting');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
   }
 
   /**
@@ -272,6 +290,10 @@ class NodePtyProcess implements IPtyProcess {
 
   onData(cb: (data: string) => void): () => void {
     const disposable = this.pty.onData(cb);
+    if (this.startupReadPaused) {
+      this.startupReadPaused = false;
+      if (!this.paused) this.pty.resume();
+    }
     return () => disposable.dispose();
   }
 
@@ -282,6 +304,21 @@ class NodePtyProcess implements IPtyProcess {
       outputIncomplete?: boolean;
     }) => void,
   ): () => void {
+    if (this.exitEvent) {
+      const event = this.exitEvent;
+      let active = true;
+      queueMicrotask(() => {
+        if (active)
+          cb({
+            exitCode: event.exitCode,
+            signal: event.signal ?? null,
+            outputIncomplete: this.outputIncomplete,
+          });
+      });
+      return () => {
+        active = false;
+      };
+    }
     const disposable = this.pty.onExit(({ exitCode, signal }) =>
       cb({
         exitCode,
@@ -365,16 +402,27 @@ export class NodePtyAdapter implements IPtyAdapter {
           env: (launch?.env ?? input.env) as Record<string, string>,
         },
       );
+      // ConPTY now starts asynchronously; preserve output until the caller
+      // subscribes, and never publish PID 0 as a tracked workload.
+      const starting = process.platform === 'win32' && pty.pid <= 0;
+      if (starting) pty.pause();
+      const result = new NodePtyProcess(pty, starting);
+      try {
+        if (starting) await result.waitForStart();
+      } catch (error) {
+        pty.kill();
+        throw error;
+      }
+      trackChildWorkload(launch, pty.pid);
+      result.onExit(() => {
+        void closeChildWorkload(pty.pid).catch((error) =>
+          logger.warn('Terminal workload cleanup failed', { error }),
+        );
+      });
+      return result;
     } catch (error) {
       await launch?.close();
       throw error;
     }
-    trackChildWorkload(launch, pty.pid);
-    pty.onExit(() => {
-      void closeChildWorkload(pty.pid).catch((error) =>
-        logger.warn('Terminal workload cleanup failed', { error }),
-      );
-    });
-    return new NodePtyProcess(pty);
   }
 }

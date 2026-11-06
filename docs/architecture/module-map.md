@@ -6776,7 +6776,7 @@ freezes and terminates discovered owned job-control groups. The
 opens real PTYs through HTTP admission, checks both configured Project roots and
 refuses cross-Project/binding access. Its credential fixture is not live pairing
 or account admission qualification.
-Windows ConPTY startup/termination uses the managed [node-pty patch](../../patches/node-pty-1.1.0.patch): close observation does not depend on a ready pipe, known native exit permits release before first output, and late readiness does not reconnect a destroyed socket. The [adapter release tests](../../src-server/adapters/__tests__/node-pty-adapter.test.ts) exercise this transport fault against real ConPTY without increasing the cleanup bound.
+Windows ConPTY uses pinned published node-pty 1.2.0-beta.18 prebuilds with the upstream native handle-vector mutex repair, plus the managed [lifecycle patch](../../patches/node-pty-1.2.0-beta.18.patch). The adapter waits for a positive PID before workload tracking, pauses startup reads until a data subscriber, retains an observed exit for a late subscriber, and rejects failed startup. Close observation and release do not depend on first output. The [adapter tests](../../src-server/adapters/__tests__/node-pty-adapter.test.ts) cover initial output/exit, missing-shell refusal, and termination with first output held, without increasing the cleanup bound.
 The [socket suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts)
 qualifies real PTY/socket resume, credit, scope refusals and resize ordering;
 its injected identity seam does not qualify live pairing or remote egress. The
