@@ -160,6 +160,10 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'component-style-hygiene.mjs',
     'scripts/__tests__/component-style-hygiene.process.test.ts',
   ],
+  [
+    'conversation-boundary-gate.mjs',
+    'scripts/__tests__/conversation-boundary-gate.test.ts',
+  ],
   ['run-biome.mjs', 'scripts/__tests__/run-biome.process.test.ts'],
   ['cli-doc-parity.mjs', 'scripts/__tests__/cli-doc-parity.test.ts'],
   ['cli-mcp-parity.mjs', 'scripts/__tests__/cli-mcp-parity.test.ts'],
@@ -239,10 +243,6 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
  * growing it silently is what the exact-set assertion prevents.
  */
 const NOT_EXECUTED: ReadonlyArray<readonly [string, string]> = [
-  [
-    'conversation-boundary-gate.mjs',
-    'conversation-boundary-gate.test.ts proves scanner acceptance and rejection in process; it does not execute the CLI entry point as a child process',
-  ],
   [
     'agent-runtime-import-boundary-gate.mjs',
     'agent-runtime-import-boundary-gate.test.ts proves scanner acceptance and Station-coupling refusal in-process; it does not execute the CLI entry point as a child process',
