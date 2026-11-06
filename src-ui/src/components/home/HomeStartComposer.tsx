@@ -83,13 +83,16 @@ function HomeChatSetupHelper(
 }
 
 /**
- * Drafts Home handed to the dock that came back undone (the dock's draft was
- * closed, or its setup journey cancelled), as the dock last held them. Kept
- * at module scope because the setup journey leaves the page, so the Home
- * that sent one may have unmounted, and mirrored to this tab's
- * sessionStorage so a reload keeps them. A draft leaves this list only when
- * it is restored into the field or explicitly discarded. Closing the tab (or
- * a browser with storage blocked, then a reload) still drops them.
+ * Personal Home draft returns stay with their originating verified authority,
+ * including late dock callbacks after Home unmounts. Scoped module stores use
+ * v2 tab sessionStorage when available; blocked or failed storage cannot
+ * guarantee reload persistence, and closing the tab drops the stored drafts.
+ * Unverified personal Home uses instance memory only, without reload or
+ * remount persistence. Legacy unscoped v1 bytes remain untouched, unassigned
+ * and unrestored here; current access does not establish their authorship,
+ * and no safe legacy recovery path is implemented. Project stores keep their
+ * separate project-keyed behavior. Restore swaps with newer text; Discard
+ * removes only the waiting draft.
  */
 function readStoredHeldDrafts(key: string): readonly string[] {
   try {
