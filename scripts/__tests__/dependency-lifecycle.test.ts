@@ -1587,6 +1587,7 @@ describe('dependency lifecycle policy', () => {
           },
           { cwd: fixtureRoot },
         );
+        expect(process.env.npm_config_build_from_source).toBe('false');
         const built = resolve(packageRoot, `build/Release/${target}.node`);
         if (mode === 'pinned') {
           expect(existsSync(built)).toBe(false);

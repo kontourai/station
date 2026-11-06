@@ -5,16 +5,19 @@ the exact `node-pty` version in `pnpm-lock.yaml`. **The current manifest has no
 artifacts**, so Linux uses the existing source-build path and still needs its
 toolchain. A future reviewed artifact can be staged into
 `node_modules/node-pty/prebuilds/<target>/` by the dependency lifecycle (#1245).
-The pinned upstream package ships prebuilds for darwin and win32 only; its
-own loader and install hook already understand this `prebuilds/` layout, so
-staging slots into upstream with no fork and no vendored package.
+The pinned upstream package also bundles Linux binaries. Their presence is
+not approval for this channel: when the current Linux target has no manifest
+entry, the managed lifecycle sets `npm_config_build_from_source=true` for
+node-pty's hooks. The upstream hook removes bundled prebuilds and selects the
+trusted node-gyp source build. Darwin and Windows keep their reviewed upstream
+prebuilds.
 
 ## Contents
 
 - `manifest.json` — which targets have a pinned artifact, with each file's
   sha256 and its measured glibc/libstdc++ symbol-version floor. An empty
-  `artifacts` map means no prebuild ships yet and every Linux install
-  compiles from source exactly as before.
+  `artifacts` map means no Linux prebuild is approved by this channel, so
+  managed Linux installs compile from source even when the tarball includes one.
 - `<target>/pty.node` — the binary for `linux-x64` / `linux-arm64` (glibc),
   present only for targets listed in `manifest.json`.
 

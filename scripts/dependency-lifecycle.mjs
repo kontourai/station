@@ -398,11 +398,11 @@ function lifecycleEnvironment(packageRoot, hook) {
   };
 }
 
-function runExactHook(packageRoot, hook) {
+function runExactHook(packageRoot, hook, environment = {}) {
   const nodeScript = /^node ([A-Za-z0-9_./-]+\.m?js)$/.exec(hook.command);
   const prebuildFallback =
     /^node (scripts\/prebuild\.js) \|\| node-gyp rebuild$/.exec(hook.command);
-  const env = lifecycleEnvironment(packageRoot, hook);
+  const env = { ...lifecycleEnvironment(packageRoot, hook), ...environment };
   if (nodeScript) {
     command(process.execPath, [confinedFile(packageRoot, nodeScript[1])], {
       cwd: packageRoot,
@@ -515,11 +515,21 @@ export function runApprovedHooks(allowlist, { cwd = root } = {}) {
     console.log(
       `[dependency-lifecycle] approved build ${entry.lock}:${entry.path}`,
     );
+    // Archive-provided Linux binaries are not the reviewed prebuild channel.
+    const environment =
+      process.platform === 'linux' &&
+      entry.name === 'node-pty' &&
+      entry.artifact?.proof === 'node-pty-smoke' &&
+      !readNodePtyPrebuildManifest(cwd)?.artifacts[
+        `${process.platform}-${process.arch}`
+      ]
+        ? { npm_config_build_from_source: 'true' }
+        : {};
     let built = true;
     try {
       for (const hook of entry.hooks) {
         const started = performance.now();
-        runExactHook(packageRoot, hook);
+        runExactHook(packageRoot, hook, environment);
         console.log(
           `[dependency-lifecycle] executed ${entry.lock}:${entry.path}:${hook.name} in ${Math.round(performance.now() - started)}ms`,
         );
