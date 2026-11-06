@@ -225,7 +225,19 @@ function runTar(args, options = {}) {
   });
 }
 
-export function stageNodeRuntime(target, distributionBytes, runtimeDir) {
+/**
+ * Stages Node and its license from the verified distribution. `includeNpm`
+ * also keeps the distribution's own npm at the layout the official archive
+ * uses (`lib/node_modules/npm`, or `node_modules/npm` beside `node.exe`), so
+ * features that install pinned npm packages (device tools) work on a host
+ * with no other Node. The desktop's private `station-node` omits it.
+ */
+export function stageNodeRuntime(
+  target,
+  distributionBytes,
+  runtimeDir,
+  { includeNpm = false } = {},
+) {
   // Extract from a private copy written from the verified bytes, never by
   // reopening the path that was hashed.
   const scratch = mkdtempSync(join(tmpdir(), 'station-node-extract-'));
@@ -236,6 +248,8 @@ export function stageNodeRuntime(target, distributionBytes, runtimeDir) {
       `${target.node.directory}/${target.node.binary.replaceAll('\\', '/')}`,
       `${target.node.directory}/LICENSE`,
     ];
+    const npm = nodeDistributionNpmDirectory(target);
+    if (includeNpm) members.push(`${target.node.directory}/${npm}`);
     runTar(['-xf', distribution, '-C', scratch, ...members]);
     const unpacked = join(scratch, target.node.directory);
     mkdirSync(join(runtimeDir, dirname(target.node.binary)), {
@@ -247,9 +261,31 @@ export function stageNodeRuntime(target, distributionBytes, runtimeDir) {
     );
     chmodSync(join(runtimeDir, target.node.binary), 0o755);
     cpSync(join(unpacked, 'LICENSE'), join(runtimeDir, 'LICENSE'));
+    if (includeNpm) {
+      if (!existsSync(join(unpacked, npm, 'bin', 'npm-cli.js')))
+        throw new Error(`${target.node.file} does not contain ${npm}`);
+      cpSync(join(unpacked, npm), join(runtimeDir, npm), { recursive: true });
+    }
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+/** Where an official Node.js distribution keeps its bundled npm. */
+function nodeDistributionNpmDirectory(target) {
+  return target.platform === 'win32'
+    ? 'node_modules/npm'
+    : 'lib/node_modules/npm';
+}
+
+/**
+ * The archive's `runtime/`: Node with its own npm, because the archive is the
+ * only Node a host may have and device tools install with npm.
+ */
+export function stagePortableNodeRuntime(target, distributionBytes, stageRoot) {
+  stageNodeRuntime(target, distributionBytes, join(stageRoot, 'runtime'), {
+    includeNpm: true,
+  });
 }
 
 function pruneNonRuntimeArtifacts(root) {
@@ -411,9 +447,10 @@ function treeFootprint(root) {
  *   install.ps1             Windows archives only: the Windows installer
  *                           (#2675 slice W), carried for the same reason
  *   lib/station-cli.mjs     the lifecycle-capable Station CLI, bundled
- *   runtime/                the pinned, digest-verified official Node.js;
- *                           on Windows also the precompiled process-birth
- *                           helper and its SHA-256 (#2805)
+ *   runtime/                the pinned, digest-verified official Node.js
+ *                           and that distribution's own npm; on Windows also
+ *                           the precompiled process-birth helper and its
+ *                           SHA-256 (#2805)
  *   .station-prebuilt-archive  tells the CLI there is nothing to build
  *   dist-server/            the server bundle, stamped with this provenance,
  *                           plus the station-build.json `station start` reads
@@ -485,7 +522,7 @@ async function stagePortableServerTree({
     renameSync(candidate.directory, join(stageRoot, 'telemetry-companion'));
     rmSync(output, { recursive: true });
   }
-  stageNodeRuntime(target, nodeDistributionBytes, join(stageRoot, 'runtime'));
+  stagePortableNodeRuntime(target, nodeDistributionBytes, stageRoot);
   if (target.platform === 'win32')
     stageWindowsBirthHelper(join(stageRoot, 'runtime'));
   stageLaunchers(projectRoot, stageRoot);

@@ -1357,6 +1357,96 @@ describe('dependency lifecycle policy', () => {
     }
   });
 
+  it.each([
+    {
+      mode: 'source policy',
+      source: true,
+      optOut: undefined,
+      expected: 'true',
+    },
+    {
+      mode: 'prebuild policy',
+      source: false,
+      optOut: undefined,
+      expected: null,
+    },
+    {
+      mode: 'explicit source opt-out',
+      source: false,
+      optOut: 'true',
+      expected: 'true',
+    },
+    {
+      mode: 'source policy overrides false',
+      source: true,
+      optOut: 'false',
+      expected: 'true',
+    },
+  ])(
+    'executes a Linux native hook with the approved build mode: $mode',
+    ({ source, optOut, expected }) => {
+      const fixtureRoot = makeTempDir('station-native-mode-');
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      vi.stubEnv('npm_config_build_from_source', optOut);
+      try {
+        Object.defineProperty(process, 'platform', { value: 'linux' });
+        const packageRoot = resolve(fixtureRoot, 'node_modules/node-pty');
+        mkdirSync(resolve(packageRoot, 'scripts'), { recursive: true });
+        writeFileSync(
+          resolve(packageRoot, 'package.json'),
+          JSON.stringify({
+            name: 'node-pty',
+            version: '1.0.0',
+            scripts: { install: 'node scripts/observe.mjs' },
+          }),
+        );
+        writeFileSync(
+          resolve(packageRoot, 'scripts/observe.mjs'),
+          'import { writeFileSync } from "node:fs"; writeFileSync("mode.json", JSON.stringify({ source: process.env.npm_config_build_from_source ?? null }));',
+        );
+        runApprovedHooks(
+          {
+            entries: [
+              {
+                scope: 'root',
+                lock: 'package-lock.json',
+                path: 'node_modules/node-pty',
+                name: 'node-pty',
+                version: '1.0.0',
+                decision: 'execute',
+                platform: { os: [], cpu: [] },
+                hooks: [
+                  { name: 'install', command: 'node scripts/observe.mjs' },
+                ],
+                artifact: {
+                  path: 'build/Release/pty.node',
+                  proof: 'node-pty-smoke',
+                  platforms: {
+                    [`linux/${process.arch}`]: [
+                      source
+                        ? 'build/Release/pty.node'
+                        : `prebuilds/linux-${process.arch}/pty.node`,
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+          { cwd: fixtureRoot },
+        );
+        expect(
+          JSON.parse(readFileSync(resolve(packageRoot, 'mode.json'), 'utf8'))
+            .source,
+        ).toBe(expected);
+      } finally {
+        Object.defineProperty(process, 'platform', platform);
+        vi.unstubAllEnvs();
+        log.mockRestore();
+      }
+    },
+  );
+
   it('converts a failed degradable build into a loud DEGRADED report and keeps installing (#1244)', () => {
     const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -1854,7 +1944,7 @@ describe('dependency lifecycle policy', () => {
         assertNodePtyPrebuildConsistency(policy, {
           schemaVersion: 1,
           package: 'node-pty',
-          version: '1.1.0',
+          version: '1.2.0-beta.18',
           artifacts: { 'linux-arm64': { sha256: 'a'.repeat(64) } },
         }),
       ).toThrow(/disagree for linux-arm64/);

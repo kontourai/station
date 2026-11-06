@@ -198,11 +198,14 @@
           "name": "install",
           "command": "node scripts/prebuild.js || node-gyp rebuild"
         },
-        { "name": "postinstall", "command": "node scripts/post-install.js" }
+        {
+          "name": "postinstall",
+          "command": "node scripts/post-install.js"
+        }
       ],
       "decision": "execute",
       "owner": "station-security",
-      "reason": "Exact upstream prerelease includes the Windows PTY-handle mutex repair (microsoft/node-pty#922). Published Windows prebuilds contain the native fix and ship ConPTY only. Managed artifact verification and the real PTY handshake remain required on every supported platform; Linux retains its existing build/prebuild contract.",
+      "reason": "Pinned published upstream beta supplies synchronized Windows ConPTY handle ownership. Its approved install/postinstall command strings are unchanged; their integrity-bound scripts were reviewed. Linux still approves the source-built addon, and the runner enforces that decision despite upstream prebuilds. Windows ships ConPTY only; exact backend/DLL artifacts remain required, with the real PTY handshake on each supported platform. Source review and macOS or local Windows proof do not establish hosted, ARM64 or Desktop qualification.",
       "platform": { "os": [], "cpu": [] },
       "artifact": {
         "path": "prebuilds/{platform}-{arch}/pty.node",

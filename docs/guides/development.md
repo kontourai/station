@@ -82,6 +82,12 @@ of prebuild staging. Other native dependencies retain their own platform
 requirements. Rust and platform SDKs are needed for native builds/checks; a server/UI-only
 loop need not run them.
 
+Station pins node-pty `1.2.0-beta.18` for its synchronized Windows native handle
+registry. The prerelease supplies ConPTY rather than the removed WinPTY backend.
+Windows process publication waits for connection readiness and a valid PID;
+a startup exit is an error. Keep the exact package/hook/artifact review aligned
+when changing this pin; macOS checks do not qualify Windows or ARM64 behavior.
+
 Scoped terminal process-group cleanup on POSIX also needs `ps` with PID, PPID
 and process-group columns. A missing or failed census is a cleanup error, not
 proof that descendants stopped. The new cleanup path has real-PTY macOS
@@ -175,7 +181,11 @@ screen. Mint the link at handoff time — an earlier link may already be
 consumed or name a boot that has since restarted — and open it in the
 operator's browser rather than asking them to retype a URL. Pairing is stored
 per browser profile in the instance home, so once paired, ordinary stop and
-start on the same home needs no new link.
+start on the same home needs no new link. Each link pairs its own Device, so
+opening one on a phone leaves a desktop browser signed in, on either origin;
+a browser that already holds a session keeps its Device. Sign one browser out
+by revoking its Device. Each fresh profile that redeems a link adds a Device
+toward the identityless-Device quota, so revoke ones you no longer use.
 
 ### Running a second Station in development mode
 

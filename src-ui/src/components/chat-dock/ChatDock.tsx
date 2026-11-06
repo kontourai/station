@@ -101,6 +101,7 @@ import {
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
+import { useFoldSplit } from '../../hooks/useFoldSplit';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
@@ -1194,6 +1195,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // is (`useChatDockActions.focusSession`). A full-screen placement is
   // already showing.
   const conversationSurfaceRef = useRef<HTMLDivElement>(null);
+  // On a folded display the Inbox snaps to the crease (measured on the
+  // workspace row), and without the Inbox the reader moves off it
+  // (`.fold-avoid-crease`).
+  const workspaceRowRef = useRef<HTMLDivElement>(null);
+  const readerRef = useRef<HTMLDivElement>(null);
+  useFoldSplit(workspaceRowRef);
+  useFoldSplit(readerRef);
   // The dock as it was before a phone draft forced it to full height, so a
   // dismissed draft puts it back and a started one opens its chat at that
   // size. Includes the maximize memory the forcing overwrote.
@@ -3835,7 +3843,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   first (#1066), and the header above now carries its
                   controls. #1064's no-third-bar decision stands. */}
               {/* Keep drafts and the phone inbox mounted across dock collapse. */}
-              <div className="chat-dock__workspace" hidden={!workspaceShown}>
+              <div
+                className="chat-dock__workspace"
+                ref={workspaceRowRef}
+                hidden={!workspaceShown}
+              >
                 {isMobile && (
                   <LazyBoundary
                     load={loadMobileInboxPanel}
@@ -3944,7 +3956,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     />
                   )}
                 <div
-                  className="chat-dock__reader"
+                  className="chat-dock__reader fold-avoid-crease"
+                  ref={readerRef}
                   hidden={mobileInboxShown}
                   inert={mobileInboxShown}
                 >

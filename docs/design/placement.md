@@ -584,7 +584,8 @@ one — a closed dock leaves it unplaced.
 The five decisions of the 2a plan, as taken (each reversible on its own):
 
 - **D1 — collapsed bar: header only.** A collapsed region is the bar alone,
-  at the unchanged `--chat-dock-header-height` (38/53px); the strip hides
+  at the unchanged `--chat-dock-header-height` (38/53px, or 45px on a short
+  coarse-pointer viewport, which drops the bar's block padding); the strip hides
   with the body (it also shows during a drag from Collapsed, as Chat's
   pane controls do), and the selected pane's toolbar keeps its
   collapsed-state affordance (archive#800): the icon-only New chat action, the one
@@ -754,7 +755,9 @@ layer is open (`RegionChromeBar` `onBackToChat`; the iOS app has no
 swipe-back) — returns to Chat: Chat reselected, its maximize and visibility
 restored, and the tab the layer minted removed (a phone has no tab strip, so
 a tab left behind Chat would be one nobody can see or close;
-`restorePhonePaneLayer`). A minted pane the layer moved out of another
+`restorePhonePaneLayer`). Where a wide touch device does show a tab strip,
+the strip omits Chat's tab while the layer is open: "‹ Chat" is the way back,
+and a second Chat control beside it named the same move. A minted pane the layer moved out of another
 (hidden) dock region goes back to its tab slot there on Back, "‹ Chat" or a
 dismissal. (A pane held in `main` never opens a layer, so a layer pane's
 origin is always a dock region.) Opening another pane while a layer is open

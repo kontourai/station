@@ -71,6 +71,8 @@ function getNodePty(): Promise<typeof import('node-pty')> {
 class NodePtyProcess implements IPtyProcess {
   private exited = false;
   private termination?: Promise<void>;
+  private readonly outputPipeReady: Promise<void>;
+  private readonly controllingTty: string | undefined;
   readonly terminate?: () => Promise<void>;
   private paused = false;
   private pauseEpoch = 0;
@@ -82,13 +84,36 @@ class NodePtyProcess implements IPtyProcess {
     private pty: import('node-pty').IPty,
     private startupReadPaused = false,
   ) {
+    const tty = '_pty' in pty ? pty._pty : undefined;
+    this.controllingTty =
+      typeof tty === 'string' ? tty.replace(/^\/dev\//, '') : undefined;
+    const socket = '_socket' in pty ? pty._socket : undefined;
+    let finishPipeWait: (() => void) | undefined;
+    // Await output-pipe readiness before publishing a usable Windows process.
+    // The managed patch observes startup exits independently of this event.
+    if (
+      process.platform === 'win32' &&
+      typeof socket === 'object' &&
+      socket !== null &&
+      'once' in socket &&
+      typeof socket.once === 'function'
+    ) {
+      const once = socket.once.bind(socket);
+      this.outputPipeReady = new Promise<void>((resolve) => {
+        finishPipeWait = resolve;
+        once('ready_datapipe', resolve);
+      });
+    } else {
+      this.outputPipeReady = Promise.resolve();
+    }
     pty.onExit((event) => {
       this.exitEvent = event;
       this.exited = true;
+      finishPipeWait?.();
       if (this.paused || this.startupReadPaused) this.outputIncomplete = true;
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
-      if (process.platform === 'win32') this.releaseConpty();
+      if (process.platform === 'win32' && this.pid > 0) this.releaseConpty();
     });
     this.terminate =
       process.platform === 'win32'
@@ -96,32 +121,27 @@ class NodePtyProcess implements IPtyProcess {
         : () => this.terminateGroups();
   }
 
-  async waitForStart(): Promise<void> {
-    const deadline = Date.now() + 6_000;
-    while (this.pty.pid <= 0) {
-      if (this.exitEvent)
-        throw new Error(
-          `Terminal shell exited before startup (exit code ${this.exitEvent.exitCode})`,
-        );
-      if (Date.now() >= deadline)
-        throw new Error('Terminal shell did not finish starting');
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+  async waitForReady(): Promise<void> {
+    await this.outputPipeReady;
+    if (this.exited)
+      throw new Error('Terminal exited before startup readiness');
+    if (!Number.isSafeInteger(this.pid) || this.pid <= 0)
+      throw new Error('Terminal backend did not publish a valid process id');
   }
 
   /**
    * Windows, once the shell has exited (its exit event follows the output
-   * socket's flush and close): node-pty 1.1 releases a ConPTY, its
-   * pseudoconsole and conout worker thread, only in `kill()`, so after a
-   * natural or taskkill exit both stayed open, one thread and console host
-   * per shell. `kill()` first lists the console's processes through a helper
+   * socket's flush and close): node-pty releases its output-reader worker
+   * in `kill()`. Startup failures before a PID exists already clean up in
+   * the backend. For started shells, `kill()` first lists console processes
+   * through a helper
    * that cannot attach to a console whose shell has gone, and five seconds
    * later signals the old shell pid, which Windows may have given to another
    * process (#3994). After the exit there is nothing to list, so that step is
    * answered empty for this terminal before `kill()` releases the rest.
    */
   private releaseConpty(): void {
-    // node-pty 1.1's private WindowsTerminal._agent._getConsoleProcessList,
+    // The pinned WindowsTerminal._agent._getConsoleProcessList,
     // found at runtime. Without it (another node-pty) kill() still releases.
     const { pty } = this;
     if ('_agent' in pty) {
@@ -153,6 +173,7 @@ class NodePtyProcess implements IPtyProcess {
    */
   private terminateTree(): Promise<void> {
     this.termination ??= (async () => {
+      await this.outputPipeReady;
       if (this.exited) return;
       const exited = new Promise<void>((resolve) => {
         const subscription = this.pty.onExit(() => {
@@ -185,7 +206,11 @@ class NodePtyProcess implements IPtyProcess {
   private terminateGroups(): Promise<void> {
     this.termination ??= (async () => {
       try {
-        await terminatePtyProcessGroups(this.pid, () => !this.exited);
+        await terminatePtyProcessGroups(
+          this.pid,
+          () => !this.exited,
+          this.controllingTty,
+        );
       } catch (error) {
         if (!this.exited) this.pty.kill('SIGKILL');
         throw error;
@@ -408,9 +433,9 @@ export class NodePtyAdapter implements IPtyAdapter {
       if (starting) pty.pause();
       const result = new NodePtyProcess(pty, starting);
       try {
-        if (starting) await result.waitForStart();
+        if (process.platform === 'win32') await result.waitForReady();
       } catch (error) {
-        pty.kill();
+        if (pty.pid > 0) pty.kill();
         throw error;
       }
       trackChildWorkload(launch, pty.pid);

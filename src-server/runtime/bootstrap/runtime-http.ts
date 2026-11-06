@@ -84,6 +84,7 @@ import {
   setBudgetPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../security/runtime-request-security.js';
+import { createStationOriginPolicy } from '../../security/station-browser-origins.js';
 import {
   readVerifiedNativeVirtualApplicationRequest,
   transferVerifiedNativeVirtualApplicationRequest,
@@ -495,14 +496,14 @@ export function configureRuntimeRouteClassificationGate(
   app: RuntimeApp,
   security: Pick<
     RuntimeHttpSecurityOptions,
-    'allowedOrigins' | 'audit' | 'now'
+    'allowedOrigins' | 'originPolicy' | 'audit' | 'now'
   >,
   routeLabeler: RuntimeRouteLabeler,
 ): void {
-  const allowedOrigins = new Set(security.allowedOrigins ?? []);
+  const admitsOrigin = runtimeOriginAdmission(security);
   app.use('*', async (c, next) => {
     const origin = c.req.header('origin');
-    if (origin && !allowedOrigins.has(origin)) {
+    if (origin && !(await admitsOrigin(origin))) {
       return c.json({ error: { code: 'origin_forbidden' } }, 403);
     }
 
@@ -899,6 +900,16 @@ async function admitNativeDeviceProofRequest(
   return c.res;
 }
 
+/** Both HTTP origin gates below read the one Station origin policy. */
+function runtimeOriginAdmission(
+  security: Pick<RuntimeHttpSecurityOptions, 'allowedOrigins' | 'originPolicy'>,
+): (origin: string) => Promise<boolean> {
+  const policy =
+    security.originPolicy ??
+    createStationOriginPolicy({ configured: security.allowedOrigins ?? [] });
+  return (origin) => policy.admits(origin);
+}
+
 /** Exact declared leaves own their Origin, preflight, bearer and budgets after the compiled refusal. */
 function outsideProtocolOwnsAdmission(c: Context): boolean {
   const capability = runtimeRouteCapability(c);
@@ -913,7 +924,7 @@ function configureRuntimeSecurity(
   security: RuntimeHttpSecurityOptions,
   routeLabeler: RuntimeRouteLabeler,
 ): void {
-  const allowedOrigins = new Set(security.allowedOrigins ?? []);
+  const admitsOrigin = runtimeOriginAdmission(security);
   const limiter = new RuntimeAuthFailureLimiter(security);
   const protocolAuditLimiter = new RuntimeAuthFailureLimiter(security);
   const budget = new RuntimeMutationBudget(security);
@@ -923,7 +934,7 @@ function configureRuntimeSecurity(
   app.use('*', async (c, next) => {
     if (outsideProtocolOwnsAdmission(c)) return next();
     const origin = c.req.header('origin');
-    if (origin && !allowedOrigins.has(origin)) {
+    if (origin && !(await admitsOrigin(origin))) {
       return c.json({ error: { code: 'origin_forbidden' } }, 403);
     }
 

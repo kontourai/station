@@ -1,0 +1,13 @@
+[package]
+name = "tauri-plugin-station-fold"
+version = "0.1.0"
+description = "Hinge and fold geometry for Station's iOS shell"
+edition = "2021"
+publish = false
+links = "tauri-plugin-station-fold"
+
+[build-dependencies]
+tauri-plugin = { version = "=2.7.1", features = ["build"] }
+
+[dependencies]
+tauri = { version = "=2.12.1" }
