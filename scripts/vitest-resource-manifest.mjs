@@ -666,6 +666,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and a symlink to prove `invokedDirectly` reaches the script body.
   // Bounded single-shot children per case.
   'scripts/__tests__/module-entry.test.ts',
+  // Real coordinator/fork processes verify worker exit diagnostics and fatal behavior.
+  'scripts/__tests__/windows-portable-floor.test.ts',
   // #2682: runs the real a11y ratchet (one Biome lint over the tree) as a
   // child process with an empty PATH to prove it needs no npx shim.
   'scripts/__tests__/a11y-ratchet.test.ts',

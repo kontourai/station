@@ -1,6 +1,16 @@
-import { readFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   floorFailures,
   planFloorInvocations,
@@ -8,6 +18,7 @@ import {
 } from '../windows-portable-floor.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
+const makeTempDir = trackTempDirs();
 const SESSIONS =
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts';
 const HANDOFF =
@@ -62,6 +73,10 @@ describe('the Windows portable floor runner', () => {
     expect(spawnSync.mock.calls[1]).toEqual([
       process.execPath,
       [
+        '--import',
+        pathToFileURL(
+          resolve(root, 'scripts/lib/windows-worker-diagnostics.mjs'),
+        ).href,
         resolve(root, 'node_modules/vitest/vitest.mjs'),
         'run',
         'b.test.ts',
@@ -78,6 +93,82 @@ describe('the Windows portable floor runner', () => {
       'd.test.ts: spawn EPERM',
     ]);
   });
+
+  it.each([
+    { name: 'successful exit', source: 'process.exit(0)', code: 0 },
+    { name: 'nonzero exit', source: 'process.exit(37)', code: 37 },
+    {
+      name: 'uncaught exception',
+      source: 'throw new Error("worker failure")',
+      code: 1,
+    },
+  ])(
+    'captures the real fork code without changing $name',
+    ({ source, code }) => {
+      const fixture = makeTempDir('station-windows-worker-');
+      const vitest = resolve(fixture, 'node_modules/vitest');
+      const library = resolve(fixture, 'scripts/lib');
+      mkdirSync(vitest, { recursive: true });
+      mkdirSync(library, { recursive: true });
+      copyFileSync(
+        resolve(root, 'scripts/lib/windows-worker-diagnostics.mjs'),
+        resolve(library, 'windows-worker-diagnostics.mjs'),
+      );
+      writeFileSync(resolve(vitest, 'worker.cjs'), source);
+      writeFileSync(
+        resolve(vitest, 'vitest.mjs'),
+        `
+      import { fork } from 'node:child_process';
+      const child = fork(new URL('./worker.cjs', import.meta.url), ['private-argument'], {
+        execArgv: [], stdio: 'inherit', windowsHide: true,
+      });
+      child.on('exit', (code) => { process.exitCode = code; });
+    `,
+      );
+      const outcomes = runFloorInvocations([['run', 'probe.test.ts']], {
+        root: fixture,
+        spawnSync: (command: string, args: string[], options: object) =>
+          spawnSyncBounded(command, args, {
+            ...options,
+            encoding: 'utf8',
+            stdio: 'pipe',
+            timeout: 30_000,
+            windowsHide: true,
+          }),
+        log: () => {},
+      });
+      expect(outcomes).toMatchObject([
+        { status: code, signal: null, error: null, passed: code === 0 },
+      ]);
+      const output = resolve(fixture, '.kontourai/verification-output');
+      const logs = existsSync(output) ? readdirSync(output) : [];
+      expect(logs).toHaveLength(1);
+      const diagnostic = readFileSync(resolve(output, logs[0]), 'utf8');
+      const events = diagnostic
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line));
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            event: 'coordinator',
+            suites: ['probe.test.ts'],
+          }),
+          expect.objectContaining({
+            event: 'spawn',
+            child: expect.any(Number),
+          }),
+          expect.objectContaining({
+            event: 'exit',
+            code,
+            signal: null,
+            hex: `0x${code.toString(16).padStart(8, '0')}`,
+          }),
+        ]),
+      );
+      expect(diagnostic).not.toContain('private-argument');
+    },
+  );
 
   it('is how test:windows:portable runs its Vitest files', () => {
     const script = (

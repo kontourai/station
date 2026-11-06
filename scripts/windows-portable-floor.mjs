@@ -17,6 +17,7 @@
  */
 import { spawnSync as defaultSpawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ISOLATED_SUITE =
@@ -48,14 +49,21 @@ export function runFloorInvocations(
   { root, spawnSync = defaultSpawnSync, log = console.log },
 ) {
   const vitest = join(root, 'node_modules', 'vitest', 'vitest.mjs');
+  const observer = pathToFileURL(
+    join(root, 'scripts', 'lib', 'windows-worker-diagnostics.mjs'),
+  ).href;
   return invocations.map((args) => {
     const files = args.filter((arg) => arg !== 'run' && !arg.startsWith('-'));
     log(`\n[windows-portable-floor] vitest ${files.join(' ')}`);
-    const result = spawnSync(process.execPath, [vitest, ...args], {
-      cwd: root,
-      stdio: 'inherit',
-      windowsHide: true,
-    });
+    const result = spawnSync(
+      process.execPath,
+      ['--import', observer, vitest, ...args],
+      {
+        cwd: root,
+        stdio: 'inherit',
+        windowsHide: true,
+      },
+    );
     return {
       files,
       status: result.status ?? null,
