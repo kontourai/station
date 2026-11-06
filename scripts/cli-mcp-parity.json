@@ -1,5 +1,11 @@
 {
-  "app": {},
+  "app": {
+    "task resume": {
+      "route": "POST /api/tasks/:taskId/resume",
+      "exempt": "person-only",
+      "reason": "Only the operator in person may resume an ended Task; a CLI call on the host carries the same home credential an agent's shell could, so it cannot present that witness."
+    }
+  },
   "cli": {
     "acp command-options": {
       "missing": 4286,

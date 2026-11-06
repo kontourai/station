@@ -105,10 +105,6 @@ function TaskResumeForScope({
   return (
     <section className="task-resume" aria-label="Task ended">
       <div className="task-resume__header">
-        <Badge
-          value={task.status === 'done' ? 'Done' : 'Canceled'}
-          tone="neutral"
-        />
         {task.endedAt ? (
           <span>
             Ended{' '}
@@ -296,7 +292,10 @@ function TaskResumeDialog({
                   <strong>{KIND_WORDS[item.kind] ?? 'Item'}</strong>
                   <span>{item.author}</span>
                   <Badge value={item.actorClass} tone="neutral" />
-                  {item.association && <span>{item.association}</span>}
+                  {item.association &&
+                    item.association.toLowerCase() !== item.actorClass && (
+                      <span>{item.association}</span>
+                    )}
                   <time dateTime={item.occurredAt}>
                     {formatTime(item.occurredAt)}
                   </time>

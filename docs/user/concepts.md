@@ -119,6 +119,19 @@ have reached an engine, **May have been sent** stays visible. **Review and resen
 restores the text into an empty composer; sending again is your explicit choice.
 Display-only notes appear immediately without sending anything to an engine.
 
+### Resume an ended Task
+
+With **Resume ended Tasks** on in Settings → Advanced → Feature previews, a
+`done` Task on a GitHub item from the Project board shows when it ended, when
+it can no longer be resumed (14 days later) and how many GitHub follow-ups were
+recorded since. If you are the Station operator, in person, choose **Resume**,
+read the follow-ups, say why, and confirm. The Task moves back to **Ready** and
+nothing starts: dispatch it, or choose **Resume and dispatch**, to start a new
+lead with the retained follow-ups in its brief. The earlier lead is not woken.
+A canceled Task stays ended; start a new Task on the work item instead. Agents,
+other people's devices, account members and GitHub comments cannot resume a
+Task.
+
 ## Gates, Evidence, And Receipts
 
 - A **gate** decides whether work may advance.

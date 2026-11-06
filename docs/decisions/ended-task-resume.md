@@ -20,8 +20,8 @@ evidence:
 The owner approved the revised option B of
 [Resuming ended Tasks](../design/ended-task-resume.md) for
 [#4554](https://github.com/kontourai/station/issues/4554) on 2026-11-06.
-This is approved for implementation, not yet shipped: until an implementation
-lands, `done` and `canceled` Tasks stay ended, as
+It is implemented behind the default-off `task-resume` Feature Preview; with
+the preview off, `done` and `canceled` Tasks stay ended, as
 [#4508 decision 4](task-tracker-followups.md) says. The design holds the
 evidence, the alternatives, the refusals, the races, the tests and the
 implementation slices that follow from these answers.
@@ -49,3 +49,11 @@ implementation slices that follow from these answers.
 
 Recording `endedAt` and using it in the follow-up poller applies whether or
 not resume is enabled.
+
+## Implementation status
+
+Implemented for #4554 behind the `task-resume` preview, on personal Stations
+only. The choices the decision left open (which checks make up current
+authority, which Tasks count as GitHub-backed, the static capability flag, the
+CLI exemption and the downgrade procedure) are recorded in
+[Resuming ended Tasks: Implementation](../design/ended-task-resume.md#implementation).

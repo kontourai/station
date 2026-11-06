@@ -18,6 +18,10 @@
   min-width: 0;
 }
 
+.task-resume__header {
+  font-size: var(--k-text-sm);
+}
+
 .task-resume__header time,
 .task-resume__follow-up-heading time,
 .task-resume__note {

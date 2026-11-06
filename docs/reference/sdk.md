@@ -732,6 +732,20 @@ must mount the dedicated relationship factory with current authority adapters
 before these APIs are available.
 
 
+### Resuming an ended Task
+
+`@kontourai/station-sdk/task-resume` exports `taskResumeHostSupport(apiBase)`,
+`readTaskResumeView(taskId, options)` and `resumeTask(taskId, request,
+options)` for `GET` and `POST /api/tasks/:taskId/resume` (#4554). Both calls ask
+the host's handshake first: a host without the `taskResume` flag (older, or a
+hosted deployment) throws `TaskResumeError` with `code: 'unsupported'` and a
+message that names updating Station as one remedy, and no resume request is
+sent. A host refusal throws `TaskResumeError` with its `task_resume_*` code.
+Only the Station operator in person can resume; the host decides who is asking.
+Retry an uncertain resume with the same `resumeId` and inputs: the host answers
+the stored record with `replayed: true` and the Task as it is now. Resuming
+starts nothing; dispatch the Task separately.
+
 ## Shared Project room
 
 `@kontourai/station-sdk/project-rooms` provides `useProjectRoom` and the

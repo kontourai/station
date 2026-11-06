@@ -1117,6 +1117,39 @@ operate-tier viewer next refreshes that conversation, and nothing reconciles
 without one. A store carrying the flag is refused by older Station builds: clear
 it before a rollback.
 
+`GET` and `POST /api/tasks/:taskId/resume` resume an ended Task (#4554), behind
+the default-off `task-resume` Feature Preview and only on a personal Station:
+hosted mode mounts neither, and its handshake withdraws the `taskResume` flag.
+With the preview off both answer `404` `task_resume_unavailable`. The caller must
+be the Station operator in person and not a request that may be an agent's
+(`isOperatorInPersonNotAgent`), on top of the task family's tier (read for the
+`GET`, operate for the `POST`), and must currently be able to read the Task,
+execute in its Project and reach `POST /api/tasks/:taskId/dispatch`; no Station
+Control tool names either route, so the authority guard refuses an agent's
+request. The `GET` answers what the confirmation shows: `endedAt`, the resume
+`deadline` (14 days after it), `refusal` when the Task itself rules resume out,
+the earlier lead (`previousLead`), and the GitHub follow-ups recorded since the
+end (`followUps.items`, newest first, at most 20, with `total` and
+`seenThrough`). Those observations may be stale or absent, and their text is
+quoted data. The `POST` takes exactly `{resumeId, expectedCreatedAt,
+expectedEndedAt, reason, followUpsSeenThrough?}` (`reason` 1–500 characters)
+and moves a `done` Task on a board-checked GitHub work item, not created by an
+automation, to `ready` within 14 days of `endedAt`: it clears `endedAt`,
+`closeOnMerge` and the lead attachment (`sessionId`, `dispatchedAt`), appends one
+immutable record to `TaskRecord.resumes`, and starts nothing; dispatch the Task
+separately. It answers `{task, resume, replayed}`, where `task` is the Task as it
+is now. A retry with the same `resumeId` and inputs by the same person answers
+the stored record with `replayed: true`; other inputs are `409`
+`task_resume_conflict`. Refusals write nothing: `403` `task_resume_not_permitted`;
+`409` `task_resume_not_supported`, `task_resume_not_ended`,
+`task_resume_canceled`, `task_resume_end_unknown` (ended before Station recorded
+end times), `task_resume_expired`, `task_resume_conflict`,
+`task_resume_work_item_taken` (with `details.existingTask`),
+`task_resume_dispatch_reserved`, `task_resume_turn_running` or
+`task_resume_limit` (20 per Task incarnation); `503` `task_resume_unavailable`
+when the Task store cannot be read. `PATCH /api/tasks/:taskId/status` still
+refuses every move out of `done` and `canceled`.
+
 New snapshots store their Task creation identity and, for admitted Session
 declarations, the declaration's Session/event/turn/tool identities privately.
 Public output records remain schema version 1 and omit those private fields.

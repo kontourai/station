@@ -1729,6 +1729,21 @@ summary. Existing result handles are preserved, and later summaries do not
 overwrite returned text. A returned result remains reported output, not
 verification of its correctness.
 
+### Task end time and resume
+
+`TaskRecord.endedAt` is when a Task moved into `done` or `canceled`, written in
+the same store write as that move and never by an edit; it is absent on a live
+Task and on one that ended before the field existed. `TaskRecord.resumes` holds
+the incarnation's resume records (`TaskResumeRecord`), oldest first, at most
+`TASK_RESUME_MAX_PER_INCARNATION` (20). `@kontourai/station-contracts/task-resume`
+owns `TaskResumeRecord`, `TaskResumeRequest`, `TaskResumeResult`, the
+`task_resume_*` refusal codes, `validateTaskResumeRequest`,
+`taskResumeDeadline` and `taskResumeRefusal(task, now)`, the one reading of the
+Task-intrinsic rules (supported work item, `done` not `canceled`, a known end
+within `TASK_RESUME_WINDOW_MS`, under the record bound) that both the server and
+the UI use. `TASK_STATUS_TRANSITIONS` still gives `done` and `canceled` no
+transitions; only `TaskGraphService.resumeTask` leaves `done`.
+
 ### Task deliverable and work-chat relationships
 
 `task-graph` exports `TaskIdentity` (`taskId`, `taskCreatedAt`),
