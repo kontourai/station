@@ -3203,7 +3203,6 @@
     position: absolute;
     top: 6px;
     inset-inline-start: calc(var(--k-space-2) + 6px);
-    font-size: var(--k-text-xs);
     font-weight: 700;
     line-height: 1;
     pointer-events: none;
