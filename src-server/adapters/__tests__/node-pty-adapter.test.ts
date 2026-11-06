@@ -1,6 +1,7 @@
 import { ChildProcess, execFile } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { trackChildWorkload } from '@kontourai/station-shared/child-workload';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
@@ -120,6 +121,8 @@ describe('Windows PTY output-pipe custody', () => {
           exits.add(listener);
           return { dispose: () => exits.delete(listener) };
         },
+        pause: vi.fn(),
+        resume: vi.fn(),
         write: vi.fn(),
         resize: vi.fn(),
         kill: vi.fn(),
@@ -190,35 +193,206 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
     process.getActiveResourcesInfo().filter((name) => name === 'MessagePort')
       .length;
 
-  test.each(['taskkill close', 'natural exit'] as const)(
+  test('asynchronous startup retains the first output and exit for the caller', async () => {
+    const before = workerThreads();
+    let socket: import('node:net').Socket | undefined;
+    const adapter = new NodePtyAdapter(async () => {
+      const backend = await import('node-pty');
+      return {
+        ...backend,
+        spawn: (...args: Parameters<typeof backend.spawn>) => {
+          const raw = backend.spawn(...args);
+          socket = (raw as typeof raw & { _socket: import('node:net').Socket })
+            ._socket;
+          return raw;
+        },
+      };
+    });
+    const proc = await adapter.spawn({
+      shell: process.env.COMSPEC ?? 'cmd.exe',
+      args: ['/d', '/q', '/c', 'echo STATION_STARTUP_4629 & exit /b 7'],
+      cwd: tmpdir(),
+      cols: 80,
+      rows: 24,
+      env: process.env,
+    });
+    try {
+      expect(proc.pid).toBeGreaterThan(0);
+      // Require real pending output before attaching the consumer; otherwise
+      // a fast subscription never exercises the startup handoff gap.
+      await expect
+        .poll(() => socket?.readableLength ?? 0, { timeout: 2_000 })
+        .toBeGreaterThan(0);
+      const output: string[] = [];
+      proc.onData((data) => output.push(data));
+      const exit = await new Promise<{ exitCode: number }>((resolve) =>
+        proc.onExit(resolve),
+      );
+      expect(output.join('')).toContain('STATION_STARTUP_4629');
+      expect(exit.exitCode).toBe(7);
+      const replay = await new Promise<{ exitCode: number }>((resolve) =>
+        proc.onExit(resolve),
+      );
+      expect(replay.exitCode).toBe(7);
+    } finally {
+      await proc.terminate?.();
+      await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
+    }
+  });
+
+  test('asynchronous startup rejects an unavailable directory and releases its worker', async () => {
+    const before = workerThreads();
+    await expect(
+      new NodePtyAdapter().spawn({
+        shell: process.env.COMSPEC ?? 'cmd.exe',
+        args: ['/d', '/q'],
+        cwd: join(tmpdir(), 'station-missing-directory-4629'),
+        cols: 80,
+        rows: 24,
+        env: process.env,
+      }),
+    ).rejects.toThrow('Terminal exited before startup readiness');
+    await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
+  });
+
+  test.each([
+    'taskkill close',
+    'natural exit',
+    'close before first output',
+  ] as const)(
     'a %s releases the ConPTY and never signals the old shell pid later',
     async (ending) => {
       const before = workerThreads();
       const signalled: number[] = [];
+      const transportErrors: unknown[] = [];
+      let releaseReady = () => {};
+      let readyObserved = Promise.resolve();
+      type ConptyTarget = import('node-pty').IPty & {
+        on(event: 'error', listener: (error: Error) => void): void;
+        _socket: import('node:net').Socket;
+        _agent: {
+          exitCode?: number;
+          kill(): void;
+          _getConsoleProcessList(): Promise<number[]>;
+          _conoutSocketWorker: {
+            _isDisposed: boolean;
+            _worker: import('node:worker_threads').Worker;
+            _onReady: { fire(): void };
+          };
+        };
+      };
+      let held: ConptyTarget | undefined;
+      const load =
+        ending === 'close before first output'
+          ? async () => {
+              const backend = await import('node-pty');
+              return {
+                ...backend,
+                spawn: (...args: Parameters<typeof backend.spawn>) => {
+                  const raw = backend.spawn(...args) as ConptyTarget;
+                  held = raw;
+                  // Hold the real socket's first output notification across
+                  // cleanup, so kill cannot rely on its readiness callback.
+                  const worker = raw._agent._conoutSocketWorker;
+                  const gate = new Promise<void>((resolve) => {
+                    releaseReady = resolve;
+                  });
+                  readyObserved = new Promise<void>((resolve) => {
+                    const emit = raw._socket.emit.bind(raw._socket);
+                    raw._socket.emit = (
+                      event: string | symbol,
+                      ...args: unknown[]
+                    ) => {
+                      if (event !== 'data') return emit(event, ...args);
+                      resolve();
+                      void gate.then(() => {
+                        try {
+                          emit(event, ...args);
+                        } catch (error) {
+                          transportErrors.push(error);
+                        }
+                      });
+                      return true;
+                    };
+                  });
+                  raw.on('error', (error) => transportErrors.push(error));
+                  worker._worker.on('error', (error) =>
+                    transportErrors.push(error),
+                  );
+                  return raw;
+                },
+              };
+            }
+          : undefined;
       const signal = process.kill.bind(process);
       const kill = vi.spyOn(process, 'kill').mockImplementation((pid, name) => {
         signalled.push(Number(pid));
         return signal(pid, name);
       });
       try {
-        const proc = await new NodePtyAdapter().spawn({
+        const proc = await new NodePtyAdapter(load).spawn({
           shell: process.env.COMSPEC ?? 'cmd.exe',
+          args: ['/d', '/q'],
           cwd: tmpdir(),
           cols: 80,
           rows: 24,
           env: process.env,
         });
-        const exited = new Promise((resolve) => proc.onExit(resolve));
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
-        if (ending === 'taskkill close') await proc.terminate!();
-        else proc.write('exit\r');
+        expect(proc.pid).toBeGreaterThan(0);
+        proc.onData(() => {});
+        let exits = 0;
+        const exited = new Promise<void>((resolve) =>
+          proc.onExit(() => {
+            exits++;
+            resolve();
+          }),
+        );
+        if (ending === 'close before first output') await readyObserved;
+        else await new Promise((resolve) => setTimeout(resolve, 1_000));
+        if (ending === 'natural exit') proc.write('exit\r');
+        else {
+          let deadline: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              proc.terminate!(),
+              new Promise<never>((_resolve, reject) => {
+                deadline = setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        'ConPTY exit was not delivered before first output',
+                      ),
+                    ),
+                  6_000,
+                );
+              }),
+            ]);
+          } finally {
+            clearTimeout(deadline);
+          }
+        }
+        releaseReady();
         await exited;
         // node-pty's console-list fallback signals five seconds after kill();
         // its output reader thread is released a second after the release.
         await new Promise((resolve) => setTimeout(resolve, 6_500));
         expect(signalled).not.toContain(proc.pid);
         expect(workerThreads()).toBe(before);
+        expect(exits).toBe(1);
+        expect(transportErrors).toEqual([]);
       } finally {
+        releaseReady();
+        // Failed fault-injection runs still release the owned console by its
+        // native handle, only after native exit is known; never an old PID.
+        if (
+          held &&
+          held._agent.exitCode !== undefined &&
+          !held._agent._conoutSocketWorker._isDisposed
+        ) {
+          held._agent._getConsoleProcessList = () => Promise.resolve([]);
+          held._agent.kill();
+          await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
+        }
         kill.mockRestore();
       }
     },

@@ -51,6 +51,9 @@ and backs off for 15 minutes (a restart tries again).
   `done`/`canceled` within 14 days. A Task record keeps no end time, so an
   ended Task's `updatedAt` stands for it; an edit after the end can extend
   following, never shorten it. Polling never changes a Task's status.
+  Whether a person may resume a `done` Task after a follow-up is an open
+  decision ([proposal](ended-task-resume.md),
+  [record](../decisions/ended-task-resume.md)).
 - **Followed items.** The primary work item and each github.com pull request
   a person kept on the Task (the keep rule close-out uses) in the same
   repository as the primary item, at most ten. A pull request a Session only
