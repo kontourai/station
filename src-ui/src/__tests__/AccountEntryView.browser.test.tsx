@@ -833,8 +833,13 @@ test('passkey confirmation keyboard and geometry preserve current intent across 
           await keyboardReach(page, controls.confirm);
           await page.keyboard.press('Enter');
           await controls.dialog
-            .getByText('Passkey removal unavailable.', { exact: true })
+            .getByText('Try again in a moment.', { exact: true })
             .waitFor();
+          expect(
+            await controls.dialog
+              .getByText('Passkey removal unavailable.', { exact: true })
+              .count(),
+          ).toBe(0);
           await measureDialog(page, width, 'B-503-recovery');
           await fixture.capture('B-503-recovery');
           await keyboardReach(page, controls.confirm);
