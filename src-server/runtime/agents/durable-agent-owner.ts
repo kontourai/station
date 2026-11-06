@@ -172,6 +172,7 @@ function createStationOwner(home: string) {
       }
     : { id: randomUUID(), pid: process.pid, identityKind: 'unverified' };
   let released = false;
+  let pausing: Promise<void> | undefined;
   let retiredTurns: ReturnType<typeof listSqliteAgentTurns> = [];
   const liveness = ownerLivenessFromProbe(probeExactProcessIdentity, {
     isReleased: (id) => releasedOwners.has(id),
@@ -269,9 +270,12 @@ function createStationOwner(home: string) {
     },
     async close() {
       if (handle) {
-        await handle.journal.close();
-        handle.database.close();
-        handle = undefined;
+        try {
+          await handle.journal.close();
+        } finally {
+          handle.database.close();
+          handle = undefined;
+        }
       }
     },
   };
@@ -707,19 +711,28 @@ function createStationOwner(home: string) {
         );
       });
     },
-    async pause() {
-      for (const job of jobs.values()) job.pause();
-      runtime.pause();
-      await Promise.all(
-        [...jobs.values()].map((job) => job.completion.catch(() => {})),
-      );
-      retiredTurns = existsSync(path)
-        ? withJournal(({ database }) => listSqliteAgentTurns({ database }))
-        : [];
-      await journal.close();
-      released = true;
-      releasedOwners.add(owner.id);
-      owners.delete(home);
+    pause() {
+      if (pausing) return pausing;
+      pausing = (async () => {
+        for (const job of jobs.values()) job.pause();
+        runtime.pause();
+        await Promise.all(
+          [...jobs.values()].map((job) => job.completion.catch(() => {})),
+        );
+        retiredTurns = existsSync(path)
+          ? withJournal(({ database }) => listSqliteAgentTurns({ database }))
+          : [];
+        try {
+          await journal.close();
+        } finally {
+          if (!handle) {
+            released = true;
+            releasedOwners.add(owner.id);
+            owners.delete(home);
+          }
+        }
+      })();
+      return pausing;
     },
     list() {
       if (released) return structuredClone(retiredTurns);

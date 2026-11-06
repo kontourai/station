@@ -1,10 +1,10 @@
-import { statSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { DatabaseSync } from 'node:sqlite';
 import { setTimeout } from 'node:timers/promises';
 import { agentWire } from '@kontourai/agent-runtime/internal';
-import { beforeEach, expect, it } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { resetFixtureSqliteSynchronousForTest } from '../../../utils/sqlite-fixture-durability.js';
 import { durableAgentCheckpoint } from '../durable-agent-checkpoint.js';
@@ -135,5 +135,70 @@ it('closing an in-flight checkpoint reaps the worker and retains committed data'
   } finally {
     await checkpoint.close();
     db.close();
+  }
+});
+
+it('a failed final checkpoint closes SQLite and releases the owner without losing committed data', async () => {
+  const home = temp('durable-checkpoint-close-failure-');
+  const path = join(home, 'data', 'agent-runtime', 'steps.sqlite');
+  const owner = stationAgentRuntimeOwner(home);
+  owner.configure({
+    preview: { select: (branches) => branches.enabled() },
+    failed: (error) => {
+      throw error;
+    },
+  });
+  owner.registerAgent('assistant', 'definition/1', async () => {
+    throw new Error('No model invocation expected');
+  });
+  await owner.runtime.start({
+    key: {
+      scopeId: 'station',
+      conversationId: 'conversation',
+      invocationId: 'turn',
+    },
+    implementation: 'station-agent/1',
+    input: agentWire({
+      version: 1,
+      slug: 'assistant',
+      definition: 'definition/1',
+      input: 'go',
+      options: { conversationId: 'conversation', userId: 'owner' },
+    }),
+  });
+  const close = vi.spyOn(DatabaseSync.prototype, 'close');
+  try {
+    const closing = owner.pause();
+    queueMicrotask(() => renameSync(path, `${path}.held`));
+    await expect(closing).rejects.toThrow('ENOENT');
+    renameSync(`${path}.held`, path);
+    expect(close).toHaveBeenCalledOnce();
+    expect(close.mock.contexts[0].isOpen).toBe(false);
+    await expect(owner.pause()).rejects.toThrow('ENOENT');
+    const replacement = stationAgentRuntimeOwner(home);
+    try {
+      expect(replacement).not.toBe(owner);
+      expect(replacement.read('conversation', 'turn')?.turn.state).toBe(
+        'running',
+      );
+      await expect(
+        replacement.runtime.recover(
+          {
+            scopeId: 'station',
+            conversationId: 'conversation',
+            invocationId: 'turn',
+          },
+          () => true,
+        ),
+      ).resolves.toMatchObject({ key: { invocationId: 'turn' } });
+      await expect(owner.pause()).rejects.toThrow('ENOENT');
+      expect(stationAgentRuntimeOwner(home)).toBe(replacement);
+    } finally {
+      await replacement.pause();
+    }
+  } finally {
+    if (existsSync(`${path}.held`)) renameSync(`${path}.held`, path);
+    close.mockRestore();
+    await owner.pause().catch(() => {});
   }
 });
