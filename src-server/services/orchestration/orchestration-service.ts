@@ -4154,6 +4154,11 @@ export class OrchestrationService {
         throw error;
       }
     }
+    const cancel =
+      input.resourceAdmissionIntent === 'interactive_user'
+        ? this.registerEngineStartCancel(input.threadId, input.signal)
+        : undefined;
+    if (cancel) input = { ...input, signal: cancel.signal };
     try {
       throwIfAborted(input.signal);
       const tenantExecutionContext =
@@ -4238,6 +4243,8 @@ export class OrchestrationService {
         adapter.provider,
       );
       throw error;
+    } finally {
+      cancel?.release();
     }
   }
 

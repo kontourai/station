@@ -529,7 +529,7 @@ describe('a credential-profile restart (#4568)', () => {
     expect(h.startsFor('live')).toBe(2);
   });
 
-  test('a restart cancelled after admission but before the provider start launches no engine', async () => {
+  test('a restart stopped after admission but before the provider start launches no engine', async () => {
     const h = await harness();
     await h.restoreDormant('live', { project: true });
     expect(
@@ -550,12 +550,17 @@ describe('a credential-profile restart (#4568)', () => {
     await lease.release();
     await admitted;
     await hold.reached;
-    cancel.abort(new Error('recovery cancelled'));
+    await h.service.dispatch(
+      { type: 'interruptTurn', threadId: 'live' },
+      { userId: 'owner' },
+    );
     hold.release();
     const result = await outcome;
     await settle();
     expect(h.startsFor('live')).toBe(1);
-    expect(result).toMatchObject({ message: 'recovery cancelled' });
+    expect(result).toMatchObject({
+      message: new EngineStartCancelledError().message,
+    });
   });
 
   test.each(['automation', undefined] as const)(
