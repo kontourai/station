@@ -350,6 +350,7 @@ describe('EventStore concurrent-home boot', () => {
         provider: 'codex',
         threadId: 'child',
         method: 'runtime.warning',
+        severity: 'warning',
         message: 'Configuration warning',
         createdAt: '2026-11-02T00:01:01.000Z',
       });
