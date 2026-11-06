@@ -170,7 +170,11 @@ describe('POST /api/tasks/:taskId/resume through the runtime composition', () =>
       homeDir: pairingHome,
       environmentId: '33333333-3333-4333-8333-333333333333',
     });
-    const pairDevice = (scope: string, name: string) => {
+    const pairDevice = (
+      scope: string,
+      name: string,
+      options: { atHost?: boolean } = {},
+    ) => {
       const offer = pairing.createOffer({
         endpoint: 'https://station.example.test',
         scope,
@@ -186,8 +190,12 @@ describe('POST /api/tasks/:taskId/resume through the runtime composition', () =>
         offerId: offer.offerId,
         proof: offer.challenge,
         requestId: pending.requestId,
-        locality: 'home-possession',
-        mintKind: 'local-grant',
+        ...(options.atHost === false
+          ? {}
+          : {
+              locality: 'home-possession' as const,
+              mintKind: 'local-grant' as const,
+            }),
       });
     };
     const reader = pairDevice('orchestration:read', 'Read-only device');
@@ -509,6 +517,41 @@ describe('POST /api/tasks/:taskId/resume through the runtime composition', () =>
       'station_control_route_unmapped',
       'task_resume_not_permitted',
     ]).toContain(direct.json.code);
+    expect(e.graphBytes()).toBe(bytes);
+  });
+
+  // A device paired from elsewhere with the operate tier but no host shell
+  // has no owner standing (#3994): it can dispatch, but it is not the
+  // operator in person, so only the route's own witness refuses it.
+  test('an operate-tier device that is not the operator in person is refused by the in-person witness', async () => {
+    const e = await setup();
+    await e.featurePreviews.setEnabled('task-resume', true);
+    const done = await e.doneTask();
+    const remote = e.pairDevice(
+      'orchestration:read orchestration:operate',
+      'Remote laptop',
+      { atHost: false },
+    );
+    const bytes = e.graphBytes();
+    const view = await e.call(
+      e.bearer(remote.credential),
+      'GET',
+      `/api/tasks/${done.id}/resume`,
+    );
+    expect(view).toMatchObject({
+      status: 403,
+      json: { code: 'task_resume_not_permitted' },
+    });
+    const post = await e.call(
+      e.bearer(remote.credential),
+      'POST',
+      `/api/tasks/${done.id}/resume`,
+      e.body(done),
+    );
+    expect(post).toMatchObject({
+      status: 403,
+      json: { code: 'task_resume_not_permitted' },
+    });
     expect(e.graphBytes()).toBe(bytes);
   });
 
