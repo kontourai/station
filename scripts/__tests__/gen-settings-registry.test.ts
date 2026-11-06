@@ -291,6 +291,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'experimental-station-routes': 'device',
   'experimental-sheet-gestures': 'device',
   'shared-answers': 'station',
+  'github-automations': 'station',
   'plugin-visibility': 'station',
   'host-runtime': 'informational',
   'diagnostics-bundle': 'informational',
