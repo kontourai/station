@@ -180,8 +180,10 @@ product decisions.
   A core that refuses startup because its machine policy cannot be enforced
   or its home requires reset exits with the reserved code `78`. During boot
   or rollback the supervisor logs that terminal refusal, retains the core's
-  stderr diagnostic, and gives up after one attempt. It does not interpret
-  marker text as authority. The CLI checks policy before requesting a restart,
+  stderr diagnostic, and gives up after one attempt. A terminal rollback
+  returns a refusal result before the control channel closes; a non-reading
+  requester is bounded by the existing one-second reply-close deadline.
+  It does not interpret marker text as authority. The CLI checks policy before requesting a restart,
   so an already-invalid policy does not drain the serving generation.
 
   A crash of the active generation, outside a drain, restarts it with

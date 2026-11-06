@@ -108,6 +108,8 @@ export interface HandoffOutcomeResult {
   reason?: string;
   generation?: number;
   bootId?: string;
+  /** Internal: the control adapter stops only after its outcome reply settles. */
+  terminalStartupRefusal?: true;
 }
 
 export interface GenerationManagerOptions {
@@ -391,6 +393,9 @@ export class GenerationManager {
         generation: survivor.id,
       });
     }
+    // A core-originated handoff has no surviving requester after rollback
+    // startup fails. Control-originated handoffs settle their reply first.
+    if (result.terminalStartupRefusal && requester !== null) this.giveUp(1);
     return result;
   }
 
@@ -926,8 +931,10 @@ export class GenerationManager {
     }
   }
 
-  /** Launches one generation and brings it to `serving`; false on failure. */
-  private async launchActive(entry: string): Promise<Generation | null> {
+  /** Launches one generation; a terminal refusal is distinct from a retryable failure. */
+  private async launchActive(
+    entry: string,
+  ): Promise<Generation | 'startup-refused' | null> {
     const gen = this.launch(entry);
     this.trial = gen;
     const parked = await this.waitForDeadline(
@@ -954,7 +961,7 @@ export class GenerationManager {
     this.trial = null;
     if (gen.exitCode === CORE_STARTUP_REFUSED_EXIT_CODE) {
       this.log(`generation ${gen.id} refused startup; not retrying`);
-      this.giveUp(1);
+      return 'startup-refused';
     }
     return null;
   }
@@ -973,6 +980,10 @@ export class GenerationManager {
     for (;;) {
       if (this.stopping || this.gaveUp) return;
       const gen = await this.launchActive(this.entry);
+      if (gen === 'startup-refused') {
+        this.giveUp(1);
+        return;
+      }
       if (gen) {
         this.commitActive(gen);
         return;
@@ -1050,6 +1061,13 @@ export class GenerationManager {
     this.entry = previousEntry;
     this.active = null;
     const gen = await this.launchActive(previousEntry);
+    if (gen === 'startup-refused') {
+      return {
+        outcome: 'refused',
+        reason: `${reason}; previous entry refused startup; supervisor is stopping`,
+        terminalStartupRefusal: true,
+      };
+    }
     if (gen) {
       this.commitActive(gen);
       this.emit({ type: 'handoff', phase: 'rolled-back', generation: gen.id });
@@ -1060,10 +1078,11 @@ export class GenerationManager {
         bootId: gen.bootId ?? undefined,
       };
     }
-    if (!this.stopping && !this.gaveUp) void this.bringUp('restarting', true);
+    const retrying = !this.stopping && !this.gaveUp;
+    if (retrying) void this.bringUp('restarting', true);
     return {
       outcome: 'rolled-back',
-      reason: `${reason}; previous entry failed to start, restarting`,
+      reason: `${reason}; previous entry failed to start, ${retrying ? 'restarting' : 'supervisor is stopping'}`,
     };
   }
 
