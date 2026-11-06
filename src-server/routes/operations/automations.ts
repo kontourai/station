@@ -155,14 +155,30 @@ const optionalExpected = z
 /** Actions only the isolated-repair surface may enable. */
 const REPAIR_ONLY_GRANTS = new Set(['isolated-repair', 'publish-branch']);
 
+/** A refusal this module authors; `text` is always one of its own literals. */
 class RouteRefusal extends Error {
   constructor(
     readonly status: 400 | 403 | 404 | 409,
-    message: string,
+    readonly text: string,
     readonly code?: string,
   ) {
-    super(message);
+    super(text);
   }
+}
+
+/**
+ * Validation problems are authored in `automation-config-validation.ts` and
+ * the store, and name only configuration paths, ids and the caller's own
+ * (schema-bounded) keys. They are still bounded and stripped of control
+ * characters before they leave the route.
+ */
+function boundedProblems(problems: readonly string[]): string[] {
+  return problems.slice(0, 8).map((problem) =>
+    Array.from(problem.slice(0, 200), (char) => {
+      const code = char.charCodeAt(0);
+      return code < 0x20 || code === 0x7f ? ' ' : char;
+    }).join(''),
+  );
 }
 
 /** `<ruleId>:<episodeId>`: a rule id never contains a colon; an episode id may. */
@@ -298,20 +314,23 @@ export function createAutomationRoutes(
         return c.json(
           {
             success: false,
-            error: error.message,
+            error: error.text,
             ...(error.code ? { code: error.code } : {}),
           },
           error.status,
         );
-      if (error instanceof AutomationValidationError)
+      if (error instanceof AutomationValidationError) {
+        const problems = boundedProblems(error.problems);
         return c.json(
           {
             success: false,
-            error: error.message,
+            error: `Automation change refused: ${problems.join('; ')}`,
             code: error.code,
+            problems,
           },
           409,
         );
+      }
       if (error instanceof AutomationPolicyUnavailableError) {
         logger.warn('Automation policy unavailable', { detail: error.detail });
         return c.json(
