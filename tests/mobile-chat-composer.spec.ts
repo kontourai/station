@@ -1385,6 +1385,126 @@ test('stages a current-host attachment before dispatching only its opaque refere
   expect(JSON.stringify(dispatched[0])).not.toContain('c3RhZ2UgbWU=');
 });
 
+// #4568: a person's follow-up whose engine start is queued behind another
+// engine start. Station publishes the wait on the Session's summary and says
+// so through the session-projection update; the dock shows it while the send
+// is in flight and drops it when Station clears it.
+test('shows the engine-start capacity wait while Station holds a send, and clears it with Station', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const sessionId = 'claude:1760000000000';
+  let waiting = false;
+  await page.route('**/api/orchestration/coordinator', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill(json({ success: true, data: { designation: null } }))
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            threadId: sessionId,
+            provider: 'claude',
+            model: 'model-selected',
+            status: 'ready',
+            lifecycleState: 'idle',
+            controlMode: 'station-owned',
+            answerability: { answerable: true },
+            createdAt: '2026-11-06T12:00:00.000Z',
+            updatedAt: '2026-11-06T12:00:00.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 1,
+            ...(waiting
+              ? { engineStartWait: { since: '2026-11-06T12:00:01.000Z' } }
+              : {}),
+          },
+        ],
+      }),
+    ),
+  );
+  await page.route(
+    `**/api/orchestration/conversations/${encodeURIComponent(sessionId)}/**`,
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'This capacity fixture does not emit provider events',
+        }),
+      }),
+  );
+  let releaseSend!: () => void;
+  const sendHeld = new Promise<void>((resolve) => {
+    releaseSend = resolve;
+  });
+  const dispatched: unknown[] = [];
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched.push(route.request().postDataJSON());
+    await sendHeld;
+    await route
+      .fulfill(
+        json(
+          foregroundMessageReceiptEnvelope({
+            conversationId: sessionId,
+            agent: 'agent:claude',
+          }),
+        ),
+      )
+      .catch(() => undefined);
+  });
+
+  const textarea = await openComposer(page);
+  await textarea.fill('Continue the review.');
+  waiting = true;
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(() => expect(dispatched).toHaveLength(1)).toPass({
+    timeout: 10_000,
+  });
+  await emitMockOrchestrationEvent(
+    page,
+    'orchestration:session-projection-updated',
+    { threadId: sessionId },
+  );
+  const badge = page.getByTestId('chat-dock-engine-start-wait');
+  await expect(badge).toContainText('Waiting for another engine to start', {
+    timeout: 10_000,
+  });
+
+  for (const [width, height] of [
+    [390, 844],
+    [1440, 900],
+  ] as const) {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme });
+      await expect(badge).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `engine-start-wait-${width}-${colorScheme}.png`,
+        ),
+        animations: 'disabled',
+      });
+    }
+  }
+
+  waiting = false;
+  await emitMockOrchestrationEvent(
+    page,
+    'orchestration:session-projection-updated',
+    { threadId: sessionId },
+  );
+  await expect(badge).toHaveCount(0, { timeout: 10_000 });
+  releaseSend();
+});
+
 // archive#3344. The whole paste path against the STATION engine — the one an
 // unbound Station agent uses, and the one whose composer used to refuse every
 // image because no signal it read said yes. Three claims, each of which failed
