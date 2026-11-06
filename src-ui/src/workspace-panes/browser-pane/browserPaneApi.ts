@@ -476,6 +476,17 @@ function describeUrlRefusal(
   }
 }
 
+const BROWSER_GUIDE_URL =
+  'https://github.com/kontourai/station/blob/main/docs/guides/browser-workspace.md';
+
+/** A guide section that fixes this failure, when one exists. */
+export function browserFailureHelpUrl(error: unknown): string | undefined {
+  if (!(error instanceof BrowserApiError)) return undefined;
+  return error.code === 'browser-sandbox-unavailable'
+    ? `${BROWSER_GUIDE_URL}#no-usable-sandbox-on-linux`
+    : undefined;
+}
+
 /** Why a browser request failed, for a notice line. */
 export function describeBrowserFailure(error: unknown, typed = ''): string {
   if (!(error instanceof BrowserApiError))
@@ -497,6 +508,8 @@ export function describeBrowserFailure(error: unknown, typed = ''): string {
       return 'The browser is not set up on this Station yet.';
     case 'browser-host-failed':
       return 'The browser could not start, or stopped unexpectedly.';
+    case 'browser-sandbox-unavailable':
+      return 'This Station’s Linux host blocks the browser sandbox. Its operator must allow it.';
     case 'browser-refused':
       return 'The browser refused that request.';
     case 'browser-error':

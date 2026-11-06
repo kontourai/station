@@ -10,7 +10,11 @@
  * dist.integrity`. `requiredIntegrity` below repeats that value so a lockfile
  * edited out of step with its pin fails closed (see `assertPinnedLock`).
  *
- * Version choice: expo-device-hub 0.10.1 over the 0.9.0 Station's experiment
+ * Version choice: expo-device-hub 0.19.1 (bumped 2026-11-04 from 0.10.1, with
+ * its lockfile generated the same way) for foldable support: serve-sim's
+ * hinge control and per-display panel streams, and serve-emu's `/api/fold`.
+ * Its hub-level route strings match 0.10.1's apart from a new `/healthz`.
+ * Earlier: expo-device-hub 0.10.1 over the 0.9.0 Station's experiment
  * used. Both were started on loopback with `--port 0` and answered `/readyz`
  * and `/api/devices` with the same device-list shape `LocalMobileDeviceHost`
  * parses; 0.10.1 is the version another shipping integration pins.
@@ -18,9 +22,11 @@
  * integration pins.
  *
  * Disclosed limitation — WebRTC is unsupported. expo-device-hub depends on
- * node-datachannel, a native addon whose install script would download a
- * prebuilt binary; `--ignore-scripts` skips it, so no native binary is
- * installed. serve-emu's WebRTC path would try to fetch one at runtime with
+ * node-datachannel, a native addon. Up to hub 0.10.1 its install script
+ * downloaded a prebuilt binary, which `--ignore-scripts` skips; from the
+ * 0.19.1 tree its prebuilt binaries are per-platform OPTIONAL packages,
+ * which the install omits (`--omit=optional`). Either way no native binary
+ * is installed; the hub loads node-datachannel only for WebRTC. serve-emu's WebRTC path would try to fetch one at runtime with
  * prebuild-install (unpinned); Station prevents that three ways: the hub
  * guard refuses the WebRTC offer routes, refuses to spawn prebuild-install,
  * and the hub's npm proxy settings point at a dead loopback port. Streams
@@ -38,7 +44,7 @@ import type { DeviceToolId } from '@kontourai/station-contracts/device-toolchain
 import agentDeviceLock from './locks/agent-device-0.21.12.lock.json' with {
   type: 'json',
 };
-import deviceHubLock from './locks/expo-device-hub-0.10.1.lock.json' with {
+import deviceHubLock from './locks/expo-device-hub-0.19.1.lock.json' with {
   type: 'json',
 };
 
@@ -55,6 +61,8 @@ export interface PinnedLockfile {
       integrity?: string;
       dependencies?: Record<string, string>;
       bin?: unknown;
+      /** npm marks platform-specific prebuilt packages optional. */
+      optional?: boolean;
     }
   >;
 }
@@ -72,9 +80,9 @@ export interface DeviceToolPin {
 export const DEVICE_TOOL_PINS: Readonly<Record<DeviceToolId, DeviceToolPin>> = {
   'expo-device-hub': {
     tool: 'expo-device-hub',
-    version: '0.10.1',
+    version: '0.19.1',
     requiredIntegrity:
-      'sha512-C2f36TsgiE86lMOxBxCPUrmBO2bBIjGZ3sM6IMM0Y5akZZZxALdy/LlDRcVGJg48cS336CHWsGvrCnnCjhw/Fw==',
+      'sha512-66hr69k4brclwKMtAEj+/j6GLtgtd+opcXDoUaFTxTppaGiKJGAytilh1mORXhDgdyfVVXtnvtWCugpYbxkKOw==',
     entry: ['dist', 'server', 'cli.mjs'],
     lock: deviceHubLock as PinnedLockfile,
   },

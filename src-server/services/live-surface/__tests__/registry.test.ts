@@ -284,6 +284,33 @@ describe('live surface registry', () => {
     expect(maxInFlight).toBe(1);
   });
 
+  test("a producer's dispatch error is logged with the surface, input kind and cause, never the typed text, and the viewer gets dispatch-failed", async () => {
+    const logged: Array<[string, unknown]> = [];
+    const { producer, entry } = setup(() => true, {
+      hub: { onError: (message, error) => logged.push([message, error]) },
+    });
+    producer.dispatchImpl = (event) =>
+      event.kind === 'text'
+        ? Promise.reject(new TypeError('the page refused it'))
+        : Promise.resolve();
+    const result = await dispatchHumanInput(entry, human, 0, [
+      move(1),
+      { kind: 'text', text: 'hunter2' },
+    ]);
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'dispatch-failed',
+      accepted: 1,
+    });
+    expect(logged).toEqual([
+      [
+        'live surface input dispatch failed',
+        'surface-1 text: TypeError: the page refused it',
+      ],
+    ]);
+    expect(JSON.stringify(logged)).not.toContain('hunter2');
+  });
+
   test('a down that times out and lands late is still cancelled at the handoff (D3)', async () => {
     const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 20 });
     let land!: () => void;

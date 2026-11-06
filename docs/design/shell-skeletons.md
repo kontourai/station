@@ -203,8 +203,9 @@ The rule now:
   Three facts the frame cannot supply are read through the SAME function the arriving view reads
   them with, never a second copy: the **Guidance tab** (`views/guidance-tab.ts` — its Commands tab
   is a single-column list under the same `SPLIT_PANE` spec that makes Skills a pane),
-  the **mobile breakpoint** (`useIsMobile`, because below it a split pane shows one side and opens
-  on the detail whenever the route names a record), and the pane's **persisted collapse**
+  the **list/detail breakpoint** (`useStackedListDetail`, because below it a split pane shows one
+  side and opens on the detail whenever the route names a record; it is narrower than the phone
+  breakpoint, so a foldable open in portrait shows both), and the pane's **persisted collapse**
   (`split-pane-metrics.ts`, whose pane ids are declared once and imported by both the view that
   mounts the pane and the placeholder). Getting the last one wrong is a 252 px jump.
   There is no timer and no cap on the departing body. React shows a Suspense fallback — hiding the

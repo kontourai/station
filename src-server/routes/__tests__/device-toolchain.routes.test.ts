@@ -623,6 +623,9 @@ describe('device hub proxy', () => {
         '/hosts/local/hub/vendor/serve-sim/helper/a%2F..%2F..%2Fexec/config',
       ],
       ['POST', '/hosts/local/hub/api/devices'],
+      // Folding an emulator goes only through the live surface's fold input,
+      // under its control lease: never the proxy, whoever asks.
+      ['POST', '/hosts/local/hub/vendor/serve-emu/api/fold'],
     ] as const) {
       const response = await h.request(
         method,

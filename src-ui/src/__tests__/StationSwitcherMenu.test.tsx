@@ -21,6 +21,7 @@ vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({
 
 import { navigationStore } from '../contexts/navigation-store';
 import { toastStore } from '../contexts/ToastContext';
+import { MOBILE_MEDIA_QUERY } from '../hooks/useIsMobile';
 import {
   forgetStationProbe,
   isProbeable,
@@ -135,6 +136,10 @@ function openMenu(
   forget = vi.fn(async (_connection: SavedConnection) => {}),
   canForget: (connection: SavedConnection) => boolean = () => true,
   select = vi.fn(async (_connection: SavedConnection) => {}),
+  {
+    activeDisplayName,
+    onPairPhone,
+  }: { activeDisplayName?: string; onPairPhone?: () => void } = {},
 ) {
   const anchor = document.createElement('button');
   document.body.append(anchor);
@@ -153,6 +158,8 @@ function openMenu(
       canForget={canForget}
       onClose={close}
       onManage={manage}
+      onPairPhone={onPairPhone}
+      activeDisplayName={activeDisplayName}
     />,
   );
   unregister.push(() => anchor.remove());
@@ -373,7 +380,11 @@ test('a touch screen opens on the previous Station, not the filter keyboard', ()
   vi.stubGlobal(
     'matchMedia',
     (query: string) =>
-      ({ matches: query === '(pointer: coarse)' }) as MediaQueryList,
+      ({
+        matches: query === '(pointer: coarse)',
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList,
   );
   recordStationUse('two');
   recordStationUse('one');
@@ -428,7 +439,11 @@ test('a touch screen keeps the keyboard down even when the previous Station is n
   vi.stubGlobal(
     'matchMedia',
     (query: string) =>
-      ({ matches: query === '(pointer: coarse)' }) as MediaQueryList,
+      ({
+        matches: query === '(pointer: coarse)',
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList,
   );
   const stopped: SavedConnection = {
     ...named('local', 'Local Station'),
@@ -471,6 +486,51 @@ test('arrow keys step between Stations, beside a filter that sits outside the me
   laptopRow.focus();
   fireEvent.keyDown(laptopRow, { key: 'ArrowDown' });
   expect(document.activeElement).toBe(row(/^Build box/));
+});
+
+/**
+ * Duo audit: the header chip named the seeded Station "Kontour" (its host,
+ * #4402) while this menu, opened from that chip, named the same Station
+ * "Default". The chip hands the menu the name it shows; every other row,
+ * whose host this device has not heard from, keeps its saved name.
+ */
+test('names the active seeded Station the way the chip does', () => {
+  openMenu(
+    [
+      { ...station, name: 'Default' },
+      { ...laptop, name: 'Default' },
+    ],
+    undefined,
+    undefined,
+    undefined,
+    { activeDisplayName: 'Kontour' },
+  );
+  expect(row('Kontour — Connected').getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByText('Kontour')).toBeTruthy();
+  // The peer's host is unknown here, so it keeps its saved name.
+  expect(row(/^Default/).getAttribute('aria-checked')).toBe('false');
+});
+
+test('a phone offers to connect another device, not to pair a phone', () => {
+  const pair = vi.fn();
+  openMenu(undefined, undefined, undefined, undefined, { onPairPhone: pair });
+  expect(screen.getByRole('menuitem', { name: 'Pair phone' })).toBeTruthy();
+  cleanup();
+  vi.stubGlobal(
+    'matchMedia',
+    (query: string) =>
+      ({
+        matches: query === MOBILE_MEDIA_QUERY,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList,
+  );
+  openMenu(undefined, undefined, undefined, undefined, { onPairPhone: pair });
+  expect(screen.queryByRole('menuitem', { name: 'Pair phone' })).toBeNull();
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Connect another device' }),
+  );
+  expect(pair).toHaveBeenCalledOnce();
 });
 
 test('#4519: under the managed limit "Pair phone" is disabled and the managed sentence and Get help link show beside it', () => {

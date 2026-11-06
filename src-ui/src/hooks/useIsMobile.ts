@@ -23,6 +23,24 @@ import type { DockMode } from '../types';
 export const MOBILE_MEDIA_QUERY =
   '(max-width: 768px), (max-height: 540px) and (pointer: coarse)';
 
+/**
+ * When a list/detail layout stacks (list, then detail as a sheet) rather than
+ * showing both side by side. Deliberately NOT the mobile breakpoint.
+ *
+ * "Is this a phone" and "is there room for two panes" diverge on a foldable
+ * held open in portrait: ~670 CSS px wide, a phone shell in every other
+ * respect, but wide enough for a 220px list beside its detail. Below 600px
+ * (every phone in portrait) and on a short coarse-pointer viewport (a phone
+ * held sideways, a foldable's cover in Tent) it still stacks.
+ *
+ * Like `MOBILE_MEDIA_QUERY`, the literal must stay byte-identical to the
+ * conditions on `SplitPaneLayout.css`'s stacked and side-by-side blocks,
+ * whose side-by-side block is guarded with the negation of the short
+ * clause for the same reason the desktop-only blocks are.
+ */
+export const LIST_DETAIL_STACKED_QUERY =
+  '(max-width: 599px), (max-height: 540px) and (pointer: coarse)';
+
 export type DockSlotDevice = {
   viewportWidth: number;
   coarsePointer: boolean;
@@ -97,19 +115,28 @@ export function effectivePlacement(
  * `@media (max-width: 768px)`.
  */
 export function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState<boolean>(() => getInitialMatch());
+  return useMediaQueryMatch(MOBILE_MEDIA_QUERY);
+}
+
+/** Whether list/detail layouts stack; see `LIST_DETAIL_STACKED_QUERY`. */
+export function useStackedListDetail(): boolean {
+  return useMediaQueryMatch(LIST_DETAIL_STACKED_QUERY);
+}
+
+function useMediaQueryMatch(query: string): boolean {
+  const [matches, setMatches] = useState<boolean>(() => getInitialMatch(query));
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const handler = (event: MediaQueryListEvent) => setIsMobile(event.matches);
+    const mq = window.matchMedia(query);
+    const handler = (event: MediaQueryListEvent) => setMatches(event.matches);
     // Sync once on mount in case the value changed before the effect ran.
-    setIsMobile(mq.matches);
+    setMatches(mq.matches);
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
-  }, []);
+  }, [query]);
 
-  return isMobile;
+  return matches;
 }
 
 /**
@@ -161,7 +188,7 @@ function getInitialDockDevice(): DockSlotDevice {
   };
 }
 
-function getInitialMatch(): boolean {
+function getInitialMatch(query: string): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
-  return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
+  return window.matchMedia(query).matches;
 }

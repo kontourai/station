@@ -19,6 +19,8 @@ import {
   injectedConnectionDotStatus,
   injectedConnectionStateLabel,
 } from '../connection-manager-modal-utils';
+import { requestExpiryLabel } from '../DevicePairingPanel';
+import { usePendingPairingApproval } from '../usePendingPairingApproval';
 
 interface ConnectionListPanelProps {
   connections: SavedConnection[];
@@ -37,6 +39,8 @@ interface ConnectionListPanelProps {
   getStatus: (connection: SavedConnection) => ConnectionStatus;
   /** A live access request owns this row until it reaches a terminal result. */
   pendingConnectionId?: string;
+  /** Stop waiting on the live request that owns `pendingConnectionId`'s row. */
+  onCancelPendingApproval?: () => void;
   onSelect: (connection: SavedConnection) => void;
   onCheck: (connection: SavedConnection) => void;
   onStartEdit: (connection: SavedConnection) => void;
@@ -108,6 +112,7 @@ function ConnectionRow({
   connection,
   activeConnectionId,
   pendingConnectionId,
+  onCancelPendingApproval,
   onSelect,
   onCheck,
   onStartEdit,
@@ -132,6 +137,7 @@ function ConnectionRow({
   renderConnectionDetails?: (connection: SavedConnection) => ReactNode;
   activeConnectionId?: string;
   pendingConnectionId?: string;
+  onCancelPendingApproval?: () => void;
   onSelect: (connection: SavedConnection) => void;
   onCheck: (connection: SavedConnection) => void;
   onStartEdit: (connection: SavedConnection) => void;
@@ -218,12 +224,15 @@ function ConnectionRow({
   // A supervised local server's dot reflects its lifecycle phase (the
   // browser never health-probes the loopback base); everything else keeps
   // the active-id/health-driven dot.
-  const dotStatus =
-    injectedConnectionDotStatus(connection) ?? getStatus(connection);
-  const meta = connectionCardMeta(
-    connection,
-    connection.id === pendingConnectionId,
-  );
+  const isPendingApproval = connection.id === pendingConnectionId;
+  // An approval wait is not an outage: the Station is unreachable to this
+  // device only because it has no access yet, so the row reads as in
+  // progress rather than "Can't connect".
+  const dotStatus = isPendingApproval
+    ? 'connecting'
+    : (injectedConnectionDotStatus(connection) ?? getStatus(connection));
+  const meta = connectionCardMeta(connection, isPendingApproval);
+  const pendingApproval = usePendingPairingApproval(connection.url);
 
   return (
     <div
@@ -263,10 +272,44 @@ function ConnectionRow({
                     : 'Reachable'
                   : dotStatus === 'error'
                     ? "Can't connect"
-                    : 'Connecting'}
+                    : isPendingApproval && meta
+                      ? meta.line
+                      : 'Connecting'}
             </span>
           )}
         </div>
+        {/* The status line above says "Waiting for approval" once; this
+            row adds only what is not said there: how long the request has
+            left, and the one thing to do about it. */}
+        {isPendingApproval &&
+          meta &&
+          (pendingApproval || onCancelPendingApproval) && (
+            <div className="station-connect-row__meta station-connect-row__pending">
+              {pendingApproval && (
+                <span aria-live="off">
+                  {/* The hook's own ticking clock, so this reading and the
+                      hook's expiry decision never disagree. */}
+                  {requestExpiryLabel(
+                    pendingApproval.expiresAt,
+                    pendingApproval.expiresAt - pendingApproval.remainingMs,
+                  )}
+                </span>
+              )}
+              {onCancelPendingApproval && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCancelPendingApproval();
+                  }}
+                  aria-label={`Stop waiting for ${connectionDisplayLabel(connection)}`}
+                  className="station-connect-btn station-connect-btn--secondary station-connect-btn--inline"
+                >
+                  Stop waiting
+                </button>
+              )}
+            </div>
+          )}
         {detailsOpen && (
           <div className="station-connect-row__details">
             <button
@@ -296,7 +339,9 @@ function ConnectionRow({
             >
               Edit Station
             </button>
-            {renderConnectionDetails?.(connection)}
+            {/* Station-scoped settings need access this device does not
+                have yet; they return once the request is approved. */}
+            {!isPendingApproval && renderConnectionDetails?.(connection)}
           </div>
         )}
         {isLocalServerDown ? (
@@ -356,7 +401,7 @@ function ConnectionRow({
          * region gets announced as part of the status update, which is not
          * what a live region is for.
          */}
-        {meta && (
+        {meta && !isPendingApproval && (
           <div className="station-connect-row__meta station-connect-row__meta--warning">
             <span role="status">{meta.line}</span>
             {meta.action === 'request-access' && (
@@ -583,6 +628,7 @@ export function ConnectionListPanel({
   allowManualCredentials = true,
   getStatus,
   pendingConnectionId,
+  onCancelPendingApproval,
   onSelect,
   onCheck,
   onStartEdit,
@@ -763,6 +809,7 @@ export function ConnectionListPanel({
               connection={connection}
               activeConnectionId={activeConnectionId}
               pendingConnectionId={pendingConnectionId}
+              onCancelPendingApproval={onCancelPendingApproval}
               onSelect={onSelect}
               onCheck={onCheck}
               onStartEdit={onStartEdit}
@@ -848,7 +895,7 @@ export function ConnectionListPanel({
               onClick={onDiscover}
               className="station-connect-btn station-connect-btn--secondary"
             >
-              Find other Stations
+              Find nearby Stations
             </button>
           )}
         </section>
@@ -862,7 +909,7 @@ export function ConnectionListPanel({
               <div id="connection-list-pairing-refusal">{pairingRefusal}</div>
             ) : (
               <p>
-                Invite your phone to{' '}
+                Invite another device to{' '}
                 {connections.find(
                   (connection) => connection.id === activeConnectionId,
                 )?.name ?? 'the selected Station'}

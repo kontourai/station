@@ -283,9 +283,11 @@ describe('Connection Manager credential recovery', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(store.getActive()?.id).toBe(current.id);
     expect(store.getCredential(target.id)).toBeNull();
-    expect(
-      screen.getByRole('button', { name: /I reviewed access on the computer/ }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Pair again' })).toBeTruthy();
+    // Recovery never sends the user to revoke on the other computer.
+    expect(document.body.textContent).toContain(
+      'you do not need to revoke anything',
+    );
     vi.unstubAllGlobals();
   });
 
@@ -524,7 +526,7 @@ describe('Connection Manager credential recovery', () => {
     const { store, connection } = setup();
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Find other Stations' }),
+      screen.getByRole('button', { name: 'Find nearby Stations' }),
     );
     fireEvent.click(
       await screen.findByRole('button', {
@@ -532,7 +534,7 @@ describe('Connection Manager credential recovery', () => {
       }),
     );
     await screen.findByText(
-      'Ask to connect to Suggested Station. Approve this device on that computer.',
+      /^Ask to connect to Suggested Station\. Approve this device on that computer\./,
     );
     expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
     expect(fetch).not.toHaveBeenCalled();
@@ -562,13 +564,13 @@ describe('Connection Manager credential recovery', () => {
     });
     setup();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Find other Stations' }),
+      screen.getByRole('button', { name: 'Find nearby Stations' }),
     );
     await waitFor(() => expect(signals).toHaveLength(1));
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(signals[0].aborted).toBe(true);
     fireEvent.click(
-      screen.getByRole('button', { name: 'Find other Stations' }),
+      screen.getByRole('button', { name: 'Find nearby Stations' }),
     );
     await waitFor(() => expect(signals).toHaveLength(2));
     expect(signals[1].aborted).toBe(false);
@@ -581,7 +583,7 @@ describe('Connection Manager credential recovery', () => {
     setup();
 
     expect(
-      screen.queryByRole('button', { name: 'Find other Stations' }),
+      screen.queryByRole('button', { name: 'Find nearby Stations' }),
     ).toBeNull();
   });
 });

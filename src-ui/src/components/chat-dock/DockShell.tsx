@@ -1,10 +1,11 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useRef } from 'react';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import type { DockSlotGeometry } from '../../hooks/dock-slot-geometry';
 import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import { useSoftKeyboardTarget } from '../../hooks/useSoftKeyboardTarget';
 import {
   regionHoldsChat,
   regionLabel,
@@ -91,10 +92,26 @@ export function DockShell({
   // one shell may mount there (RegionShells.tsx).
   const renderedRegion = chrome.effectiveDockSlotPlacement;
   const isSidePanel = renderedRegion !== 'bottom';
+  // A collapsed phone bar anchors to the visible viewport's bottom edge, so a
+  // software keyboard opened for a field elsewhere (Home's composer) lifted
+  // it onto the keyboard, half under the accessory bar. A collapsed bar has
+  // no text entry of its own, so while another surface types it steps aside;
+  // the moment the keyboard closes it is back.
+  const shellRef = useRef<HTMLElement | null>(null);
+  const keyboardTarget = useSoftKeyboardTarget();
+  const hiddenForKeyboard =
+    chrome.isMobile &&
+    !isSidePanel &&
+    !isPaneOpen &&
+    !chrome.isCollapsedDragPreview &&
+    keyboardTarget !== null &&
+    !shellRef.current?.contains(keyboardTarget);
 
   return (
     <section
+      ref={shellRef}
       id={holdsChat ? 'chat-dock' : undefined}
+      data-keyboard-hidden={hiddenForKeyboard ? '' : undefined}
       data-region={renderedRegion}
       // Chat keeps the parity-pinned "Dock" landmark. A second shell needs a
       // distinct accessible name, so a non-Chat region uses its registered

@@ -579,6 +579,74 @@ describe('ChromiumScreencastProducer held-input cancel', () => {
   });
 });
 
+describe('ChromiumScreencastProducer: a release that is not delivered is still held (round 8, item 1)', () => {
+  test('a mouse release the page did not get keeps the button held, so the cancel releases it', async () => {
+    let refuse = true;
+    const fake = fakeCdp(({ params }) => {
+      if (params?.type === 'mouseReleased' && refuse) {
+        refuse = false;
+        throw new Error('not delivered');
+      }
+      return {};
+    });
+    const { producer: p } = producer(fake);
+    await p.dispatch({
+      kind: 'pointer',
+      type: 'down',
+      x: 5,
+      y: 5,
+      button: 'left',
+      clickCount: 1,
+    });
+    await expect(
+      p.dispatch({
+        kind: 'pointer',
+        type: 'up',
+        x: 5,
+        y: 5,
+        button: 'left',
+        clickCount: 1,
+      }),
+    ).rejects.toThrow('not delivered');
+    fake.calls.length = 0;
+    await p.cancelHeldInput({
+      buttons: ['left'],
+      keys: [],
+      pointer: { x: 5, y: 5 },
+      pointerType: 'mouse',
+      buttonPointerTypes: { left: 'mouse' },
+    });
+    // Still held when it leaves the page, and released there.
+    expect(fake.calls.map(({ params }) => params?.buttons)).toEqual([1, 0]);
+  });
+
+  test('a touch lift the page did not get keeps the touch active, so a later lift still goes', async () => {
+    let refuse = true;
+    const fake = fakeCdp(({ params }) => {
+      if (params?.type === 'touchEnd' && refuse) {
+        refuse = false;
+        throw new Error('not delivered');
+      }
+      return {};
+    });
+    const { producer: p } = producer(fake);
+    const touch = (type: 'down' | 'up') =>
+      p.dispatch({
+        kind: 'pointer',
+        type,
+        x: 4,
+        y: 4,
+        button: 'left',
+        pointerType: 'touch',
+      });
+    await touch('down');
+    await expect(touch('up')).rejects.toThrow('not delivered');
+    fake.calls.length = 0;
+    await touch('up');
+    expect(fake.calls.map(({ params }) => params?.type)).toEqual(['touchEnd']);
+  });
+});
+
 describe('ChromiumScreencastProducer JavaScript dialogs', () => {
   test('an alert is dismissed at once, even with no stream running, and reported', async () => {
     const onDialog = vi.fn();

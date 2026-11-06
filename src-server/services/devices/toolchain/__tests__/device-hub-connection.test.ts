@@ -60,6 +60,10 @@ describe('hub HTTP allowlist', () => {
     ['GET', '/vendor/serve-sim/helper/../exec'],
     ['GET', '/vendor/serve-sim/helper/a%2F..%2Fexec/config'],
     ['GET', '/vendor/serve-sim/helper/x/../../exec'],
+    // Only a dual-display simulator's two panels, and only their MJPEG.
+    ['GET', '/vendor/serve-sim/helper/ABC-1/panel/2/stream.mjpeg'],
+    ['GET', '/vendor/serve-sim/helper/ABC-1/panel/1/webrtc/offer'],
+    ['POST', '/vendor/serve-sim/helper/ABC-1/panel/1/stream.mjpeg'],
     ['GET', '//api/devices'],
     ['GET', 'api/devices'],
   ])('refuses %s %s', (method, path) => {
@@ -182,6 +186,30 @@ describe('client route table (D12)', () => {
   });
 
   test('device-scoped routes name their device where the table says', () => {
+    // A foldable: each display's own stream, and the emulator hinge.
+    expect(
+      device('GET', '/vendor/serve-sim/helper/ABC-1/panel/3/stream.mjpeg'),
+    ).toEqual({
+      purpose: 'view',
+      device: { platform: 'ios', deviceId: 'ABC-1' },
+    });
+    expect(
+      device('GET', '/vendor/serve-emu/api/fold', 'device=emulator-5554'),
+    ).toEqual({
+      purpose: 'view',
+      device: { platform: 'android', deviceId: 'emulator-5554' },
+    });
+    // Folding is not a client route at all (the lease-fenced fold input is
+    // the only way), though Station's own producer connection may call it.
+    expect(
+      device('POST', '/vendor/serve-emu/api/fold', 'device=emulator-5554'),
+    ).toBeUndefined();
+    expect(isHubHttpRequestAllowed('POST', '/vendor/serve-emu/api/fold')).toBe(
+      false,
+    );
+    expect(
+      isHubHttpRequestAllowed('POST', '/vendor/serve-emu/api/fold', 'station'),
+    ).toBe(true);
     expect(
       device('GET', '/vendor/serve-sim/helper/ABC-1/stream.mjpeg'),
     ).toEqual({

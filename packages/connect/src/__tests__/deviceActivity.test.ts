@@ -9,6 +9,7 @@ import {
   describeDeviceRevocation,
   describeDeviceScope,
   deviceRevokeError,
+  FULL_DEVICE_ACCESS_SCOPE,
   formatElapsed,
   partitionPairedDevices,
 } from '../core/deviceActivity';
@@ -201,6 +202,15 @@ describe('partitionPairedDevices', () => {
 });
 
 describe('describeDeviceScope', () => {
+  it('names a grant approved as requested the way the request named it', () => {
+    // The approver reads "asks for full device access"; the device list must
+    // not call that same grant "Custom access".
+    expect(describeDeviceScope(FULL_DEVICE_ACCESS_SCOPE)).toBe(
+      'Full device access',
+    );
+    expect(FULL_DEVICE_ACCESS_SCOPE.split(' ')).toContain('coding:exec');
+  });
+
   it('translates the legacy pre-scoping marker into copy', () => {
     expect(describeDeviceScope('station:interactive')).toBe(
       'Standard + device management',
