@@ -31,6 +31,7 @@ async function seedProjectFormRoutes(page: Page) {
       await route.fulfill(
         json({
           ready: true,
+          devicePresentation: { deviceClass: 'desktop', hostName: 'Kontour' },
           acp: { connected: false, connections: [] },
           clis: {},
           prerequisites: [],
@@ -457,54 +458,32 @@ test.describe('Project forms', () => {
           ).toBe(false);
         }
 
-        // The preview keeps the leaf folder in view and offers the whole
-        // path; the pill below prints the whole path, wrapped inside the card.
         const previewPath = section.locator('.project-settings__identity-path');
-        const previewLine = await inside('.project-settings__identity-path');
-        // One line (18px at this size), never a wrapped block.
-        expect(
-          previewLine.height,
-          `${context}: preview path is one line`,
-        ).toBeLessThan(30);
-        await expect(previewPath).toHaveAttribute('title', value);
-        await expectPathReadsWhole(
-          previewPath,
-          {
-            parent: '.project-settings__identity-path-parent',
-            leaf: '.project-settings__identity-path-leaf',
-          },
-          value,
-          label,
-          context,
+        await inside('.project-settings__identity-path');
+        await expect(previewPath).toHaveAttribute('title', `Kontour: ${value}`);
+        await expect(previewPath.locator('.station-path__host')).toHaveText(
+          'Kontour',
         );
-        const savedAs = section
-          .locator('.project-settings__path-pill')
-          .filter({ hasText: 'path' });
-        await expect(savedAs.locator('code')).toHaveText(value);
-        for (const pill of await section
-          .locator('.project-settings__path-pill')
-          .all()) {
-          const rect = (await pill.boundingBox())!;
-          expect(
-            rect.x + rect.width,
-            `${context}: path pill right edge`,
-          ).toBeLessThanOrEqual(card.x + card.width + 0.5);
-          // The value stays inside its pill, and the pill's label ("leaf",
-          // "path") stays on one line however far the value wraps.
-          const code = (await pill.locator('code').boundingBox())!;
-          expect(
-            code.x + code.width,
-            `${context}: path pill value right edge`,
-          ).toBeLessThanOrEqual(rect.x + rect.width + 0.5);
-          expect(
-            await pill.evaluate((node) => {
-              const range = document.createRange();
-              range.selectNodeContents(node.firstChild!);
-              return range.getClientRects().length;
-            }),
-            `${context}: path pill label lines`,
-          ).toBe(1);
-        }
+        const rawPath = previewPath.locator('.station-path__value');
+        await expect(rawPath).toHaveText(value);
+        expect(
+          await rawPath.evaluate((node) => {
+            const selection = window.getSelection()!;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            const text = selection.toString();
+            selection.removeAllRanges();
+            return text;
+          }),
+          `${context}: raw path stays copyable`,
+        ).toBe(value);
+        const pathBox = (await rawPath.boundingBox())!;
+        expect(
+          pathBox.x + pathBox.width,
+          `${context}: path stays inside card`,
+        ).toBeLessThanOrEqual(card.x + card.width + 0.5);
 
         const field = await inside('#project-working-directory');
         expect(field.width, `${context}: input width`).toBeGreaterThan(200);

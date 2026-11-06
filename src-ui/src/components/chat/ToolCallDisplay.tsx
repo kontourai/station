@@ -33,8 +33,10 @@ import {
 } from '../../hooks/orchestration/answerRequest';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { attentionWord } from '../../views/home/work-status';
 import { Button } from '../Button';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import {
   DiscardGlyph,
   DocumentGlyph,
@@ -148,7 +150,7 @@ export type ToolApprovalOutcome = 'answered' | 'already-settled';
 
 type ToolApprovalHandler = (
   action: 'once' | 'trust' | 'trust-server' | 'deny',
-) => void | Promise<ToolApprovalOutcome | void>;
+) => undefined | Promise<ToolApprovalOutcome | undefined>;
 
 interface ToolCallDisplayProps {
   toolCall: ToolCallData;
@@ -579,6 +581,9 @@ function gatedDecisionBody(
 
 /** Loading and failure of an approval's out-of-line content. */
 function ApprovalContentStatus({ gate }: { gate?: ApprovalContentGate }) {
+  const reason =
+    useOptionalConversationConnection()?.record?.answeringDeniedReason;
+  if (reason) return <p className="tool-call__approval-loading">{reason}</p>;
   if (!gate || gate.status === 'not-needed' || gate.status === 'ready')
     return null;
   if (gate.status === 'loading')
@@ -605,6 +610,13 @@ function useApprovalDecision(
   onCheck?: () => Promise<'pending' | 'already-settled'>,
   reference?: ApprovalAnswerReference,
 ) {
+  const target = useOptionalConversationConnection();
+  const denied = Boolean(
+    target?.record?.readOnly || target?.record?.answeringDeniedReason,
+  );
+  reference = reference
+    ? { ...reference, authorityKey: target?.requestScope?.authorityKey }
+    : undefined;
   const admission = useRef(false);
   const [checking, setChecking] = useState(false);
   const [localPhase, setPhase] = useState<ApprovalPhase>('idle');
@@ -659,15 +671,11 @@ function useApprovalDecision(
     (shared?.phase === 'unconfirmed'
       ? {
           summary:
-            shared.error?.message ?? 'Station has not confirmed this decision.',
-          detail:
-            shared.error?.cause instanceof Error
-              ? shared.error.cause.message
-              : undefined,
+            'Station has not confirmed this decision. Check its status before trying again.',
         }
       : null);
   const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
-    if (phase !== 'idle' || admission.current) return;
+    if (denied || phase !== 'idle' || admission.current) return;
     admission.current = true;
     setChosen(action);
     setPhase('sending');
@@ -692,23 +700,7 @@ function useApprovalDecision(
           error.code === 'approval_delivery_unconfirmed';
         setPhase(unconfirmed ? 'unconfirmed' : 'idle');
         admission.current = unconfirmed;
-        const translation = await import(
-          '../../utils/chatErrorTranslation'
-        ).catch(() => undefined);
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Station did not accept this decision.';
-        const code =
-          error instanceof Error &&
-          'code' in error &&
-          typeof error.code === 'string'
-            ? error.code
-            : undefined;
-        const translated = translation?.translateChatError({
-          message,
-          code,
-        }) ?? { title: 'Decision delivery failed', body: message };
+        const translated = describeStationFailure(error, target?.station);
         if (
           unconfirmed &&
           reference &&
@@ -716,13 +708,7 @@ function useApprovalDecision(
         )
           return;
         setFailure({
-          summary: unconfirmed
-            ? message
-            : `${translated.title}. ${translated.hint ?? translated.body}`,
-          detail:
-            error instanceof Error && error.cause instanceof Error
-              ? error.cause.message
-              : message,
+          summary: translated.body,
         });
       },
     );
@@ -738,9 +724,7 @@ function useApprovalDecision(
           setFailure(null);
         } catch (error) {
           setFailure({
-            summary:
-              'Station still could not confirm this decision. Reconnect and check again.',
-            detail: error instanceof Error ? error.message : undefined,
+            summary: describeStationFailure(error, target?.station).body,
           });
         } finally {
           setChecking(false);
@@ -754,7 +738,7 @@ function useApprovalDecision(
     chosen,
     checking,
     check,
-    busy: phase !== 'idle',
+    busy: denied || phase !== 'idle',
   };
 }
 
@@ -970,12 +954,11 @@ function ToolApprovalButtons({
   serverGrant,
   sessionGrant,
 }: ToolApprovalControlProps) {
-  const { phase, failure, decide, check, checking } = useApprovalDecision(
+  const { phase, failure, decide, check, checking, busy } = useApprovalDecision(
     onApprove,
     onCheck,
     reference,
   );
-  const busy = phase !== 'idle';
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
   // #3390: the options come from the approval's decision body. #2316: the

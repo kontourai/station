@@ -8,6 +8,7 @@ export { EnvironmentPicker as NewProjectEnvironmentPicker } from '../Environment
 
 interface DirectoryFieldProps {
   directory: string;
+  stationName?: string;
   /** The server's reason this exact directory was refused (4-HOME-008). */
   error?: string | null;
   /**
@@ -21,6 +22,7 @@ interface DirectoryFieldProps {
 
 export function NewProjectDirectoryField({
   directory,
+  stationName = 'the connected Station',
   error,
   notice,
   onDirectoryChange,
@@ -33,6 +35,7 @@ export function NewProjectDirectoryField({
           <label className="editor-label" htmlFor="new-project-directory">
             Project folder <span className="editor-hint"> optional</span>
           </label>
+          <p className="editor-hint">Folder on {stationName}</p>
           <PathAutocomplete
             autoFocus={false}
             id="new-project-directory"

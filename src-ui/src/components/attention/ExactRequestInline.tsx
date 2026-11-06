@@ -5,6 +5,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { openApprovalConversation } from '../../lib/openApprovalConversation';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
+import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { describeReadFailure, ErrorState, SkeletonBlock } from '../state';
 import { useExactRequestDecision } from './RequestInspectionDialog';
 import './ExactRequestInline.css';
@@ -85,7 +86,8 @@ function ExactRequestDecisionRow({
   quiet?: ReactNode;
   open?: ReactNode;
 }) {
-  const decision = useExactRequestDecision(reference, authority);
+  const answer = useApprovalAnswering(authority.apiBase);
+  const decision = useExactRequestDecision(reference, authority, answer);
   // An accepted decision opens its conversation, as every approval action in
   // the inbox does; a row without one stays and says the decision was sent.
   const sent = decision.response.isSuccess;

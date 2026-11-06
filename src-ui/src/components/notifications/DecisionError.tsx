@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { ErrorState } from '../state';
 
@@ -31,12 +32,8 @@ export function describeDecisionError(error: unknown): {
       message: "Couldn't reach Station. Check the connection and try again.",
       retryable: true,
     };
-  return {
-    message: text
-      ? `Station didn't accept the decision: ${text}`
-      : "Station didn't accept the decision.",
-    retryable: true,
-  };
+  const failure = describeStationFailure(error);
+  return { message: failure.body, retryable: failure.retryable !== false };
 }
 
 /** A row's failed decision, on that row, with its way forward. */
@@ -56,7 +53,11 @@ export function DecisionError({
     <div className="decision-error" data-testid="decision-error">
       <ErrorState
         variant="compact"
-        title="Decision not confirmed"
+        title={
+          describeStationFailure(error).delivery === 'refused'
+            ? 'Decision refused'
+            : 'Decision not confirmed'
+        }
         description={message}
         action={
           retryable && onRetry ? (

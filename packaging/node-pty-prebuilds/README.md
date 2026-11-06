@@ -8,9 +8,11 @@ approved Station artifact, the managed staging phase removes the current Linux
 target's bundled prebuild directory before the install hook runs; otherwise its
 presence alone would suppress compilation while artifact verification still
 requires `build/Release/pty.node`. Redirected paths fail before deletion, and
-other platform directories are retained. The lifecycle runner also forces the
-upstream source-build option for this artifact decision. macOS and Windows keep their upstream
-prebuild paths. A future reviewed Station artifact can still be staged into
+the staging phase leaves other platform directories in place. The lifecycle
+runner also forces the upstream source-build option for this artifact decision;
+that hook subsequently removes the entire prebuild tree in the Linux install
+before compiling. macOS and Windows installs keep their upstream prebuild
+paths. A future reviewed Station artifact can still be staged into
 `node_modules/node-pty/prebuilds/<target>/` by the dependency lifecycle (#1245).
 
 ## Contents

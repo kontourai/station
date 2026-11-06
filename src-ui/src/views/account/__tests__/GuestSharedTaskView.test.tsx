@@ -123,7 +123,9 @@ test('opens only the clicked shared Task human history and document', async () =
   expect(screen.queryByRole('button', { name: 'Read shared Task' })).toBeNull();
   expect(screen.getByText('@Planner')).toBeTruthy();
   expect(screen.queryByText(/\*\*@Planner/)).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Load more messages' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Load earlier messages' }),
+  );
   expect(await screen.findByText('Second page message')).toBeTruthy();
   expect(
     screen.getAllByText('Project member', { selector: 'strong' }),
@@ -276,7 +278,7 @@ test('revoked publication hides content and reports scope loss', async () => {
 });
 
 test.each([
-  ['gap', 'Shared history is incomplete'],
+  ['gap', 'Earlier history is unavailable'],
   ['too-large', 'Shared history is too large'],
   ['unavailable', 'Shared history is unavailable'],
 ] as const)(
@@ -495,11 +497,58 @@ test('a history transport outage stays on Chat while Brief remains readable', as
     await screen.findByRole('button', { name: 'Read shared Task' }),
   );
   expect(
-    await screen.findByText('Shared Task content is unavailable.'),
+    await screen.findByText('Shared history is unavailable.'),
   ).toBeTruthy();
   fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
   expect(
     await screen.findByRole('heading', { name: 'Shared goal' }),
   ).toBeTruthy();
   expect(screen.queryByText('Shared Task content is unavailable.')).toBeNull();
+});
+
+test('guest keeps admitted rows on a page failure and Retry uses the same cursor', async () => {
+  let pageAttempts = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      const url = new URL(input),
+        path = url.pathname;
+      if (path === '/api/account-auth/session') return account();
+      if (path.endsWith('/shared-work'))
+        return success([summary('project-a', 'alpha', 'Shared planning')]);
+      if (path.endsWith('/document')) return success({ kind: 'unavailable' });
+      if (path.endsWith('/history')) {
+        if (!url.searchParams.has('cursor'))
+          return success({
+            ...history('Retained **decision**'),
+            hasMore: true,
+            nextCursor: 'fixed-two',
+          });
+        expect(url.searchParams.get('cursor')).toBe('fixed-two');
+        if (++pageAttempts === 1) return new Response(null, { status: 503 });
+        return success({
+          ...history('Next decision'),
+          records: history('Next decision').records.map((row) => ({
+            ...row,
+            sequence: 2,
+          })),
+        });
+      }
+      throw Error('Unexpected fixture request ' + path);
+    }),
+  );
+  mount();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Read shared Task' }),
+  );
+  expect(
+    await screen.findByText('decision', { selector: 'strong' }),
+  ).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Load earlier messages' }),
+  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+  expect(screen.getByRole('list').textContent).toContain('Retained decision');
+  expect(await screen.findByText('Next decision')).toBeTruthy();
+  expect(pageAttempts).toBe(2);
 });

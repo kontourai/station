@@ -22,14 +22,19 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { withoutRepeatedRestartNotice } from '../../components/chat/message-bubble/visibleContent';
+import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
+import { chatBelongsToStation } from '../../connections/station-state';
+import { useChatStationConnection } from '../../connections/use-chat-station-connection';
+import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { retainChatTranscript } from '../../lib/retained-chat-transcript';
 import type { ChatMessage, ChatSession } from '../../types';
 import { projectedRuntimeErrorRaw } from '../../utils/chatErrorTranslation';
 import { serverTurnLive } from '../../utils/conversation-activity';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
 import {
-  conversationPartToContentParts,
+  conversationMessageToChatMessage,
   stitchWindowWithLiveEvents,
 } from './conversationTranscriptParts';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
@@ -328,12 +333,35 @@ function mergeTranscriptMessages(...groups: ChatMessage[][]): ChatMessage[] {
  * orchestration stream remains the only live authority.
  */
 export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
+  const contextTarget = useOptionalConversationConnection();
+  const { connection, unavailable, resolving } = useChatStationConnection(
+    session,
+    contextTarget?.station,
+  );
+  const target = useMemo(
+    () =>
+      connection
+        ? {
+            apiBase: connection.targetApiBase,
+            requestScope: {
+              ...connection.requestScope,
+              isCurrent: connection.isCurrent,
+            },
+            station: connection,
+          }
+        : contextTarget,
+    [connection, contextTarget],
+  );
+  apiBase = target?.apiBase ?? apiBase;
   // A replay has no server record. Its canonical fold owns the transcript;
   // querying the synthetic ID would replace settled replay rows with an empty page.
   const replay = isReplayThread(session.id);
   const replayHistory = useReplayHistory(session.id);
   const enabled = Boolean(
-    session.orchestrationSessionStarted && (!replay || replayHistory),
+    session.orchestrationSessionStarted &&
+      (!replay || replayHistory) &&
+      !unavailable &&
+      !resolving,
   );
   const serverWindow = useSessionEventWindow(
     apiBase,
@@ -342,6 +370,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     enabled && !replay ? (session.conversationId ?? session.id) : null,
     session.orchestrationHistoryRevision,
     session.currentSessionId ?? session.id,
+    target,
   );
   const retryHistory = useCallback(() => {
     invalidateSessionEventWindowCapabilityCache(apiBase);
@@ -551,7 +580,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.conversationActivity,
     window.events,
   ]);
-  const checkpointKey = `${apiBase}\0${session.id}\0${checkpointRevision}`;
+  const checkpointKey = `${apiBase}\0${target?.station?.runtimeKey ?? target?.requestScope?.authorityKey ?? 'host'}\0${session.id}\0${checkpointRevision}`;
   const [changedFilesState, setChangedFilesState] = useState<{
     key: string;
     byTurn: Map<string, NonNullable<ChatMessage['changedFiles']>>;
@@ -575,8 +604,11 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // this call 401'd (`credential_missing`) on every native client and the
     // changed-files data silently dropped.
     void getJson(
-      `${apiBase}/api/orchestration/sessions/${encodeURIComponent(session.id)}/checkpoints?revision=${checkpointRevision}`,
-      { signal: controller.signal },
+      `${apiBase}/api/orchestration/sessions/${encodeURIComponent(session.currentSessionId ?? session.id)}/checkpoints?revision=${checkpointRevision}`,
+      {
+        signal: controller.signal,
+        ...(target ? { requestScope: target.requestScope } : {}),
+      },
     )
       .then((response) =>
         readEnvelopeOrThrow<
@@ -608,7 +640,16 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         }
       });
     return () => controller.abort();
-  }, [apiBase, checkpointKey, checkpointRevision, enabled, replay, session.id]);
+  }, [
+    apiBase,
+    checkpointKey,
+    checkpointRevision,
+    enabled,
+    replay,
+    session.id,
+    session.currentSessionId,
+    target,
+  ]);
   const messages = useMemo(() => {
     if (!enabled) return session.messages;
     const agentBySessionId = new Map(
@@ -662,18 +703,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           ),
       )
       .map<ChatMessage>((message) => ({
-        id: message.id,
-        role: message.role,
-        content: message.parts
-          .filter((part) => part.type === 'text')
-          .map((part) => part.text ?? '')
-          .join(''),
-        contentParts: message.parts.flatMap(conversationPartToContentParts),
-        timestamp: message.metadata?.timestamp,
-        model: message.metadata?.model ?? undefined,
-        modelOptions: message.metadata?.modelOptions,
-        turnId: message.metadata?.turnId,
-        sessionId: message.metadata?.sessionId,
+        ...conversationMessageToChatMessage(message),
         agentSlug: message.metadata?.sessionId
           ? agentBySessionId.get(message.metadata.sessionId)
           : undefined,
@@ -685,36 +715,6 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           ? agentPresentationBySessionId.get(message.metadata.sessionId)
               ?.agentIcon
           : undefined,
-        sourceEventId: message.metadata?.sourceEventId,
-        ...(message.metadata?.steerInterruptedRun
-          ? { steerInterruptedRun: true }
-          : {}),
-        ...(message.metadata?.stationCheckBack
-          ? { stationCheckBack: true }
-          : {}),
-        ...(message.metadata?.stationMemoryContinuation
-          ? { stationMemoryContinuation: true }
-          : {}),
-        ...(message.metadata?.stationRestartContinuation
-          ? { stationRestartContinuation: true }
-          : {}),
-        ...(message.metadata?.interruptedTurnBoundaryId
-          ? {
-              interruptedTurnBoundaryId:
-                message.metadata.interruptedTurnBoundaryId,
-            }
-          : {}),
-        ...(message.metadata?.sender
-          ? { sender: message.metadata.sender }
-          : {}),
-        answerEligible: message.metadata?.answerEligible,
-        provenance: message.metadata?.provenance,
-        ...(message.metadata?.hostImages
-          ? { hostImages: message.metadata.hostImages }
-          : {}),
-        turnEnded: message.metadata?.turnEnded,
-        turnEndedReason: message.metadata?.turnEndedReason,
-        turnStoppedBy: message.metadata?.turnStoppedBy,
       }));
     // A turn Station's restart cut off says so once, on its own row.
     const projected = withoutRepeatedRestartNotice(projectedRows);
@@ -1026,8 +1026,60 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     window.contextBoundaries,
   ]);
 
+  const retainingTurnInFlight = isTurnInFlight(session);
+  useEffect(() => {
+    if (
+      !connection ||
+      connection.binding.affinity.kind === 'host' ||
+      contextTarget?.record ||
+      !enabled ||
+      replay ||
+      !window.settled ||
+      window.loading ||
+      window.error ||
+      serverWindow.catchingUp ||
+      liveGap ||
+      retainingTurnInFlight ||
+      !session.conversationId ||
+      !messages.length
+    )
+      return;
+    const latest = activeChatsStore.getSnapshot()[session.id];
+    if (
+      !latest ||
+      latest.conversationId !== session.conversationId ||
+      !chatBelongsToStation(latest, connection)
+    )
+      return;
+    const copy = retainChatTranscript(
+      connection.binding,
+      session.conversationId,
+      messages,
+    );
+    if (JSON.stringify(copy) !== JSON.stringify(latest.retainedTranscript))
+      activeChatsStore.updateChat(session.id, { retainedTranscript: copy });
+  }, [
+    connection,
+    contextTarget?.record,
+    enabled,
+    replay,
+    window.settled,
+    window.loading,
+    window.error,
+    serverWindow.catchingUp,
+    liveGap,
+    retainingTurnInFlight,
+    session.id,
+    session.conversationId,
+    messages,
+  ]);
+
   return {
     ...window,
+    ...(unavailable
+      ? { error: new Error('The owning Station connection is unavailable.') }
+      : {}),
+    loading: resolving || window.loading,
     events: stitchedEvents,
     enabled,
     catchingUp: !replay && (serverWindow.catchingUp || liveGap),

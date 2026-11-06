@@ -1,9 +1,9 @@
-import { respondToRequest } from '@kontourai/station-sdk/client';
 import { toolRequestIsPlanReview } from '@kontourai/station-shared/tool-request-preview';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
-import { useChatRequestTarget } from './ChatRequestContext';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { InputRequestCard } from './InputRequestCard';
 
 /**
@@ -18,9 +18,10 @@ export function InputRequestRequest({
   request: PendingApprovalRequest;
 }) {
   const host = useHostRequestAuthorityScope();
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const scope = target?.requestScope ?? host;
   const apiBase = target?.apiBase ?? scope?.apiBase;
+  const answer = useApprovalAnswering(apiBase ?? '');
   const { namespace, status } = useAuthorityPersistence();
   const {
     inputRequest,
@@ -30,13 +31,23 @@ export function InputRequestRequest({
     approvalToolName,
   } = request;
   if (
+    target?.record?.readOnly ||
+    target?.record?.answeringDeniedReason ||
+    (target?.station &&
+      (!target.station.isCurrent() ||
+        target.station.capabilities.inputAnswer.state !== 'allowed')) ||
     !scope ||
     !inputRequest ||
     !approvalId ||
     !approvalThreadId ||
     !approvalEventId
   )
-    return <p role="status">Connect to this Station to answer this request.</p>;
+    return (
+      <p role="status">
+        {target?.record?.answeringDeniedReason ??
+          'Connect to this Station to answer this request.'}
+      </p>
+    );
   const requestKey = [
     apiBase!,
     scope.authorityKey,
@@ -53,7 +64,12 @@ export function InputRequestRequest({
     inputRequest.source.startsWith('harness:') &&
     namespace &&
     status === 'verified'
-      ? [namespace, approvalThreadId, approvalId, approvalEventId]
+      ? [
+          target?.station?.stationKey ?? namespace,
+          approvalThreadId,
+          approvalId,
+          approvalEventId,
+        ]
           .map(encodeURIComponent)
           .join(':')
       : undefined;
@@ -64,17 +80,19 @@ export function InputRequestRequest({
       draftKey={draftKey}
       planReview={toolRequestIsPlanReview(approvalToolName)}
       onRespond={async (action, content) => {
-        await respondToRequest(
-          apiBase!,
+        if (target?.record?.readOnly)
+          throw new Error('This session is read only.');
+        await answer.input(
           {
             threadId: approvalThreadId,
             requestId: approvalId,
-            expectedRequestEventId: approvalEventId,
-            decision: action,
-            ...(action === 'accept' && content ? { content } : {}),
+            requestEventId: approvalEventId,
           },
-          { requestScope: scope },
+          action,
+          content,
+          scope,
         );
+        target?.record?.onAnswered?.();
       }}
     />
   );

@@ -1,5 +1,6 @@
 import { INBOX_SCOPE_CURRENT_PROJECT } from '@kontourai/station-contracts/device-settings';
 import { useMemo, useSyncExternalStore } from 'react';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -20,6 +21,7 @@ export function useInboxScope(
   now: number,
   facts?: WorkFactsById,
 ) {
+  const { namespace } = useAuthorityPersistence();
   const { visible } = useInboxDismissals(items, facts);
   const version = useSyncExternalStore(
     subscribeSnoozes,
@@ -88,7 +90,7 @@ export function useInboxScope(
         ? projectKey(item) === scope
         : stationById.get(item.id) === scope);
     const filtered = items.filter(matches);
-    const snoozed = readSnoozes(now);
+    const snoozed = readSnoozes(now, namespace);
     const hiddenAttention = visible.filter(
       (item) =>
         !matches(item) &&
@@ -111,6 +113,7 @@ export function useInboxScope(
     routeProject,
     setDeviceSetting,
     version,
+    namespace,
   ]);
 }
 

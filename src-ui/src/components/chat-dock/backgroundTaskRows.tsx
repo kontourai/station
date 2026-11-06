@@ -1,3 +1,4 @@
+import type { StationConnection } from '../../connections/station-connection';
 // #2050: the row every background-task list renders, lifted out of
 // `BackgroundTasksSheet.tsx` so the sheet and the Agents pane show ONE row
 // rather than two that drift. The class names and the stylesheet stay the
@@ -76,8 +77,10 @@ export function TaskRow({
   agent,
   agents,
   provider,
+  station,
 }: {
   entry: BackgroundTaskEntry;
+  station?: StationConnection;
   agent?: SessionIconAgent;
   agents?: readonly SessionIconAgent[];
   provider?: string;
@@ -87,6 +90,7 @@ export function TaskRow({
   onOpenTranscript: (threadId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const readTarget = station;
   const delegateThreadId = entry.delegateThreadId ?? '';
   const isRunningDelegate =
     entry.state === 'running' &&
@@ -96,8 +100,9 @@ export function TaskRow({
   const identityThreadId = delegateThreadId || entry.sessionThreadId || '';
   const activity = useOrchestrationSessionActivityQuery(
     identityThreadId,
-    undefined,
+    station?.targetApiBase,
     {
+      ...(readTarget ? { readTarget } : {}),
       enabled: identityThreadId.length > 0,
       staleTime: entry.state === 'running' ? 0 : 30_000,
       refetchInterval:
@@ -107,6 +112,7 @@ export function TaskRow({
     },
   );
   const detail = useOrchestrationSessionQuery(delegateThreadId, {
+    ...(readTarget ? { readTarget } : {}),
     enabled: expanded && delegateThreadId.length > 0,
     staleTime: entry.state === 'running' ? 0 : 30_000,
     refetchInterval: expanded && entry.state === 'running' ? 2_000 : undefined,
@@ -157,6 +163,9 @@ export function TaskRow({
     entry.state === 'running' &&
     entry.stop?.kind === 'provider-task-stop' &&
     providerSessionThreadId.length > 0;
+  // Child-task operations are outside the peer conversation protocol.
+  const remote = !!station && station.routeKind !== 'host';
+  const unavailable = remote || station?.isCurrent() === false;
   const providerStopRequested =
     stopProviderTask.isPending || stopProviderTask.isSuccess;
 
@@ -188,6 +197,11 @@ export function TaskRow({
           <strong className="background-tasks-sheet__title">
             {entry.title}
           </strong>
+          {station && (
+            <span className="background-tasks-sheet__meta">
+              Via {station.stationName}
+            </span>
+          )}
           <span className="background-tasks-sheet__meta">
             {entry.state === 'running' && (entry.latestTool || latestTool) ? (
               <ChildWorkActivity
@@ -239,6 +253,12 @@ export function TaskRow({
             <button
               type="button"
               className="background-tasks-sheet__action"
+              disabled={unavailable}
+              title={
+                unavailable && station
+                  ? `Open on ${station.stationName} to view this transcript`
+                  : undefined
+              }
               onClick={() => onOpenTranscript(delegateThreadId)}
             >
               View transcript
@@ -247,7 +267,12 @@ export function TaskRow({
               <button
                 type="button"
                 className="background-tasks-sheet__action background-tasks-sheet__action--stop"
-                disabled={stopRequested}
+                disabled={stopRequested || unavailable}
+                title={
+                  unavailable && station
+                    ? `Open on ${station.stationName} to stop this work`
+                    : undefined
+                }
                 onClick={() => interrupt.mutate({ taskId: delegateThreadId })}
               >
                 {stopRequested ? 'Stopping…' : 'Stop'}
@@ -267,7 +292,12 @@ export function TaskRow({
             <button
               type="button"
               className="background-tasks-sheet__action background-tasks-sheet__action--stop"
-              disabled={providerStopRequested}
+              disabled={providerStopRequested || unavailable}
+              title={
+                unavailable && station
+                  ? `Open on ${station.stationName} to stop this work`
+                  : undefined
+              }
               onClick={() =>
                 stopProviderTask.mutate({
                   threadId: providerSessionThreadId,

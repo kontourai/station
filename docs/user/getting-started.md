@@ -519,13 +519,15 @@ runs**. Choose the Station, then its **Engine & model**. With **Paired Station
 chats** enabled in Settings → Advanced → Feature previews, choose a Project
 from that Station’s own list, or **start without a project**. **Start** opens a
 chat tab that reads and replies to the conversation on the chosen Station.
-It keeps the destination visible, supports Stop and answers requests there.
-A failed or uncertain send keeps its text and delivery identity; **Check
-conversation** reads what arrived, and **Retry this message** reuses that
-message’s identity. **Edit in New Chat** opens a separate editable draft with
-those remote choices and keeps the original message. Check whether it arrived
-before sending changed work. You choose the receiver’s Project again before Start.
-This preview takes text only; attachment and visual-reply reads are unavailable.
+It looks like any chat, with **Via <Station>** in the header. Replies, files,
+Stop and approval answers use that Station. A refused message offers **Retry**
+and **Edit**. If delivery is uncertain, use **Check** before sending a
+changed copy. Station keeps the original pending message.
+
+Full access, choosing a folder, mentions, offline copies and local skill or
+workspace integrations are unavailable on a relayed chat. Turning the preview
+off keeps saved text and drafts visible. An older held chat offers **Reconnect
+chat**; confirm the Station before continuing.
 
 Choose the destination’s Project explicitly; Station does not match Projects
 between computers by name. Remote Tasks keep their separate execution consent.
@@ -705,25 +707,32 @@ preview** enabled in Settings → Advanced → Developer tools, swipe left to
 reveal the clock and × controls. The clock opens Snooze duration choices; ×
 dismisses the conversation. Dismissal leaves running work and history intact.
 Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
-or expand **Dismissed** and choose **Restore to inbox**.
+or search the inbox, find matching **Dismissed** results, and choose
+**Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+Hidden **Third-party** sessions stay hidden through external updates until you
+restore them or bring them into Station.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
 when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
 not settle a conversation automatically. Settlement syncs across your devices
-and is separate from dismissal or deletion. Each inbox group can collapse.
+and is separate from dismissal or deletion. **Working** holds running and
+monitoring chats; **Needs attention** takes priority whenever input is owed.
+Drafts appear as a pencil on the chat row in its current status. Collapse a
+shelf to move it below expanded work. Shelf menus let you move sections up or
+down, with that order saved on this device. **Settled** is last by default.
 
 The workspace map lists Projects and their named Layouts, followed by your
-**Personal Boards**. Its **+** creates a Board and lets you name it, even
+**Apps**. Its **+** creates a Board and lets you name it, even
 when the list is empty. Select a project to see its configured views as child rows.
 Use Up/Down inside the view list, or the header's Layout picker, to change
 views. The header's sidebar button collapses the desktop map to a project
 rail; clicking a project icon opens its views without navigating first.
-The dashboard icon below projects opens your Personal Boards and their add
+The dashboard icon below projects opens **Apps**, including your personal Boards and their add
 button. Escape closes either popup and returns focus to its icon.
 The footer puts live work beside your initials, which open a summary of your
 access with **My access**, **Profile**, **Ask Station for help** and **Open
@@ -912,10 +921,10 @@ remains for inspection. A message with attachments or a visual skill keeps its d
 until Station answers instead.
 
 If Station cannot confirm delivery after three automatic checks, the row shows
-**Delivery unconfirmed** and pauses those checks. **Refresh delivery** asks what
+**May have reached the agent** and pauses those checks. **Check** asks what
 happened and shows the result without resending. If Station confirms it never
 received the message, **Retry** sends it with the same identity. **Copy message**
-is in **More message actions**; **Discard** removes the saved row.
+is in **More delivery actions**; **Discard…** removes the saved row after confirmation.
 
 Once Station confirms a turn started, a late network error does not queue that
 message again.
@@ -1266,6 +1275,16 @@ Failed or uncertain runs offer **Inspect receipt**. They are not restarted
 automatically. See [Scheduler identity and recovery](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#run-a-scheduled-readiness-check).
 
 ## When Something Goes Wrong
+
+An access refusal names the Station to reconnect to or says it did not accept the
+message. Your draft stays editable. **Check** is for an unanswered send;
+a refusal does not mean delivery is uncertain. Unknown technical errors use a
+short recovery message, with diagnostics in Details where available.
+
+The Activity reader and coding tabs use the same reply controls as the dock.
+Shared Task history keeps the records already loaded when an earlier page fails;
+use **Retry** to read that page again. Inbox search, snooze, dismissal and Undo
+work across its desktop and mobile layouts.
 
 Open the help menu and choose **Troubleshoot with an agent**, or search the
 command palette for **Troubleshoot an issue**. It is also under Settings →

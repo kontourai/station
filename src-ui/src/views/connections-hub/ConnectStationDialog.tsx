@@ -29,6 +29,8 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { checkHostCompatibility } from '../../lib/compatibilityLoader';
 import type { OpenConnectionsModalDetail } from '../../lib/connectionModalEvents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { StationUiError } from '../../utils/StationUiError';
+import { describeStationFailure } from '../../utils/stationFailure';
 import './ConnectStationDialog.css';
 
 interface Destination {
@@ -124,7 +126,7 @@ export function ConnectStationDialog({
         url.hash ||
         (url.pathname !== '/' && url.pathname !== '')
       ) {
-        throw new Error(
+        throw new StationUiError(
           'Enter the Station address without a path, password, query, or fragment.',
         );
       }
@@ -137,11 +139,11 @@ export function ConnectStationDialog({
           controller.signal,
         );
         if (compatibility.blocking) {
-          throw new Error(
+          throw new StationUiError(
             !profile.isTauri &&
               apiBase !== window.location.origin &&
               compatibility.verdict === 'unknown'
-              ? 'This browser could not verify the Station. Browser origin restrictions, HTTPS-to-HTTP blocking, or connectivity may prevent reading its response.'
+              ? 'This browser could not verify the Station. Check its address, connection and browser HTTPS settings.'
               : compatibility.reason,
           );
         }
@@ -154,12 +156,14 @@ export function ConnectStationDialog({
           { signal: controller.signal, credentials: 'omit', redirect: 'error' },
         );
         if (!response.ok)
-          throw new Error(
+          throw new StationUiError(
             'The Station could not be identified. Check its address and retry.',
           );
         const reader = response.body?.getReader();
         if (!reader)
-          throw new Error('The Station returned no identity response.');
+          throw new StationUiError(
+            'The Station returned no identity response.',
+          );
         let text = '';
         let bytes = 0;
         const decoder = new TextDecoder();
@@ -169,7 +173,7 @@ export function ConnectStationDialog({
           bytes += chunk.value.byteLength;
           if (bytes > 32 * 1024) {
             await reader.cancel();
-            throw new Error(
+            throw new StationUiError(
               'The Station returned an oversized identity response.',
             );
           }
@@ -184,7 +188,9 @@ export function ConnectStationDialog({
           typeof handshake.environmentId !== 'string' ||
           !handshake.environmentId
         ) {
-          throw new Error('This address did not return a Station identity.');
+          throw new StationUiError(
+            'This address did not return a Station identity.',
+          );
         }
         const offer = input.payload
           ? decodeDevicePairingPayload(input.payload)
@@ -193,7 +199,7 @@ export function ConnectStationDialog({
           input.payload &&
           (!offer || offer.environmentId !== handshake.environmentId)
         )
-          throw new Error(
+          throw new StationUiError(
             'The pairing code and this Station report different identities. Request a fresh code.',
           );
         return {
@@ -376,11 +382,14 @@ export function ConnectStationDialog({
   );
   const failure =
     error ||
-    identify.error?.message ||
+    (identify.error
+      ? describeStationFailure(identify.error).body
+      : undefined) ||
     (!peerAuthorityRefused &&
-      (start.error?.message ||
-        complete.error?.message ||
-        cancel.error?.message));
+      ([start.error, complete.error, cancel.error].some(Boolean)
+        ? describeStationFailure(start.error ?? complete.error ?? cancel.error)
+            .body
+        : undefined));
 
   let failedBrowserOrigin: string | undefined;
   if (identify.isError && !profile.isTauri && identify.variables) {
@@ -809,27 +818,27 @@ export function ConnectStationDialog({
                       (scope.isCurrent() === false ||
                         connections.apiBase !== controller.apiBase)
                     )
-                      throw new Error(
+                      throw new StationUiError(
                         'Station access changed. Nothing was saved.',
                       );
                     if (
                       result.environmentId !== destination.environmentId ||
                       new URL(result.endpoint).origin !== destination.apiBase
                     )
-                      throw new Error(
+                      throw new StationUiError(
                         'Approved Station identity changed. Nothing was saved.',
                       );
                     const compatibility = await checkHostCompatibility(
                       destination.apiBase,
                     );
                     if (compatibility.blocking)
-                      throw new Error(compatibility.reason);
+                      throw new StationUiError(compatibility.reason);
                     if (
                       scope &&
                       (scope.isCurrent() === false ||
                         connections.apiBase !== controller.apiBase)
                     )
-                      throw new Error(
+                      throw new StationUiError(
                         'Station access changed. Nothing was saved.',
                       );
                     const existing = connections.connections.find(
@@ -862,7 +871,7 @@ export function ConnectStationDialog({
                       (scope.isCurrent() === false ||
                         connections.apiBase !== controller.apiBase)
                     )
-                      throw new Error(
+                      throw new StationUiError(
                         'Device access was saved, but Station access changed. Return to the original Station to review it.',
                       );
                     setDeviceSaved(true);

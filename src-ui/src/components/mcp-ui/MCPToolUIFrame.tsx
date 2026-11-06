@@ -62,6 +62,7 @@ import { useResolvedThemeMode } from '../../hooks/useResolvedThemeMode';
 import { useRootThemeVersion } from '../../lib/root-theme';
 import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { SkeletonBlock } from '../state';
 import './MCPToolUIFrame.css';
@@ -1636,7 +1637,7 @@ function renderFallback(fallbackComponent?: FallbackComponent) {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unknown MCP UI error';
+  return describeStationFailure(error).body;
 }
 
 async function fetchMCPToolUIResolution(

@@ -2,6 +2,7 @@ import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { usePreview } from '../../contexts/PreviewContext';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { DocumentGlyph } from '../icons/Glyph';
 import {
   type AttachmentObjectUrlSize,
@@ -21,7 +22,15 @@ import {
   dataUrlShape,
   thumbnailWorthMaking,
 } from './attachment-thumbnails';
-import { useChatRequestTarget } from './ChatRequestContext';
+
+function scopedAttachmentKey(
+  ref: string,
+  mediaType?: string,
+  namespace?: string,
+) {
+  const key = attachmentObjectUrlKey(ref, mediaType);
+  return namespace ? JSON.stringify([namespace, key]) : key;
+}
 
 interface FilePart {
   type: string;
@@ -62,32 +71,40 @@ export function useAttachmentObjectUrlState(
   ref: string | undefined,
   mediaType: string | undefined,
 ): { url: string | undefined; failed: boolean } {
-  const { apiBase } = useApiBase();
-  const target = useChatRequestTarget();
-  // The paired chat bridge currently relays text only.
-  if (target) ref = undefined;
-  const [objectUrl, setObjectUrl] = useState<string | undefined>(undefined);
+  const host = useApiBase();
+  const target = useOptionalConversationConnection();
+  const apiBase = target?.apiBase ?? host.apiBase;
+  const scope = target?.requestScope;
+  const allowed =
+    !target?.station ||
+    (target.station.isCurrent() &&
+      target.station.capabilities.attachmentRead.state === 'allowed');
+  const namespace = target?.station?.runtimeKey ?? scope?.authorityKey;
+  const key = ref ? scopedAttachmentKey(ref, mediaType, namespace) : undefined;
+  if (!allowed) ref = undefined;
+  const [objectUrl, setObjectUrl] = useState<{ key: string; url: string }>();
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     setFailed(false);
-    if (!ref) {
+    if (!ref || !key) {
       setObjectUrl(undefined);
       return;
     }
-    const key = attachmentObjectUrlKey(ref, mediaType);
+    const abort = new AbortController();
     let active = true;
     let held = false;
 
     const cached = acquireAttachmentObjectUrl(key);
     if (cached) {
       held = true;
-      setObjectUrl(cached);
+      setObjectUrl({ key, url: cached });
     } else {
       void (async () => {
         try {
           const response = await authenticatedFetch(
             `${apiBase}/api/attachments/${encodeURIComponent(ref)}`,
+            { requestScope: scope, signal: abort.signal },
           );
           if (!response.ok) throw new Error('Attachment bytes unavailable');
           // The route serves inert octet-stream and names no type — the
@@ -95,6 +112,7 @@ export function useAttachmentObjectUrlState(
           // right here. Applying it locally is what makes the object URL
           // renderable as an image.
           const bytes = await response.arrayBuffer();
+          if (!active || (scope && !scope.isCurrent())) return;
           const blob = new Blob([bytes], {
             type: mediaType ?? 'application/octet-stream',
           });
@@ -108,7 +126,7 @@ export function useAttachmentObjectUrlState(
             return;
           }
           held = true;
-          setObjectUrl(url);
+          setObjectUrl({ key, url });
         } catch {
           if (active) {
             setObjectUrl(undefined);
@@ -120,21 +138,24 @@ export function useAttachmentObjectUrlState(
 
     return () => {
       active = false;
+      abort.abort();
       if (held) releaseAttachmentObjectUrl(key);
+      if (namespace) retireAttachmentObjectUrl(key);
     };
-  }, [ref, mediaType, apiBase]);
+  }, [ref, mediaType, apiBase, scope, key, namespace]);
 
   // Bytes already cached under this reference show on the very first render,
   // before the effect above claims its hold. A sent bubble switches from its
   // inline bytes to the recorded reference at `turn.started` (the bytes are
   // seeded here then), and waiting a frame for the effect would flash the
   // chip to an untappable placeholder.
-  const cached = ref
-    ? peekAttachmentObjectUrl(attachmentObjectUrlKey(ref, mediaType))
-    : undefined;
-  return target
-    ? { url: undefined, failed: true }
-    : { url: cached ?? objectUrl, failed: !cached && failed };
+  const cached = key && allowed ? peekAttachmentObjectUrl(key) : undefined;
+  return {
+    url: allowed
+      ? (cached ?? (objectUrl?.key === key ? objectUrl?.url : undefined))
+      : undefined,
+    failed: !allowed || (!cached && failed),
+  };
 }
 
 type ChipThumbnail = AttachmentObjectUrlSize & { url: string };
@@ -256,7 +277,7 @@ function thumbnailKey(
  * have already published; a sibling that has not resolved yet is omitted
  * rather than shown broken.
  */
-function previewGallery(allParts: FilePart[] | undefined) {
+function previewGallery(allParts: FilePart[] | undefined, namespace?: string) {
   return (allParts || [])
     .filter((p) => p.type === 'file' && p.mediaType?.startsWith('image/'))
     .flatMap((p) => {
@@ -264,7 +285,7 @@ function previewGallery(allParts: FilePart[] | undefined) {
         p.url ??
         (p.blobRef
           ? peekAttachmentObjectUrl(
-              attachmentObjectUrlKey(p.blobRef, p.mediaType),
+              scopedAttachmentKey(p.blobRef, p.mediaType, namespace),
             )
           : undefined);
       return url
@@ -304,7 +325,7 @@ function ChipVisual({
 
 export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
   const { openPreview } = usePreview();
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   // Inline bytes win: a read that already carried the data URL has nothing to
   // fetch. Only a reference without bytes reaches the blob route.
   const fetchedUrl = useAttachmentObjectUrl(
@@ -313,8 +334,13 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
   );
   const resolvedUrl = part.url ?? fetchedUrl;
   const isImage = part.mediaType?.startsWith('image/') === true;
+  const rawThumbnailKey = thumbnailKey(part, resolvedUrl);
+  const thumbnailNamespace =
+    target?.station?.runtimeKey ?? target?.requestScope?.authorityKey;
   const thumbnail = useAttachmentThumbnail(
-    thumbnailKey(part, resolvedUrl),
+    rawThumbnailKey && thumbnailNamespace
+      ? JSON.stringify([thumbnailNamespace, rawThumbnailKey])
+      : rawThumbnailKey,
     resolvedUrl,
   );
 
@@ -344,7 +370,13 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
           },
           // Prev/next walks the images of this message; any other type opens
           // on its own.
-          isImage && !target ? previewGallery(allParts) : undefined,
+          isImage
+            ? previewGallery(
+                allParts,
+                target?.station?.runtimeKey ??
+                  target?.requestScope?.authorityKey,
+              )
+            : undefined,
         )
     : undefined;
 

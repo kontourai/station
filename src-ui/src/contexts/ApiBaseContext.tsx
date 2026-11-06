@@ -9,6 +9,7 @@ import {
   defaultCredentialStorage,
   type InjectedConnection,
   RejectingCredentialStorage,
+  type RequestCredentialEvidence,
   requestAuthorityScopeFromCredentialEvidence,
   setNativePairingExchangeTransport,
   useConnections,
@@ -19,7 +20,11 @@ import {
   setClientCredentialResolver,
   setClientRawEgressPolicyResolver,
 } from '@kontourai/station-sdk';
-import type { ClientCredential } from '@kontourai/station-sdk/client';
+import {
+  type ClientCredential,
+  type ClientCredentialResolver,
+  StationRequestAuthorityError,
+} from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type ReactNode,
@@ -29,6 +34,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from 'react';
+import { installStationConnectionAuthorityCapture } from '../connections/station-connection-authority';
 import {
   browserRelayAccountScopeKey,
   getBrowserRelayAccountScope,
@@ -57,6 +63,25 @@ import {
 import { useBundledServerStatus } from '../platform/useBundledServerStatus';
 
 const rejectingDesktopCredentialStorage = new RejectingCredentialStorage();
+type ClientRequestSelector = Parameters<ClientCredentialResolver>[0];
+
+function selectorIsWithinBase(
+  selector: ClientRequestSelector,
+  apiBase: string,
+): boolean {
+  if (!selector) return true;
+  try {
+    const base = new URL(apiBase);
+    const target = new URL(selector.url);
+    const path = base.pathname.replace(/\/+$/, '');
+    return (
+      target.origin === base.origin &&
+      (target.pathname === path || target.pathname.startsWith(`${path}/`))
+    );
+  } catch {
+    return false;
+  }
+}
 
 // Keep Tauri's Channel/invoke implementation out of the browser's eager
 // bundle. These platform adapters are loaded only when the native shell
@@ -290,10 +315,20 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
     markCredentialRequired,
     captureCredentialEvidence,
     isCredentialEvidenceCurrent,
+    captureCredentialEvidenceForConnection,
+    isConnectionCredentialEvidenceCurrent,
     recordAuthenticatedSuccess,
     credentialAuthorityGeneration,
   } = useConnections();
   const profile = usePlatformProfile();
+  const authorities = useRef(
+    new Map<
+      string,
+      { connectionId: string; authorityKey: string; isCurrent: () => boolean }
+    >(),
+  ).current;
+
+  useInsertionEffect(() => () => authorities.clear(), [authorities]);
 
   useEffect(() => {
     if (!profile.isTauri) return;
@@ -309,9 +344,84 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   // children's layout effects, which let the first native request escape to
   // raw fetch and terminal-stop on 401 even though the keyring was healthy.
   useInsertionEffect(() => {
-    setClientRawEgressPolicyResolver(() => {
+    const evidenceIsCurrent = (evidence: RequestCredentialEvidence) =>
+      evidence.leaseEpoch === undefined
+        ? isCredentialEvidenceCurrent(evidence)
+        : isConnectionCredentialEvidenceCurrent(evidence);
+    const selectEvidence = (selector?: ClientRequestSelector) => {
+      const scope = selector?.requestScope;
+      const registered = scope && authorities.get(scope.authorityKey);
+      if (registered) {
+        if (!registered.isCurrent()) throw new StationRequestAuthorityError();
+        const evidence = captureCredentialEvidenceForConnection(
+          registered.connectionId,
+        );
+        if (
+          !evidence ||
+          evidence.origin !== scope.apiBase ||
+          !selectorIsWithinBase(selector, evidence.origin)
+        )
+          throw new StationRequestAuthorityError();
+        return evidence;
+      }
       const evidence = captureCredentialEvidence();
+      if (!scope) return evidence;
+      if (!evidence) throw new StationRequestAuthorityError();
+      const nativeBinding = profile.isTauri
+        ? nativeProfileRepository().captureNativeRequestBinding(
+            evidence.connectionId,
+            evidence.origin,
+          )
+        : null;
+      const accountKey =
+        evidence.brokerRoute && !profile.isTauri
+          ? getBrowserRelayAccountScope(
+              browserRelayAccountScopeKey({
+                connectionId: evidence.connectionId,
+                applicationOrigin: evidence.origin,
+                route: evidence.brokerRoute,
+                clientOrigin: window.location.origin,
+              }),
+            )?.scopeKey
+          : evidence.nativeBrokerRoute && nativeBinding
+            ? getNativeRelayAccountScope(
+                nativeRelayAccountScopeKey({
+                  connectionId: evidence.connectionId,
+                  origin: evidence.origin,
+                  route: evidence.nativeBrokerRoute,
+                  bindingId: nativeBinding.bindingId,
+                }),
+              )?.scopeKey
+            : undefined;
+      const activeScope = requestAuthorityScopeFromCredentialEvidence(
+        evidence,
+        {
+          ...(nativeBinding
+            ? {
+                authorityQualifier: evidence.nativeBrokerRoute
+                  ? JSON.stringify([nativeBinding.bindingId, accountKey])
+                  : nativeBinding.bindingId,
+              }
+            : accountKey
+              ? { authorityQualifier: accountKey }
+              : {}),
+        },
+      );
+      if (
+        (profile.isTauri && !nativeBinding) ||
+        !selectorIsWithinBase(selector, evidence.origin) ||
+        scope.apiBase !== activeScope.apiBase ||
+        scope.authorityKey !== activeScope.authorityKey
+      )
+        throw new StationRequestAuthorityError();
+      return evidence;
+    };
+    setClientRawEgressPolicyResolver((selector) => {
+      const evidence = selectEvidence(selector);
       if (!evidence) return undefined;
+      const registered =
+        selector?.requestScope &&
+        authorities.get(selector.requestScope.authorityKey);
       return {
         kind:
           evidence.nativeBrokerRoute ||
@@ -321,17 +431,28 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         apiBase: evidence.origin,
         connectionId: evidence.connectionId,
         activationEpoch: evidence.activationEpoch,
-        ...(!profile.isTauri
+        ...(registered || !profile.isTauri
           ? {
-              authorityKey:
-                requestAuthorityScopeFromCredentialEvidence(evidence)
-                  .authorityKey,
+              authorityKey: registered
+                ? selector?.requestScope?.authorityKey
+                : requestAuthorityScopeFromCredentialEvidence(evidence)
+                    .authorityKey,
             }
           : {}),
-        isCurrent: () => isCredentialEvidenceCurrent(evidence),
+        isCurrent: () =>
+          evidenceIsCurrent(evidence) &&
+          (!registered ||
+            (registered.isCurrent() &&
+              authorities.get(selector!.requestScope!.authorityKey) ===
+                registered)),
       };
     });
-    setClientCredentialResolver(async () => {
+    const resolveCredential = async (
+      evidence: RequestCredentialEvidence | null,
+      sourceIsCurrent: () => boolean = () => true,
+    ): Promise<ClientCredential> => {
+      const requestIsCurrent = () =>
+        Boolean(evidence && evidenceIsCurrent(evidence) && sourceIsCurrent());
       // The resolver body runs when a request is ABOUT TO BE ISSUED, so this
       // ONE live read is the connection, address, credential and generation
       // that request is actually authenticated against. `activeConnection` and
@@ -340,7 +461,6 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
       // address would leave a window, between a synchronous connection switch
       // and React committing it, where one connection's credential is sent to
       // another's origin.
-      const evidence = captureCredentialEvidence();
       const credential = profile.isTauri ? undefined : evidence?.credential;
       const browserRoute =
         !profile.isTauri && evidence?.brokerRoute
@@ -368,7 +488,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         );
       let relayCredential: ClientCredential | undefined;
       if (profile.isTauri && evidence?.nativeBrokerRoute) {
-        if (!nativeBinding || !isCredentialEvidenceCurrent(evidence))
+        if (!nativeBinding || !requestIsCurrent())
           throw new Error('native_relay_binding_required');
         const { prepareNativeRelayConnectionOwner } = await import(
           '../platform/native/nativeRelayConnectionOwner'
@@ -379,7 +499,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
           route: evidence.nativeBrokerRoute,
           bindingId: nativeBinding.bindingId,
           selectionIsCurrent: () =>
-            isCredentialEvidenceCurrent(evidence) && nativeBindingIsCurrent(),
+            requestIsCurrent() && nativeBindingIsCurrent(),
         });
         relayCredential = owner.credential();
       }
@@ -393,8 +513,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
           route: evidence.brokerRoute,
           transport: browserRoute.transport,
           routeIsCurrent: () =>
-            isCredentialEvidenceCurrent(evidence) &&
-            Boolean(browserRoute.isCurrent()),
+            requestIsCurrent() && Boolean(browserRoute.isCurrent()),
         });
       }
       const requestAuthority = evidence
@@ -418,12 +537,19 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
                     : {}),
               }),
               isCurrent: () =>
-                isCredentialEvidenceCurrent(evidence) &&
+                requestIsCurrent() &&
                 (!profile.isTauri || nativeBindingIsCurrent()) &&
                 (relayCredential?.requestAuthority?.isCurrent() ?? true),
             }
           : undefined
         : undefined;
+      if (
+        evidence?.leaseEpoch !== undefined &&
+        (!requestAuthority?.isCurrent() ||
+          (evidence.brokerRoute &&
+            (!browserRoute || !relayCredential?.requestAuthority)))
+      )
+        throw new StationRequestAuthorityError();
       return {
         credential,
         origin: evidence?.origin ?? apiBase,
@@ -454,6 +580,9 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
               // A missing or retired route must refuse at the SDK boundary.
               // Omitting transport here would silently use direct HTTP.
               ...(relayCredential ? relayCredential : {}),
+              ...(evidence.leaseEpoch !== undefined
+                ? { mutationAllowed: () => false }
+                : {}),
               transport:
                 relayCredential?.transport ??
                 (async () => {
@@ -462,7 +591,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
                   );
                 }),
               transportBindingIsCurrent: () =>
-                isCredentialEvidenceCurrent(evidence) &&
+                requestIsCurrent() &&
                 Boolean(browserRoute?.isCurrent()) &&
                 (relayCredential?.transportBindingIsCurrent?.() ?? true),
             }
@@ -515,11 +644,79 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
               )
             : undefined,
       };
+    };
+    setClientCredentialResolver(async (selector) => {
+      const evidence = selectEvidence(selector);
+      const registered =
+        selector?.requestScope &&
+        authorities.get(selector.requestScope.authorityKey);
+      const credential = await resolveCredential(
+        evidence,
+        registered?.isCurrent,
+      );
+      if (!registered) return credential;
+      const authority = credential.requestAuthority;
+      const registrationIsCurrent = () =>
+        authorities.get(selector!.requestScope!.authorityKey) === registered &&
+        registered.isCurrent();
+      if (
+        !authority ||
+        authority.authorityKey !== registered.authorityKey ||
+        !registrationIsCurrent()
+      )
+        throw new StationRequestAuthorityError();
+      return {
+        ...credential,
+        requestAuthority: {
+          ...authority,
+          authorityKey: selector!.requestScope!.authorityKey,
+          isCurrent: () => registrationIsCurrent() && authority.isCurrent(),
+        },
+      };
     });
+    const uninstallCapture = installStationConnectionAuthorityCapture(
+      async (connectionId, sourceIsCurrent) => {
+        if (!sourceIsCurrent()) throw new StationRequestAuthorityError();
+        const credential = await resolveCredential(
+          captureCredentialEvidenceForConnection(connectionId),
+          sourceIsCurrent,
+        );
+        const authority = credential.requestAuthority;
+        if (!authority?.isCurrent() || !sourceIsCurrent())
+          throw new StationRequestAuthorityError();
+        // A new source registry must not revive an old reader of the same
+        // profile by retaining its credential authority under the same key.
+        const authorityKey = JSON.stringify([
+          authority.authorityKey,
+          randomCorrelationId(),
+        ]);
+        const registered = {
+          connectionId,
+          authorityKey: authority.authorityKey,
+          isCurrent: () => sourceIsCurrent() && authority.isCurrent(),
+        };
+        authorities.set(authorityKey, registered);
+        return {
+          requestScope: {
+            apiBase: authority.apiBase,
+            authorityKey,
+          },
+          mutationAllowed: credential.mutationAllowed?.() ?? true,
+          isCurrent: () =>
+            authorities.get(authorityKey) === registered &&
+            registered.isCurrent(),
+          release: () => {
+            if (authorities.get(authorityKey) === registered)
+              authorities.delete(authorityKey);
+          },
+        };
+      },
+    );
     setNativePairingExchangeTransport(
       profile.isTauri ? lazyNativePairingExchangeTransport : undefined,
     );
     return () => {
+      uninstallCapture();
       setClientCredentialResolver(undefined);
       setClientRawEgressPolicyResolver(undefined);
       setNativePairingExchangeTransport(undefined);
@@ -528,6 +725,9 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
     apiBase,
     captureCredentialEvidence,
     isCredentialEvidenceCurrent,
+    captureCredentialEvidenceForConnection,
+    isConnectionCredentialEvidenceCurrent,
+    authorities,
     markCredentialRequired,
     profile.isTauri,
     recordAuthenticatedSuccess,

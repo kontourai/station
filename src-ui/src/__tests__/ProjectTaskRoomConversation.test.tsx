@@ -13,6 +13,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   realGuard: false,
+  authorityCurrent: true,
+  historyError: null as Error | null,
   collaboration: false,
   records: [] as ProjectTaskRoomBrowserRecord[],
   historyFetching: false,
@@ -37,7 +39,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
 }));
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   continueDelegatedTask: mocks.continue,
   interruptDelegatedTask: mocks.stop,
 }));
@@ -45,7 +48,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
     apiBase: 'http://station',
     authorityKey: 'owner',
-    isCurrent: () => true,
+    isCurrent: () => mocks.authorityCurrent,
   }),
 }));
 vi.mock('../contexts/open-chats-store', () => ({
@@ -85,6 +88,7 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   }),
   useProjectTaskRoomHistoryQuery: () => ({
     data: { pages: [{ kind: 'available', records: mocks.records }] },
+    error: mocks.historyError,
     isFetching: mocks.historyFetching,
     hasNextPage: mocks.historyHasNext,
     fetchNextPage: mocks.fetchNext,
@@ -128,7 +132,10 @@ vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
   }),
 }));
 
-import { ProjectTaskRoomConversation } from '../workspace-panes/ProjectTaskRoomConversation';
+import {
+  ProjectTaskRoomConversation,
+  TaskRoomHistoryDetails,
+} from '../workspace-panes/ProjectTaskRoomConversation';
 
 function mount() {
   return render(
@@ -176,6 +183,8 @@ beforeEach(() => {
       size: 8,
     },
   ]);
+  mocks.authorityCurrent = true;
+  mocks.historyError = null;
   mocks.realGuard = false;
   mocks.collaboration = false;
   mocks.records = [];
@@ -284,6 +293,12 @@ test('running agents have one inline status with functional Watch and Stop', asy
   fireEvent.click(screen.getByRole('button', { name: 'Watch' }));
   expect(mocks.openConversation).toHaveBeenCalledWith('session-1');
   fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+  expect(mocks.stop).not.toHaveBeenCalled();
+  fireEvent.click(
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Stop',
+    }),
+  );
   await waitFor(() =>
     expect(mocks.stop).toHaveBeenCalledWith(
       'http://station',
@@ -316,8 +331,11 @@ test.each(['task_room_reply_refused', 'receiver_execution_authority_changed'])(
     });
     fireEvent.click(within(thread).getByRole('button', { name: 'Send reply' }));
     expect(
-      await within(thread).findByText(/Not delivered.*successor/),
+      await within(thread).findByText('Not delivered · Try again in a moment.'),
     ).toBeTruthy();
+    expect(
+      within(thread).queryByText(/This Session has a successor/),
+    ).toBeNull();
     expect(
       (within(thread).getByRole('textbox') as HTMLTextAreaElement).value,
     ).toBe('Do not lose this reply');
@@ -342,7 +360,9 @@ test('an uncertain reply retains its draft and offers full-run inspection', asyn
   });
   fireEvent.click(within(thread).getByRole('button', { name: 'Send reply' }));
   expect(
-    await within(thread).findByText(/Not delivered.*Connection lost/),
+    await within(thread).findByText(
+      'Not delivered · Try again in a moment. Check the full run before resending.',
+    ),
   ).toBeTruthy();
   expect(
     (within(thread).getByRole('textbox') as HTMLTextAreaElement).readOnly,
@@ -527,8 +547,9 @@ test('failed agent requests retain a quiet line and retry the original request i
 test('new messages follow only the message scroller and preserve a reader who scrolled up', () => {
   mocks.records = [record(1)];
   const view = mount();
-  const list = screen.getByRole('list', { name: 'Task room history' })
-    .parentElement!;
+  const list = screen
+    .getByRole('list', { name: 'Task room history' })
+    .closest<HTMLElement>('.task-room-messages')!;
   Object.defineProperties(list, {
     scrollHeight: { configurable: true, value: 1000 },
     clientHeight: { configurable: true, value: 200 },
@@ -746,4 +767,73 @@ test('a dropped screenshot in an agent thread is sent as an attachment to that s
       },
     },
   ]);
+});
+
+test('an authority change hides retained owner history immediately', () => {
+  mocks.authorityCurrent = true;
+  mocks.records = [record(1)];
+  const view = mount();
+  expect(screen.getByText('Hello room')).toBeTruthy();
+  mocks.authorityCurrent = false;
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ProjectTaskRoomConversation
+        taskId="task-1"
+        projectSlug="project"
+        taskCreatedAt="2026-10-01T00:00:00.000Z"
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.queryByText('Hello room')).toBeNull();
+  expect(
+    screen.getByText('History is not shared with this connection.'),
+  ).toBeTruthy();
+  mocks.authorityCurrent = true;
+});
+
+test('a denied owner page hides retained history, including open threads', () => {
+  mocks.records = [record(1, true)];
+  const view = mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  expect(screen.getAllByText('Answer in markdown')).toHaveLength(2);
+  mocks.historyError = Object.assign(new Error('denied'), { status: 403 });
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ProjectTaskRoomConversation
+        taskId="task-1"
+        projectSlug="project"
+        taskCreatedAt="2026-10-01T00:00:00.000Z"
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.queryByText('Answer in markdown')).toBeNull();
+
+  mocks.historyError = null;
+});
+
+test('raw history disclosure removes cached records when its authority retires', () => {
+  mocks.records = [record(1)];
+  const client = new QueryClient();
+  const requestScope = {
+    apiBase: 'http://station',
+    authorityKey: 'owner',
+    isCurrent: () => mocks.authorityCurrent,
+  };
+  const view = render(
+    <QueryClientProvider client={client}>
+      <TaskRoomHistoryDetails taskId="task-1" requestScope={requestScope} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByText('Raw room history'));
+  expect(screen.getByText(/"Hello room"/)).toBeTruthy();
+  mocks.authorityCurrent = false;
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <TaskRoomHistoryDetails taskId="task-1" requestScope={requestScope} />
+    </QueryClientProvider>,
+  );
+  expect(screen.queryByText(/"Hello room"/)).toBeNull();
+  expect(
+    screen.getByText('History is not shared with this connection.'),
+  ).toBeTruthy();
 });

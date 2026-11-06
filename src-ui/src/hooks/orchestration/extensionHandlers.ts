@@ -4,6 +4,7 @@ import {
   extensionNotificationBinding,
   takeUnboundExtensionNotice,
 } from '@shared/extension-notification-bindings';
+import type { StationStateSource } from '../../connections/station-state';
 import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { log } from '../../utils/logger';
@@ -58,10 +59,13 @@ function activityHintsEqual(
 function handleClaudeNotification(
   event: Extract<OrchestrationEvent, { method: 'extension.notification' }>,
   consumer: ExtensionNotificationConsumer,
-  apiBase?: string,
+  station?: StationStateSource,
 ) {
+  const chatStore = activeChatsStore.forStation(
+    typeof station === 'object' ? station : undefined,
+  );
   if (consumer === 'ui.claude.api-retry') {
-    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    const chat = chatStore.getChatForExecutionSession(event.threadId);
     if (
       !chat?.orchestrationTurnOpen ||
       (event.turnId && chat.openTurnId && event.turnId !== chat.openTurnId)
@@ -77,7 +81,7 @@ function handleClaudeNotification(
       'Provider overloaded',
       'Provider request failed',
     ];
-    activeChatsStore.updateChat(event.threadId, {
+    chatStore.updateChat(event.threadId, {
       activityHint: {
         kind: 'retrying',
         attempt:
@@ -98,7 +102,7 @@ function handleClaudeNotification(
       detail:
         estimated !== undefined ? formatApproxTokens(estimated) : undefined,
     };
-    const current = activeChatsStore.getChatForExecutionSession(
+    const current = chatStore.getChatForExecutionSession(
       event.threadId,
     )?.activityHint;
     // Skip the store update entirely when the incoming hint is unchanged
@@ -107,24 +111,24 @@ function handleClaudeNotification(
     // per-session cache (archive#726) to rebuild this session's derived
     // identity on essentially every SDK reasoning tick.
     if (!activityHintsEqual(current, hint)) {
-      activeChatsStore.updateChat(event.threadId, { activityHint: hint });
+      chatStore.updateChat(event.threadId, { activityHint: hint });
     }
     return;
   }
 
   if (consumer === 'ui.claude.session-status') {
     const status = readPayloadString(event.payload, 'status');
-    const current = activeChatsStore.getChatForExecutionSession(
+    const current = chatStore.getChatForExecutionSession(
       event.threadId,
     )?.activityHint;
     if (status === 'compacting' || status === 'requesting') {
       const hint: ChatActivityHint = { kind: status };
       if (!activityHintsEqual(current, hint)) {
-        activeChatsStore.updateChat(event.threadId, { activityHint: hint });
+        chatStore.updateChat(event.threadId, { activityHint: hint });
       }
     } else if (current !== undefined) {
       // `status: null` (or unknown) is the cleared signal.
-      activeChatsStore.updateChat(event.threadId, { activityHint: undefined });
+      chatStore.updateChat(event.threadId, { activityHint: undefined });
     }
     return;
   }
@@ -140,7 +144,7 @@ function handleClaudeNotification(
       event,
       event.threadId,
     );
-    if (delta) applyChildWorkToChat(event.threadId, delta, apiBase);
+    if (delta) applyChildWorkToChat(event.threadId, delta, station);
     return;
   }
 }
@@ -156,9 +160,12 @@ function handleClaudeNotification(
  */
 export function handleExtensionNotificationEvent(
   event: Extract<OrchestrationEvent, { method: 'extension.notification' }>,
-  apiBase?: string,
+  station?: StationStateSource,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(
+    typeof station === 'object' ? station : undefined,
+  );
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   const binding = extensionNotificationBinding(event.namespace, event.type);
   if (!binding) {
@@ -176,14 +183,14 @@ export function handleExtensionNotificationEvent(
   }
 
   if (binding.consumer.startsWith('ui.claude.')) {
-    handleClaudeNotification(event, binding.consumer, apiBase);
+    handleClaudeNotification(event, binding.consumer, station);
     return;
   }
 
   if (binding.consumer === 'ui.kiro.oauth-request') {
     const url = readPayloadString(event.payload, 'url');
     if (!url) return;
-    activeChatsStore.addEphemeralMessage(event.threadId, {
+    chatStore.addEphemeralMessage(event.threadId, {
       role: 'system',
       content: `**Authentication required** — An MCP server needs you to sign in:\n[Open authentication page](${url})`,
     });
@@ -199,7 +206,7 @@ export function handleExtensionNotificationEvent(
         ? 'Context compacted.'
         : 'History cleared.';
     const message = readPayloadString(event.payload, 'message') || fallback;
-    activeChatsStore.addEphemeralMessage(event.threadId, {
+    chatStore.addEphemeralMessage(event.threadId, {
       role: 'system',
       content: message,
     });
@@ -219,7 +226,7 @@ export function handleExtensionNotificationEvent(
   if (binding.consumer === 'ui.engine.mcp-status') {
     const total = readPayloadNumber(event.payload, 'total');
     const connected = readPayloadNumber(event.payload, 'connected');
-    const current = activeChatsStore.getChatForExecutionSession(
+    const current = chatStore.getChatForExecutionSession(
       event.threadId,
     )?.activityHint;
     if (
@@ -233,12 +240,12 @@ export function handleExtensionNotificationEvent(
         detail: `MCP ${connected}/${total}`,
       };
       if (!activityHintsEqual(current, hint)) {
-        activeChatsStore.updateChat(event.threadId, { activityHint: hint });
+        chatStore.updateChat(event.threadId, { activityHint: hint });
       }
       return;
     }
     if (current?.kind === 'requesting') {
-      activeChatsStore.updateChat(event.threadId, { activityHint: undefined });
+      chatStore.updateChat(event.threadId, { activityHint: undefined });
     }
   }
 }

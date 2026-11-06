@@ -72,6 +72,7 @@ export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/enviro
 
 import packageJson from '../../../package.json' with { type: 'json' };
 import { resolveStationCapabilityFlags } from '../../capabilities/station-capability-flags.js';
+import { isPeerChatMutation } from '../../routes/environments/peer-chat-policy.js';
 import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
@@ -683,7 +684,13 @@ export class EnvironmentSecurityService {
         request.method.toUpperCase(),
       ) &&
       (request.path === '/api/environments/peers' ||
-        request.path.startsWith('/api/environments/peers/'))
+        request.path.startsWith('/api/environments/peers/')) &&
+      // The owner's own devices may send foreground chat through the bridge
+      // (D14); peer-credential administration stays operator-only.
+      !(
+        isPeerChatMutation(request.method, request.path) &&
+        this.credentialHasOwnerStanding(candidate)
+      )
     ) {
       return false;
     }
@@ -805,7 +812,9 @@ export class EnvironmentSecurityService {
     return this.#devicePairingService;
   }
 
-  async getPublicHandshake(): Promise<PublicStationHandshake> {
+  async getPublicHandshake(
+    peerChatEnabled = false,
+  ): Promise<PublicStationHandshake> {
     const { environmentId } = await this.initialize();
     return {
       schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
@@ -825,7 +834,10 @@ export class EnvironmentSecurityService {
       // Additive (archive#1095): same guarantee as `compatibility` above.
       // station-capability-flags.ts is the single source of truth — add a
       // flag there, not here. It withdraws flags this deployment can't serve.
-      capabilities: resolveStationCapabilityFlags({ hosted: this.#hosted }),
+      capabilities: resolveStationCapabilityFlags({
+        hosted: this.#hosted,
+        peerChatEnabled,
+      }),
     };
   }
 

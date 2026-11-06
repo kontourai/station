@@ -18,6 +18,10 @@ import {
 import { agentMessageInput } from '@kontourai/station-shared/agent-message-frame';
 import { isStationRestartContinuationTurn } from '@kontourai/station-shared/conversation-message';
 import {
+  outboundStationIdentity,
+  type StationStateScope,
+} from '../../connections/station-state';
+import {
   type ActiveChatsStore,
   activeChatsStore,
 } from '../../contexts/active-chats-store';
@@ -36,6 +40,7 @@ import {
   isChatErrorMarker,
   pruneStaleFailureMarkers,
 } from '../../utils/sessionFailure';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { settlePendingApprovalsOnTurnEnd } from './approvalHandlers';
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
@@ -57,15 +62,26 @@ function repeatCount(content: string, prefix: string) {
   return match ? Number(match[1]) : null;
 }
 
-function reconcileDurableTurn(sessionId: string, providerTurnId: string): void {
+function reconcileDurableTurn(
+  sessionId: string,
+  providerTurnId: string,
+  station?: StationStateScope,
+): void {
+  const chatStore = activeChatsStore.forStation(station);
   void import('../../lib/outboundQueue')
     .then(({ outboundDispatch }) =>
-      outboundDispatch.completeAcceptedTurn(sessionId, providerTurnId),
+      station
+        ? outboundDispatch.completeAcceptedTurn(
+            sessionId,
+            providerTurnId,
+            outboundStationIdentity(station),
+          )
+        : outboundDispatch.completeAcceptedTurn(sessionId, providerTurnId),
     )
     .catch((error) => {
-      activeChatsStore.updateChat(sessionId, {
+      chatStore.updateChat(sessionId, {
         status: 'error',
-        error: `Could not reconcile the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Could not reconcile the durable offline turn: ${describeStationFailure(error).body}`,
       });
     });
 }
@@ -85,7 +101,9 @@ export function handleTurnStartedEvent(
     ActiveChatsStore,
     'getChatForExecutionSession' | 'updateChat'
   > = activeChatsStore,
+  station?: StationStateScope,
 ) {
+  if (station) store = activeChatsStore.forStation(station);
   // Durable per-turn confirmation of the actually-applied approval mode
   // (archive#727 3) — clears/updates the pending-apply chip
   // state once the adapter has genuinely resolved this turn's posture.
@@ -379,7 +397,9 @@ export function handleTurnCompletedEvent(
   event: Extract<OrchestrationEvent, { method: 'turn.completed' }>,
   /** archive#1410: envelope carried beside this frame, when the server sent one. */
   provenance?: unknown,
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
   // archive#1410: attach the sidecar only when this terminal event
   // closes the turn whose text is actually buffered.
   //
@@ -395,12 +415,10 @@ export function handleTurnCompletedEvent(
   // connection's window; the terminal is then the only identity available
   // and adopting it is correct. This mirrors `adoptTerminalIdentity` in
   // `runtime-event-projection.ts` exactly.
-  const currentChat = activeChatsStore.getChatForExecutionSession(
-    event.threadId,
-  );
+  const currentChat = chatStore.getChatForExecutionSession(event.threadId);
   const openTurnId = currentChat?.openTurnId;
   const historyRevision =
-    activeChatsStore.getChatForExecutionSession(event.threadId)
+    chatStore.getChatForExecutionSession(event.threadId)
       ?.orchestrationHistoryRevision ?? 0;
   const closesOpenTurn = !openTurnId || openTurnId === event.turnId;
 
@@ -418,14 +436,15 @@ export function handleTurnCompletedEvent(
           answerEligible: event.finishReason !== 'cancelled',
         }
       : undefined,
+    station,
   );
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     orchestrationHistoryRevision: historyRevision + 1,
     // #3071: a cancelled completion (an engine confirming a stop) settles
     // the requests that name this turn, by the shared rule; an ordinary
     // completion settles none. Read after `finalizeAssistantTurn`'s write.
     ...settlePendingApprovalsOnTurnEnd(
-      activeChatsStore.getChatForExecutionSession(event.threadId),
+      chatStore.getChatForExecutionSession(event.threadId),
       event,
     ),
     ...(closesOpenTurn &&
@@ -439,11 +458,11 @@ export function handleTurnCompletedEvent(
   // Queue settlement is independent of the live streaming shell: provider
   // turn identity is exact evidence even for a delayed terminal event.
   const chatKey =
-    activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
-    event.threadId;
-  reconcileDurableTurn(chatKey, event.turnId);
+    chatStore.getChatKeyForExecutionSession(event.threadId) ?? event.threadId;
+  reconcileDurableTurn(chatKey, event.turnId, station);
   if (closesOpenTurn) {
     notifyTurnTerminal({
+      station,
       threadId: event.threadId,
       turnId: event.turnId,
       provider: event.provider,
@@ -453,7 +472,7 @@ export function handleTurnCompletedEvent(
       closedWithoutResult: event.metadata?.closedWithoutResult !== undefined,
       text: outputText?.trim()
         ? outputText
-        : activeChatsStore
+        : chatStore
             .getChatForExecutionSession(event.threadId)
             ?.messages?.slice()
             .reverse()
@@ -464,21 +483,28 @@ export function handleTurnCompletedEvent(
     });
   }
   if (!isReplayThread(event.threadId)) {
-    drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+    drainQueuedMessageOnTurnCompleted(
+      apiBase,
+      chatKey,
+      undefined,
+      undefined,
+      station,
+    );
   }
 }
 
 export function handleTurnAbortedEvent(
   event: Extract<OrchestrationEvent, { method: 'turn.aborted' }>,
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
   const chatKey =
-    activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
-    event.threadId;
-  reconcileDurableTurn(chatKey, event.turnId);
+    chatStore.getChatKeyForExecutionSession(event.threadId) ?? event.threadId;
+  reconcileDurableTurn(chatKey, event.turnId, station);
   const historyRevision =
-    activeChatsStore.getChatForExecutionSession(event.threadId)
+    chatStore.getChatForExecutionSession(event.threadId)
       ?.orchestrationHistoryRevision ?? 0;
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   // #2324 delta review M-2: the same turn-identity guard the completion
   // handler applies. A send withdrawn or cancelled while it was still queued
   // behind another turn ends with a bare `turn.aborted` for ITS id while that
@@ -491,7 +517,7 @@ export function handleTurnAbortedEvent(
   // already reflects — and a request naming no turn, or another turn, stays.
   const settledApprovals = settlePendingApprovalsOnTurnEnd(chat, event);
   if (openTurnId && openTurnId !== event.turnId) {
-    activeChatsStore.updateChat(chatKey, {
+    chatStore.updateChat(chatKey, {
       orchestrationHistoryRevision: historyRevision + 1,
       ...settledApprovals,
       ...(chat?.sendAwaitingTurnStart
@@ -500,7 +526,7 @@ export function handleTurnAbortedEvent(
     });
     return;
   }
-  activeChatsStore.updateChat(chatKey, {
+  chatStore.updateChat(chatKey, {
     ...settledApprovals,
     // A late provider abort revokes a previously committed same-turn answer.
     // Keeping it would leave Add to Task on an answer the lifecycle rejects.
@@ -552,6 +578,7 @@ export function handleTurnAbortedEvent(
       : {}),
   });
   notifyTurnTerminal({
+    station,
     threadId: event.threadId,
     turnId: event.turnId,
     provider: event.provider,
@@ -563,9 +590,11 @@ export function handleTurnAbortedEvent(
 
 export function handleRuntimeErrorEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.error' }>,
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
   if (isDeferredRetriableTurnError(event)) {
-    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    const chat = chatStore.getChatForExecutionSession(event.threadId);
     if (
       !chat?.orchestrationTurnOpen ||
       (event.turnId && chat.openTurnId && event.turnId !== chat.openTurnId)
@@ -576,7 +605,7 @@ export function handleRuntimeErrorEvent(
       : /rate.limit|429/i.test(event.message)
         ? 'Rate limited'
         : undefined;
-    activeChatsStore.updateChat(event.threadId, {
+    chatStore.updateChat(event.threadId, {
       activityHint: { kind: 'retrying', detail },
     });
     return;
@@ -595,12 +624,12 @@ export function handleRuntimeErrorEvent(
   const terminalTurnId = event.details?.turnId ?? event.turnId;
   if (typeof terminalTurnId === 'string') {
     reconcileDurableTurn(
-      activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
-        event.threadId,
+      chatStore.getChatKeyForExecutionSession(event.threadId) ?? event.threadId,
       terminalTurnId,
+      station,
     );
   }
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   // Surface the error inline (mirroring the durable projection, which renders
   // runtime errors as a text part so a failed turn does not
   // render blank and the message survives turn finalization.
@@ -731,7 +760,7 @@ export function handleRuntimeErrorEvent(
             ...(failedTurnId ? { turnId: failedTurnId } : {}),
           },
         ];
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     ...(chat?.conversationId &&
     chat.currentSessionId === event.threadId &&
     (!chat.openTurnId ||
@@ -773,6 +802,7 @@ export function handleRuntimeErrorEvent(
   // not the turn's end (the same rule the queue drain and server push use).
   if (!isDeferredRetriableTurnError(event)) {
     notifyTurnTerminal({
+      station,
       threadId: event.threadId,
       turnId:
         typeof terminalTurnId === 'string' ? terminalTurnId : chat?.openTurnId,
@@ -801,15 +831,20 @@ const SESSION_POSTURE_WARNING_CODES: ReadonlySet<string> = new Set([
  * when no open chat owns the session (the dispatcher drops such events today),
  * so the caller would still say it as a toast.
  */
-function noteSessionPostureWarning(threadId: string, message: string) {
-  const chatKey = activeChatsStore.getChatKeyForExecutionSession(threadId);
+function noteSessionPostureWarning(
+  threadId: string,
+  message: string,
+  station?: StationStateScope,
+) {
+  const chatStore = activeChatsStore.forStation(station);
+  const chatKey = chatStore.getChatKeyForExecutionSession(threadId);
   if (!chatKey) return false;
-  const chat = activeChatsStore.getSnapshot()[chatKey];
+  const chat = chatStore.getSnapshot()[chatKey];
   const shown = chat?.ephemeralMessages?.some(
     (notice) => notice.role === 'system' && notice.content === message,
   );
   if (!shown)
-    activeChatsStore.addEphemeralMessage(chatKey, {
+    chatStore.addEphemeralMessage(chatKey, {
       role: 'system',
       content: message,
     });
@@ -818,13 +853,15 @@ function noteSessionPostureWarning(threadId: string, message: string) {
 
 export function handleRuntimeWarningEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.warning' }>,
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
   if (
     !isReplayThread(event.threadId) &&
     !(
       event.code !== undefined &&
       SESSION_POSTURE_WARNING_CODES.has(event.code) &&
-      noteSessionPostureWarning(event.threadId, event.message)
+      noteSessionPostureWarning(event.threadId, event.message, station)
     )
   ) {
     toastStore.upsert({
@@ -845,7 +882,7 @@ export function handleRuntimeWarningEvent(
   // pick as applied (the same turn's `turn.started` also says so).
   if (event.code === ACP_APPROVAL_TAKEOVER_FAILED_CODE) {
     const kept = event.details?.appliedApprovalMode;
-    activeChatsStore.updateChat(event.threadId, {
+    chatStore.updateChat(event.threadId, {
       approvalTakeoverFailed: true,
       lastAppliedApprovalMode:
         isApprovalMode(kept) && kept !== 'connection-default'
@@ -859,7 +896,7 @@ export function handleRuntimeWarningEvent(
     // will apply it to the next session that spawns — so the chip shows it
     // refused, not reverted.
     const revertTo = event.details?.revertToApprovalMode;
-    activeChatsStore.updateChat(event.threadId, {
+    chatStore.updateChat(event.threadId, {
       approvalEscalationRejected: true,
       ...(isApprovalMode(revertTo) && revertTo !== 'connection-default'
         ? { lastAppliedApprovalMode: revertTo }

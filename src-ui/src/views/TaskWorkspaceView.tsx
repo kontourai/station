@@ -55,6 +55,7 @@ import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
+import { describeStationFailure } from '../utils/stationFailure';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
 import {
   ProjectTaskRoomConversation,
@@ -814,7 +815,10 @@ function TaskWorkspaceContent({
         ) : (
           <TaskExperienceBoundary experience={activeExperience} />
         )}
-        <TaskRoomHistoryDetails taskId={taskId} />
+        <TaskRoomHistoryDetails
+          taskId={taskId}
+          requestScope={supervisionAuthority}
+        />
       </div>
     </div>
   );
@@ -1736,9 +1740,7 @@ function TaskLoadError({
   const notFound = isTaskNotFound(error);
   const description = notFound
     ? `Task ${taskId} is unavailable or no longer exists.`
-    : error instanceof Error
-      ? error.message
-      : 'Task data was not returned.';
+    : describeStationFailure(error).body;
   return (
     <div className="page page--full task-workspace task-workspace__state">
       <ErrorState

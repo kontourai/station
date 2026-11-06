@@ -4,6 +4,10 @@ import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { StatusBadge } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
+import {
+  projectTaskHistory,
+  SharedTaskHistoryList,
+} from '../../components/conversation/SharedTaskHistoryList';
 import { displayableProjectIcon } from '../../components/icons/ProjectIcon';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -19,6 +23,7 @@ import { ProjectRoom } from './ProjectRoom';
 import '../ProjectPage.css';
 import { MemberProjectHeader } from './ProjectPageHeader';
 import '../project-page-frame.css';
+import './MemberProjectPage.css';
 
 type RequestScope = ReturnType<typeof useHostRequestAuthorityScope>;
 
@@ -98,6 +103,7 @@ export function MemberProjectPage({
             ))}
           <section
             hidden={!overview && destination !== 'tasks'}
+            className="member-project-shared-work"
             aria-labelledby="member-project-shared-work-title"
           >
             <h2 id="member-project-shared-work-title">Shared work</h2>
@@ -187,7 +193,10 @@ function SharedWorkDetails({
     publicationIsCurrent && requestScope.isCurrent();
 
   return (
-    <section aria-label={`Shared item details for ${sharedTask.task.title}`}>
+    <section
+      className="member-project-shared-details"
+      aria-label={`Shared item details for ${sharedTask.task.title}`}
+    >
       <h3>{sharedTask.task.title}</h3>
       <section aria-label="Shared publication">
         <h4>Publication</h4>
@@ -216,31 +225,21 @@ function SharedWorkDetails({
       </section>
       <section aria-label="Shared history">
         <h4>History</h4>
-        {!canDisplaySharedDetails ? (
-          <p role="status">
-            History is hidden until a current publication is confirmed.
-          </p>
-        ) : history.isPending ? (
-          <SkeletonBlock count={1} label="Loading shared history" />
-        ) : history.isError || history.data?.kind !== 'available' ? (
-          <p role="status">Shared history is unavailable.</p>
-        ) : history.data.records.length === 0 ? (
-          <Empty variant="compact" label="Human-message history is empty." />
-        ) : (
-          <ol aria-label="Shared history records">
-            {history.data.records.map((record) => (
-              <li key={record.sequence}>
-                <p>
-                  {record.actor.label} · entry {record.sequence}
-                </p>
-                <pre>{record.body.text}</pre>
-              </li>
-            ))}
-          </ol>
-        )}
-        {history.data?.kind === 'available' && history.data.hasMore ? (
-          <p>Older shared history is not loaded in this reader.</p>
-        ) : null}
+        <SharedTaskHistoryList
+          records={projectTaskHistory(history.data?.pages ?? []).records}
+          readable={canDisplaySharedDetails && !history.readDenied}
+          pending={history.isPending}
+          failed={history.isError}
+          outcome={projectTaskHistory(history.data?.pages ?? []).outcome}
+          hasEarlier={history.hasNextPage}
+          loadingEarlier={history.isFetchingNextPage}
+          onLoadEarlier={() => void history.fetchNextPage()}
+          onRetry={() =>
+            void (history.isFetchNextPageError
+              ? history.fetchNextPage()
+              : history.refetch())
+          }
+        />
       </section>
       <section aria-label="Shared document">
         <h4>Document</h4>

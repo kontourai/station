@@ -124,7 +124,9 @@
 
     "docs/guides/walkthroughs.md",
 
-    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx"
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx",
+
+    "docs/design/station-connection.md"
   ],
 
   "checks": [

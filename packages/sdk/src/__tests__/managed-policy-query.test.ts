@@ -6,6 +6,11 @@ vi.mock('../client/http', () => ({ authenticatedFetch: network.fetch }));
 afterEach(() => network.fetch.mockReset());
 
 test('the status fetch awaits decoding and refuses malformed policy status', async () => {
+  const requestScope = {
+    apiBase: 'https://station.example',
+    authorityKey: 'policy-reader',
+  };
+  const signal = new AbortController().signal;
   const loaded = {
     state: 'loaded',
     source: { kind: 'file', location: '/etc/station/policy.json' },
@@ -21,10 +26,14 @@ test('the status fetch awaits decoding and refuses malformed policy status', asy
     Response.json({ success: true, data: loaded }),
   );
   await expect(
-    fetchManagedPolicyStatus('https://station.example'),
+    fetchManagedPolicyStatus('https://station.example', {
+      requestScope,
+      signal,
+    }),
   ).resolves.toEqual(loaded);
   expect(network.fetch).toHaveBeenCalledWith(
     'https://station.example/api/settings/managed-policy',
+    { requestScope, signal },
   );
   network.fetch.mockResolvedValueOnce(
     Response.json({

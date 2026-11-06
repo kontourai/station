@@ -2,7 +2,14 @@
 
 import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { conversationConnection } from '../components/conversation/__tests__/fixtures';
+import { ConversationConnectionProvider } from '../components/conversation/ConversationConnectionContext';
+import {
+  hydrateActiveChats,
+  serializeActiveChats,
+} from '../contexts/active-chats-state';
 import type { ChatSession } from '../types';
 
 const fetchCapability = vi.fn();
@@ -88,6 +95,74 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('a settled receiver window retains readable text across reload without feeding it into live messages', async () => {
+    const station = conversationConnection('relay');
+    activeChatsStore.initChat('thread-1', {
+      agentSlug: 'agent',
+      agentName: 'Agent',
+      title: 'Remote',
+      conversationId: 'thread-1',
+      stationBinding: station.binding,
+      orchestrationSessionStarted: true,
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 3,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'Question' }),
+        event('e2', 'content.text-delta', {
+          turnId: 'turn-1',
+          itemId: 'answer',
+          delta: 'Retained receiver answer.',
+        }),
+        event('e3', 'turn.completed', { turnId: 'turn-1' }),
+      ],
+    });
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()['thread-1'],
+    } as ChatSession;
+    const view = renderHook(
+      () => useActiveChatTranscript(station.targetApiBase, session),
+      {
+        wrapper: ({ children }) =>
+          createElement(ConversationConnectionProvider, {
+            value: {
+              apiBase: station.targetApiBase,
+              requestScope: {
+                ...station.requestScope,
+                isCurrent: station.isCurrent,
+              },
+              station,
+            },
+            children,
+          }),
+      },
+    );
+    try {
+      await waitFor(() =>
+        expect(
+          activeChatsStore.getSnapshot()['thread-1'].retainedTranscript
+            ?.messages,
+        ).toContainEqual({
+          role: 'assistant',
+          content: 'Retained receiver answer.',
+        }),
+      );
+      const restored = hydrateActiveChats(
+        serializeActiveChats(activeChatsStore.getSnapshot()),
+      )['thread-1'];
+      expect(restored.retainedTranscript?.messages).toContainEqual({
+        role: 'assistant',
+        content: 'Retained receiver answer.',
+      });
+      expect(restored.messages ?? []).toEqual([]);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat('thread-1');
+    }
+  });
   test('a fresh mid-turn mount stitches the window with a later live delta', async () => {
     const id = 'fresh-mid-turn';
     const apiBase = 'http://fresh-mid-turn.test';

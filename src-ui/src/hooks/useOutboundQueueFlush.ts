@@ -1,19 +1,18 @@
-/**
- * archive#1224 (offline) — flush trigger.
- *
- * Mounted exactly once (in `App.tsx`, alongside the sibling
- * `useQueryCacheReconnectSync` this mirrors) so only one drain pass ever
- * runs at a time app-wide. Reuses the existing connection-health signal
- * (`useConnectionStatus`, already globally polled via `ConnectionBannerSource`)
- * rather than building a second offline detector, and replays through the
- * SAME `useSendMessage` every live send uses — the shared
- * `flushOutboundQueue` algorithm (`lib/outboundQueue.ts`) never
- * re-implements the direct-vs-orchestration branch `sendMessage` already
- * owns.
- */
+/** One durable-delivery supervisor per owning connection, shared across remounts. */
 import { useConnectionStatus } from '@kontourai/station-connect';
 import { isSteerConflictCode } from '@kontourai/station-contracts/provider';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
+import type { StationConnection } from '../connections/station-connection';
+import {
+  chatBelongsToStation,
+  outboundStationIdentity,
+} from '../connections/station-state';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
   type ChatUIState,
@@ -29,7 +28,13 @@ import type {
   OutboundDispatchTurn,
   OutboundStationIdentity,
 } from '../lib/outboundQueue';
+import { outboundStationKey, rowBelongsToStation } from '../lib/outboundQueue';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
+import { describeStationFailure } from '../utils/stationFailure';
+import {
+  getStreamConnectionState,
+  subscribeStreamConnectionState,
+} from './orchestration/streamConnectionState';
 import { useSendMessage } from './useActiveChatSessions';
 
 /**
@@ -39,10 +44,11 @@ import { useSendMessage } from './useActiveChatSessions';
  */
 function heldOutboundIntents(
   chats: Readonly<Record<string, ChatUIState>>,
+  connection?: StationConnection,
 ): HeldOutboundIntent[] {
   const intents: HeldOutboundIntent[] = [];
   for (const [chatKey, chat] of Object.entries(chats)) {
-    if (!chat.agentSlug) continue;
+    if (!chat.agentSlug || !chatBelongsToStation(chat, connection)) continue;
     const base = {
       sessionId: chatKey,
       agentSlug: chat.agentSlug,
@@ -124,13 +130,24 @@ function sendableHere(clientTurnId: string): boolean {
 // double-invoked effects, or a fast remount — can never run two overlapping
 // drain passes; a `useRef` would only guard a SINGLE instance's re-renders,
 // not a second mounted instance.
-let flushing = false;
+const supervisors = new Map<
+  string,
+  { flushing: boolean; requested?: () => void }
+>();
 /**
  * A flush asked for while one is running. The running pass may already have
  * passed the row or chat that changed, so it runs once more when it ends
  * instead of the request being dropped.
  */
-let flushRequestedWhileFlushing: (() => void) | undefined;
+function supervisorFor(station: OutboundStationIdentity) {
+  const key = outboundStationKey(station);
+  let state = supervisors.get(key);
+  if (!state) {
+    state = { flushing: false };
+    supervisors.set(key, state);
+  }
+  return state;
+}
 /** Failed lookups keep sends fenced; retry observation with capped backoff. */
 const LOOKUP_RETRY_FIRST_MS = 2_000;
 const LOOKUP_RETRY_MAX_MS = 60_000;
@@ -138,7 +155,10 @@ const LOOKUP_RETRY_MAX_MS = 60_000;
 /** How often a send under way in another window is looked at again. */
 const OWNER_RECHECK_MS = 3_000;
 
-export function useOutboundQueueFlush(apiBase: string): void {
+export function useOutboundQueueFlush(
+  apiBase: string,
+  connection?: StationConnection,
+): void {
   const sendMessage = useSendMessage(apiBase);
   const {
     observation,
@@ -147,18 +167,30 @@ export function useOutboundQueueFlush(apiBase: string): void {
   } = useAuthorityPersistence();
   const environmentId = observation?.environmentId;
   const stationRef = useRef<OutboundStationIdentity>({ apiBase });
-  stationRef.current = {
-    apiBase,
-    ...(environmentId ? { environmentId } : {}),
-    ...(namespace && authorityStatus === 'verified'
-      ? { authorityNamespace: namespace }
-      : {}),
-  };
-  const { status } = useConnectionStatus({
+  stationRef.current = connection
+    ? outboundStationIdentity(connection)
+    : {
+        host: true,
+        apiBase,
+        ...(environmentId ? { environmentId } : {}),
+        ...(namespace && authorityStatus === 'verified'
+          ? { authorityNamespace: namespace }
+          : {}),
+      };
+  const { status: hostStatus } = useConnectionStatus({
     checkHealth: checkServerHealth,
     probeEndpoint: probeServerConnection,
     pollInterval: 10_000,
   });
+  const stream = useSyncExternalStore(subscribeStreamConnectionState, () =>
+    getStreamConnectionState(apiBase),
+  );
+  const status =
+    connection && connection.routeKind !== 'host'
+      ? stream.phase === 'caught-up'
+        ? 'connected'
+        : 'disconnected'
+      : hostStatus;
   const reconcileRetryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -174,8 +206,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
       namespace,
       authorityStatus,
       status,
+      connection,
     }),
-    [apiBase, environmentId, namespace, authorityStatus, status],
+    [apiBase, environmentId, namespace, authorityStatus, status, connection],
   );
   useEffect(() => {
     reconcileScopeRef.current = reconcileScope;
@@ -189,6 +222,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
       const wasAllowed = reconciliationAllowed.current;
       reconciliationAllowed.current =
         reconcileScope.status === 'connected' &&
+        (!reconcileScope.connection ||
+          (reconcileScope.connection.isCurrent() &&
+            reconcileScope.connection.capabilities.send.state === 'allowed')) &&
         !pageHidden.current &&
         document.visibilityState !== 'hidden' &&
         navigator.onLine !== false;
@@ -243,19 +279,21 @@ export function useOutboundQueueFlush(apiBase: string): void {
         scope === reconcileScopeRef.current &&
         generation === availabilityGeneration.current &&
         reconciliationAllowed.current &&
+        (!connection || connection.isCurrent()) &&
         document.visibilityState !== 'hidden' &&
         navigator.onLine !== false;
       if (!current()) return;
       const station = stationRef.current;
-      if (flushing) {
+      const supervisor = supervisorFor(station);
+      if (supervisor.flushing) {
         // Only a request for a change the running pass cannot have seen (a
         // chat that just became writable). Queue notifications are not: the
         // pass makes them itself, and rerunning on them would never settle.
         if (rerunIfBusy)
-          flushRequestedWhileFlushing = () => triggerFlushRef.current(true);
+          supervisor.requested = () => triggerFlushRef.current(true);
         return;
       }
-      flushing = true;
+      supervisor.flushing = true;
       void import('../lib/outboundQueue')
         .then(async ({ outboundDispatch }) => {
           const {
@@ -275,7 +313,10 @@ export function useOutboundQueueFlush(apiBase: string): void {
                   async (turn) => {
                     if (!current())
                       throw new Error('Automatic delivery observation paused');
-                    const answer = await lookupTurnDelivery(apiBase)(turn);
+                    const answer = await lookupTurnDelivery(
+                      apiBase,
+                      connection?.requestScope,
+                    )(turn);
                     if (!current())
                       throw new Error('Automatic delivery observation paused');
                     return answer;
@@ -291,9 +332,11 @@ export function useOutboundQueueFlush(apiBase: string): void {
           if (mode === 'full')
             await outboundDispatch
               .syncHeld(
-                heldOutboundIntents(activeChatsStore.getSnapshot()).map(
-                  (intent) => ({ ...intent, station }),
-                ),
+                heldOutboundIntents(
+                  activeChatsStore.getSnapshot(),
+                  connection,
+                ).map((intent) => ({ ...intent, station })),
+                { station },
               )
               .catch(() => undefined);
           if (!current()) return;
@@ -328,9 +371,10 @@ export function useOutboundQueueFlush(apiBase: string): void {
             Object.entries(activeChatsStore.getSnapshot())
               .filter(
                 ([, chat]) =>
-                  (!conversationCanMutate(chat) &&
+                  chatBelongsToStation(chat, connection) &&
+                  ((!conversationCanMutate(chat) &&
                     conversationOpenPhase(chat) !== 'busy') ||
-                  (isTurnInFlight(chat) && !chat.conversationId),
+                    (isTurnInFlight(chat) && !chat.conversationId)),
               )
               .map(([sessionId]) => sessionId),
           );
@@ -364,11 +408,16 @@ export function useOutboundQueueFlush(apiBase: string): void {
                   '@kontourai/station-sdk/client'
                 );
                 try {
-                  await submitConversationSteer(apiBase, turn.conversationId, {
-                    key: turn.clientTurnId,
-                    message: turn.content,
-                    expectedHead: turn.inboxSteerHead,
-                  });
+                  await submitConversationSteer(
+                    apiBase,
+                    turn.conversationId,
+                    {
+                      key: turn.clientTurnId,
+                      message: turn.content,
+                      expectedHead: turn.inboxSteerHead,
+                    },
+                    { requestScope: connection?.requestScope },
+                  );
                   if (!current()) return { kind: 'unanswered' as const };
                   return { kind: 'queued' as const };
                 } catch (error) {
@@ -384,10 +433,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
                   )
                     return {
                       kind: 'refused' as const,
-                      reason:
-                        error instanceof Error
-                          ? error.message
-                          : 'Station refused the steer.',
+                      reason: describeStationFailure(error).body,
                     };
                   return { kind: 'unanswered' as const };
                 }
@@ -401,9 +447,11 @@ export function useOutboundQueueFlush(apiBase: string): void {
                 turn.ambientContext,
                 turn.clientTurnId,
                 {
+                  connection,
                   skipInMemoryQueueOnBusy: true,
                   dispatch: claim,
                   executionSnapshot: {
+                    projectSlug: turn.projectSlug,
                     executionAgentId: turn.executionAgentId,
                     executionOnCurrentStation: turn.executionOnCurrentStation,
                     expectedDefinitionFingerprint:
@@ -445,20 +493,18 @@ export function useOutboundQueueFlush(apiBase: string): void {
           const { reportOutboundQueueUnavailable } = await import(
             '../lib/outboundQueueReporting'
           );
-          reportOutboundQueueUnavailable(
-            error instanceof Error ? error.message : String(error),
-          );
+          reportOutboundQueueUnavailable(describeStationFailure(error).body);
         })
         .finally(() => {
-          flushing = false;
-          if (flushRequestedWhileFlushing) {
-            const requested = flushRequestedWhileFlushing;
-            flushRequestedWhileFlushing = undefined;
+          supervisor.flushing = false;
+          if (supervisor.requested) {
+            const requested = supervisor.requested;
+            supervisor.requested = undefined;
             requested();
           }
         });
     },
-    [sendMessage, apiBase],
+    [sendMessage, apiBase, connection],
   );
   const triggerFlushRef = useRef(triggerFlush);
   triggerFlushRef.current = triggerFlush;
@@ -487,11 +533,13 @@ export function useOutboundQueueFlush(apiBase: string): void {
         const refreshProjection = () => {
           projection = projection.then(async () => {
             try {
-              const entries = await outboundDispatch.open();
+              const entries = (await outboundDispatch.open()).filter((entry) =>
+                rowBelongsToStation(entry, stationRef.current),
+              );
               // Keys finished with in any window: a discarded message's
               // bubble goes here too, a started one stops reading unanswered.
               const retired = await outboundDispatch
-                .retiredKeys()
+                .retiredKeys(stationRef.current, { partitioned: true })
                 .catch(() => undefined);
               if (!active) return;
               projectOutboundQueueEntries(
@@ -499,10 +547,14 @@ export function useOutboundQueueFlush(apiBase: string): void {
                   (entry) =>
                     !entry.inboxSteerHead ||
                     (!!namespace &&
-                      entry.station?.authorityNamespace === namespace),
+                      entry.station?.authorityNamespace ===
+                        stationRef.current.authorityNamespace),
                 ),
                 retired,
+                connection,
               );
+              if (connection)
+                await activeChatsStore.recoverLegacyImports(connection);
               // "Sending" holds only while the window sending it runs, and a
               // window that closes or crashes says nothing; the same goes for
               // a copy another window holds. While any row depends on a
@@ -570,7 +622,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
             } catch (error) {
               if (!active) return;
               reporter.reportOutboundQueueUnavailable(
-                error instanceof Error ? error.message : String(error),
+                describeStationFailure(error).body,
               );
             }
           });
@@ -610,7 +662,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
       if (deferredRetry) clearTimeout(deferredRetry.timer);
       unsubscribe();
     };
-  }, [status, triggerFlush, namespace]);
+  }, [status, triggerFlush, namespace, connection]);
 
   // A pass defers a chat whose conversation is not writable yet (a reload
   // re-proves the open conversation before it may send), and nothing else
@@ -625,6 +677,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
             ([, chat]) =>
               // Sendable now: open for writing and no turn running (the end
               // of a turn is what lets a message held back by it go).
+              chatBelongsToStation(chat, connection) &&
               conversationCanMutate(chat) &&
               !isTurnInFlight(chat) &&
               chat.outboundQueuedTurns?.some(
@@ -651,23 +704,36 @@ export function useOutboundQueueFlush(apiBase: string): void {
     return () => {
       unsubscribe();
     };
-  }, [status, triggerFlush]);
+  }, [status, triggerFlush, connection]);
 
   // Rows are written for, and only ever sent to, the Station this renderer
   // talks to now. Learning which Station that is can make rows sendable.
   useEffect(() => {
+    if (connection && connection.routeKind !== 'host') return;
     const scope = reconcileScope;
     void import('../lib/outboundQueue').then(({ noteCurrentStation }) => {
       if (scope !== reconcileScopeRef.current) return;
-      noteCurrentStation({
-        apiBase,
-        ...(environmentId ? { environmentId } : {}),
-        ...(namespace && authorityStatus === 'verified'
-          ? { authorityNamespace: namespace }
-          : {}),
-      });
+      noteCurrentStation(
+        connection
+          ? outboundStationIdentity(connection)
+          : {
+              host: true,
+              apiBase,
+              ...(environmentId ? { environmentId } : {}),
+              ...(namespace && authorityStatus === 'verified'
+                ? { authorityNamespace: namespace }
+                : {}),
+            },
+      );
     });
-  }, [apiBase, environmentId, namespace, authorityStatus, reconcileScope]);
+  }, [
+    apiBase,
+    environmentId,
+    namespace,
+    authorityStatus,
+    reconcileScope,
+    connection,
+  ]);
 
   // Held follow-ups live in the tab's session storage; their durable copy is
   // kept in the outbox, so closing the app does not lose them. One write at a
@@ -678,8 +744,11 @@ export function useOutboundQueueFlush(apiBase: string): void {
     let writing = false;
     let again = false;
     const sync = () => {
-      if (disposed) return;
-      const intents = heldOutboundIntents(activeChatsStore.getSnapshot());
+      if (disposed || (connection && !connection.isCurrent())) return;
+      const intents = heldOutboundIntents(
+        activeChatsStore.getSnapshot(),
+        connection,
+      );
       const signature = JSON.stringify(
         intents.map((intent) => [intent.clientTurnId, intent.content]),
       );
@@ -696,6 +765,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
               ...intent,
               station: stationRef.current,
             })),
+            { station: stationRef.current },
           ),
         )
         .then(() => {
@@ -719,5 +789,5 @@ export function useOutboundQueueFlush(apiBase: string): void {
       disposed = true;
       unsubscribe();
     };
-  }, []);
+  }, [connection]);
 }

@@ -164,6 +164,86 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(send).not.toHaveBeenCalled();
   });
 
+  it('pauses only the owning Station when saved message keys collide', async () => {
+    const first = await freshRenderer();
+    const stationA = { apiBase: 'http://a.test', environmentId: 'env-a' };
+    const stationB = { apiBase: 'http://b.test', environmentId: 'env-b' };
+    await first.outboundDispatch.beginLive({ ...intent, station: stationA });
+    await first.outboundDispatch.beginLive({ ...intent, station: stationB });
+    kill();
+    const queue = await freshRenderer();
+    const failedLookup = vi.fn(async () => {
+      throw new Error('Unavailable');
+    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect(
+        await queue.outboundDispatch.reconcile(failedLookup, {
+          station: stationA,
+        }),
+      ).toEqual({ received: 0, lookupFailed: attempt < 2 ? 1 : 0 });
+    }
+    const rows = await queue.outboundDispatch.snapshot();
+    expect(
+      rows.find((row) => row.station?.environmentId === 'env-a'),
+    ).toMatchObject({ status: 'may-have-started', deliveryLookupFailures: 3 });
+    expect(
+      rows.find((row) => row.station?.environmentId === 'env-b'),
+    ).toMatchObject({ status: 'invoking' });
+    expect(
+      rows.find((row) => row.station?.environmentId === 'env-b')
+        ?.deliveryLookupFailures,
+    ).toBeUndefined();
+    const lookup = lookupAnswering('started');
+    await queue.outboundDispatch.check(
+      intent.clientTurnId,
+      lookup,
+      stationA,
+      intent.conversationId,
+    );
+    expect(await queue.outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({ station: stationB, status: 'invoking' }),
+    ]);
+    await queue.outboundDispatch.reconcile(lookup, { station: stationB });
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it.each([
+    'not-received',
+    'started',
+    'received',
+    'queued',
+    'inbox-accepted',
+  ] as const)(
+    'rejects a %s answer for another conversation even with the same message key',
+    async (outcome) => {
+      const queue = await killedMidSend();
+      await queue.outboundDispatch.reconcile(async () => {
+        const identity = {
+          conversationId: 'other-chat',
+          clientTurnId: intent.clientTurnId,
+        };
+        if (outcome === 'inbox-accepted') return { ...identity, outcome };
+        if (outcome === 'started')
+          return {
+            ...identity,
+            outcome,
+            sessionId: 'other-chat',
+            turnId: 'other-turn',
+          };
+        return { ...identity, outcome };
+      });
+      expect(await queue.outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          status: 'invoking',
+          deliveryLookupFailures: 1,
+        }),
+      ]);
+      const send = vi.fn();
+      await queue.outboundDispatch.flush(send);
+      expect(send).not.toHaveBeenCalled();
+    },
+  );
+
   it('not-received: replays with the identical key, exactly once', async () => {
     const second = await killedMidSend();
     const lookup = lookupAnswering('not-received');

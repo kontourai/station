@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../utils/stationFailure';
 /**
  * Durable offline message dispatch.
  *
@@ -22,6 +23,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { createStore, get, promisifyRequest, set, update } from 'idb-keyval';
+import type { ChatStationBindingV1 } from '../connections/station-connection';
 import type { FileAttachment } from '../types';
 import { requestPersistentStorage } from './persistentStorage';
 
@@ -33,6 +35,8 @@ export type OutboundDispatchStatus =
   | 'may-have-started';
 
 export interface QueuedOutboundTurn {
+  /** Imported evidence cannot dispatch until the canonical chat write commits. */
+  legacyImport?: true;
   clientTurnId: string;
   /** An inbox steer is retried only with the head captured before its first handoff. */
   inboxSteerHead?: string;
@@ -214,7 +218,26 @@ export type OutboundFlushOutcome = 'drained' | 'unavailable';
 /** A queue-relative movement intent, resolved inside the durable update. */
 export type OutboundQueueMoveDirection = 'up' | 'down';
 
+export interface OutboundRetiredKeys {
+  discarded: readonly string[];
+  accepted: readonly string[];
+  byConversation?: Record<string, { discarded: string[]; accepted: string[] }>;
+}
+
 export interface OutboundDispatchModule {
+  activateLegacyImports(
+    sessionId: string,
+    station: OutboundStationIdentity,
+    conversationId?: string,
+  ): Promise<void>;
+  bindLegacyHost(
+    station: OutboundStationIdentity,
+    originalHost?: OutboundStationIdentity,
+  ): Promise<void>;
+  importLegacy(
+    intent: OutboundDispatchIntent & { station: OutboundStationIdentity },
+    dispatched: boolean,
+  ): Promise<'held' | 'observing' | 'settled'>;
   enqueue(
     intent: OutboundDispatchIntent,
     error?: unknown,
@@ -233,7 +256,11 @@ export interface OutboundDispatchModule {
    */
   subscribeRemoteChange(listener: () => void): () => void;
   fenceConversationHandoff<T>(
-    input: { conversationId: string; sessionId: string },
+    input: {
+      conversationId: string;
+      sessionId: string;
+      station?: OutboundStationIdentity;
+    },
     effect: () => Promise<T>,
   ): Promise<
     { status: 'blocked'; count: number } | { status: 'completed'; value: T }
@@ -253,8 +280,13 @@ export interface OutboundDispatchModule {
   completeAcceptedTurn(
     sessionId: string,
     providerTurnId: string,
+    station?: OutboundStationIdentity,
   ): Promise<void>;
-  discard(clientTurnId: string): Promise<void>;
+  discard(
+    clientTurnId: string,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
+  ): Promise<void>;
   /**
    * The user's explicit "I checked, discard it" for a row that may have
    * reached the agent: `may-have-started`, or a send that got no answer and
@@ -264,15 +296,26 @@ export interface OutboundDispatchModule {
    * every other status (a send still in flight, an accepted one, or a row
    * whose dispatch state this renderer could not record).
    */
-  dismissUnconfirmed(clientTurnId: string): Promise<void>;
+  dismissUnconfirmed(
+    clientTurnId: string,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
+  ): Promise<void>;
   /** The status of this key's row, if the outbox holds one. */
-  rowStatus(clientTurnId: string): Promise<OutboundDispatchStatus | undefined>;
+  rowStatus(
+    clientTurnId: string,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
+  ): Promise<OutboundDispatchStatus | undefined>;
   /**
    * Keys finished with in any window: discarded by the user, or accepted by
    * Station (its answer, or the delivery lookup's `started`). Bounded, as the
    * retired list is.
    */
-  retiredKeys(): Promise<{ discarded: string[]; accepted: string[] }>;
+  retiredKeys(
+    station?: OutboundStationIdentity,
+    options?: { conversationId?: string; partitioned?: boolean },
+  ): Promise<OutboundRetiredKeys>;
   /**
    * Records a live send `invoking` before its request is made, so its text is
    * durable while it is in flight. Rejects when storage is unavailable; the
@@ -298,9 +341,16 @@ export interface OutboundDispatchModule {
    * writes the new, updates the changed, removes the ones no longer held.
    * Touches only pending rows this renderer holds.
    */
-  syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void>;
+  syncHeld(
+    intents: readonly HeldOutboundIntent[],
+    options?: { station?: OutboundStationIdentity },
+  ): Promise<void>;
   /** The user sends a listed held copy (see `heldBy`). */
-  sendHeld(clientTurnId: string): Promise<void>;
+  sendHeld(
+    clientTurnId: string,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
+  ): Promise<void>;
   /**
    * The user's explicit check of one unconfirmed or orphaned row. Like
    * {@link reconcile}, except `not-received` always becomes `failed`
@@ -310,27 +360,109 @@ export interface OutboundDispatchModule {
   check(
     clientTurnId: string,
     lookup: OutboundDeliveryLookup,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
   ): Promise<TurnDeliveryOutcome | undefined>;
-  edit(clientTurnId: string, content: string): Promise<OutboundDispatchTurn>;
+  edit(
+    clientTurnId: string,
+    content: string,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
+  ): Promise<OutboundDispatchTurn>;
   reorder(
     clientTurnId: string,
     direction: OutboundQueueMoveDirection,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
   ): Promise<OutboundDispatchTurn>;
   merge(
     clientTurnId: string,
     nextClientTurnId: string,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
   ): Promise<OutboundDispatchTurn>;
-  unmerge(clientTurnId: string): Promise<void>;
-  retry(clientTurnId: string): Promise<void>;
+  unmerge(
+    clientTurnId: string,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
+  ): Promise<void>;
+  retry(
+    clientTurnId: string,
+    station?: OutboundStationIdentity,
+    conversationId?: string,
+  ): Promise<void>;
 }
 
-/** Which Station a row belongs to: its API base and its environment id. */
+/** The verified Station and principal that own a row, plus its route hint. */
 export interface OutboundStationIdentity {
+  binding?: ChatStationBindingV1;
   apiBase: string;
   /** The Station's public environment id, once this renderer verified it. */
   environmentId?: string;
   /** Verified person or authority partition for entries that require it. */
   authorityNamespace?: string;
+  /** Unqualified legacy rows can only be adopted by their original host. */
+  host?: boolean;
+}
+
+export function outboundStationKey(station?: OutboundStationIdentity): string {
+  return JSON.stringify([
+    station?.environmentId ?? normalizedBase(station?.apiBase ?? ''),
+    station?.authorityNamespace ?? '',
+  ]);
+}
+
+export function outboundTurnKey(turn: {
+  clientTurnId: string;
+  station?: OutboundStationIdentity;
+  conversationId?: string;
+  sessionId?: string;
+}): string {
+  return JSON.stringify([
+    outboundStationKey(turn.station),
+    turn.conversationId ?? turn.sessionId ?? '',
+    turn.clientTurnId,
+  ]);
+}
+
+function sameOwner(
+  left: { station?: OutboundStationIdentity },
+  right: { station?: OutboundStationIdentity },
+): boolean {
+  // Compatibility is restricted to audited, unbound host callers. Resolved
+  // connections require durable owner evidence, including the host itself.
+  if (!left.station && right.station?.host && !right.station.binding)
+    return true;
+  if (!right.station && left.station?.host && !left.station.binding)
+    return true;
+  return outboundStationKey(left.station) === outboundStationKey(right.station);
+}
+
+type TurnReference = {
+  clientTurnId: string;
+  station?: OutboundStationIdentity;
+  conversationId?: string;
+  sessionId?: string;
+};
+function sameTurn(left: TurnReference, right: TurnReference): boolean {
+  const leftConversation = left.conversationId ?? left.sessionId;
+  const rightConversation = right.conversationId ?? right.sessionId;
+  return (
+    left.clientTurnId === right.clientTurnId &&
+    sameOwner(left, right) &&
+    (leftConversation === undefined ||
+      rightConversation === undefined ||
+      leftConversation === rightConversation)
+  );
+}
+function findTurn(
+  entries: QueuedOutboundTurn[],
+  reference: TurnReference,
+): QueuedOutboundTurn | undefined {
+  const matches = entries.filter((entry) => sameTurn(entry, reference));
+  if (matches.length > 1)
+    throw new Error('Choose the conversation that owns this delivery key.');
+  return matches[0];
 }
 
 function normalizedBase(apiBase: string): string {
@@ -340,15 +472,17 @@ function normalizedBase(apiBase: string): string {
 /**
  * Whether a row may be sent to, or settled by, `current`. A row that names
  * an environment id needs the same verified one; a legacy row with no
- * Station recorded keeps the old any-Station behaviour.
+ * Station recorded is host-only until its original namespace can be proven.
  */
 export function rowBelongsToStation(
   row: { station?: OutboundStationIdentity; inboxSteerHead?: string },
   current: OutboundStationIdentity | undefined,
 ): boolean {
   if (row.inboxSteerHead && !row.station?.authorityNamespace) return false;
-  if (!row.station) return true;
+  if (!row.station)
+    return !current || (current.host === true && !current.binding);
   if (!current) return false;
+  if (current.binding && !row.station.authorityNamespace) return false;
   if (
     row.station.authorityNamespace !== undefined &&
     row.station.authorityNamespace !== current.authorityNamespace
@@ -511,6 +645,7 @@ export function updateRecordAndRetired(
 }
 
 interface TerminalEvidence {
+  station?: OutboundStationIdentity;
   sessionId: string;
   providerTurnId: string;
   observedAt: number;
@@ -531,6 +666,9 @@ interface OutboundQueueState {
 }
 
 interface RetiredKey {
+  conversationId?: string;
+  sessionId?: string;
+  station?: OutboundStationIdentity;
   clientTurnId: string;
   /** `discarded` or `accepted`; any other value still means retired. */
   reason: string;
@@ -561,11 +699,11 @@ function parseRetired(stored: unknown): RetiredKey[] {
 
 function withRetired(
   state: OutboundQueueState,
-  clientTurnId: string,
+  turn: TurnReference,
   reason: 'discarded' | 'accepted',
 ): OutboundQueueState {
   const others = (state.retired ?? []).filter(
-    (entry) => entry.clientTurnId !== clientTurnId,
+    (entry) => !sameTurn(entry, turn),
   );
   const sameReason = others.filter((entry) => entry.reason === reason);
   const dropped = new Set(
@@ -578,18 +716,23 @@ function withRetired(
     ...state,
     retired: [
       ...others.filter((entry) => !dropped.has(entry)),
-      { clientTurnId, reason, at: Date.now() },
+      {
+        clientTurnId: turn.clientTurnId,
+        station: turn.station,
+        conversationId: turn.conversationId,
+        sessionId: turn.sessionId,
+        reason,
+        at: Date.now(),
+      },
     ],
   };
 }
 
 function retiredReason(
   state: OutboundQueueState,
-  clientTurnId: string,
+  turn: TurnReference,
 ): 'discarded' | 'accepted' | undefined {
-  const reason = state.retired?.find(
-    (entry) => entry.clientTurnId === clientTurnId,
-  )?.reason;
+  const reason = state.retired?.find((entry) => sameTurn(entry, turn))?.reason;
   if (reason === undefined) return undefined;
   return reason === 'discarded' ? 'discarded' : 'accepted';
 }
@@ -942,10 +1085,11 @@ function normalizeEntry(entry: QueuedOutboundTurn): QueuedOutboundTurn {
 
 function protectedEvidence(entry: QueuedOutboundTurn): boolean {
   return (
+    entry.legacyImport === true ||
     entry.status === 'invoking' ||
     entry.status === 'accepted' ||
     entry.status === 'may-have-started' ||
-    unavailableClaims.has(entry.clientTurnId)
+    unavailableClaims.has(outboundTurnKey(entry))
   );
 }
 
@@ -957,7 +1101,11 @@ function mutationRefusal(
     action === 'merged' || action === 'unmerged'
       ? 'Queued message'
       : 'Queued turn';
-  if (unavailableClaims.has(entry.clientTurnId)) {
+  if (entry.legacyImport)
+    return new Error(
+      'Finish restoring this chat before changing its pending message.',
+    );
+  if (unavailableClaims.has(outboundTurnKey(entry))) {
     return new Error(
       `${subject} dispatch state is unavailable and cannot be ${action}. Inspect the session instead.`,
     );
@@ -1001,10 +1149,11 @@ function reorderBarrier(
 ): boolean {
   return (
     neighbour?.sessionId === moved.sessionId &&
+    sameOwner(neighbour, moved) &&
     (neighbour.status === 'accepted' ||
       neighbour.status === 'invoking' ||
       neighbour.status === 'may-have-started' ||
-      unavailableClaims.has(neighbour.clientTurnId))
+      unavailableClaims.has(outboundTurnKey(neighbour)))
   );
 }
 
@@ -1024,19 +1173,19 @@ function publicTurn(
   } = entry;
   return Object.freeze({
     ...turn,
-    ...(liveOwned.has(entry.clientTurnId)
+    ...(liveOwned.has(outboundTurnKey(entry))
       ? { liveInFlight: true as const }
       : {}),
     ...(entry.heldBy && entry.heldBy.bootId === knownBootId
       ? { heldHere: true as const }
       : {}),
-    ...(awaitingLookup(entry) || ownerGone.has(entry.clientTurnId)
+    ...(awaitingLookup(entry) || ownerGone.has(outboundTurnKey(entry))
       ? { awaitingLookup: true as const }
       : {}),
-    ...(underWay.has(entry.clientTurnId)
+    ...(underWay.has(outboundTurnKey(entry))
       ? { sendUnderWay: true as const }
       : {}),
-    ...(holderGone.has(entry.clientTurnId)
+    ...(holderGone.has(outboundTurnKey(entry))
       ? { holderGone: true as const }
       : {}),
   });
@@ -1059,22 +1208,23 @@ async function publicTurns(): Promise<OutboundDispatchTurn[]> {
   for (const row of rows) {
     if (row.heldBy && row.heldBy.bootId !== self) {
       if ((await ownerLiveness(row.heldBy.bootId)) === false)
-        holderGone.add(row.clientTurnId);
+        holderGone.add(outboundTurnKey(row));
       continue;
     }
     if (
       row.status !== 'invoking' ||
       row.dispatchBootId === undefined ||
-      liveOwned.has(row.clientTurnId)
+      liveOwned.has(outboundTurnKey(row))
     )
       continue;
     if (row.dispatchBootId === self) {
-      if (drainInFlight.has(row.clientTurnId)) underWay.add(row.clientTurnId);
+      if (drainInFlight.has(outboundTurnKey(row)))
+        underWay.add(outboundTurnKey(row));
       continue;
     }
     const live = await ownerLiveness(row.dispatchBootId);
-    if (live === true) underWay.add(row.clientTurnId);
-    else if (live === false) ownerGone.add(row.clientTurnId);
+    if (live === true) underWay.add(outboundTurnKey(row));
+    else if (live === false) ownerGone.add(outboundTurnKey(row));
   }
   return rows.map((row) => publicTurn(row, underWay, ownerGone, holderGone));
 }
@@ -1084,7 +1234,7 @@ function awaitingLookup(entry: QueuedOutboundTurn): boolean {
   return (
     entry.status === 'invoking' &&
     entry.dispatchBootId === undefined &&
-    !liveOwned.has(entry.clientTurnId)
+    !liveOwned.has(outboundTurnKey(entry))
   );
 }
 
@@ -1117,9 +1267,9 @@ function prune(
       .filter((entry) => !protectedEvidence(entry))
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(0, overflow)
-      .map((entry) => entry.clientTurnId),
+      .map((entry) => outboundTurnKey(entry)),
   );
-  return retained.filter((entry) => !evicted.has(entry.clientTurnId));
+  return retained.filter((entry) => !evicted.has(outboundTurnKey(entry)));
 }
 
 /**
@@ -1339,7 +1489,11 @@ async function readStored(): Promise<QueuedOutboundTurn[]> {
 }
 
 async function fenceConversationHandoff<T>(
-  input: { conversationId: string; sessionId: string },
+  input: {
+    conversationId: string;
+    sessionId: string;
+    station?: OutboundStationIdentity;
+  },
   effect: () => Promise<T>,
 ): Promise<
   { status: 'blocked'; count: number } | { status: 'completed'; value: T }
@@ -1347,8 +1501,9 @@ async function fenceConversationHandoff<T>(
   return withQueueLock(async () => {
     const count = (await readStored()).filter(
       (turn) =>
-        turn.conversationId === input.conversationId ||
-        turn.sessionId === input.sessionId,
+        sameOwner(turn, { station: input.station ?? currentStation }) &&
+        (turn.conversationId === input.conversationId ||
+          turn.sessionId === input.sessionId),
     ).length;
     if (count > 0) return { status: 'blocked', count };
     return { status: 'completed', value: await effect() };
@@ -1360,7 +1515,7 @@ function exact(
   claimed: QueuedOutboundTurn,
 ): boolean {
   return (
-    entry.clientTurnId === claimed.clientTurnId &&
+    sameTurn(entry, claimed) &&
     entry.status === 'invoking' &&
     entry.dispatchBootId === claimed.dispatchBootId &&
     entry.claimedAt === claimed.claimedAt
@@ -1382,9 +1537,7 @@ async function settle(
       const entries = state.turns;
       const index = entries.findIndex((entry) => exact(entry, claimed));
       if (index === -1) {
-        const same = entries.find(
-          (entry) => entry.clientTurnId === claimed.clientTurnId,
-        );
+        const same = entries.find((entry) => sameTurn(entry, claimed));
         return {
           state,
           result:
@@ -1419,6 +1572,7 @@ async function settle(
       if (status === 'accepted') {
         const evidenceIndex = terminalEvidence.findIndex(
           (evidence) =>
+            sameOwner(evidence, claimed) &&
             evidence.sessionId === claimed.sessionId &&
             evidence.providerTurnId === providerTurnId,
         );
@@ -1432,10 +1586,12 @@ async function settle(
           completedTerminals = [
             ...completedTerminals.filter(
               (candidate) =>
+                !sameOwner(candidate, claimed) ||
                 candidate.sessionId !== claimed.sessionId ||
                 candidate.providerTurnId !== providerTurnId,
             ),
             {
+              station: claimed.station,
               sessionId: claimed.sessionId,
               providerTurnId: providerTurnId!,
               observedAt: Date.now(),
@@ -1456,7 +1612,7 @@ async function settle(
                   terminalEvidence,
                   completedTerminals,
                 },
-                claimed.clientTurnId,
+                claimed,
                 'accepted',
               )
             : { ...state, turns: next, terminalEvidence, completedTerminals },
@@ -1465,9 +1621,9 @@ async function settle(
       };
     });
     if (outcome === 'applied' || outcome === 'already-applied') {
-      unavailableClaims.delete(claimed.clientTurnId);
+      unavailableClaims.delete(outboundTurnKey(claimed));
     } else if (status !== 'failed') {
-      unavailableClaims.add(claimed.clientTurnId);
+      unavailableClaims.add(outboundTurnKey(claimed));
     }
     return outcome;
   } catch {
@@ -1475,18 +1631,18 @@ async function settle(
     // readback distinguishes that idempotent fact from a genuinely
     // unavailable transition without ever releasing a possible effect.
     try {
-      const persisted = (await readStored()).find(
-        (entry) => entry.clientTurnId === claimed.clientTurnId,
+      const persisted = (await readStored()).find((entry) =>
+        sameTurn(entry, claimed),
       );
       if (
         persisted?.status === status &&
         (status !== 'accepted' || persisted.providerTurnId === providerTurnId)
       ) {
-        unavailableClaims.delete(claimed.clientTurnId);
+        unavailableClaims.delete(outboundTurnKey(claimed));
         return 'already-applied';
       }
       if (status === 'accepted' && completedByEarlyTerminal && !persisted) {
-        unavailableClaims.delete(claimed.clientTurnId);
+        unavailableClaims.delete(outboundTurnKey(claimed));
         return 'already-applied';
       }
     } catch {
@@ -1494,7 +1650,7 @@ async function settle(
     }
     // A provider effect may already exist. The durable pre-call `invoking`
     // record and this same-renderer fence both prohibit a replay.
-    unavailableClaims.add(claimed.clientTurnId);
+    unavailableClaims.add(outboundTurnKey(claimed));
     notify();
     return 'unavailable';
   }
@@ -1525,7 +1681,7 @@ async function releaseRejected(
   } catch {
     // This path is only entered for an Adapter's definite pre-effect outcome.
     // Storage uncertainty is nevertheless conservative: do not replay it.
-    unavailableClaims.add(claimed.clientTurnId);
+    unavailableClaims.add(outboundTurnKey(claimed));
     notify();
     return 'unavailable';
   }
@@ -1550,7 +1706,7 @@ async function releaseDeferred(
       return { entries: next, result: 'applied' as const, changed: true };
     });
   } catch {
-    unavailableClaims.add(claimed.clientTurnId);
+    unavailableClaims.add(outboundTurnKey(claimed));
     notify();
     return 'unavailable';
   }
@@ -1575,7 +1731,7 @@ async function releaseUnanswered(
       return { entries: next, result: 'applied' as const, changed: true };
     });
   } catch {
-    unavailableClaims.add(claimed.clientTurnId);
+    unavailableClaims.add(outboundTurnKey(claimed));
     notify();
     return 'unavailable';
   }
@@ -1620,6 +1776,7 @@ async function claimNext(
       const candidate = entries.find(
         (entry, index) =>
           entry.status === 'pending' &&
+          !entry.legacyImport &&
           !entry.heldBy &&
           rowBelongsToStation(entry, station) &&
           !blockedSessions.has(entry.sessionId) &&
@@ -1631,6 +1788,7 @@ async function claimNext(
           !entries.slice(0, index).some(
             (earlier) =>
               earlier.sessionId === entry.sessionId &&
+              sameOwner(earlier, entry) &&
               // An unconfirmed row is evidence, not a send in progress, and a
               // held copy waits on its queue or on the user: neither holds back
               // the messages written after it.
@@ -1655,9 +1813,9 @@ async function claimNext(
       next[index] = claimed;
       // In flight here before the claim's write is announced, so a projection
       // that change prompts already reads it as this renderer's send under way.
-      if (marked !== candidate.clientTurnId) {
+      if (marked !== outboundTurnKey(candidate)) {
         if (marked) drainInFlight.delete(marked);
-        marked = candidate.clientTurnId;
+        marked = outboundTurnKey(candidate);
         drainInFlight.add(marked);
       }
       return { entries: next, result: claimed, changed: true };
@@ -1684,19 +1842,18 @@ async function enqueue(
     providerTurnId?: unknown;
     deferredAt?: unknown;
   };
+  safeIntent.station ??= currentStation;
   const now = safeIntent.createdAt ?? Date.now();
   // Text now waits on this device, so ask the browser to keep it. A live send
   // that is answered (beginLive) never reaches here and never prompts.
   void requestPersistentStorage();
   return mutateState((state) => {
     // A message already delivered or discarded is not queued again.
-    const retired = retiredReason(state, safeIntent.clientTurnId);
+    const retired = retiredReason(state, safeIntent);
     if (retired) throw new OutboundKeyRetiredError(retired);
     const entries = prune(state.turns, Date.now());
-    const index = entries.findIndex(
-      (entry) => entry.clientTurnId === safeIntent.clientTurnId,
-    );
-    const lastError = error instanceof Error ? error.message : undefined;
+    const index = entries.findIndex((entry) => sameTurn(entry, safeIntent));
+    const lastError = describeStationFailure(error).body;
     if (index === -1) {
       // A pending draft has no possible provider effect, so the Module may
       // evict the oldest ordinary draft to make room. Fenced evidence is never
@@ -1708,19 +1865,20 @@ async function enqueue(
       const evicted = new Set(
         entries
           .filter(
-            (entry) => entry.status === 'pending' || entry.status === 'failed',
+            (entry) =>
+              !entry.legacyImport &&
+              (entry.status === 'pending' || entry.status === 'failed'),
           )
           .sort((a, b) => a.createdAt - b.createdAt)
           .slice(0, requiredEvictions)
-          .map((entry) => entry.clientTurnId),
+          .map((entry) => outboundTurnKey(entry)),
       );
       if (evicted.size !== requiredEvictions)
         throw new OutboundDispatchCapacityError();
       const retained = entries.filter(
-        (entry) => !evicted.has(entry.clientTurnId),
+        (entry) => !evicted.has(outboundTurnKey(entry)),
       );
       const next: QueuedOutboundTurn = {
-        ...(currentStation ? { station: currentStation } : {}),
         ...safeIntent,
         createdAt: now,
         attempts: 1,
@@ -1749,7 +1907,7 @@ async function enqueue(
           dispatchBootId: undefined,
           claimedAt: undefined,
         };
-        liveOwned.delete(existing.clientTurnId);
+        liveOwned.delete(outboundTurnKey(existing));
         const replacement = [...entries];
         replacement[index] = released;
         return {
@@ -1788,11 +1946,17 @@ async function enqueue(
   }).then(publicTurn);
 }
 
-async function discard(clientTurnId: string): Promise<void> {
+async function discard(
+  clientTurnId: string,
+  station = currentStation,
+  conversationId?: string,
+): Promise<void> {
   await mutateState((state) => {
-    const entry = state.turns.find(
-      (candidate) => candidate.clientTurnId === clientTurnId,
-    );
+    const entry = findTurn(state.turns, {
+      clientTurnId,
+      station,
+      conversationId,
+    });
     if (!entry) return { state, result: undefined, changed: false };
     if (protectedEvidence(entry)) {
       throw new Error(
@@ -1806,10 +1970,11 @@ async function discard(clientTurnId: string): Promise<void> {
         {
           ...state,
           turns: state.turns.filter(
-            (candidate) => candidate.clientTurnId !== clientTurnId,
+            (candidate) =>
+              !sameTurn(candidate, { clientTurnId, station, conversationId }),
           ),
         },
-        clientTurnId,
+        entry,
         'discarded',
       ),
       result: undefined,
@@ -1818,23 +1983,33 @@ async function discard(clientTurnId: string): Promise<void> {
   });
 }
 
-async function dismissUnconfirmed(clientTurnId: string): Promise<void> {
+async function dismissUnconfirmed(
+  clientTurnId: string,
+  station = currentStation,
+  conversationId?: string,
+): Promise<void> {
   // Under the queue lock throughout: a claim is withdrawn only if its owner
   // is proven gone at the moment of the write, never on an earlier reading.
   await withQueueLock(async () => {
-    const row = (await readStored()).find(
-      (candidate) => candidate.clientTurnId === clientTurnId,
-    );
+    const row = findTurn(await readStored(), {
+      clientTurnId,
+      station,
+      conversationId,
+    });
     const goneClaim =
       row?.status === 'invoking' &&
       row.dispatchBootId !== undefined &&
-      !liveOwned.has(clientTurnId) &&
+      !liveOwned.has(outboundTurnKey(row)) &&
       (await ownerLiveness(row.dispatchBootId)) === false
         ? row.dispatchBootId
         : undefined;
-    await mutateState((state) => dismissal(state, clientTurnId, goneClaim), {
-      locked: true,
-    });
+    await mutateState(
+      (state) =>
+        dismissal(state, clientTurnId, goneClaim, station, conversationId),
+      {
+        locked: true,
+      },
+    );
   });
 }
 
@@ -1842,12 +2017,16 @@ function dismissal(
   state: OutboundQueueState,
   clientTurnId: string,
   goneClaim: string | undefined,
+  station?: OutboundStationIdentity,
+  conversationId?: string,
 ): { state: OutboundQueueState; result: undefined; changed: boolean } {
   // Rechecked inside the write: a claim since re-taken by another renderer
   // is no longer the one proven gone.
-  const entry = state.turns.find(
-    (candidate) => candidate.clientTurnId === clientTurnId,
-  );
+  const entry = findTurn(state.turns, {
+    clientTurnId,
+    station,
+    conversationId,
+  });
   if (!entry) return { state, result: undefined, changed: false };
   const claimedByGone =
     goneClaim !== undefined &&
@@ -1857,7 +2036,7 @@ function dismissal(
     (entry.status !== 'may-have-started' &&
       !awaitingLookup(entry) &&
       !claimedByGone) ||
-    unavailableClaims.has(clientTurnId)
+    unavailableClaims.has(outboundTurnKey(entry))
   ) {
     throw new Error(
       'Only a message that may have reached the agent can be dismissed this way.',
@@ -1868,10 +2047,11 @@ function dismissal(
       {
         ...state,
         turns: state.turns.filter(
-          (candidate) => candidate.clientTurnId !== clientTurnId,
+          (candidate) =>
+            !sameTurn(candidate, { clientTurnId, station, conversationId }),
         ),
       },
-      clientTurnId,
+      entry,
       'discarded',
     ),
     result: undefined,
@@ -1882,12 +2062,14 @@ function dismissal(
 async function edit(
   clientTurnId: string,
   content: string,
+  station = currentStation,
+  conversationId?: string,
 ): Promise<OutboundDispatchTurn> {
   const trimmed = content.trim();
   if (!trimmed) throw new Error('Queued turn content must not be empty');
   return mutate((entries) => {
-    const index = entries.findIndex(
-      (entry) => entry.clientTurnId === clientTurnId,
+    const index = entries.indexOf(
+      findTurn(entries, { clientTurnId, station, conversationId })!,
     );
     if (index === -1) throw new Error('Queued turn no longer exists');
     if (protectedEvidence(entries[index]!)) {
@@ -1908,10 +2090,12 @@ async function edit(
 async function reorder(
   clientTurnId: string,
   direction: OutboundQueueMoveDirection,
+  station = currentStation,
+  conversationId?: string,
 ): Promise<OutboundDispatchTurn> {
   return mutate((entries) => {
-    const index = entries.findIndex(
-      (entry) => entry.clientTurnId === clientTurnId,
+    const index = entries.indexOf(
+      findTurn(entries, { clientTurnId, station, conversationId })!,
     );
     if (index === -1) throw new Error('Queued turn no longer exists');
     const moved = entries[index]!;
@@ -1936,10 +2120,12 @@ async function reorder(
 async function merge(
   clientTurnId: string,
   nextClientTurnId: string,
+  station = currentStation,
+  conversationId?: string,
 ): Promise<OutboundDispatchTurn> {
   return mutate((entries) => {
-    const index = entries.findIndex(
-      (entry) => entry.clientTurnId === clientTurnId,
+    const index = entries.indexOf(
+      findTurn(entries, { clientTurnId, station, conversationId })!,
     );
     if (index === -1) throw new Error('Queued turn no longer exists');
     const current = entries[index]!;
@@ -1951,7 +2137,10 @@ async function merge(
     if (nextTurn.status !== 'pending')
       throw mutationRefusal(nextTurn, 'merged');
     if (current.heldBy || nextTurn.heldBy) throw heldCopyRefusal('merged');
-    if (current.sessionId !== nextTurn.sessionId) {
+    if (
+      current.sessionId !== nextTurn.sessionId ||
+      !sameOwner(current, nextTurn)
+    ) {
       throw new Error('Only messages from the same session can be merged.');
     }
     // A merged row can itself be edited before a later merge. The user sees
@@ -1971,10 +2160,14 @@ async function merge(
   }).then(publicTurn);
 }
 
-async function unmerge(clientTurnId: string): Promise<void> {
+async function unmerge(
+  clientTurnId: string,
+  station = currentStation,
+  conversationId?: string,
+): Promise<void> {
   await mutate((entries) => {
-    const index = entries.findIndex(
-      (entry) => entry.clientTurnId === clientTurnId,
+    const index = entries.indexOf(
+      findTurn(entries, { clientTurnId, station, conversationId })!,
     );
     if (index === -1) throw new Error('Queued turn no longer exists');
     const merged = entries[index]!;
@@ -1990,10 +2183,14 @@ async function unmerge(clientTurnId: string): Promise<void> {
   });
 }
 
-async function retry(clientTurnId: string): Promise<void> {
+async function retry(
+  clientTurnId: string,
+  station = currentStation,
+  conversationId?: string,
+): Promise<void> {
   await mutate((entries) => {
-    const index = entries.findIndex(
-      (entry) => entry.clientTurnId === clientTurnId,
+    const index = entries.indexOf(
+      findTurn(entries, { clientTurnId, station, conversationId })!,
     );
     if (index === -1) throw new Error('Queued turn no longer exists');
     if (protectedEvidence(entries[index]!)) {
@@ -2047,7 +2244,7 @@ async function flush(
             result.providerTurnId,
           );
           if (accepted === 'unavailable' || accepted === 'stale') {
-            unavailableClaims.add(claimed.clientTurnId);
+            unavailableClaims.add(outboundTurnKey(claimed));
             unavailable ||= accepted === 'unavailable';
           }
         } else if (result.kind === 'queued') {
@@ -2064,7 +2261,7 @@ async function flush(
                     ...state,
                     turns: state.turns.filter((_, i) => i !== index),
                   },
-                  claimed!.clientTurnId,
+                  claimed!,
                   'accepted',
                 ),
                 result: 'applied' as const,
@@ -2072,9 +2269,9 @@ async function flush(
               };
             });
             if (outcome !== 'applied')
-              unavailableClaims.add(claimed.clientTurnId);
+              unavailableClaims.add(outboundTurnKey(claimed));
           } catch {
-            unavailableClaims.add(claimed.clientTurnId);
+            unavailableClaims.add(outboundTurnKey(claimed));
             unavailable = true;
           }
         } else if (result.kind === 'refused') {
@@ -2102,14 +2299,12 @@ async function flush(
       // invocation occurred. Latch it before allowing any observer to react.
       if (!capability.settled()) {
         const settled = await capability.public.indeterminate(
-          error instanceof Error
-            ? error.message
-            : 'transport threw after invocation began',
+          describeStationFailure(error).body,
         );
         unavailable ||= settled === 'unavailable';
       }
     } finally {
-      drainInFlight.delete(claimed.clientTurnId);
+      drainInFlight.delete(outboundTurnKey(claimed));
     }
     const state = capability.state();
     unavailable ||= capability.outcome() === 'unavailable';
@@ -2121,10 +2316,12 @@ async function flush(
 async function completeAcceptedTurn(
   sessionId: string,
   providerTurnId: string,
+  station = currentStation,
 ): Promise<void> {
   await mutateState((state) => {
     const acceptedIndex = state.turns.findIndex(
       (entry) =>
+        sameOwner(entry, { station }) &&
         entry.sessionId === sessionId &&
         entry.status === 'accepted' &&
         entry.providerTurnId === providerTurnId,
@@ -2136,10 +2333,11 @@ async function completeAcceptedTurn(
       const completedTerminals = [
         ...state.completedTerminals.filter(
           (candidate) =>
+            !sameOwner(candidate, { station }) ||
             candidate.sessionId !== sessionId ||
             candidate.providerTurnId !== providerTurnId,
         ),
-        { sessionId, providerTurnId, observedAt: Date.now() },
+        { station, sessionId, providerTurnId, observedAt: Date.now() },
       ]
         .sort((left, right) => right.observedAt - left.observedAt)
         .slice(0, TERMINAL_EVIDENCE_MAX_ENTRIES);
@@ -2149,6 +2347,7 @@ async function completeAcceptedTurn(
           turns: state.turns.filter((_, index) => index !== acceptedIndex),
           terminalEvidence: state.terminalEvidence.filter(
             (candidate) =>
+              !sameOwner(candidate, { station }) ||
               candidate.sessionId !== sessionId ||
               candidate.providerTurnId !== providerTurnId,
           ),
@@ -2161,6 +2360,7 @@ async function completeAcceptedTurn(
     if (
       state.completedTerminals.some(
         (candidate) =>
+          sameOwner(candidate, { station }) &&
           candidate.sessionId === sessionId &&
           candidate.providerTurnId === providerTurnId,
       )
@@ -2172,10 +2372,11 @@ async function completeAcceptedTurn(
     const evidence = [
       ...state.terminalEvidence.filter(
         (candidate) =>
+          !sameOwner(candidate, { station }) ||
           candidate.sessionId !== sessionId ||
           candidate.providerTurnId !== providerTurnId,
       ),
-      { sessionId, providerTurnId, observedAt: Date.now() },
+      { station, sessionId, providerTurnId, observedAt: Date.now() },
     ]
       .sort((left, right) => right.observedAt - left.observedAt)
       .slice(0, TERMINAL_EVIDENCE_MAX_ENTRIES);
@@ -2191,6 +2392,7 @@ async function reconcileAcceptedTerminals(): Promise<void> {
   await mutateState((state) => {
     const matches = (evidence: TerminalEvidence, turn: QueuedOutboundTurn) =>
       turn.status === 'accepted' &&
+      sameOwner(evidence, turn) &&
       evidence.sessionId === turn.sessionId &&
       evidence.providerTurnId === turn.providerTurnId;
     const matched = state.terminalEvidence.filter((evidence) =>
@@ -2204,11 +2406,13 @@ async function reconcileAcceptedTerminals(): Promise<void> {
         (completed) =>
           !matched.some(
             (evidence) =>
+              sameOwner(evidence, completed) &&
               evidence.sessionId === completed.sessionId &&
               evidence.providerTurnId === completed.providerTurnId,
           ),
       ),
-      ...matched.map(({ sessionId, providerTurnId }) => ({
+      ...matched.map(({ station, sessionId, providerTurnId }) => ({
+        station,
         sessionId,
         providerTurnId,
         observedAt: Date.now(),
@@ -2245,15 +2449,17 @@ function admitOne(entries: QueuedOutboundTurn[]): QueuedOutboundTurn[] {
   const evicted = new Set(
     entries
       .filter(
-        (entry) => entry.status === 'pending' || entry.status === 'failed',
+        (entry) =>
+          !entry.legacyImport &&
+          (entry.status === 'pending' || entry.status === 'failed'),
       )
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(0, requiredEvictions)
-      .map((entry) => entry.clientTurnId),
+      .map((entry) => outboundTurnKey(entry)),
   );
   if (evicted.size !== requiredEvictions)
     throw new OutboundDispatchCapacityError();
-  return entries.filter((entry) => !evicted.has(entry.clientTurnId));
+  return entries.filter((entry) => !evicted.has(outboundTurnKey(entry)));
 }
 
 /**
@@ -2294,34 +2500,36 @@ async function beginLive(
     providerTurnId?: unknown;
     deferredAt?: unknown;
   };
+  safeIntent.station ??= currentStation;
   const bootId = await rendererBootId();
   await holdRendererLiveness();
   const claimedAt = Date.now();
   const clientTurnId = safeIntent.clientTurnId;
+  const key = outboundTurnKey(safeIntent);
   // Before the write: the write notifies observers, and a projection must
   // never list this send a second time beside its own bubble.
-  liveOwned.add(clientTurnId);
+  liveOwned.add(key);
   let claimed: QueuedOutboundTurn;
   try {
     claimed = await mutateState((state) => {
-      const retired = retiredReason(state, clientTurnId);
+      const retired = retiredReason(state, safeIntent);
       if (retired) throw new OutboundKeyRetiredError(retired);
       const entries = prune(state.turns, Date.now());
-      const existing = entries.find(
-        (entry) => entry.clientTurnId === clientTurnId,
-      );
+      const existing = entries.find((entry) => sameTurn(entry, safeIntent));
       // This renderer's own earlier claim of the key (a durable write that
       // landed after its send went without it) is not another send: the
       // message is being sent again here, so the row is adopted, never left
       // for the abandoned attempt's cleanup to delete.
       const ownAbandoned =
         existing?.status === 'invoking' && existing.dispatchBootId === bootId;
-      if (existing && protectedEvidence(existing) && !ownAbandoned)
+      if (
+        existing?.legacyImport ||
+        (existing && protectedEvidence(existing) && !ownAbandoned)
+      )
         throw new OutboundRowInFlightError();
       const { heldBy: _held, ...withoutHold } = existing ?? {};
       void _held;
       const next: QueuedOutboundTurn = {
-        ...(currentStation ? { station: currentStation } : {}),
         ...(existing?.station ? { station: existing.station } : {}),
         ...(existing ? withoutHold : {}),
         ...safeIntent,
@@ -2346,15 +2554,15 @@ async function beginLive(
     });
   } catch (error) {
     // Only when no attempt of this renderer holds the key's claim.
-    if (!liveClaimOf.has(clientTurnId)) liveOwned.delete(clientTurnId);
+    if (!liveClaimOf.has(key)) liveOwned.delete(key);
     throw error;
   }
-  liveClaimOf.set(clientTurnId, claimed.claimedAt!);
+  liveClaimOf.set(key, claimed.claimedAt!);
   /** Clears the in-flight flag only while this attempt is the current one. */
   const releaseLive = () => {
-    if (liveClaimOf.get(clientTurnId) !== claimed.claimedAt) return;
-    liveClaimOf.delete(clientTurnId);
-    liveOwned.delete(clientTurnId);
+    if (liveClaimOf.get(key) !== claimed.claimedAt) return;
+    liveClaimOf.delete(key);
+    liveOwned.delete(key);
   };
   const transition = async (
     change: (entry: QueuedOutboundTurn) => QueuedOutboundTurn | undefined,
@@ -2386,10 +2594,10 @@ async function beginLive(
             {
               ...state,
               turns: state.turns.filter(
-                (entry) => entry.clientTurnId !== clientTurnId,
+                (entry) => !sameTurn(entry, safeIntent),
               ),
             },
-            clientTurnId,
+            safeIntent,
             'accepted',
           ),
           result: undefined,
@@ -2412,7 +2620,7 @@ async function beginLive(
       await transition(({ deliveryCheck: _stale, ...entry }) => ({
         ...entry,
         status: 'pending',
-        lastError: error instanceof Error ? error.message : undefined,
+        lastError: describeStationFailure(error).body,
         dispatchBootId: undefined,
         claimedAt: undefined,
       }));
@@ -2492,7 +2700,7 @@ async function applyDeliveryAnswer(
     const entries = state.turns;
     const index = entries.findIndex(
       (entry) =>
-        entry.clientTurnId === observed.clientTurnId &&
+        sameTurn(entry, observed) &&
         entry.status === observed.status &&
         entry.dispatchBootId === observed.dispatchBootId &&
         entry.claimedAt === observed.claimedAt,
@@ -2566,13 +2774,13 @@ async function applyDeliveryAnswer(
     const replaced = [...entries];
     if (next) replaced[index] = next;
     else replaced.splice(index, 1);
-    unavailableClaims.delete(entry.clientTurnId);
+    unavailableClaims.delete(outboundTurnKey(entry));
     const settled = { ...state, turns: replaced };
     return {
       // Station started it: delivered, so never sent again from anywhere.
       state:
         outcome === 'started' || outcome === 'inbox-accepted'
-          ? withRetired(settled, entry.clientTurnId, 'accepted')
+          ? withRetired(settled, entry, 'accepted')
           : settled,
       result: undefined,
       changed: true,
@@ -2585,9 +2793,9 @@ async function askStation(
   lookup: OutboundDeliveryLookup,
 ): Promise<TurnDeliveryOutcome | 'inbox-accepted' | undefined> {
   const answer = await lookup(publicTurn(row));
+  // Every outcome must name this exact message and conversation.
   return answer.clientTurnId === row.clientTurnId &&
-    (answer.outcome !== 'inbox-accepted' ||
-      answer.conversationId === (row.conversationId ?? row.sessionId))
+    answer.conversationId === (row.conversationId ?? row.sessionId)
     ? answer.outcome
     : undefined;
 }
@@ -2601,7 +2809,8 @@ async function reconcile(
   let received = 0;
   const failedKeys = new Set<string>();
   for (const row of await readStored()) {
-    if (liveOwned.has(row.clientTurnId)) continue;
+    if (row.legacyImport) continue;
+    if (liveOwned.has(outboundTurnKey(row))) continue;
     // Held copies are never released here: a live queue sends them, or the
     // user does once they are listed (`sendHeld`).
     if (row.heldBy) continue;
@@ -2655,7 +2864,7 @@ async function reconcile(
         };
         return { entries: updated, result: undefined, changed: true };
       });
-      failedKeys.add(row.clientTurnId);
+      failedKeys.add(outboundTurnKey(row));
       continue;
     }
     await applyDeliveryAnswer(row, outcome, 'resend');
@@ -2663,7 +2872,8 @@ async function reconcile(
   }
   const lookupFailed = failedKeys.size
     ? (await readStored()).filter(
-        (row) => row.status === 'invoking' && failedKeys.has(row.clientTurnId),
+        (row) =>
+          row.status === 'invoking' && failedKeys.has(outboundTurnKey(row)),
       ).length
     : 0;
   return { received, lookupFailed };
@@ -2674,12 +2884,17 @@ async function reconcile(
  * window's, or a closed one's): it becomes an ordinary pending row and the
  * flush sends it with its own key.
  */
-async function sendHeld(clientTurnId: string): Promise<void> {
+async function sendHeld(
+  clientTurnId: string,
+  station = currentStation,
+  conversationId?: string,
+): Promise<void> {
   await mutate((entries) => {
-    const index = entries.findIndex(
-      (entry) => entry.clientTurnId === clientTurnId && entry.heldBy,
+    const index = entries.indexOf(
+      findTurn(entries, { clientTurnId, station, conversationId })!,
     );
-    if (index === -1) return { entries, result: undefined, changed: false };
+    if (index === -1 || !entries[index]?.heldBy)
+      return { entries, result: undefined, changed: false };
     const { heldBy: _released, ...pending } = entries[index]!;
     void _released;
     const replaced = [...entries];
@@ -2688,42 +2903,62 @@ async function sendHeld(clientTurnId: string): Promise<void> {
   });
 }
 
-async function syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void> {
+async function syncHeld(
+  intents: readonly HeldOutboundIntent[],
+  options?: { station?: OutboundStationIdentity },
+): Promise<void> {
+  const station = options?.station ?? currentStation;
   const bootId = await rendererBootId();
   await holdRendererLiveness();
   const now = Date.now();
   const wanted = new Map(
-    intents.map((intent) => [intent.clientTurnId, intent]),
+    intents.map((intent) => {
+      const scoped = { ...intent, station: intent.station ?? station };
+      if (!sameOwner(scoped, { station }))
+        throw new Error('Held message belongs to another Station');
+      return [outboundTurnKey(scoped), scoped] as const;
+    }),
   );
   await mutateState((state) => {
     // A finished key (discarded or accepted) is never held again.
-    for (const key of wanted.keys())
-      if (retiredReason(state, key)) wanted.delete(key);
+    for (const [key, intent] of wanted)
+      if (retiredReason(state, intent)) wanted.delete(key);
     const entries = prune(state.turns, Date.now());
     let changed = false;
     const next: QueuedOutboundTurn[] = [];
     for (const entry of entries) {
-      if (entry.heldBy?.bootId !== bootId || entry.status !== 'pending') {
+      if (
+        !sameOwner(entry, { station }) ||
+        entry.heldBy?.bootId !== bootId ||
+        entry.status !== 'pending'
+      ) {
         next.push(entry);
         continue;
       }
-      const intent = wanted.get(entry.clientTurnId);
+      const intent = wanted.get(outboundTurnKey(entry));
       if (!intent) {
+        if (entry.legacyImport) {
+          next.push(entry);
+          continue;
+        }
         // No longer held here (sent, removed, or edited under a new key).
         changed = true;
         continue;
       }
-      wanted.delete(entry.clientTurnId);
-      if (entry.content !== intent.content) {
+      wanted.delete(outboundTurnKey(entry));
+      if (entry.content !== intent.content || entry.legacyImport) {
         changed = true;
-        next.push({ ...entry, ...intent, heldBy: { bootId, heldAt: now } });
+        next.push({
+          ...entry,
+          ...intent,
+          legacyImport: undefined,
+          heldBy: { bootId, heldAt: now },
+        });
       } else next.push(entry);
     }
     let retained = next;
     for (const intent of wanted.values()) {
-      const index = retained.findIndex(
-        (entry) => entry.clientTurnId === intent.clientTurnId,
-      );
+      const index = retained.findIndex((entry) => sameTurn(entry, intent));
       if (index !== -1) {
         const existing = retained[index]!;
         // The same message held again here, typically by the queue this tab
@@ -2752,7 +2987,6 @@ async function syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void> {
       }
       retained = admitOne(retained);
       retained.push({
-        ...(currentStation ? { station: currentStation } : {}),
         ...intent,
         createdAt: now,
         attempts: 0,
@@ -2772,15 +3006,20 @@ async function syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void> {
 async function check(
   clientTurnId: string,
   lookup: OutboundDeliveryLookup,
+  station = currentStation,
+  conversationId?: string,
 ): Promise<TurnDeliveryOutcome | undefined> {
-  const row = (await readStored()).find(
-    (entry) => entry.clientTurnId === clientTurnId,
-  );
+  const row = findTurn(await readStored(), {
+    clientTurnId,
+    station,
+    conversationId,
+  });
   if (!row) return undefined;
+  if (row.legacyImport) return undefined;
   if (row.status !== 'may-have-started' && row.status !== 'invoking')
     return undefined;
   // A send this renderer still has out is not checked; its answer is coming.
-  if (row.status === 'invoking' && liveOwned.has(clientTurnId))
+  if (row.status === 'invoking' && liveOwned.has(outboundTurnKey(row)))
     return undefined;
   if (
     row.status === 'invoking' &&
@@ -2788,7 +3027,7 @@ async function check(
     (await ownerLiveness(row.dispatchBootId))
   )
     return undefined;
-  if (!rowBelongsToStation(row, currentStation)) return undefined;
+  if (!rowBelongsToStation(row, station)) return undefined;
   const outcome = await askStation(row, lookup);
   if (!outcome) return undefined;
   await applyDeliveryAnswer(row, outcome, 'stop');
@@ -2796,6 +3035,103 @@ async function check(
 }
 
 export const outboundDispatch: OutboundDispatchModule = {
+  activateLegacyImports: async (sessionId, station, conversationId) => {
+    await mutate((entries) => {
+      let changed = false;
+      const next = entries.map((entry) => {
+        if (
+          !entry.legacyImport ||
+          entry.sessionId !== sessionId ||
+          !sameOwner(entry, { station }) ||
+          (conversationId !== undefined &&
+            (entry.conversationId ?? entry.sessionId) !== conversationId)
+        )
+          return entry;
+        changed = true;
+        return { ...entry, legacyImport: undefined };
+      });
+      return { entries: next, result: undefined, changed };
+    });
+  },
+  bindLegacyHost: async (station, originalHost) => {
+    if (!station.host || !station.environmentId || !station.authorityNamespace)
+      throw new Error('Legacy outbox requires its verified host namespace');
+    // The old global IndexedDB record alone cannot establish its author.
+    if (
+      !originalHost?.host ||
+      !sameOwner({ station }, { station: originalHost })
+    )
+      return;
+    await mutateState((state) => {
+      const bind = <T extends { station?: OutboundStationIdentity }>(
+        entry: T,
+      ): T => (entry.station ? entry : { ...entry, station });
+      const turns = state.turns.map(bind);
+      const terminalEvidence = state.terminalEvidence.map(bind);
+      const completedTerminals = state.completedTerminals.map(bind);
+      const retired = state.retired?.map(bind);
+      return {
+        state: {
+          ...state,
+          turns,
+          terminalEvidence,
+          completedTerminals,
+          retired,
+        },
+        result: undefined,
+        changed:
+          turns.some((entry, index) => entry !== state.turns[index]) ||
+          terminalEvidence.some(
+            (entry, index) => entry !== state.terminalEvidence[index],
+          ) ||
+          completedTerminals.some(
+            (entry, index) => entry !== state.completedTerminals[index],
+          ) ||
+          Boolean(
+            retired?.some((entry, index) => entry !== state.retired?.[index]),
+          ),
+      };
+    });
+  },
+  importLegacy: async (intent, dispatched) => {
+    if (!intent.station.environmentId || !intent.station.authorityNamespace)
+      throw new Error('Legacy peer work requires verified principal identity');
+    const bootId = await rendererBootId();
+    await holdRendererLiveness();
+    return mutateState((state) => {
+      // An existing row or retirement is newer evidence, including acceptance.
+      if (retiredReason(state, intent))
+        return { state, result: 'settled' as const, changed: false };
+      const existing = state.turns.find((entry) => sameTurn(entry, intent));
+      if (existing)
+        return {
+          state,
+          result:
+            existing.status === 'pending' && existing.heldBy
+              ? ('held' as const)
+              : ('observing' as const),
+          changed: false,
+        };
+      const now = intent.createdAt ?? Date.now();
+      if (state.turns.length >= OUTBOUND_QUEUE_MAX_ENTRIES)
+        throw new OutboundDispatchCapacityError();
+      const row: QueuedOutboundTurn = {
+        ...intent,
+        legacyImport: true,
+        createdAt: now,
+        attempts: 0,
+        status: dispatched ? 'invoking' : 'pending',
+        ...(dispatched
+          ? { origin: 'live' as const }
+          : { heldBy: { bootId, heldAt: now } }),
+      };
+      return {
+        state: { ...state, turns: [...state.turns, row] },
+        result: dispatched ? ('observing' as const) : ('held' as const),
+        changed: true,
+      };
+    });
+  },
   enqueue,
   recordUnanswered: (intent, error) => enqueue(intent, error, true),
   open: async () => {
@@ -2819,12 +3155,38 @@ export const outboundDispatch: OutboundDispatchModule = {
   completeAcceptedTurn,
   discard,
   dismissUnconfirmed,
-  rowStatus: async (clientTurnId) =>
-    (await readStored()).find((entry) => entry.clientTurnId === clientTurnId)
+  rowStatus: async (clientTurnId, station = currentStation, conversationId) =>
+    findTurn(await readStored(), { clientTurnId, station, conversationId })
       ?.status,
-  retiredKeys: async () => {
-    const retired = parseRetired(await retiredStorage.get());
+  retiredKeys: async (station = currentStation, options) => {
+    const retired = parseRetired(await retiredStorage.get()).filter(
+      (entry) =>
+        sameOwner(entry, { station }) &&
+        (options?.conversationId === undefined ||
+          (entry.conversationId ?? entry.sessionId) === undefined ||
+          (entry.conversationId ?? entry.sessionId) === options.conversationId),
+    );
+    const partitions = new Map<
+      string,
+      { discarded: string[]; accepted: string[] }
+    >();
+    if (options?.partitioned)
+      for (const entry of retired) {
+        const key = entry.conversationId ?? entry.sessionId ?? '*';
+        const partition = partitions.get(key) ?? {
+          discarded: [],
+          accepted: [],
+        };
+        (entry.reason === 'discarded'
+          ? partition.discarded
+          : partition.accepted
+        ).push(entry.clientTurnId);
+        partitions.set(key, partition);
+      }
     return {
+      ...(options?.partitioned
+        ? { byConversation: Object.fromEntries(partitions) }
+        : {}),
       discarded: retired
         .filter((entry) => entry.reason === 'discarded')
         .map((entry) => entry.clientTurnId),

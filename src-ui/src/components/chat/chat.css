@@ -1124,6 +1124,28 @@
 .message-delivery__notice {
   color: var(--text-primary);
 }
+
+.message-delivery--inline {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.message-delivery--inline .message-delivery__glyph {
+  position: static;
+  display: none;
+  flex: none;
+}
+.message-delivery--inline:is(
+    [data-delivery-state="sending"],
+    [data-delivery-state="received"]
+  )
+  .message-delivery__glyph {
+  display: block;
+}
 /* Phone: every delivery action is a full 44px target. */
 .message-row--compact .message-delivery__action,
 .message-row--compact .unconfirmed-discard__button {
@@ -1461,6 +1483,15 @@
    The class is DOUBLED so this beats index.css's single-class base rule on
    specificity rather than on which sheet the bundler emitted last. */
 @media (max-width: 768px), (pointer: coarse) {
+  .message-delivery--inline
+    :is(
+      .message-delivery__action,
+      .unconfirmed-discard__button,
+      .action-overflow__trigger
+    ) {
+    min-width: 44px;
+    min-height: 44px;
+  }
   .composer-attachments__chip {
     min-height: 44px;
   }
@@ -1577,6 +1608,8 @@
    keeps its size: it can hold Stop.)
    The composer keeps the room `ChatInputArea` reserves for a two-line draft. */
 .chat-dock__body > .chat-dock__session-failure,
+.chat-dock__body > .error-state,
+.chat-dock__body > .session-history-error,
 .chat-dock__body > .chat-messages {
   flex-shrink: 1000;
   min-height: 0;
@@ -1588,7 +1621,7 @@
    draft off the dock. */
 .chat-dock__body > .queued-messages-presence {
   flex-shrink: 500;
-  min-height: 0;
+  min-height: 44px;
 }
 .chat-dock__body
   > .queued-messages-presence:not(
@@ -2468,6 +2501,31 @@
 }
 
 @media (hover: hover) {
+  /* Record rows have no Basis chip. Their shared reader decides whether the
+     transcript is compact; only its desktop form overlays hover actions. */
+  .conversation-body--record
+    .conversation-reader[data-transcript-mobile="false"]
+    .message.assistant {
+    position: relative;
+  }
+
+  .conversation-body--record
+    .conversation-reader[data-transcript-mobile="false"]
+    .message.assistant
+    > .turn-footer {
+    position: absolute;
+    inset-block-start: var(--k-space-1);
+    inset-inline-end: var(--k-space-2);
+    margin: 0;
+  }
+
+  .conversation-body--record
+    .conversation-reader[data-transcript-mobile="false"]
+    .message.assistant
+    .message__sender {
+    padding-inline-end: calc(var(--k-space-6) * 4);
+  }
+
   .turn-footer__actions {
     opacity: 0;
     /* Reserve the action row so hover and keyboard focus never move messages. */
@@ -3013,6 +3071,10 @@
    bottom gutter instead: at rest at the bottom only padding is in the fade,
    and mid-scroll the cut line dissolves before it reaches the rail. A static
    mask on the scroller, no animation and no blur. */
+.chat-dock__retained-text {
+  color: var(--k-text);
+}
+
 .chat-messages {
   -webkit-mask-image: linear-gradient(
     to bottom,
@@ -3377,11 +3439,21 @@
   .chat-input__mode-label {
     display: none;
   }
+
+  .chat-input__send-btn[data-submit-action] .chat-input__send-label {
+    display: inline;
+  }
   .chat-input .chat-input__send-btn,
   .chat-input .chat-input__send-mode {
     width: 44px;
     min-width: 44px;
     padding: 0;
+  }
+
+  .chat-input .chat-input__send-btn[data-submit-action] {
+    width: auto;
+    padding-inline: var(--k-space-3);
+    white-space: nowrap;
   }
 }
 
@@ -3440,29 +3512,8 @@
     flex-basis: 100%;
   }
 
-  .chat-input__activity:not(
-    :has(.chat-status-pill, .chat-scroll-to-bottom, .transcript-turn-actions)
-  ) {
+  .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
     display: none;
-  }
-
-  /* #3862: at the latest message a narrow column keeps Previous turn
-     (TranscriptTurnRail.tsx). Holding only that step, the activity slot
-     does not take a row of its own: it ends the settings row, which gives
-     up the step's width (it already scrolls sideways). */
-  .chat-input__activity:has(> .transcript-turn-actions[data-latest]):not(
-    :has(.chat-status-pill)
-  ) {
-    order: 0;
-    flex-basis: auto;
-    margin-inline-start: 0;
-  }
-
-  .chat-input__meta:has(
-      > .chat-input__activity > .transcript-turn-actions[data-latest]
-    ):not(:has(.chat-status-pill))
-    > .chat-input__settings {
-    flex: 1 1 0;
   }
 
   /* In a dock too short for the transcript the Scroll to bottom button is not
@@ -3495,7 +3546,6 @@
   }
 
   .chat-input__activity .chat-scroll-to-bottom,
-  .chat-input__activity .transcript-turn-actions__step,
   .chat-input__activity .chat-status-pill-host .chat-status-pill {
     min-width: 44px;
     min-height: 44px;

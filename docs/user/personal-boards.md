@@ -7,7 +7,7 @@ Tasks, approvals or conversations into it.
 
 ## Create and edit
 
-Choose **+** beside **Personal Boards**, name the Board, and open it. Start with
+Choose **+** beside **Apps**, name the Board, and open it. Start with
 **Daily brief**, **Project watch**, **Review desk**, or **Start blank**. Project
 watch asks you to choose an available Project first.
 

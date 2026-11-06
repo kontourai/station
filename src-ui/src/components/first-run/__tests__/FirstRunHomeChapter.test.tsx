@@ -1045,7 +1045,9 @@ describe('first useful chat handoff', () => {
         await act(async () =>
           fireEvent.click(screen.getByRole('button', { name: label })),
         );
-        expect(screen.getByRole('alert').textContent).toContain('offline');
+        expect(screen.getByRole('alert').textContent).toContain(
+          'Try again in a moment.',
+        );
         expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
         expect(recordFirstRunDecision).not.toHaveBeenCalled();
         expect(intent).not.toHaveBeenCalled();

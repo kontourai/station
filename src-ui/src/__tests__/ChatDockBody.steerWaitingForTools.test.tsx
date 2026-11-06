@@ -237,7 +237,9 @@ describe('ChatDockBody steer status follows the tool rows', () => {
     });
     mountDock();
     expect(
-      await screen.findByText('Steer · Waiting for this turn to finish'),
+      await screen.findByText('Queued. Sends after this reply.', {
+        selector: '[role="status"]',
+      }),
     ).toBeTruthy();
     expect(
       screen.queryByText('Steer · Waiting for tools to finish'),
@@ -289,7 +291,9 @@ describe('ChatDockBody steer status follows the tool rows', () => {
     } as never);
     mountDock();
     expect(
-      await screen.findByText('Steer · Waiting for this turn to finish'),
+      await screen.findByText('Queued. Sends after this reply.', {
+        selector: '[role="status"]',
+      }),
     ).toBeTruthy();
   });
 

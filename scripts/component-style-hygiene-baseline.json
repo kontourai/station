@@ -451,7 +451,7 @@
       "legacy-token:--border-secondary": 1,
       "legacy-token:--radius-pill": 1
     },
-    "src-ui/src/components/chat-dock/ChatDockBody.tsx": {
+    "src-ui/src/components/conversation/ConversationBody.tsx": {
       "bespoke-action:\"button button--secondary session-history-error__retry\"": 1,
       "bespoke-action:\"button button--secondary\"": 4,
       "alert-with-action:div": 1

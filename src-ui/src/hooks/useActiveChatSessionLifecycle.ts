@@ -1,6 +1,8 @@
 import { useQueryClient } from '@kontourai/station-sdk';
 import { useCallback } from 'react';
 import { showChatPageOrDock } from '../app-shell/chat-placement';
+import type { StationConnection } from '../connections/station-connection';
+import { stationStateKey } from '../connections/station-state';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
@@ -86,15 +88,21 @@ export function useOpenConversation(apiBase: string) {
         current: () => boolean;
         cleanup: (id: string) => void;
       },
+      connection?: StationConnection,
     ): Promise<string | null> => {
       // Orchestration events are keyed by provider thread id. Reopening one of
       // those conversations must preserve that identity so recovered events,
       // live SSE frames, and subsequent turns all address the same session.
-      const sessionId = execution?.provider
-        ? conversationId
-        : `${agentSlug}:${Date.now()}`;
+      if (connection && !connection.isCurrent()) return null;
+      const remote = connection && connection.routeKind !== 'host';
+      const sessionId = remote
+        ? JSON.stringify([stationStateKey(connection.binding), conversationId])
+        : execution?.provider
+          ? conversationId
+          : `${agentSlug}:${Date.now()}`;
 
       initChat(sessionId, {
+        ...(connection ? { stationBinding: connection.binding } : {}),
         agentSlug,
         agentName,
         title: 'New chat',
@@ -108,12 +116,12 @@ export function useOpenConversation(apiBase: string) {
         // A replay-seeded fork has a durable Conversation and copied history,
         // but no execution Session until its first divergent turn.
         orchestrationSessionStarted:
-          Boolean(execution?.provider) && !hydrateMessages,
+          remote || (Boolean(execution?.provider) && !hydrateMessages),
       });
 
       hydration?.initialized(sessionId);
 
-      if (execution?.provider && !hydrateMessages) {
+      if (remote || (execution?.provider && !hydrateMessages)) {
         return sessionId;
       }
 

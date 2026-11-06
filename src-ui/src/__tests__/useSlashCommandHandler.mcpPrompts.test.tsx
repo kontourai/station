@@ -153,7 +153,7 @@ describe('#3284 an MCP prompt as a slash command', () => {
     );
   });
 
-  test("the server's refusal is shown and nothing is sent", async () => {
+  test('a server refusal shows safe recovery and sends nothing', async () => {
     mocks.runPrompt.mockRejectedValue(
       new Error(
         'The prompt includes image content, which Station cannot insert',
@@ -162,8 +162,7 @@ describe('#3284 an MCP prompt as a slash command', () => {
     await expect(run('/fixture:summarize MCP')).resolves.toBe(true);
     expect(mocks.addEphemeralMessage).toHaveBeenCalledWith('session-1', {
       role: 'system',
-      content:
-        'Could not run /fixture:summarize: The prompt includes image content, which Station cannot insert',
+      content: 'Could not run /fixture:summarize: Try again in a moment.',
     });
   });
 

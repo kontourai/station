@@ -42,6 +42,7 @@ import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../hooks/useUrlSelection';
 import { userFacingErrorMessage } from '../utils/errorText';
+import { describeStationFailure } from '../utils/stationFailure';
 import { SkillCommandSection } from './skills/SkillCommandSection';
 import {
   buildSkillFilename,
@@ -778,11 +779,7 @@ export function SkillsView({
             {detailFailed ? (
               <ErrorState
                 title="Unable to load skill"
-                description={
-                  detailError instanceof Error
-                    ? detailError.message
-                    : 'The skill detail could not be read.'
-                }
+                description={describeStationFailure(detailError).body}
                 action={
                   <Button size="sm" onClick={() => void refetchSkillDetail()}>
                     Retry

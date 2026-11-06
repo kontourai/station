@@ -481,8 +481,11 @@ trailing click cannot open the conversation. Details and long press retain the
 same actions with the preview off.
 
 Dismissal is browser-local inbox visibility, separate from tab teardown, stopping
-work, or deleting a draft. The Dismissed section offers Restore. Lifecycle changes
-use the existing debounce; running progress does not restore a dismissed row.
+work, or deleting a draft. Inbox search reveals matching dismissed items and
+their Restore action. Lifecycle changes use the existing debounce; running
+progress does not restore a dismissed row. Hidden Third-party sessions stay
+hidden through external updates and return to normal status handling when
+adopted into Station.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
