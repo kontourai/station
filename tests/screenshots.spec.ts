@@ -2762,7 +2762,10 @@ function appsLibraryScreens(details = false): Screen[] {
             exact: true,
           });
           await expect(
-            library.getByRole('button', { name: 'Open Morning brief' }),
+            library.getByRole('button', {
+              name: 'Morning brief Personal Board Decisions, active Tasks and recent work.',
+              exact: true,
+            }),
           ).toBeVisible();
           await expect(
             library.getByRole('region', { name: 'Plugin layouts' }),

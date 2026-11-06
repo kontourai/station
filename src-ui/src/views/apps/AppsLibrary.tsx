@@ -182,15 +182,14 @@ function Library({
                         type="button"
                         className="apps-library__launch"
                         onClick={() => onOpen(board.slug)}
-                        aria-label={`Open ${board.name}`}
                       >
                         <span className="apps-library__icon" aria-hidden="true">
                           {board.icon || <DashboardGlyph />}
                         </span>
-                        <strong>{board.name}</strong>
+                        <strong>{board.name}</strong>{' '}
                         <span className="apps-library__source">
                           {board.plugin ?? 'Personal Board'}
-                        </span>
+                        </span>{' '}
                         {board.description && (
                           <span className="apps-library__description">
                             {board.description}

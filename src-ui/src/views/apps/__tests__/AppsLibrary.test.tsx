@@ -124,7 +124,9 @@ test('a disabled preview cannot mount the launcher or read personal layouts', as
 
 test('searches the owned inventory, distinguishes plugin layouts and opens the exact Board', async () => {
   mount();
-  await screen.findByRole('button', { name: 'Open Daily brief' });
+  await screen.findByRole('button', {
+    name: 'Daily brief Personal Board Morning decisions',
+  });
   expect(
     within(screen.getByRole('region', { name: 'Plugin layouts' })).getByText(
       'acme-tools',
@@ -133,19 +135,33 @@ test('searches the owned inventory, distinguishes plugin layouts and opens the e
   fireEvent.change(screen.getByLabelText('Search apps'), {
     target: { value: 'acme' },
   });
-  expect(screen.queryByRole('button', { name: 'Open Daily brief' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Open Tool desk' }));
+  expect(
+    screen.queryByRole('button', {
+      name: 'Daily brief Personal Board Morning decisions',
+    }),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Tool desk acme-tools Plugin workspace',
+    }),
+  );
   expect(open).toHaveBeenCalledWith('tools');
   fireEvent.change(screen.getByLabelText('Search apps'), {
     target: { value: 'missing' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
-  expect(screen.getByRole('button', { name: 'Open Daily brief' })).toBeTruthy();
+  expect(
+    screen.getByRole('button', {
+      name: 'Daily brief Personal Board Morning decisions',
+    }),
+  ).toBeTruthy();
 });
 
 test('creates a named Board at a free address and opens it after the form closes', async () => {
   mount();
-  await screen.findByRole('button', { name: 'Open Daily brief' });
+  await screen.findByRole('button', {
+    name: 'Daily brief Personal Board Morning decisions',
+  });
   fireEvent.click(screen.getByRole('button', { name: 'New Board' }));
   fireEvent.change(screen.getByLabelText('Name'), {
     target: { value: 'Daily' },
@@ -179,7 +195,9 @@ test('edits metadata without replacing the layout config or changing its address
     target: { value: 'Release watch' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Save details' }));
-  await screen.findByRole('button', { name: 'Open Release desk' });
+  await screen.findByRole('button', {
+    name: 'Release desk Personal Board Release watch',
+  });
   expect(requests.find((entry) => entry.method === 'PUT')).toEqual({
     path: '/api/me/layouts/daily',
     method: 'PUT',
@@ -211,7 +229,9 @@ test('requires deletion confirmation and retains the Board when authority refuse
   await screen.findByRole('dialog', { name: 'Apps', exact: true });
   await waitFor(() =>
     expect(
-      screen.queryByRole('button', { name: 'Open Daily brief' }),
+      screen.queryByRole('button', {
+        name: 'Daily brief Personal Board Morning decisions',
+      }),
     ).toBeNull(),
   );
 });
@@ -244,7 +264,9 @@ test('successful deletion closes its confirmation after newer navigation superse
     await screen.findByRole('dialog', { name: 'Apps', exact: true });
     expect(screen.queryByRole('dialog', { name: 'Delete Board?' })).toBeNull();
     expect(
-      screen.queryByRole('button', { name: 'Open Daily brief' }),
+      screen.queryByRole('button', {
+        name: 'Daily brief Personal Board Morning decisions',
+      }),
     ).toBeNull();
     expect(window.location.pathname).toBe('/newer-destination');
     expect(requests.filter((entry) => entry.method === 'DELETE')).toHaveLength(
@@ -264,7 +286,9 @@ test('a failed list cannot create and recovers through Retry apps', async () => 
   ).toBe(true);
   readFailed = false;
   fireEvent.click(screen.getByRole('button', { name: 'Retry apps' }));
-  await screen.findByRole('button', { name: 'Open Daily brief' });
+  await screen.findByRole('button', {
+    name: 'Daily brief Personal Board Morning decisions',
+  });
   expect(
     screen.getByRole('button', { name: 'New Board' }).hasAttribute('disabled'),
   ).toBe(false);
@@ -328,7 +352,9 @@ test('returns keyboard focus to the launcher after visiting a child dialog', asy
   const trigger = screen.getByRole('button', { name: 'Browse apps' });
   trigger.focus();
   fireEvent.click(trigger);
-  await screen.findByRole('button', { name: 'Open Daily brief' });
+  await screen.findByRole('button', {
+    name: 'Daily brief Personal Board Morning decisions',
+  });
   const create = screen.getByRole('button', { name: 'New Board' });
   create.focus();
   fireEvent.click(create);

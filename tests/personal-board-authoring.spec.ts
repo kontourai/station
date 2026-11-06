@@ -893,8 +893,8 @@ for (const width of [390, 1440]) {
         });
         await openLibrary();
         await library.getByLabel('Search apps').fill(name);
-        const launch = library.getByRole('button', {
-          name: `Open ${name}`,
+        let launch = library.getByRole('button', {
+          name: `${name} Personal Board Release decisions and useful links.`,
           exact: true,
         });
         await expect(launch).toContainText(
@@ -933,6 +933,10 @@ for (const width of [390, 1440]) {
         await edit
           .getByRole('button', { name: 'Save details', exact: true })
           .click();
+        launch = library.getByRole('button', {
+          name: `${name} Personal Board Release watch, ready to open.`,
+          exact: true,
+        });
         await expect(launch).toContainText('Release watch, ready to open.');
         await launch.click();
         await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
@@ -944,7 +948,10 @@ for (const width of [390, 1440]) {
         await openLibrary();
         await library.getByLabel('Search apps').fill(name);
         await expect(
-          library.getByRole('button', { name: `Open ${name}`, exact: true }),
+          library.getByRole('button', {
+            name: `${name} Personal Board Release watch, ready to open.`,
+            exact: true,
+          }),
         ).toContainText('Release watch, ready to open.');
         await library
           .getByRole('button', { name: `Delete ${name}`, exact: true })
@@ -957,7 +964,10 @@ for (const width of [390, 1440]) {
           .getByRole('button', { name: 'Cancel', exact: true })
           .click();
         await expect(
-          library.getByRole('button', { name: `Open ${name}`, exact: true }),
+          library.getByRole('button', {
+            name: `${name} Personal Board Release watch, ready to open.`,
+            exact: true,
+          }),
         ).toBeVisible();
         await library
           .getByRole('button', { name: `Delete ${name}`, exact: true })
@@ -992,7 +1002,10 @@ for (const width of [390, 1440]) {
           .click();
         await expect(page).toHaveURL(/\/$/);
         await expect(
-          library.getByRole('button', { name: `Open ${name}`, exact: true }),
+          library.getByRole('button', {
+            name: `${name} Personal Board Release watch, ready to open.`,
+            exact: true,
+          }),
         ).toHaveCount(0);
         expect(
           (
@@ -1023,7 +1036,10 @@ for (const width of [390, 1440]) {
         await expect(page).toHaveURL(new RegExp(`/boards/${returnSlug}$`));
         await openLibrary();
         await library
-          .getByRole('button', { name: `Open ${raceName}`, exact: true })
+          .getByRole('button', {
+            name: `${raceName} Personal Board`,
+            exact: true,
+          })
           .click();
         await expect(page).toHaveURL(new RegExp(`/boards/${raceSlug}$`));
         await openLibrary();
@@ -1066,7 +1082,7 @@ for (const width of [390, 1440]) {
           await expect(page).toHaveURL(new RegExp(`/boards/${returnSlug}$`));
           await expect(
             library.getByRole('button', {
-              name: `Open ${raceName}`,
+              name: `${raceName} Personal Board`,
               exact: true,
             }),
           ).toHaveCount(0);

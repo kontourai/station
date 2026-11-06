@@ -6,15 +6,11 @@
   position: relative;
 }
 
-/* The row's own line: the Board button (or rename input) plus the absolutely
-   positioned menu trigger. The menus are siblings of this box, not children,
-   which is the whole point — an open menu grows `.sidebar__board-row` from
-   44px to ~138px, and a trigger centred on THAT would slide down onto the
-   menu's first item and swallow taps meant for Rename (#2062 review F1).
-   Mirrors `.sidebar__project-row-main`, which contains the projects list's
-   absolute controls for the same reason. */
+/* Expanded menus stay outside the controls' row so opening one cannot
+   shift its trigger onto Rename (#2062). */
 .sidebar__board-row-main {
-  position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .sidebar__board-glyph {
@@ -75,10 +71,8 @@
 }
 
 .sidebar__board-menu-trigger {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
+  margin-right: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -104,21 +98,9 @@
   opacity: 1;
 }
 
-/* No hover on touch: the row menu is always visible, at the 44px floor the
-   rest of the mobile sidebar controls use — the same answer
-   `.sidebar__section-remove` and `.sidebar__reorder-handle` already give for
-   this exact problem in `ProjectSidebar.css`.
-
-   Palette creation on a phone opens the Board without focusing rename in
-   the closed drawer. Keep its row actions visible when the drawer reopens.
-
-   `pointer: coarse` rather than the drawer's width breakpoint, following
-   `.sidebar__reorder-handle`: the defect is the absence of hover, not a
-   narrow viewport. The 44px box fits without the row surgery that handle
-   needed — on coarse pointers `.sidebar__project-btn`, which the Board row
-   reuses, is already `min-height: 44px` with `padding-right: 66px`, so the
-   trigger's target sits inside a band the label never enters. */
-@media (pointer: coarse) {
+/* Narrow drawers and touch pointers keep the menu visible at the 44px floor.
+   The navigation button and menu occupy separate flex slots. */
+@media (pointer: coarse), (max-width: 768px) {
   .sidebar__board-menu-trigger {
     min-width: 44px;
     min-height: 44px;
