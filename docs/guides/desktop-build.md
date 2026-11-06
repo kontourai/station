@@ -126,6 +126,11 @@ and omits prebuilds for other operating systems. Release packages use pinned
 Node, but desktop debug builds select Node from the login PATH; its architecture
 can differ from the staging Node (for example x64 Node under Rosetta on an
 arm64 Mac). Keeping same-OS bindings preserves that debug launch path.
+The pinned Windows backend uses ConPTY; its runtime assets are `conpty.node`,
+`conpty_console_list.node`, `conpty.dll` and `OpenConsole.exe` for each supported
+Windows architecture. Winpty assets are absent from the dependency and are not
+required by the lifecycle inventory. Native process tests and artifact staging
+checks remain separate from an installed Tauri-shell receipt.
 The stager and [pruning tests](../../scripts/__tests__/desktop-runtime-pruning.test.ts)
 own these rules. File-count reductions are packaging evidence; they do not
 measure Windows Defender scans or first-launch time.

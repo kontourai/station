@@ -380,6 +380,14 @@ refresh/removal/advisory trigger. The release SBOM context carries the exact
 allowlist digest and purls. Windows native proof remains a platform receipt,
 not something inferred from Linux or macOS.
 
+The exact node-pty 1.2.0-beta.17 approval includes upstream Windows handle-table
+locking and startup cancellation fixes (#4626). Its reviewed Windows artifacts
+are the ConPTY addon, console-list addon, bundled DLL and OpenConsole executable;
+this package no longer ships Winpty. Managed installation still verifies every
+selected-platform artifact and performs the real PTY handshake. The empty Linux
+prebuild channel continues to require a source build. Inspecting an ARM64 binary
+or PDB does not establish ARM64 runtime behavior.
+
 ```bash
 npm run audit:policy
 ```
