@@ -237,6 +237,10 @@ Use `.tap-target` for compact interactive controls; the local floor is 44 by
 44 CSS pixels. Preserve visible keyboard focus. These CSS rules do not prove
 actual hit area after transforms, overlays or clipping.
 
+The sidebar's narrow drawer keeps Home, add and Board-menu controls at the same
+floor, even with a fine pointer. Board navigation and its menu use separate
+flex slots so their targets do not overlap.
+
 Record discovered modal-like surfaces in
 [responsive-surfaces.json](../ui/responsive-surfaces.json) and action surfaces in
 [responsive-action-surfaces.txt](../ui/responsive-action-surfaces.txt). New

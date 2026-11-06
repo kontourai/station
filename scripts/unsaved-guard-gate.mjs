@@ -130,6 +130,7 @@ export function scanForBannedConfirmPrompt(file, content) {
 export const KNOWN_DIRTY_STATE_EDITORS = [
   'src-ui/src/views/learning-review/LearningReviewPanel.tsx',
   'src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx',
+  'src-ui/src/views/apps/AppDetailsDialog.tsx',
   'src-ui/src/views/ProjectSettingsView.tsx',
   'src-ui/src/views/SkillsView.tsx',
   'src-ui/src/views/agent-editor/useAgentsViewModel.ts',

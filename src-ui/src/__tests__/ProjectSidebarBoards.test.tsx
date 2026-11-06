@@ -21,6 +21,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { boardSlugFromName, nextBoardSlug } from '../app-shell/board-slug';
 import { requestNewBoard } from '../components/project-sidebar/new-board-events';
 
 const showSurfaceStub = vi.hoisted(() => vi.fn());
@@ -294,10 +295,6 @@ vi.mock('@kontourai/station-sdk', () => {
 
 import * as React from 'react';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
-import {
-  boardSlugFromName,
-  nextBoardSlug,
-} from '../components/project-sidebar/ProjectSidebarBoards';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
@@ -341,7 +338,7 @@ async function renderSidebar(ui: ReactElement) {
   );
   // The panel's own rows are synchronous; this is the lazy boundary settling.
   await act(async () => {
-    await Promise.resolve();
+    await vi.dynamicImportSettled();
   });
   return result;
 }
@@ -540,7 +537,13 @@ describe('Apps read recovery', () => {
       });
       expect(calls.create).toEqual([]);
       if (status === 'error') {
-        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        fireEvent.click(
+          within(
+            screen
+              .getByText('Unable to load apps')
+              .closest('[role="alert"]') as HTMLElement,
+          ).getByRole('button', { name: 'Retry' }),
+        );
         expect(readState.refetch).toHaveBeenCalledOnce();
       } else {
         expect(screen.getByLabelText('Loading apps')).toBeTruthy();
