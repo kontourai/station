@@ -91,7 +91,7 @@ it('closing an in-flight checkpoint reaps the worker and retains committed data'
     const pending = expect(checkpoint.run()).rejects.toThrow(
       'DURABLE_AGENT_CHECKPOINT_CLOSED',
     );
-    await checkpoint.close();
+    await Promise.all([checkpoint.close(), checkpoint.close()]);
     await pending;
     await expect(checkpoint.run()).rejects.toThrow(
       'DURABLE_AGENT_CHECKPOINT_CLOSED',

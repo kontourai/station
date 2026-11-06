@@ -6,7 +6,7 @@ import {
 } from './turn-wal-fixture.js';
 
 // Full backlog coverage belongs to the resource-classified process-heavy lane.
-it('retention bounds pre-COMMIT open and settle work while draining 60 terminal turns with 80 effects each', async () => {
+it('retention bounds synchronous open and settle work excluding COMMIT while draining 60 terminal turns with 80 effects each', async () => {
   await retentionBacklog(60, 80);
 }, 300_000);
 

@@ -8,6 +8,7 @@ export function durableAgentCheckpoint(database: DatabaseSync) {
   const { dev, ino } = statSync(path);
   const jobs = new Set<Worker>();
   let closed = false;
+  let closing: Promise<void> | undefined;
   const perform = async () => {
     const worker = new Worker(
       new URL(
@@ -49,25 +50,27 @@ export function durableAgentCheckpoint(database: DatabaseSync) {
       await perform();
       if (closed) throw new Error('DURABLE_AGENT_CHECKPOINT_CLOSED');
     },
-    async close() {
+    close() {
       closed = true;
-      await Promise.all([...jobs].map((worker) => worker.terminate()));
-      if (
-        !database.isOpen ||
-        !statSync(`${path}-wal`, { throwIfNoEntry: false })?.size
-      )
-        return;
-      try {
-        await perform();
-      } catch (error) {
+      return (closing ??= (async () => {
+        await Promise.all([...jobs].map((worker) => worker.terminate()));
         if (
-          !(
-            error instanceof Error &&
-            error.message === 'DURABLE_AGENT_CHECKPOINT_BUSY'
-          )
+          !database.isOpen ||
+          !statSync(`${path}-wal`, { throwIfNoEntry: false })?.size
         )
-          throw error;
-      }
+          return;
+        try {
+          await perform();
+        } catch (error) {
+          if (
+            !(
+              error instanceof Error &&
+              error.message === 'DURABLE_AGENT_CHECKPOINT_BUSY'
+            )
+          )
+            throw error;
+        }
+      })());
     },
   };
 }

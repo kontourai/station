@@ -58,7 +58,7 @@ it('batched retention setup writes the same agent rows as individually committed
   }
 });
 
-it('retention bounds open and settle while draining 10 terminal turns with 80 effects each', async () => {
+it('retention bounds synchronous open and settle work excluding COMMIT while draining 10 terminal turns with 80 effects each', async () => {
   await retentionBacklog(10, 80);
 });
 
