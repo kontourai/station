@@ -173,7 +173,7 @@
       ],
       "decision": "execute",
       "owner": "station-security",
-      "reason": "Pinned published upstream beta supplies synchronized Windows ConPTY handle ownership. Its install/postinstall hooks are unchanged and were read from the integrity-verified package. Windows now ships ConPTY only; exact backend/DLL artifacts remain required, with the real PTY handshake on each supported platform. Source review and macOS or local Windows proof do not establish hosted, ARM64 or Desktop qualification.",
+      "reason": "Pinned published upstream beta supplies synchronized Windows ConPTY handle ownership. Its approved install/postinstall command strings are unchanged; their integrity-bound scripts were reviewed. Linux still approves the source-built addon, and the runner enforces that decision despite upstream prebuilds. Windows ships ConPTY only; exact backend/DLL artifacts remain required, with the real PTY handshake on each supported platform. Source review and macOS or local Windows proof do not establish hosted, ARM64 or Desktop qualification.",
       "platform": {
         "os": [],
         "cpu": []

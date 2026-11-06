@@ -73,7 +73,9 @@ resolves and checks that package-manager pin. On Linux,
 `make`, `python3`) when the `node-pty` terminal module must be compiled.
 macOS and Windows normally use the supported prebuild paths. The Linux
 [prebuild manifest](../../packaging/node-pty-prebuilds/manifest.json) is currently
-empty. Its future artifact channel needs the libc compatibility admission in
+empty. Managed Linux installs require the approved source-built addon even
+though the upstream tarball includes Linux prebuilds. Its future artifact
+channel needs the libc compatibility admission in
 [#2813](https://github.com/kontourai/station/issues/2813) before it can replace
 source builds on supported hosts. `npm_config_build_from_source=true` opts out
 of prebuild staging. Other native dependencies retain their own platform

@@ -295,7 +295,9 @@ concrete device, an unknown binding after admission, or an ownership change
 still refuses signals; a missing binding never becomes successful cleanup.
 The backend is pinned to node-pty `1.2.0-beta.18`, whose Windows native handle
 registry is synchronized across spawn and exit threads. This pin is a published
-prerelease. Its Windows connection is asynchronous:
+prerelease. Managed Linux installs retain the approved source-build path;
+upstream Linux prebuilds are not selected by directory presence. Its Windows
+connection is asynchronous:
 the adapter waits for the output pipe and a valid PID before publishing the
 process or tracking its workload. A startup exit is refused; the backend already
 owns cleanup when no PID was published. Readiness waits for pipe wiring rather
