@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs';
+import { statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { DatabaseSync } from 'node:sqlite';
@@ -59,14 +59,17 @@ it('the production owner checkpoints active-turn WAL through a responsive worker
     const checkpointReadMs = performance.now() - started;
     await setTimeout(5);
     histogram.disable();
-    console.info(
-      'Station checkpoint worker',
-      JSON.stringify({
-        checkpointReadMs,
-        eventLoopMaxMs: histogram.max / 1e6,
-        walBytes: statSync(`${path}-wal`).size,
-      }),
-    );
+    const metrics = {
+      checkpointReadMs,
+      eventLoopMaxMs: histogram.max / 1e6,
+      walBytes: statSync(`${path}-wal`).size,
+    };
+    if (process.env.STATION_AGENT_RUNTIME_HOST_CHECKPOINT_REPORT)
+      writeFileSync(
+        process.env.STATION_AGENT_RUNTIME_HOST_CHECKPOINT_REPORT,
+        JSON.stringify(metrics),
+      );
+    console.info('Station checkpoint worker', JSON.stringify(metrics));
     expect(statSync(`${path}-wal`).size).toBe(0);
     expect(histogram.max / 1e6).toBeLessThan(50);
     await lease.run(async () => {});
