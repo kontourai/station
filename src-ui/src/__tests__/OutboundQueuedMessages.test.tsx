@@ -16,6 +16,10 @@ import { projectOutboundQueueEntries } from '../hooks/outboundQueueProjection';
 import type { QueuedOutboundTurn } from '../lib/outboundQueue';
 
 const recheckOutboundTurnMock = vi.fn();
+const copyToClipboardMock = vi.fn();
+vi.mock('../lib/clipboard', () => ({
+  copyToClipboard: (...args: unknown[]) => copyToClipboardMock(...args),
+}));
 vi.mock('../lib/deliveryLookup', () => ({
   recheckOutboundTurn: (...args: unknown[]) => recheckOutboundTurnMock(...args),
 }));
@@ -48,6 +52,45 @@ vi.mock('../lib/outboundQueue', async (importOriginal) => ({
 import { OutboundQueuedMessages } from '../components/chat/OutboundQueuedMessages';
 
 describe('OutboundQueuedMessages (station#2522)', () => {
+  it.each([true, false])(
+    'copying an unconfirmed message reports clipboard success=%s',
+    async (copied) => {
+      copyToClipboardMock.mockResolvedValueOnce(copied);
+      const retry = vi.fn();
+      render(
+        <OutboundQueuedMessages
+          sessionId="chat-copy"
+          turns={[
+            {
+              clientTurnId: 'copy-key',
+              content: 'saved text',
+              status: 'may-have-started',
+            },
+          ]}
+          onError={vi.fn()}
+          onRetry={retry}
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More delivery actions' }),
+      );
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy message' }));
+      await waitFor(() =>
+        expect(copyToClipboardMock).toHaveBeenCalledWith('saved text'),
+      );
+      expect(
+        await screen.findByText(
+          copied
+            ? 'Copied'
+            : 'Could not copy this message. Select its text to copy it.',
+        ),
+      ).toBeTruthy();
+      expect(retry).not.toHaveBeenCalled();
+      expect(discardOutboundTurnMock).not.toHaveBeenCalled();
+      expect(dismissUnconfirmedMock).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(['indeterminate', 'error'])(
     'refresh delivery reports %s without resending',
     async (outcome) => {
