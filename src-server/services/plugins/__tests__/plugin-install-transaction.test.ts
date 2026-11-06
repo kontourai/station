@@ -160,6 +160,9 @@ vi.mock('../../../providers/registries/registry.js', () => ({
     listInstalled: vi.fn().mockResolvedValue([]),
   }),
   getPluginRegistryProviders,
+  // No managed policy here: nothing is refused.
+  getRegisteredPluginRegistryProviders: getPluginRegistryProviders,
+  pluginRegistryAllowedByManagedPolicy: () => true,
   getSkillRegistryProviders: () => [],
   replacePluginProvidersForSource,
   pluginProviderSourceGeneration: () => 0,

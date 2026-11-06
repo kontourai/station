@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
@@ -17,7 +17,7 @@ import {
   runFloorInvocations,
 } from '../windows-portable-floor.mjs';
 
-const root = resolve(import.meta.dirname, '../..');
+const root = fileURLToPath(new URL('../..', import.meta.url));
 const makeTempDir = trackTempDirs();
 const SESSIONS =
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts';

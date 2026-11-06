@@ -28,6 +28,12 @@ import {
   writeJsonAtomically,
   writeServiceStageProgress,
 } from '@kontourai/station-shared/service-launcher-protocol';
+import {
+  installedManagedUpdates,
+  launcherUpdateRing,
+  managedInstallerEnv,
+  managedRingRefusal,
+} from './managed-update-installer.js';
 import type { ServiceFs } from './service.js';
 
 /**
@@ -206,6 +212,7 @@ export function stageServiceUpdate(input: {
   );
   let state: {
     channel?: unknown;
+    releaseChannel?: unknown;
     stationRoot?: unknown;
     stationHome?: unknown;
     manifestUrl?: unknown;
@@ -222,7 +229,28 @@ export function stageServiceUpdate(input: {
       new Error(`cannot read the install state: ${(error as Error).message}`),
     );
   }
+  // #4522: the launcher stages for a server it does not run inside, so it
+  // reads the machine's policy itself. An unusable policy, `off`, a
+  // disallowed nightly ring or a mirror the installer cannot follow refuses
+  // the stage before anything is downloaded.
+  let managedEnv: Record<string, string>;
+  try {
+    managedEnv = managedInstallerEnv({
+      updates: installedManagedUpdates(env),
+      ring: launcherUpdateRing({
+        releaseChannel: state.releaseChannel,
+        runtimeChannel: state.channel,
+        installedVersion: input.version,
+        targetVersion: input.targetVersion,
+      }),
+      platform: input.platform ?? process.platform,
+      requestedManifestUrl: env.STATION_INSTALL_PUBLIC_MANIFEST_URL,
+    });
+  } catch (error) {
+    return Promise.reject(error);
+  }
   const manifestUrl =
+    managedEnv.STATION_INSTALL_PUBLIC_MANIFEST_URL ||
     env.STATION_INSTALL_PUBLIC_MANIFEST_URL ||
     (typeof state.manifestUrl === 'string' ? state.manifestUrl : undefined);
   const childEnv: NodeJS.ProcessEnv = {
@@ -243,6 +271,7 @@ export function stageServiceUpdate(input: {
     if (typeof value === 'string') childEnv[key] = value;
   }
   if (manifestUrl) childEnv.STATION_INSTALL_PUBLIC_MANIFEST_URL = manifestUrl;
+  Object.assign(childEnv, managedEnv);
   if (input.targetVersion) childEnv.STATION_VERSION = `v${input.targetVersion}`;
   else delete childEnv.STATION_VERSION;
   return new Promise((resolvePromise, reject) => {
@@ -390,6 +419,8 @@ export interface ServiceLauncherLinkDependencies {
   handOffLiveness: (launcherPid: number) => void;
   stage?: typeof stageServiceUpdate;
   log?: (message: string) => void;
+  /** Where the managed policy is read from; `process.env` by default. */
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface ServiceLauncherLink {
@@ -398,6 +429,45 @@ export interface ServiceLauncherLink {
   onReady(): void;
   /** One supervisor check: picks up a queued update request. */
   tick(): void;
+}
+
+/**
+ * Why the managed policy refuses an update or apply request to
+ * `targetVersion` (#4522), or null. An unusable policy refuses, as it does
+ * server startup. The install state is read leniently: a missing ring is
+ * not a pass under `allowNightly: false` (`managedRingRefusal`).
+ */
+function launcherRequestRefusal(
+  context: ServiceLauncherContext,
+  targetVersion: string | undefined,
+  env: NodeJS.ProcessEnv,
+): string | null {
+  let state: { channel?: unknown; releaseChannel?: unknown } = {};
+  try {
+    const parsed: unknown = JSON.parse(
+      readFileSync(
+        join(context.installRoot, '.station-release-state.json'),
+        'utf8',
+      ),
+    );
+    if (parsed && typeof parsed === 'object') state = parsed;
+  } catch {
+    // No readable state: the ring is unknown.
+  }
+  try {
+    return managedRingRefusal(
+      installedManagedUpdates(env),
+      launcherUpdateRing({
+        releaseChannel: state.releaseChannel,
+        runtimeChannel: state.channel,
+        installedVersion: context.version,
+        targetVersion,
+      }),
+    );
+  } catch (error) {
+    // ManagedPolicyInvalidError: an installed policy Station cannot use.
+    return (error as Error).message;
+  }
 }
 
 export function createServiceLauncherLink(
@@ -489,6 +559,23 @@ export function createServiceLauncherLink(
       const requestId = request.id;
       const mode = request.mode;
       pendingRequestId = requestId;
+      // #4522: every request, before anything else. A version staged before
+      // the policy turned updates off (or made its ring unavailable) is
+      // refused here; staging checks the policy again for a download.
+      const managedRefusal = launcherRequestRefusal(
+        context,
+        request.targetVersion,
+        dependencies.env ?? process.env,
+      );
+      if (managedRefusal) {
+        finishRequest({
+          requestId,
+          status: 'failed',
+          reason: managedRefusal,
+          at: new Date().toISOString(),
+        });
+        return;
+      }
       const alreadyStaged =
         !!request.targetVersion &&
         serviceVersionIsStaged(context.installRoot, request.targetVersion);
@@ -523,6 +610,7 @@ export function createServiceLauncherLink(
         alreadyStaged && request.targetVersion
           ? Promise.resolve(request.targetVersion)
           : stage({
+              ...(dependencies.env ? { env: dependencies.env } : {}),
               installRoot: context.installRoot,
               version: context.version,
               targetVersion: request.targetVersion,

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadUUID</key>
+	<string>6A1F1C9E-2B57-4D0B-9C1E-3D4A0B7C2E11</string>
+	<key>limits</key>
+	<dict>
+		<key>registries</key>
+		<dict>
+			<key>allowedUrls</key>
+			<array>
+				<string>https://plugins.acme.example/catalog</string>
+			</array>
+			<key>unsignedPackages</key>
+			<false/>
+		</dict>
+		<key>telemetry</key>
+		<false/>
+		<key>webhookAutomations</key>
+		<false/>
+	</dict>
+	<key>organization</key>
+	<string>Acme Corp</string>
+	<key>schemaVersion</key>
+	<integer>1</integer>
+	<key>supportUrl</key>
+	<string>https://help.acme.example/station</string>
+</dict>
+</plist>

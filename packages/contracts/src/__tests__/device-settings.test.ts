@@ -149,7 +149,6 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(keys).toEqual(
       [
         'theme',
-        'showReleaseNotesAfterUpdate',
         'accentColor',
         'featureSettings',
         'sttProvider',
@@ -163,6 +162,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'inboxOpen',
         'inboxSections',
         'projectSidebarCollapsed',
+        'deviceFoldBentView',
+        'deviceFoldTurnToFit',
         'onboardingSetupDismissed',
         'skillShortcuts',
         'shortcutOverrides',
@@ -253,6 +254,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
       draftsHidden: false,
     });
     expect(byKey.get('projectSidebarCollapsed')).toBe(false);
+    expect(byKey.get('deviceFoldBentView')).toBe(false);
+    expect(byKey.get('deviceFoldTurnToFit')).toBe(false);
     expect(byKey.get('onboardingSetupDismissed')).toBe(false);
     expect(byKey.get('shortcutOverrides')).toEqual({});
     expect(byKey.get('modelPickerPreferences')).toEqual({

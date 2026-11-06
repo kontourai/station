@@ -58,6 +58,7 @@ export interface QueuedOutboundTurn {
   attempts: number;
   status: OutboundDispatchStatus;
   lastError?: string;
+  deliveryLookupFailures?: number;
   lastAttemptAt?: number;
   /**
    * When a send of it last hit a temporary gate (`deferred`, typically a
@@ -284,7 +285,7 @@ export interface OutboundDispatchModule {
    * `not-received` → pending (sent again with the SAME key), `started` →
    * removed (delivered), `received`/`queued` → left to ask again later,
    * `indeterminate`/`expired` → may-have-started (never resent). A lookup
-   * that fails leaves the row as it is. Returns how many rows Station still
+   * that fails three times pauses in may-have-started. Returns how many rows Station still
    * reports as received or queued and failed lookups still unresolved, so the caller can
    * ask again with backoff.
    */
@@ -302,8 +303,8 @@ export interface OutboundDispatchModule {
   sendHeld(clientTurnId: string): Promise<void>;
   /**
    * The user's explicit check of one unconfirmed or orphaned row. Like
-   * {@link reconcile}, except `not-received` on a row that may have started
-   * becomes `failed` (not sent; the user retries it with the same key)
+   * {@link reconcile}, except `not-received` always becomes `failed`
+   * (not sent; the user retries it with the same key)
    * instead of being resent automatically.
    */
   check(
@@ -2499,7 +2500,11 @@ async function applyDeliveryAnswer(
     if (index === -1) return { state, result: undefined, changed: false };
     const entry = entries[index]!;
     // The same answer again changes nothing (and wakes no observer).
-    if (outcome === 'received' && entry.deliveryCheck?.outcome === 'received')
+    if (
+      outcome === 'received' &&
+      entry.deliveryCheck?.outcome === 'received' &&
+      !entry.deliveryLookupFailures
+    )
       return { state, result: undefined, changed: false };
     const deliveryCheck = {
       outcome: outcome === 'inbox-accepted' ? ('queued' as const) : outcome,
@@ -2507,6 +2512,7 @@ async function applyDeliveryAnswer(
     };
     const released = {
       ...entry,
+      deliveryLookupFailures: undefined,
       deliveryCheck,
       dispatchBootId: undefined,
       claimedAt: undefined,
@@ -2517,7 +2523,7 @@ async function applyDeliveryAnswer(
         next = undefined;
         break;
       case 'received':
-        next = { ...entry, deliveryCheck };
+        next = { ...entry, deliveryLookupFailures: undefined, deliveryCheck };
         break;
       case 'indeterminate':
       case 'expired':
@@ -2541,7 +2547,10 @@ async function applyDeliveryAnswer(
       // A lookup reporting a queued row does not provide the direct admission
       // receipt used by flush settlement. Keep the row until stronger evidence.
       case 'queued':
-        return { state, result: undefined, changed: false };
+        if (!entry.deliveryLookupFailures)
+          return { state, result: undefined, changed: false };
+        next = { ...entry, deliveryLookupFailures: undefined };
+        break;
       case 'inbox-accepted':
         if (!entry.inboxSteerHead)
           return { state, result: undefined, changed: false };
@@ -2575,17 +2584,12 @@ async function askStation(
   row: QueuedOutboundTurn,
   lookup: OutboundDeliveryLookup,
 ): Promise<TurnDeliveryOutcome | 'inbox-accepted' | undefined> {
-  try {
-    const answer = await lookup(publicTurn(row));
-    // The answer must be about this exact key, never a near match.
-    return answer.clientTurnId === row.clientTurnId &&
-      (answer.outcome !== 'inbox-accepted' ||
-        answer.conversationId === (row.conversationId ?? row.sessionId))
-      ? answer.outcome
-      : undefined;
-  } catch {
-    return undefined;
-  }
+  const answer = await lookup(publicTurn(row));
+  return answer.clientTurnId === row.clientTurnId &&
+    (answer.outcome !== 'inbox-accepted' ||
+      answer.conversationId === (row.conversationId ?? row.sessionId))
+    ? answer.outcome
+    : undefined;
 }
 
 async function reconcile(
@@ -2624,8 +2628,33 @@ async function reconcile(
       )
         continue;
     }
-    const outcome = await askStation(row, lookup);
+    let outcome: Awaited<ReturnType<typeof askStation>>;
+    let failure = 'Station returned no delivery confirmation.';
+    try {
+      outcome = await askStation(row, lookup);
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+    }
     if (!outcome) {
+      await mutate((entries) => {
+        const index = entries.findIndex((entry) => exact(entry, row));
+        if (index === -1) return { entries, result: undefined, changed: false };
+        const failures = (entries[index]!.deliveryLookupFailures ?? 0) + 1;
+        const updated = [...entries];
+        updated[index] = {
+          ...entries[index]!,
+          deliveryLookupFailures: failures,
+          ...(failures >= 3
+            ? {
+                status: 'may-have-started' as const,
+                dispatchBootId: undefined,
+                claimedAt: undefined,
+                lastError: `Automatic delivery checks paused. ${failure}`,
+              }
+            : {}),
+        };
+        return { entries: updated, result: undefined, changed: true };
+      });
       failedKeys.add(row.clientTurnId);
       continue;
     }
@@ -2762,11 +2791,7 @@ async function check(
   if (!rowBelongsToStation(row, currentStation)) return undefined;
   const outcome = await askStation(row, lookup);
   if (!outcome) return undefined;
-  await applyDeliveryAnswer(
-    row,
-    outcome,
-    row.status === 'invoking' ? 'resend' : 'stop',
-  );
+  await applyDeliveryAnswer(row, outcome, 'stop');
   return outcome === 'inbox-accepted' ? 'queued' : outcome;
 }
 

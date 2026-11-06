@@ -180,12 +180,25 @@ function createHarness(
     devicesReachPairingRoutes?: boolean;
     /** The host's operator CLI, as the runtime composition passes it. */
     operatorCli?: string;
+    /** Reopen an earlier harness's home, as a restart does. */
+    homeDir?: string;
+    /** #4519: the managed limit without remote clients, and its organization. */
+    managedLocalClientsOnly?: string;
   } = {},
 ) {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
-  homes.push(homeDir);
-  mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
+  const homeDir =
+    options.homeDir ?? mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
+  if (!options.homeDir) {
+    homes.push(homeDir);
+    mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
+  }
   const pairing = new DevicePairingService({
+    ...(options.managedLocalClientsOnly
+      ? {
+          localClientsOnly: true,
+          managedOrganization: options.managedLocalClientsOnly,
+        }
+      : {}),
     homeDir,
     environmentId: options.environmentId ?? ENVIRONMENT_ID,
     maxActiveOffers: options.maxActiveOffers,
@@ -335,6 +348,7 @@ function createHarness(
     body: JSON.stringify(body),
   });
   return {
+    homeDir,
     logger,
     pairing,
     relayEnrollment,
@@ -2239,6 +2253,44 @@ describe('device pairing routes', () => {
  * from a differently-versioned client — 400'd. Required keys must still be
  * present and correctly typed; anything else is ignored.
  */
+describe('managed limit without remote clients (#4519)', () => {
+  test('GET /api/pairing/devices reports an earlier device as suspended by the policy, not revoked, and lifting the limit clears it', async () => {
+    const before = createHarness();
+    const phone = await pairDevice(before, 'Casey phone');
+    const auth = { headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` } };
+
+    const limited = createHarness({
+      homeDir: before.homeDir,
+      managedLocalClientsOnly: 'Acme',
+    });
+    const listed = await limited.request('/api/pairing/devices', auth);
+    expect(listed.status).toBe(200);
+    const { devices } = (await listed.json()) as { devices: PairedDevice[] };
+    expect(devices).toHaveLength(1);
+    expect(devices[0]).toMatchObject({
+      id: phone.device.id,
+      revokedAt: null,
+      revocation: { state: 'not-revoked' },
+      suspended: { by: 'managed-policy', organization: 'Acme' },
+    });
+    // The listing matches what the credential gets.
+    expect(limited.pairing.verifyCredential(phone.credential)).toBe(false);
+    expect(limited.pairing.managedSuspensionInventory()).toEqual({
+      devices: 1,
+      relayAliases: 0,
+      personalTokens: 0,
+    });
+
+    const lifted = createHarness({ homeDir: before.homeDir });
+    const restored = (await (
+      await lifted.request('/api/pairing/devices', auth)
+    ).json()) as { devices: PairedDevice[] };
+    expect(restored.devices[0]?.suspended).toBeUndefined();
+    expect(lifted.pairing.verifyCredential(phone.credential)).toBe(true);
+    expect(lifted.pairing.managedSuspensionInventory().devices).toBe(0);
+  });
+});
+
 describe('device scope change (station#3816)', () => {
   test('the operator narrows a device through the route, and the narrowed scope is what enforcement then sees', async () => {
     const harness = createHarness();

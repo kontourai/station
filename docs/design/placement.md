@@ -225,6 +225,16 @@ every other route. These rules make it a region rather than a special case
     removes is unplaced, as when Home's row takes the page, without asking
     that surface's own unsaved-changes guards (no surface that declares
     `main` registers one today).
+
+    When one dialog replaces another at the same URL, the replacement can mount
+    before the old layer's Back traversal finishes. Its history publication waits
+    for that owned native traversal and any orphan skips. One subsequent user Back
+    then closes the replacement. Synthetic navigation events do not settle that
+    traversal. Removed views, changed captured URLs and failed history writes cancel
+    unpublished registrations; they do not move an old dialog onto a new route.
+    See [the history owner](../../src-ui/src/components/dialog-history.ts) and its
+    [Chromium handoff tests](../../src-ui/src/__tests__/dialog-history.browser.test.tsx).
+
 - **`main` has no toolbar control on any device** (it is always visible;
   since #2143 the toolbar is per DOCK region). A surface that declares `main`
   (Activity) also reaches it through its place row (above) and **Move to Main**,
@@ -584,7 +594,8 @@ one — a closed dock leaves it unplaced.
 The five decisions of the 2a plan, as taken (each reversible on its own):
 
 - **D1 — collapsed bar: header only.** A collapsed region is the bar alone,
-  at the unchanged `--chat-dock-header-height` (38/53px); the strip hides
+  at the unchanged `--chat-dock-header-height` (38/53px, or 45px on a short
+  coarse-pointer viewport, which drops the bar's block padding); the strip hides
   with the body (it also shows during a drag from Collapsed, as Chat's
   pane controls do), and the selected pane's toolbar keeps its
   collapsed-state affordance (archive#800): the icon-only New chat action, the one
@@ -754,7 +765,9 @@ layer is open (`RegionChromeBar` `onBackToChat`; the iOS app has no
 swipe-back) — returns to Chat: Chat reselected, its maximize and visibility
 restored, and the tab the layer minted removed (a phone has no tab strip, so
 a tab left behind Chat would be one nobody can see or close;
-`restorePhonePaneLayer`). A minted pane the layer moved out of another
+`restorePhonePaneLayer`). Where a wide touch device does show a tab strip,
+the strip omits Chat's tab while the layer is open: "‹ Chat" is the way back,
+and a second Chat control beside it named the same move. A minted pane the layer moved out of another
 (hidden) dock region goes back to its tab slot there on Back, "‹ Chat" or a
 dismissal. (A pane held in `main` never opens a layer, so a layer pane's
 origin is always a dock region.) Opening another pane while a layer is open

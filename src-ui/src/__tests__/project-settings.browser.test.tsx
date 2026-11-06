@@ -11,7 +11,7 @@ const fixtures: Plugin = {
   setup(builder) {
     const modules: Record<string, string> = {
       '@kontourai/station-sdk': `
-        export const useManagedPolicyStatusQuery=()=>({data:undefined}); export const telemetry={track:()=>{}}; export const layoutCatalogErrorReason=()=>undefined;
+        export const telemetry={track:()=>{}}; export const layoutCatalogErrorReason=()=>undefined;
         const project={id:'demo-id',slug:'demo',name:'Demo project',workingDirectory:'/home/developer/projects/station',description:'A workspace for product development'};
         const agents=[{slug:'builder',name:'Builder'},{slug:'reviewer',name:'Reviewer'}];
         const query=data=>({data,isLoading:false,isError:false,refetch:()=>{}});
@@ -28,11 +28,14 @@ const fixtures: Plugin = {
           useKnowledgeStatusQuery=()=>query({totalChunks:4,documentCount:1}),
           useIntegrationsQuery=()=>query([]),useKnowledgeRootsQuery=()=>query([]),
           useFeaturePreviewsQuery=()=>query([{id:'stale-project-checkout',enabled:true}]);
+        // #4518: the managed policy read every approval picker imports
+        // (ManagedPolicyContext); this host has none.
+        export const useManagedPolicyStatusQuery=()=>query({state:'none'});
       `,
       ConfigContext:
         'export const useConfig=()=>({defaultApprovalMode:"ask"});',
       ApiBaseContext:
-        'export const useApiBase=()=>({apiBase:"http://station.test"}); export const useHostRequestAuthorityScope=()=>({apiBase:"http://station.test",authorityKey:"fixture"});',
+        'export const useHostRequestAuthorityScope=()=>({apiBase:"http://station.test",authorityKey:"fixture"}); export const useApiBase=()=>({apiBase:"http://station.test"});',
       ProjectsContext: `const project={id:'demo-id',slug:'demo',name:'Demo project',workingDirectory:'/home/developer/projects/station',description:'A workspace for product development'}; export const useScopedProjectQuery=()=>({data:project}); export const useScopedProjectChatDefaultsQuery=()=>({data:undefined}); export const useScopedProjectCheckoutFreshnessQuery=()=>({data:{version:'station.project-checkout-freshness/v1',status:'stale',staleBecause:['commits'],thresholds:{commits:50,days:3},branch:'main',upstream:'origin/main',behind:183,ahead:0,upstreamFetchedAt:new Date(Date.now()-2*86400000).toISOString(),updateCommand:'git -C /home/developer/projects/station pull --ff-only',checkedAt:new Date().toISOString()},error:null,isFetching:false,refetch:async()=>{}});`,
       AgentsContext: 'export const useAgents=()=>[];',
       useShowSurface: 'export const useShowSurface=()=>()=>{};',

@@ -102,7 +102,9 @@
   gap: var(--space-2, 8px);
   left: var(--space-2, 8px);
   position: absolute;
-  right: var(--space-2, 8px);
+  /* Clear of the live view's 44px Full screen button in the bottom-right
+     corner (LiveSurfaceCanvas.css), so a notice never sits under it. */
+  right: calc(var(--k-space-1) + 44px + var(--space-2, 8px));
   z-index: 1;
 }
 
@@ -137,6 +139,23 @@
 
 .browser-pane__warning {
   color: var(--accent-warning, var(--text-primary));
+}
+
+/* A notice's "How to fix" guide link; the underline marks it as a link. */
+.browser-pane__notice a {
+  color: var(--k-action);
+  text-decoration: underline;
+}
+
+/* Its own row under the reason, a full 44px touch target. */
+.browser-pane__notice .browser-pane__notice-help {
+  align-items: center;
+  display: flex;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--k-space-1);
+  margin-inline-start: calc(-1 * var(--k-space-1));
+  width: fit-content;
 }
 
 .browser-pane__panel {
@@ -758,4 +777,13 @@
 .browser-pane__open {
   width: 44px;
   padding-inline: 0;
+}
+
+.browser-pane__start-kicker {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
 }

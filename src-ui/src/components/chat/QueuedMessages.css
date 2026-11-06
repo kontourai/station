@@ -99,6 +99,16 @@
   gap: var(--k-space-1);
   font-size: var(--k-text-sm);
 }
+.queued-message__delivery-note {
+  flex-basis: 100%;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+  overflow-wrap: anywhere;
+}
+.queued-message__actions > .queued-message__delivery-note {
+  order: 1;
+}
 .queued-message__confirm {
   flex-basis: 100%;
   min-width: 0;

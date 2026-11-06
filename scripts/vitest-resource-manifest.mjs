@@ -141,6 +141,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Spawns short-lived fake-Chromium shell scripts through the production
+  // launcher (owned process group, CDP pipe); each exits immediately.
+  'src-server/routes/__tests__/browser-launch-failure.routes.test.ts',
   // Owns a production AccountEntry Vite bundle and pinned Chromium lifecycle.
   'src-ui/src/__tests__/AccountEntryView.browser.test.tsx',
   // Full 4,800-effect WAL/FULL retention backlog; the small case stays ordinary.
@@ -174,8 +177,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
-  // Loads node-pty with a fake PTY and mocked child-process observations;
-  // on Windows two real ConPTY shells, one at a time, in the OS temp directory.
+  // Fake startup/cleanup owners and real Windows ConPTY releases;
+  // an owned child exercises 30 concurrent native shell exits and resizes.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
@@ -300,6 +303,18 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/routes/plugins/__tests__/plugin-special-files-lifecycle.test.ts',
   // #2998: builds disposable git origins and clones; the update route runs git pull.
   'src-server/routes/plugins/__tests__/plugin-install-trust-legacy-update.test.ts',
+  // #4521: builds throwaway git origins and runs real git (init, commit,
+  // remote) to prove a refused registry origin is never fetched on update.
+  'src-server/services/plugins/__tests__/plugin-update-check-git-provenance.test.ts',
+  // #4523: converts real configuration profiles with /usr/bin/plutil
+  // (single-shot spawns, no wall-clock assertion).
+  'packages/shared/src/__tests__/managed-policy-macos.test.ts',
+  // #4524: validates the generated ADMX/ADML against Microsoft's schema with
+  // xmllint (single-shot spawns, no wall-clock assertion).
+  'packages/shared/src/__tests__/managed-policy-templates.test.ts',
+  // #4515: runs the real `station start` CLI with an invalid managed policy
+  // on free ports and probes the server and UI ports while it runs.
+  'packages/cli/src/__tests__/start-managed-policy-invalid.process.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
@@ -323,6 +338,15 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // #4521: boots the source Station with every capability switch off and
+  // drives its routes over HTTP; private homes, ephemeral ports.
+  'src-server/__tests__/managed-capability-switches.process.test.ts',
+  // #4519: boots the source Station under a local-only managed policy with a
+  // stand-in Tailscale CLI in a private temp dir; private homes.
+  'src-server/__tests__/managed-remote-clients.process.test.ts',
+  // #4519: runs the real `vite dev` CLI on this repo's config with a
+  // private policy file and ephemeral loopback ports.
+  'scripts/__tests__/vite-managed-host.process.test.ts',
   // #4518: boots the source Station with an injected approval ceiling and
   // drives its routes over HTTP; private homes, ephemeral port.
   'src-server/__tests__/managed-approval-ceiling.process.test.ts',
@@ -331,6 +355,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4517: runs offline `station config set` and `station registry` as CLI
   // children on private homes with an injected managed policy.
   'packages/cli/src/__tests__/managed-settings-offline.test.ts',
+  // #4522: runs `station upgrade` as a CLI child in a private directory.
+  'packages/cli/src/__tests__/upgrade-managed-policy.process.test.ts',
   // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.
   'packages/shared/src/__tests__/managed-policy.test.ts',
   'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',
@@ -498,6 +524,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Spawns the CLI entry point as bounded children against a per-test
   // loopback HTTP fixture to assert exit status and request shape.
   'packages/cli/src/__tests__/telemetry-producers-command.test.ts',
+  // #4521: runs `station telemetry` as a CLI child against a local server.
+  'packages/cli/src/__tests__/telemetry-managed-command.test.ts',
   'packages/cli/src/__tests__/telemetry-command.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
@@ -792,6 +820,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/devices/toolchain/__tests__/device-hub.real.test.ts',
   // Builds fixture archives with the host tar executable; bounded, private output.
   'scripts/__tests__/portable-server-archive.test.ts',
+  // Stages a fixture Node distribution (this host's node and npm) with the
+  // host tar, then runs that npm's `ci` against a loopback registry.
+  'scripts/__tests__/portable-node-device-install.process.test.ts',
   // Runs copied user Node executables and shell-free npm/hub entry fixtures.
   'src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
@@ -1500,11 +1531,23 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // (the icon-only Open in pane beside OK and Cancel) against the real
   // cascade, in the float's compact card and the pane's card.
   'src-ui/src/workspace-panes/browser-pane/__tests__/BrowserPageDialog.touch-target.test.tsx',
+  // Owns Chromium to measure the Open failure notice's "How to fix" link as
+  // a 44px row against the real cascade.
+  'src-ui/src/workspace-panes/browser-pane/__tests__/BrowserOpenFailureNotice.touch-target.test.tsx',
   // #2760: owns Chromium and a local HTTP/1.1 server that holds every
   // response open, to measure input against a real browser connection pool.
   'src-ui/src/live-surface/__tests__/liveSurfaceInputHeadroom.browser.test.ts',
   // #4418: owns Chromium to decode a recorded H.264 stream with WebCodecs.
   'src-ui/src/live-surface/__tests__/liveSurfaceVideoDecoder.browser.test.ts',
+  // Owns Chromium to lay out the live view's input notice (slim banner,
+  // z-order, immersive placement) against the real cascade.
+  'src-ui/src/live-surface/__tests__/liveSurfaceInputNotice.browser.test.tsx',
+  // Owns Chromium to style the full-screen bar's compact stand picker
+  // against the real cascade in both themes.
+  'src-ui/src/workspace-panes/device/__tests__/devicePostureSelect.browser.test.tsx',
+  // Owns Chromium to lay out a pane route's top-bar crumb at desktop and
+  // phone width against the real cascade.
+  'src-ui/src/components/header/__tests__/HeaderPaneCrumb.browser.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved

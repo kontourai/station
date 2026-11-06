@@ -170,7 +170,9 @@
 
     "src-server/providers/__tests__/acp-adapter.test.ts",
 
-    "scripts/run-test-mutations.mjs"
+    "scripts/run-test-mutations.mjs",
+
+    "src-server/services/orchestration/no-project-chat-folder.ts"
   ],
 
   "checks": [

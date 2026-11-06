@@ -9,6 +9,8 @@ interface HeaderBreadcrumb {
   /** Set for project/layout views — the project the user is inside. */
   projectSlug?: string;
   layoutSlug?: string;
+  /** Set for a direct pane route — the descriptor whose name follows the project. */
+  paneDescriptorId?: string;
   /** Set for standalone section views (Agents, Settings, …) — the section name. */
   section?: string;
   /** The view a section crumb navigates "up" to when clicked. */
@@ -130,6 +132,11 @@ export function getHeaderBreadcrumb(
       return {
         projectSlug: view.projectSlug,
         layoutSlug: view.layoutSlug,
+      };
+    case 'workspace-pane':
+      return {
+        projectSlug: view.projectSlug,
+        paneDescriptorId: view.descriptorId,
       };
     case 'project':
     case 'project-session-board':

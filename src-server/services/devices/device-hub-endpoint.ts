@@ -88,13 +88,13 @@ export class DeviceHubPathRefused extends Error {
 const READ_PATHS: readonly RegExp[] = [
   /^\/api\/devices$/,
   /^\/vendor\/serve-sim\/api\/screenshot$/,
-  /^\/vendor\/serve-sim\/helper\/[A-Za-z0-9._-]{1,128}\/(stream\.mjpeg|stream\.avcc|config|health|ax|foreground)$/,
-  /^\/vendor\/serve-emu\/api\/(devices|screenshot|stream-mode|stream-settings|accessibility)$/,
+  /^\/vendor\/serve-sim\/helper\/[A-Za-z0-9._-]{1,128}\/(stream\.mjpeg|stream\.avcc|config|health|ax|foreground|panel\/[13]\/stream\.mjpeg)$/,
+  /^\/vendor\/serve-emu\/api\/(devices|screenshot|stream-mode|stream-settings|accessibility|fold)$/,
   /^\/vendor\/serve-emu\/health$/,
 ];
 const POST_PATHS: readonly RegExp[] = [
   /^\/vendor\/serve-sim\/api\/screenshot$/,
-  /^\/vendor\/serve-emu\/api\/(screenshot|stream-mode|stream-settings)$/,
+  /^\/vendor\/serve-emu\/api\/(screenshot|stream-mode|stream-settings|fold)$/,
   // Device lifecycle (see above).
   /^\/api\/devices\/(boot|shutdown)$/,
   /^\/vendor\/serve-sim\/grid\/api\/(start|shutdown)$/,

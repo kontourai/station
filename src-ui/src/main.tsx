@@ -13,6 +13,7 @@ import { installPluginSharedRuntime } from './core/pluginSharedRuntime';
 import { installVisualViewportInset } from './hooks/useMobileVisualViewport';
 import { installAndroidSafeArea } from './platform/androidSafeArea';
 import { clientOriginSurfaceForProfile } from './platform/client-origin-surface';
+import { installFoldGeometry } from './platform/fold/foldSources';
 import { NativeRelayEntryBoundary } from './platform/native/NativeRelayEntryBoundary';
 import { NativeRelayLinkIntake } from './platform/native/NativeRelayLinkIntake';
 import { NativeRendererMountCommit } from './platform/native/rendererLiveness';
@@ -31,6 +32,9 @@ installAndroidSafeArea();
 // The visible-viewport bottom inset, on the document element, so every fixed
 // surface reads one value instead of the one its own subtree happens to carry.
 installVisualViewportInset();
+// A foldable display's crease (iOS shell plugin, else CSS Viewport Segments),
+// published once for every layout that has to keep text off it.
+installFoldGeometry();
 
 import App from './App';
 import { MobileWelcomeBoundary } from './components/MobileWelcomeBoundary';

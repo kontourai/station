@@ -27,6 +27,11 @@ describe('the explicit hub connection allowlist', () => {
     ['POST', '/api/devices/shutdown'],
     ['POST', '/vendor/serve-sim/grid/api/start'],
     ['POST', '/vendor/serve-sim/grid/api/shutdown'],
+    // A foldable: each display's own stream, and the emulator's hinge.
+    ['GET', '/vendor/serve-sim/helper/ABC-123/panel/1/stream.mjpeg'],
+    ['GET', '/vendor/serve-sim/helper/ABC-123/panel/3/stream.mjpeg'],
+    ['GET', '/vendor/serve-emu/api/fold?device=emulator-5554'],
+    ['POST', '/vendor/serve-emu/api/fold?device=emulator-5554'],
   ] as const)('admits %s %s', async (method, path) => {
     await connection.request(method, path);
     expect(fetch).toHaveBeenLastCalledWith(
@@ -44,6 +49,7 @@ describe('the explicit hub connection allowlist', () => {
     ['POST', '/api/devices'],
     ['GET', '/vendor/serve-sim/helper/../exec'],
     ['GET', '/vendor/serve-sim/helper/%2e%2e/stream.mjpeg'],
+    ['GET', '/vendor/serve-sim/helper/ABC-123/panel/2/stream.mjpeg'],
     ['GET', '/'],
   ] as const)('refuses %s %s without a request', async (method, path) => {
     fetch.mockClear();

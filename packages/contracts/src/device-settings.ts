@@ -350,6 +350,10 @@ export interface DeviceSettings {
   /** archive#3314: sidebar "Open chats"/"Drafts" collapse + removal state. */
   sidebarSections: SidebarSectionsState;
   projectSidebarCollapsed: boolean;
+  /** The Device pane draws a foldable's bent posture in 3D instead of flat. */
+  deviceFoldBentView: boolean;
+  /** The Device pane turns a landscape inner display to fill a portrait view. */
+  deviceFoldTurnToFit: boolean;
   onboardingSetupDismissed: boolean;
   shortcutOverrides: ShortcutOverrides;
   skillShortcuts: SkillShortcuts;
@@ -923,6 +927,27 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineDeviceSetting({
+    key: 'deviceFoldBentView',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Foldable 3D view',
+    help: 'On this device, a foldable in the Device pane is drawn bent in 3D instead of flat with a crease line.',
+    description:
+      'Whether the Device pane draws a foldable’s posture in 3D. Only this viewer’s picture changes; nothing is sent to the device.',
+    // New with foldable support; flat keeps the live picture full size.
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'deviceFoldTurnToFit',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Rotate foldable picture to fit',
+    help: 'On this device, a landscape inner display is turned a quarter to fill a portrait view.',
+    description:
+      'Whether the Device pane turns a landscape inner display to fit a portrait viewer. View-only; touches are mapped back.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
     key: 'onboardingSetupDismissed',
     scope: 'device',
     descriptor: { kind: 'boolean' },
@@ -1275,6 +1300,8 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
   'inboxOpen',
   'inboxSections',
   'projectSidebarCollapsed',
+  'deviceFoldBentView',
+  'deviceFoldTurnToFit',
   'firstRunProgress',
   'onboardingSetupDismissed',
 ] as const satisfies readonly (keyof DeviceSettings)[];
@@ -1293,7 +1320,6 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
  */
 export const PREFERENCE_DEVICE_KEYS = [
   'theme',
-  'showReleaseNotesAfterUpdate',
   'accentColor',
   'colorTheme',
   'colorThemeFlavor',

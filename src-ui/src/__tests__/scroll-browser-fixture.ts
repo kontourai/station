@@ -8,6 +8,8 @@ const ROOT = resolve(import.meta.dirname, '../../..');
 export async function scrollBrowserFixture(
   contents: string,
   plugins: Plugin[] = [],
+  /** Page options for a geometry that needs them (a coarse-pointer phone). */
+  pageOptions: Parameters<Browser['newPage']>[0] = {},
 ) {
   const result = await build({
     stdin: { contents, loader: 'tsx', resolveDir: ROOT },
@@ -47,6 +49,7 @@ export async function scrollBrowserFixture(
   const browser: Browser = await chromium.launch();
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
+    ...pageOptions,
   });
   const page: Page = await context.newPage();
   const errors: string[] = [];

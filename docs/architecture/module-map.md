@@ -2434,6 +2434,8 @@ This owner records when a provider call may have crossed into an external effect
 
 The exact raw observation read checks every field, including false eligibility and an absent boundary. Retirement writes a validated full witness on the same existing `orchestration_prepared_turns` audit row before deleting its boundary. Event insertion, witness, deletion and linked fences share the append savepoint, so an outer rollback restores all of them. There is no second terminal store or independent commit. Complete-set contradiction after a committed deletion makes later acknowledgement stale and holds new result-delivery effects or definitive handoff status. Those reads validate the actual current boundary or its same-audit retirement preimage against the canonical complete scope in one read transaction. They do not recreate a fence or retract an earlier release. Retained witnesses can grow until explicit thread deletion, and dedup retention can make acknowledgement stale.
 
+Stopping an unstarted, lineage-reserved successor does not create a session projection. On boot, legacy closed successor stubs with only exit/warning events, default Station-owned control, no model, folder, cursor, tenant binding or attachment/continuation/retention metadata, and no command receipt or turn intent are removed from the projection. Their lineage and events remain intact, so continuation can retry the reserved identity without granting access to an ownerless session.
+
 **Projection and coordination.** Read-only possible-effect projection and physical observation use the same pure terminal decision. SQL provider-ID/time cleanup applies only to inputless legacy rows. Create and engine-opened acceptance precompose cleanup in their owning writer transaction before kernel dispatch; participant admission never issues another command. Pending retries propagate whole-transaction loss before cleanup can issue another statement or dispatch. Polling uses a deferred read, drains no pending transition and writes no witness. Writer cleanup drains existing private retries before selecting current marker-bearing boundary targets; it collects complete terminal facts only for applicable threads. A no-target cleanup does not read unrelated terminal payloads. Boot cleanup precedes raw dead-owner recovery. Session-wide termination preserves the persisted global-sequence fence and NULL legacy timestamp fallback. Station's own shutdown exit (`reason: 'orchestration_shutdown'`) keeps only turn rows (sent and engine-opened) that may have reached their engine (invoking, accepted or indeterminate): such a turn keeps its row at a graceful stop, and the next boot's interrupted-turn recovery settles it as after a crash. Every other row, an unresolved session start or a sent turn that never invoked among them, retires as on any exit, since that recovery settles nothing else. Recovery's own events project over the closed session row rather than a blank one, so the conversation keeps its folder and engine cursor and continues as after any stop. A retained invocation fence alone does not establish an interrupted turn:
 recovery suppresses its notices when that turn has a recorded successful
 completion, while preserving captured input's fence when the native completion
@@ -3271,10 +3273,25 @@ proposals use the explicit memory route. The registry and adapter reject paths
 that alias another author-private root, with authorization and path identity
 rechecked at response delivery. Corpus receives Station's coordination lock and
 home-identity check; ordinary access does not enable purge. Pending proposals
-are not records and do not enter the index. This does not provide review,
-distillation or erasure. [Memory tests](../../src-server/knowledge-store/__tests__/memory-root.test.ts)
+are not records and do not enter the index. This does not provide distillation
+or erasure. [Memory tests](../../src-server/knowledge-store/__tests__/memory-root.test.ts)
 and [route tests](../../src-server/routes/knowledge/__tests__/memory.routes.test.ts)
 exercise local fixtures; they do not qualify a live model provider.
+
+[`MemoryReviewService`](../../src-server/knowledge-store/memory-review.ts) reads
+the root's distilled claims (the Knowledge Kit's envelope, decoded by
+[`memory-envelope.ts`](../../src-server/knowledge-store/memory-envelope.ts)), routes
+them with the Kit, labels them with the Kit's `presentMemoryClaims`, and keeps the
+person's Survey decisions and review-time events in
+[`MemoryReviewStore`](../../src-server/knowledge-store/memory-review-store.ts), one
+atomic file per owner beside the Corpus store. The reviewer kind comes only from
+[`memoryReviewerKindForRequest`](../../src-server/security/memory-reviewer-kind.ts).
+The first turn of a new Station-engine chat reads the brief through
+[`createMemoryBriefProvider`](../../src-server/knowledge-store/memory-brief-provider.ts),
+which repeats the route's authority, access and delivery checks. The public client is
+`createPrivateMemoryClient` in the SDK;
+[review route tests](../../src-server/routes/knowledge/__tests__/memory-review.routes.test.ts)
+pin the rules above, including the refusals.
 
 The separate [Neo4j graph routes](../../src-server/routes/knowledge/neo4j-graph-routes.ts)
 require current access to the exact registered root. Graph and shortest-path
@@ -4647,7 +4664,7 @@ When its queue projection clears, it also removes stale automatic-retry notices
 while preserving unrelated interruption messages.
 
 - **States and outcomes.** The Module persists `pending → invoking` before transport. An explicit `not-invoked` outcome may return an intent to `pending` or `failed`; `deferred` restores it to `pending` without consuming an attempt and blocks that Session for the current flush; accepted transport becomes `accepted` with its exact provider turn id. A structured foreground indeterminate outcome, any transport throw or abort after invocation begins, or any post-effect persistence uncertainty is `may-have-started` evidence. `invoking`, `accepted`, and `may-have-started` are never replayed blindly and are never aged out or evicted; `invoking` and `accepted` block later work in the same session. A `may-have-started` row no longer blocks later rows of its session.
-- **Settling an `invoking` row.** The one way back from `invoking` is Station's own answer: `reconcile` takes an `invoking` row whose renderer is gone (its Web Lock is no longer held; on a platform without Web Locks, a row older than `OUTBOUND_ORPHAN_GRACE_MS`), asks the delivery lookup about its exact key, and applies the answer — `not-received` returns it to `pending` for replay with the SAME key, `started` removes it, `received` leaves it to be asked again with backoff, `indeterminate`/`expired`/`unknown` make it `may-have-started`. A failed lookup, or an answer naming another key, changes nothing. `check` is the user's version for one row and stops (`failed`) instead of resending when a `may-have-started` row proves never received.
+- **Settling an `invoking` row.** The one way back from `invoking` is Station's own answer: `reconcile` takes an `invoking` row whose renderer is gone (its Web Lock is no longer held; on a platform without Web Locks, a row older than `OUTBOUND_ORPHAN_GRACE_MS`), asks the delivery lookup about its exact key, and applies the answer — `not-received` returns it to `pending` for replay with the SAME key, `started` removes it, `received` leaves it to be asked again with backoff, `indeterminate`/`expired`/`unknown` make it `may-have-started`. A failed lookup, or an answer naming another key, never authorizes replay. After three consecutive failed lookups, automatic checks pause in `may-have-started`; the message and failure reason remain visible. A valid answer resets the failure count. Refresh delivery makes one explicit lookup and reports its result without resending; Copy message preserves a way to recover the text. `check` is the user's version for one row and always stops (`failed`) instead of resending when the lookup proves never received; Retry is a separate explicit action.
 - **Composer and queue-drain sends.** A composer send's row follows Station's own answer (its envelope): a refusal removes it; may-have-started keeps it `may-have-started`; a busy-engine refusal keeps it as a held follow-up; anything else, including a non-Station response, releases its claim so `reconcile` settles it by the lookup at the next pass. A queue-drain send's row differs: a definitive refusal (Station's own 4xx that a retry would repeat) keeps it as a not-sent (`failed`) record, may-have-started keeps it `may-have-started`, and any other failure returns it to the queue as its held copy. A live row is hidden from projection (`liveInFlight`) while its own renderer waits on it, and so is a held copy. `beginLive` refuses a key whose row is on its way or possibly started (`OutboundRowInFlightError`), and neither the composer nor the queue drain sends it then; a re-send from the same renderer adopts that renderer's own late-landing `invoking` row instead. A refused queued follow-up's not-sent record carries the send's key, so the projection lists it once and its dismissal discards the durable copy.
 - **Held copies.** A held copy (`pending` with `heldBy`) is never sent automatically: the live queue that holds it sends it under the same key, or the user does (`sendHeld`) once it is listed. The projection hides only copies this renderer's queue shows (`heldHere`) and lists every other one (another window's, or one that closed) first, with Send and Discard only (Edit, Merge and Reorder are refused on a held copy); a held copy never holds back later rows, and nothing releases one by a timer or a liveness guess. `syncHeld` takes over an earlier pending copy of a key its queue holds again (a reload restores the queue under a new renderer), and the flush hook syncs after each `reconcile`, before the flush, so a send that was mid-drain at a reload is taken back by the restored queue rather than also flushed.
 - **Retired keys.** Discarding a row, or Station accepting its send, retires its key in the shared state: no held copy is re-created for a retired key and `beginLive` refuses one (`OutboundKeyRetiredError`), so a Discard in any window is honoured by the holder's queue and a delivered message leaves no ghost copy.
@@ -5480,7 +5497,11 @@ listener coverage. This boundary does not isolate arbitrary same-OS-user code.
 
 **Callers and lifecycle.** `BrowserPreviewWorkspacePane.tsx` resolves bound
 Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
-`browserPaneApi.ts` own the human workflow. `BrowserTabs.tsx` persists bounded,
+`browserPaneApi.ts` own the human workflow. The session's viewport, zoom and
+appearance are registry-applied emulation shared by every viewer and Agent; the
+pane sizes a page it just opened from a narrow stage once and announces changes
+it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
+`BrowserTabs.tsx` persists bounded,
 ordered exact-session references through the pane wrapper, and discovers popup
 sessions. The Chromium host adopts the actual popup target and original request;
 the registry records its opener and profile without retargeting an Agent. Human
@@ -5575,8 +5596,13 @@ buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
 A producer may refuse an event for a reason the viewer can act on
 (`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
 page dialog waits for its person), which reaches the viewer as that code
-rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
-already in flight.
+rather than `dispatch-failed`. Any other producer error is logged (surface,
+input kind and type, bounded cause; never key or text) and reaches the viewer
+as `dispatch-failed`. The event that failed may already have applied, so the
+canvas says the input may not have reached the page and sends nothing again.
+Retry is offered only for a batch the host refused before dispatching any of it
+(`surface-busy`), kept whole as one gesture with the control epoch it was made
+at, and dropped when control changes hands. The registry cannot cancel an arbitrary producer effect already in flight.
 
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the
@@ -5597,7 +5623,10 @@ to the stream params, whatever resolution its body has; viewers draw it
 scaled to that box, so a tap from any viewer lands on the same device point. Server-side ffmpeg
 decoding runs only while an image viewer is attached; otherwise image viewers
 get a labelled PNG-poll fallback. A successful Device dispatch means
-the hub socket accepted bytes, not that the application applied them. The
+the hub socket accepted bytes, not that the application applied them; an iOS
+`fold` input is the exception, settled by the helper's correlated reply. A
+foldable reports its hinge, stand and lit display as producer `fold` status,
+and iOS video follows the lit display's own panel stream. The
 shared live-surface Agent grant path admits both Browser and Device tools through
 independently minted, in-process grants. Device grants recheck the bound caller,
 operator opt-in, host/device identity and current Project/device shares; a bare
@@ -5605,7 +5634,9 @@ principal or client-supplied object cannot authorize a surface.
 
 `routes/live-surface.ts` serves one authenticated frame response per viewer and
 separate input/lease requests. `?codec=h264` asks for access units; a producer
-without them sends images. A refused frames request names the key it was
+without them sends images. `?fold=1` asks for a foldable's `fold` state and
+display-tagged frames; without it a viewer gets the records a released shell
+validates, and a host older than the key is asked again without it. A refused frames request names the key it was
 refused for (`field`): a key the route knows, `stream-params`, or `unknown`,
 never the caller's own query text. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
@@ -5627,10 +5658,28 @@ reconnects for a keyframe (at most every 2 s, deferring rather than dropping a
 request), and after three failures with no picture between them switches the
 viewer to images.
 `LiveSurfaceCanvas.tsx` is used by the Browser pane, Device pane and
-float-over-chat, and shows the codec it draws. When the origin, surface ID or
+float-over-chat. The codec it draws is a `data-codec` diagnostic on its root,
+not shown. It owns the one viewer for
+every surface kind: viewer-only zoom (`liveSurfaceZoom.ts`, a CSS transform
+whose client rect the pointer mapping already reads), touch presses held back
+until they are not a pinch, and immersive mode (`useImmersive.ts`, the same
+element over the viewport, with the Fullscreen API where it is granted; while
+active it marks itself `data-escape-owner`, so Escape leaves full screen and
+the app's own Escape shortcuts yield). The
+shared chrome is `LiveSurfaceViewerControls.tsx`; below 480 pixels wide it is
+one row with a More controls panel. A surface kind extends the full-screen bar
+only through `renderImmersiveActions(api)` (kept in the row) and
+`renderImmersiveMenu(api)` (behind More controls when compact), for example a
+browser's address and navigation or a device's stand picker and fold
+settings. A host may also pass a `projection` that draws the frame (and may
+set its fit aspect) and maps points back to it; the Device pane, its
+full-screen view and its float use one to draw a foldable's display. Such a
+host reads the surface's producer status through `onProducerStatus`, which
+keeps reporting in immersive mode, where `renderHeader` is not mounted. When the origin, surface ID or
 Project context changes, the viewer discards queued input and ignores
 responses from the previous target. This does not yet bind the queue to a
-credential generation.
+credential generation; [input safety](../plans/live-surface-input-safety.md)
+records the requirements for its redesign.
 Shown-source tracking avoids
 duplicating the same pane in its floater, but there is no single multiplexed
 frame transport across all visible viewers. The admission cap meets
@@ -5667,10 +5716,11 @@ for a configured local endpoint, an already-consented managed helper, or an
 operator-managed SSH host. Hosted tenant execution does not mount this path.
 Resolving a connection may start a consented helper; helper installation and
 process ownership remain with the toolchain/host services. Managed device tools
-resolve a user-installed Node.js 24 or later and its matching npm through
-[device-tool-runtime.ts](../../src-server/services/devices/toolchain/device-tool-runtime.ts).
+resolve Node.js 24 or later and its matching npm through
+[device-tool-runtime.ts](../../src-server/services/devices/toolchain/device-tool-runtime.ts):
+the first Node on PATH, else the archive Node running Station.
 Missing prerequisites block device setup with guidance; the desktop's private
-Node continues to run bundled Station services. There is no peer Station device
+Node runs bundled Station services and is never selected. There is no peer Station device
 transport merely because the resolver is extensible.
 
 [Mobile-device routes](../../src-server/routes/mobile-device.ts) check current
@@ -6781,6 +6831,7 @@ freezes and terminates discovered owned job-control groups. The
 opens real PTYs through HTTP admission, checks both configured Project roots and
 refuses cross-Project/binding access. Its credential fixture is not live pairing
 or account admission qualification.
+Windows ConPTY uses pinned published node-pty 1.2.0-beta.18 prebuilds with the upstream native handle-vector mutex repair, plus the managed [lifecycle patch](../../patches/node-pty-1.2.0-beta.18.patch). The adapter waits for a positive PID before workload tracking, pauses startup reads until a data subscriber, retains an observed exit for a late subscriber, and rejects failed startup. Close observation and release do not depend on first output. The [adapter tests](../../src-server/adapters/__tests__/node-pty-adapter.test.ts) cover initial output/exit, invalid-directory refusal, and termination with first output held, without increasing the cleanup bound.
 The [socket suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts)
 qualifies real PTY/socket resume, credit, scope refusals and resize ordering;
 its injected identity seam does not qualify live pairing or remote egress. The

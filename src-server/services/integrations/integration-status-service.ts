@@ -6,6 +6,11 @@ import type {
   IntegrationConnectionStatus,
   IntegrationStatus,
 } from '@kontourai/station-contracts/integration-status';
+import { INTEGRATION_STATUS_LIMITS } from '@kontourai/station-contracts/integration-status';
+import {
+  managedCapabilityDenial,
+  webhookAutomationsAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { execGitContextCommand } from '../../utils/git-exec.js';
 import type { DiscordGatewayStatus } from '../discord/discord-gateway-service.js';
 
@@ -206,6 +211,23 @@ export function createIntegrationStatusProbes(deps: {
         const computedBy = 'webhook.configuration';
         let state: IntegrationActionState;
         let reason: string;
+        // #4521: the policy outranks the file's own switch, and is read
+        // first. `unsupported` (not a new state) keeps older clients' closed
+        // parsers reading it.
+        if (!webhookAutomationsAllowedByManagedPolicy())
+          return {
+            connectionId: 'webhook',
+            provider: 'webhook',
+            actions: actions(
+              ['start'],
+              'managed-policy.limits.webhookAutomations',
+              'unsupported',
+              managedCapabilityDenial(
+                'webhook automations',
+                INTEGRATION_STATUS_LIMITS.reasonChars,
+              ),
+            ),
+          };
         try {
           const configuration = deps.readWebhook();
           if (configuration.enabled !== true) {

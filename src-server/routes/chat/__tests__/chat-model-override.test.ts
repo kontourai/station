@@ -232,6 +232,8 @@ describe('chat-model-override helpers', () => {
     // conversation, so it has to carry the slug's conversation store or the
     // override silently costs the user their history.
     expect(createTempAgent).toHaveBeenCalledWith({
+      // #4515: a run of Station's agent, gated by the managed engine policy.
+      purpose: 'agent-run',
       agentId: 'writer',
       name: 'writer:bedrock-main:resolved-model-id:7:0:0',
       instructions: 'Be helpful',

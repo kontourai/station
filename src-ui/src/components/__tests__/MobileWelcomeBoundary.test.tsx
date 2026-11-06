@@ -88,6 +88,8 @@ describe('fresh phone connection entry', () => {
 
   it.each([
     ['Enter a pairing code', 'pair-code'],
+    // Top level, not three levels down behind the connection manager.
+    ['Enter Station address', 'connect-station'],
     ['Find nearby Stations', 'discover'],
     ['Open connection manager', 'list'],
   ])('opens the existing %s fallback directly', (label, mode) => {
@@ -101,7 +103,13 @@ describe('fresh phone connection entry', () => {
       );
       if (mode === 'list')
         fireEvent.click(screen.getByText('Other ways to connect'));
-      fireEvent.click(screen.getByRole('button', { name: label }));
+      if (mode === 'discover') {
+        // A third option sits behind the row's overflow (two-action cap).
+        fireEvent.click(
+          screen.getByRole('button', { name: 'More connection options' }),
+        );
+        fireEvent.click(screen.getByRole('menuitem', { name: label }));
+      } else fireEvent.click(screen.getByRole('button', { name: label }));
       expect((onOpen.mock.calls[0][0] as CustomEvent).detail).toEqual({ mode });
     } finally {
       window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, onOpen);

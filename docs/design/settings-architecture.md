@@ -296,6 +296,15 @@ workspace isolation mode); the stored project record keeps them. Device settings
 client. Settings shows a "Managed by <organization>" layer and badge and
 disables the locked control.
 
+The capability switches in `limits` (#4521) are enforced outside the setting
+scopes: `limits.telemetry: false` overrides every usage-sharing choice and the
+OTel collector settings, and `limits.registries` narrows `registryTrust` and
+the default skill registries without changing what is stored. See
+[capability switches](../guides/managed-policy.md#capability-switches).
+
+`limits.clients` (#4519) sits outside settings too: it governs network
+exposure, not a setting value.
+
 ## 3. Target model: five scopes
 
 Every setting is declared with exactly one scope. The scope determines storage,

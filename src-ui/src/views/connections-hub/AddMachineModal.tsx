@@ -7,6 +7,8 @@
 
 import { useState } from 'react';
 import { Dialog } from '../../components/Dialog';
+import { ManagedRemoteClientsNote } from '../../components/managed/ManagedRemoteClientsNote';
+import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClientsRefusal';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import './AddMachineModal.css';
@@ -63,6 +65,9 @@ export function AddMachineModal({
   returnFocusTarget,
 }: AddMachineModalProps) {
   const [goal, setGoal] = useState<AddMachineGoal | null>(null);
+  // #4519: pairing this Station with another device is refused under the
+  // managed limit, so that choice is disabled and says why.
+  const pairingLimit = useManagedRemoteClientsLimit();
   const { isTauri } = usePlatformProfile();
 
   function close() {
@@ -115,24 +120,41 @@ export function AddMachineModal({
     >
       <div className="add-machine-modal__body">
         <div className="add-machine-modal__options">
-          {ADD_MACHINE_GOAL_OPTIONS.map((option) => (
-            <button
-              key={option.goal}
-              type="button"
-              className="add-machine-modal__option"
-              onClick={() => chooseGoal(option.goal)}
-            >
-              <span className="add-machine-modal__option-title">
-                {option.title}
-              </span>
-              <span className="add-machine-modal__option-detail">
-                {option.detail}
-              </span>
-              <span className="add-machine-modal__option-unlocks">
-                {option.unlocks}
-              </span>
-            </button>
-          ))}
+          {ADD_MACHINE_GOAL_OPTIONS.map((option) =>
+            option.goal === 'control' && pairingLimit ? (
+              // #4519: not a button, so the policy's help link can be one.
+              <div
+                key={option.goal}
+                className="add-machine-modal__option add-machine-modal__option--refused"
+                aria-disabled="true"
+              >
+                <span className="add-machine-modal__option-title">
+                  {option.title}
+                </span>
+                <ManagedRemoteClientsNote
+                  summary={pairingLimit}
+                  className="add-machine-modal__option-detail"
+                />
+              </div>
+            ) : (
+              <button
+                key={option.goal}
+                type="button"
+                className="add-machine-modal__option"
+                onClick={() => chooseGoal(option.goal)}
+              >
+                <span className="add-machine-modal__option-title">
+                  {option.title}
+                </span>
+                <span className="add-machine-modal__option-detail">
+                  {option.detail}
+                </span>
+                <span className="add-machine-modal__option-unlocks">
+                  {option.unlocks}
+                </span>
+              </button>
+            ),
+          )}
           {isTauri && (
             <button
               type="button"

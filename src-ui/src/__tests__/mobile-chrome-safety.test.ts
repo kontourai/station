@@ -237,14 +237,16 @@ describe('the toolbar connection chip fits the mobile action cluster', () => {
     return [...block.matchAll(pattern)].map((match) => match[1]);
   }
 
-  it('keeps connection text out of the dot-only mobile header', () => {
+  it('keeps long connection text out of the narrow mobile header', () => {
     // Runtime name and gesture behavior are exercised by HeaderActions and
-    // the narrow gallery; this guards the stylesheet's text suppression.
+    // the narrow gallery; this guards the stylesheet. The full name and the
+    // state text stay hidden; the healthy compact chip keeps a short visible
+    // Station name (a bare dot told a phone user nothing), bounded so it
+    // truncates before the header row would grow.
     const block = shellMobileBlock(chatCss);
     for (const part of [
       '.app-toolbar__conn-name',
       '.app-toolbar__conn-state',
-      '.app-toolbar__conn-label',
     ]) {
       const bodies = blockRulesFor(block, part);
       expect(
@@ -255,6 +257,20 @@ describe('the toolbar connection chip fits the mobile action cluster', () => {
         expect(body).toMatch(/display:\s*none/);
       }
     }
+    const label = blockRulesFor(block, '.app-toolbar__conn-label');
+    expect(
+      label.length,
+      'the compact label keeps a mobile width bound',
+    ).toBeGreaterThan(0);
+    for (const body of label) {
+      expect(body).not.toMatch(/display:\s*none/);
+      expect(body).toMatch(/max-width:\s*min\(\s*28vw\s*,\s*120px\s*\)/);
+    }
+    // Truncation comes from the label's base rule, outside the mobile block.
+    const base =
+      chatCss.match(/\n\.app-toolbar__conn-label\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(base).toMatch(/text-overflow:\s*ellipsis/);
+    expect(base).toMatch(/white-space:\s*nowrap/);
   });
 
   it('keeps the status-dot control at the 44px touch-target floor', () => {

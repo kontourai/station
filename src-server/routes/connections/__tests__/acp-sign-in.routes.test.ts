@@ -37,6 +37,7 @@ import {
 } from '../../../services/acp/engine-auth-status.js';
 import {
   EngineCredentials,
+  engineCredentialEnvFor,
   registerEngineCredentials,
 } from '../../../services/acp/engine-credentials.js';
 import {
@@ -516,5 +517,125 @@ describe.runIf(posix)('an engine key', () => {
       { value: SECRET },
     );
     expect(pi.status).toBe(400);
+  });
+});
+
+// #4515 fix round 4: an ACP engine the managed policy does not allow has
+// its stored key neither read nor replaced. Under `allowed: []` the sign-in
+// view read FACTORY_API_KEY from the credential store and a PUT replaced
+// it. Removal stays allowed.
+describe.runIf(posix)('engine keys under the managed engine allow list', () => {
+  const install = async (allowed: string[] | null) => {
+    const { installManagedEngineLimits } = await import(
+      '../../../security/managed-engine-limits.js'
+    );
+    const { parseManagedPolicyDocument, summarizeManagedPolicy } = await import(
+      '@kontourai/station-contracts/managed-policy'
+    );
+    if (!allowed) return installManagedEngineLimits(null);
+    const parsed = parseManagedPolicyDocument({
+      schemaVersion: 1,
+      organization: 'Acme',
+      limits: { engines: { allowed } },
+    });
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+    installManagedEngineLimits({
+      document: parsed.document,
+      summary: summarizeManagedPolicy(parsed.document),
+    });
+  };
+  afterEach(async () => {
+    await install(null);
+    vi.restoreAllMocks();
+  });
+
+  test('with no engine allowed, the view and a new key are refused and the store is not touched', async () => {
+    const f = await fixture();
+    // A key stored before the policy.
+    const stored = await f.call(
+      f.operator.credential,
+      'PUT',
+      'droid/credentials/FACTORY_API_KEY',
+      { value: SECRET },
+    );
+    expect(stored.status).toBe(200);
+    await install([]);
+    const envFor = vi.spyOn(EngineCredentials.prototype, 'envFor');
+    const configuredNames = vi.spyOn(
+      EngineCredentials.prototype,
+      'configuredNames',
+    );
+    const set = vi.spyOn(EngineCredentials.prototype, 'set');
+
+    for (const [method, path, body] of [
+      ['GET', 'droid/sign-in', undefined],
+      ['PUT', 'droid/credentials/FACTORY_API_KEY', { value: 'replaced' }],
+    ] as const) {
+      const response = await f.call(f.operator.credential, method, path, body);
+      expect(response.status, `${method} ${path}`).toBe(403);
+      expect(response.body).toMatchObject({
+        code: 'managed-policy-engine-refused',
+        error: expect.stringContaining('acp is not allowed'),
+      });
+    }
+    expect(envFor).not.toHaveBeenCalled();
+    expect(configuredNames).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+    const file = join(f.home, 'security', 'engine-credentials.json');
+    expect(readFileSync(file, 'utf8')).toContain(SECRET);
+
+    // Removal is never refused, and its answer reads nothing back.
+    const removed = await f.call(
+      f.operator.credential,
+      'DELETE',
+      'droid/credentials/FACTORY_API_KEY',
+    );
+    expect(removed.status).toBe(200);
+    expect(removed.body.data).toMatchObject({
+      connectionId: 'droid',
+      credentials: [],
+      allowed: { signIn: false, terminal: false },
+    });
+    expect(readFileSync(file, 'utf8')).not.toContain(SECRET);
+    expect(envFor).not.toHaveBeenCalled();
+    expect(configuredNames).not.toHaveBeenCalled();
+  });
+
+  // The shared read every launch, probe, sign-in and status check uses.
+  test('the engine environment carries no stored key while acp is not allowed', async () => {
+    const f = await fixture();
+    await f.call(
+      f.operator.credential,
+      'PUT',
+      'droid/credentials/FACTORY_API_KEY',
+      { value: SECRET },
+    );
+    const droid = (
+      JSON.parse(f.acpJson) as { connections: ACPConnectionConfig[] }
+    ).connections.find((connection) => connection.id === 'droid')!;
+    expect(engineCredentialEnvFor(droid)).toEqual({ FACTORY_API_KEY: SECRET });
+    await install([]);
+    const envFor = vi.spyOn(EngineCredentials.prototype, 'envFor');
+    expect(engineCredentialEnvFor(droid)).toBeUndefined();
+    expect(envFor).not.toHaveBeenCalled();
+  });
+
+  test('control: with acp allowed, the view reads the stored key and a PUT replaces it', async () => {
+    const f = await fixture();
+    await install(['acp']);
+    const set = vi.spyOn(EngineCredentials.prototype, 'set');
+    const saved = await f.call(
+      f.operator.credential,
+      'PUT',
+      'droid/credentials/FACTORY_API_KEY',
+      { value: SECRET },
+    );
+    expect(saved.status).toBe(200);
+    expect(set).toHaveBeenCalledTimes(1);
+    const view = await f.call(f.operator.credential, 'GET', 'droid/sign-in');
+    expect(view.status).toBe(200);
+    expect(view.body.data.credentials).toEqual([
+      { name: 'FACTORY_API_KEY', configured: true },
+    ]);
   });
 });
