@@ -153,3 +153,14 @@ test('with the preview off the section says so instead of four errors', () => {
   ).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
 });
+
+test('the section is reachable from the Advanced page beside Feature previews', async () => {
+  const { settingsPageForSection, settingsSectionsForView } = await import(
+    '../settings-pages'
+  );
+  expect(settingsPageForSection('github-automations')?.id).toBe('advanced');
+  const advanced = settingsSectionsForView('advanced');
+  expect(advanced.indexOf('github-automations')).toBe(
+    advanced.indexOf('feature-previews') + 1,
+  );
+});

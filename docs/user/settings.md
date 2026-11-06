@@ -1,6 +1,6 @@
 # Settings you may not have found
 
-Most Settings rows explain themselves. This page covers five sections that
+Most Settings rows explain themselves. This page covers six sections that
 change what Station offers rather than how it looks. Open **Settings**, pick a
 page in the left rail, or search for a setting by name. You can also find any
 Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-palette)
@@ -9,6 +9,7 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Section | Page | Saved |
 | --- | --- | --- |
 | Feature previews | **Advanced** | On this Station |
+| GitHub automations | **Advanced** | On this Station |
 | Developer tools | **Advanced** | To your account when you are signed in, otherwise on this device |
 | Shared answers | **Privacy & sharing** | On this Station |
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
@@ -200,6 +201,15 @@ added. While connected, the app also learns the LAN, Tailscale and Tailscale
 HTTPS addresses the Station reports, marked "found automatically". The app saved on a phone or desktop
 lists those addresses but still connects only through its saved one; see
 [Station routes](https://github.com/kontourai/station/blob/main/docs/design/station-routes.md).
+
+## GitHub automations
+
+With **GitHub automation observations** on, this section lists the Automation
+sources, rules, open episodes and recent deliveries. Each count is the number
+of rows listed under it. A delivery held by a limit shows `suppressed` with the
+reason. An exhausted episode offers **Retry episode**, which allows exactly one
+more attempt under the rule as it is now. Creating and editing rules uses
+`station automation`; see the [CLI reference](../reference/cli.md#automation).
 
 ## Shared answers
 

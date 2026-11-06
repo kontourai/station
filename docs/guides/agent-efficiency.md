@@ -222,6 +222,12 @@ run the Project's setup commands while preparing it.
    `{kind:"rule",id,mode:"live",expectedFingerprint}`. Earlier observed events
    are not replayed. Read a new fingerprint between writes. A stale one
    refuses the change. Source, rule, profile and preview checks remain separate.
+   A repair is bound to the rule's authority-bearing fields only (see
+   [policy changes](../design/automations.md#policy-changes-and-the-start-mandate)):
+   renaming the rule or changing its rate limit does not stop it, while any
+   change to its source grant, matcher or action does. A pending repair whose
+   rule was deleted or changed to another action kind is refused and never
+   dispatches, even if the identical rule is restored later.
 
 A matching failure creates one canonical Task and one durable repair run. The
 worker receives source files and a short-lived, model-bound provider capability;
