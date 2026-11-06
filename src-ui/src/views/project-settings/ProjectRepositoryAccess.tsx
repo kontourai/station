@@ -69,6 +69,7 @@ function useRepositoryAuthentication(
   const metadataEnabled = !previews.isError && preview?.enabled === true;
   const status = useIntegrationStatusQuery(authority.apiBase, {
     requestScope: authority,
+    keepPreviousData: false,
     includeGithubAuthentication: metadataEnabled,
     enabled: github && !previews.isPending && !previews.isError,
   });
