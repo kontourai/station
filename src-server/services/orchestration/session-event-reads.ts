@@ -2,6 +2,7 @@ import type { ChildWorkSessionView } from '@kontourai/station-contracts/child-wo
 import type { ConversationContextBoundaryTranscriptMarker } from '@kontourai/station-contracts/conversation-context-boundary';
 import type {
   ConversationTurnActivity,
+  EngineStartWaitObservation,
   OrchestrationConversationEventWindow,
   OrchestrationSessionDetail,
   OrchestrationSessionEventPage,
@@ -76,6 +77,10 @@ interface SessionEventReadsDeps {
     authority: SessionReadScope,
   ) => boolean;
   readTurnProgress: TurnProgressTracker['read'];
+  /** #4568: a person's engine start queued behind another, by thread. */
+  readEngineStartWait?: (
+    threadId: string,
+  ) => EngineStartWaitObservation | undefined;
   /** #2456: the child-work projection's process-local read for a thread. */
   readChildWork?: (
     threadId: string,
@@ -224,6 +229,7 @@ export class SessionEventReads {
           eventCount: this.deps.eventStore?.countEventsByThread(threadId),
           ...conversationDraftFactsOption(this.deps.eventStore, threadId),
           turnProgress: this.deps.readTurnProgress(threadId),
+          engineStartWait: this.deps.readEngineStartWait?.(threadId),
           readChildWork: this.deps.readChildWork,
           readOwnedWork: this.deps.readOwnedWork,
           ...this.conversationActivityOption(threadId),
@@ -343,6 +349,7 @@ export class SessionEventReads {
       eventCount: this.deps.eventStore?.countEventsByThread(threadId),
       ...conversationDraftFactsOption(this.deps.eventStore, threadId),
       turnProgress: this.deps.readTurnProgress(threadId),
+      engineStartWait: this.deps.readEngineStartWait?.(threadId),
       readChildWork: this.deps.readChildWork,
       readOwnedWork: this.deps.readOwnedWork,
       ...this.conversationActivityOption(threadId),

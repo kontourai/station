@@ -2,6 +2,7 @@ import {
   PROVIDER_FAILURE_KINDS,
   RESOURCE_ENGINE_START_CAPACITY_CODE,
 } from '@kontourai/station-contracts/provider-failure';
+import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 import { ProviderRefusalError } from '../../providers/provider-failure.js';
 /**
  * Server-owned host CPU diagnostics.
@@ -62,7 +63,14 @@ export interface RuntimeResourcePostureProbe {
 export interface RuntimeResourcePostureController
   extends RuntimeResourcePostureProbe {
   reserveEngineStart(): RuntimeEngineStartLease;
-  waitForEngineStart(signal?: AbortSignal): Promise<RuntimeEngineStartLease>;
+  /**
+   * `onWaiting` runs once, only when this start is queued behind the held
+   * lease (never for an immediate grant or refusal).
+   */
+  waitForEngineStart(
+    signal?: AbortSignal,
+    options?: { onWaiting?: () => void },
+  ): Promise<RuntimeEngineStartLease>;
 }
 
 export interface RuntimeEngineStartLease {
@@ -74,6 +82,8 @@ interface RuntimeResourcePostureProbeOptions {
   sample?: () => Promise<HostPressureSample>;
   now?: () => number;
   cacheMs?: number;
+  /** Bound on an interactive start's wait; a deterministic test seam. */
+  engineStartWaitMs?: number;
 }
 
 export type RuntimeEngineStartIntent =
@@ -179,6 +189,18 @@ export function deriveRuntimeResourcePosture(
   };
 }
 
+/**
+ * #4568: a person's Stop cancelled their engine start while it waited for the
+ * start lease, before any provider start. Nothing ran, so this is not a
+ * failure of the Session being started.
+ */
+export class EngineStartCancelledError extends Error {
+  constructor() {
+    super('The engine start was cancelled before it began.');
+    this.name = 'EngineStartCancelledError';
+  }
+}
+
 export class ConcurrentEngineStartCapacityError extends ProviderRefusalError {
   readonly code = RESOURCE_ENGINE_START_CAPACITY_CODE;
   constructor() {
@@ -196,6 +218,8 @@ export function createRuntimeResourcePostureController(
   const sample = options.sample ?? createRuntimeCpuSampler();
   const now = options.now ?? Date.now;
   const cacheMs = options.cacheMs ?? RUNTIME_RESOURCE_POSTURE_CACHE_MS;
+  const engineStartWaitMs =
+    options.engineStartWaitMs ?? ENGINE_START_WAIT_TIMEOUT_MS;
   let latest: RuntimeResourcePosture | undefined;
   let refreshedAt: number | undefined;
   let inFlight: Promise<RuntimeResourcePosture> | undefined;
@@ -256,37 +280,41 @@ export function createRuntimeResourcePostureController(
       if (engineStartReserved) throw new ConcurrentEngineStartCapacityError();
       return lease();
     },
-    async waitForEngineStart(signal) {
+    async waitForEngineStart(signal, options) {
       throwIfAborted(signal);
       if (!engineStartReserved) return lease();
       if (waiters.length >= ENGINE_START_MAX_WAITERS)
         throw new ConcurrentEngineStartCapacityError();
-      return await new Promise<RuntimeEngineStartLease>((resolve, reject) => {
-        const cleanup = () => {
-          clearTimeout(timer);
-          signal?.removeEventListener('abort', abort);
-        };
-        const remove = () => {
-          const index = waiters.indexOf(accept);
-          if (index >= 0) waiters.splice(index, 1);
-          cleanup();
-        };
-        const abort = () => {
-          remove();
-          reject(abortError(signal));
-        };
-        const accept = (next: RuntimeEngineStartLease) => {
-          cleanup();
-          resolve(next);
-        };
-        const timer = setTimeout(() => {
-          remove();
-          reject(new ConcurrentEngineStartCapacityError());
-        }, ENGINE_START_WAIT_TIMEOUT_MS);
-        timer.unref?.();
-        waiters.push(accept);
-        signal?.addEventListener('abort', abort, { once: true });
-      });
+      const waiting = new Promise<RuntimeEngineStartLease>(
+        (resolve, reject) => {
+          const cleanup = () => {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', abort);
+          };
+          const remove = () => {
+            const index = waiters.indexOf(accept);
+            if (index >= 0) waiters.splice(index, 1);
+            cleanup();
+          };
+          const abort = () => {
+            remove();
+            reject(abortError(signal));
+          };
+          const accept = (next: RuntimeEngineStartLease) => {
+            cleanup();
+            resolve(next);
+          };
+          const timer = setTimeout(() => {
+            remove();
+            reject(new ConcurrentEngineStartCapacityError());
+          }, engineStartWaitMs);
+          timer.unref?.();
+          waiters.push(accept);
+          signal?.addEventListener('abort', abort, { once: true });
+        },
+      );
+      options?.onWaiting?.();
+      return await waiting;
     },
   };
 }
@@ -298,6 +326,18 @@ export function createEnvironmentRuntimeResourcePostureProbe(
 }
 
 /**
+ * #4568: the start intent of an engine start a turn needs (a cold follow-up's
+ * respawn, a credential-profile restart of that turn), from Station's own
+ * classification of who caused the turn. Only a person's turn waits; every
+ * other origin keeps background admission's immediate retryable refusal.
+ */
+export function engineStartIntentForTurnOrigin(
+  origin: TurnDispatchOrigin,
+): RuntimeEngineStartIntent {
+  return origin === 'interactive' ? 'interactive_user' : 'recovery';
+}
+
+/**
  * Preserve start-intent plumbing and the real one-at-a-time start invariant.
  * Host diagnostics are deliberately neither sampled nor consulted here.
  */
@@ -305,13 +345,22 @@ export async function admitEngineStartForIntent(
   probe: RuntimeResourcePostureProbe | undefined,
   _logger: unknown,
   intent: RuntimeEngineStartIntent,
-  input: { binding: string; signal?: AbortSignal },
+  input: {
+    binding: string;
+    signal?: AbortSignal;
+    /** Called only when an interactive start is queued behind the lease. */
+    onWaiting?: () => void;
+  },
 ): Promise<RuntimeEngineStartLease | undefined> {
+  throwIfAborted(input.signal);
   const controller = probe as
     | Partial<RuntimeResourcePostureController>
     | undefined;
   if (intent === 'interactive_user' && controller?.waitForEngineStart)
-    return controller.waitForEngineStart(input.signal);
+    return controller.waitForEngineStart(
+      input.signal,
+      input.onWaiting ? { onWaiting: input.onWaiting } : undefined,
+    );
   return typeof controller?.reserveEngineStart === 'function'
     ? controller.reserveEngineStart()
     : undefined;

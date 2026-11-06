@@ -635,6 +635,51 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
   });
 });
 
+// #4568: a person's engine start queued behind another engine start. The
+// server publishes the wait on the Session's summary only while it lasts.
+describe('ChatDockBody engine-start capacity wait (#4568)', () => {
+  function waitingSummary(
+    engineStartWait?: OrchestrationSessionSummary['engineStartWait'],
+  ): OrchestrationSessionSummary {
+    return {
+      threadId: 'failure-ownership-session',
+      provider: 'claude',
+      lifecycleState: 'idle',
+      status: 'ready',
+      controlMode: 'station-owned',
+      ...(engineStartWait ? { engineStartWait } : {}),
+      answerability: { answerable: true },
+      isLoaded: true,
+      isPersisted: true,
+      eventCount: 4,
+      createdAt: '2026-11-06T11:00:00.000Z',
+      updatedAt: '2026-11-06T12:00:00.000Z',
+    };
+  }
+
+  test('shows the wait while the send is in flight and clears it when Station does', () => {
+    const view = renderDock(
+      buildSession({ status: 'sending' }),
+      waitingSummary({ since: '2026-11-06T12:00:00.000Z' }),
+    );
+    expect(
+      screen.getByTestId('chat-dock-engine-start-wait').textContent,
+    ).toContain('Waiting for another engine to start');
+
+    view.unmount();
+    renderDock(buildSession({ status: 'sending' }), waitingSummary());
+    expect(screen.queryByTestId('chat-dock-engine-start-wait')).toBeNull();
+  });
+
+  test('a stale wait on the summary is not shown once the send has settled', () => {
+    renderDock(
+      buildSession({ status: 'idle' }),
+      waitingSummary({ since: '2026-11-06T12:00:00.000Z' }),
+    );
+    expect(screen.queryByTestId('chat-dock-engine-start-wait')).toBeNull();
+  });
+});
+
 describe('#2309 the dock queue: "Send now" and Retry are explicit sends', () => {
   const conversationId = 'conv-2309-queue';
   const openTurn = {

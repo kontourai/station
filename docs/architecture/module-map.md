@@ -4586,13 +4586,26 @@ sample; recent readers reuse it. The sampler computes busy time from two
 `reserveEngineStart()` is a different capability: one in-memory lease per
 controller instance. It does not sample CPU. An interactive start waits FIFO
 for the lease, for at most 60 seconds and up to 32 waiting starts. When the
-caller supplies an abort signal, aborting it removes that start from the queue;
-the person's `/chat` path does not currently supply one. Other starts are refused immediately with
-`resource_engine_start_capacity` while the lease is held, including while it is
-handed to a waiting person. Recovery and credential-profile restarts currently
-use this background behavior: the shared respawn seam does not distinguish a
-person from automated callers, and the credential restart does not pass its
-signal to admission. The composer has no capacity-wait status channel.
+caller supplies an abort signal, aborting it removes that start from the queue.
+Other starts are refused immediately with `resource_engine_start_capacity`
+while the lease is held, including while it is handed to a waiting person.
+
+A start for an existing Session derives its intent on the server. A cold
+Session's respawn for a `sendTurn` waits only when Station classifies the turn
+as a person's (`interactive` dispatch origin); an automatic send
+(`/chat/background`, including automatic inbox delivery), Automation, Task,
+delegation and unclassified turns keep the immediate refusal. A person
+joining an in-flight background respawn that was refused starts again under
+their intent. Their Stop cancels a respawn still waiting for the lease, and no
+provider start follows. A credential-profile restart takes its intent from the
+source turn's recorded origin. It passes the recovery owner's signal to
+admission and checks it again before the provider start. While a person's
+start for an existing Session is queued, its summary carries
+`engineStartWait`, published through the session-projection update the
+composer refreshes from. The wait clears on admission, cancellation, timeout
+or failure. A brand-new Session's start has no summary yet, so the composer
+shows no wait for it. A `/chat` request's own signal never cancels a send
+Station has accepted.
 Other Station runtimes have their own controllers; this is not the verification
 coordinator's host-wide scheduler.
 
@@ -4612,6 +4625,9 @@ or that a provider will start successfully.
 [Posture tests](../../src-server/services/infra/__tests__/resource-posture.test.ts)
 and runtime/scheduler composition tests exercise progress at a synthetic
 99-percent CPU reading and preserve the product/verification import boundary.
+[Existing-Session capacity tests](../../src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts)
+drive the respawn, Stop, timeout and credential-restart paths through the
+real service and read the published summary.
 Keep CPU classification observational; do not make high load a hidden product
 refusal, require an override token or import verification scheduling into the
 application.

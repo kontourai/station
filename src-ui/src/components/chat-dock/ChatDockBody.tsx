@@ -21,6 +21,7 @@ import {
   TURN_INTERRUPTED_CONTINUE_PROMPT,
   turnInterruptedContinueClientTurnId,
 } from '@kontourai/station-shared/runtime-event-projection';
+import { StatusBadge } from '@kontourai/ui/react';
 import React, {
   useCallback,
   useEffect,
@@ -1171,6 +1172,12 @@ export function ChatDockBody({
   const turnProgressSilence = activeSession.conversationActivity
     ? activeSession.conversationActivity.progressSilence
     : activeOrchestrationSession?.turnProgress?.progressSilence;
+  // #4568: Station's record that this chat's engine start is queued behind
+  // another engine start. Only while a send is in flight, so a stale read
+  // after the send settled claims nothing; the composer's Stop cancels it.
+  const engineStartWait = isTurnInFlight(activeSession)
+    ? activeOrchestrationSession?.engineStartWait
+    : undefined;
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -2743,6 +2750,21 @@ export function ChatDockBody({
         `isTurnInFlight` gates it so a stale projection read after the turn
         settled cannot claim a live stall.
       */}
+      {engineStartWait && (
+        <div
+          role="status"
+          data-testid="chat-dock-engine-start-wait"
+          style={{
+            display: 'flex',
+            margin: '0 var(--k-space-3) var(--k-space-2)',
+          }}
+        >
+          <StatusBadge
+            status="Waiting for another engine to start"
+            tone="caution"
+          />
+        </div>
+      )}
       {turnProgressSilence &&
         isTurnInFlight(activeSession) &&
         activeSession.activityHint?.kind !== 'retrying' && (

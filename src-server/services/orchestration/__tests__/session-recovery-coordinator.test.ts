@@ -435,6 +435,70 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useRealTimers();
   });
 
+  test.each([
+    ['interactive', 'interactive'],
+    ['automation', 'automation'],
+    [undefined, 'unknown'],
+  ] as const)(
+    '#4568: a profile restart of a source turn recorded as %s carries origin %s',
+    async (recorded, carried) => {
+      vi.useFakeTimers();
+      const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
+      dirs.push(dir);
+      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
+      const coordinator = new SessionRecoveryCoordinator({
+        eventStore: store,
+        adapterForProvider: () =>
+          ({
+            metadata: {
+              recovery: { sameSession: true, application: 'restart_resume' },
+            },
+          }) as any,
+        sendTurn: vi.fn(async () => ({ turnId: 'ordinary-turn' })),
+        restartResume,
+        credentialRecoveryAdapter: {
+          stage: async () => ({
+            candidateProfileRef: 'origin-profile-ref',
+            capability: 'restart_resume',
+          }),
+        },
+        now: () => now,
+      });
+      store.appendEvent({
+        eventId: 'started',
+        provider: 'claude',
+        threadId: 'thread',
+        turnId: 'turn',
+        createdAt: now.toISOString(),
+        method: 'turn.started',
+        prompt: 'authoritative input',
+        ...(recorded ? { dispatchOrigin: recorded } : {}),
+      });
+      coordinator.observe({
+        eventId: 'account-exhausted',
+        provider: 'claude',
+        threadId: 'thread',
+        turnId: 'turn',
+        createdAt: now.toISOString(),
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'account capacity exhausted',
+        details: { scope: 'account', retryAfterMs: 0 },
+      });
+      await vi.runAllTimersAsync();
+      expect(restartResume).toHaveBeenCalledWith(
+        expect.objectContaining({
+          credentialProfileRef: 'origin-profile-ref',
+          dispatchOrigin: carried,
+        }),
+      );
+      store.close();
+      vi.useRealTimers();
+    },
+  );
+
   test('routes a Claude observed terminal event to exact profile compensation', async () => {
     vi.useFakeTimers();
     const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-observed-'));

@@ -2381,6 +2381,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
         ?.dispatchOrigin,
     ).toBeUndefined();
+    // #4568: a foreground send names no respawn intent; the service derives
+    // it from who caused the turn.
+    expect(
+      (sendTurn?.[2] as { resourceAdmissionIntent?: string } | undefined)
+        ?.resourceAdmissionIntent,
+    ).toBeUndefined();
   });
 
   test('derives queued/background admission from the fixed background route seam', async () => {
@@ -2414,6 +2420,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
         ?.dispatchOrigin,
     ).toBeUndefined();
+    // #4568: the send's own respawn of a cold Session stays background too.
+    expect(sendTurn?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'queued_background',
+    });
   });
 
   test('refuses a foreground start without fabricating a session when provider creation is uncertain', async () => {

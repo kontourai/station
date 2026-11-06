@@ -2,12 +2,17 @@ import type {
   EngineId,
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
+import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
 } from '../../providers/adapter-shape.js';
 import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { errorMessage } from '../../utils/error-message.js';
+import {
+  engineStartIntentForTurnOrigin,
+  type RuntimeEngineStartIntent,
+} from '../infra/resource-posture.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -51,6 +56,8 @@ interface CredentialProfileRecoveryDeps {
     /** The replay's posture; the restart spawns in the resolved one. */
     modelOptions?: Record<string, unknown>;
     credentialProfileRef?: string;
+    /** #4568: absent for a boot restore, which no person is waiting on. */
+    resourceAdmissionIntent?: RuntimeEngineStartIntent;
   }) => Promise<{
     adapter: ProviderAdapterShape;
     armedInternalStopTurnId?: string;
@@ -142,7 +149,7 @@ export class CredentialProfileRecovery {
    */
   createDispatchAdapter(): RecoveryDispatchAdapter {
     return createRecoveryDispatchAdapter({
-      send: async (replay) => {
+      send: async ({ dispatchOrigin: _sourceOrigin, ...replay }) => {
         const result = await this.deps.dispatchSendTurn(replay);
         return result && 'turnId' in result ? result : undefined;
       },
@@ -178,9 +185,18 @@ export class CredentialProfileRecovery {
     recoveryCorrelationId: string;
     signal: AbortSignal;
     credentialProfileRef?: string;
+    dispatchOrigin?: TurnDispatchOrigin;
   }): Promise<{ turnId: string }> {
+    // #4568: a restart of a person's turn waits for the start lease as that
+    // person would; any other source turn keeps background admission. The
+    // replay's signal is the recovery owner's cancel, carried to admission.
     const { adapter, armedInternalStopTurnId } =
-      await this.deps.restartProviderSession(input);
+      await this.deps.restartProviderSession({
+        ...input,
+        resourceAdmissionIntent: engineStartIntentForTurnOrigin(
+          input.dispatchOrigin ?? 'unknown',
+        ),
+      });
     // archive#3525 fix round FIX 1: the restart above only means the
     // provider process is back up, not that this turn actually redispatches
     // — if sendTurn itself now fails, nothing is retrying, and the armed
