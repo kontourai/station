@@ -600,10 +600,15 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
       if (!current) ctx.activeAgents.delete('assistant');
       release();
       const response = await responsePromise;
-      await response.text();
+      const events = readSSEEvents(await response.text());
       await invocation;
       expect(acknowledged).toBe(current);
       expect(streamText).toHaveBeenCalledTimes(current ? 1 : 0);
+      expect(events).toContainEqual(
+        expect.objectContaining(
+          current ? { type: 'finish' } : { type: 'error' },
+        ),
+      );
     },
   );
 
