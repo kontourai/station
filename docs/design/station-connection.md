@@ -612,4 +612,3 @@ snapshots/queues. Inspect screenshots at 390 and 1440 pixels in both themes,
 including a writable idle composer and capability-limited controls. Source
 scans prove adoption rules only. Browser fixtures do not establish physical
 native-device qualification; retain that limit in release evidence.
-
