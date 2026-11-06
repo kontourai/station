@@ -10,6 +10,7 @@ import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { OrchestrationEngineStartWaitFrame } from '@kontourai/station-contracts/orchestration';
+import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -24,11 +25,16 @@ import {
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
+import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
 import {
   ConcurrentEngineStartCapacityError,
   createRuntimeResourcePostureController,
   EngineStartCancelledError,
+  type RuntimeEngineStartIntent,
 } from '../../infra/resource-posture.js';
+import { ReceiverExecutionRefusal } from '../../projects/project-contribution-service.js';
+import type { CredentialProfileStageOutcome } from '../credential-recovery-module.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import type { SessionReadScope } from '../orchestration-service.js';
@@ -60,7 +66,9 @@ afterEach(async () => {
 
 const PROJECT = { slug: 'demo', id: 'project-demo' };
 
-async function harness(options: { hosted?: true } = {}) {
+async function harness(
+  options: { hosted?: true; credentialRecovery?: true } = {},
+) {
   const registry = parseHostedTenantRegistry({
     schemaVersion: 1,
     tenants: [
@@ -113,6 +121,27 @@ async function harness(options: { hosted?: true } = {}) {
       return binding ? binding.cwd : projectRoot;
     },
   );
+  const resourcePosture = createRuntimeResourcePostureController();
+  const profileStage = vi.fn(
+    async (): Promise<CredentialProfileStageOutcome> => ({
+      kind: 'staged',
+      attempt: {
+        candidateProfileRef: 'backup',
+        capability: 'restart_resume',
+        commit: async () => ({ kind: 'adopted' }),
+        rollback: async () => ({ kind: 'rolled-back' }),
+        inspect: async () => ({ kind: 'staged' }),
+        acknowledge: async () => ({ kind: 'applied' }),
+      },
+    }),
+  );
+  if (options.credentialRecovery) {
+    const provider: ProviderAdapterShape = adapter;
+    provider.metadata.recovery = {
+      sameSession: true,
+      application: 'restart_resume',
+    };
+  }
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     ...(options.hosted
@@ -131,7 +160,10 @@ async function harness(options: { hosted?: true } = {}) {
       : {}),
     eventBus,
     eventStore,
-    resourcePosture: createRuntimeResourcePostureController(),
+    resourcePosture,
+    ...(options.credentialRecovery
+      ? { credentialProfileRecoveryAdapter: { stage: profileStage } }
+      : {}),
     listProjects: () => [
       { slug: PROJECT.slug, id: PROJECT.id, workingDirectory: projectRoot },
     ],
@@ -183,7 +215,7 @@ async function harness(options: { hosted?: true } = {}) {
   /** A session restored at boot with no engine: the parked/interrupted case. */
   const restoreDormant = async (
     threadId: string,
-    options: { project?: true } = {},
+    options: { project?: true; portable?: true } = {},
   ) => {
     eventStore.upsertSession({
       provider: 'claude',
@@ -203,6 +235,15 @@ async function harness(options: { hosted?: true } = {}) {
       createdAt: '2026-11-01T00:00:00.000Z',
       metadata: {
         userId: 'owner',
+        ...(options.portable
+          ? {
+              [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+                portableProjectId: 'prj_capacity',
+                resourceId: 'git.example/capacity',
+                localProjectId: PROJECT.id,
+              },
+            }
+          : {}),
         ...(options.project
           ? {
               projectSlug: PROJECT.slug,
@@ -243,6 +284,7 @@ async function harness(options: { hosted?: true } = {}) {
     const reached = deferred();
     const release = deferred();
     held = { reached: reached.release, release: release.promise };
+    cleanups.push(release.release);
     return { reached: reached.promise, release: release.release };
   };
 
@@ -250,7 +292,7 @@ async function harness(options: { hosted?: true } = {}) {
   const freshStart = (
     threadId: string,
     userId = 'owner',
-    options: { project?: true } = {},
+    options: { project?: true; clientTurnId?: string } = {},
   ) =>
     service.startSessionInternal(
       {
@@ -264,9 +306,26 @@ async function harness(options: { hosted?: true } = {}) {
         },
       },
       { ...ownerContext, userId },
-      { resourceAdmissionIntent: 'interactive_user' },
+      {
+        resourceAdmissionIntent: 'interactive_user',
+        pendingStartClientTurnId: options.clientTurnId,
+      },
     );
 
+  const commands = createOrchestrationRoutes(service, {
+    eventBus,
+    getUserId: () => 'owner',
+    logger: { debug() {} },
+  });
+  const stop = (
+    threadId: string,
+    target: { turnId?: string; clientTurnId?: string } = {},
+  ) =>
+    commands.request('/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'interruptTurn', threadId, ...target }),
+    });
   const startsFor = (threadId: string) =>
     vi
       .mocked(adapter.startSession)
@@ -274,6 +333,10 @@ async function harness(options: { hosted?: true } = {}) {
 
   return {
     adapter,
+    resourcePosture,
+    profileStage,
+    projectRoot,
+    stop,
     registry,
     eventStore,
     frames,
@@ -762,5 +825,316 @@ describe("a brand-new chat's first start (#4568)", () => {
       status: 'rejected',
       code: 'resource_engine_start_cancelled',
     });
+  });
+});
+
+describe('review corrections at the engine-start owner boundary', () => {
+  test('receiver withdrawal while capacity is held refuses the recovered provider start and retains its Session', async () => {
+    const h = await harness();
+    await h.restoreDormant('receiver', { project: true, portable: true });
+    const retained = h.eventStore.readSessionByThread('receiver');
+    expect(
+      await h.service.authorizedConversationWorkspace('receiver'),
+    ).toMatchObject({ cwd: h.projectRoot });
+    let offered = true;
+    const recheck = vi.fn(async () => {
+      if (!offered)
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_not_offered',
+          'Execution offer withdrawn',
+        );
+    });
+    const lease = await h.holdStartLease();
+    const waiting = h.waitPublished('receiver', true);
+    const turn = h.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: { threadId: 'receiver', input: 'continue', clientTurnId: 'B' },
+      },
+      { userId: 'owner', clientOrigin: operator },
+      {
+        receiverExecutionAdmission: {
+          recheck,
+          admitted: {
+            threadId: 'receiver',
+            projectSlug: PROJECT.slug,
+            cwd: h.projectRoot,
+            portableProjectId: 'prj_capacity',
+            resourceId: 'git.example/capacity',
+            localProjectId: PROJECT.id,
+          },
+        },
+      },
+    );
+    const outcome = turn.catch((error: unknown) => error);
+    await waiting;
+    expect(recheck).toHaveBeenCalled();
+    expect(
+      recheck.mock.results.every((result) => result.type === 'return'),
+    ).toBe(true);
+    expect(h.startsFor('receiver')).toBe(0);
+    offered = false;
+    await lease.release();
+    const result = await outcome;
+    expect(h.startsFor('receiver')).toBe(0);
+    expect(result).toMatchObject({ code: 'receiver_execution_not_offered' });
+    expect(recheck.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(h.eventStore.readSessionByThread('receiver')).toEqual(retained);
+    expect(
+      h.eventStore
+        .listEvents('receiver')
+        .some((event) => event.payload.method === 'runtime.error'),
+    ).toBe(false);
+  });
+
+  test.each([
+    { clientTurnId: 'A' },
+    { turnId: 'old-A' },
+    { clientTurnId: 'B', turnId: 'old-A' },
+  ])(
+    'a delayed targeted Stop %j cannot cancel a cold follow-up owned by B',
+    async (stale) => {
+      const h = await harness();
+      await h.restoreDormant('parked');
+      const lease = await h.holdStartLease();
+      const waiting = h.waitPublished('parked', true);
+      const turn = h.service.dispatch(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'parked', input: 'B', clientTurnId: 'B' },
+        },
+        { clientOrigin: operator },
+      );
+      const outcome = turn.catch((error: unknown) => error);
+      await waiting;
+      expect((await h.stop('parked', stale)).status).toBe(200);
+      expect((await h.summary('parked'))?.engineStartWait).toBeDefined();
+      await lease.release();
+      expect(await outcome).toMatchObject({ turnId: 'turn-1' });
+      expect(h.startsFor('parked')).toBe(1);
+    },
+  );
+
+  test.each(['fresh', 'respawn', 'restart'] as const)(
+    'Stop retires never-settling post-admission %s preparation and releases its lease before late completion',
+    async (kind) => {
+      const h = await harness();
+      const threadId =
+        kind === 'fresh' ? 'fresh' : kind === 'respawn' ? 'parked' : 'live';
+      if (kind !== 'fresh') await h.restoreDormant(threadId, { project: true });
+      else h.service.initialize();
+      if (kind === 'restart')
+        await h.service.dispatch(
+          { type: 'sendTurn', input: { threadId, input: 'first' } },
+          { clientOrigin: operator },
+        );
+      const originalStarts = h.startsFor(threadId);
+      const lease = await h.holdStartLease();
+      const waiting = h.waitPublished(threadId, true);
+      const operation =
+        kind === 'fresh'
+          ? h.freshStart(threadId, 'owner', {
+              project: true,
+              clientTurnId: 'B',
+            })
+          : kind === 'respawn'
+            ? h.service.dispatch(
+                {
+                  type: 'sendTurn',
+                  input: { threadId, input: 'B', clientTurnId: 'B' },
+                },
+                { clientOrigin: operator },
+              )
+            : (
+                h.service as unknown as {
+                  credentialProfileRecovery: import('../credential-profile-recovery.js').CredentialProfileRecovery;
+                }
+              ).credentialProfileRecovery.restartRecoverySession({
+                threadId,
+                input: 'B',
+                signal: new AbortController().signal,
+                recoveryCorrelationId: 'profile-B',
+                credentialProfileRef: 'backup',
+                dispatchOrigin: 'interactive',
+                sourceTurnId: 'turn-B',
+                sourceClientTurnId: 'B',
+              });
+      let settled = false;
+      const outcome = operation.then(
+        (result) => {
+          settled = true;
+          return result;
+        },
+        (error: unknown) => {
+          settled = true;
+          return error;
+        },
+      );
+      await waiting;
+      const prep = h.holdWorkspaceAuthorization();
+      await lease.release();
+      await prep.reached;
+      // Deliberately leave the real resolver promise pending across Stop and the next admission.
+      expect((await h.stop(threadId)).status).toBe(200);
+      const probe = await h.service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: { threadId: 'after-stop', provider: 'claude' },
+        },
+        { userId: 'owner' },
+        { resourceAdmissionIntent: 'queued_background' },
+      );
+      expect(probe.status).toBe('accepted');
+      await vi.waitFor(() => expect(settled).toBe(true));
+      expect(h.service.readableEngineStartWaits(reader('owner'))).toEqual([]);
+      expect(h.startsFor(threadId)).toBe(originalStarts);
+      await outcome;
+      prep.release();
+      await settle();
+      expect(h.startsFor(threadId)).toBe(originalStarts);
+    },
+  );
+
+  test('Stop after the adapter was invoked retains the lease and indeterminate provider custody', async () => {
+    const h = await harness();
+    h.service.initialize();
+    const invoked = deferred();
+    const provider = deferred();
+    cleanups.push(provider.release);
+    const original = h.adapter.startSession.bind(h.adapter);
+    vi.mocked(h.adapter.startSession).mockImplementation(async (input) => {
+      if (input.threadId === 'effect') {
+        invoked.release();
+        await provider.promise;
+        throw new Error('provider response lost');
+      }
+      return original(input);
+    });
+    let settled = false;
+    const start = h
+      .freshStart('effect', 'owner', { clientTurnId: 'B' })
+      .then((result) => {
+        settled = true;
+        return result;
+      });
+    await invoked.promise;
+    expect((await h.stop('effect', { clientTurnId: 'B' })).status).toBe(200);
+    expect(
+      await h.service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: { threadId: 'probe', provider: 'claude' },
+        },
+        { userId: 'owner' },
+        { resourceAdmissionIntent: 'queued_background' },
+      ),
+    ).toMatchObject({
+      status: 'rejected',
+      code: 'resource_engine_start_capacity',
+    });
+    expect(settled).toBe(false);
+    provider.release();
+    expect(await start).toMatchObject({ status: 'indeterminate' });
+  });
+
+  async function beginRecordedProfileRecovery(
+    intent: RuntimeEngineStartIntent,
+  ) {
+    const h = await harness({ credentialRecovery: true });
+    h.service.initialize();
+    expect(await h.freshStart('live')).toMatchObject({ status: 'accepted' });
+    vi.spyOn(h.adapter, 'sendTurn').mockImplementation(async (input) => {
+      h.adapter.events.push({
+        method: 'turn.started',
+        eventId: 'source-B',
+        provider: 'claude',
+        threadId: 'live',
+        turnId: 'turn-B',
+        createdAt: new Date().toISOString(),
+        prompt: input.input,
+        resourceAdmissionIntent: 'interactive_user',
+      });
+      return { threadId: 'live', turnId: 'turn-B' };
+    });
+    await h.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: { threadId: 'live', input: 'source B', clientTurnId: 'B' },
+      },
+      { userId: 'owner', clientOrigin: operator },
+      { resourceAdmissionIntent: intent },
+    );
+    await vi.waitFor(() =>
+      expect(
+        h.eventStore.latestEventByMethod('live', 'turn.started')?.payload,
+      ).toMatchObject({
+        turnId: 'turn-B',
+        clientTurnId: 'B',
+        dispatchOrigin: 'interactive',
+        resourceAdmissionIntent: intent,
+      }),
+    );
+    const lease = await h.holdStartLease();
+    const reserve = vi.spyOn(h.resourcePosture, 'reserveEngineStart');
+    const waiting = h.waitPublished('live', true);
+    h.adapter.events.push({
+      eventId: 'account-failure-B',
+      provider: 'claude',
+      threadId: 'live',
+      turnId: 'turn-B',
+      method: 'runtime.error',
+      severity: 'error',
+      createdAt: new Date().toISOString(),
+      message: 'account capacity exhausted',
+      details: { scope: 'account', retryAfterMs: 0 },
+    });
+    return { h, lease, reserve, waiting };
+  }
+
+  test('an automatic source with interactive attribution keeps retryable background refusal during credential recovery', async () => {
+    const { h, lease, reserve } =
+      await beginRecordedProfileRecovery('queued_background');
+    await vi.waitFor(() => expect(h.profileStage).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(
+        reserve.mock.results.some((result) => result.type === 'throw') ||
+          h.frames.some(
+            ({ frame }) => frame.threadId === 'live' && frame.wait !== null,
+          ),
+      ).toBe(true),
+    );
+    expect(
+      h.frames.filter(
+        ({ frame }) => frame.threadId === 'live' && frame.wait !== null,
+      ),
+    ).toEqual([]);
+    expect(
+      reserve.mock.results.find((result) => result.type === 'throw')?.value,
+    ).toMatchObject({
+      code: 'resource_engine_start_capacity',
+      retryable: true,
+    });
+    expect(h.startsFor('live')).toBe(1);
+    await lease.release();
+  });
+
+  test('a delayed Stop for source A cannot cancel the credential restart of recorded source B', async () => {
+    const { h, lease, waiting } =
+      await beginRecordedProfileRecovery('interactive_user');
+    await waiting;
+    expect(h.profileStage).toHaveBeenCalled();
+    expect(
+      (await h.stop('live', { turnId: 'turn-A', clientTurnId: 'A' })).status,
+    ).toBe(200);
+    expect((await h.summary('live'))?.engineStartWait).toBeDefined();
+    expect(h.startsFor('live')).toBe(1);
+    expect(
+      (await h.stop('live', { turnId: 'turn-B', clientTurnId: 'B' })).status,
+    ).toBe(200);
+    await vi.waitFor(async () =>
+      expect((await h.summary('live'))?.engineStartWait).toBeUndefined(),
+    );
+    await lease.release();
+    expect(h.startsFor('live')).toBe(1);
   });
 });

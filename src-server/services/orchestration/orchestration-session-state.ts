@@ -3,6 +3,9 @@ import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/pro
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import { providerFailure } from '../../providers/provider-failure.js';
+import { throwIfAborted } from '../../utils/bounded-async.js';
+import { ReceiverExecutionRefusal } from '../projects/project-contribution-service.js';
+import { withEngineStartPreparation } from './engine-start-preparation.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 
@@ -1712,12 +1715,14 @@ function recoveryFailureEventId(threadId: string, message: string): string {
  * spawned 36 seconds after boot for conversations nobody had opened.
  */
 export interface RecoveredSessionStartOptions {
+  signal?: AbortSignal;
   /** Production composition reauthorizes the retained Project after preparation. */
   assertRetainedWorkspaceAuthorized?: (threadId: string) => Promise<void>;
   /** Production composition joins the same durable start/turn authority. */
   invokeSessionStart?: (
     threadId: string,
     invoke: () => Promise<ProviderSession>,
+    input: ProviderSessionStartInput,
   ) => Promise<ProviderSession>;
   eventStore?: EventStore;
   assertAdapterReady: (
@@ -1891,18 +1896,27 @@ export async function startRecoveredOrchestrationSession(options: {
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {
-      await deps.assertRetainedWorkspaceAuthorized?.(startInput.threadId);
-      // #2873: a respawn re-resolves the folder an agent's dispatch recorded
-      // and refuses a different result, before any adapter call.
-      assertDispatchCwdUnmoved(startInput, startInput.cwd);
-      recovered = await withTenantExecutionContext(
-        startInput.tenantExecutionContext,
-        () =>
-          deps.invokeSessionStart
-            ? deps.invokeSessionStart(startInput.threadId, () =>
-                adapter.startSession(startInput),
-              )
-            : adapter.startSession(startInput),
+      recovered = await withEngineStartPreparation<ProviderSession>(
+        deps.signal,
+        async (invokeProvider) => {
+          await deps.assertRetainedWorkspaceAuthorized?.(startInput.threadId);
+          throwIfAborted(deps.signal);
+          // #2873: a respawn re-resolves the folder an agent's dispatch recorded
+          // and refuses a different result, before any adapter call.
+          assertDispatchCwdUnmoved(startInput, startInput.cwd);
+          return withTenantExecutionContext(
+            startInput.tenantExecutionContext,
+            () =>
+              deps.invokeSessionStart
+                ? deps.invokeSessionStart(
+                    startInput.threadId,
+                    () =>
+                      invokeProvider(() => adapter.startSession(startInput)),
+                    startInput,
+                  )
+                : invokeProvider(() => adapter.startSession(startInput)),
+          );
+        },
       );
     } finally {
       admissionLease?.release();
@@ -1926,7 +1940,11 @@ export async function startRecoveredOrchestrationSession(options: {
     // #4568: a person's Stop cancelled this start while it waited for the
     // start lease. No provider started and nothing failed, so the Session
     // keeps its record exactly as it was.
-    if (error instanceof EngineStartCancelledError) throw error;
+    if (
+      error instanceof EngineStartCancelledError ||
+      error instanceof ReceiverExecutionRefusal
+    )
+      throw error;
     const message = errorMessage(error);
     deps.logger.warn('Failed to recover provider session', {
       provider: session.provider,

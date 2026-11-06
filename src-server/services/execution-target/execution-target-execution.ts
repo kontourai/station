@@ -419,6 +419,7 @@ export interface ExecutionTargetExecutionDependencies
     input: ProviderSessionStartInput,
     context?: {
       resourceAdmissionIntent?: 'queued_background';
+      pendingStartClientTurnId?: string;
     },
   ) => Promise<{ commandId: string; sessionId: string } | undefined>;
   sendTurn: (
@@ -1449,6 +1450,9 @@ export async function executeForegroundMessage(
         },
       };
       const startContext = {
+        ...(effectiveClientTurnId
+          ? { pendingStartClientTurnId: effectiveClientTurnId }
+          : {}),
         ...(input.automaticBackground
           ? { resourceAdmissionIntent: 'queued_background' as const }
           : {}),

@@ -58,6 +58,8 @@ interface CredentialProfileRecoveryDeps {
     credentialProfileRef?: string;
     /** #4568: absent for a boot restore, which no person is waiting on. */
     resourceAdmissionIntent?: RuntimeEngineStartIntent;
+    sourceTurnId?: string;
+    sourceClientTurnId?: string;
   }) => Promise<{
     adapter: ProviderAdapterShape;
     armedInternalStopTurnId?: string;
@@ -186,16 +188,18 @@ export class CredentialProfileRecovery {
     signal: AbortSignal;
     credentialProfileRef?: string;
     dispatchOrigin?: TurnDispatchOrigin;
+    resourceAdmissionIntent?: RuntimeEngineStartIntent;
+    sourceTurnId?: string;
+    sourceClientTurnId?: string;
   }): Promise<{ turnId: string }> {
-    // #4568: a restart of a person's turn waits for the start lease as that
-    // person would; any other source turn keeps background admission. The
-    // replay's signal is the recovery owner's cancel, carried to admission.
+    // A recorded automatic policy takes precedence over the source actor.
+    // Older turns fall back to their recorded dispatch origin.
     const { adapter, armedInternalStopTurnId } =
       await this.deps.restartProviderSession({
         ...input,
-        resourceAdmissionIntent: engineStartIntentForTurnOrigin(
-          input.dispatchOrigin ?? 'unknown',
-        ),
+        resourceAdmissionIntent:
+          input.resourceAdmissionIntent ??
+          engineStartIntentForTurnOrigin(input.dispatchOrigin ?? 'unknown'),
       });
     // archive#3525 fix round FIX 1: the restart above only means the
     // provider process is back up, not that this turn actually redispatches

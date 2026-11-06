@@ -7350,6 +7350,7 @@ export async function executeExecutionTargetMessage(
           !startInput.metadata?.delegation
             ? { personChatStart: true as const }
             : {}),
+          pendingStartClientTurnId: startContext?.pendingStartClientTurnId,
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??
             (ephemeral

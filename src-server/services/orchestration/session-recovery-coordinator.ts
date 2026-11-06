@@ -13,11 +13,13 @@ import type {
 } from '@kontourai/station-contracts/connection-recovery';
 import {
   type CanonicalRuntimeEvent,
+  type EngineStartAdmissionIntent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
   type TurnDispatchOrigin,
   type TurnStartedEvent,
   turnDispatchOrigin,
+  turnResourceAdmissionIntent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { dispatchableChatAttachments } from '../../providers/sessions/chat-attachments.js';
@@ -1195,6 +1197,9 @@ export class SessionRecoveryCoordinator {
     recoveryCorrelationId: string;
     signal: AbortSignal;
     dispatchOrigin: TurnDispatchOrigin;
+    resourceAdmissionIntent?: EngineStartAdmissionIntent;
+    sourceTurnId: string;
+    sourceClientTurnId?: string;
   } {
     const dispatchable = dispatchableChatAttachments(source.attachments);
     return {
@@ -1207,9 +1212,13 @@ export class SessionRecoveryCoordinator {
       ...this.sourceModelConfiguration(source),
       recoveryCorrelationId,
       signal,
-      // #4568: the source turn's recorded origin, so a credential-profile
-      // restart of a person's turn is admitted as theirs and no other is.
+      // Attribution and admission policy are independent server-owned facts.
       dispatchOrigin: turnDispatchOrigin(source),
+      resourceAdmissionIntent: turnResourceAdmissionIntent(source),
+      sourceTurnId: source.turnId,
+      ...(source.clientTurnId
+        ? { sourceClientTurnId: source.clientTurnId }
+        : {}),
     };
   }
 

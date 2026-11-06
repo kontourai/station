@@ -3,7 +3,10 @@ import {
   RESOURCE_ENGINE_START_CANCELLED_CODE,
   RESOURCE_ENGINE_START_CAPACITY_CODE,
 } from '@kontourai/station-contracts/provider-failure';
-import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
+import type {
+  EngineStartAdmissionIntent,
+  TurnDispatchOrigin,
+} from '@kontourai/station-contracts/runtime-events';
 import { ProviderRefusalError } from '../../providers/provider-failure.js';
 /**
  * Server-owned host CPU diagnostics.
@@ -85,12 +88,7 @@ interface RuntimeResourcePostureProbeOptions {
   cacheMs?: number;
 }
 
-export type RuntimeEngineStartIntent =
-  | 'interactive_user'
-  | 'queued_background'
-  | 'delegated_background'
-  | 'webhook'
-  | 'recovery';
+export type RuntimeEngineStartIntent = EngineStartAdmissionIntent;
 
 function sumCpuTimes(snapshot: CpuSnapshot): CpuTimes | undefined {
   if (!snapshot.length) return undefined;

@@ -3,6 +3,7 @@ import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SKILL_EXPERIENCE_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
+  type EngineStartAdmissionIntent,
   isProviderTriggeredTurn,
   type TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
@@ -63,6 +64,15 @@ function withDispatchOrigin(
   return { ...event, dispatchOrigin };
 }
 
+function withResourceAdmissionIntent(
+  event: CanonicalRuntimeEvent,
+  intent: EngineStartAdmissionIntent | undefined,
+): CanonicalRuntimeEvent {
+  return event.method === 'turn.started' && intent !== undefined
+    ? { ...event, resourceAdmissionIntent: intent }
+    : event;
+}
+
 /** What a turn-start reserves for its eventual `turn.started` event. */
 interface TurnAttribution {
   invocationId?: string;
@@ -76,13 +86,15 @@ interface TurnAttribution {
   clientTurnId?: string;
   /** #4512: the send's server-classified origin. */
   dispatchOrigin?: TurnDispatchOrigin;
+  resourceAdmissionIntent?: EngineStartAdmissionIntent;
 }
 
 function hasAttribution(attribution: TurnAttribution): boolean {
   return (
     reservesTurn(attribution) ||
     attribution.clientTurnId !== undefined ||
-    attribution.dispatchOrigin !== undefined
+    attribution.dispatchOrigin !== undefined ||
+    attribution.resourceAdmissionIntent !== undefined
   );
 }
 
@@ -104,7 +116,8 @@ function reservesTurn(attribution: TurnAttribution): boolean {
     attribution.principal !== undefined ||
     attribution.experience !== undefined ||
     (attribution.dispatchOrigin !== undefined &&
-      attribution.dispatchOrigin !== 'unknown')
+      attribution.dispatchOrigin !== 'unknown') ||
+    attribution.resourceAdmissionIntent !== undefined
   );
 }
 
@@ -139,6 +152,7 @@ export class ClientOriginTurnPropagation {
       | 'invocationId'
       | 'clientTurnId'
       | 'dispatchOrigin'
+      | 'resourceAdmissionIntent'
     >
   >();
   readonly #legacyAccepted = new Map<
@@ -150,6 +164,7 @@ export class ClientOriginTurnPropagation {
       | 'invocationId'
       | 'clientTurnId'
       | 'dispatchOrigin'
+      | 'resourceAdmissionIntent'
     >
   >();
   readonly #legacyEarly = new Map<string, CanonicalRuntimeEvent>();
@@ -161,6 +176,7 @@ export class ClientOriginTurnPropagation {
     experience?: SkillExperienceInvocationReferenceV1,
     clientTurnId?: string,
     dispatchOrigin?: TurnDispatchOrigin,
+    resourceAdmissionIntent?: EngineStartAdmissionIntent,
   ): boolean {
     const attribution: TurnAttribution = {
       clientOrigin,
@@ -168,6 +184,7 @@ export class ClientOriginTurnPropagation {
       experience,
       clientTurnId,
       dispatchOrigin,
+      resourceAdmissionIntent,
     };
     if (!reservesTurn(attribution) || this.#inFlight.has(threadId)) {
       return false;
@@ -178,13 +195,15 @@ export class ClientOriginTurnPropagation {
     if (
       principal !== undefined ||
       clientOrigin !== undefined ||
-      (dispatchOrigin !== undefined && dispatchOrigin !== 'unknown')
+      (dispatchOrigin !== undefined && dispatchOrigin !== 'unknown') ||
+      resourceAdmissionIntent !== undefined
     )
       this.#legacyPending.set(threadId, {
         principal,
         clientOrigin,
         clientTurnId,
         dispatchOrigin,
+        resourceAdmissionIntent,
       });
     return true;
   }
@@ -205,6 +224,7 @@ export class ClientOriginTurnPropagation {
     clientTurnId?: string,
     invocationId?: string,
     dispatchOrigin?: TurnDispatchOrigin,
+    resourceAdmissionIntent?: EngineStartAdmissionIntent,
   ): CanonicalRuntimeEvent | undefined {
     const reserved = this.#inFlight.get(threadId);
     const attribution: TurnAttribution = {
@@ -214,6 +234,8 @@ export class ClientOriginTurnPropagation {
       experience: experience ?? reserved?.experience,
       clientTurnId: clientTurnId ?? reserved?.clientTurnId,
       dispatchOrigin: dispatchOrigin ?? reserved?.dispatchOrigin,
+      resourceAdmissionIntent:
+        resourceAdmissionIntent ?? reserved?.resourceAdmissionIntent,
     };
     this.#inFlight.delete(threadId);
     const legacy = this.#legacyPending.get(threadId);
@@ -252,6 +274,11 @@ export class ClientOriginTurnPropagation {
     // #4512: likewise the origin; boot recovery acts on it.
     if (event.dispatchOrigin !== undefined) {
       const { dispatchOrigin: _untrusted, ...unclassified } = event;
+      event = unclassified;
+    }
+    if (event.resourceAdmissionIntent !== undefined) {
+      const { resourceAdmissionIntent: _untrustedAdmission, ...unclassified } =
+        event;
       event = unclassified;
     }
     // #2324: a turn the engine opened on its own is no send's turn. Holding
@@ -409,18 +436,25 @@ export class ClientOriginTurnPropagation {
     event: CanonicalRuntimeEvent,
     routing: Pick<
       TurnAttribution,
-      'principal' | 'clientOrigin' | 'clientTurnId' | 'dispatchOrigin'
+      | 'principal'
+      | 'clientOrigin'
+      | 'clientTurnId'
+      | 'dispatchOrigin'
+      | 'resourceAdmissionIntent'
     >,
   ): CanonicalRuntimeEvent {
-    const result = withDispatchOrigin(
-      withClientTurnId(
-        withPrincipal(
-          withClientOrigin(event, routing.clientOrigin),
-          routing.principal,
+    const result = withResourceAdmissionIntent(
+      withDispatchOrigin(
+        withClientTurnId(
+          withPrincipal(
+            withClientOrigin(event, routing.clientOrigin),
+            routing.principal,
+          ),
+          routing.clientTurnId,
         ),
-        routing.clientTurnId,
+        routing.dispatchOrigin,
       ),
-      routing.dispatchOrigin,
+      routing.resourceAdmissionIntent,
     );
     this.#trusted.add(result);
     return result;
@@ -430,15 +464,18 @@ export class ClientOriginTurnPropagation {
     event: CanonicalRuntimeEvent,
     attribution: TurnAttribution,
   ): CanonicalRuntimeEvent {
-    const attributed = withDispatchOrigin(
-      withClientTurnId(
-        withPrincipal(
-          withClientOrigin(event, attribution.clientOrigin),
-          attribution.principal,
+    const attributed = withResourceAdmissionIntent(
+      withDispatchOrigin(
+        withClientTurnId(
+          withPrincipal(
+            withClientOrigin(event, attribution.clientOrigin),
+            attribution.principal,
+          ),
+          attribution.clientTurnId,
         ),
-        attribution.clientTurnId,
+        attribution.dispatchOrigin,
       ),
-      attribution.dispatchOrigin,
+      attribution.resourceAdmissionIntent,
     );
     const result =
       attribution.experience && attributed.method === 'turn.started'

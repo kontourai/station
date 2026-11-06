@@ -479,6 +479,29 @@ export function turnDispatchOrigin(event: {
     : 'unknown';
 }
 
+/** Admission policy recorded separately from the source actor's attribution. */
+export const ENGINE_START_ADMISSION_INTENTS = [
+  'interactive_user',
+  'queued_background',
+  'delegated_background',
+  'webhook',
+  'recovery',
+] as const;
+export type EngineStartAdmissionIntent =
+  (typeof ENGINE_START_ADMISSION_INTENTS)[number];
+
+export function turnResourceAdmissionIntent(event: {
+  resourceAdmissionIntent?: unknown;
+}): EngineStartAdmissionIntent | undefined {
+  if (event.resourceAdmissionIntent === undefined) return undefined;
+  return typeof event.resourceAdmissionIntent === 'string' &&
+    (ENGINE_START_ADMISSION_INTENTS as readonly string[]).includes(
+      event.resourceAdmissionIntent,
+    )
+    ? (event.resourceAdmissionIntent as EngineStartAdmissionIntent)
+    : 'queued_background';
+}
+
 export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
@@ -501,6 +524,8 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * `unknown`.
    */
   dispatchOrigin?: TurnDispatchOrigin;
+  /** Server-owned admission policy; adapter/client values are replaced at dispatch. */
+  resourceAdmissionIntent?: EngineStartAdmissionIntent;
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**

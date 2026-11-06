@@ -438,12 +438,13 @@ describe('SessionRecoveryCoordinator', () => {
   });
 
   test.each([
-    ['interactive', 'interactive'],
-    ['automation', 'automation'],
-    [undefined, 'unknown'],
+    ['interactive', 'interactive', undefined],
+    ['interactive', 'interactive', 'queued_background'],
+    ['automation', 'automation', undefined],
+    [undefined, 'unknown', undefined],
   ] as const)(
     '#4568: a profile restart of a source turn recorded as %s carries origin %s',
-    async (recorded, carried) => {
+    async (recorded, carried, resourceAdmissionIntent) => {
       vi.useFakeTimers();
       const store = new EventStore(
         join(makeTempDir('recovery-coordinator-'), 'orchestration.sqlite'),
@@ -476,7 +477,9 @@ describe('SessionRecoveryCoordinator', () => {
         createdAt: now.toISOString(),
         method: 'turn.started',
         prompt: 'authoritative input',
+        clientTurnId: 'source-submission',
         ...(recorded ? { dispatchOrigin: recorded } : {}),
+        ...(resourceAdmissionIntent ? { resourceAdmissionIntent } : {}),
       });
       coordinator.observe({
         eventId: 'account-exhausted',
@@ -494,6 +497,9 @@ describe('SessionRecoveryCoordinator', () => {
         expect.objectContaining({
           credentialProfileRef: 'origin-profile-ref',
           dispatchOrigin: carried,
+          resourceAdmissionIntent,
+          sourceTurnId: 'turn',
+          sourceClientTurnId: 'source-submission',
         }),
       );
       store.close();

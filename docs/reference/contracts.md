@@ -52,6 +52,17 @@ incoming claims, and uses it only to retain bounded App envelopes in history
 windows. It grants no resource or execution authority. Older readers ignore the
 field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).
 
+### Turn admission policy
+
+`TurnStartedEvent.resourceAdmissionIntent` records Station's engine-start policy
+separately from `dispatchOrigin` source attribution. Station replaces an
+adapter-supplied policy when correlating the accepted send. Recovery reads the
+recorded policy and the source turn/submission identifiers; these fields do not
+become client input or grant execution authority. Older turns without the field
+retain origin-based fallback, while an unrecognized present policy fails closed
+to background admission. The source correction and its regression cases await
+an admitted verification phase.
+
 ### Delegated execution ownership
 
 `AgentDelegationContext.parentSessionId` identifies the initiating execution

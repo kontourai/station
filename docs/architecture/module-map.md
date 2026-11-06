@@ -4600,8 +4600,11 @@ delegation and unclassified turns keep the immediate refusal. A person
 joining an in-flight background respawn that was refused starts again under
 their intent. Their Stop cancels a respawn still waiting for the lease, and no
 provider start follows. A credential-profile restart takes its intent from the
-source turn's recorded origin. It passes the recovery owner's signal to
-admission and checks it again before the provider start. While a person's
+source turn's recorded `resourceAdmissionIntent`, independently of its actor's
+`dispatchOrigin`. An automatic send can keep interactive source attribution
+while retaining background admission. Legacy events without the policy field
+fall back to origin; unrecognized policy values remain background. The recovery
+owner's signal reaches admission and preparation. While a person's
 start for an existing Session is queued, its summary carries
 `engineStartWait`, published through the session-projection update the
 composer refreshes from. The wait clears on admission, cancellation, timeout
@@ -4614,6 +4617,25 @@ The stream rechecks read authority before writing; its unscoped event route
 never forwards these statuses. Reconnection and overflow snapshots replace
 transient status with current owned starts. A `/chat` request's own signal
 never cancels a send Station has accepted.
+
+A pending start binds targeted Stop to its accepted submission key, or to the
+recovery source's recorded turn/key. A delayed Stop naming another target does
+not cancel the current pending start. Untargeted Stop keeps its existing owner
+authorization. Recovered portable starts retain a snapshot of the receiver's
+admitted coordinate and recheck the offer after capacity and workspace
+preparation, immediately before the provider boundary.
+
+[Engine-start preparation](../../src-server/services/orchestration/engine-start-preparation.ts)
+uses the canonical abortable async helper before the provider effect. Stop can
+retire the caller's wait, lease and pending identity while a preparation promise
+remains unresolved; its late continuation is fenced. Once the adapter is
+invoked, cancellation no longer races its result into a pre-start refusal:
+possible provider effects retain their normal outcome and uncertainty custody.
+
+**Correction evidence status.** These receiver, target, replay-policy and
+never-settling-preparation corrections are a source checkpoint awaiting admitted
+regressions. Earlier local receipts and PNGs do not verify this checkpoint.
+
 Other Station runtimes have their own controllers; this is not the verification
 coordinator's host-wide scheduler.
 

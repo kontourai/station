@@ -1049,6 +1049,14 @@ starts. A timeout returns the usual "Another engine is already starting"
 refusal. An automatic send keeps the immediate refusal and shows no wait.
 Disconnecting a `/chat` request does not cancel a send Station has accepted.
 
+Targeted Stop carries the pending submission's own key or the recovery source's
+recorded turn/key. A delayed Stop for another invocation cannot be retargeted by
+thread identity alone. Before the adapter call, Stop retires owned preparation
+even if a workspace or receiver check never returns; a late completion cannot
+launch the engine. After adapter invocation, the existing provider outcome and
+indeterminate-delivery rules still apply. These review corrections are prepared
+in source; their new reaching regressions have not yet been executed.
+
 ### Return on this device
 
 **Chat settings → Return in chat** is saved in the existing device-settings

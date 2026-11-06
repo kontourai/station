@@ -289,7 +289,12 @@ class StatefulStartAdapter extends GateTestAdapter {
   }
 }
 
-test.each(['Stop', 'admit after disconnect'] as const)(
+test.each([
+  'Stop',
+  'admit after disconnect',
+  'stale client Stop',
+  'stale turn Stop',
+] as const)(
   'a fresh /chat publishes to the real consumer and preserves accepted-send semantics: %s',
   async (finish) => {
     const store = new EventStore(
@@ -464,6 +469,31 @@ test.each(['Stop', 'admit after disconnect'] as const)(
     expect(service.readableEngineStartWaits(authority)).toContainEqual(
       expect.objectContaining({ threadId: 'fresh', wait: expect.any(Object) }),
     );
+    if (finish === 'stale client Stop' || finish === 'stale turn Stop') {
+      const response = await app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'interruptTurn',
+          threadId: 'fresh',
+          ...(finish === 'stale client Stop'
+            ? { clientTurnId: 'previous-A' }
+            : { turnId: 'previous-turn-A' }),
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        success: true,
+        data: { outcome: 'no-active-turn' },
+      });
+      expect(service.readableEngineStartWaits(authority)).toContainEqual(
+        expect.objectContaining({
+          threadId: 'fresh',
+          wait: expect.any(Object),
+        }),
+      );
+      expect(readPendingEngineStart(apiBase, 'fresh')).toBe(true);
+    }
     if (finish === 'Stop') {
       const response = await app.request('/commands', {
         method: 'POST',

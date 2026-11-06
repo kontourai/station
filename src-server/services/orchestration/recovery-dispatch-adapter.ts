@@ -1,6 +1,9 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
-import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
+import type {
+  EngineStartAdmissionIntent,
+  TurnDispatchOrigin,
+} from '@kontourai/station-contracts/runtime-events';
 
 /** Provider execution lives at the orchestration Seam, not in recovery policy. */
 export interface RecoveryDispatchAdapter {
@@ -35,6 +38,9 @@ export interface RecoveryDispatchReplay {
    * engine-start intent from it; it is never sent as turn input.
    */
   dispatchOrigin?: TurnDispatchOrigin;
+  resourceAdmissionIntent?: EngineStartAdmissionIntent;
+  sourceTurnId?: string;
+  sourceClientTurnId?: string;
 }
 
 type RecoveryDispatchOutcome =
