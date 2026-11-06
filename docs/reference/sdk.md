@@ -228,15 +228,20 @@ with status 503, code `busy` and `retryAfterMs: 5000`; direct transcription
 results also include `busy` in the failed reason union. These exports require a build
 containing this change. See [local speech](../guides/local-speech.md).
 
+<a id="managed-policy-status"></a>
+
 ## Managed policy
 
 The root exports `fetchManagedPolicyStatus(apiBase?, { requestScope?, signal? })` and
 `useManagedPolicyStatusQuery(apiBase?, config?)`, which read
-`GET /api/settings/managed-policy` as a `ManagedPolicyStatus` from
-`@kontourai/station-contracts/managed-policy`. A host older than the route
-answers 404, which reads as `{ state: 'none' }`; any other failure, or a body
-the contract parser refuses, throws. The status is fixed for the server's
-lifetime, so the query never goes stale. The query accepts `config.readTarget`
+`GET /api/settings/managed-policy`: the [managed policy](../guides/managed-policy.md)
+the server loaded at startup. After a successful response, the reader lazily
+loads `parseManagedPolicyStatus` from
+`@kontourai/station-contracts/managed-policy-status` to validate the body as a
+`ManagedPolicyStatus`, without loading the policy registry. A host older than
+the route answers 404, which reads as `{ state: 'none' }`; any other failure,
+or a body the decoder refuses, throws. The status is fixed for the server's
+lifetime, so the query uses `staleTime: Infinity`. The query accepts `config.readTarget`
 to bind reads and cache identity to the owning Station, authority and route generation.
 The server enforces the policy
 whatever a client shows; use it to explain a managed control, such as the
@@ -415,22 +420,6 @@ Station does not deliver it (`not-delivered`); older hosts omit it.
 `useDecideIntegrationTrustReviewMutation({ id, decision: "keep" | "reset" })`
 only for an integration whose `trustReview` this host returned. It
 invalidates the integrations queries.
-
-## Managed policy status
-
-The SDK root exports `fetchManagedPolicyStatus(apiBase?)` and
-`useManagedPolicyStatusQuery(apiBase?, config?)`, which read
-`GET /api/settings/managed-policy`: the [managed policy](../guides/managed-policy.md)
-the server loaded at startup. After a successful response, the reader lazily
-loads the status decoder and validates the response with
-`parseManagedPolicyStatus` from
-`@kontourai/station-contracts/managed-policy-status` and throws on a malformed
-one rather than reading it as unmanaged. A host older than the route answers
-404, which means it enforces no policy, so that reads as `{ state: "none" }`.
-The query keeps its result for the life of the page (`staleTime: Infinity`),
-because the server fixes the policy for its own lifetime. A client uses it only
-to explain a managed control; the server enforces the policy whatever a client
-shows.
 
 ## Integration capability status and Task write-back
 
