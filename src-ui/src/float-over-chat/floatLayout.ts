@@ -355,3 +355,19 @@ export function nudgeFloatFrame(input: {
   const at = clampFloatPosition({ x, y }, container, frame, obstacles);
   return { x: at.x, y: at.y, width: frame.width, height: frame.height };
 }
+
+/**
+ * A move that carries the player's centre past a side of the chat tucks it
+ * into a tab on that side (the clamp keeps the player itself inside, so
+ * this reads where the pointer WANTED it). Null: no tuck.
+ */
+export function floatTuckSide(
+  frame: FloatFrame,
+  deltaX: number,
+  container: FloatSize,
+): 'left' | 'right' | null {
+  const centre = frame.x + deltaX + frame.width / 2;
+  if (centre < 0) return 'left';
+  if (centre > container.width) return 'right';
+  return null;
+}

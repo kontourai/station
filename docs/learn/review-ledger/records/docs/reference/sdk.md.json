@@ -854,7 +854,11 @@
 
     "packages/sdk/src/__tests__/tool-library-query.test.tsx",
 
-    "packages/sdk/src/release-notes-query.ts"
+    "packages/sdk/src/release-notes-query.ts",
+
+    "packages/sdk/src/query-domains/managedPolicy.ts",
+
+    "packages/sdk/src/__tests__/managed-policy-query.test.ts"
   ],
 
   "checks": [

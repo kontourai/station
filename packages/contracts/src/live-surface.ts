@@ -65,6 +65,12 @@ export interface LiveSurfaceFrameHeader {
    * rotated surface pixels; the producer maps them back. Absent means 0.
    */
   rotation?: LiveSurfaceFrameRotation;
+  /**
+   * Optional (foldable devices): which display this frame shows. A viewer
+   * keeps the last frame of each display; input always addresses the
+   * display that is active in the surface's `fold` state.
+   */
+  display?: LiveSurfaceDisplay;
 }
 
 export type LiveSurfaceModifiers = {
@@ -107,7 +113,72 @@ export type LiveSurfaceInput =
    */
   | { kind: 'device-button'; button: LiveSurfaceDeviceButton }
   /** Rotate a device surface to an absolute orientation (#1970). */
-  | { kind: 'rotate'; orientation: LiveSurfaceOrientation };
+  | { kind: 'rotate'; orientation: LiveSurfaceOrientation }
+  /**
+   * Fold a foldable device surface: exactly one of a named stand
+   * (`posture`), a hinge angle in degrees (0 closed .. 180 flat), or
+   * table mode. A producer refuses it for a device that does not report
+   * `fold` state, or a posture/angle that device cannot take.
+   */
+  | LiveSurfaceFoldInput;
+
+export type LiveSurfaceFoldInput =
+  | { kind: 'fold'; posture: LiveSurfacePosture }
+  | { kind: 'fold'; hingeAngle: number }
+  | { kind: 'fold'; tableMode: boolean }
+  /** Lay the device on its back (`up`) or on its face (`down`). */
+  | { kind: 'fold'; facing: LiveSurfaceFacing };
+
+export type LiveSurfaceFacing = 'up' | 'down';
+
+/**
+ * Named stands of a foldable. `closed` and `open` (flat) are fold states;
+ * `book` holds the hinge upright like an open book, `laptop` rests one half
+ * flat with the other raised, `tent` stands both halves on their edges.
+ */
+export type LiveSurfacePosture = 'closed' | 'open' | 'book' | 'laptop' | 'tent';
+
+export const LIVE_SURFACE_POSTURES: readonly LiveSurfacePosture[] = [
+  'closed',
+  'open',
+  'book',
+  'laptop',
+  'tent',
+];
+
+/** Which display of a foldable a frame shows: the outer one, or the folding one. */
+export type LiveSurfaceDisplay = 'cover' | 'inner';
+
+export const LIVE_SURFACE_DISPLAYS: readonly LiveSurfaceDisplay[] = [
+  'cover',
+  'inner',
+];
+
+/**
+ * A foldable's state as its producer last observed it. A device that does
+ * not fold has no `fold` at all; this is never inferred from a frame's shape.
+ */
+export interface LiveSurfaceFold {
+  /** The display that is lit, receives touches and is being streamed. */
+  activeDisplay: LiveSurfaceDisplay;
+  /** Hinge angle in degrees, 0 closed .. 180 flat; null when unknown. */
+  hingeAngle: number | null;
+  /** The named stand, when the device is in one; null between stands. */
+  posture: LiveSurfacePosture | null;
+  /** Stands this device can be put into through `fold` input. */
+  postures: LiveSurfacePosture[];
+  /** A `fold` input with `hingeAngle` is accepted. */
+  angleControl: boolean;
+  /** Present when the device reports a table mode. */
+  tableMode?: boolean;
+  /**
+   * A `fold` input with `facing` is accepted (laying the device face up or
+   * down). The device does not report which way it faces.
+   */
+  facingControl?: boolean;
+}
+
+export const LIVE_SURFACE_HINGE_ANGLE_MAX = 180;
 
 export type LiveSurfaceInputKind = LiveSurfaceInput['kind'];
 
@@ -508,6 +579,29 @@ export function parseLiveSurfaceInput(value: unknown): LiveSurfaceInput | null {
         orientation: record.orientation as LiveSurfaceOrientation,
       };
     }
+    case 'fold': {
+      const keys = Object.keys(record).filter((key) => key !== 'kind');
+      if (keys.length !== 1) return null;
+      if (keys[0] === 'posture')
+        return LIVE_SURFACE_POSTURES.includes(
+          record.posture as LiveSurfacePosture,
+        )
+          ? { kind: 'fold', posture: record.posture as LiveSurfacePosture }
+          : null;
+      if (keys[0] === 'hingeAngle')
+        return finiteInRange(record.hingeAngle, 0, LIVE_SURFACE_HINGE_ANGLE_MAX)
+          ? { kind: 'fold', hingeAngle: record.hingeAngle as number }
+          : null;
+      if (keys[0] === 'tableMode')
+        return typeof record.tableMode === 'boolean'
+          ? { kind: 'fold', tableMode: record.tableMode }
+          : null;
+      if (keys[0] === 'facing')
+        return record.facing === 'up' || record.facing === 'down'
+          ? { kind: 'fold', facing: record.facing }
+          : null;
+      return null;
+    }
     default:
       return null;
   }
@@ -705,7 +799,10 @@ export function parseLiveSurfaceFrameHeader(
       'deviceScaleFactor',
       'capturedAt',
       'rotation',
+      'display',
     ]) ||
+    (record.display !== undefined &&
+      !LIVE_SURFACE_DISPLAYS.includes(record.display as LiveSurfaceDisplay)) ||
     (record.rotation !== undefined &&
       !LIVE_SURFACE_FRAME_ROTATIONS.includes(
         record.rotation as LiveSurfaceFrameRotation,
@@ -742,6 +839,9 @@ export function parseLiveSurfaceFrameHeader(
     ...(record.rotation === undefined || record.rotation === 0
       ? {}
       : { rotation: record.rotation as LiveSurfaceFrameRotation }),
+    ...(record.display === undefined
+      ? {}
+      : { display: record.display as LiveSurfaceDisplay }),
   };
 }
 
@@ -795,11 +895,14 @@ export interface LiveSurfaceStreamState {
    *   name for a fallback that polls still screenshots at a low rate.
    * - `videoDegradedReason`: why the video is not `live`, when it is not.
    * - `orientation`: the device's orientation, when the producer knows it.
+   * - `fold`: a foldable's hinge, stand and active display (absent for a
+   *   device that does not fold).
    */
   inputChannel?: LiveSurfaceInputChannelState;
   videoMode?: LiveSurfaceVideoMode;
   videoDegradedReason?: LiveSurfaceVideoDegradedReason;
   orientation?: LiveSurfaceOrientation;
+  fold?: LiveSurfaceFold;
   /**
    * Which host produces the surface, when the producer runs on a named
    * host (a device on the Station's own machine is `local`; D13).
@@ -829,6 +932,7 @@ export interface LiveSurfaceProducerStatus {
   videoMode?: LiveSurfaceVideoMode;
   videoDegradedReason?: LiveSurfaceVideoDegradedReason;
   orientation?: LiveSurfaceOrientation;
+  fold?: LiveSurfaceFold;
   hostId?: string;
 }
 
@@ -887,6 +991,11 @@ function parseProducerStatus(
       return null;
     out.orientation = record.orientation as LiveSurfaceOrientation;
   }
+  if (record.fold !== undefined) {
+    const fold = parseLiveSurfaceFold(record.fold);
+    if (!fold) return null;
+    out.fold = fold;
+  }
   if (record.hostId !== undefined) {
     if (
       typeof record.hostId !== 'string' ||
@@ -896,6 +1005,53 @@ function parseProducerStatus(
     out.hostId = record.hostId;
   }
   return out;
+}
+
+/** Strictly parse a `fold` state; null when anything is malformed. */
+export function parseLiveSurfaceFold(value: unknown): LiveSurfaceFold | null {
+  const record = plainRecord(value);
+  if (
+    !record ||
+    !onlyKeys(record, [
+      'activeDisplay',
+      'hingeAngle',
+      'posture',
+      'postures',
+      'angleControl',
+      'tableMode',
+      'facingControl',
+    ]) ||
+    !LIVE_SURFACE_DISPLAYS.includes(
+      record.activeDisplay as LiveSurfaceDisplay,
+    ) ||
+    (record.hingeAngle !== null &&
+      !finiteInRange(record.hingeAngle, 0, LIVE_SURFACE_HINGE_ANGLE_MAX)) ||
+    (record.posture !== null &&
+      !LIVE_SURFACE_POSTURES.includes(record.posture as LiveSurfacePosture)) ||
+    !Array.isArray(record.postures) ||
+    record.postures.length > LIVE_SURFACE_POSTURES.length ||
+    !record.postures.every((posture) =>
+      LIVE_SURFACE_POSTURES.includes(posture as LiveSurfacePosture),
+    ) ||
+    typeof record.angleControl !== 'boolean' ||
+    (record.tableMode !== undefined && typeof record.tableMode !== 'boolean') ||
+    (record.facingControl !== undefined &&
+      typeof record.facingControl !== 'boolean')
+  )
+    return null;
+  return {
+    activeDisplay: record.activeDisplay as LiveSurfaceDisplay,
+    hingeAngle: record.hingeAngle as number | null,
+    posture: record.posture as LiveSurfacePosture | null,
+    postures: [...new Set(record.postures as LiveSurfacePosture[])],
+    angleControl: record.angleControl,
+    ...(record.tableMode === undefined
+      ? {}
+      : { tableMode: record.tableMode as boolean }),
+    ...(record.facingControl === undefined
+      ? {}
+      : { facingControl: record.facingControl as boolean }),
+  };
 }
 
 export interface LiveSurfaceViewerIdentity {
@@ -996,6 +1152,7 @@ export function parseLiveSurfaceStreamState(
       'videoMode',
       'videoDegradedReason',
       'orientation',
+      'fold',
       'hostId',
       'agentActions',
     ]) ||

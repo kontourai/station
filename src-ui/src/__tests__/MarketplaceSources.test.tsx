@@ -3,10 +3,11 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { MarketplaceSources } from '../components/registry/MarketplaceSources';
 
-const { mutate, select, reset } = vi.hoisted(() => ({
+const { mutate, select, reset, extraSources } = vi.hoisted(() => ({
   mutate: vi.fn(),
   select: vi.fn(),
   reset: vi.fn(),
+  extraSources: [] as Array<Record<string, unknown>>,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useRegistrySourcesQuery: () => ({
@@ -38,6 +39,7 @@ vi.mock('@kontourai/station-sdk', () => ({
         status: 'stale',
         error: 'Offline catalog. Last successful snapshot retained.',
       },
+      ...extraSources,
     ],
     isLoading: false,
     error: null,
@@ -65,7 +67,10 @@ vi.mock('../components/Dialog', () => ({
     </section>
   ),
 }));
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  extraSources.length = 0;
+});
 
 test('adds the selected supported adapter with the entered location and name', () => {
   render(<MarketplaceSources selected="all" onSelect={select} />);
@@ -115,4 +120,38 @@ test('filters by host source identity and keeps plugin ownership and offline sta
     { id: 'community', action: 'remove' },
     expect.any(Object),
   );
+});
+
+test('#4521: a source the managed policy refuses shows why and cannot be enabled', () => {
+  extraSources.push({
+    id: 'unapproved',
+    kind: 'skills',
+    displayName: 'Unapproved folder',
+    origin: 'user',
+    location: '/team/skills',
+    enabled: false,
+    status: 'disabled',
+    managedDenial:
+      "Acme's policy manages this marketplace: it is turned off. Contact your administrator for help.",
+  });
+  render(<MarketplaceSources selected="all" onSelect={select} />);
+  const card = screen
+    .getByText('Unapproved folder')
+    .closest('article') as HTMLElement;
+  expect(card.textContent).toContain(
+    "Acme's policy manages this marketplace: it is turned off.",
+  );
+  const enable = Array.from(card.querySelectorAll('button')).find(
+    (button) => button.textContent === 'Enable',
+  );
+  expect(enable).toBeDefined();
+  expect((enable as HTMLButtonElement).disabled).toBe(true);
+  // The ordinary disabled source stays enable-able.
+  const community = screen
+    .getByText('Community')
+    .closest('article') as HTMLElement;
+  const enableCommunity = Array.from(community.querySelectorAll('button')).find(
+    (button) => button.textContent === 'Enable',
+  ) as HTMLButtonElement;
+  expect(enableCommunity.disabled).toBe(false);
 });

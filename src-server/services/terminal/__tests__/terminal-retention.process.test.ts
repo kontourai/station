@@ -18,7 +18,15 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFailed,
+  test,
+  vi,
+} from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import type { IPtyProcess } from '../../../domain/pty-adapter.js';
@@ -66,12 +74,66 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
   let retention: TerminalRetention;
   let spawned: number;
   let projects: Set<string>;
+  const nativeProcesses: {
+    process: import('node-pty').IPty;
+    spawnedAt: number;
+    pipeReadyAt?: number;
+    firstDataAt?: number;
+    exitedAt?: number;
+  }[] = [];
   const request = () => new Request('http://localhost:43995');
+
+  async function observedNodePty(): Promise<typeof import('node-pty')> {
+    const native = await import('node-pty');
+    return {
+      ...native,
+      spawn(...args) {
+        const process = native.spawn(...args);
+        const observation: (typeof nativeProcesses)[number] = {
+          process,
+          spawnedAt: performance.now(),
+        };
+        nativeProcesses.push(observation);
+        const socket = '_socket' in process ? process._socket : undefined;
+        if (
+          typeof socket === 'object' &&
+          socket !== null &&
+          'once' in socket &&
+          typeof socket.once === 'function'
+        )
+          socket.once('ready_datapipe', () => {
+            observation.pipeReadyAt = performance.now();
+          });
+        const data = process.onData(() => {
+          observation.firstDataAt = performance.now();
+          data.dispose();
+        });
+        const exit = process.onExit(() => {
+          observation.exitedAt = performance.now();
+          exit.dispose();
+        });
+        return process;
+      },
+    };
+  }
+
+  function scalar(owner: unknown, key: string) {
+    if (typeof owner !== 'object' || owner === null) return undefined;
+    const value: unknown = Reflect.get(owner, key);
+    return typeof value === 'boolean' ||
+      typeof value === 'number' ||
+      typeof value === 'string'
+      ? value
+      : undefined;
+  }
 
   function create(
     options: { restorable?: boolean; host?: ShellHost } = {},
   ): TerminalSessions<Request> {
-    const pty = new InProcessShellHost(new NodePtyAdapter(), () => SHELL);
+    const pty = new InProcessShellHost(
+      new NodePtyAdapter(windows ? observedNodePty : undefined),
+      () => SHELL,
+    );
     const counting: ShellHost = options.host ?? {
       spawn: async (input) => {
         spawned += 1;
@@ -166,6 +228,42 @@ describe('terminal retention, restore and reservation with real node-pty', () =>
   }
 
   beforeEach(async () => {
+    nativeProcesses.length = 0;
+    onTestFailed(() => {
+      if (!windows) return;
+      // Read-only ConPTY state, retained only when this real-process case fails.
+      console.error(
+        'terminal-retention native lifecycle',
+        JSON.stringify(
+          nativeProcesses.map((observation) => {
+            const { process, spawnedAt } = observation;
+            const socket = '_socket' in process ? process._socket : undefined;
+            const agent = '_agent' in process ? process._agent : undefined;
+            return {
+              pid: process.pid,
+              ageMs: performance.now() - spawnedAt,
+              pipeReadyMs:
+                observation.pipeReadyAt === undefined
+                  ? null
+                  : observation.pipeReadyAt - spawnedAt,
+              firstDataMs:
+                observation.firstDataAt === undefined
+                  ? null
+                  : observation.firstDataAt - spawnedAt,
+              exitMs:
+                observation.exitedAt === undefined
+                  ? null
+                  : observation.exitedAt - spawnedAt,
+              ready: scalar(process, '_isReady'),
+              nativeExitCode: scalar(agent, '_exitCode'),
+              socketConnecting: scalar(socket, 'connecting'),
+              socketDestroyed: scalar(socket, 'destroyed'),
+              socketState: scalar(socket, 'readyState'),
+            };
+          }),
+        ),
+      );
+    });
     home = makeTempDir('station-terminal-retention-');
     root = join(home, 'a');
     await mkdir(root);

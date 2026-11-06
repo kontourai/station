@@ -67,6 +67,7 @@ async function run(
 ) {
   const model = answeringModel();
   const agent = await new VoltAgentFramework().createTempAgent({
+    purpose: 'agent-run',
     agentId: 'assistant',
     name: 'assistant',
     instructions: 'Answer briefly.',

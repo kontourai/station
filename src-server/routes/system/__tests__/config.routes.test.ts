@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pluginTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -24,6 +25,7 @@ const { InvalidPathSegmentError } = await import(
   '../../../knowledge-index/path-safety.js'
 );
 const { ConfigLoader } = await import('../../../domain/config-loader.js');
+const { validator } = await import('../../../domain/validator.js');
 const { defaultTerminalShell } = await import(
   '../../../services/terminal/terminal-shells.js'
 );
@@ -1162,51 +1164,62 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     }
   });
 
-  test('publisher tier choices and operator policy persist through the real app schema and restart', async () => {
-    const home = makeTempDir('station-plugin-tier-persistence-');
-    const loader = new ConfigLoader({
-      projectHomeDir: home,
-      watchFiles: false,
-    });
-    const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
-    try {
-      await loader.loadAppConfig();
-      const response = await app.request('/app', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ telemetryTier: { 'publisher:writer': 'off' } }),
-      });
-      expect(response.status, await response.clone().text()).toBe(200);
-      const policy = await app.request('/app', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          publicTelemetryRegistries: [
-            'https://registry.example.test/catalog.json',
-          ],
-          telemetryPublisherPolicy: { 'publisher:writer': 'off' },
-        }),
-      });
-      expect(policy.status, await policy.clone().text()).toBe(200);
-      const restarted = new ConfigLoader({
+  test.each([
+    'publisher:writer',
+    pluginTelemetryPublisherId(`sha256:${'a'.repeat(64)}`, 'writer'),
+    pluginTelemetryPublisherId(
+      `sha256:${'b'.repeat(64)}`,
+      `a${'b'.repeat(127)}`,
+    ),
+    pluginTelemetryPublisherId(`sha256:${'c'.repeat(64)}`, 'writer_1.2:beta-3'),
+  ] as const)(
+    'publisher %s choices and policy persist through the app schema and restart',
+    async (publisher) => {
+      const home = makeTempDir('station-plugin-tier-persistence-');
+      const loader = new ConfigLoader({
         projectHomeDir: home,
         watchFiles: false,
       });
+      const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
       try {
-        expect(await restarted.loadAppConfig()).toMatchObject({
-          telemetryTier: { 'publisher:writer': 'off' },
-          publicTelemetryRegistries: [
-            'https://registry.example.test/catalog.json',
-          ],
-          telemetryPublisherPolicy: { 'publisher:writer': 'off' },
+        await loader.loadAppConfig();
+        const response = await app.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ telemetryTier: { [publisher]: 'off' } }),
         });
+        expect(response.status, await response.clone().text()).toBe(200);
+        const policy = await app.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            publicTelemetryRegistries: [
+              'https://registry.example.test/catalog.json',
+            ],
+            telemetryPublisherPolicy: { [publisher]: 'off' },
+          }),
+        });
+        expect(policy.status, await policy.clone().text()).toBe(200);
+        const restarted = new ConfigLoader({
+          projectHomeDir: home,
+          watchFiles: false,
+        });
+        try {
+          expect(await restarted.loadAppConfig()).toMatchObject({
+            telemetryTier: { [publisher]: 'off' },
+            publicTelemetryRegistries: [
+              'https://registry.example.test/catalog.json',
+            ],
+            telemetryPublisherPolicy: { [publisher]: 'off' },
+          });
+        } finally {
+          restarted.dispose();
+        }
       } finally {
-        restarted.dispose();
+        loader.dispose();
       }
-    } finally {
-      loader.dispose();
-    }
-  });
+    },
+  );
 
   test('paired devices cannot raise a plugin publisher above its policy default, while the operator can choose and peers can lower', async () => {
     const home = makeTempDir('station-plugin-policy-authority-');
@@ -1277,6 +1290,27 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     ['full'],
     { operator: 'invalid' },
     { kontour: 'lite', foo: 'full' },
+    ...[
+      'publisher:constructor',
+      'publisher:prototype',
+      'publisher:__proto__',
+      `publisher:constructor/writer`,
+      `publisher:prototype/writer`,
+      `publisher:${'a'.repeat(24)}/constructor`,
+      `publisher:${'a'.repeat(24)}/prototype`,
+      `publisher:${'a'.repeat(24)}/__proto__`,
+      `publisher:${'A'.repeat(24)}/writer`,
+      `publisher:${'a'.repeat(24)}/Writer`,
+      `publisher:${'g'.repeat(24)}/writer`,
+      `publisher:${'a'.repeat(23)}/writer`,
+      `publisher:${'a'.repeat(25)}/writer`,
+      `publisher:${'a'.repeat(24)}/${'w'.repeat(129)}`,
+      `publisher:${'w'.repeat(129)}`,
+      `publisher:${'a'.repeat(24)}/writer/extra`,
+      `publisher:${'a'.repeat(24)}/writer name`,
+      `publisher:${'a'.repeat(24)}/writer@name`,
+      `publisher:${'a'.repeat(24)}/`,
+    ].map((publisher) => ({ [publisher]: 'lite' })),
   ])(
     'malformed telemetryTier %j is rejected without persisting or exposing internals',
     async (telemetryTier) => {
@@ -1290,6 +1324,13 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       try {
         await loader.loadAppConfig();
         const before = readFileSync(join(home, 'config', 'app.json'), 'utf8');
+        // The route and on-disk schema independently reject malformed IDs.
+        expect(() =>
+          validator.validateAppConfig({
+            ...JSON.parse(before),
+            telemetryTier,
+          }),
+        ).toThrow('Invalid app configuration');
         const response = await app.request('/app', {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
@@ -2501,6 +2542,67 @@ describe('Station default approval mode under a managed ceiling', () => {
     } finally {
       installManagedApprovalCeiling(null);
     }
+  });
+
+  // #4515 fix round 3/4: GET and the PUT response report the values in
+  // effect; an explicit write at or below the ceiling is stored.
+  test('GET and a PUT response report a default saved above the ceiling lowered to it', async () => {
+    ceiling();
+    try {
+      const loader = createMockConfigLoader({ defaultApprovalMode: 'never' });
+      const app = withOperatorPrincipal(
+        createConfigRoutes(loader as never, mockLogger),
+      );
+      const read = (await (await app.request('/app')).json()) as {
+        data: Record<string, unknown>;
+      };
+      expect(read.data.defaultApprovalMode).toBe('ask');
+      // Settings sends only the key it changed.
+      const saved = await put(app, { defaultMaxTurns: 27 });
+      expect(saved.status, await saved.clone().text()).toBe(200);
+      const body = (await saved.json()) as { data: Record<string, unknown> };
+      expect(body.data.defaultApprovalMode).toBe('ask');
+      expect(body.data.defaultMaxTurns).toBe(27);
+      // The saved default is not changed by either.
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('never');
+      // Resending the saved `never` is not a raise: 200, nothing changes.
+      const resent = await put(app, { defaultApprovalMode: 'never' });
+      expect(resent.status, await resent.clone().text()).toBe(200);
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('never');
+    } finally {
+      installManagedApprovalCeiling(null);
+    }
+  });
+
+  test('an explicit write at the ceiling is stored, and stays when the policy goes', async () => {
+    ceiling();
+    const loader = createMockConfigLoader({ defaultApprovalMode: 'never' });
+    const app = withOperatorPrincipal(
+      createConfigRoutes(loader as never, mockLogger),
+    );
+    try {
+      const lowered = await put(app, { defaultApprovalMode: 'ask' });
+      expect(lowered.status, await lowered.clone().text()).toBe(200);
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('ask');
+    } finally {
+      installManagedApprovalCeiling(null);
+    }
+    // Without the policy the person's own `ask` applies, not the old `never`.
+    const read = (await (await app.request('/app')).json()) as {
+      data: Record<string, unknown>;
+    };
+    expect(read.data.defaultApprovalMode).toBe('ask');
+  });
+
+  test('control: without a ceiling GET reports the saved default', async () => {
+    const loader = createMockConfigLoader({ defaultApprovalMode: 'never' });
+    const app = withOperatorPrincipal(
+      createConfigRoutes(loader as never, mockLogger),
+    );
+    const body = (await (await app.request('/app')).json()) as {
+      data: Record<string, unknown>;
+    };
+    expect(body.data.defaultApprovalMode).toBe('never');
   });
 
   test('control: without a ceiling the operator may raise it to Auto', async () => {

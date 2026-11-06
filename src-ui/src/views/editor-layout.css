@@ -1349,3 +1349,32 @@
 .agent-inline-editor .info-tip {
   margin-left: var(--k-space-1);
 }
+
+/* #4520: an engine the managed policy governs. */
+.managed-engine-notice {
+  display: grid;
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+
+.managed-engine-notice__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.managed-engine-notice .editor-help {
+  margin: 0;
+}
+
+.managed-engine-notice__help {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 44px;
+  color: var(--k-action);
+  font-size: var(--k-text-sm);
+}

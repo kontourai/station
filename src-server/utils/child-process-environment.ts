@@ -59,13 +59,40 @@ export function scrubBootInternalSecrets(
 }
 
 /**
- * Environment for a spawned child. Copies `process.env`, layers `extra`,
- * then deletes boot-internal secrets. Callers that already built a full
- * env object should use {@link scrubBootInternalSecrets} instead of
- * spreading `process.env` again.
+ * `base` with `extra` layered over it. On Windows a variable's name is
+ * case-insensitive and a child gets only one of `HTTPS_PROXY` and
+ * `https_proxy` (Node keeps the first in its sorted, case-insensitive order),
+ * so there a name in `extra` also removes every case-variant of it from
+ * `base`. Without that, an inherited `HTTPS_PROXY` would beat an
+ * `https_proxy` a managed policy locked (#4515).
+ */
+function layerEnvironment(
+  base: NodeJS.ProcessEnv,
+  extra: NodeJS.ProcessEnv | undefined,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+  if (!extra || platform !== 'win32') return { ...base, ...extra };
+  const overridden = new Set(
+    Object.keys(extra).map((name) => name.toUpperCase()),
+  );
+  const kept: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(base))
+    if (!overridden.has(name.toUpperCase())) kept[name] = value;
+  return { ...kept, ...extra };
+}
+
+/**
+ * Environment for a spawned child. Copies `process.env`, layers `extra`
+ * (on Windows a name in `extra` replaces every case-variant, see
+ * {@link layerEnvironment}), then deletes boot-internal secrets. Callers
+ * that already built a full env object should use
+ * {@link scrubBootInternalSecrets} instead of spreading `process.env` again.
  */
 export function childProcessEnvironment(
   extra?: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
-  return scrubBootInternalSecrets({ ...process.env, ...extra });
+  return scrubBootInternalSecrets(
+    layerEnvironment(process.env, extra, platform),
+  );
 }

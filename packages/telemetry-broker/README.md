@@ -532,8 +532,31 @@ publications use only the independently configured `releaseVersions` for a
 dimension unless another source for the same publisher configures it.
  `publisher` uses the foundation's
 `TelemetryPublisherId`: `kontour`, `operator` or `publisher:<public publisher id>`.
-Publisher IDs are bounded to 128 characters and retain scoped IDs such as
-`publisher:@scope/plugin`. Source IDs are bounded public slugs. The catalogs each
+Publisher validation is shared with Station config and the CLI. Legacy
+`publisher:<id>` accepts 1–128 lowercase letters, digits, `.`, `_`, `:`, or `-`,
+starting with a letter or digit. Namespaced plugin IDs are
+`publisher:<24 lowercase hex registry-key digest>/<registry item id>`; the item
+uses the telemetry declaration grammar (lowercase ASCII letters, digits, `.`, `_`,
+`:`, or `-`, starting with a lowercase letter or digit), with the same
+128-character bound. Uppercase items and trailing newlines are refused.
+`constructor` and `prototype` are refused as item segments. Arbitrary scoped
+strings such as `publisher:@scope/plugin` and extra `/` segments are refused.
+Existing stored sources are not re-validated against this tightened publisher
+grammar. An enabled source with a now-invalid publisher can continue accepting
+valid `station_daily` pings, but feedback naming that publisher is refused and
+its publisher read key cannot be rotated (`setPublisherKey` refuses the ID).
+This includes old scoped IDs such as `publisher:@scope/plugin`, uppercase or
+reserved legacy IDs, and `publisher:@qa/plugin-…` rows from earlier
+`qualify-lite.mjs` runs.
+
+Revoke the old source with `DELETE /v1/operator/lite/sources/:source` and revoke
+its read key with `DELETE /v1/operator/lite/publishers/:publisher` (URL-encode the
+publisher). Read-key revocation alone does not stop public source ingestion.
+Provision a new source ID with a valid publisher through
+`POST /v1/operator/lite/sources`, then provision its new publisher read key through
+`POST /v1/operator/lite/publishers`. Existing source IDs cannot be repurposed.
+
+Source IDs are bounded public slugs. The catalogs each
 hold at most 1,000 entries. The operator must verify these are **public registry
 IDs and public release versions**, rather than accepting arbitrary client
 strings. Under the default `catalog` policy, empty catalogs admit only contract

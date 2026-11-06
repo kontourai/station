@@ -19,6 +19,7 @@ import {
 
 import type { ConnectionHealthCheckResult } from '../core/ConnectionHealthCoordinator';
 import {
+  clearPendingExchange,
   loadPendingExchange,
   type PendingPairingExchange,
   savePendingExchange,
@@ -91,6 +92,8 @@ export function ConnectionManagerModalContent({
   returnFocusTarget,
   onPairingSucceeded,
   onApprovalPending,
+  onApprovalCancelled,
+  pairingRefusal,
 }: ConnectionManagerModalContentProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -597,6 +600,8 @@ export function ConnectionManagerModalContent({
     .filter(
       (pending): pending is PendingPairingExchange =>
         pending !== null &&
+        // A held attempt is past approval; its row shows the access remedy.
+        !pending.exchangeAttempt &&
         typeof pending.targetConnectionId === 'string' &&
         typeof pending.targetConnectionLabel === 'string',
     )
@@ -854,6 +859,17 @@ export function ConnectionManagerModalContent({
             getStatus={statusForConn}
             activeHealth={activeHealth}
             pendingConnectionId={pendingForConnections?.targetConnectionId}
+            onCancelPendingApproval={
+              pendingForConnections
+                ? () => {
+                    onApprovalCancelled?.(pendingForConnections);
+                    clearPendingExchange(
+                      pendingForConnections.endpoint,
+                      pendingForConnections.requestKind,
+                    );
+                  }
+                : undefined
+            }
             onSelect={(connection) => {
               const proceed = () => {
                 void setActiveConnection(connection.id)
@@ -948,6 +964,7 @@ export function ConnectionManagerModalContent({
               setHostPairingReturnPanel('list');
               setPanel('pair-host');
             }}
+            pairingRefusal={pairingRefusal}
             onViewDevices={() => setPanel('devices')}
             discoveryAvailable={providerCount > 0}
             hasLocalStation={hasLocalStation}
@@ -1013,6 +1030,7 @@ export function ConnectionManagerModalContent({
               onApprovalPending(persisted);
               onCloseRef.current();
             }}
+            onApprovalCancelled={onApprovalCancelled}
           />
         )}
 
@@ -1031,8 +1049,11 @@ export function ConnectionManagerModalContent({
               };
               savePendingExchange(persisted);
               onApprovalPending(persisted);
-              onCloseRef.current();
+              // Stay on the panel's waiting view: the shell owns completion
+              // and closes this manager once the request settles.
+              return persisted;
             }}
+            onApprovalCancelled={onApprovalCancelled}
           />
         )}
 
@@ -1050,8 +1071,11 @@ export function ConnectionManagerModalContent({
               };
               savePendingExchange(persisted);
               onApprovalPending(persisted);
-              onCloseRef.current();
+              // Stay on the panel's waiting view: the shell owns completion
+              // and closes this manager once the request settles.
+              return persisted;
             }}
+            onApprovalCancelled={onApprovalCancelled}
           />
         )}
 
@@ -1070,11 +1094,36 @@ export function ConnectionManagerModalContent({
               setHostPairingReturnPanel('devices');
               setPanel('pair-host');
             }}
+            pairingRefusal={pairingRefusal}
             onBack={() => setPanel('list')}
           />
         )}
 
-        {panel === 'pair-host' && (
+        {/* #4519: a Station that cannot pair other devices says why here,
+            instead of a pairing code its server would refuse. */}
+        {panel === 'pair-host' && pairingRefusal != null && (
+          <div className="station-connect-panel" data-testid="pairing-refusal">
+            <div className="station-connect-panel__intro">{pairingRefusal}</div>
+            <div className="station-connect-footer">
+              <button
+                type="button"
+                onClick={() => setPanel('devices')}
+                className="station-connect-btn station-connect-btn--primary"
+              >
+                Paired devices
+              </button>
+              <button
+                type="button"
+                onClick={() => setPanel(hostPairingReturnPanel)}
+                className="station-connect-btn station-connect-btn--secondary"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {panel === 'pair-host' && pairingRefusal == null && (
           <HostDevicePairingPanel
             quickPair
             initialClientChannel={pairingClientChannel}

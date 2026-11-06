@@ -31,6 +31,8 @@ import {
 import { RESETTABLE_STATION_SETTING_KEYS } from '../views/settings/station-reset';
 import { visibleCatalogIds } from './helpers/settings-catalog-visibility';
 
+// The memory review panel has its own tests; this catalog test does not render it.
+vi.mock('../views/settings/MemoryReview', () => ({ MemoryReview: () => null }));
 vi.mock('@kontourai/station-connect', () => ({
   QRDisplay: () => <div />,
   useConnections: () => ({
@@ -60,6 +62,8 @@ vi.mock('@kontourai/station-sdk', async () => {
   );
   return {
     authenticatedFetch: vi.fn(),
+    // #4519: Pairing reads the managed policy; this host has none.
+    useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
     useApiQuery: () => ({ data: undefined, isFetching: false, isError: false }),
     // #2586: the notification-delivery section. The ORDINARY case — defaults
     // in hand, nothing in flight — because the state under test here is the

@@ -17,6 +17,11 @@ export interface RepairWorkerInput extends RepairWorkerIdentity {
   budget: IsolatedRepairBudget;
   signal: AbortSignal;
   assertCurrent(): Promise<void>;
+  /**
+   * #4519: where the front relay binds (default every interface) and the
+   * admission it must pass once bound; a refusal closes it.
+   */
+  relay?: { host: string; admit(port: number): Promise<void> };
 }
 export interface RepairWorkerEvidence {
   receipt: {
@@ -51,3 +56,15 @@ export function observeRepairWorker(
 export function executeDockerRepair(
   input: RepairWorkerInput,
 ): Promise<RepairWorkerEvidence>;
+/** #4519: the worker's front relay; exported for its listener admission test. */
+export function authorityRelay(
+  backend: { baseUrl: string; capability: string; model: string },
+  assertCurrent: () => Promise<void>,
+  signal: AbortSignal,
+  listener?: { host: string; admit(port: number): Promise<void> },
+): Promise<{
+  baseUrl: string;
+  capability: string;
+  model: string;
+  close(): Promise<void>;
+}>;

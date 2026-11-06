@@ -123,7 +123,10 @@ replies, continue chats, and review work. Start on your computer:
    **Pair phone**. Station opens straight to a pairing code on a reachable
    HTTPS address, and lists any other HTTPS addresses to switch to.
    **Settings → Pairing → Pair device** opens the same screen. Any of your own
-   paired devices with full access can do this, not only the computer.
+   paired devices with full access can do this, not only the computer. On a
+   phone the same choice reads **Connect another device**. If your
+   organization's policy allows only this computer to connect, these are
+   turned off and say so.
 3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
    invitation from the computer. **Enter a pairing code** is available if the
    camera cannot be used. Keep the computer running.
@@ -134,17 +137,18 @@ configured. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
 nearby** on the computer, then choose **Find nearby Stations** on the native phone
-app. Discovery is off by default and shows names and local addresses without
+app (on the welcome screen it is under **More connection options**). Discovery is off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
 versions before Android 14 offer QR and manual address entry instead. Browser
-clients do not browse the local network. **Other ways to connect** expands to **Open connection manager**, where you can
-enter an address when discovery is unavailable or finds nothing.
+clients do not browse the local network. Choose **Enter Station address** to
+type an address when discovery is unavailable or finds nothing.
 
 If an exchange loses its response or cannot save approved access, Station holds
-the attempt instead of sending the one-time proof again. Check paired devices on
-the computer and revoke any unintended access before retiring the held request
-and creating a fresh invitation.
+the attempt instead of sending the one-time proof again. Choose **Pair again** to
+send a fresh request; approving it replaces any access the held attempt left
+behind, so you don't need to revoke anything on the computer first. For a
+pairing code, create a new code on the computer.
 
 A new phone shows the connection welcome until you save a real Station.
 A saved Station that is offline or needs access keeps its connection recovery
@@ -666,7 +670,7 @@ while a draft is open returns you to it. To resume earlier work, choose it in
 the dock’s chat list.
 
 At the end of first-run setup, **Take the tour** and **Connect another device**
-are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
+are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step. If your organization's policy allows only this computer to connect, **Connect another device** is turned off and shows the policy's message, with a **Get help** link when the policy has one.
 
 On a phone, the dock starts at **Inbox** unless you open a specific
 conversation. A conversation opens full screen; **Restore chat size** in the

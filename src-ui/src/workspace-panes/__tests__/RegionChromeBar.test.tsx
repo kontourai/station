@@ -100,7 +100,9 @@ function renderBar({
   movable = true,
   onAddPane,
   addPaneOpen,
+  onBackToChat,
 }: {
+  onBackToChat?: () => void;
   chrome?: DockShellChrome;
   tabs?: readonly RegionChromeTab[];
   selected?: string;
@@ -121,6 +123,7 @@ function renderBar({
       onMoveTab={movable ? handlers.onMoveTab : undefined}
       onAddPane={onAddPane}
       addPaneOpen={addPaneOpen}
+      onBackToChat={onBackToChat}
       leadingSlotRef={() => {}}
       trailingSlotRef={() => {}}
     />,
@@ -551,6 +554,40 @@ describe('the tab strip writes the model', () => {
     // Off either end: nothing.
     fireEvent.keyDown(chat, { key: 'ArrowLeft', altKey: true });
     expect(handlers.onReorderTab).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * A pane open over Chat (the phone layer, on a wide touch device) shows
+   * "‹ Chat" as the way back. A Chat tab beside it was a second control for
+   * the same move under the same name (Duo audit, Book posture: "‹ Chat",
+   * "Chat", "Activity"). The strip keeps every other pane, and a reorder
+   * among them still lands at the right place in the region's full order.
+   */
+  test('over Chat, the strip drops the Chat tab that "‹ Chat" duplicates, and reorders in the region’s full order', () => {
+    const back = vi.fn();
+    const three: readonly RegionChromeTab[] = [
+      ...TABS,
+      { surfaceId: 'files', instanceId: 'workspace-files', title: 'Files' },
+    ];
+    renderBar({ tabs: three, selected: 'activity', onBackToChat: back });
+    expect(screen.getByRole('button', { name: 'Back to Chat' })).toBeTruthy();
+    expect(
+      screen.getAllByRole('tab').map((tab) => tab.textContent?.trim()),
+    ).toEqual(['Activity', 'Files']);
+    expect(screen.queryByRole('tab', { name: 'Chat' })).toBeNull();
+    // Activity is strip position 0 and region position 1; moving it right
+    // puts it where Files is in the full order (2), not at strip index 1.
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Activity' }), {
+      key: 'ArrowRight',
+      altKey: true,
+    });
+    expect(handlers.onReorderTab).toHaveBeenCalledWith('activity', 2);
+  });
+
+  test('over Chat with only Chat and one pane, no strip remains beside "‹ Chat"', () => {
+    renderBar({ selected: 'activity', onBackToChat: vi.fn() });
+    expect(screen.getByRole('button', { name: 'Back to Chat' })).toBeTruthy();
+    expect(screen.queryAllByRole('tab')).toEqual([]);
   });
 
   test('dragging a tab over another reorders it as it passes', () => {

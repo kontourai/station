@@ -1,8 +1,16 @@
 import { ChildProcess, execFile } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
+import { trackChildWorkload } from '@kontourai/station-shared/child-workload';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { NodePtyAdapter } from '../node-pty-adapter.js';
+
+vi.mock('@kontourai/station-shared/child-workload', async (original) => {
+  const actual =
+    await original<typeof import('@kontourai/station-shared/child-workload')>();
+  return { ...actual, trackChildWorkload: vi.fn(actual.trackChildWorkload) };
+});
 
 const census = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('node:child_process', async (original) => {
@@ -169,6 +177,93 @@ describe('termination report (#4626)', () => {
   );
 });
 
+describe('Windows PTY output-pipe custody', () => {
+  test.each(['connected', 'exited-before-connect'] as const)(
+    'spawn waits for a connected process before publishing its PID: %s',
+    async (ending) => {
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      vi.mocked(trackChildWorkload).mockClear();
+      const socket = new EventEmitter();
+      const exits = new Set<(event: { exitCode: number }) => void>();
+      const exit = () => {
+        for (const listener of [...exits]) listener({ exitCode: 0 });
+        exits.clear();
+      };
+      let pid = 0;
+      const pty = {
+        get pid() {
+          return pid;
+        },
+        _socket: socket,
+        onData: () => ({ dispose() {} }),
+        onExit: (listener: (event: { exitCode: number }) => void) => {
+          exits.add(listener);
+          return { dispose: () => exits.delete(listener) };
+        },
+        write: vi.fn(),
+        resize: vi.fn(),
+        kill: vi.fn(),
+      };
+      const taskkill = vi
+        .mocked(execFile)
+        .mockImplementation((_command, _args, _options, callback) => {
+          callback!(null, '', '');
+          exit();
+          return new ChildProcess();
+        });
+      let spawning: ReturnType<NodePtyAdapter['spawn']> | undefined;
+      try {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        const adapter = new NodePtyAdapter(
+          () =>
+            Promise.resolve({ spawn: () => pty }) as unknown as Promise<
+              typeof import('node-pty')
+            >,
+        );
+        let published = false;
+        spawning = adapter.spawn(SPAWN_INPUT).then((proc) => {
+          published = true;
+          return proc;
+        });
+        await vi.waitFor(() =>
+          expect(socket.listenerCount('ready_datapipe')).toBe(1),
+        );
+        expect(published).toBe(false);
+        expect(trackChildWorkload).not.toHaveBeenCalled();
+        expect(taskkill).not.toHaveBeenCalled();
+        if (ending === 'exited-before-connect') {
+          const failed = expect(spawning).rejects.toThrow(
+            'Terminal exited before startup readiness',
+          );
+          exit();
+          await failed;
+          expect(pty.kill).not.toHaveBeenCalled();
+        } else {
+          pid = 4242;
+          socket.emit('ready_datapipe');
+          const proc = await spawning;
+          expect(proc.pid).toBe(4242);
+          expect(trackChildWorkload).toHaveBeenCalledTimes(1);
+          expect(vi.mocked(trackChildWorkload).mock.calls[0]?.[1]).toBe(4242);
+          await proc.terminate!();
+          expect(taskkill).toHaveBeenCalledExactlyOnceWith(
+            'taskkill',
+            ['/T', '/F', '/PID', '4242'],
+            { timeout: 5_000, windowsHide: true },
+            expect.any(Function),
+          );
+        }
+      } finally {
+        socket.emit('ready_datapipe');
+        exit();
+        await spawning?.catch(() => undefined);
+        Object.defineProperty(process, 'platform', platform);
+        vi.mocked(execFile).mockReset();
+      }
+    },
+  );
+});
+
 describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
   /** node-pty runs each ConPTY's output reader on a worker thread. */
   const workerThreads = () =>
@@ -221,7 +316,7 @@ describe.skipIf(process.platform === 'win32')(
       census.read.mockReset();
     });
 
-    async function backend() {
+    async function backend(nativeTty?: string) {
       vi.useFakeTimers();
       const exits: ((event: { exitCode: number; signal?: number }) => void)[] =
         [];
@@ -245,6 +340,7 @@ describe.skipIf(process.platform === 'win32')(
         pause: vi.fn(),
         resume: vi.fn(),
       } satisfies import('node-pty').IPty;
+      if (nativeTty !== undefined) Object.assign(pty, { _pty: nativeTty });
       const native =
         await vi.importActual<typeof import('node-pty')>('node-pty');
       const adapter = new NodePtyAdapter(async () => ({
@@ -275,6 +371,19 @@ describe.skipIf(process.platform === 'win32')(
         expect(signal).not.toHaveBeenCalled();
       },
     );
+
+    test('the native tty binding admits cleanup only after the child attaches to it', async () => {
+      const { proc, pty } = await backend('/dev/ttys3994');
+      census.read
+        .mockResolvedValueOnce({ stdout: '4242 1 4242 ??\n' })
+        .mockResolvedValue({ stdout: '4242 1 4242 ttys3994\n' });
+      const signal = vi.spyOn(process, 'kill').mockReturnValue(true);
+      const stopped = expect(proc.terminate!()).resolves.toBeUndefined();
+      await vi.advanceTimersByTimeAsync(10);
+      await stopped;
+      expect(signal).toHaveBeenCalledWith(-4242, 'SIGKILL');
+      expect(pty.kill).not.toHaveBeenCalled();
+    });
 
     test('paused observation retries cap backoff at one second', async () => {
       const { proc, pty } = await backend();

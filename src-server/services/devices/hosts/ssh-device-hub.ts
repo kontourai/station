@@ -42,12 +42,14 @@
  * is torn down and the next try is a NEW session with a NEW secret: a
  * secret is never offered to a second port.
  */
+
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import type {
   DeviceSshHostFailure,
   DeviceSshHubState,
 } from '@kontourai/station-contracts/mobile-device';
+import { admitManagedListener } from '../../../security/managed-network-exposure.js';
 import {
   createDeviceHubConnection,
   type DeviceHubConnection,
@@ -145,7 +147,21 @@ export interface SshDeviceHubOptions {
   reinstall?: () => Promise<boolean>;
 }
 
+/**
+ * A free loopback port for an `ssh -L` forward, admitted under the #4519
+ * managed limit (no Tailscale Serve route to it) before ssh binds it.
+ */
 async function reserveLoopbackPort(): Promise<number> {
+  const port = await reserveFreeLoopbackPort();
+  await admitManagedListener({
+    name: 'SSH device hub forward',
+    host: '127.0.0.1',
+    port,
+  });
+  return port;
+}
+
+async function reserveFreeLoopbackPort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
     server.unref();

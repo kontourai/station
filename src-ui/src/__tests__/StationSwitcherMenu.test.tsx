@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import type { SavedConnection } from '@kontourai/station-connect';
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 import {
   act,
   cleanup,
@@ -9,8 +10,18 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { StationSwitcherMenu } from '../components/header/StationSwitcherMenu';
+
+// #4519: the managed limit, set per test.
+const managed = vi.hoisted(() => ({
+  limit: undefined as ManagedPolicySummary | undefined,
+}));
+vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({
+  useManagedRemoteClientsLimit: () => managed.limit,
+}));
+
 import { navigationStore } from '../contexts/navigation-store';
 import { toastStore } from '../contexts/ToastContext';
+import { MOBILE_MEDIA_QUERY } from '../hooks/useIsMobile';
 import {
   forgetStationProbe,
   isProbeable,
@@ -125,6 +136,10 @@ function openMenu(
   forget = vi.fn(async (_connection: SavedConnection) => {}),
   canForget: (connection: SavedConnection) => boolean = () => true,
   select = vi.fn(async (_connection: SavedConnection) => {}),
+  {
+    activeDisplayName,
+    onPairPhone,
+  }: { activeDisplayName?: string; onPairPhone?: () => void } = {},
 ) {
   const anchor = document.createElement('button');
   document.body.append(anchor);
@@ -143,6 +158,8 @@ function openMenu(
       canForget={canForget}
       onClose={close}
       onManage={manage}
+      onPairPhone={onPairPhone}
+      activeDisplayName={activeDisplayName}
     />,
   );
   unregister.push(() => anchor.remove());
@@ -363,7 +380,11 @@ test('a touch screen opens on the previous Station, not the filter keyboard', ()
   vi.stubGlobal(
     'matchMedia',
     (query: string) =>
-      ({ matches: query === '(pointer: coarse)' }) as MediaQueryList,
+      ({
+        matches: query === '(pointer: coarse)',
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList,
   );
   recordStationUse('two');
   recordStationUse('one');
@@ -418,7 +439,11 @@ test('a touch screen keeps the keyboard down even when the previous Station is n
   vi.stubGlobal(
     'matchMedia',
     (query: string) =>
-      ({ matches: query === '(pointer: coarse)' }) as MediaQueryList,
+      ({
+        matches: query === '(pointer: coarse)',
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList,
   );
   const stopped: SavedConnection = {
     ...named('local', 'Local Station'),
@@ -461,4 +486,101 @@ test('arrow keys step between Stations, beside a filter that sits outside the me
   laptopRow.focus();
   fireEvent.keyDown(laptopRow, { key: 'ArrowDown' });
   expect(document.activeElement).toBe(row(/^Build box/));
+});
+
+/**
+ * Duo audit: the header chip named the seeded Station "Kontour" (its host,
+ * #4402) while this menu, opened from that chip, named the same Station
+ * "Default". The chip hands the menu the name it shows; every other row,
+ * whose host this device has not heard from, keeps its saved name.
+ */
+test('names the active seeded Station the way the chip does', () => {
+  openMenu(
+    [
+      { ...station, name: 'Default' },
+      { ...laptop, name: 'Default' },
+    ],
+    undefined,
+    undefined,
+    undefined,
+    { activeDisplayName: 'Kontour' },
+  );
+  expect(row('Kontour — Connected').getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByText('Kontour')).toBeTruthy();
+  // The peer's host is unknown here, so it keeps its saved name.
+  expect(row(/^Default/).getAttribute('aria-checked')).toBe('false');
+});
+
+test('a phone offers to connect another device, not to pair a phone', () => {
+  const pair = vi.fn();
+  openMenu(undefined, undefined, undefined, undefined, { onPairPhone: pair });
+  expect(screen.getByRole('menuitem', { name: 'Pair phone' })).toBeTruthy();
+  cleanup();
+  vi.stubGlobal(
+    'matchMedia',
+    (query: string) =>
+      ({
+        matches: query === MOBILE_MEDIA_QUERY,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList,
+  );
+  openMenu(undefined, undefined, undefined, undefined, { onPairPhone: pair });
+  expect(screen.queryByRole('menuitem', { name: 'Pair phone' })).toBeNull();
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Connect another device' }),
+  );
+  expect(pair).toHaveBeenCalledOnce();
+});
+
+test('#4519: under the managed limit "Pair phone" is disabled and the managed sentence and Get help link show beside it', () => {
+  const anchor = document.createElement('button');
+  document.body.append(anchor);
+  unregister.push(() => anchor.remove());
+  const pair = vi.fn();
+  const renderWith = () =>
+    render(
+      <StationSwitcherMenu
+        anchor={anchor}
+        connections={[station]}
+        activeConnectionId="one"
+        activeStatus="connected"
+        activeStatusLabel="Connected"
+        onSelect={vi.fn(async () => {})}
+        onForget={vi.fn(async () => {})}
+        canForget={() => true}
+        onClose={vi.fn()}
+        onManage={vi.fn()}
+        onPairPhone={pair}
+      />,
+    );
+  managed.limit = {
+    organization: 'Acme',
+    supportUrl: 'https://help.acme.example/station',
+    lockedSettings: [],
+    limits: { clients: ['desktop', 'local-browser'] },
+  } as ManagedPolicySummary;
+  try {
+    const { unmount } = renderWith();
+    const item = screen.getByRole('menuitem', { name: 'Pair phone' });
+    expect((item as HTMLButtonElement).disabled).toBe(true);
+    // Round 2, item 7: visible text, not a hover tooltip.
+    expect(item.getAttribute('title')).toBeNull();
+    const note = screen.getByText(/Acme.s policy manages remote access/);
+    expect(item.getAttribute('aria-describedby')).toBe(note.id);
+    const help = screen.getByRole('link', { name: 'Get help' });
+    expect(help.getAttribute('href')).toBe('https://help.acme.example/station');
+    expect(note.contains(help)).toBe(true);
+    fireEvent.click(item);
+    expect(pair).not.toHaveBeenCalled();
+    unmount();
+  } finally {
+    managed.limit = undefined;
+  }
+  renderWith();
+  const enabled = screen.getByRole('menuitem', { name: 'Pair phone' });
+  expect((enabled as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.queryByText(/policy manages remote access/)).toBeNull();
+  fireEvent.click(enabled);
+  expect(pair).toHaveBeenCalledOnce();
 });

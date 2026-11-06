@@ -65,6 +65,9 @@ vi.mock('../contexts/NavigationContext', () => ({
 vi.mock('../views/settings/MemoryErasurePreview', () => ({
   MemoryErasurePreview: () => null,
 }));
+vi.mock('../views/settings/MemoryReview', () => ({
+  MemoryReview: () => null,
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   useKnowledgeRootsQuery: () => rootsQueryResult,

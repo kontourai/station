@@ -3,6 +3,10 @@ import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import {
+  isManagedEngineRefusal,
+  managedEngineRefusalBody,
+} from '../../security/managed-engine-limits.js';
+import {
   ConnectionAlreadyExistsError,
   type ConnectionService,
   ModelSelectionRequiredError,
@@ -205,6 +209,8 @@ export function createConnectionRoutes(
         configurationMutationStatus(mutation.activation, 201),
       );
     } catch (error: unknown) {
+      if (isManagedEngineRefusal(error))
+        return c.json(managedEngineRefusalBody(error), 403);
       return c.json(
         saveErrorPayload(error),
         error instanceof ConnectionAlreadyExistsError ? 409 : 400,
@@ -229,6 +235,8 @@ export function createConnectionRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (isManagedEngineRefusal(error))
+        return c.json(managedEngineRefusalBody(error), 403);
       return c.json(saveErrorPayload(error), 400);
     }
   });

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Forced</key>
+	<array>
+		<dict>
+			<key>mcx_preference_settings</key>
+			<dict>
+				<key>limits</key>
+				<dict>
+					<key>telemetry</key>
+					<false/>
+				</dict>
+				<key>organization</key>
+				<string>Acme Corp</string>
+				<key>schemaVersion</key>
+				<integer>1</integer>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>

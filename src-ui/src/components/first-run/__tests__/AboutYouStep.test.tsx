@@ -1,3 +1,4 @@
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 /**
  * @vitest-environment jsdom
  */
@@ -106,5 +107,37 @@ describe('AboutYouStep — the reach is stated', () => {
     expect(
       screen.getByText(/External engines .* build their own context/i),
     ).toBeTruthy();
+  });
+});
+
+describe('AboutYouStep — managed limit without remote clients (#4519)', () => {
+  const limit = {
+    organization: 'Acme',
+    supportUrl: 'https://help.acme.example/station',
+    lockedSettings: [],
+    limits: { clients: ['desktop', 'local-browser'] },
+  } as ManagedPolicySummary;
+
+  test('"Connect another device" is disabled, and the managed sentence and a Get help link replace the invitation', () => {
+    const onComplete = vi.fn();
+    render(<AboutYouStep onComplete={onComplete} pairingLimit={limit} />);
+    const devices = screen.getByRole('button', {
+      name: 'Connect another device',
+    }) as HTMLButtonElement;
+    expect(devices.disabled).toBe(true);
+    const note = screen.getByText(/Acme.s policy manages remote access/);
+    expect(note.id).toBe(devices.getAttribute('aria-describedby'));
+    // Round 2, item 8: the same visible Get help link as every other entry point.
+    const help = screen.getByRole('link', { name: 'Get help' });
+    expect(help.getAttribute('href')).toBe('https://help.acme.example/station');
+    expect(note.contains(help)).toBe(true);
+    expect(screen.queryByText(/QR invitation/)).toBeNull();
+    fireEvent.click(devices);
+    expect(onComplete).not.toHaveBeenCalled();
+    // The other exits still work.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Start your first chat' }),
+    );
+    expect(onComplete).toHaveBeenCalledWith(undefined, 'chat');
   });
 });

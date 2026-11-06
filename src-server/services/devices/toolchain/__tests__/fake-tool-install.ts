@@ -112,6 +112,13 @@ export interface InstallTamper {
   cacheBytes?: Buffer;
   /** Extra package directories to create (lockfile-style paths). */
   extraPackages?: string[];
+  /**
+   * Lock packages the install left out entirely (npm `--omit=optional`):
+   * neither recorded nor written to the tree.
+   */
+  omit?: string[];
+  /** Lock packages written to the tree at this version instead of the pin's. */
+  versions?: Record<string, string>;
   /** Loose files or bare directories to create (relative to the install). */
   extraEntries?: Array<{ path: string; kind: 'file' | 'dir' }>;
 }
@@ -125,13 +132,13 @@ export function writeFakeInstall(
   const { pin } = synthetic;
   const packages: Record<string, { version?: string; integrity?: string }> = {};
   for (const [path, entry] of Object.entries(pin.lock.packages)) {
-    if (path === '') continue;
+    if (path === '' || tamper.omit?.includes(path)) continue;
     packages[path] = { version: entry.version, integrity: entry.integrity };
     if (path === `node_modules/${pin.tool}`) continue;
     mkdirSync(join(dir, path), { recursive: true });
     writeFileSync(
       join(dir, path, 'package.json'),
-      JSON.stringify({ version: entry.version }),
+      JSON.stringify({ version: tamper.versions?.[path] ?? entry.version }),
     );
   }
   tamper.record?.(packages);

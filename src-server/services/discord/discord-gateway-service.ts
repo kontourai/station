@@ -42,6 +42,13 @@ interface GatewaySocket {
 interface DiscordGatewayServiceOptions {
   homeDir: string;
   logger: Logger;
+  /**
+   * #4519: the managed sentence when the policy allows no remote clients.
+   * Discord messages are commands from people off this machine, even over an
+   * outbound connection, so the gateway does not connect and its status
+   * says why. Configuration is kept; removing the limit restores it.
+   */
+  managedRefusal?: string;
   socketFactory?: (url: string) => GatewaySocket;
   reconnectDelayMs?: number;
   onAuthorization?: (result: DiscordAuthorizationResult) => void;
@@ -168,6 +175,14 @@ export class DiscordGatewayService {
       recordGatewayEvent('disabled');
       return;
     }
+    if (this.options.managedRefusal) {
+      this.gatewayState = 'stopped';
+      this.options.logger.warn(
+        'Discord gateway not started: the managed policy allows no remote clients',
+      );
+      recordGatewayEvent('managed_policy_refused');
+      return;
+    }
     try {
       const snapshot = JSON.stringify(configuration);
       this.core.importLegacyDiscord(
@@ -217,6 +232,8 @@ export class DiscordGatewayService {
           state: 'not-configured',
           reason: 'Discord is not configured or enabled.',
         };
+      if (this.options.managedRefusal)
+        return { state: 'unavailable', reason: this.options.managedRefusal };
       if (this.token && configuration.token !== this.token)
         return {
           state: 'unavailable',

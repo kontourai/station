@@ -49,20 +49,6 @@
   margin: 0;
 }
 
-/* Pane diagnostics: the codec this viewer draws. Shown only while the
-   pointer or focus is on the live view, so it is never resting chrome. */
-.live-surface__codec {
-  color: var(--k-text-muted);
-  font-size: 0.75rem;
-  margin: 0;
-  visibility: hidden;
-}
-
-.live-surface:hover .live-surface__codec,
-.live-surface:focus-within .live-surface__codec {
-  visibility: visible;
-}
-
 .live-surface__stage {
   background: var(--bg-secondary, #111);
   border-radius: var(--radius-md, 6px);
@@ -75,6 +61,16 @@
 .live-surface__stage:has(.live-surface__keyboard:focus-visible) {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
+}
+
+/*
+ * The zoom layer fills the stage; pinch zoom is a transform on it, so the
+ * canvas's client rect (what pointer mapping reads) follows the zoom.
+ */
+.live-surface__zoom {
+  inset: 0;
+  position: absolute;
+  transform-origin: 0 0;
 }
 
 .live-surface__canvas {
@@ -128,8 +124,11 @@
  * exactly rather than letterboxed inside its own element.
  */
 .live-surface__stage--fit {
-  align-items: center;
   background: #000;
+}
+
+.live-surface__stage--fit > .live-surface__zoom {
+  align-items: center;
   display: flex;
   justify-content: center;
 }
@@ -158,6 +157,18 @@
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
+}
+
+/*
+ * A host projection (foldable devices): the canvas stays the input target
+ * but is not seen; the projection layer above it draws the frame.
+ */
+.live-surface__canvas--projected {
+  opacity: 0;
+}
+
+.live-surface__projection {
+  overflow: visible;
 }
 
 .live-surface__agent-action {
@@ -194,4 +205,300 @@
     transform: scale(2);
     opacity: 0;
   }
+}
+
+/* Why input did not take effect: one slim banner (a line, or two on a phone,
+   never cut off) over the top of the surface
+   (where the person is looking, and above a phone's on-screen keyboard),
+   never a card that pushes the picture down. Outside the zoom layer, so it
+   neither scales nor pans; above the corner buttons, and clear of Reset
+   zoom when that shows. */
+.live-surface__input-notice {
+  left: var(--k-space-1);
+  position: absolute;
+  right: var(--k-space-1);
+  top: var(--k-space-1);
+  z-index: 4;
+}
+
+.live-surface__stage[data-zoomed] > .live-surface__input-notice {
+  left: calc(44px + 2 * var(--k-space-1));
+}
+
+/* With the chrome hidden in immersive mode, clear the Show controls handle. */
+.live-surface[data-immersive]
+  .live-surface__stage
+  > .live-surface__input-notice {
+  right: calc(44px + 2 * var(--k-space-1));
+}
+
+/* With the immersive bar shown, the notice is its row under the controls. */
+.live-surface__immersive-bar > .live-surface__input-notice {
+  pointer-events: auto;
+  position: static;
+  width: min(32rem, 100%);
+}
+
+.live-surface__input-notice > .empty {
+  align-items: center;
+  background: var(--k-panel-raised);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  box-shadow: var(--k-shadow);
+  display: flex;
+  flex-direction: row;
+  gap: var(--k-space-1);
+  margin: 0 auto;
+  max-width: 32rem;
+  min-height: 44px;
+  padding: 0 0 0 var(--k-space-2);
+  text-align: start;
+}
+
+.live-surface__input-notice .empty__icon {
+  flex: none;
+  font-size: 1rem;
+  line-height: 1;
+  margin: 0;
+}
+
+.live-surface__input-notice .error-state__icon {
+  font-size: 1rem;
+}
+
+.live-surface__input-notice .empty__label {
+  flex: 1 1 auto;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: var(--k-space-1) 0;
+}
+
+.live-surface__input-notice .empty__action {
+  flex: none;
+  margin: 0;
+}
+
+.live-surface .live-surface__input-notice-action {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Viewer chrome (the float's pill, the immersive bar): one compact row that
+   wraps only when it must. */
+.live-surface-controls {
+  align-items: center;
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  justify-content: flex-end;
+  padding: 4px;
+}
+
+/* Who is in control: a one-line caption over the buttons, so the buttons
+   keep one row (a status inline beside them wraps the bar onto the
+   picture). */
+.live-surface-controls__status {
+  color: var(--k-text-muted);
+  /* Takes the row's width, never sets it: the buttons decide how wide the
+     bar is, and a long status ellipsizes. */
+  contain: inline-size;
+  flex: 1 0 100%;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  margin: 0;
+  min-width: 0;
+  order: -1;
+  overflow: hidden;
+  padding: 0 calc(var(--k-space-1) / 2);
+  text-align: end;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-surface-controls__status[data-tone="agent"] {
+  color: var(--warning-text, var(--k-text));
+}
+
+.live-surface-controls__action {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.live-surface-controls__icon {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+/* Reset zoom, and a pane's Full screen: small, over the picture's corners.
+   Scoped under .live-surface so the shared ghost Button's transparent
+   background does not win on order: over any page, these need a backdrop. */
+.live-surface .live-surface__zoom-reset,
+.live-surface .live-surface__fullscreen {
+  background: rgb(0 0 0 / 0.55);
+  border-radius: var(--k-radius-sm);
+  color: #fff;
+  min-height: 44px;
+  min-width: 44px;
+  position: absolute;
+  z-index: 2;
+}
+
+.live-surface__zoom-reset {
+  left: var(--k-space-1);
+  top: var(--k-space-1);
+}
+
+/* In immersive mode the controls bar owns the top edge: the zoom level sits
+   in the bottom corner instead, where no chrome is. */
+.live-surface[data-immersive] .live-surface__zoom-reset {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--k-space-1));
+  left: calc(env(safe-area-inset-left, 0px) + var(--k-space-1));
+  top: auto;
+}
+
+.live-surface__fullscreen {
+  bottom: var(--k-space-1);
+  right: var(--k-space-1);
+}
+
+/* On a fine pointer the pane's Full screen waits for hover or focus (the
+   component decides: a finger cannot hover, so there it always shows). */
+.live-surface .live-surface__fullscreen[data-pointer="fine"] {
+  opacity: 0;
+}
+
+.live-surface__stage:hover .live-surface__fullscreen[data-pointer="fine"],
+.live-surface .live-surface__fullscreen[data-pointer="fine"]:focus-visible {
+  opacity: 1;
+}
+
+/*
+ * Immersive: the surface over the whole viewport, inside the safe area. Just
+ * under the dialog layer, so a confirmation raised meanwhile still shows.
+ */
+.live-surface[data-immersive] {
+  background: #000;
+  box-sizing: border-box;
+  gap: 0;
+  height: auto;
+  inset: 0;
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+    env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  position: fixed;
+  z-index: calc(var(--layer-dialog) - 1);
+}
+
+.live-surface[data-immersive] .live-surface__stage {
+  background: #000;
+  border-radius: 0;
+}
+
+.live-surface__immersive-bar {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  justify-content: center;
+  left: calc(env(safe-area-inset-left, 0px) + var(--k-space-1));
+  pointer-events: none;
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + var(--k-space-1));
+  top: calc(env(safe-area-inset-top, 0px) + var(--k-space-1));
+  z-index: 3;
+}
+
+.live-surface__immersive-bar > .live-surface-controls {
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+/* With the bar hidden: one quiet handle to bring it back. */
+.live-surface .live-surface__immersive-reveal {
+  background: rgb(0 0 0 / 0.55);
+  border-radius: var(--k-radius-sm);
+  color: #fff;
+  min-height: 44px;
+  min-width: 44px;
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + var(--k-space-1));
+  top: calc(env(safe-area-inset-top, 0px) + var(--k-space-1));
+  z-index: 3;
+}
+
+/*
+ * The compact (phone-width) chrome: one row — who is in control as a chip,
+ * Take or Release control, the surface's primary control, More controls
+ * and Exit — with the surface's other controls in a panel under it while
+ * More controls is open.
+ */
+.live-surface-controls--compact {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.live-surface-controls__chip {
+  background: var(--k-panel-raised);
+  border: 1px solid var(--k-line);
+  border-radius: 999px;
+  color: var(--k-text-muted);
+  flex: 0 1 auto;
+  font-size: 0.75rem;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px var(--k-space-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-surface-controls__chip[data-tone="you"] {
+  color: var(--k-text);
+}
+
+.live-surface-controls__chip[data-tone="agent"] {
+  color: var(--warning-text, var(--k-text));
+}
+
+/* The surface's primary control takes the row's spare width (a browser's
+   address truncates; a device's stand picker shrinks). */
+.live-surface-controls--compact > .live-surface-controls__slot {
+  align-items: center;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.live-surface-controls__menu {
+  align-items: center;
+  border-top: 1px solid var(--k-line);
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  padding-top: var(--k-space-1);
+}
+
+/* With the compact bar (phone width; the component decides) its one row is
+   kept clear above the picture, so the picture is centred in the space
+   under it rather than under the bar. */
+.live-surface[data-immersive][data-compact] {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 60px);
+}
+
+/* A browser's address in the compact row: it takes the spare width and
+   truncates, instead of a caption row of its own. */
+.live-surface-controls--compact .live-surface-controls__address {
+  contain: none;
+  flex: 1 1 auto;
+  order: 0;
+  text-align: start;
 }
