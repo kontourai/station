@@ -860,6 +860,10 @@ test('erasure removes review decisions and keeps a re-proposed claim unreviewed'
       h.manager,
       index,
     );
+    // Inspect the first cleanup without a later reconciliation masking its backup.
+    const reconcile = vi
+      .spyOn(coordinator, 'reconcileRoot')
+      .mockResolvedValue();
     const preview = await h.manager.previewErasureTarget(
       owner,
       h.root,
@@ -877,6 +881,7 @@ test('erasure removes review decisions and keeps a re-proposed claim unreviewed'
       preview!.impact.revision,
       'purge-review-test',
     );
+    reconcile.mockRestore();
     for (const route of [
       '/memory/queue',
       '/memory/recall',
