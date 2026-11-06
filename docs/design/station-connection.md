@@ -489,6 +489,23 @@ Registry/adapters are domain boundaries, not permission to build route-specific
 UI copies. Shared-task history records are not fabricated chat messages; reuse
 the history renderer where that contract fits and shared action controls elsewhere.
 
+Saved-message Edit, reorder, merge, undo and discard controls use the owning
+Station and conversation, including the durable copy behind Unsent Dismiss.
+They never borrow the selected host's queue identity. The
+[mounted queue tests](../../src-ui/src/__tests__/OutboundQueuedMessages.station.test.tsx)
+retain colliding host, peer and other-conversation keys while exercising those
+controls; a retired lease cannot discard a row.
+
+The receiver's foreground execution owner also compares an existing
+conversation's stored environment with the resolved environment before reserving
+a child Session or invoking an engine. See
+[the binding check](../../src-server/services/execution-target/execution-target-execution.ts)
+and [its mismatch tests](../../src-server/services/execution-target/__tests__/execution-target-execution.test.ts).
+A `current` request cannot turn a stored third-Station binding into an onward
+foreground send. Command routes dispatch through the receiver's orchestration
+service and local provider registry; they do not select another Station from
+caller-supplied command fields.
+
 ## Persisted state and preview
 
 [peer-chat.ts](../../src-ui/src/lib/peer-chat.ts) and

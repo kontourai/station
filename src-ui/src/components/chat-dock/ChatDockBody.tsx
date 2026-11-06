@@ -63,7 +63,11 @@ export function ChatDockBody({
       <div className="chat-messages">
         <ErrorState
           variant="compact"
-          title="Station unavailable"
+          title={
+            connections?.remoteEnabled === false
+              ? 'Paired Station chats are off'
+              : 'Station unavailable'
+          }
           description={
             connections?.remoteEnabled === false
               ? 'Enable Paired Station chats in Feature previews to continue.'

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { outboundStationIdentity } from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
@@ -84,6 +84,17 @@ export function OutboundQueuedMessages({
   onStartNewChat,
   onSendHeld,
 }: OutboundQueuedMessagesProps) {
+  const station = useOptionalConversationConnection()?.station;
+  const conversationId = useSyncExternalStore(
+    activeChatsStore.subscribe,
+    () => activeChatsStore.getSnapshot()[sessionId]?.conversationId,
+  );
+  const queueScope = () => {
+    if (!station) return [] as const;
+    if (!station.isCurrent())
+      throw new Error('Reconnect to this chat’s Station.');
+    return [outboundStationIdentity(station), conversationId] as const;
+  };
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(
     null,
   );
@@ -108,7 +119,7 @@ export function OutboundQueuedMessages({
   const reorder = (clientTurnId: string, direction: 'up' | 'down') =>
     void import('../../lib/outboundQueue')
       .then(({ outboundDispatch }) =>
-        outboundDispatch.reorder(clientTurnId, direction),
+        outboundDispatch.reorder(clientTurnId, direction, ...queueScope()),
       )
       .catch((error) =>
         onError(
@@ -124,7 +135,7 @@ export function OutboundQueuedMessages({
     setSavingId(editing.id);
     try {
       const { outboundDispatch } = await import('../../lib/outboundQueue');
-      await outboundDispatch.edit(editing.id, content);
+      await outboundDispatch.edit(editing.id, content, ...queueScope());
       setEditing((current) => (current === editing ? null : current));
     } catch (error) {
       onError(
@@ -217,6 +228,7 @@ export function OutboundQueuedMessages({
                         outboundDispatch.merge(
                           turn.clientTurnId,
                           nextTurn.clientTurnId,
+                          ...queueScope(),
                         ),
                       )
                       .then(() => setMergePreviewId(null))
@@ -322,7 +334,10 @@ export function OutboundQueuedMessages({
                     onClick={() =>
                       void import('../../lib/outboundQueue')
                         .then(({ outboundDispatch }) =>
-                          outboundDispatch.unmerge(turn.clientTurnId),
+                          outboundDispatch.unmerge(
+                            turn.clientTurnId,
+                            ...queueScope(),
+                          ),
                         )
                         .catch((error) =>
                           onError(
@@ -356,7 +371,10 @@ export function OutboundQueuedMessages({
                   onClick={() =>
                     void import('../../lib/outboundQueue')
                       .then(async ({ outboundDispatch }) => {
-                        await outboundDispatch.discard(turn.clientTurnId);
+                        await outboundDispatch.discard(
+                          turn.clientTurnId,
+                          ...queueScope(),
+                        );
                         onDiscarded?.(turns.length - 1);
                       })
                       .catch((error) =>

@@ -344,7 +344,9 @@ export function createPeerChatRoutes(deps: {
         return c.json(
           {
             success: false,
-            error: 'Station access changed. Reconnect before continuing.',
+            error: operation.mutation
+              ? 'The Station did not confirm this change. Check the conversation before sending again.'
+              : 'Station access changed. Reconnect before continuing.',
           },
           409,
         );

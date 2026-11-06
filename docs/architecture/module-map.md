@@ -4680,7 +4680,12 @@ clears all runtime partitions. Bounded initial history and SSE resume replace
 the former peer transcript polling loop.
 
 Outbox rows, claims, terminal evidence and lookup/flush operations carry Station,
-principal and conversation identity. [OutboundQueueFlushMount](../../src-ui/src/hooks/OutboundQueueFlushMount.tsx)
+principal and conversation identity. Edit, reorder, merge, undo and discard controls
+pass that same Station and conversation to the durable queue. Dismissing an
+unsent message removes its matching durable copy, without touching colliding
+host or other-conversation keys. The [mounted queue tests](../../src-ui/src/__tests__/OutboundQueuedMessages.station.test.tsx)
+exercise these actions against persisted queue state.
+ [OutboundQueueFlushMount](../../src-ui/src/hooks/OutboundQueueFlushMount.tsx)
 keeps a stable supervisor per retained connection; a host flusher cannot adopt a
 peer row. Remote uncertain work requires explicit delivery lookup, not automatic
 replay. Legacy rows without an original namespace remain held. The
