@@ -5,6 +5,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
+  cleanup,
   fireEvent,
   render as renderView,
   screen,
@@ -27,8 +28,13 @@ function render(ui: Parameters<typeof renderView>[0]) {
     ),
   });
 }
-afterEach(() => {
+afterEach(async () => {
+  cleanup();
   for (const client of queryClients.splice(0)) client.clear();
+  // A following dialog must not inherit this case's asynchronous Back cleanup.
+  await waitFor(() =>
+    expect(window.history.state?.__stationDialog).toBeUndefined(),
+  );
 });
 
 const platformProfileState = vi.hoisted(() => ({
