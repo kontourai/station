@@ -1248,6 +1248,13 @@ export function openSqliteAgentJournal(options: {
         if (vacuum) database.exec('PRAGMA incremental_vacuum(1)');
         if (changed || vacuum) invalidateAgentValidation(database);
         database.exec('COMMIT');
+        if (
+          Number(
+            agentStatement(database, 'PRAGMA wal_autocheckpoint').get()
+              ?.wal_autocheckpoint,
+          ) > 0
+        )
+          database.exec('PRAGMA wal_checkpoint(PASSIVE)');
         if (changed || vacuum) scheduleMaintenance();
       } catch (error) {
         if (database.isTransaction) database.exec('ROLLBACK');
@@ -1582,7 +1589,17 @@ export function openSqliteAgentJournal(options: {
           (command.type === 'open' || command.type === 'settle') &&
           answer.kind === 'owned';
         if (maintain) maintenanceNow = clock();
-        database.exec('COMMIT');
+        const checkpointPages = Number(
+          agentStatement(database, 'PRAGMA wal_autocheckpoint').get()
+            ?.wal_autocheckpoint,
+        );
+        // A FULL commit must not also copy an accumulated WAL on the foreground path.
+        database.exec('PRAGMA wal_autocheckpoint=0');
+        try {
+          database.exec('COMMIT');
+        } finally {
+          database.exec(`PRAGMA wal_autocheckpoint=${checkpointPages}`);
+        }
         if (maintain) scheduleMaintenance();
         return copyAgentAnswer(answer);
       } catch (error) {

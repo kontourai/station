@@ -216,6 +216,7 @@ export async function retentionBacklog(turns: number, effects: number) {
         break;
       }
     }
+    const orderedSettles = [...settles].sort((a, b) => a - b);
     const metrics = {
       turns,
       effectRows: turns * effects,
@@ -224,6 +225,9 @@ export async function retentionBacklog(turns: number, effects: number) {
       passes: opens.length,
       maxOpenMs: Math.max(...opens),
       maxSettleMs: Math.max(...settles),
+      p50SettleMs: orderedSettles[Math.ceil(settles.length * 0.5) - 1],
+      p95SettleMs: orderedSettles[Math.ceil(settles.length * 0.95) - 1],
+      settles,
     };
     if (process.env.STATION_AGENT_RUNTIME_RETENTION_REPORT)
       writeFileSync(
