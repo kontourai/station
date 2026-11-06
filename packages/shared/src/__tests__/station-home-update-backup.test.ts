@@ -835,18 +835,34 @@ describe('update backup and in-place restore (#2675 D)', () => {
 
   it('rolls a trial that bumped the schema and wrote new data back, keeping live roots as they are', () => {
     const fixture = serviceHome();
+    const scratch = join(fixture.home, 'scratch', 'chat', 'work.txt');
+    mkdirSync(join(scratch, '..'), { recursive: true, mode: 0o700 });
+    writeFileSync(scratch, 'private scratch before', { mode: 0o600 });
     const empty = join(fixture.home, 'agents', 'research', 'memory', 'empty');
     mkdirSync(empty, { recursive: true });
     mkdirSync(join(fixture.root, 'update-backups'));
-    createStationHomeUpdateBackup({
+    const { manifest } = createStationHomeUpdateBackup({
       homeDir: fixture.home,
       backupDir: fixture.backupDir,
     });
+    expect(
+      manifest.files.some(
+        (file) => file.path.join('/') === 'scratch/chat/work.txt',
+      ),
+    ).toBe(true);
     const before = sha(join(fixture.home, STATION_HOME_SCHEMA_FILE));
 
     // The trial: migrates the home, rewrites data, adds a store, and the
     // service lifecycle keeps writing its live entries meanwhile.
     writeSchemaVersion(fixture.home, 99);
+    writeFileSync(scratch, 'private scratch during trial');
+    const trialScratch = join(
+      fixture.home,
+      'scratch',
+      'chat',
+      'trial-only.txt',
+    );
+    writeFileSync(trialScratch, 'trial-only scratch');
     rmSync(join(fixture.home, 'agents'), { recursive: true });
     writeFileSync(
       join(fixture.home, 'config', 'app.json'),
@@ -873,6 +889,8 @@ describe('update backup and in-place restore (#2675 D)', () => {
       true,
     );
     expect(readdirSync(empty)).toEqual([]);
+    expect(readFileSync(scratch, 'utf8')).toBe('private scratch before');
+    expect(existsSync(trialScratch)).toBe(false);
     expect(existsSync(join(empty, 'never-created'))).toBe(false);
     expect(readFileSync(join(fixture.home, 'config', 'app.json'), 'utf8')).toBe(
       '{"model":"before"}\n',
