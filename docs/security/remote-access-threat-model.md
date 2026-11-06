@@ -94,7 +94,7 @@ repository-owned private-tailnet deployment described in the
 [deployment guide](../guides/deployment.md) private, and do not expose it to an
 untrusted network.
 
-Consent decisions are served by a separate listener on its own origin. By
+Browser consent decisions are served by a separate listener on its own origin. By
 default review URLs are `http://<request host>:<consent port>`. If
 `STATION_TRUSTED_CONSENT_ORIGIN` names an exact HTTPS origin (for example a
 second Tailscale Serve mapping to the consent port), Station issues review URLs
@@ -110,9 +110,11 @@ startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
 marking it so would break the plain-http consent path. See
 the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
 
-The Project sharing setting uses a transaction-bound consent session and the
-separate review page to isolate its decision from app-origin scripts. This is
-not a fresh passkey assertion or proof of human presence or same-machine
+The Project sharing setting uses a transaction-bound consent session. Browsers
+isolate its decision on the separate review page. Native apps retain that exact
+session in the host and review it in OS chrome over the authenticated API
+connection; the renderer receives neither the session secret nor render nonce.
+This is not a fresh passkey assertion or proof of human presence or same-machine
 location: a caller holding the operator credential can automate the HTTP
 review and decision, and a holder of the exact transaction cookie can decide
 that transaction. Browser Origin and Fetch Metadata do not authenticate raw
