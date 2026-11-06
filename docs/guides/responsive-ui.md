@@ -327,6 +327,15 @@ Animations API and checks its resting styles after completion. Its visually
 hidden live announcement is anchored at the document origin so the body portal
 cannot add a scroll row below a dock that fills the viewport.
 
+### Phone app toolbar
+
+On a phone the Station chip shows its dot and the connected Station's name in
+a fixed-width slot in every state, so a state change or a Station notice never
+moves the controls beside it. That name takes priority over the app wordmark:
+the wordmark wraps away whole wherever the row cannot hold it, and the logo
+stays. [`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts)
+measures the row at every phone width it supports.
+
 ### Action rows
 
 A header, toolbar or action row shows at most two labelled actions. Further
