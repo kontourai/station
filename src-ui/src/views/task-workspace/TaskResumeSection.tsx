@@ -1,5 +1,6 @@
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import {
+  isTaskResumeRefusalCode,
   TASK_RESUME_REASON_MAX_CHARS,
   taskResumeRefusalText,
 } from '@kontourai/station-contracts/task-resume';
@@ -20,6 +21,7 @@ import { ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
+import { describeStationFailure } from '../../utils/stationFailure';
 import './TaskResumeSection.css';
 
 const KIND_WORDS: Record<TaskResumeFollowUp['kind'], string> = {
@@ -145,7 +147,11 @@ function TaskResumeForScope({
           }
         />
       ) : refusedRead ? (
-        <p className="task-resume__note">{refusedRead.message}</p>
+        <p className="task-resume__note">
+          {refusedRead.code === 'unsupported'
+            ? 'This Station cannot resume Tasks. Updating Station is one way to get it.'
+            : taskResumeRefusalText('task_resume_not_permitted')}
+        </p>
       ) : data?.refusal ? (
         <div className="task-resume__actions">
           <Button disabled>Resume</Button>
@@ -222,9 +228,7 @@ function TaskResumeDialog({
             tone: 'error',
             duration: 0,
           });
-          setDispatchError(
-            error instanceof Error ? error.message : 'Dispatch failed.',
-          );
+          setDispatchError(describeStationFailure(error).body);
           return { result, dispatchFailed: true };
         }
       return { result, dispatchFailed: false };
@@ -327,9 +331,10 @@ function TaskResumeDialog({
         />
         {resume.isError && (
           <p className="task-resume__error" role="alert">
-            {resume.error instanceof Error
-              ? resume.error.message
-              : 'Resume failed.'}
+            {resume.error instanceof TaskResumeError &&
+            isTaskResumeRefusalCode(resume.error.code)
+              ? taskResumeRefusalText(resume.error.code)
+              : describeStationFailure(resume.error).body}
           </p>
         )}
         {dispatchError && (

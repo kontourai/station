@@ -176,7 +176,8 @@ describe('TaskResumeSection (#4554)', () => {
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Resume and dispatch' }),
     );
-    await screen.findByText(/Resumed, but dispatch failed: Engine unavailable/);
+    await screen.findByText(/Resumed, but dispatch failed:/);
+    expect(screen.queryByText(/Engine unavailable/)).toBeNull();
     unmount();
     expect(toastStore.getSnapshot()).toEqual([
       expect.objectContaining({
@@ -186,6 +187,31 @@ describe('TaskResumeSection (#4554)', () => {
         duration: 0,
       }),
     ]);
+  });
+
+  test('resume refusal shows contract recovery text and withholds raw server diagnostics', async () => {
+    fixture.resume.mockRejectedValueOnce(
+      new TaskResumeError(
+        'task_resume_conflict',
+        409,
+        'private diagnostic credential=do-not-display',
+      ),
+    );
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Why resume it?'), {
+      target: { value: 'Go again' },
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Resume', exact: true }),
+    );
+    expect(
+      await screen.findByText(
+        'This Task changed since you opened it. Review it again.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/private diagnostic/)).toBeNull();
   });
 
   test('a refusal disables Resume and says why; a failed read offers Retry', async () => {
