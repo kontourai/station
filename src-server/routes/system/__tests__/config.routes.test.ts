@@ -2544,6 +2544,67 @@ describe('Station default approval mode under a managed ceiling', () => {
     }
   });
 
+  // #4515 fix round 3/4: GET and the PUT response report the values in
+  // effect; an explicit write at or below the ceiling is stored.
+  test('GET and a PUT response report a default saved above the ceiling lowered to it', async () => {
+    ceiling();
+    try {
+      const loader = createMockConfigLoader({ defaultApprovalMode: 'never' });
+      const app = withOperatorPrincipal(
+        createConfigRoutes(loader as never, mockLogger),
+      );
+      const read = (await (await app.request('/app')).json()) as {
+        data: Record<string, unknown>;
+      };
+      expect(read.data.defaultApprovalMode).toBe('ask');
+      // Settings sends only the key it changed.
+      const saved = await put(app, { defaultMaxTurns: 27 });
+      expect(saved.status, await saved.clone().text()).toBe(200);
+      const body = (await saved.json()) as { data: Record<string, unknown> };
+      expect(body.data.defaultApprovalMode).toBe('ask');
+      expect(body.data.defaultMaxTurns).toBe(27);
+      // The saved default is not changed by either.
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('never');
+      // Resending the saved `never` is not a raise: 200, nothing changes.
+      const resent = await put(app, { defaultApprovalMode: 'never' });
+      expect(resent.status, await resent.clone().text()).toBe(200);
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('never');
+    } finally {
+      installManagedApprovalCeiling(null);
+    }
+  });
+
+  test('an explicit write at the ceiling is stored, and stays when the policy goes', async () => {
+    ceiling();
+    const loader = createMockConfigLoader({ defaultApprovalMode: 'never' });
+    const app = withOperatorPrincipal(
+      createConfigRoutes(loader as never, mockLogger),
+    );
+    try {
+      const lowered = await put(app, { defaultApprovalMode: 'ask' });
+      expect(lowered.status, await lowered.clone().text()).toBe(200);
+      expect((await loader.loadAppConfig()).defaultApprovalMode).toBe('ask');
+    } finally {
+      installManagedApprovalCeiling(null);
+    }
+    // Without the policy the person's own `ask` applies, not the old `never`.
+    const read = (await (await app.request('/app')).json()) as {
+      data: Record<string, unknown>;
+    };
+    expect(read.data.defaultApprovalMode).toBe('ask');
+  });
+
+  test('control: without a ceiling GET reports the saved default', async () => {
+    const loader = createMockConfigLoader({ defaultApprovalMode: 'never' });
+    const app = withOperatorPrincipal(
+      createConfigRoutes(loader as never, mockLogger),
+    );
+    const body = (await (await app.request('/app')).json()) as {
+      data: Record<string, unknown>;
+    };
+    expect(body.data.defaultApprovalMode).toBe('never');
+  });
+
   test('control: without a ceiling the operator may raise it to Auto', async () => {
     const loader = createMockConfigLoader({ defaultApprovalMode: 'ask' });
     const app = withOperatorPrincipal(

@@ -326,7 +326,8 @@ will always succeed.
 
 An installer-owned prebuilt version carries its installer. Its schema-4 state
 also records the public manifest URL, which `station upgrade` reuses unless an
-explicit `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. When a running
+explicit `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. A
+[managed policy's](managed-policy.md#update-control) mirror replaces both. When a running
 Station service's fixed launcher runs that install, the installer only stages
 the new version: the launcher trials it and, if the trial fails, restores its
 home backup and the previous version (see the

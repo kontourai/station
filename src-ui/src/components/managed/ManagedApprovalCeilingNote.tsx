@@ -1,4 +1,4 @@
-import { managedApprovalCeilingStatement } from '@kontourai/station-contracts/managed-policy-status';
+import { managedApprovalCeilingStatement } from '@kontourai/station-contracts/managed-policy-controls';
 import type { MouseEvent } from 'react';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import { openExternalLink } from '../../platform/openExternalLink';

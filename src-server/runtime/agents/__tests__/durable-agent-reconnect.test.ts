@@ -110,6 +110,7 @@ it('a client reconnects through GET events and receives the detached durable Sta
     },
   };
   const agent = await new VoltAgentFramework().createTempAgent({
+    purpose: 'agent-run',
     agentId: 'assistant',
     name: 'Assistant',
     instructions: 'Answer',

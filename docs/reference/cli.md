@@ -107,8 +107,9 @@ node packages/cli/dist/station.mjs --help
 ```
 
 The bundle inlines the Station workspace packages, so it needs neither `tsx`
-nor a checkout at runtime. The package declares `@napi-rs/keyring` and `qrcode`
-dependencies. `esbuild` is an optional peer loaded for plugin-authoring builds;
+nor a checkout at runtime. The package declares `@napi-rs/keyring`, `koffi` and
+`qrcode` dependencies; `koffi` reads the Windows registry and access lists for
+`station policy show` and is loaded only on Windows. `esbuild` is an optional peer loaded for plugin-authoring builds;
 client-only use does not require it. See the [package manifest](../../packages/cli/package.json)
 and [bundle externals](../../packages/cli/bundle-externals.mjs).
 
@@ -770,21 +771,30 @@ repository; otherwise it gives the person the form link.
 
 ### `policy`
 
-Machine administrators use these commands to check and confirm a
+Machine administrators use these commands to check, deploy and confirm a
 [managed policy](../guides/managed-policy.md).
 
 ```bash
 station policy check <file> [--json]
 station policy show [--json] [--api-base=<url>|--station=<name>]
+station policy templates <dir> [--policy <file>]
 ```
+
+`templates` writes `macos/station.mobileconfig`, `windows/station.admx` and
+`windows/en-US/station.adml` under `<dir>`. With `--policy` (or
+`--policy=<file>`), the configuration profile carries that policy after the
+same validation as `check`, and nothing is written if it is invalid or holds a
+`null`. Without it, the profile names a placeholder organization.
 
 `check` is offline and runs the same validation as server startup, including
 each managed setting value against the settings schema (`schemas/app.schema.json`,
 bundled into the CLI), so a composite value such as `approvalGuardian` with a
 field of the wrong type fails `check` exactly as it would refuse startup. It
 exits `0` and prints the organization, the support link,
-one line per managed setting saying whether it is locked or a default, and
-its `sha256:` fingerprint. It exits `1` and names each problem when the file is
+one line per managed setting saying whether it is locked or a default, the
+names of the limits it sets (never their values), and its `sha256:`
+fingerprint. It exits `1` and
+names each problem when the file is
 missing, unreadable, a directory or other non-regular file, a symbolic link,
 invalid JSON, repeats a key name, or does not match the schema. It does not
 check root ownership; the server checks that only at the installed path.
@@ -830,7 +840,9 @@ Do Not Track and pending review use readable explanations. Kontour Detailed savi
 destination is configured. The CLI does not create that acknowledgement. The normal target and credential flags apply; `--json`
 prints the unchanged status object with `lite` tier values. Stored configuration
 and `STATION_TELEMETRY_TIER` still use `off|lite|full`. Full remains Lite until the
-current disclosure has been acknowledged. DNT forces Off. Changing one publisher preserves the other.
+current disclosure has been acknowledged. DNT forces Off. A managed policy with `limits.telemetry: false`
+forces Off too: status prints the policy's sentence beside each destination,
+and `set` to a higher tier fails with it. Changing one publisher preserves the other.
 Operator environment-limited status also explains that restoring Full delivery requires an
 explicit config choice (`station telemetry set operator full`) and acknowledgement
 in Settings; a legacy environment true plus a receipt no longer enables Full.
@@ -909,8 +921,9 @@ side effects. `config get` reads through the live route when reachable
 (showing a provenance note when the value comes from the environment or from
 the managed policy). On a transport
 failure it prints a notice and shows the local home's file instead, with the
-installed managed policy's locks and defaults applied; that is not a reading
-of the unavailable target Station's configuration.
+installed managed policy's locks and defaults applied and the same managed
+note (`config get --offline` reads it this way directly); that is not a
+reading of the unavailable target Station's configuration.
 
 A mistyped action is a failure, not a listing: `station config sett` exits
 non-zero and names the valid actions.
@@ -2959,7 +2972,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 |------|---------|-------------|
 | `--port=<n>` | worktree-derived development port (or explicit release channel port) | API server port |
 | `--ui-port=<n>` | worktree-derived development port (or explicit release channel port) | UI static file server port |
-| `--host=<address>` | existing lifecycle default | Explicit bind address for all four Station listeners: API, terminal, voice, and UI. Dogfood uses `127.0.0.1`. |
+| `--host=<address>` | existing lifecycle default (`127.0.0.1` under a managed policy without `remote` clients) | Explicit bind address for all four Station listeners: API, terminal, voice, and UI. Dogfood uses `127.0.0.1`. Under a [managed policy](../guides/managed-policy.md#network-exposure) without `remote` clients, a non-loopback address is refused, and so is a non-loopback `STATION_HOST` in the environment. |
 | `--clean` | — | Clean the selected Station home before starting |
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
@@ -3221,6 +3234,9 @@ station environment peers remove <environment-id>
   device-pairing offer and prints its expiry, short manual pairing code, plaintext
   `station-pairing:v1:` payload, and terminal QR. A loopback offer is explicitly
   not reachable from a phone; it does not guess or advertise a LAN address.
+  Under a [managed policy](../guides/managed-policy.md#network-exposure)
+  without `remote` clients, `--tailscale` is refused before any `tailscale`
+  command runs, and the server refuses the offer itself.
   `--tailscale` reads the active machine's MagicDNS name and HTTPS Serve status,
   refuses a foreign or unrecognized HTTPS mapping, and then publishes only
   the already-validated loopback listener origin as `https://<magicdns>`.
@@ -3497,6 +3513,14 @@ the installer stops the service, switches `current`, and starts the service
 again, and if the service does not come back answering as the new release it
 restores the previous version and restarts the service on it. Any other installed service still
 blocks the upgrade, as in a source checkout.
+
+The machine's [managed policy](../guides/managed-policy.md#update-control) is
+read first. `upgrade` is refused, with exit status 1 and nothing changed, when
+the policy turns updates off, makes a nightly install's channel unavailable,
+or cannot be used. With a mirror, a packaged install's installer reads the
+mirror's copy of its ring's manifest and downloads from the mirror, an explicit
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` that names anything else is refused, and a
+source checkout (or a Windows install) is refused.
 
 A loose extracted archive has no installer-owned layout and still refuses
 `upgrade` without changing anything. Install through `install.sh`, or stop

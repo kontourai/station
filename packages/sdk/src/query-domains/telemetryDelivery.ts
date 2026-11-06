@@ -352,6 +352,8 @@ const delivery = z.object({
         .nullable(),
       lastFailure: failure.nullable(),
       probe,
+      // #4521: the managed policy turned telemetry off; absent on older hosts.
+      managedDenial: z.string().min(1).max(4096).optional(),
     })
     .refine(
       (value) =>
@@ -384,6 +386,8 @@ const delivery = z.object({
       metrics: exportStatus,
       traces: exportStatus,
       probe,
+      // #4521: the managed policy turned telemetry off; absent on older hosts.
+      managedDenial: z.string().min(1).max(4096).optional(),
     })
     .refine(
       (value) =>

@@ -404,7 +404,11 @@
 
     "src-server/providers/llm/effective-model-metadata.ts",
 
-    "src-server/providers/llm/__tests__/effective-model-metadata.test.ts"
+    "src-server/providers/llm/__tests__/effective-model-metadata.test.ts",
+
+    "packages/contracts/src/managed-policy-controls.ts",
+
+    "packages/contracts/src/managed-policy-status.ts"
   ],
 
   "checks": [

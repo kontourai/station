@@ -250,7 +250,7 @@ describe('published CLI bundle', () => {
     );
   });
 
-  it('carries only the audited keyring and pairing QR dependencies', () => {
+  it('carries only the audited keyring, registry reader and pairing QR dependencies', () => {
     // The keyring is the deliberately audited runtime dependency: a client
     // A saved Station credential must use the OS store rather than a plaintext file.
     // esbuild resolves a per-platform native binary from its own package
@@ -259,8 +259,13 @@ describe('published CLI bundle', () => {
     // it, and `@kontourai/station-shared/build` loads it on demand.
     // Pairing offers render a terminal QR code; qrcode is the reviewed,
     // runtime-only encoder used by that command.
+    // koffi is how `station policy show` reads the Windows Policies registry
+    // key and the owners and ACLs of the policy key and file (#4524). Its
+    // loader takes a per-platform binary package (about 1 MB) beside it, so
+    // it cannot be bundled; it is loaded only on Windows.
     expect(manifest.dependencies ?? {}).toEqual({
       '@napi-rs/keyring': '2.1.2',
+      koffi: '3.3.6',
       qrcode: '^1.5.4',
     });
     expect(optionalPeers).toContain('esbuild');

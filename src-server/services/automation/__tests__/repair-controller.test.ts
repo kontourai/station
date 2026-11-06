@@ -5,6 +5,10 @@ import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createIsolatedRepairRoutes } from '../../../routes/operations/repairs.js';
+import {
+  MANAGED_REPAIR_RELAY_REFUSED,
+  type ManagedListenerAdmission,
+} from '../../../security/managed-network-exposure.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import {
@@ -46,6 +50,10 @@ async function fixture(
   options: {
     failure?: 'protected' | 'authority' | 'stopped' | 'case';
     publishBranch?: boolean;
+    /** #4519: the runtime's listener admission. */
+    listenerAdmission?: ManagedListenerAdmission;
+    /** The run is expected to end indeterminate without a `failure`. */
+    expectIndeterminate?: boolean;
   } = {},
 ) {
   const home = temporary('isolated-repair-caller-');
@@ -273,6 +281,9 @@ async function fixture(
     worker,
     observeWorker,
     publisher: { fetch: publisherFetch },
+    ...(options.listenerAdmission
+      ? { listenerAdmission: options.listenerAdmission }
+      : {}),
   });
   closes.push(async () => {
     await controller.close();
@@ -417,7 +428,9 @@ async function fixture(
   await controller.tick();
   await vi.waitFor(() =>
     expect(controller.list()[0]?.phase, controller.list()[0]?.reasonCode).toBe(
-      options.failure ? 'indeterminate' : 'proposed',
+      options.failure || options.expectIndeterminate
+        ? 'indeterminate'
+        : 'proposed',
     ),
   );
   const retained = controller.store.read(controller.list()[0]!.runId)!;
@@ -830,6 +843,34 @@ test('a source that grants isolated execution only cannot grant publication afte
   ).toBeUndefined();
   expect(context.calls).toHaveLength(0);
   expect(context.worker).toHaveBeenCalledTimes(1);
+});
+
+test('#4519: under the managed limit the worker relay binds loopback and passes listener admission, or the repair is refused on Linux', async () => {
+  const admitted: number[] = [];
+  const listenerAdmission: ManagedListenerAdmission = {
+    localClientsOnly: true,
+    admit: async ({ port }) => {
+      admitted.push(port);
+      throw new Error('Tailscale Serve forwards port to it');
+    },
+  };
+  const linux = process.platform === 'linux';
+  const context = await fixture({
+    listenerAdmission,
+    expectIndeterminate: linux,
+  });
+  if (linux) {
+    expect(context.worker).not.toHaveBeenCalled();
+    expect(context.retained.reasonCode).toBe(MANAGED_REPAIR_RELAY_REFUSED);
+    return;
+  }
+  expect(context.worker).toHaveBeenCalledTimes(1);
+  const relay = context.worker.mock.calls[0]![0].relay!;
+  expect(relay.host).toBe('127.0.0.1');
+  await expect(relay.admit(43191)).rejects.toThrow(
+    MANAGED_REPAIR_RELAY_REFUSED,
+  );
+  expect(admitted).toEqual([43191]);
 });
 
 test('an observe isolated-repair rule records would-start and starts no intent or repair run (#4509)', async () => {

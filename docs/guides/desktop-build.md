@@ -14,7 +14,9 @@ endpoint/key configuration; an ordinary development build has none and reports
 no update channel. A configured app checks about 20 seconds after it starts and
 then hourly by wall-clock time while it runs, including tray-only (after the
 computer sleeps past a due check, it checks within about 30 seconds of
-waking); there is no OS job.
+waking); there is no OS job. A machine's
+[managed policy](managed-policy.md#update-control), read when the app starts,
+can turn these checks off or send them to an approved mirror.
 
 Updating has three separate steps:
 
@@ -126,6 +128,10 @@ and omits prebuilds for other operating systems. Release packages use pinned
 Node, but desktop debug builds select Node from the login PATH; its architecture
 can differ from the staging Node (for example x64 Node under Rosetta on an
 arm64 Mac). Keeping same-OS bindings preserves that debug launch path.
+koffi, the FFI the managed policy's Windows registry and permission reader
+loads, ships without vendored build inputs and docs. Its `src` tree includes
+the JavaScript loader and stays in Windows staging with the native binary; elsewhere nothing loads it, so koffi
+and its platform package keep only their metadata and license.
 The stager and [pruning tests](../../scripts/__tests__/desktop-runtime-pruning.test.ts)
 own these rules. File-count reductions are packaging evidence; they do not
 measure Windows Defender scans or first-launch time.

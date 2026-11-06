@@ -57,12 +57,38 @@ export interface TelemetryChoiceCapabilities {
 
 export interface TelemetryTierResolution {
   tier: TelemetryTier;
-  reason: 'DNT' | 'policy' | 'default' | 'user' | 'disclosure' | 'environment';
+  /**
+   * `managed`: the machine's managed policy sets `limits.telemetry: false`
+   * (#4521), which outranks every other input, Do Not Track included.
+   */
+  reason:
+    | 'DNT'
+    | 'managed'
+    | 'policy'
+    | 'default'
+    | 'user'
+    | 'disclosure'
+    | 'environment';
+}
+
+/**
+ * Whether a resolution forbids every send, a tier-lowered reason included:
+ * Do Not Track, or a managed policy that turns telemetry off.
+ */
+export function telemetrySendingForbidden(
+  resolution: Pick<TelemetryTierResolution, 'reason'> | undefined,
+): boolean {
+  return resolution?.reason === 'DNT' || resolution?.reason === 'managed';
 }
 
 /** A publisher's effective resolution alongside its separately saved choice. */
 export interface TelemetryPublisherStatus extends TelemetryTierResolution {
   userChoice?: TelemetryTier;
+  /**
+   * With reason `managed`: the sentence clients show, naming the managing
+   * organization (#4521). Absent otherwise and on older servers.
+   */
+  managedDenial?: string;
   /** Absent on older servers; consumers must wait for explicit availability. */
   fullAvailable?: boolean;
   destination?: string;
@@ -80,7 +106,10 @@ export function resolveTelemetryTier(input: {
   operatorPolicy?: TelemetryTier;
   doNotTrack?: string;
   hasFullDisclosure: boolean;
+  /** #4521: the managed policy turned telemetry off; nothing outranks it. */
+  managedOff?: boolean;
 }): TelemetryTierResolution {
+  if (input.managedOff) return { tier: 'off', reason: 'managed' };
   if (
     input.doNotTrack !== undefined &&
     input.doNotTrack !== '' &&
