@@ -91,8 +91,7 @@ function HomeChatSetupHelper(
  * it is restored into the field or explicitly discarded. Closing the tab (or
  * a browser with storage blocked, then a reload) still drops them.
  */
-const HELD_HOME_DRAFTS_KEY = 'station-home-held-drafts-v1';
-function readStoredHeldDrafts(key = HELD_HOME_DRAFTS_KEY): readonly string[] {
+function readStoredHeldDrafts(key: string): readonly string[] {
   try {
     const raw = window.sessionStorage.getItem(key);
     if (!raw) return [];
@@ -106,10 +105,7 @@ function readStoredHeldDrafts(key = HELD_HOME_DRAFTS_KEY): readonly string[] {
     return [];
   }
 }
-function writeStoredHeldDrafts(
-  next: readonly string[],
-  key = HELD_HOME_DRAFTS_KEY,
-) {
+function writeStoredHeldDrafts(next: readonly string[], key: string) {
   try {
     if (next.length === 0) window.sessionStorage.removeItem(key);
     else window.sessionStorage.setItem(key, JSON.stringify(next));
@@ -124,12 +120,12 @@ function writeStoredHeldDrafts(
     }
   }
 }
-function createHeldDraftStore(key: string) {
-  let drafts = readStoredHeldDrafts(key);
+function createHeldDraftStore(key?: string) {
+  let drafts: readonly string[] = key ? readStoredHeldDrafts(key) : [];
   const listeners = new Set<() => void>();
   const set = (next: readonly string[]) => {
     drafts = next;
-    writeStoredHeldDrafts(next, key);
+    if (key) writeStoredHeldDrafts(next, key);
     for (const listener of listeners) listener();
   };
   return {
@@ -145,11 +141,14 @@ function createHeldDraftStore(key: string) {
       };
     },
     reload: () => {
-      drafts = readStoredHeldDrafts(key);
+      if (key) drafts = readStoredHeldDrafts(key);
     },
   };
 }
-const homeDraftStore = createHeldDraftStore(HELD_HOME_DRAFTS_KEY);
+const homeDraftStores = new Map<
+  string,
+  ReturnType<typeof createHeldDraftStore>
+>();
 const projectDraftStores = new Map<
   string,
   ReturnType<typeof createHeldDraftStore>
@@ -157,12 +156,12 @@ const projectDraftStores = new Map<
 
 /** Test seam: a fresh tab. */
 export function resetHeldHomeDraftsForTests() {
-  homeDraftStore.set([]);
+  for (const store of homeDraftStores.values()) store.set([]);
 }
 
 /** Test seam: what a reload does, reading the drafts back from storage. */
 export function reloadHeldHomeDraftsForTests() {
-  homeDraftStore.reload();
+  for (const store of homeDraftStores.values()) store.reload();
 }
 
 type ChipMenu = {
@@ -194,13 +193,24 @@ export function HomeStartComposer({
   /** A Project page fixes its context without rebinding Home or the dock. */
   projectSlug?: string;
 }) {
-  const { namespace } = useAuthorityPersistence();
+  const { namespace, status } = useAuthorityPersistence();
   const { setDockState } = useNavigation();
   const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
     VISUAL_SKILLS_PREVIEW_ID,
   );
   const draftStore = useMemo(() => {
-    if (!projectSlug) return homeDraftStore;
+    if (!projectSlug) {
+      if (status !== 'verified' || !namespace?.trim())
+        return createHeldDraftStore();
+      let store = homeDraftStores.get(namespace);
+      if (!store) {
+        store = createHeldDraftStore(
+          `station-home-held-drafts-v2:${JSON.stringify(namespace)}`,
+        );
+        homeDraftStores.set(namespace, store);
+      }
+      return store;
+    }
     const key = JSON.stringify([namespace, projectSlug]);
     let store = projectDraftStores.get(key);
     if (!store) {
@@ -208,7 +218,7 @@ export function HomeStartComposer({
       projectDraftStores.set(key, store);
     }
     return store;
-  }, [namespace, projectSlug]);
+  }, [namespace, projectSlug, status]);
   const agents = useAgents();
   const projectsQuery = useScopedProjectsQuery();
   const projects = projectsQuery.data ?? [];
