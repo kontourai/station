@@ -1034,6 +1034,115 @@ test('a person turn into a running automation Session takes it over: no automati
   ).rejects.toThrow(/took over/);
 });
 
+test.each(['handover-write', 'approval-write'] as const)(
+  'a person turn is refused before provider send if %s fails (#4511)',
+  async (failure) => {
+    const w = await world({ approvalMode: 'auto' });
+    const intent = await running(w);
+    w.adapter.events.push({
+      method: 'turn.completed',
+      eventId: 'handover-first-turn-done',
+      provider: w.adapter.provider,
+      threadId: intent.sessionId!,
+      turnId: intent.turnId!,
+      createdAt: new Date().toISOString(),
+      finishReason: 'stop',
+      invocationId: w.adapter.sends[0]?.invocationId,
+    } as CanonicalRuntimeEvent);
+    await vi.waitFor(() =>
+      expect(
+        w.eventStore.latestEventByMethods(intent.sessionId!, [
+          'turn.completed',
+        ]),
+      ).toBeTruthy(),
+    );
+    const write =
+      failure === 'handover-write'
+        ? vi.spyOn(w.ledger, 'updateIntent')
+        : vi.spyOn(w.service, 'recordAskWhereUndecided');
+    write.mockImplementation(() => {
+      throw new Error('fixture persistence failure');
+    });
+    try {
+      await expect(
+        w.service.dispatch(
+          {
+            type: 'sendTurn',
+            input: { threadId: intent.sessionId!, input: 'mine now' },
+          },
+          { clientOrigin: PERSON_ORIGIN },
+        ),
+      ).rejects.toThrow('Automation hand-over could not be completed.');
+      expect(w.adapter.sends).toHaveLength(1);
+    } finally {
+      write.mockRestore();
+    }
+    await w.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: { threadId: intent.sessionId!, input: 'mine now' },
+      },
+      { clientOrigin: PERSON_ORIGIN },
+    );
+    expect(w.adapter.sends).toHaveLength(2);
+    expect(w.adapter.sends[1]?.principal).toBeUndefined();
+  },
+);
+
+test.each([false, true])(
+  'a settled automation Session refuses automatic continuation and admits a person without inherited Auto (restart=%s)',
+  async (restart) => {
+    const w = await world({ approvalMode: 'auto' });
+    const intent = await running(w);
+    w.adapter.events.push({
+      method: 'turn.completed',
+      eventId: 'handover-first-turn-done',
+      provider: w.adapter.provider,
+      threadId: intent.sessionId!,
+      turnId: intent.turnId!,
+      createdAt: new Date().toISOString(),
+      finishReason: 'stop',
+      invocationId: w.adapter.sends[0]?.invocationId,
+    } as CanonicalRuntimeEvent);
+    await vi.waitFor(() =>
+      expect(
+        w.eventStore.latestEventByMethods(intent.sessionId!, [
+          'turn.completed',
+        ]),
+      ).toBeTruthy(),
+    );
+    await w.runtime.tick();
+    expect(w.ledger.readIntent(intent.intentId)?.state).toBe('completed');
+    if (restart) w.rebootController();
+    await expect(
+      w.service.dispatch(
+        {
+          type: 'sendTurn',
+          input: { threadId: intent.sessionId!, input: 'auto' },
+        },
+        { clientOrigin: INTERNAL_ORIGIN },
+      ),
+    ).rejects.toThrow('Automation authority changed before turn dispatch.');
+    expect(w.adapter.sends).toHaveLength(1);
+    await w.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: { threadId: intent.sessionId!, input: 'mine now' },
+      },
+      { clientOrigin: PERSON_ORIGIN },
+    );
+    expect(w.adapter.sends).toHaveLength(2);
+    expect(w.adapter.sends[1]?.principal).toBeUndefined();
+    expect(w.ledger.readIntent(intent.intentId)?.personTakeoverAt).toBeTruthy();
+    const posture = w.eventStore
+      .listEvents(intent.sessionId!)
+      .map((event) => event.payload)
+      .filter((event) => event.method === 'session.approval-mode-set')
+      .at(-1);
+    expect(posture).toMatchObject({ approvalMode: 'ask' });
+  },
+);
+
 test('amending a running rule’s instructions delivers the new text as the Session’s next turn instead of stopping it (#4511)', async () => {
   const w = await world();
   const intent = await running(w);

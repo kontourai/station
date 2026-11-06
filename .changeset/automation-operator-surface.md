@@ -18,7 +18,9 @@ its next turn. Any other change is a revocation: automatic work stops, the
 Session is marked blocked and the Task moves to `blocked`, both with the
 reason. A person's own turn into that Session is admitted under their
 authority (no rule budget, and Ask instead of an inherited Auto) and the
-Session becomes theirs. Intents retained before this change still match
+Session becomes theirs. This boundary survives action settlement and runtime
+restart; a failed hand-over or approval write refuses the turn before send.
+Intents retained before this change still match
 until their rule or source changes in any way.
 
 Task reads (`GET /api/tasks/:taskId` and `/graph`) carry `automation`

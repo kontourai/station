@@ -134,7 +134,7 @@ class AutomationActionsRuntime implements AutomationActions {
       eventBus: options.eventBus,
       registerTurnAdmission: (admission) =>
         options.orchestration.registerTurnAdmission((input) => {
-          const id = this.sessionIntents.get(input.threadId);
+          const id = this.sessionIntentId(input.threadId);
           // #4511: a person's own turn (the server classifies it from the
           // authenticated client origin, never from the request body) is
           // admitted under that person's authority, even after a revocation.
@@ -214,6 +214,26 @@ class AutomationActionsRuntime implements AutomationActions {
         options.logger.warn('Automation journal recovery is unavailable');
       }
     }
+  }
+
+  private sessionIntentId(sessionId: string): string | undefined {
+    const known = this.sessionIntents.get(sessionId);
+    if (known) return known;
+    // Settled intents leave the active map, but their Sessions retain their
+    // authority boundary across settlement and runtime restart.
+    const binding =
+      this.options.eventStore.readProjectTaskRoomExecutionBinding(sessionId);
+    if (!binding) return undefined;
+    const task = this.options.taskGraph.readTaskView(binding.taskId);
+    if (task?.createdBy !== 'automation-rule') return undefined;
+    const intent = this.options.existingLedger()?.intentForTask(binding.taskId);
+    if (
+      !intent ||
+      intent.sessionId !== sessionId ||
+      intent.taskCreatedAt !== task.createdAt
+    )
+      throw new Error('Automation recovery authority is unavailable.');
+    return intent.intentId;
   }
 
   private enabled(): boolean {
@@ -368,26 +388,14 @@ class AutomationActionsRuntime implements AutomationActions {
    * restart keeps the hand-over.
    */
   private takeOver(sessionId: string, intentId: string | undefined): void {
+    if (!intentId) return;
     try {
       const ledger = this.options.existingLedger();
-      let intent = intentId ? ledger?.readIntent(intentId) : undefined;
-      if (!intent && ledger) {
-        const binding =
-          this.options.eventStore.readProjectTaskRoomExecutionBinding(
-            sessionId,
-          );
-        const task = binding
-          ? this.options.taskGraph.readTaskView(binding.taskId)
-          : undefined;
-        const candidate =
-          binding && task?.createdBy === 'automation-rule'
-            ? ledger.intentForTask(binding.taskId)
-            : undefined;
-        if (candidate?.sessionId === sessionId) intent = candidate;
-      }
-      if (!intent || !nativeIntent(intent)) return;
+      const intent = ledger?.readIntent(intentId);
+      if (!ledger || !nativeIntent(intent))
+        throw new Error('Automation hand-over authority is unavailable.');
       if (!intent.personTakeoverAt)
-        ledger?.updateIntent(
+        ledger.updateIntent(
           intent.intentId,
           { personTakeoverAt: new Date().toISOString() },
           Date.now(),
@@ -396,12 +404,10 @@ class AutomationActionsRuntime implements AutomationActions {
       if (intent.action.approvalMode === 'auto')
         this.options.orchestration.recordAskWhereUndecided(sessionId);
     } catch (error) {
-      // The person's turn is admitted either way; it never ran under the
-      // unattended principal, whose grants exist only inside the action's
-      // own placement.
       this.options.logger.warn('Automation hand-over was not recorded', {
         error: error instanceof Error ? error.message : 'unknown',
       });
+      throw new Error('Automation hand-over could not be completed.');
     }
   }
 

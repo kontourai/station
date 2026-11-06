@@ -244,6 +244,10 @@ principal, the rule's budget supervisor is released, and Ask is recorded when
 the rule pinned Auto and no one has chosen a mode for the conversation. The
 Session then belongs to the person, durably: no Automation turn is admitted
 into it again and no later policy change interrupts it.
+The retained Task/Session binding keeps this boundary after an action settles
+and after a runtime restart. A missing binding or failed hand-over or approval
+write refuses the turn before provider send; it cannot preserve inherited Auto
+as a fallback. The person can retry once persistence is available.
 
 When an action creates its Task it captures an immutable
 `AutomationTaskMandate`: the rule name and id, source, episode (and operator
