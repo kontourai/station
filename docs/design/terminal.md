@@ -309,8 +309,8 @@ The pinned node-pty releases its output-reader worker in `kill()`, and that
 call first lists the console's processes through
 a helper that cannot attach once the shell has gone, then five seconds later
 can signal the old shell PID, which Windows may have reused.
-So on every exit, natural or not, the adapter releases the ConPTY through
-`kill()` with that listing answered empty. Before the exit, `kill()` is only
+On a started shell's exit, the adapter calls `kill()` with that listing
+answered empty. Before the exit, `kill()` is only
 the fallback for a tree `taskkill` could not end, which is reported.
 `taskkill` follows
 parent links, so a descendant whose parent already exited is not found
