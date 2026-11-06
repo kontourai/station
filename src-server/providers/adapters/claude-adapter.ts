@@ -302,6 +302,8 @@ type PendingRequest = {
 
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
+// Exact native runtimes qualified for retained-Session wildcard tool denial.
+const CONTEXT_SYNC_RUNTIME_VERSIONS = new Set(['2.1.308', '2.1.318']);
 /** #2494: id of the confined-credential readiness entry (macOS only). */
 const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID = 'claude-confined-credential';
 
@@ -1616,7 +1618,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       executable.launch === 'installed'
         ? executable.installedVersion
         : executable.bundledVersion;
-    if (version !== '2.1.308') throw new Error('group_sync_policy_unavailable');
+    if (!CONTEXT_SYNC_RUNTIME_VERSIONS.has(version ?? ''))
+      throw new Error('group_sync_policy_unavailable');
   }
 
   async startSession(
@@ -2584,7 +2587,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             }),
           ]);
           record.toolRestriction.assertCurrent();
-          if (init.claude_code_version !== '2.1.308')
+          if (
+            !CONTEXT_SYNC_RUNTIME_VERSIONS.has(init.claude_code_version ?? '')
+          )
             throw new Error('group_sync_policy_unavailable');
           delete record.toolRestrictionPending;
         } catch (error) {

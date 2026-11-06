@@ -288,102 +288,108 @@ async function completeClaudeTurn(
 }
 
 describe('ClaudeAdapter', () => {
-  test('a retained sync activation denies every tool at launch and rejects ordinary or stale sends', async () => {
-    const controlled = Object.assign(createControlledMockQuery(), {
-      initializationResult: vi
-        .fn()
-        .mockResolvedValue({ claude_code_version: '2.1.308' }),
-    });
-    mockQuery.mockReturnValue(controlled);
-    let configHome = join(homedir(), '.claude');
-    const adapter = new ClaudeAdapter({
-      getConnectionEnv: async () => ({ CLAUDE_CONFIG_DIR: configHome }),
-    });
-    let current = true;
-    const restriction = {
-      threadId: 'sync-thread',
-      nativeSessionId: 'native-sync',
-      nativeBindingKey: nativeResumeBindingKey(
-        'claude',
-        join(homedir(), '.claude'),
-        null,
-      ),
-      generation: 'generation-one',
-      clientTurnId: 'reserved-sync',
-      assertCurrent() {
-        if (!current) throw new Error('revoked');
-      },
-    };
-    try {
-      await withSessionToolRestriction(restriction, () =>
-        adapter.startSession({
-          threadId: restriction.threadId,
-          provider: 'claude',
-          resumeCursor: 'native-sync',
-        }),
-      );
-      expect(mockQuery.mock.calls.at(-1)?.[0].options).toMatchObject({
-        tools: [],
-        disallowedTools: ['*'],
-        resume: 'native-sync',
+  test.each(['2.1.308', '2.1.318'])(
+    'qualified runtime %s denies every tool at launch and rejects ordinary or stale sends',
+    async (version) => {
+      const controlled = Object.assign(createControlledMockQuery(), {
+        initializationResult: vi
+          .fn()
+          .mockResolvedValue({ claude_code_version: version }),
       });
-      await expect(
-        adapter.sendTurn({ threadId: restriction.threadId, input: 'ordinary' }),
-      ).rejects.toThrow('group_sync_activation_changed');
-      await expect(
-        withSessionToolRestriction(restriction, () =>
-          adapter.sendTurn({
-            threadId: restriction.threadId,
-            input: 'wrong attempt',
-            clientTurnId: 'foreign',
-          }),
-        ),
-      ).rejects.toThrow('group_sync_activation_changed');
-      controlled.push({
-        type: 'system',
-        subtype: 'init',
-        session_id: 'native-sync',
-        tools: [],
-        mcp_servers: [],
-        model: 'claude-sonnet',
+      mockQuery.mockReturnValue(controlled);
+      let configHome = join(homedir(), '.claude');
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => ({ CLAUDE_CONFIG_DIR: configHome }),
       });
-      await withSessionToolRestriction(restriction, () =>
-        adapter.sendTurn({
-          threadId: restriction.threadId,
-          input: 'sync',
-          clientTurnId: 'reserved-sync',
-        }),
-      );
-      current = false;
-      expect(() =>
-        withSessionToolRestriction(restriction, () =>
-          adapter.sendTurn({
-            threadId: restriction.threadId,
-            input: 'stale',
-            clientTurnId: 'reserved-sync',
-          }),
+      let current = true;
+      const restriction = {
+        threadId: 'sync-thread',
+        nativeSessionId: 'native-sync',
+        nativeBindingKey: nativeResumeBindingKey(
+          'claude',
+          join(homedir(), '.claude'),
+          null,
         ),
-      ).toThrow('revoked');
-      await adapter.stopSession(restriction.threadId);
-      current = true;
-      configHome = join(homedir(), '.claude-changed-sync');
-      const before = mockQuery.mock.calls.length;
-      await expect(
-        withSessionToolRestriction(restriction, () =>
+        generation: 'generation-one',
+        clientTurnId: 'reserved-sync',
+        assertCurrent() {
+          if (!current) throw new Error('revoked');
+        },
+      };
+      try {
+        await withSessionToolRestriction(restriction, () =>
           adapter.startSession({
             threadId: restriction.threadId,
             provider: 'claude',
             resumeCursor: 'native-sync',
           }),
-        ),
-      ).rejects.toThrow('different engine home or credential profile');
-      expect(mockQuery).toHaveBeenCalledTimes(before);
-    } finally {
-      await adapter.stopAll();
-    }
-  });
+        );
+        expect(mockQuery.mock.calls.at(-1)?.[0].options).toMatchObject({
+          tools: [],
+          disallowedTools: ['*'],
+          resume: 'native-sync',
+        });
+        await expect(
+          adapter.sendTurn({
+            threadId: restriction.threadId,
+            input: 'ordinary',
+          }),
+        ).rejects.toThrow('group_sync_activation_changed');
+        await expect(
+          withSessionToolRestriction(restriction, () =>
+            adapter.sendTurn({
+              threadId: restriction.threadId,
+              input: 'wrong attempt',
+              clientTurnId: 'foreign',
+            }),
+          ),
+        ).rejects.toThrow('group_sync_activation_changed');
+        controlled.push({
+          type: 'system',
+          subtype: 'init',
+          session_id: 'native-sync',
+          tools: [],
+          mcp_servers: [],
+          model: 'claude-sonnet',
+        });
+        await withSessionToolRestriction(restriction, () =>
+          adapter.sendTurn({
+            threadId: restriction.threadId,
+            input: 'sync',
+            clientTurnId: 'reserved-sync',
+          }),
+        );
+        current = false;
+        expect(() =>
+          withSessionToolRestriction(restriction, () =>
+            adapter.sendTurn({
+              threadId: restriction.threadId,
+              input: 'stale',
+              clientTurnId: 'reserved-sync',
+            }),
+          ),
+        ).toThrow('revoked');
+        await adapter.stopSession(restriction.threadId);
+        current = true;
+        configHome = join(homedir(), '.claude-changed-sync');
+        const before = mockQuery.mock.calls.length;
+        await expect(
+          withSessionToolRestriction(restriction, () =>
+            adapter.startSession({
+              threadId: restriction.threadId,
+              provider: 'claude',
+              resumeCursor: 'native-sync',
+            }),
+          ),
+        ).rejects.toThrow('different engine home or credential profile');
+        expect(mockQuery).toHaveBeenCalledTimes(before);
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
 
-  test.each(['2.1.307', undefined])(
+  test.each(['2.1.307', '2.1.319', undefined])(
     'refuses unqualified sync runtime %s before accepting a turn',
     async (version) => {
       const controlled = Object.assign(createMockQuery([]), {

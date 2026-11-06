@@ -106,6 +106,43 @@ receipt and old generated tree were retained; a fresh managed install restored
 both locked versions and verified successfully. No dependency declaration or
 verification policy was changed.
 
+### Installed native sync runtime requalification (2026-11-06)
+
+The prepared same-Session context-sync acceptance refused before any seat
+launch because the installed Claude CLI is now 2.1.318, while the production
+restriction admitted only 2.1.308. Fresh native probes pair CLI 2.1.318 with
+installed Agent SDK 0.3.312, isolated homes and synthetic loopback model replies;
+they make no real-provider requests or shared configuration changes.
+
+Write, late-added SDK MCP, plugin MCP and delegated Agent effects execute in
+ordinary positive controls, are blocked during wildcard-denied activation,
+and execute again after exact-native-Session resume. Removing the wildcard
+deny causes the restricted plugin effect to execute. Ten additional cases
+exercise flag-settings replacement/clearing and default/bypass permission-mode
+changes. Six restricted policy observations retain an effective `cliArg`
+wildcard deny under managed-only settings. The stronger empty-advertised-wire
+assertion still fails and is retained separately. This qualifies exercised
+model-tool effect denial, not universal internal-effect suppression.
+
+Both the executable preflight and actual SDK initialization now admit the exact
+qualified CLI versions 2.1.308 and 2.1.318. Other/missing versions still refuse.
+The expanded adapter control failed only for the newly qualified version before
+the change, with 429 controls passing. Afterward the adapter/confinement selection
+passes all 450 cases; server-test types and scoped read-only lint pass. A fresh
+independent review inspected the effect marker files and accepted this narrow
+version admission. Live-provider same-Session ACK acceptance is still pending.
+Private scripts and receipts are retained at
+`/tmp/child-work-claude-2318-zq_k0o90`.
+
+Independent source review confirms that #205 still lacks native pre-model
+allocation and effect-time enforcement for finite token/cost/attempt budgets,
+mutable resources and credential restrictions. The published Flow contract is
+available; carrying envelope metadata cannot supply those missing owners.
+Inherited native requests must remain incomplete until enforcement exists.
+The finalizer selection reproduces one unchanged 60-second timeout with eight
+controls passing. A separate diagnostic CPU profile reproduces it; no timeout
+or qualification guard is relaxed. Whole-epic delivery remains NOT_READY.
+
 ### Historical delivery checkpoint at `5a212193a67d`
 
 **NOT_READY.** At the merged-main test prefix `5a212193a67d`, the retention,
