@@ -1,7 +1,8 @@
-import { mkdtemp, rm, stat, symlink } from 'node:fs/promises';
+import { stat, symlink } from 'node:fs/promises';
 import * as os from 'node:os';
 import { isAbsolute, join, relative } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { prepareManagedEngineWorkspace } from '../../infra/managed-engine-workspace.js';
 import {
   isStationChatFolder,
@@ -17,16 +18,14 @@ vi.mock('node:os', async (importOriginal) => {
   };
 });
 
-let profile: string | undefined;
+const makeTempDir = trackTempDirs();
 
-afterEach(async () => {
+afterEach(() => {
   vi.resetAllMocks();
-  if (profile) await rm(profile, { recursive: true, force: true });
-  profile = undefined;
 });
 
 test('Windows chat workspaces avoid private Station ancestors and remain isolated by Station', async () => {
-  profile = await mkdtemp(join(os.tmpdir(), 'station-windows-workspaces-'));
+  const profile = makeTempDir('station-windows-workspaces-');
   vi.mocked(os.platform).mockReturnValue('win32');
   vi.mocked(os.homedir).mockReturnValue(profile);
   const home = join(profile, '.station', 'instances', 'nightly');
@@ -59,7 +58,7 @@ test('Windows chat workspaces avoid private Station ancestors and remain isolate
 });
 
 test('Windows scratch preparation refuses a redirected workspace parent', async () => {
-  profile = await mkdtemp(join(os.tmpdir(), 'station-windows-workspace-link-'));
+  const profile = makeTempDir('station-windows-workspace-link-');
   vi.mocked(os.platform).mockReturnValue('win32');
   vi.mocked(os.homedir).mockReturnValue(profile);
   await symlink(os.tmpdir(), join(profile, '.station-workspaces'), 'junction');
