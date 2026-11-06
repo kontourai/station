@@ -376,6 +376,15 @@ export function translateChatError(
   const { status, message, code } = input;
   const text = message || '';
 
+  if (text === 'The requested conversation is unavailable.') {
+    return {
+      title: 'This chat could not be resumed',
+      body: 'Station could not access the saved session needed to continue this chat.',
+      hint: 'Repeating Send will not repair the session. If a message has uncertain delivery, use Refresh delivery before sending a copy.',
+      retryable: false,
+    };
+  }
+
   // The server wraps EVERY failed engine start in this code
   // (`runSessionStartWithBoundary`): an expired login and a Codex "thread …
   // already has an active writer" arrive alike, the engine's text followed by

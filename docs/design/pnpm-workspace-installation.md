@@ -48,7 +48,7 @@ import. The server build bundles it into a self-contained
 Preserve the managed `dependencies:*` entry points. They bootstrap the exact
 pnpm pin, force an inert install, inspect all installed lifecycle packages,
 validate their locked identity and complete hook set, run approved hooks, and
-verify native artifacts. Native pnpm patches replace post-install patching.
+verify native artifacts. Native pnpm patches replace post-install patching. Upstream Linux PTY binaries do not automatically enter Station's attested prebuild channel: with no approved current-target artifact, the managed staging phase removes that package-owned target directory before its hook so the existing source-build verification path remains authoritative. Symlink/junction redirection refuses deletion; other platform directories remain intact.
 Disable pnpm's automatic installation before script execution and dependency
 scripts by default, so `pnpm run` cannot execute dependency hooks before this
 boundary. Existing verification preflight continues to reject stale installs.
