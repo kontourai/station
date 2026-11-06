@@ -70,7 +70,7 @@ function getNodePty(): Promise<typeof import('node-pty')> {
   return nodePtyPromise;
 }
 
-/** node-pty 1.2.0-beta.17 publishes its Windows PID at this private seam. */
+/** The pinned Windows backend publishes its PID at this private seam. */
 function waitForPendingPtyPid(pty: import('node-pty').IPty): Promise<void> {
   const socket = '_socket' in pty ? pty._socket : undefined;
   if (!(socket instanceof EventEmitter)) {
@@ -101,7 +101,7 @@ function waitForPendingPtyPid(pty: import('node-pty').IPty): Promise<void> {
       // Let all ready listeners finish before admitting a launch that may fail there.
       queueMicrotask(() =>
         finish(
-          Number.isInteger(pty.pid) && pty.pid > 0
+          Number.isSafeInteger(pty.pid) && pty.pid > 0
             ? undefined
             : new Error('PTY startup did not report a positive process ID'),
         ),
@@ -164,6 +164,7 @@ function releaseNativePty(pty: import('node-pty').IPty): void {
 class NodePtyProcess implements IPtyProcess {
   private exited = false;
   private termination?: Promise<void>;
+  private readonly controllingTty: string | undefined;
   readonly terminate?: () => Promise<void>;
   private paused = false;
   private pauseEpoch = 0;
@@ -171,6 +172,9 @@ class NodePtyProcess implements IPtyProcess {
   private pauseWatch?: ReturnType<typeof setTimeout>;
 
   constructor(private pty: import('node-pty').IPty) {
+    const tty = '_pty' in pty ? pty._pty : undefined;
+    this.controllingTty =
+      typeof tty === 'string' ? tty.replace(/^\/dev\//, '') : undefined;
     pty.onExit(() => {
       this.exited = true;
       if (this.paused) this.outputIncomplete = true;
@@ -247,7 +251,11 @@ class NodePtyProcess implements IPtyProcess {
   private terminateGroups(): Promise<void> {
     this.termination ??= (async () => {
       try {
-        await terminatePtyProcessGroups(this.pid, () => !this.exited);
+        await terminatePtyProcessGroups(
+          this.pid,
+          () => !this.exited,
+          this.controllingTty,
+        );
       } catch (error) {
         if (!this.exited) this.pty.kill('SIGKILL');
         throw error;
@@ -452,7 +460,7 @@ export class NodePtyAdapter implements IPtyAdapter {
       });
       if (pty.pid === 0) await waitForPendingPtyPid(pty);
       if (exited) throw new Error('PTY exited before startup completed');
-      if (!Number.isInteger(pty.pid) || pty.pid <= 0) {
+      if (!Number.isSafeInteger(pty.pid) || pty.pid <= 0) {
         throw new Error('PTY startup did not report a positive process ID');
       }
       trackChildWorkload(launch, pty.pid);

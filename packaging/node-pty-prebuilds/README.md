@@ -5,12 +5,12 @@ the exact `node-pty` version in `pnpm-lock.yaml`. **The current manifest has no
 artifacts**, so Linux uses the existing source-build path and still needs its
 toolchain. A future reviewed artifact can be staged into
 `node_modules/node-pty/prebuilds/<target>/` by the dependency lifecycle (#1245).
-The pinned upstream package also bundles Linux binaries. Their presence is
-not approval for this channel: when the current Linux target has no manifest
-entry, the managed lifecycle sets `npm_config_build_from_source=true` for
-node-pty's hooks. The upstream hook removes bundled prebuilds and selects the
-trusted node-gyp source build. Darwin and Windows keep their reviewed upstream
-prebuilds.
+The pinned upstream package also ships Linux prebuilds. Station's current
+Linux approval requires `build/Release/pty.node`; the lifecycle runner forces
+the upstream source-build option for that decision. The presence of an upstream
+prebuild directory does not approve its compatibility. A future reviewed
+prebuild decision uses upstream's own `prebuilds/` layout without a fork or
+vendored package.
 
 ## Contents
 

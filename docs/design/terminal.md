@@ -294,7 +294,15 @@ The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
 unknown or changed tty identity refuses all census signals; the adapter kills
 its owned shell handle and reports the cleanup failure instead of guessing
 at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
-On Windows the operation ends the shell's process tree with `taskkill /T /F`
+Before any census signal, a new POSIX child may still be attaching its
+controlling tty. The adapter retains the native fork's device name and waits
+within the existing census/deadline bounds for that exact binding. A different
+concrete device, an unknown binding after admission, or an ownership change
+still refuses signals; a missing binding never becomes successful cleanup.
+The backend is pinned to node-pty `1.2.0-beta.18`, whose Windows native handle
+registry is synchronized across spawn and exit threads. This pin is a published
+prerelease. Managed Linux installs retain the approved source-build path;
+upstream Linux prebuilds are not selected by directory presence. On Windows the operation ends the shell's process tree with `taskkill /T /F`
 before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
@@ -1180,7 +1188,7 @@ resizes, so ConPTY output replayed at another size can repaint over lines
 already scrolled. Earlier Windows floors lost a forked worker without an
 assertion or diagnostic. Issue #4626 now records the captured access violation
 (`0xc0000005`) and a controlled reproduction in node-pty 1.1's unsynchronized
-native handle-table removal. The exact 1.2.0-beta.17 dependency includes the
+native handle-table removal. The exact 1.2.0-beta.18 dependency includes the
 upstream locking and cancellation fixes; the Windows adapter suite checks
 positive-PID admission, an isolated concurrent exit/resize child, paused silent
 exit cleanup, and late vendor readiness after cancellation. Qualification of a

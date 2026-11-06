@@ -51,6 +51,41 @@ describe('PTY process-group census custody', () => {
     },
   );
 
+  test('waits without signals for a new child to acquire its native-bound tty', async () => {
+    let reads = 0;
+    census.read.mockImplementation(async () => {
+      reads++;
+      if (reads <= 2) expect(process.kill).not.toHaveBeenCalled();
+      return { stdout: reads === 1 ? '100 1 100 ??\n' : root };
+    });
+    await terminatePtyProcessGroups(100, () => true, 'ttys3994');
+    expect(process.kill).toHaveBeenCalledWith(-100, 'SIGKILL');
+  });
+
+  test('a different concrete tty never satisfies the native-bound ownership', async () => {
+    census.read.mockResolvedValue({ stdout: root });
+    await expect(
+      terminatePtyProcessGroups(100, () => true, 'ttys9999'),
+    ).rejects.toThrow('Terminal controlling tty ownership unavailable');
+    expect(process.kill).not.toHaveBeenCalled();
+  });
+
+  test('an initially missing native binding never turns into successful cleanup', async () => {
+    census.read.mockResolvedValue({ stdout: '100 1 100 ??\n' });
+    await expect(
+      terminatePtyProcessGroups(100, () => true, 'ttys3994'),
+    ).rejects.toThrow('Terminal process groups did not quiesce');
+    expect(process.kill).not.toHaveBeenCalled();
+  });
+
+  test('an invalid native device refuses admission before any census signal', async () => {
+    census.read.mockResolvedValue({ stdout: root });
+    await expect(
+      terminatePtyProcessGroups(100, () => true, 'pts/../1'),
+    ).rejects.toThrow('Terminal controlling tty ownership unavailable');
+    expect(process.kill).not.toHaveBeenCalled();
+  });
+
   test('rescans after freezing and kills a newly discovered reparented tty group', async () => {
     census.read
       .mockResolvedValueOnce({ stdout: root })

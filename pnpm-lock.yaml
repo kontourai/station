@@ -365,8 +365,8 @@ importers:
         specifier: ^6.3.0
         version: 6.3.0
       node-pty:
-        specifier: 1.2.0-beta.17
-        version: 1.2.0-beta.17
+        specifier: 1.2.0-beta.18
+        version: 1.2.0-beta.18
       pdfjs-dist:
         specifier: ^6.5.438
         version: 6.5.438
@@ -7427,8 +7427,8 @@ packages:
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
 
-  node-pty@1.2.0-beta.17:
-    resolution: {integrity: sha512-GapdTQQjXyS9ICBgsnBG27Ltfkh3hzTbFcC8r1MxRLsTVyA/3/8z1Vu+DJSNWhtKjwfTjoSPyCN6hQ/fwxlh9A==}
+  node-pty@1.2.0-beta.18:
+    resolution: {integrity: sha512-3Rej3788OnasAwoSmTZhlCeUraJ9CQldtL5b571b9+3Nv47+PaxA5VPIGOOs+16OYQePTrC1Lrs8a9/df5WPRg==}
 
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
@@ -16377,7 +16377,7 @@ snapshots:
 
   node-int64@0.4.0: {}
 
-  node-pty@1.2.0-beta.17:
+  node-pty@1.2.0-beta.18:
     dependencies:
       node-addon-api: 7.1.1
 

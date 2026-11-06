@@ -164,32 +164,57 @@ describe('pending native PTY startup admission', () => {
       adapter,
       data: (value: string) => data.emit('data', value),
       exit: () => {
-        for (const callback of exits) callback({ exitCode: 1 });
+        for (const callback of [...exits]) callback({ exitCode: 1 });
+        exits.clear();
       },
     };
   }
 
-  test('does not publish or track PID zero, and admits a quiet ready process', async () => {
+  test('does not publish PID zero and terminates its quiet ready Windows process', async () => {
     const backend = await pendingBackend();
-    let admitted = false;
-    const pending = backend.adapter.spawn(SPAWN_INPUT).then((proc) => {
-      admitted = true;
-      return proc;
-    });
-    await vi.waitFor(() => expect(backend.spawn).toHaveBeenCalledOnce());
-    expect(admitted).toBe(false);
-    expect(backend.launch.started).not.toHaveBeenCalled();
-    backend.pty.pid = 9321;
-    backend.socket.emit('ready_datapipe');
-    const proc = await pending;
-    expect(proc.pid).toBe(9321);
-    expect(backend.launch.started).toHaveBeenCalledExactlyOnceWith(9321);
-    const output = vi.fn();
-    proc.onData(output);
-    backend.data('after admission');
-    expect(output).toHaveBeenCalledExactlyOnceWith('after admission');
-    backend.exit();
-    await vi.waitFor(() => expect(backend.launch.close).toHaveBeenCalledOnce());
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    const taskkill = vi
+      .mocked(execFile)
+      .mockImplementation((_file, _args, _options, callback) => {
+        callback!(null, '', '');
+        backend.exit();
+        return new ChildProcess();
+      });
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      let admitted = false;
+      const pending = backend.adapter.spawn(SPAWN_INPUT).then((proc) => {
+        admitted = true;
+        return proc;
+      });
+      await vi.waitFor(() => expect(backend.spawn).toHaveBeenCalledOnce());
+      expect(admitted).toBe(false);
+      expect(backend.launch.started).not.toHaveBeenCalled();
+      backend.pty.pid = 9321;
+      backend.socket.emit('ready_datapipe');
+      const proc = await pending;
+      expect(proc.pid).toBe(9321);
+      expect(backend.launch.started).toHaveBeenCalledExactlyOnceWith(9321);
+      const output = vi.fn();
+      proc.onData(output);
+      backend.data('after admission');
+      expect(output).toHaveBeenCalledExactlyOnceWith('after admission');
+      await proc.terminate!();
+      expect(taskkill).toHaveBeenCalledExactlyOnceWith(
+        'taskkill',
+        ['/T', '/F', '/PID', '9321'],
+        { timeout: 5_000, windowsHide: true },
+        expect.any(Function),
+      );
+      await vi.waitFor(() =>
+        expect(backend.launch.close).toHaveBeenCalledOnce(),
+      );
+    } finally {
+      backend.socket.emit('ready_datapipe');
+      backend.exit();
+      Object.defineProperty(process, 'platform', platform);
+      vi.mocked(execFile).mockReset();
+    }
   });
 
   test('releases a quiet Windows backend after its admitted process exits', async () => {
@@ -480,7 +505,7 @@ describe.skipIf(process.platform === 'win32')(
       census.read.mockReset();
     });
 
-    async function backend() {
+    async function backend(nativeTty?: string) {
       vi.useFakeTimers();
       const exits: ((event: { exitCode: number; signal?: number }) => void)[] =
         [];
@@ -504,6 +529,7 @@ describe.skipIf(process.platform === 'win32')(
         pause: vi.fn(),
         resume: vi.fn(),
       } satisfies import('node-pty').IPty;
+      if (nativeTty !== undefined) Object.assign(pty, { _pty: nativeTty });
       const native =
         await vi.importActual<typeof import('node-pty')>('node-pty');
       const adapter = new NodePtyAdapter(async () => ({
@@ -534,6 +560,19 @@ describe.skipIf(process.platform === 'win32')(
         expect(signal).not.toHaveBeenCalled();
       },
     );
+
+    test('the native tty binding admits cleanup only after the child attaches to it', async () => {
+      const { proc, pty } = await backend('/dev/ttys3994');
+      census.read
+        .mockResolvedValueOnce({ stdout: '4242 1 4242 ??\n' })
+        .mockResolvedValue({ stdout: '4242 1 4242 ttys3994\n' });
+      const signal = vi.spyOn(process, 'kill').mockReturnValue(true);
+      const stopped = expect(proc.terminate!()).resolves.toBeUndefined();
+      await vi.advanceTimersByTimeAsync(10);
+      await stopped;
+      expect(signal).toHaveBeenCalledWith(-4242, 'SIGKILL');
+      expect(pty.kill).not.toHaveBeenCalled();
+    });
 
     test('paused observation retries cap backoff at one second', async () => {
       const { proc, pty } = await backend();

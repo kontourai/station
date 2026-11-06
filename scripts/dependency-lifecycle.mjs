@@ -379,14 +379,25 @@ function confinedFile(packageRoot, relativePath) {
   );
 }
 
-function lifecycleEnvironment(packageRoot, hook) {
+function lifecycleEnvironment(packageRoot, hook, entry) {
   const nodeRoot = resolve(dirname(realpathSync(process.execPath)), '..');
   const useBundledHeaders =
     process.env.GITHUB_ACTIONS === 'true' &&
     !process.env.npm_config_nodedir &&
     existsSync(resolve(nodeRoot, 'include/node/node.h'));
+  // Upstream prebuilds must not override the approved Linux source-build mode.
+  const sourceBuild =
+    process.platform === 'linux' &&
+    entry.name === 'node-pty' &&
+    entry.artifact.proof === 'node-pty-smoke' &&
+    (
+      entry.artifact.platforms?.[`linux/${process.arch}`] ?? [
+        entry.artifact.path,
+      ]
+    ).includes('build/Release/pty.node');
   return {
     ...(useBundledHeaders ? { npm_config_nodedir: nodeRoot } : {}),
+    ...(sourceBuild ? { npm_config_build_from_source: 'true' } : {}),
     npm_config_ignore_scripts: 'true',
     npm_lifecycle_event: hook.name,
     npm_lifecycle_script: hook.command,
@@ -398,11 +409,11 @@ function lifecycleEnvironment(packageRoot, hook) {
   };
 }
 
-function runExactHook(packageRoot, hook, environment = {}) {
+function runExactHook(packageRoot, hook, entry) {
   const nodeScript = /^node ([A-Za-z0-9_./-]+\.m?js)$/.exec(hook.command);
   const prebuildFallback =
     /^node (scripts\/prebuild\.js) \|\| node-gyp rebuild$/.exec(hook.command);
-  const env = { ...lifecycleEnvironment(packageRoot, hook), ...environment };
+  const env = lifecycleEnvironment(packageRoot, hook, entry);
   if (nodeScript) {
     command(process.execPath, [confinedFile(packageRoot, nodeScript[1])], {
       cwd: packageRoot,
@@ -515,21 +526,11 @@ export function runApprovedHooks(allowlist, { cwd = root } = {}) {
     console.log(
       `[dependency-lifecycle] approved build ${entry.lock}:${entry.path}`,
     );
-    // Archive-provided Linux binaries are not the reviewed prebuild channel.
-    const environment =
-      process.platform === 'linux' &&
-      entry.name === 'node-pty' &&
-      entry.artifact?.proof === 'node-pty-smoke' &&
-      !readNodePtyPrebuildManifest(cwd)?.artifacts[
-        `${process.platform}-${process.arch}`
-      ]
-        ? { npm_config_build_from_source: 'true' }
-        : {};
     let built = true;
     try {
       for (const hook of entry.hooks) {
         const started = performance.now();
-        runExactHook(packageRoot, hook, environment);
+        runExactHook(packageRoot, hook, entry);
         console.log(
           `[dependency-lifecycle] executed ${entry.lock}:${entry.path}:${hook.name} in ${Math.round(performance.now() - started)}ms`,
         );
