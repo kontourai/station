@@ -446,8 +446,10 @@ an attempted change that never committed; a stored choice that fails to load sta
 Station with sharing off. `account-sharing-origins.ts` derives the offered sign-in
 origins from UI ingress and UI-targeted Serve evidence, filtered by browser admission. `account-sharing-routes.ts`
 (`/api/operator/account-sharing`, operator only, `project-sharing-setting` Feature
-Preview) creates an action-bound consent transaction; its separate-origin approval
-validates and stages a change and asks the process supervisor for a handoff.
+Preview) creates an action-bound consent transaction. Browsers review it on the
+separate consent origin; native apps use a host-held requester session and OS
+dialog over the main API connection. Approval validates and stages a change and
+asks the process supervisor for a handoff.
 Deployment variables lock the setting; the stored shape cannot name a module.
 
 **Evidence and limits.** External-module HTTP fixtures and the real runtime

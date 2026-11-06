@@ -218,7 +218,9 @@ test.each([
     expect(link.getAttribute('href')).toBe(
       'http://localhost:3144/consent/12345678-1234-4123-8123-123456789abc',
     );
-    expect(screen.queryByText(/Station is restarting to apply this/)).toBeNull();
+    expect(
+      screen.queryByText(/Station is restarting to apply this/),
+    ).toBeNull();
     fireEvent.click(link);
     await waitFor(() =>
       expect(review.show).toHaveBeenCalledWith(
@@ -232,10 +234,9 @@ test.each([
         'Review unavailable',
       );
       expect(review.close).toHaveBeenCalledOnce();
-      expect(screen.getByRole('button', { name: 'Review change' })).toHaveProperty(
-        'disabled',
-        false,
-      );
+      expect(
+        screen.getByRole('button', { name: 'Review change' }),
+      ).toHaveProperty('disabled', false);
     } else if (outcome !== undefined) {
       await waitFor(() =>
         expect(
@@ -256,7 +257,9 @@ test.each([
       }
     } else {
       expect(
-        screen.getByRole('link', { name: 'Open the separate confirmation page' }),
+        screen.getByRole('link', {
+          name: 'Open the separate confirmation page',
+        }),
       ).toBeTruthy();
     }
   },

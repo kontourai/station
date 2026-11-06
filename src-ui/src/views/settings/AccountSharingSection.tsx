@@ -177,7 +177,10 @@ function SharingControls({
     setReviewing(true);
     const since = new Date().toISOString();
     try {
-      const status = await surface.show(confirmation.id, confirmation.reviewUrl);
+      const status = await surface.show(
+        confirmation.id,
+        confirmation.reviewUrl,
+      );
       if (status !== undefined) {
         setConfirmation(undefined);
         if (status === 'approved') {
