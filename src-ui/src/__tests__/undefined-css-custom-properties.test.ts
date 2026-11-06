@@ -251,7 +251,7 @@ function collectReferences(): Array<Reference & { expression: VarExpression }> {
   const references: Array<Reference & { expression: VarExpression }> = [];
   for (const root of REFERENCE_ROOTS) {
     for (const file of walk(root, SOURCE_EXTENSIONS)) {
-      const relative = path.relative(REPO_ROOT, file);
+      const relative = path.relative(REPO_ROOT, file).split(path.sep).join('/');
       readFileSync(file, 'utf8')
         .split('\n')
         .forEach((line, index) => {

@@ -5,7 +5,12 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
+import type { StationConnection } from '../../connections/station-connection';
+import { onStationConnectionRetired } from '../../connections/station-connection-registry';
+import { stationPartitionKey } from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { backgroundTasksStore } from '../../contexts/background-tasks-store';
+import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { workObservation } from '../../contexts/work-observation';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
@@ -124,6 +129,24 @@ const owners = new Map<string, number>();
 const generalOwners = new Map<string, number>();
 const streamAuthorities = new Map<string, string | undefined>();
 const streamModes = new Map<string, boolean>();
+const streamConnections = new Map<string, StationConnection>();
+const streamConnectionOwners = new Map<string, StationConnection[]>();
+function streamQueryPrefix(root: string, apiBase: string): string[] {
+  const station = streamConnections.get(apiBase);
+  if (station)
+    return [
+      root,
+      apiBase,
+      station.requestScope.authorityKey,
+      station.runtimeKey,
+    ];
+  const client = currentStreamQueryClient(
+    apiBase,
+    streamConnections.get(apiBase)?.requestScope.authorityKey,
+  );
+  const authorityKey = client && currentStreamAuthorityKey(apiBase, client);
+  return authorityKey ? [root, apiBase, authorityKey] : [root];
+}
 let recoveryListenersInstalled = false;
 let hiddenSince: number | undefined;
 /** apiBases whose chats this document has already seeded from a snapshot. */
@@ -293,9 +316,12 @@ function requestConversationInventoryRefresh(apiBase: string): void {
   if (state.inventoryAwaitingSettle !== undefined) return;
   const run = () => {
     state.inventoryDeferred = undefined;
-    const client = currentStreamQueryClient(apiBase);
+    const client = currentStreamQueryClient(
+      apiBase,
+      streamConnections.get(apiBase)?.requestScope.authorityKey,
+    );
     if (!client) return;
-    const queryKey = ['conversation-inventory'];
+    const queryKey = streamQueryPrefix('conversation-inventory', apiBase);
     if (client.isFetching({ queryKey, type: 'active' }) > 0) {
       const stop = client.getQueryCache().subscribe(() => {
         if (client.isFetching({ queryKey, type: 'active' }) > 0) return;
@@ -308,7 +334,14 @@ function requestConversationInventoryRefresh(apiBase: string): void {
     }
     state.inventoryLastAt = Date.now();
     void client.invalidateQueries(
-      { queryKey, type: 'active' },
+      {
+        queryKey,
+        type: 'active',
+        predicate: (query) =>
+          queryKey.length > 1 ||
+          query.queryKey.length === 1 ||
+          query.queryKey[1] === apiBase,
+      },
       { cancelRefetch: false },
     );
   };
@@ -326,9 +359,17 @@ function refreshSessionReadModelOnFact(
   event: OrchestrationEvent,
 ): void {
   if (!SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
-  const client = currentStreamQueryClient(apiBase);
+  const client = currentStreamQueryClient(
+    apiBase,
+    streamConnections.get(apiBase)?.requestScope.authorityKey,
+  );
   void client?.invalidateQueries(
-    { queryKey: ['conversation-inbox', apiBase], type: 'active' },
+    {
+      queryKey: streamConnections.has(apiBase)
+        ? streamQueryPrefix('conversation-inbox', apiBase)
+        : ['conversation-inbox', apiBase],
+      type: 'active',
+    },
     { cancelRefetch: false },
   );
   if (CONVERSATION_INVENTORY_REST_METHODS.has(event.method))
@@ -376,10 +417,13 @@ function requestSessionReadModelRefresh(apiBase: string): void {
 }
 
 function refreshSessionReadModelNow(apiBase: string): void {
-  const client = currentStreamQueryClient(apiBase);
+  const client = currentStreamQueryClient(
+    apiBase,
+    streamConnections.get(apiBase)?.requestScope.authorityKey,
+  );
   if (!client) return;
   const state = sessionReadModelRefreshState(apiBase);
-  const queryKey = ['orchestration-sessions'];
+  const queryKey = streamQueryPrefix('orchestration-sessions', apiBase);
   if (client.isFetching({ queryKey }) > 0) {
     state.owed = true;
     const stop = client.getQueryCache().subscribe(() => {
@@ -395,7 +439,13 @@ function refreshSessionReadModelNow(apiBase: string): void {
   }
   state.owed = false;
   state.lastAt = Date.now();
-  void client.invalidateQueries({ queryKey });
+  void client.invalidateQueries({
+    queryKey,
+    predicate: (query) =>
+      queryKey.length > 1 ||
+      query.queryKey.length === 1 ||
+      query.queryKey[1] === apiBase,
+  });
 }
 
 /**
@@ -428,7 +478,17 @@ export function ensureOrchestrationEventStream(
   authorityKey?: string,
   general = false,
   sharedRealtime = false,
+  station?: StationConnection,
 ): () => void {
+  if (station) {
+    if (!station.isCurrent() || station.targetApiBase !== apiBase)
+      return () => {};
+    authorityKey = station.runtimeKey;
+    if (station.routeKind !== 'host') {
+      general = false;
+      sharedRealtime = false;
+    }
+  }
   const replacedAuthority =
     authorityKey !== undefined &&
     streamAuthorities.has(apiBase) &&
@@ -436,10 +496,26 @@ export function ensureOrchestrationEventStream(
   if (replacedAuthority) {
     owners.delete(apiBase);
     generalOwners.delete(apiBase);
+    streamConnectionOwners.delete(apiBase);
   }
+  if (station && queryClient) workObservation(queryClient, station);
   const releaseClient = queryClient
-    ? registerOrchestrationStreamQueryClient(apiBase, queryClient, authorityKey)
+    ? registerOrchestrationStreamQueryClient(
+        apiBase,
+        queryClient,
+        station?.requestScope.authorityKey ?? authorityKey,
+      )
     : () => {};
+  if (station) {
+    const connections = streamConnectionOwners.get(apiBase) ?? [];
+    connections.push(station);
+    streamConnectionOwners.set(apiBase, connections);
+    streamConnections.set(apiBase, station);
+  }
+  const releaseTasks = backgroundTasksStore.retainPartition(station ?? apiBase);
+  const releaseChildren = childWorkGlobalStore.retainPartition(
+    stationPartitionKey(station ?? apiBase),
+  );
   owners.set(apiBase, (owners.get(apiBase) ?? 0) + 1);
   if (general)
     generalOwners.set(apiBase, (generalOwners.get(apiBase) ?? 0) + 1);
@@ -454,10 +530,25 @@ export function ensureOrchestrationEventStream(
   connectOrchestrationEventStream(apiBase, authorityKey);
   if (general && !streamModes.get(apiBase)) startLegacyGeneral(apiBase);
   let released = false;
-  return () => {
+  let releaseRetirement = () => {};
+  const release = () => {
     if (released) return;
     released = true;
+    releaseRetirement();
     releaseClient();
+    releaseTasks();
+    releaseChildren();
+    if (station) {
+      const connections = streamConnectionOwners.get(apiBase);
+      const index = connections?.indexOf(station) ?? -1;
+      if (index !== -1) connections?.splice(index, 1);
+      const current = connections
+        ?.filter((connection) => connection.isCurrent())
+        .at(-1);
+      if (current) streamConnections.set(apiBase, current);
+      else streamConnections.delete(apiBase);
+      if (!connections?.length) streamConnectionOwners.delete(apiBase);
+    }
     if (
       authorityKey !== undefined &&
       streamAuthorities.get(apiBase) !== authorityKey
@@ -479,7 +570,10 @@ export function ensureOrchestrationEventStream(
       return;
     }
     owners.delete(apiBase);
+    settleSemanticDeliveryBuffer(apiBase, true);
     requestedBases.delete(apiBase);
+    streamConnections.delete(apiBase);
+    streamConnectionOwners.delete(apiBase);
     streamModes.delete(apiBase);
     const owned = activeSources.get(apiBase);
     if (owned) {
@@ -490,18 +584,35 @@ export function ensureOrchestrationEventStream(
     }
     if (owners.size === 0) removeRecoveryListeners();
   };
+  if (station) {
+    releaseRetirement = onStationConnectionRetired(station, release);
+    if (!station.isCurrent()) release();
+  }
+  return release;
 }
 
 function connectOrchestrationEventStream(
   apiBase: string,
   authorityKey?: string,
 ): void {
+  const source = streamConnections.get(apiBase);
+  const station = source
+    ? {
+        ...source,
+        isCurrent: () => {
+          const owner = streamConnections.get(apiBase);
+          return owner?.runtimeKey === source.runtimeKey && owner.isCurrent();
+        },
+      }
+    : undefined;
+  if (station && !station.isCurrent()) return;
   let existing = activeSources.get(apiBase);
   if (
     authorityKey !== undefined &&
     streamAuthorities.has(apiBase) &&
     streamAuthorities.get(apiBase) !== authorityKey
   ) {
+    settleSemanticDeliveryBuffer(apiBase, true);
     if (existing) {
       clearDeferredParkedRetry(existing);
       existing.legacyGeneral?.close();
@@ -568,6 +679,7 @@ function connectOrchestrationEventStream(
     `${apiBase}/api/orchestration/events${streamModes.get(apiBase) ? '?includeGeneral=1' : ''}`,
     {
       authentication: 'required',
+      ...(station ? { requestScope: station.requestScope } : {}),
       initialLastEventId,
       // station#2301: lets the server's stream open/close lines say WHICH
       // document connected — see `clientDocumentSession.ts`.
@@ -591,7 +703,8 @@ function connectOrchestrationEventStream(
       onOpen: (response) => {
         if (
           activeSources.get(apiBase) !== owned ||
-          owned.connection.signal.aborted
+          owned.connection.signal.aborted ||
+          (station && !station.isCurrent())
         )
           return;
         if (
@@ -637,15 +750,22 @@ function connectOrchestrationEventStream(
               caughtUp as OrchestrationSnapshotPayload,
               {
                 apiBase,
+                station,
                 isReconnectFallback: hasReceivedSnapshot,
-                queryClient: currentStreamQueryClient(apiBase),
+                queryClient: currentStreamQueryClient(
+                  apiBase,
+                  station?.requestScope.authorityKey,
+                ),
               },
             );
-            const client = currentStreamQueryClient(apiBase);
+            const client = currentStreamQueryClient(
+              apiBase,
+              station?.requestScope.authorityKey,
+            );
             if (client)
               for (const session of caughtUp.sessions) {
                 if (session.conversationActivity)
-                  workObservation(client).streamObserved(
+                  workObservation(client, station).streamObserved(
                     session.conversationActivity,
                   );
               }
@@ -672,32 +792,45 @@ function connectOrchestrationEventStream(
             previousEpoch &&
             payload.epoch !== previousEpoch
           ) {
-            activeChatsStore.clearConversationActivity();
+            activeChatsStore.clearConversationActivity(station);
             clearSequencedLiveEvents(apiBase);
-            const client = currentStreamQueryClient(apiBase);
-            if (client) workObservation(client).resetStreamEpoch();
+            const client = currentStreamQueryClient(
+              apiBase,
+              station?.requestScope.authorityKey,
+            );
+            if (client) workObservation(client, station).resetStreamEpoch();
           }
           if (payload.epoch) streamEpochs.set(apiBase, payload.epoch);
           cursor.adopt(raw.id);
           if (parseStreamSequence(raw.id) !== undefined)
             appliedCursors.set(apiBase, raw.id!);
-          recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
+          if (!station || station.routeKind === 'host')
+            recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
           applyOrchestrationSnapshot(payload, {
             apiBase,
+            station,
             isReconnectFallback: hasReceivedSnapshot,
-            queryClient: currentStreamQueryClient(apiBase),
+            queryClient: currentStreamQueryClient(
+              apiBase,
+              station?.requestScope.authorityKey,
+            ),
           });
-          const client = currentStreamQueryClient(apiBase);
+          const client = currentStreamQueryClient(
+            apiBase,
+            station?.requestScope.authorityKey,
+          );
           if (client)
             for (const session of payload.sessions) {
               if (session.conversationActivity)
-                workObservation(client).streamObserved(
+                workObservation(client, station).streamObserved(
                   session.conversationActivity,
                 );
             }
           // Overflow compaction replaces non-durable list and inbox hints too.
           if (client) {
-            const currentAuthority = currentStreamAuthorityKey(apiBase, client);
+            const currentAuthority =
+              station?.requestScope.authorityKey ??
+              currentStreamAuthorityKey(apiBase, client);
             const scope =
               currentAuthority === undefined
                 ? [apiBase]
@@ -717,10 +850,14 @@ function connectOrchestrationEventStream(
           };
           activeChatsStore.applyConversationActivity(
             payload.conversation?.activity,
+            ...(station ? [station] : []),
           );
-          const client = currentStreamQueryClient(apiBase);
+          const client = currentStreamQueryClient(
+            apiBase,
+            station?.requestScope.authorityKey,
+          );
           if (client && payload.conversation?.activity)
-            workObservation(client).streamObserved(
+            workObservation(client, station).streamObserved(
               payload.conversation.activity,
             );
         } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
@@ -743,10 +880,14 @@ function connectOrchestrationEventStream(
             payload.provenance,
             payload.conversation,
             parseStreamSequence(raw.id),
+            station,
           );
-          const client = currentStreamQueryClient(apiBase);
+          const client = currentStreamQueryClient(
+            apiBase,
+            station?.requestScope.authorityKey,
+          );
           if (client && payload.conversation?.activity)
-            workObservation(client).streamObserved(
+            workObservation(client, station).streamObserved(
               payload.conversation.activity,
             );
           refreshSessionReadModelOnFact(apiBase, payload.event);
@@ -877,11 +1018,14 @@ function connectOrchestrationEventStream(
 }
 
 function startLegacyGeneral(apiBase: string): void {
+  const station = streamConnections.get(apiBase);
+  if (station && station.routeKind !== 'host') return;
   const owned = activeSources.get(apiBase);
   if (!owned || owned.legacyGeneral) return;
   // General events have no replay cursor, so do not wait for orchestration.
   const legacy = fetchSSE(`${apiBase}/events`, {
     authentication: 'required',
+    ...(station ? { requestScope: station.requestScope } : {}),
     headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
     retryDelayMs: 3000,
     maxRetryDelayMs: 30_000,

@@ -29,6 +29,7 @@ import {
   type WebSocketCredentialResolver,
   websocketCloseError,
 } from '../../utils/browserWebSocketAuth';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 /** Current server-normalized states plus aliases still emitted by older Nova. */
 type VoiceWireState = VoiceSessionLifecycleState | 'idle' | 'processing';
@@ -283,9 +284,9 @@ export class NovaVoiceSessionAdapter
         } catch (error) {
           void this.fail(
             generation,
-            error instanceof Error
+            error instanceof StationRawEgressUnavailableError
               ? error.message
-              : 'Voice is unavailable for the selected Station.',
+              : describeStationFailure(error).body,
             'provider_failed',
           );
           return;
@@ -430,9 +431,7 @@ export class NovaVoiceSessionAdapter
     } catch (error) {
       void this.fail(
         generation,
-        error instanceof Error
-          ? error.message
-          : 'Voice is unavailable for the selected Station.',
+        describeStationFailure(error).body,
         'provider_failed',
       );
       return;

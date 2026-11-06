@@ -31,6 +31,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import { copyToClipboard } from '../../lib/clipboard';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   TaskPicker,
   type TaskPickerAdapter,
@@ -407,8 +408,7 @@ function RunDetail({
   if (error) {
     return (
       <p className="flow-run-console__error" role="alert">
-        Run unavailable:{' '}
-        {error instanceof Error ? error.message : String(error)}
+        Run unavailable: {describeStationFailure(error).body}
       </p>
     );
   }
@@ -710,8 +710,7 @@ function EnabledFlowRunConsole({
         )}
         {!isLoading && error && (
           <p className="flow-run-console__error" role="alert">
-            Flow runs unavailable:{' '}
-            {error instanceof Error ? error.message : String(error)}
+            Flow runs unavailable: {describeStationFailure(error).body}
           </p>
         )}
         {!isLoading && !error && sortedRuns.length === 0 && (

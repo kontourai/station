@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-sdk';
 import { Button } from '../../components/Button';
 import { ErrorState, SkeletonBlock } from '../../components/state';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 const LEVELS: Array<{ value: AgentNotificationLevel; label: string }> = [
   { value: 'all', label: 'All' },
@@ -66,7 +67,7 @@ export default function NotificationDeliverySettings() {
     return (
       <ErrorState
         title="Notification delivery settings could not be loaded"
-        description={preferences.error?.message}
+        description={describeStationFailure(preferences.error).body}
         action={
           unreadable ? (
             <Button
@@ -255,7 +256,7 @@ export default function NotificationDeliverySettings() {
       )}
       {(patch.error ?? update.error) && (
         <div className="settings__notif-error" role="alert">
-          {(patch.error ?? update.error)?.message}
+          {describeStationFailure(patch.error ?? update.error).body}
         </div>
       )}
     </fieldset>

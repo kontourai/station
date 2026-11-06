@@ -140,9 +140,10 @@ describe('deriveServerOlderOffer: when the server is older', () => {
 describe('deriveServerOlderOffer: no dead button', () => {
   test.each<[string, Partial<CoreUpdateStatus>, RegExp]>([
     [
-      'a refusal the server states with nothing to apply',
+      'an unknown release check with a host-management refusal',
       {
         selfUpdateUnavailableReason: 'stop the service first',
+        releaseCheck: 'unreachable',
         updateAvailable: false,
       },
       /cannot be updated from here: stop the service first/,
@@ -154,11 +155,6 @@ describe('deriveServerOlderOffer: no dead button', () => {
         applyMethod: 'station-upgrade',
       },
       /station upgrade/,
-    ],
-    [
-      'a ring with nothing newer',
-      { updateAvailable: false, latestVersion: '0.1.11-nightly.246303' },
-      /No newer nightly server release yet/,
     ],
     [
       'an unreachable manifest',
@@ -176,6 +172,30 @@ describe('deriveServerOlderOffer: no dead button', () => {
     expect(offer.kind).toBe('manual');
     expect(offer.kind === 'manual' && offer.remedy).toMatch(remedy);
   });
+
+  test.each([
+    ['archive-service', 'service-update'],
+    ['archive', 'station-upgrade'],
+  ] as const)(
+    'a current %s release with a host-management refusal raises no older-app notice',
+    (installKind, applyMethod) => {
+      expect(
+        deriveServerOlderOffer(
+          facts({
+            clientVersion: '0.1.11-nightly.20261105.1',
+            status: serviceArchive({
+              installKind,
+              applyMethod,
+              selfUpdateUnavailableReason: 'Managed on the host',
+              currentVersion: '0.1.11-nightly.250000',
+              latestVersion: '0.1.11-nightly.250000',
+              updateAvailable: false,
+            }),
+          }),
+        ),
+      ).toEqual({ kind: 'none' });
+    },
+  );
 
   test('never offers an apply to a server it cannot correlate', () => {
     const offer = deriveServerOlderOffer(facts({ identityMatches: false }));

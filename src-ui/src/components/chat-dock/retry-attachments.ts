@@ -1,4 +1,5 @@
 import { authenticatedFetch } from '@kontourai/station-sdk';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import type { FileAttachment } from '../../types';
 
 /**
@@ -108,6 +109,7 @@ function toBase64(bytes: Uint8Array): string {
 export async function resolveRetryAttachments(
   attachments: readonly RetryAttachment[],
   apiBase: string,
+  requestScope?: ApiRequestScope,
 ): Promise<FileAttachment[]> {
   const resolved = await Promise.all(
     attachments.map(async (attachment): Promise<FileAttachment | null> => {
@@ -119,6 +121,7 @@ export async function resolveRetryAttachments(
       try {
         const response = await authenticatedFetch(
           `${apiBase}/api/attachments/${encodeURIComponent(attachment.blobRef)}`,
+          ...(requestScope ? [{ requestScope }] : []),
         );
         if (!response.ok) return null;
         const bytes = new Uint8Array(await response.arrayBuffer());

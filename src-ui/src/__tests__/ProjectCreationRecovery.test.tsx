@@ -273,7 +273,9 @@ test('lost creation and starter responses recover after remount without duplicat
   await waitFor(() => expect(projectPosts).toBe(1));
   expect(localStorage.getItem(storageKey())).toContain(requestId);
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain('response lost'),
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Try again in a moment.',
+    ),
   );
   first.unmount();
   first.client.clear();
@@ -287,7 +289,9 @@ test('lost creation and starter responses recover after remount without duplicat
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
   await waitFor(() => expect(starterPosts).toBe(1));
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain('response lost'),
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Try again in a moment.',
+    ),
   );
   second.unmount();
   second.client.clear();
@@ -381,7 +385,7 @@ test('storage failure refuses dispatch, and malformed retained setup requires ex
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
   await waitFor(() =>
     expect(screen.getByRole('alert').textContent).toContain(
-      'Storage is unavailable',
+      'Try again in a moment.',
     ),
   );
   expect(posts).not.toHaveBeenCalled();

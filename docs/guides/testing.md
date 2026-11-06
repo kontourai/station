@@ -518,6 +518,30 @@ The mutation cases `ci-health-concurrency-threshold`, `ci-health-reentry-commits
 
 ## Running Tests
 
+### Conversation surface evidence
+
+`node scripts/conversation-boundary-gate.mjs` checks shared owner consumption,
+explicit authority, control/capability drift and raw failure sinks, including
+durable publishers and `String(error)`. The conversation baseline is empty.
+Exact manifest contracts distinguish host/domain composition and diagnostic
+Details from conversation policy; a changed fingerprint is reviewed again.
+`failureSurfaces` registers error publishers without misclassifying settings or
+other host views as conversation adapters.
+
+Run the gate's known-bad/control tests and the affected consumer tests. The
+browser route is `tests/conversation-surfaces.spec.ts`: local/direct/relay controls,
+owner/member/guest history, attached continuation and desktop/mobile Inbox.
+Typecheck browser fixtures with `npm run typecheck:e2e` and run
+`npm run test:fixtures:check` before the product and smoke-live lanes. Those runners
+require their supported POSIX host; Windows component fixtures do not qualify
+runtime authentication, process settlement or a native shell.
+
+For component captures use production components and CSS, typed domain/failed
+request fixtures and ordinary user actions. Capture 390/1440 pixels in light/dark,
+retain geometry and PNGs outside source, and open every image. State whether a
+capture shows a complete parent or its shared error region; neither substitutes
+for the actual failed-request or two-Station journey.
+
 ### Default implementation loop
 
 ```bash

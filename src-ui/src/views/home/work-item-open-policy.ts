@@ -230,6 +230,12 @@ export interface WorkItemOpenHandlers {
     projectName?: string,
     model?: string,
     conversationUpdatedAt?: string,
+    acceptedModel?: string,
+    activation?: {
+      signal?: AbortSignal;
+      isCurrent?: () => boolean;
+      beforeFocus?: () => boolean;
+    },
   ) => Promise<ConversationOpenResult> | ConversationOpenResult;
   onOpenSession: (threadId: string) => void;
   /** An unanswered catalog must not turn a legacy false into navigation

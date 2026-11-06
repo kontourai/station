@@ -15,7 +15,9 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { StatusSummary } from '../../components/StatusSummary';
 import { SkeletonBlock } from '../../components/state';
 import { ReleaseNotes } from '../../components/updates/ReleaseNotes';
 import {
@@ -26,6 +28,7 @@ import {
   type ConnectedServerUpdateContext,
   coreUpdateScopeFromContext,
 } from '../../hooks/useConnectedServerUpdateContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   ComparisonMessage,
   comparisonMetadata,
@@ -33,7 +36,6 @@ import {
   formatCheckTime,
   isArchiveInstall,
   SERVICE_UPDATE_IN_FLIGHT,
-  ServerUpdateHeader,
   serverIdentityMatchesView,
   serverUpdateBadge,
   serviceProgressIsHistory,
@@ -690,13 +692,14 @@ export function CoreUpdateCheck({
   );
 
   return (
-    <div className="server-update">
-      <ServerUpdateHeader
+    <div className="server-update content-stack">
+      <StatusSummary
         title={title}
         headingId={headingId}
         badge={badge}
         current={status?.currentVersion}
         target={targetVersion}
+        checkedAt={!comparisonSuperseded ? dataUpdatedAt : null}
       />
       {alerts}
       {/*
@@ -796,7 +799,7 @@ export function CoreUpdateCheck({
       )}
       {updateMutation.error && (
         <div className="settings__update-msg settings__update-msg--error">
-          {(updateMutation.error as Error).message}
+          {describeStationFailure(updateMutation.error).body}
         </div>
       )}
       {comparisonSuperseded && status && historicalTime && (
@@ -809,13 +812,6 @@ export function CoreUpdateCheck({
         above replaces every derived state claim. */}
       {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
       {technicalDisclosure}
-      {showReleaseNotes && targetVersion && (
-        <ReleaseNotes
-          key={targetVersion}
-          version={targetVersion}
-          active={active}
-        />
-      )}
       {showStageApply && serverUpdateState ? (
         <ServerUpdateStageApply
           key={connectionScope}
@@ -836,24 +832,27 @@ export function CoreUpdateCheck({
           }}
         />
       ) : (
-        <div className="settings__update-row">
-          {canApply && !stagedFlow && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                setConfirmApplyScope(scopeKey ?? 'unscoped');
-              }}
-              disabled={updateMutation.isPending || restarting}
-            >
-              {restarting || updateMutation.isPending
-                ? 'Updating…'
-                : canApplyServiceUpdate
-                  ? 'Update server'
-                  : 'Update server checkout'}
-            </Button>
-          )}
-          {checkButton}
-        </div>
+        <ActionRow
+          overflowLabel="More server update actions"
+          secondary={checkButton}
+          primary={
+            canApply && !stagedFlow ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirmApplyScope(scopeKey ?? 'unscoped');
+                }}
+                disabled={updateMutation.isPending || restarting}
+              >
+                {restarting || updateMutation.isPending
+                  ? 'Updating…'
+                  : canApplyServiceUpdate
+                    ? 'Update server'
+                    : 'Update server checkout'}
+              </Button>
+            ) : undefined
+          }
+        />
       )}
       {active &&
         confirmApplyScope === (scopeKey ?? 'unscoped') &&
@@ -872,6 +871,13 @@ export function CoreUpdateCheck({
             }}
           />
         )}
+      {showReleaseNotes && targetVersion && (
+        <ReleaseNotes
+          key={targetVersion}
+          version={targetVersion}
+          active={active}
+        />
+      )}
       <details className="settings__update-technical server-update__details">
         <summary>Details</summary>
         {details}

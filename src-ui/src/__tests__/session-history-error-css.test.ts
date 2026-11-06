@@ -60,7 +60,7 @@ describe('the chat dock history-failure notice (station#3427)', () => {
 
   it('reuses the shared secondary-button treatment instead of a bespoke duplicate', () => {
     const css = read('index.css');
-    const chatDock = read('components/chat-dock/ChatDockBody.tsx');
+    const chatDock = read('components/conversation/ConversationBody.tsx');
 
     // The old bespoke rule matched `button:hover` on specificity and lost on
     // source order, so hover never took effect — the fix is to reuse

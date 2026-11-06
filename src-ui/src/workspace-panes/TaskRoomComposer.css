@@ -148,7 +148,8 @@
   border-radius: var(--k-radius-sm);
 }
 
-.task-room-attachment-controls {
+.task-room-composer .task-room-attachment-controls {
+  align-self: stretch;
   border: 0;
   padding: 0;
   margin: 0;

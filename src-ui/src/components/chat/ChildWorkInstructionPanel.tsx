@@ -8,9 +8,12 @@ import { get, update } from 'idb-keyval';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { recordedDeliveryPort } from '../conversation/DeliveryPort';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
-import { useChatRequestTarget } from './ChatRequestContext';
+import { MessageDeliveryNote } from './message-bubble/MessageDeliveryNote';
 import { useUIBlockActions } from './UIBlockActionsContext';
 import './ChildWorkInstructionPanel.css';
 
@@ -53,23 +56,26 @@ export function ChildWorkInstructionPanel({
 }) {
   const authority = useAuthorityPersistence();
   const host = useHostRequestAuthorityScope();
-  const targetScope = useChatRequestTarget();
+  const targetScope = useOptionalConversationConnection();
   const scope = targetScope?.requestScope ?? host;
   const apiBase = targetScope?.apiBase ?? scope?.apiBase;
   const mayContinue = useUIBlockActions().canSendChildInstruction === true;
   const grant = authority.observation?.grant;
-  const canOperate =
-    grant?.kind === 'operator' ||
-    (grant?.kind === 'device' &&
-      grant.grantedScopes.includes(PAIRING_SCOPE_ORCHESTRATION_OPERATE));
-  const key = authority.namespace
-    ? `child-steer:${JSON.stringify([authority.namespace, threadId, childId])}`
+  const canOperate = targetScope?.station
+    ? targetScope.station.isCurrent() &&
+      targetScope.station.capabilities.childInstruction.state === 'allowed'
+    : grant?.kind === 'operator' ||
+      (grant?.kind === 'device' &&
+        grant.grantedScopes.includes(PAIRING_SCOPE_ORCHESTRATION_OPERATE));
+  const namespace = targetScope?.station?.stationKey ?? authority.namespace;
+  const key = namespace
+    ? `child-steer:${JSON.stringify([namespace, threadId, childId])}`
     : null;
   const history = useChildWorkInstructionsQuery(
     {
       threadId,
       childId,
-      enabled: !!scope && !!authority.namespace && historyAvailable,
+      enabled: !!scope && !!namespace && historyAvailable,
       requestScope: scope,
       running,
     },
@@ -149,73 +155,61 @@ export function ChildWorkInstructionPanel({
       active = false;
     };
   }, [key, pending, history.data]);
-  const submit = async (retry: boolean) => {
+  const submit = async () => {
     if (
       busy.current ||
+      pending ||
       !key ||
       !scope?.isCurrent() ||
       !canOperate ||
       !mayContinue ||
-      (!retry && (!running || !turnId))
+      !running ||
+      !turnId ||
+      !text.trim()
     )
       return;
-    let saved: Pending | null = pending;
-    if (!retry) {
-      if (!turnId) return;
-      saved = {
-        threadId,
-        childId,
-        turnId,
-        input: text.trim(),
-        clientInputId: randomCorrelationId(),
-      };
-    }
-    if (!saved?.input) return;
-    if (!retry && draftTurnId !== turnId) {
-      setMessage('The subagent turn changed. This instruction was not sent.');
-      return;
-    }
-    if (
-      saved.threadId !== threadId ||
-      saved.childId !== childId ||
-      (!retry && saved.turnId !== turnId)
-    ) {
+    const saved: Pending = {
+      threadId,
+      childId,
+      turnId,
+      input: text.trim(),
+      clientInputId: randomCorrelationId(),
+    };
+    if (draftTurnId !== turnId) {
       setMessage('The subagent turn changed. This instruction was not sent.');
       return;
     }
     busy.current = true;
     setSubmitting(true);
     try {
-      if (!retry) {
-        try {
-          let claimed = false;
-          await update<Pending | null>(key, (current) => {
-            if (current) return current;
-            claimed = true;
-            return saved;
-          });
-          if (!claimed) {
-            setMessage('Another instruction is awaiting confirmation.');
-            return;
-          }
-        } catch {
-          setMessage('Could not save the instruction. It was not sent.');
+      try {
+        let claimed = false;
+        await update<Pending | null>(key, (current) => {
+          if (current) return current;
+          claimed = true;
+          return saved;
+        });
+        if (!claimed) {
+          setMessage('Another instruction is awaiting confirmation.');
           return;
         }
-        setPending(saved);
+      } catch {
+        setMessage('Could not save the instruction. It was not sent.');
+        return;
       }
+      setPending(saved);
       if (!scope.isCurrent()) {
         setMessage('The connection changed. Your instruction is saved.');
         return;
       }
       const current = target.current;
       if (
-        (!retry && !current.running) ||
+        !current.running ||
         !current.mayContinue ||
         !current.canOperate ||
         current.threadId !== saved.threadId ||
         current.childId !== saved.childId ||
-        (!retry && current.turnId !== saved.turnId)
+        current.turnId !== saved.turnId
       ) {
         setMessage(
           'The subagent or your access changed. Your instruction is saved.',
@@ -230,10 +224,7 @@ export function ChildWorkInstructionPanel({
         setText('');
         setDraftTurnId(undefined);
         setMessage('Sent to the subagent.');
-      } else if (result.outcome === 'indeterminate')
-        setMessage(
-          'Delivery could not be confirmed. Check again with the same instruction.',
-        );
+      } else if (result.outcome === 'indeterminate') setMessage('');
       else {
         await clearInstruction(key, saved);
         setPending(null);
@@ -250,9 +241,7 @@ export function ChildWorkInstructionPanel({
         );
       }
     } catch {
-      setMessage(
-        'Delivery could not be confirmed. Check again with the same instruction.',
-      );
+      setMessage('');
     } finally {
       busy.current = false;
       setSubmitting(false);
@@ -265,16 +254,17 @@ export function ChildWorkInstructionPanel({
       {!historyAvailable && (
         <p>Instruction history is unavailable for this subagent.</p>
       )}
-      {historyAvailable &&
-        scope &&
-        authority.namespace &&
-        history.isPending && <SkeletonBlock count={1} label="Instructions" />}
+      {historyAvailable && scope && namespace && history.isPending && (
+        <SkeletonBlock count={1} label="Instructions" />
+      )}
       {history.isError && (
         <ErrorState
           variant="compact"
           title="Could not load instructions"
           description={
-            history.error instanceof Error ? history.error.message : undefined
+            history.error
+              ? describeStationFailure(history.error).body
+              : undefined
           }
           action={
             <Button
@@ -316,13 +306,18 @@ export function ChildWorkInstructionPanel({
                       {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
                       {entry.clientOrigin?.reported.surface ??
                         'Source not recorded'}{' '}
-                      ·{' '}
-                      {entry.delivery === 'delivered'
-                        ? 'Sent'
-                        : entry.delivery === 'refused'
-                          ? 'Not sent'
-                          : 'Delivery unconfirmed'}
                     </small>
+                    <MessageDeliveryNote
+                      variant="inline"
+                      state={
+                        entry.delivery === 'delivered'
+                          ? 'delivered'
+                          : entry.delivery === 'refused'
+                            ? 'not-sent'
+                            : 'unconfirmed'
+                      }
+                      port={recordedDeliveryPort}
+                    />
                   </>
                 )}
               </li>
@@ -344,13 +339,72 @@ export function ChildWorkInstructionPanel({
       )}
       {pending && <p>Saved instruction: {pending.input}</p>}
       {pending && canOperate && mayContinue && key && loaded ? (
-        <Button
-          className="tap-target"
-          pending={submitting || send.isPending}
-          onClick={() => void submit(true)}
-        >
-          Check saved instruction
-        </Button>
+        <MessageDeliveryNote
+          variant="inline"
+          state={submitting ? 'sending' : 'unconfirmed'}
+          port={{
+            savedOnDevice: true,
+            canDiscardUnconfirmed: !submitting,
+            discard: async () => {
+              await clearInstruction(key, pending);
+              setPending((current) =>
+                current?.clientInputId === pending.clientInputId
+                  ? null
+                  : current,
+              );
+              setText(pending.input);
+              setDraftTurnId(target.current.turnId);
+              setMessage('');
+              return null;
+            },
+            check: async () => {
+              if (
+                !scope?.isCurrent() ||
+                !target.current.canOperate ||
+                !target.current.mayContinue
+              )
+                throw new Error('The connection or your access changed.');
+              const fresh = await history.refetch();
+              const found = fresh.data?.pages
+                .flatMap((page) => page.entries)
+                .find(
+                  (entry) =>
+                    entry.clientInputId === pending.clientInputId &&
+                    entry.childId === pending.childId &&
+                    entry.turnId === pending.turnId &&
+                    entry.text === pending.input,
+                );
+              if (
+                !scope.isCurrent() ||
+                target.current.threadId !== pending.threadId ||
+                target.current.childId !== pending.childId
+              )
+                throw new Error('The instruction target changed.');
+              if (found && found.delivery !== 'indeterminate') {
+                await clearInstruction(key, pending);
+                setPending((current) =>
+                  current?.clientInputId === pending.clientInputId
+                    ? null
+                    : current,
+                );
+                if (found.delivery === 'delivered') {
+                  setText('');
+                  setDraftTurnId(undefined);
+                  setMessage('Sent to the subagent.');
+                } else {
+                  setText(pending.input);
+                  setDraftTurnId(pending.turnId);
+                  setMessage('The instruction was not sent.');
+                }
+              }
+              return found?.delivery === 'delivered'
+                ? 'started'
+                : found?.delivery === 'refused'
+                  ? 'not-received'
+                  : 'indeterminate';
+            },
+          }}
+        />
       ) : !running ? (
         <p>This subagent has finished.</p>
       ) : !turnId ? (
@@ -363,7 +417,7 @@ export function ChildWorkInstructionPanel({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            void submit(false);
+            void submit();
           }}
         >
           <label>

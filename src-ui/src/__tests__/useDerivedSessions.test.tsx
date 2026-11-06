@@ -26,6 +26,7 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => STABLE_AGENTS,
 }));
 
+import { conversationConnection } from '../components/conversation/__tests__/fixtures';
 import { isTurnInFlight } from '../contexts/active-chats-state';
 import {
   ActiveChatsStore,
@@ -34,6 +35,7 @@ import {
 import { conversationsStore } from '../contexts/ConversationsContext';
 import { handleTextDeltaEvent } from '../hooks/orchestration/streamHandlers';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
+import { retainChatTranscript } from '../lib/retained-chat-transcript';
 import { isTurnStreamLive } from '../utils/execution';
 
 const SESSION_A = 'session-a';
@@ -92,6 +94,24 @@ test.each([false, true])(
 );
 
 describe('useDerivedSessions — ChatDock identity stability (station#726)', () => {
+  test('the mounted session adapter carries retained receiver text into the dock', () => {
+    const station = conversationConnection('relay');
+    const copy = retainChatTranscript(
+      station.binding,
+      'receiver-conversation',
+      [{ role: 'assistant', content: 'The retained receiver answer.' }],
+    );
+    activeChatsStore.updateChat(SESSION_A, {
+      stationBinding: station.binding,
+      conversationId: 'receiver-conversation',
+      retainedTranscript: copy,
+    });
+    const { result } = renderHook(() => useDerivedSessions('', null));
+    expect(
+      result.current.find((session) => session.id === SESSION_A)
+        ?.retainedTranscript,
+    ).toEqual(copy);
+  });
   beforeEach(() => {
     clearChats();
     activeChatsStore.initChat(SESSION_A, {

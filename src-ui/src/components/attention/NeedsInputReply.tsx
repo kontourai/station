@@ -3,7 +3,6 @@ import type {
   AttentionRequestReference,
   NeedsInputAttentionItem,
 } from '@kontourai/station-contracts/attention';
-import { CHAT_FILE_MIME_TYPES } from '@kontourai/station-contracts/chat-attachment';
 import {
   ENGINE_CAPABILITY_MATRICES,
   resolveComposerImageSupport,
@@ -26,13 +25,13 @@ import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
 } from '../../types';
-import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
-import { Button } from '../Button';
-import { ComposerAttachmentStrip } from '../chat/ComposerAttachmentStrip';
-import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
+import { ChatInputArea } from '../chat/ChatInputArea';
+import { ConversationConnectionProvider } from '../conversation/ConversationConnectionContext';
 import { ErrorState, SkeletonBlock } from '../state';
 import './NeedsInputReply.css';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { describeStationFailure } from '../../utils/stationFailure';
+import { Button } from '../Button';
 
 type Scope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 export function NeedsInputReply({
@@ -48,7 +47,7 @@ export function NeedsInputReply({
   const [stages, setStages] = useState<ComposerAttachmentStageSnapshot[]>([]);
   const [attempt, setAttempt] = useState<ForegroundMessageInput | null>(null);
   const [sent, setSent] = useState(false);
-  const filePicker = useRef<HTMLInputElement>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
   const client = useQueryClient();
   const changed =
     reference.threadId !== item.inputReference.threadId ||
@@ -125,7 +124,12 @@ export function NeedsInputReply({
       });
     },
     onError: (error) => {
-      if (isProvablyNotSent(error)) setAttempt(null);
+      if (
+        scope.isCurrent() &&
+        (isProvablyNotSent(error) ||
+          describeStationFailure(error).delivery === 'refused')
+      )
+        setAttempt(null);
     },
     onSuccess: async () => {
       if (!scope.isCurrent()) return;
@@ -225,87 +229,87 @@ export function NeedsInputReply({
         <SkeletonBlock count={1} label="Checking input request" />
       ) : !context && !changed ? (
         <ErrorState
-          title="Input request unavailable"
-          description="Its current binding or input capabilities could not be confirmed. Your draft has been retained."
+          title={
+            query.isError
+              ? describeStationFailure(query.error).title
+              : 'Input request unavailable'
+          }
+          description={
+            query.isError
+              ? describeStationFailure(query.error).body
+              : 'Its current binding or input capabilities could not be confirmed. Your draft has been retained.'
+          }
+          action={<Button onClick={() => void query.refetch()}>Retry</Button>}
         />
       ) : null}
-      <label htmlFor={`input-reply-${item.id}`}>Answer this session</label>
-      <textarea
-        id={`input-reply-${item.id}`}
-        value={text}
-        readOnly={locked}
-        onChange={(event) => setText(event.target.value)}
-        onPaste={(event) => {
-          if (locked) return;
-          const pasted = filesFromDataTransfer(event.clipboardData);
-          if (pasted.length) {
-            event.preventDefault();
-            void composer.selectFiles(pasted);
-          }
-        }}
-      />
-      <fieldset disabled={locked} className="input-reply__attachments">
-        <ComposerAttachmentStrip
+      <ConversationConnectionProvider
+        value={{ apiBase: scope.apiBase, requestScope: scope }}
+      >
+        <ChatInputArea
+          input={text}
           attachments={attachments}
-          stages={stages}
-          onRemove={remove}
-          onRetry={composer.retry}
-          onCancel={composer.cancel}
-          onReplaceFile={composer.replaceFile}
+          textareaRef={textarea}
+          disabled={locked}
+          turnInFlight={false}
+          modelSupportsAttachments={imageSupport.attachable}
+          fileAttachmentsSupported={files}
+          fontSize={14}
+          dockHeight={400}
+          canModelSelect={false}
+          availableModels={[]}
+          modelQuery={null}
+          commandQuery={null}
+          slashCommands={[]}
+          onInputChange={setText}
+          onSend={async () => submit()}
+          onCancel={() => {}}
+          onClearInput={() => setText('')}
+          selectAttachmentFiles={composer.selectFiles}
+          attachmentError={composer.error}
+          attachmentStages={stages}
+          sendBlockedReason={composer.sendBlockedReason}
+          onRetryAttachmentStage={composer.retry}
+          onCancelAttachmentStage={composer.cancel}
+          onReplaceAttachmentFile={composer.replaceFile}
+          onRemoveAttachment={remove}
+          onClearAttachments={() =>
+            attachments.forEach((file) => remove(file.id))
+          }
+          onModelSelect={() => {}}
+          onModelReset={() => {}}
+          onModelClose={() => {}}
+          onModelOpen={() => {}}
+          onModelRuntimeOptionChange={() => {}}
+          onApprovalModeChange={() => {}}
+          onCommandSelect={async () => {}}
+          onCommandClose={() => {}}
+          onHistoryUp={() => {}}
+          onHistoryDown={() => {}}
+          updateFromInput={setText}
+          closeAll={() => {}}
+          submitAction={{
+            label: 'Send answer',
+            placeholder: 'Answer this session',
+          }}
         />
-        {(imageSupport.attachable || files) && (
-          <>
-            <input
-              ref={filePicker}
-              type="file"
-              hidden
-              multiple
-              accept={[
-                ...(imageSupport.attachable ? ['image/*'] : []),
-                ...(files ? CHAT_FILE_MIME_TYPES : []),
-              ].join(',')}
-              onChange={(event) => {
-                const selected = Array.from(event.target.files ?? []);
-                event.target.value = '';
-                void composer.selectFiles(selected);
-              }}
-              aria-label="Files for this answer"
-            />
-            <Button onClick={() => filePicker.current?.click()}>
-              Attach files
-            </Button>
-          </>
-        )}
-      </fieldset>
-      {composer.error && <p role="alert">{composer.error}</p>}
-      {composer.sendBlockedReason && (
-        <p role="status">{composer.sendBlockedReason}</p>
-      )}
+      </ConversationConnectionProvider>
       {mutation.error && (
         <p role="alert">
-          {userFacingErrorMessage(mutation.error)} Retry sends the same answer
-          with the same operation identity.
+          {userFacingErrorMessage(mutation.error)}{' '}
+          {attempt
+            ? 'Retry sends the same answer with the same operation identity.'
+            : 'Review this answer, then send again.'}
         </p>
       )}
-      {sent ? (
-        <p role="status">Answer sent.</p>
-      ) : (
-        <ResponsiveSurfaceActions>
-          <Button
-            type="submit"
-            pending={mutation.isPending}
-            pendingLabel="Sending answer…"
-            disabled={
-              !context ||
-              changed ||
-              Boolean(composer.sendBlockedReason) ||
-              (!attempt && !text.trim() && !attachments.length)
-            }
-          >
-            {attempt ? 'Retry same answer' : 'Send answer'}
-          </Button>
-        </ResponsiveSurfaceActions>
+      {attempt && !sent && (
+        <Button
+          onClick={submit}
+          disabled={!context || changed || mutation.isPending}
+        >
+          Retry same answer
+        </Button>
       )}
+      {sent && <p role="status">Answer sent.</p>}
     </form>
   );
 }

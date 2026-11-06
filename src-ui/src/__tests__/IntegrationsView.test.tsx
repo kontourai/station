@@ -176,7 +176,7 @@ describe('IntegrationsView (#771)', () => {
 
     renderView();
 
-    expect(screen.getByText('tool servers unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.queryByText('No tool servers yet')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));

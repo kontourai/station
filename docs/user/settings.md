@@ -34,6 +34,13 @@ for filesystem repair. **Workspace** edits the Project's local working folder.
 
 ## Feature previews
 
+**Paired Station chats** lets New Chat use another paired Station. Choose its
+Project; the chat header says **Via <Station>**. Full access, folder selection,
+mentions, offline copies and local integrations are unavailable over relay.
+Turning it off keeps text and drafts visible and stops remote chat operations.
+Older held chats require confirmed **Reconnect chat** before continuing. See
+[starting a chat](getting-started.md#start-your-first-chat).
+
 Feature previews are features that are still being evaluated. Each one has a
 switch, a name and a description of what turning it on does. A preview is listed
 only when this Station's build can run it; if none is, the section says

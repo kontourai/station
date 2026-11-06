@@ -4,6 +4,7 @@ import {
   useRegistrySourcesQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
@@ -183,7 +184,9 @@ export function MarketplaceSources({
           ))}
       </details>
       {notice && <p role="status">{notice}</p>}
-      {mutation.error && <p role="alert">{mutation.error.message}</p>}
+      {mutation.error && (
+        <p role="alert">{describeStationFailure(mutation.error).body}</p>
+      )}
       {open && (
         <Dialog
           title="Add marketplace"
@@ -271,7 +274,9 @@ export function MarketplaceSources({
               Other marketplace indexes require an adapter. Private
               credential-bearing URLs are not supported.
             </p>
-            {mutation.error && <p role="alert">{mutation.error.message}</p>}
+            {mutation.error && (
+              <p role="alert">{describeStationFailure(mutation.error).body}</p>
+            )}
           </div>
         </Dialog>
       )}

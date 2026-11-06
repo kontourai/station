@@ -670,7 +670,8 @@ describe('AgentConnectionView', () => {
 
     await render(<AgentConnectionView onNavigate={vi.fn()} />);
 
-    expect(screen.getByText('engines unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('engines unavailable')).toBeNull();
     expect(screen.queryByText('Codex')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -1105,6 +1106,9 @@ describe('AgentConnectionView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
 
     expect(screen.getByRole('alert').textContent).toContain(
+      'Try again in a moment.',
+    );
+    expect(screen.getByRole('alert').textContent).not.toContain(
       'Could not add Claude Code',
     );
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
@@ -1598,7 +1602,8 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="lab" onNavigate={vi.fn()} />,
     );
     expect(screen.getByRole('heading', { name: 'Lab Engine' })).toBeTruthy();
-    expect(screen.getByText('Timed out after 10000ms')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('Timed out after 10000ms')).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry check' })).toBeTruthy();
     // A custom engine (no catalogue entry names it) can be edited too.
     expect(screen.getByRole('button', { name: 'Edit setup' })).toBeTruthy();
@@ -1735,9 +1740,7 @@ describe('AgentConnectionView', () => {
 
     refetchAgentConnections.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
-    expect(
-      screen.getByText(/OpenCode closed the connection before it finished/),
-    ).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     // The status beside it is re-read, so it does not keep claiming Ready.
     expect(refetchAgentConnections).toHaveBeenCalled();
   });
@@ -2153,7 +2156,8 @@ describe('AgentConnectionView', () => {
     );
 
     expect(screen.getByText("Couldn't load credential entries")).toBeTruthy();
-    expect(screen.getByText('credential recovery unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('credential recovery unavailable')).toBeNull();
     expect(screen.queryByText('No credential entries added yet.')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -2296,7 +2300,7 @@ describe('AgentConnectionView', () => {
     );
   });
 
-  test('shows errors from every credential-profile mutation in one accessible error surface', async () => {
+  test('deduplicates safe feedback from simultaneous credential-profile mutation failures', async () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
@@ -2330,6 +2334,7 @@ describe('AgentConnectionView', () => {
       .getAllByRole('alert')
       .map((alert) => alert.textContent)
       .join(' ');
+    expect(errorText).toContain('Try again in a moment.');
     for (const message of [
       'Could not save profile',
       'Could not remove profile',
@@ -2338,7 +2343,7 @@ describe('AgentConnectionView', () => {
       'Could not import profile',
       'Could not apply profile',
     ]) {
-      expect(errorText).toContain(message);
+      expect(errorText).not.toContain(message);
     }
   });
 

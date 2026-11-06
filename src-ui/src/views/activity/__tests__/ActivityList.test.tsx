@@ -53,6 +53,11 @@ vi.mock('../../../contexts/useShowSurface', () => ({
 }));
 // Activity no longer mounts the host-wide collaborator roster. Any
 // live-activity read from this surface would be that roster coming back.
+vi.mock('@kontourai/station-sdk/client', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk/client')>()),
+  interruptTurn: (apiBase: string, input: { threadId: string }) =>
+    interruptTurn({ apiBase, threadId: input.threadId }),
+}));
 vi.mock('@kontourai/station-sdk/live-activity', () => ({
   useLiveActivityQuery,
 }));

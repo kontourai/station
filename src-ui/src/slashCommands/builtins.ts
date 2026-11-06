@@ -3,6 +3,7 @@ import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-comm
 import { agentQueries } from '@kontourai/station-sdk';
 import { runtimeCatalogSourceLabel } from '../utils/execution';
 import { agentCommandSkills } from '../utils/skill-command-catalog';
+import { describeStationFailure } from '../utils/stationFailure';
 import { registerCommand } from './registry';
 
 registerCommand(
@@ -28,10 +29,7 @@ registerCommand(
     } catch (error) {
       addEphemeralMessage(sessionId, {
         role: 'system',
-        content:
-          error instanceof Error
-            ? error.message
-            : 'Compaction outcome is unknown. Inspect the retained operation before trying again.',
+        content: describeStationFailure(error).body,
       });
     }
   },

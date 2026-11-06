@@ -1,6 +1,7 @@
 import { ACCOUNT_PREFERENCE_KEYS } from '@kontourai/station-contracts/account-preferences';
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
+import { Select } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { SettingsGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
@@ -82,10 +83,7 @@ export function SystemSection({
           {...settingsRow('desktop-app-updates')}
           tabIndex={-1}
         >
-          <span className="settings__field-label">
-            {settingsRow('desktop-app-updates').title}
-          </span>
-          <DesktopUpdateCheck />
+          <DesktopUpdateCheck title="Desktop app updates" />
         </div>
       )}
 
@@ -119,7 +117,7 @@ export function SystemSection({
           provenance={provenance?.serverUpdateDownloadPolicy}
         />
         <ManagedFieldset provenance={provenance?.serverUpdateDownloadPolicy}>
-          <select
+          <Select
             id="serverUpdateDownloadPolicy"
             value={config.serverUpdateDownloadPolicy ?? 'after-24h'}
             onChange={(event) =>
@@ -133,7 +131,7 @@ export function SystemSection({
             <option value="never">Never</option>
             <option value="after-24h">After 24 hours</option>
             <option value="immediately">Immediately</option>
-          </select>
+          </Select>
         </ManagedFieldset>
         <span className="settings__field-hint">
           For a Station service installed from a release archive: when it

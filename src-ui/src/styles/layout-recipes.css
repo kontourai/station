@@ -1,0 +1,17 @@
+/* Opt-in semantic flow: the container owns rhythm instead of child margins. */
+.content-stack {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+.content-stack > * {
+  margin-block: 0;
+  min-width: 0;
+}
+.content-stack--sections {
+  gap: var(--k-space-5);
+}
+.content-stack--sections > section + section {
+  border-block-start: 1px solid var(--k-line);
+  padding-block-start: var(--k-space-5);
+}

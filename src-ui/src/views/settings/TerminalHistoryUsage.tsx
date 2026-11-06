@@ -9,6 +9,7 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { describeStationFailure } from '../../utils/stationFailure';
 import './TerminalHistoryUsage.css';
 
 function size(bytes: number): string {
@@ -35,7 +36,11 @@ export function TerminalHistoryUsage() {
   if (usage.isLoading)
     body = <SkeletonBlock count={2} label="Reading terminal history" />;
   else if (usage.error instanceof TerminalHistoryUnsupportedError)
-    body = <p className="settings__field-hint">{usage.error.message}</p>;
+    body = (
+      <p className="settings__field-hint">
+        {describeStationFailure(usage.error).body}
+      </p>
+    );
   else if (usage.error || !usage.data)
     body = (
       <ErrorState

@@ -6,6 +6,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { log } from '../utils/logger';
+import { describeStationFailure } from '../utils/stationFailure';
 
 interface Conversation {
   id: string;
@@ -101,10 +102,7 @@ export function useSessionManagementMenu({
         log.api('Failed to rename conversation:', error);
         setActionError({
           id: conv.id,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Failed to rename conversation',
+          message: describeStationFailure(error).body,
         });
       }
     },
@@ -133,10 +131,7 @@ export function useSessionManagementMenu({
         log.api('Failed to regenerate conversation title:', error);
         setActionError({
           id: conv.id,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Failed to regenerate conversation title',
+          message: describeStationFailure(error).body,
         });
       }
     },
@@ -158,10 +153,7 @@ export function useSessionManagementMenu({
       log.api('Failed to regenerate conversation title:', error);
       setActionError({
         id: conv.id,
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Failed to regenerate conversation title',
+        message: describeStationFailure(error).body,
       });
     }
   }, [regenerateConfirm, regenerateTitleMutation]);

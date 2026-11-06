@@ -22,7 +22,7 @@ import {
   subscribeContentRefresh,
 } from '../../hooks/orchestration/answerRequest';
 import { commandOnlyArgs } from '../../hooks/orchestration/pendingRequestRows';
-import { useChatRequestTarget } from './ChatRequestContext';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import type { ToolCallData } from './ToolCallDisplay';
 
 /**
@@ -62,6 +62,7 @@ export function useApprovalContent(
   toolCall: ToolCallData,
   active: boolean,
 ): { gate: ApprovalContentGate; loader: ReactNode } {
+  const target = useOptionalConversationConnection();
   const threadId = toolCall.approvalThreadId;
   const requestId = toolCall.approvalId;
   const requestEventId = toolCall.approvalEventId;
@@ -90,10 +91,30 @@ export function useApprovalContent(
     key: string;
     gate: ApprovalContentGate;
   }>();
-  if (!needed) return { gate: NOT_NEEDED, loader: null };
-  const key = `${requestEventId ?? requestId}:${marked}`;
+  const narrow = (value: ApprovalContentGate): ApprovalContentGate => ({
+    ...value,
+    allowable:
+      value.allowable &&
+      (!target?.station ||
+        target.station.capabilities.approvalAnswer.state === 'allowed'),
+    ...(target?.station &&
+    target.station.capabilities.approvalTrustTool.state !== 'allowed'
+      ? { sessionGrant: 'none' }
+      : {}),
+    ...(target?.station &&
+    target.station.capabilities.approvalTrustServer.state !== 'allowed'
+      ? { serverGrant: 'none' }
+      : {}),
+  });
+  if (!needed) return { gate: narrow(NOT_NEEDED), loader: null };
+  const key = JSON.stringify([
+    target?.apiBase,
+    target?.requestScope?.authorityKey,
+    requestEventId ?? requestId,
+    marked,
+  ]);
   return {
-    gate: gate?.key === key ? gate.gate : LOADING,
+    gate: narrow(gate?.key === key ? gate.gate : LOADING),
     loader: (
       <ApprovalContentLoader
         key={key}
@@ -118,7 +139,7 @@ function ApprovalContentLoader({
   const shownRefs = collectRuntimeEventContentRefs(toolCall.args).map(
     (ref) => ref.ref,
   );
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const query = useApprovalContentQuery({
     ...target,
     threadId,
@@ -143,6 +164,8 @@ function ApprovalContentLoader({
         threadId,
         requestEventId,
         data.viewedContentDigest,
+        target?.requestScope?.authorityKey,
+        target?.apiBase,
       );
     const payload =
       data.request.method === 'request.opened'
@@ -160,6 +183,6 @@ function ApprovalContentLoader({
       serverGrant: toolRequestServerGrantFromPayload(payload),
       retry,
     });
-  }, [data, isError, refetch, threadId, requestEventId]);
+  }, [data, isError, refetch, threadId, requestEventId, target]);
   return null;
 }

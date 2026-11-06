@@ -623,7 +623,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
 
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Could not load project')).toBeTruthy();
-    expect(screen.getByText('Project not found')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(container.querySelector('.project-page__loading')).toBeNull();
     expect(screen.queryByText('Loading…')).toBeNull();
 

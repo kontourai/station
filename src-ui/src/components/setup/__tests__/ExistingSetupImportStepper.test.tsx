@@ -116,9 +116,10 @@ describe('ExistingSetupImportStepper', () => {
   test('offers a source-check retry instead of hiding a failed read', () => {
     hooks.sourcesError = true;
     render(<ExistingSetupImportStepper />);
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Could not check existing setup',
-    );
+    const failure = screen.getByRole('alert').textContent;
+    expect(failure).toContain('Existing setup unavailable');
+    expect(failure).toContain('Try again in a moment.');
+    expect(failure).not.toContain('Could not check existing setup');
     fireEvent.click(screen.getByRole('button', { name: 'Retry setup check' }));
     expect(hooks.refetchSources).toHaveBeenCalledTimes(1);
   });
@@ -190,9 +191,13 @@ describe('ExistingSetupImportStepper', () => {
     );
     hooks.applyError = true;
     rerender(<ExistingSetupImportStepper />);
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Import response unavailable',
+    const failure = screen.getByRole('alert').textContent;
+    expect(failure).toContain('Import outcome unavailable');
+    expect(failure).toContain('Try again in a moment.');
+    expect(failure).toContain(
+      'Check installed Skills before starting another import.',
     );
+    expect(failure).not.toContain('Import response unavailable');
     expect(screen.getByLabelText('one.md')).toHaveProperty('checked', true);
     expect(hooks.apply).toHaveBeenCalledTimes(1);
   });

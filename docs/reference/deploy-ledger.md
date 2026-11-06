@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-06T15:39:30Z | nightly-npm | 0.11.0-nightly.20261106.42242672641 | `bdc985a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42242672641) |
 | 2026-11-06T08:43:21Z | nightly-desktop | 0.1.11-nightly.20261106 | `73f13cf` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42180658259) |
 | 2026-11-06T08:43:18Z | nightly-android | 0.1.11-nightly.20261106 | `73f13cf` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42180658259) |
 | 2026-11-06T07:40:34Z | nightly-npm | 0.11.0-nightly.20261106.42180658259 | `73f13cf` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42180658259) |
@@ -426,6 +427,35 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-06T15:39:30Z · nightly-npm · 0.11.0-nightly.20261106.42242672641
+
+- Ship SHA: `bdc985adba464252a8a1bf812e3e2065542f75f6`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261106.42242672641 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `73f13cf` ([full sha](https://github.com/kontourai/station/commit/73f13cfe8c862552709faeba9dc9e6fab763dab8)):
+
+**Features**
+
+- [#4630](https://github.com/kontourai/station/pull/4630) feat(chat): unify local and paired Station conversations
+- [#4619](https://github.com/kontourai/station/pull/4619) feat(projects): link repositories and show owning-Station access
+- [#4620](https://github.com/kontourai/station/pull/4620) feat(ui): group active chats and unify project settings
+
+**Fixes**
+
+- [#4629](https://github.com/kontourai/station/pull/4629) fix: restore interrupted conversations and make delivery recovery explicit
+
+**Docs**
+
+- [#4643](https://github.com/kontourai/station/pull/4643) docs(tasks): propose resuming ended Tasks after GitHub follow-ups (#4554)
+
+**Other**
+
+- [#4642](https://github.com/kontourai/station/pull/4642) test(home): retain private chat scratch across backup and rollback
 
 ## 2026-11-06T08:43:21Z · nightly-desktop · 0.1.11-nightly.20261106
 

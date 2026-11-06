@@ -138,6 +138,7 @@ import {
   notifyPluginCommandEffectCookieAuthEligibility,
 } from '../components/plugin-command-effect-switch-signal';
 import { StartupScreen } from '../components/StartupScreen';
+import { retireStationConnectionRegistries } from '../connections/station-connection-registry';
 import { SessionReadModelProvider } from '../hooks/orchestration/SessionReadModelProvider';
 import {
   useConnectionSwitchScope,
@@ -254,6 +255,7 @@ export function createAuthorityClient(): QueryClient {
  * alongside a provider unmount. See the module audit above.
  */
 function retireAuthorityClient(queryClient: QueryClient): void {
+  retireStationConnectionRegistries(queryClient);
   void queryClient.cancelQueries();
 }
 
@@ -431,9 +433,9 @@ export function AuthorityQueryProvider({
     if (!verifiedNamespace) {
       const previous = activeRef.current;
       if (previous) {
+        retireAuthorityClient(previous.queryClient);
         activeRef.current = null;
         setActive(null);
-        retireAuthorityClient(previous.queryClient);
       }
       return;
     }
@@ -444,7 +446,7 @@ export function AuthorityQueryProvider({
       lastVerifiedNamespaceRef.current !== undefined &&
       lastVerifiedNamespaceRef.current !== verifiedNamespace
     ) {
-      activeChatsStore.clearConversationActivity();
+      activeChatsStore.clearAllConversationActivity();
       // #1418/#1419: a different Station's ledger is not this document's to
       // settle. Flush what the old identity owes, then mint a fresh one.
       notifyPluginCommandEffectAuthoritySwitch();
@@ -461,9 +463,9 @@ export function AuthorityQueryProvider({
       namespace: verifiedNamespace,
       queryClient: createAuthorityClient(),
     };
+    if (previous) retireAuthorityClient(previous.queryClient);
     activeRef.current = next;
     setActive(next);
-    if (previous) retireAuthorityClient(previous.queryClient);
   }, [verifiedNamespace, apiBase]);
 
   // Read-only work may overlap identity verification; only the verified-client
@@ -695,7 +697,7 @@ export function AuthorityQueryProvider({
           persistOptions={persistOptions}
         >
           <AuthoritySwitchInvalidator />
-          <OfflineSessionIndex />
+          <OfflineSessionIndex requestScope={requestScope ?? undefined} />
           <ClientBootstrapContext.Provider
             value={
               bootCapability !== null &&

@@ -610,9 +610,8 @@ describe('PlatformProfile derivation', () => {
     const alert = await screen.findByRole('alert', {
       name: 'Station couldn’t finish starting',
     });
-    expect(alert.textContent).toContain(
-      'saved Station directory must be current-user owned and owner-only',
-    );
+    expect(alert.textContent).toContain('Try again in a moment.');
+    expect(alert.textContent).not.toContain('saved Station directory');
     expect(screen.getByRole('button', { name: 'Reload Station' })).toBeTruthy();
     expect(screen.queryByTestId('protected-shell')).toBeNull();
   });

@@ -131,7 +131,7 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
     render(<KnowledgeSection slug="demo-project" />);
     fireEvent.click(screen.getByRole('button', { name: /Index directory/ }));
     await waitFor(() =>
-      expect(screen.getByText('Index unavailable')).toBeTruthy(),
+      expect(screen.getByText('Try again in a moment.')).toBeTruthy(),
     );
     expect(screen.queryByText(/Indexed 0 files/)).toBeNull();
   });
@@ -150,7 +150,9 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
       },
     });
     await waitFor(() => {
-      expect(screen.getByText('failed.md: Store unavailable')).toBeTruthy();
+      expect(
+        screen.getByText('failed.md: Try again in a moment.'),
+      ).toBeTruthy();
     });
     expect(knowledgeMocks.save).toHaveBeenCalledTimes(2);
     expect(knowledgeMocks.save).toHaveBeenLastCalledWith({

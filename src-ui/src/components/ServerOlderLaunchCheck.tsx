@@ -82,8 +82,10 @@ function ServerOlderCheck({ clientVersion }: { clientVersion: string }) {
       target: 'server',
       message,
       detail,
+      updateAvailable:
+        status?.updateAvailable === true && status.releaseCheck === 'verified',
     });
     return () => clearUpdateNotice('server-older');
-  }, [message, detail]);
+  }, [message, detail, status?.updateAvailable, status?.releaseCheck]);
   return null;
 }

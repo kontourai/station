@@ -227,6 +227,9 @@ describe('e2e manifest', () => {
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
     expect(PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive).toEqual([
+      // Own paired Stations, peer grants and source preview state.
+      'tests/station-connection-chat.spec.ts',
+      'tests/conversation-surfaces.spec.ts',
       'tests/owned-work-custody.spec.ts',
       // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
       'tests/operator-sessions.spec.ts',

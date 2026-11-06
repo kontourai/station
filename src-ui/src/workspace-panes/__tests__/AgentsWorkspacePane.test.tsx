@@ -199,3 +199,7 @@ test('opening a delegate’s transcript reveals it on Activity', () => {
     session: 'delegate-1',
   });
 });
+
+vi.mock('../../hooks/useActiveStationName', () => ({
+  useActiveStationName: () => 'Fixture Station',
+}));

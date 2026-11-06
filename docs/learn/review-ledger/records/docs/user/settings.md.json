@@ -76,6 +76,10 @@
 
     "src-ui/src/components/updates/UpdateDownloadIcon.tsx",
 
+    "src-ui/src/connections/StationConnectionsContext.tsx",
+
+    "src-ui/src/components/conversation/LegacyConversationRecovery.tsx",
+
     "src-ui/src/views/ProjectSettingsView.tsx",
 
     "src-ui/src/views/ProjectSettingsView.css",
