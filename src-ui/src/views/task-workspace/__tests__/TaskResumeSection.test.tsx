@@ -8,7 +8,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const fixture = vi.hoisted(() => ({
   flags: new Set<string>(['task-resume']),
@@ -97,6 +97,7 @@ function renderSection(task: TaskRecord = TASK) {
 }
 
 describe('TaskResumeSection (#4554)', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     toastStore.clear();
     fixture.flags = new Set(['task-resume']);
@@ -120,7 +121,8 @@ describe('TaskResumeSection (#4554)', () => {
     expect(fixture.view).not.toHaveBeenCalled();
   });
 
-  test('the ended header shows the deadline and follow-up count; Resume sends the reason with what was shown', async () => {
+  test('the ended header and confirmation work without secure-context crypto; Resume sends what was shown', async () => {
+    vi.stubGlobal('crypto', undefined);
     renderSection();
     expect(await screen.findByText(/1 follow-up since it ended/)).toBeTruthy();
     expect(screen.getByText(/Resume by/)).toBeTruthy();
@@ -155,7 +157,10 @@ describe('TaskResumeSection (#4554)', () => {
       target: { value: 'Go again' },
     });
     fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Resume and dispatch' }),
+      within(dialog).getByRole('button', { name: 'More resume actions' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Resume and dispatch' }),
     );
     await waitFor(() => expect(fixture.dispatch).toHaveBeenCalledTimes(1));
     expect(fixture.resume).toHaveBeenCalledTimes(1);
@@ -174,7 +179,10 @@ describe('TaskResumeSection (#4554)', () => {
       target: { value: 'Go again' },
     });
     fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Resume and dispatch' }),
+      within(dialog).getByRole('button', { name: 'More resume actions' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Resume and dispatch' }),
     );
     await screen.findByText(/Resumed, but dispatch failed:/);
     expect(screen.queryByText(/Engine unavailable/)).toBeNull();

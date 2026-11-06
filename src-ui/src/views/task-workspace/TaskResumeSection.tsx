@@ -12,9 +12,11 @@ import {
   type TaskResumeFollowUp,
   type TaskResumeView,
 } from '@kontourai/station-sdk/task-resume';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { Badge } from '@kontourai/ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { ErrorState, SkeletonBlock } from '../../components/state';
@@ -35,10 +37,6 @@ function formatTime(value: string | undefined) {
   if (!value) return '';
   const time = new Date(value);
   return Number.isNaN(time.getTime()) ? value : time.toLocaleString();
-}
-
-function newResumeId() {
-  return globalThis.crypto.randomUUID();
 }
 
 /**
@@ -193,7 +191,7 @@ function TaskResumeDialog({
   const reasonId = useId();
   const [reason, setReason] = useState('');
   // One id per confirmation: a retry after a lost answer replays, not repeats.
-  const [resumeId] = useState(newResumeId);
+  const [resumeId] = useState(randomCorrelationId);
   const [dispatchError, setDispatchError] = useState('');
   const dispatch = useDispatchTaskMutation();
   const resume = useMutation({
@@ -255,23 +253,35 @@ function TaskResumeDialog({
       closeLabel="Close resume Task"
       onClose={onClose}
       footer={
-        <>
-          <Button onClick={onClose} disabled={resume.isPending}>
-            Cancel
-          </Button>
-          {task.agentId && (
-            <Button onClick={() => resume.mutate(true)} disabled={disabled}>
-              Resume and dispatch
+        <ActionRow
+          primary={
+            <Button
+              variant="primary"
+              onClick={() => resume.mutate(false)}
+              disabled={disabled}
+            >
+              Resume
             </Button>
-          )}
-          <Button
-            variant="primary"
-            onClick={() => resume.mutate(false)}
-            disabled={disabled}
-          >
-            Resume
-          </Button>
-        </>
+          }
+          secondary={
+            <Button onClick={onClose} disabled={resume.isPending}>
+              Cancel
+            </Button>
+          }
+          overflowLabel="More resume actions"
+          overflow={
+            task.agentId
+              ? [
+                  {
+                    key: 'resume-and-dispatch',
+                    label: 'Resume and dispatch',
+                    disabled,
+                    onSelect: () => resume.mutate(true),
+                  },
+                ]
+              : []
+          }
+        />
       }
     >
       <div className="task-resume__dialog">
