@@ -16,6 +16,7 @@ import {
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
 import { isOperatorSessionRead } from '../services/identity/operator-sessions.js';
 import type { ClientProtocolPolicy } from './client-protocol-admission.js';
+import type { StationOriginPolicy } from './station-browser-origins.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
 export type PairedDeviceLastSeenFrom = 'loopback' | 'lan' | 'tailnet';
@@ -465,7 +466,13 @@ export interface RuntimeHttpSecurityOptions {
   resolveGrantedScope: (
     credential: string,
   ) => string | undefined | Promise<string | undefined>;
+  /**
+   * Shorthand for a configured-only {@link StationOriginPolicy}; ignored when
+   * `originPolicy` is present. Production passes `originPolicy`.
+   */
   allowedOrigins?: readonly string[];
+  /** The Station's one browser-origin policy (`stationOriginPolicy`). */
+  originPolicy?: Pick<StationOriginPolicy, 'admits'>;
   /**
    * Test seam for the client-protocol range this host enforces. Production
    * omits it and enforces the same block the public handshake advertises
@@ -507,6 +514,11 @@ export interface RuntimeHttpSecurityOptions {
    * nothing.
    */
   telemetryProducers?: import('../services/telemetry-producers/telemetry-producer-store.js').TelemetryProducerAuthority;
+  /**
+   * #4519: the managed policy allows no remote clients, so a telemetry
+   * producer allowed to send from off the machine is held to this machine.
+   */
+  localClientsOnly?: boolean;
 }
 
 function isPublicRuntimeRoute(method: string, path: string): boolean {

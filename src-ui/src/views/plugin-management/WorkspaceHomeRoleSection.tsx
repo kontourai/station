@@ -11,6 +11,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNativeConsentBroker } from '../../platform/native/useNativeConsentBroker';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -117,11 +118,7 @@ export function WorkspaceHomeRoleSection({
       } catch (cause) {
         reviewWindow?.close();
         if (flightRef.current === flight) {
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : 'Could not open a Home role request',
-          );
+          setError(describeStationFailure(cause).body);
         }
       } finally {
         if (flightRef.current === flight) {

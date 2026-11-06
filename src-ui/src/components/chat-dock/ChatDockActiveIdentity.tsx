@@ -54,6 +54,7 @@ interface ChatDockActiveIdentityProps {
    */
   modelLabel?: string | null;
   routeLabel?: string;
+  stationName?: string;
   inputOrigin?: OrchestrationInputOrigin;
   onClose: (id: string) => void;
 }
@@ -71,6 +72,7 @@ export function ChatDockActiveIdentity({
   agent,
   modelLabel,
   routeLabel,
+  stationName,
   originLabel,
   originProvider,
   inputOrigin,
@@ -211,6 +213,11 @@ export function ChatDockActiveIdentity({
             <strong className="chat-dock__active-identity-agent">
               {agentName}
             </strong>
+          )}
+          {stationName && (
+            <span className="chat-dock__active-identity-engine">
+              Via {stationName}
+            </span>
           )}
           {engineLabel && (
             <span

@@ -16,6 +16,7 @@ import {
 } from 'react';
 import { useGitStatus } from '../../hooks/useGitStatus';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import {
   ArrowDownGlyph,
@@ -689,7 +690,7 @@ export function BranchToolbar({
 
       {error && (
         <span className="branch-toolbar__error" role="alert">
-          {error.message}
+          {describeStationFailure(error).body}
         </span>
       )}
     </div>

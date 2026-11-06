@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { claudeKeychainScope } from './claude-keychain-authentication.js';
+import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import type { CliAuthState, CliCommandResult } from './cli-auth.js';
 
 type ClaudeCredentials = {
@@ -122,6 +123,8 @@ export async function detectClaudeAuthState(
    */
   probe?: ClaudeAuthStatusProbe,
 ): Promise<CliAuthState> {
+  // #4515: a disallowed engine's credentials are not read.
+  if (!engineAllowedByManagedPolicy('claude')) return 'unknown';
   if (
     env.ANTHROPIC_API_KEY?.trim() ||
     env.ANTHROPIC_AUTH_TOKEN?.trim() ||

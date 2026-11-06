@@ -45,7 +45,7 @@ dunce = "1"
 # dependency table, not the desktop-only one below: web push cannot reach the
 # native shell (Android WebView has no PushManager), so mobile is the whole
 # reason this is here (#910).
-tauri-plugin-notification = "=2.7.0"
+tauri-plugin-notification = "=2.8.0"
 # Mobile haptic feedback (station#1954). Official Tauri plugin — listed in the
 # shared table so capability ACL generation can resolve `haptics:*` permissions
 # on every target; `lib.rs` only `.plugin()`-inits it under `cfg(mobile)`.
@@ -91,6 +91,11 @@ tauri-plugin-opener = "=2.5.5"
 # crash guard.
 notify-rust = "=4.18.0"
 tauri-plugin-updater = "=2.14.0"
+# The updater plugin's own HTTP client, named only for its redirect policy
+# (#4522): under a managed mirror, `configure_client` confines every hop to
+# the mirror's origin. Same version and no features of its own, so it is the
+# plugin's instance and adds nothing to the build.
+reqwest = { version = "0.13", default-features = false }
 # The one JS-reachable way to relaunch the process after an update installs.
 # Config-free, so unlike the updater plugin above it is always registered.
 tauri-plugin-process = "=2.4.0"
@@ -126,7 +131,7 @@ security-framework = "=3.7.0"
 
 [target."cfg(target_os = \"windows\")".dependencies]
 windows-native-keyring-store = "=1.1.0"
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Threading"] }
 
 [target."cfg(target_os = \"linux\")".dependencies]
 zbus-secret-service-keyring-store = { version = "=1.0.1", features = ["crypto-rust"] }
@@ -150,6 +155,10 @@ jni = "0.21"
 ndk-context = "0.1"
 
 [target."cfg(target_os = \"ios\")".dependencies]
+# Hinge geometry and posture for foldable iPhones (iOS 27.1+), read by the
+# WebView's fold store (src-ui/src/platform/fold). iOS-only: Android and
+# desktop WebViews use the CSS Viewport Segments API where they have it.
+tauri-plugin-station-fold = { path = "plugins/station-fold" }
 block2 = "=0.6.2"
 dispatch2 = "=0.3.1"
 objc2 = "=0.6.4"

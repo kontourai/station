@@ -110,12 +110,12 @@ function Page({ index, custom }: { index: number; custom: boolean }) {
 }
 
 describe('a saved engine that never connected', () => {
-  test('reads as Not connected yet with the reason, not as an engine Station has', () => {
+  test('reads as Not connected yet with safe recovery when launch fails', () => {
     render(<Page index={0} custom />);
 
     expect(screen.getByRole('heading', { name: 'Stub Engine' })).toBeTruthy();
     expect(screen.getByText('Not connected yet', { selector: 'strong' }));
-    expect(screen.getByText('spawn stub-acp ENOENT')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Check connection' }),
     ).toBeNull();

@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { decideOrchestrationTransferScope } from './check-prepush-orchestration-transfer.mjs';
 import { decideSdkBarrelScope } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
+import { conversationBoundaryCommands } from './conversation-boundary-gate.mjs';
 import {
   collectDocumentationChanges,
   formatDocumentationImpact,
@@ -136,6 +137,7 @@ export function gatePlan({ changedPaths, baseSha }) {
     everyPush: EVERY_PUSH_CHECKS,
     scoped: gateScopes({ changedPaths, baseSha }),
     fixtureCommands: fixturePolicyCommands(changedPaths),
+    conversationBoundaryCommands: conversationBoundaryCommands(changedPaths),
     gallery: galleryCoverage({ changedPaths }),
     ladder: LANE_LADDER,
   };
@@ -167,6 +169,12 @@ export function gateReport({ changedPaths, baseSha }) {
       ...plan.fixtureCommands.map((command) => `  ${command}`),
     );
   if (plan.gallery) lines.push('', ...formatGalleryCoverage(plan.gallery));
+  if (plan.conversationBoundaryCommands.length)
+    lines.push(
+      '',
+      'Conversation boundaries:',
+      ...plan.conversationBoundaryCommands.map((command) => `  ${command}`),
+    );
   lines.push(
     '',
     ...plan.ladder.map(

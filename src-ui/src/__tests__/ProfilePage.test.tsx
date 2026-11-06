@@ -213,7 +213,7 @@ describe('ProfilePage', () => {
     renderProfile();
     fireEvent.click(screen.getByRole('button', { name: 'Rebuild usage' }));
     await waitFor(() =>
-      expect(screen.getByText(/Rebuild unavailable/)).toBeTruthy(),
+      expect(screen.getByText(/Try again in a moment/)).toBeTruthy(),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() =>
@@ -234,7 +234,7 @@ describe('ProfilePage', () => {
 
     expect(screen.queryByText(/Daily activity not recorded/i)).toBeNull();
     expect(screen.getByText('Unable to load profile')).toBeTruthy();
-    expect(screen.getByText('usage read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.getByText('My access')).toBeTruthy();
     expect(screen.getByText('Paired people')).toBeTruthy();
     await act(async () => {
@@ -274,7 +274,7 @@ describe('ProfilePage', () => {
     analyticsState.loading = false;
     analyticsState.error = new Error('usage read failed');
     rerender(<ProfilePage />);
-    expect(screen.getByText('usage read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.getByText('My access')).toBeTruthy();
     expect(screen.getByText('Paired profiles')).toBeTruthy();
     expect(screen.queryByText(/Daily activity not recorded/i)).toBeNull();
@@ -287,7 +287,7 @@ describe('ProfilePage', () => {
     analyticsState.usageStats = buildPopulatedUsageStats();
     rerender(<ProfilePage />);
     expect(screen.getByLabelText('Usage activity overview')).toBeTruthy();
-    expect(screen.queryByText('usage read failed')).toBeNull();
+    expect(screen.queryByText('Try again in a moment.')).toBeNull();
     expect(screen.getByText('My access')).toBeTruthy();
     expect(screen.getByText('Paired profiles')).toBeTruthy();
   });

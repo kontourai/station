@@ -2121,11 +2121,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
       const detail = page.getByTestId('session-detail');
       await expect(detail).toBeVisible();
-      const request = page.getByTestId('session-request');
+      const request = detail.getByTestId('session-transcript');
       await expect(request).toContainText('Allow shell command');
       await expect(request).not.toContainText('request-private-identifier');
 
-      const composer = page.getByLabel('Continue delegated task');
+      const composer = detail.getByRole('textbox', {
+        name: 'Message',
+        exact: true,
+      });
       await composer.focus();
       await page.evaluate(() =>
         (window as any).__setTaskFirstViewport(420, 280),

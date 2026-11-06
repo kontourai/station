@@ -38,6 +38,7 @@ import {
   defaultSelectableManagedRuntimeConnection,
   isAgentConnectionSelectable,
 } from '../../utils/execution';
+import { StationUiError } from '../../utils/StationUiError';
 import type { EngineKind } from './AgentEditorEngineSelection';
 import { resolveAgentEditorReadState } from './agentEditorReadState';
 import {
@@ -295,7 +296,7 @@ export function useAgentsViewModel({
   );
   const authoritativeLoadError =
     !isCreating && successfulMismatch
-      ? new Error('Agent detail did not match the selected Agent.')
+      ? new StationUiError('Agent detail did not match the selected Agent.')
       : loadError;
   const detailAuthorityPending =
     !isCreating &&
@@ -841,9 +842,7 @@ export function useAgentsViewModel({
       const slug = (data as { slug?: string })?.slug;
       if (slug) urlSelect(slug);
     } catch (err: any) {
-      setEnableError(
-        err instanceof Error ? userFacingErrorMessage(err) : String(err),
-      );
+      setEnableError(userFacingErrorMessage(err));
     }
   }
 

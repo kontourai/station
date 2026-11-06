@@ -1,4 +1,6 @@
+import { MANAGED_POLICY_REMOTE_CLIENTS_CODE } from '@kontourai/station-contracts/managed-policy';
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
+import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 /**
@@ -58,7 +60,14 @@ import {
   isOperatorInPersonNotAgent,
   mayGrantFullAccess,
 } from '../../security/coding-authority.js';
-import { managedCeilingRefuses } from '../../security/managed-approval-ceiling.js';
+import {
+  clampToManagedCeiling,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
+import {
+  managedCapabilityRefusalBody,
+  telemetryAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -107,6 +116,9 @@ import {
   configurationMutationStatus,
 } from './configuration-activation.js';
 
+/** #4521: a telemetry raise refused because the managed policy turned it off. */
+const MANAGED_TELEMETRY_OFF = 'MANAGED_TELEMETRY_OFF';
+
 /**
  * Legacy-file projection only. New application authority is private SQLite.
  * Credential profiles go through the registry's own projection (#2966): an
@@ -120,6 +132,23 @@ import {
  */
 function managedSettingRefusal(c: Context, error: ManagedSettingLockedError) {
   return c.json(managedSettingRefusalBody(error), 403);
+}
+
+/**
+ * #4518: the config as it applies, with this Station's default approval
+ * mode lowered to the managed ceiling. GET and the PUT response both report
+ * it; the stored value is not changed (a default saved before the policy
+ * stays saved and applies again without it).
+ */
+function withManagedApprovalCeiling<
+  T extends { defaultApprovalMode?: unknown },
+>(config: T): T {
+  return isApprovalMode(config.defaultApprovalMode)
+    ? {
+        ...config,
+        defaultApprovalMode: clampToManagedCeiling(config.defaultApprovalMode),
+      }
+    : config;
 }
 
 function projectPublicAppConfig(config: Record<string, any>) {
@@ -423,7 +452,9 @@ export function createConfigRoutes(
       // the stored config; the body is what every reader sees (#4517).
       const stored = await configLoader.loadStoredAppConfig();
       const managed = installedManagedAppSettings();
-      const config = overlayManagedAppSettings(stored, managed);
+      const config = withManagedApprovalCeiling(
+        overlayManagedAppSettings(stored, managed),
+      );
       const frameOrigin = getMcpUiFrameOrigin?.();
       const pluginFrameOrigin = getPluginFrameOrigin?.();
       // #1582 D9: what a terminal would start here with nothing configured,
@@ -985,6 +1016,10 @@ export function createConfigRoutes(
               if (rank[after] < rank[before]) lowerings.push(key);
               if (rank[after] > rank[before]) raisesTelemetry = true;
             }
+            // #4521: the managed policy turned telemetry off. A raise could
+            // never take effect, so it is refused rather than stored.
+            if (raisesTelemetry && !telemetryAllowedByManagedPolicy())
+              throw new Error(MANAGED_TELEMETRY_OFF);
             if (
               requestMayBeAnAgent(c.req.raw) ||
               (raisesTelemetry && !mayRaiseTelemetry)
@@ -1006,6 +1041,14 @@ export function createConfigRoutes(
             authorizeContributionMutation?.(c.req.raw) !== true
           )
             throw new Error('LAN_DISCOVERY_OPERATOR_REQUIRED');
+          // #4519: checked after the operator gate, so only the operator
+          // learns what the policy says.
+          if (
+            accepted.lanDiscoveryEnabled === true &&
+            current.lanDiscoveryEnabled !== true &&
+            lanDiscoveryFor(configLoader).managedPolicyRefusal() !== undefined
+          )
+            throw new Error(MANAGED_POLICY_REMOTE_CLIENTS_CODE);
           // A semantic contribution change needs the BOUND-OPERATOR verdict,
           // whatever scope the presenting credential claims — an absent
           // presented scope is NOT an operator, it is an unscoped caller, so
@@ -1069,7 +1112,10 @@ export function createConfigRoutes(
         update,
       );
       const updated = mutation.value;
-      const publicUpdated = projectPublicAppConfig(updated);
+      // #4518: the response reports the values in effect, as GET does.
+      const publicUpdated = projectPublicAppConfig(
+        withManagedApprovalCeiling(updated),
+      );
       logger.info('App config updated', { config: publicUpdated });
       // archive#1194: this key is the onboarding engine picker's own
       // mutation surface — rebind immediately rather than waiting for some
@@ -1104,6 +1150,10 @@ export function createConfigRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (error instanceof Error && error.message === MANAGED_TELEMETRY_OFF) {
+        logRefusal('managed_telemetry_off');
+        return c.json(managedCapabilityRefusalBody('usage sharing'), 403);
+      }
       if (error instanceof ManagedSettingLockedError) {
         logRefusal('managed_setting_locked');
         return managedSettingRefusal(c, error);
@@ -1148,6 +1198,22 @@ export function createConfigRoutes(
             success: false,
             error:
               'Only this Station’s local operator can change Project execution offers.',
+          },
+          403,
+        );
+      }
+      const managedRefusal =
+        lanDiscoveryFor(configLoader).managedPolicyRefusal();
+      if (
+        error instanceof Error &&
+        error.message === MANAGED_POLICY_REMOTE_CLIENTS_CODE &&
+        managedRefusal !== undefined
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: managedRefusal,
+            code: MANAGED_POLICY_REMOTE_CLIENTS_CODE,
           },
           403,
         );

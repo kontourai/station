@@ -3,6 +3,7 @@ import { lstat, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
+import { admitManagedListener } from '../../security/managed-network-exposure.js';
 import { sleep } from '../../utils/sleep.js';
 import {
   createSystemOpenSshRunner,
@@ -212,7 +213,21 @@ export function classifyOpenSshDiagnostic(
   return null;
 }
 
+/**
+ * A free loopback port for an `ssh -L` forward, admitted under the #4519
+ * managed limit (no Tailscale Serve route to it) before ssh binds it.
+ */
 async function reserveLoopbackPort(): Promise<number> {
+  const port = await reserveFreeLoopbackPort();
+  await admitManagedListener({
+    name: 'SSH environment forward',
+    host: '127.0.0.1',
+    port,
+  });
+  return port;
+}
+
+async function reserveFreeLoopbackPort(): Promise<number> {
   return await new Promise((resolvePromise, rejectPromise) => {
     const server = createServer();
     server.unref();

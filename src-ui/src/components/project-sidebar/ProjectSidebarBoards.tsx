@@ -8,17 +8,25 @@ import {
 import type { ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { boardPath } from '../../app-shell/board-route';
+import { boardSlugFromName, nextBoardSlug } from '../../app-shell/board-slug';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { regionLabel } from '../../regions/region-model';
 import { Button } from '../Button';
 import { DashboardGlyph } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import { ErrorState, SkeletonBlock } from '../state';
 import { NEW_BOARD_REQUEST_EVENT } from './new-board-events';
 import { useSidebarPillRegions } from './pill-region-open';
 import { sidebarLayoutPaneId } from './pill-region-placement';
 import { SidebarPopover } from './SidebarPopover';
 import './ProjectSidebarBoards.css';
+
+const loadAppsLibrary = () =>
+  import('../../views/apps/AppsLibrary').then((module) => ({
+    default: module.AppsLibrary,
+  }));
 
 /**
  * The panel's **Boards** section (#2062; design record D3 in
@@ -69,51 +77,6 @@ type RowMode =
  * newly correct.
  */
 const DEFAULT_BOARD_NAME = 'Untitled Board';
-
-/**
- * A slug this viewer is not already using, derived from the default name.
- *
- * The slug is the Board's ADDRESS (the filename on disk and the segment in
- * its URL), and the server refuses a repeat with 409. Deriving a free one
- * here means the `+` always produces a Board rather than an error the user
- * did not ask a question to receive; the NAME stays the friendly duplicate
- * ("Untitled Board" twice is fine) because the name is not an identity.
- */
-export function nextBoardSlug(taken: readonly string[]): string {
-  const base = 'untitled-board';
-  if (!taken.includes(base)) return base;
-  for (let suffix = 2; ; suffix += 1) {
-    const candidate = `${base}-${suffix}`;
-    if (!taken.includes(candidate)) return candidate;
-  }
-}
-
-/**
- * #4405 (A28): the address a new Board's first name gives it — lowercase
- * words joined by `-`, starting with a letter, at most 64 characters (the
- * server's slug rule) — made free among `taken` the way `nextBoardSlug` is.
- * `undefined` when the name has nothing an address can use.
- */
-export function boardSlugFromName(
-  name: string,
-  taken: readonly string[],
-): string | undefined {
-  const words = name
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  if (!words) return undefined;
-  const base = (/^[a-z]/.test(words) ? words : `board-${words}`)
-    .slice(0, 56)
-    .replace(/-+$/, '');
-  if (!taken.includes(base)) return base;
-  for (let suffix = 2; ; suffix += 1) {
-    const candidate = `${base}-${suffix}`;
-    if (!taken.includes(candidate)) return candidate;
-  }
-}
 
 /**
  * One of the row's three `role="menu"` surfaces (#2083).
@@ -203,6 +166,8 @@ export function ProjectSidebarBoards({
   const { projects } = useProjects();
   const [mode, setMode] = useState<RowMode>({ kind: 'rest' });
   const [navigatorOpen, setNavigatorOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const appsEnabled = useSurfaceVisibilityFlags().has('apps-library');
   const navigatorTriggerRef = useRef<HTMLButtonElement>(null);
   const closeNavigator = useCallback(() => setNavigatorOpen(false), []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Route and presentation changes dismiss the transient navigator.
@@ -569,10 +534,25 @@ export function ProjectSidebarBoards({
     if (open) openBoard(slug);
   };
 
+  const library = appsEnabled && libraryOpen && (
+    <LazyBoundary
+      load={loadAppsLibrary}
+      pending={<SkeletonBlock label="Opening Apps" />}
+      componentProps={{
+        returnFocusTarget: collapsed ? navigatorTriggerRef.current : undefined,
+        onClose: () => setLibraryOpen(false),
+        onOpen: (slug) => {
+          setLibraryOpen(false);
+          openBoard(slug);
+        },
+      }}
+    />
+  );
+
   const content = (
     <>
       <div className="sidebar__section-label sidebar__section-label--boards">
-        <span className="sidebar__section-label-text">Personal Boards</span>
+        <span className="sidebar__section-label-text">Apps</span>
         <button
           type="button"
           className="sidebar__section-add"
@@ -602,11 +582,22 @@ export function ProjectSidebarBoards({
           </svg>
         </button>
       </div>
-      {isPending && <SkeletonBlock count={2} label="Loading personal Boards" />}
+      {appsEnabled && (
+        <Button
+          className="apps-library-entry"
+          onClick={() => {
+            closeNavigator();
+            setLibraryOpen(true);
+          }}
+        >
+          Browse apps
+        </Button>
+      )}
+      {isPending && <SkeletonBlock count={2} label="Loading apps" />}
       {isError && (
         <ErrorState
           variant="compact"
-          title="Unable to load personal Boards"
+          title="Unable to load apps"
           action={
             <Button size="sm" onClick={() => void refetch()}>
               Retry
@@ -636,19 +627,6 @@ export function ProjectSidebarBoards({
         });
         return (
           <div className="sidebar__board-row" key={board.slug}>
-            {/* The row's own line — the Board button (or its rename input)
-                and the absolutely-positioned menu trigger — wrapped so the
-                trigger is centred on THAT box and not on the whole row.
-
-                Without this wrapper the trigger centres on
-                `.sidebar__board-row`, which grows from 44px to ~138px when a
-                menu opens below, sliding the trigger down on top of the
-                menu's first item: a tap on Rename hit the trigger and closed
-                the menu instead (#2062 review F1, measured in Chromium at
-                33x27px of overlap). The projects list already solves this the
-                same way — `.sidebar__project-row-main` in `ProjectSidebar.css`
-                wraps its button and absolute controls with the expanded
-                content outside it. */}
             <div className="sidebar__board-row-main">
               {renaming ? (
                 <input
@@ -918,15 +896,21 @@ export function ProjectSidebarBoards({
       })}
     </>
   );
-  if (!collapsed) return content;
+  if (!collapsed)
+    return (
+      <>
+        {content}
+        {library}
+      </>
+    );
   return (
     <>
       <button
         ref={navigatorTriggerRef}
         type="button"
         className="sidebar__boards-trigger"
-        aria-label="Personal Boards"
-        title="Personal Boards"
+        aria-label="Apps"
+        title="Apps"
         aria-haspopup="dialog"
         aria-expanded={navigatorOpen}
         onPointerDown={(event) => {
@@ -936,10 +920,11 @@ export function ProjectSidebarBoards({
       >
         <DashboardGlyph />
       </button>
+      {library}
       <SidebarPopover
         open={collapsed && !isMobile && navigatorOpen}
         anchorRef={navigatorTriggerRef}
-        label="Personal Boards"
+        label="Apps"
         onClose={closeNavigator}
       >
         <div className="sidebar__boards-popover">{content}</div>

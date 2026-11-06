@@ -1015,7 +1015,10 @@ test.describe('Orchestration Chat Flow', () => {
     await expectClearLayout('desktop uncertain delivery');
     await card.getByRole('button', { name: 'Check status' }).click();
     await expect(card.getByRole('alert')).toContainText(
-      'Station still could not confirm',
+      'Delivery is not confirmed.',
+    );
+    await expect(card.getByRole('alert')).toContainText(
+      'Check this request before trying again.',
     );
     await expect(allowOnce).toBeDisabled();
     answer = 'settled';

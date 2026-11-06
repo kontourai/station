@@ -216,6 +216,9 @@ describe('StationHomeArchive', () => {
 
   it('backs up and atomically restores validated home data', () => {
     const fixture = homeFixture();
+    const scratch = join(fixture.home, 'scratch', 'chat', 'work.txt');
+    mkdirSync(join(scratch, '..'), { recursive: true, mode: 0o700 });
+    writeFileSync(scratch, 'private scratch before', { mode: 0o600 });
     const backupDir = join(fixture.root, 'backup');
     const empty = join(fixture.home, 'agents', 'research', 'memory', 'empty');
     mkdirSync(empty, { recursive: true });
@@ -239,6 +242,7 @@ describe('StationHomeArchive', () => {
         STATION_HOME_SCHEMA_FILE,
         'config/app.json',
         'data/orchestration.sqlite',
+        'scratch/chat/work.txt',
       ]),
     );
     expect(backup.manifest.files.map((file) => file.path[0])).not.toContain(
@@ -254,6 +258,7 @@ describe('StationHomeArchive', () => {
       '{"model":"new"}\n',
     );
     rmSync(join(fixture.home, 'agents'), { recursive: true });
+    writeFileSync(scratch, 'private scratch after');
     const restored = restoreStationHomeBackup({
       backupDir,
       homeDir: fixture.home,
@@ -267,8 +272,15 @@ describe('StationHomeArchive', () => {
       true,
     );
     expect(readdirSync(empty)).toEqual([]);
+    expect(readFileSync(scratch, 'utf8')).toBe('private scratch before');
     expect(existsSync(join(empty, 'never-created'))).toBe(false);
     expect(restored.previousHome).toBeDefined();
+    expect(
+      readFileSync(
+        join(restored.previousHome!, 'scratch', 'chat', 'work.txt'),
+        'utf8',
+      ),
+    ).toBe('private scratch after');
     expect(
       readFileSync(join(restored.previousHome!, 'config', 'app.json'), 'utf8'),
     ).toBe('{"model":"new"}\n');

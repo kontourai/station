@@ -812,7 +812,7 @@ test.describe('Connection Manager Modal', () => {
       page.getByRole('button', { name: 'Enter a pairing code' }),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Other Stations' }),
+      page.getByRole('button', { name: 'Find nearby Stations' }),
     ).toHaveCount(0);
   });
 

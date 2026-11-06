@@ -99,6 +99,22 @@ afterEach(() => {
 });
 
 describe('PairedDevicesPanel', () => {
+  test('a device the managed policy suspends says so instead of "Has access", and can still be revoked (#4519)', async () => {
+    stubHost({
+      devices: [
+        device({
+          suspended: { by: 'managed-policy', organization: 'Acme' },
+        }),
+        device({ id: 'device-2', name: 'Desk Mac' }),
+      ],
+    });
+    renderPanel();
+    expect(await screen.findByText('Suspended by Acme’s policy')).toBeTruthy();
+    // Only the unsuspended device claims access.
+    expect(screen.getAllByText('Has access')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /Revoke/ })).toHaveLength(2);
+  });
+
   test.each(['operator_session_required', 'insufficient_scope'])(
     'offers operator sign-in after a 403 %s inventory refusal',
     async (code) => {

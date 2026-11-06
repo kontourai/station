@@ -90,8 +90,11 @@ force, so turning the preview off never signs invited people out.
   knows serves the UI: its UI listener, Tailscale Serve mappings to that
   listener, and allowed origins witnessed at the UI proxy. The API listener is
   not offered. An address is selectable only when it is HTTPS (or HTTP
-  loopback) and the API admits it as a browser origin. For a proxy address, add
-  it to `ALLOWED_ORIGINS` and open Settings through that UI ingress. This is
+  loopback) and the API's one browser-origin policy admits it: a configured
+  origin, or this Station's own Tailscale Serve origin (its MagicDNS name,
+  every handler proxying to Station, Funnel off), which needs no
+  `ALLOWED_ORIGINS` entry. For any other proxy address, add it to
+  `ALLOWED_ORIGINS` and open Settings through that UI ingress. This is
   configuration and ingress evidence, not proof another device can reach it.
   The localhost choice works only on this computer.
 - **Applying.** Confirmation stages the change in
@@ -476,6 +479,12 @@ the existing ingress replacement domain. If either Device has an account
 binding, the approved issuer and subject must match on both; different accounts
 and unbound Devices remain separate even when they share a Serve WhoIs login.
 The correlation is not account proof or Project membership.
+
+A launcher sign-in link (`station open --print`, `#station-ui-bootstrap`)
+never replaces another browser's Device. The server picks a new correlation
+for each redemption, so a second browser signing in, on the same origin or
+another one, leaves the first browser's session valid. Revoking one of those
+Devices ends only that browser.
 
 The exchanged Device must present a current account for that exact
 issuer/subject on protected resource requests, apart from the narrowly scoped

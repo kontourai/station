@@ -1238,11 +1238,19 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       ).toBeHidden();
       await expect(pending).toBeHidden();
       expect(openReads).toBe(1);
+      const historyNotice = page.getByRole('alert').filter({
+        hasText: 'Session history is unavailable.',
+      });
+      await expect(historyNotice).toBeVisible({ timeout: 15_000 });
+      await expect(historyNotice).toContainText('Try again in a moment.');
+      await expect(
+        historyNotice.getByRole('button', { name: 'Retry', exact: true }),
+      ).toBeVisible();
       await expect(
         page.getByText('Recovery fixture history unavailable', {
           exact: false,
         }),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toHaveCount(0);
       const failedHistoryReads = historyReads;
       expect(failedHistoryReads).toBeGreaterThan(0);
       historyFailed = false;
@@ -1255,11 +1263,7 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       await expect(
         page.getByText('Recovered conversation transcript', { exact: true }),
       ).toBeVisible();
-      await expect(
-        page.getByText('Recovery fixture history unavailable', {
-          exact: false,
-        }),
-      ).toBeHidden();
+      await expect(historyNotice).toBeHidden();
       await expect(resync).toBeHidden();
       await expect(
         page.getByRole('group', { name: 'Message composer', exact: true }),
@@ -1678,6 +1682,11 @@ async function openGalleryNewChatDraft(page: Page): Promise<Locator> {
     .click();
   const draft = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(draft).toBeVisible();
+  // The draft's setup check starts as a one-line placeholder and is replaced
+  // by the taller setup guidance, which moves the composer down. A tap aimed
+  // before that lands on whatever slid under it, so wait for the settled draft.
+  for (const label of ['Checking chat setup', 'Loading setup options'])
+    await expect(draft.getByRole('status', { name: label })).toHaveCount(0);
   return draft;
 }
 
@@ -2679,7 +2688,441 @@ function taskCapabilityScreens(): Screen[] {
   );
 }
 
+function appsLibraryScreens(details = false): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      let cleanups: (() => Promise<void>)[] = [];
+      return {
+        name: `apps-${details ? 'details' : 'library'}-${theme}-${viewport.width === 390 ? 'mobile' : 'desktop'}`,
+        title: `Apps ${details ? 'details' : 'library'} — ${theme}, ${viewport.width}px`,
+        path: '/',
+        viewport,
+        beforeGoto: async (page) => {
+          cleanups = [
+            await withRoute(page, '**/api/feature-previews', (route) => {
+              if (route.request().method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              return route.fulfill({
+                json: {
+                  success: true,
+                  data: [{ id: 'apps-library', enabled: true }],
+                },
+              });
+            }),
+            await withRoute(page, '**/api/me/layouts', (route) => {
+              if (route.request().method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              return route.fulfill({
+                json: {
+                  success: true,
+                  data: [
+                    {
+                      id: 'morning',
+                      slug: 'morning',
+                      type: 'custom',
+                      name: 'Morning brief',
+                      icon: '☀️',
+                      description: 'Decisions, active Tasks and recent work.',
+                    },
+                    {
+                      id: 'review',
+                      slug: 'review',
+                      type: 'custom',
+                      name: 'Review desk',
+                      icon: '🌿',
+                      description:
+                        'Release notes and the work that needs a closer look.',
+                    },
+                    {
+                      id: 'tools',
+                      slug: 'tools',
+                      type: 'custom',
+                      name: 'Tool desk',
+                      plugin: 'acme-tools',
+                      description:
+                        'A personal workspace with installed plugin panes.',
+                    },
+                  ],
+                },
+              });
+            }),
+          ];
+        },
+        afterGoto: async (page) => {
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
+          if (viewport.width === 390)
+            await page
+              .getByRole('button', { name: 'Toggle menu', exact: true })
+              .click();
+          await page
+            .getByRole('button', { name: 'Browse apps', exact: true })
+            .click();
+          const library = page.getByRole('dialog', {
+            name: 'Apps',
+            exact: true,
+          });
+          await expect(
+            library.getByRole('button', {
+              name: 'Morning brief Personal Board Decisions, active Tasks and recent work.',
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            library.getByRole('region', { name: 'Plugin layouts' }),
+          ).toBeVisible();
+          if (details) {
+            await library
+              .getByRole('button', { name: 'Edit Morning brief details' })
+              .click();
+            await expect(
+              page
+                .getByRole('dialog', { name: 'Edit app details' })
+                .getByRole('textbox', { name: 'Description', exact: true }),
+            ).toHaveValue('Decisions, active Tasks and recent work.');
+          }
+        },
+        cleanup: async () => {
+          for (const cleanup of cleanups) await cleanup();
+          cleanups = [];
+        },
+      };
+    }),
+  );
+}
+
+function projectRepositorySourceScreens(): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [false, true].flatMap((accessDetails) =>
+      [DESKTOP, MOBILE].map((viewport): Screen => {
+        const slug = `gallery-repository-${accessDetails ? 'access' : 'sources'}-${theme}-${viewport.width}`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        const cleanups: (() => Promise<void>)[] = [];
+        let created = false;
+        let previousPreview = false;
+        return {
+          name: `project-repository-${accessDetails ? 'access' : 'sources'}-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
+          title: `Project repository sources — ${theme}, ${viewport.width}px`,
+          path: `/projects/${slug}/edit?section=resources`,
+          viewport,
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const preview = (await previews.json()).data.find(
+              (item: { id: string }) => item.id === 'repository-auth-details',
+            );
+            expect(preview).toBeDefined();
+            previousPreview = preview.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/repository-auth-details`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+            cleanups.push(async () => {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/repository-auth-details`,
+                { data: { enabled: previousPreview } },
+              );
+              expect(restored.ok()).toBe(true);
+            });
+            cleanups.push(
+              await withRoute(
+                page,
+                '**/api/integrations/status?include=github-authentication',
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: {
+                      success: true,
+                      data: {
+                        connections: [
+                          {
+                            connectionId: 'github',
+                            provider: 'github',
+                            actions: [
+                              {
+                                action: 'read',
+                                computedBy: 'github.gh-auth-status',
+                                state: 'unverified',
+                                reason:
+                                  'Repository permissions have not been checked.',
+                              },
+                            ],
+                            authentication: {
+                              state: 'signed-in',
+                              observedAt: 1793836800000,
+                              account: 'example-user',
+                              scopes: ['repo', 'read:org'],
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  });
+                },
+              ),
+            );
+
+            const response = await request.post(
+              `${resolveE2EApiBase()}/api/projects`,
+              { data: { name: 'Station documentation', slug } },
+            );
+            expect(response.ok()).toBe(true);
+            created = true;
+            const project = (await response.json()).data;
+            const identity = {
+              schemaVersion: 1 as const,
+              id: `portable-${slug}`,
+              repos: [
+                {
+                  kind: 'git' as const,
+                  id: 'github.com/example/station',
+                  canonicalRemote: 'github.com/example/station',
+                  role: 'primary' as const,
+                  label: 'Station repository',
+                },
+                {
+                  kind: 'git' as const,
+                  id: 'gitlab.com/example/docs',
+                  canonicalRemote: 'gitlab.com/example/docs',
+                },
+              ],
+              executionRoot: {
+                repoId: 'gitlab.com/example/docs',
+                path: 'manual',
+              },
+              createdAt: '2026-11-05T00:00:00.000Z',
+              updatedAt: '2026-11-05T00:00:00.000Z',
+            } satisfies import('@kontourai/station-contracts/project-identity').ProjectPortableIdentity;
+            cleanups.push(
+              await withRoute(
+                page,
+                `**/api/projects/${slug}/identity`,
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: {
+                      success: true,
+                      data: {
+                        identity,
+                        association: {
+                          portableProjectId: identity.id,
+                          localProjectId: project.id,
+                          localProjectSlug: slug,
+                        },
+                      },
+                    },
+                  });
+                },
+              ),
+            );
+            const resolution = {
+              posture: 'backing',
+              primary: { named: true, resourceId: identity.repos[0].id },
+              resources: [
+                {
+                  state: 'bound',
+                  resourceId: identity.repos[0].id,
+                  path: '/srv/code/station',
+                },
+                {
+                  state: 'missing',
+                  resourceId: identity.repos[1].id,
+                  record: 'binding',
+                  declaredPath: '/srv/code/docs',
+                  reason:
+                    'The recorded working copy is unavailable on this Station.',
+                },
+              ],
+            } satisfies import('@kontourai/station-contracts/project-identity').ProjectResolutionView;
+            cleanups.push(
+              await withRoute(
+                page,
+                `**/api/projects/${slug}/resolution`,
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: { success: true, data: resolution },
+                  });
+                },
+              ),
+            );
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            const sources = page.locator('[aria-label="Repository sources"]');
+            await expect(
+              sources.getByRole('link', {
+                name: 'example/station',
+                exact: true,
+              }),
+            ).toHaveAttribute('href', 'https://github.com/example/station');
+            await expect(
+              sources.getByText(
+                'The saved folder was not found. Check its location.',
+                { exact: true },
+              ),
+            ).toBeVisible();
+            await expect(
+              sources.getByText('Working copy verified', { exact: true }),
+            ).toHaveCount(0);
+            const first = sources
+              .locator('.project-repositories__card')
+              .first();
+            if (accessDetails) {
+              await first
+                .getByText('Checkout and access details', { exact: true })
+                .click();
+              await expect(
+                first.getByText('/srv/code/station', { exact: true }),
+              ).toBeVisible();
+              await expect(
+                first.getByText('example-user', { exact: true }),
+              ).toBeVisible();
+              await expect(
+                first.getByText('Not checked by this sign-in check', {
+                  exact: true,
+                }),
+              ).toBeVisible();
+            }
+            if (viewport.width === MOBILE.width && !accessDetails) {
+              const section = page.locator('#section-resources');
+              for (const label of [
+                'Add a repository',
+                'Advanced: checkout repair',
+              ]) {
+                const summary = section
+                  .locator('summary')
+                  .filter({ hasText: new RegExp(`^${label}$`) });
+                await summary.click();
+                await expect(
+                  section
+                    .locator('details[open] > summary')
+                    .filter({ hasText: label }),
+                ).toHaveCount(1);
+                await expect(summary).toBeInViewport({ ratio: 1 });
+                await summary.click();
+              }
+              await sources
+                .getByRole('button', { name: 'Review checkout', exact: true })
+                .click();
+              const repair = section.getByText('Advanced: checkout repair', {
+                exact: true,
+              });
+              await expect(repair).toBeInViewport({ ratio: 1 });
+              await expect(
+                section
+                  .locator('details[open] > summary')
+                  .filter({ hasText: 'Advanced: checkout repair' }),
+              ).toHaveCount(1);
+              await repair.click();
+            }
+            const target = accessDetails
+              ? first.locator('.project-repositories__access')
+              : sources.getByRole('heading', {
+                  name: 'Repositories and folders',
+                  exact: true,
+                });
+            const header = await page.locator('.detail-header').boundingBox();
+            const body = await page
+              .locator('.project-settings__body')
+              .boundingBox();
+            const subject = await target.boundingBox();
+            expect(header).not.toBeNull();
+            expect(body).not.toBeNull();
+            expect(subject).not.toBeNull();
+            const top = Math.max(header!.y + header!.height, body!.y) + 16;
+            await page.mouse.move(
+              body!.x + body!.width / 2,
+              Math.min(viewport.height - 100, top + 150),
+            );
+            await page.mouse.wheel(0, subject!.y - top);
+            await expect
+              .poll(async () =>
+                Math.abs(((await target.boundingBox())?.y ?? 0) - top),
+              )
+              .toBeLessThan(3);
+            const scroller = await page
+              .locator('.project-settings__body')
+              .boundingBox();
+            const pinnedHeader = await page
+              .locator('.detail-header')
+              .boundingBox();
+            const dock = await page
+              .locator('.chat-dock.is-collapsed')
+              .boundingBox();
+            expect(scroller).not.toBeNull();
+            expect(pinnedHeader).not.toBeNull();
+            expect(dock).not.toBeNull();
+            expect(
+              scroller!.y,
+              'Sources scroll below the header',
+            ).toBeGreaterThanOrEqual(
+              pinnedHeader!.y + pinnedHeader!.height - 1,
+            );
+            expect(
+              scroller!.y + scroller!.height,
+              'Sources scroll above the collapsed dock',
+            ).toBeLessThanOrEqual(dock!.y + 1);
+            if (accessDetails) {
+              await expect(
+                first.getByText('example-user', { exact: true }),
+              ).toBeInViewport();
+              await expect(
+                first.getByText('repo, read:org', { exact: true }),
+              ).toBeInViewport();
+              await expect(
+                first.getByRole('button', {
+                  name: 'Check sign-in',
+                  exact: true,
+                }),
+              ).toBeInViewport();
+            } else {
+              await expect(
+                sources.getByRole('button', {
+                  name: 'Review checkout',
+                  exact: true,
+                }),
+              ).toBeInViewport();
+            }
+            expect(
+              await page.evaluate(
+                () => document.documentElement.scrollWidth <= innerWidth,
+              ),
+            ).toBe(true);
+          },
+          async cleanup() {
+            for (const cleanup of cleanups.splice(0)) await cleanup();
+            if (created) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${slug}`,
+              );
+              expect(removed.ok()).toBe(true);
+            }
+          },
+        };
+      }),
+    ),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...appsLibraryScreens(),
+  ...appsLibraryScreens(true),
+  ...projectRepositorySourceScreens(),
   ...telemetryConsentScreens(),
   ...[DESKTOP, MOBILE].map((viewport): Screen => {
     const slug = 'gallery-project-retry-board';

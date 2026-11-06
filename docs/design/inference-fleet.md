@@ -340,6 +340,10 @@ now uses Bearing through its public catalog contract. Its snapshots do not
 establish the proposed fleet Datum/Bearing capability composition.
 
 
+The table below preserves the earlier dependency assessment, including its
+then-installed and then-published versions. It is historical; the manifest and
+lockfile linked above define the present checkout.
+
 | Package | `package.json` | lockfile (root) | installed in this tree | published latest |
 |---|---|---|---|---|
 | `@kontourai/conduit` | `0.2.1` (`:204`) | 0.2.1 | 0.2.1 | **0.6.0** |

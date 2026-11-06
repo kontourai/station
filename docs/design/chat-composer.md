@@ -280,30 +280,63 @@ on personal hosts. [Peer chat routes](../../src-server/routes/environments/peer-
 own its server branch. Every read and write rechecks the preview and source
 request authority. The existing `access:manage` peer-family boundary and the
 agent-origin refusal prevent a delegated agent from using another Station’s
-saved credential for an onward hop. The receiver still applies its credential,
+saved credential for an onward hop. The enumerated mutations in the shared
+[tunnel policy](../../src-server/routes/environments/peer-chat-policy.ts) admit
+the operator and the owner's own devices with
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02);
+every other peer-family write stays operator-only. The receiver still applies its credential,
 Project, engine, approval and full-access checks.
 
 New Chat reads the receiver’s Projects through that bridge. It never sends the
 source Project’s slug as a receiver selection. This is an explicit foreground
 chat under the existing personal-peer grant, not portable Task placement;
 portable Project offers retain their existing separate consent. The bridge
-allows only bounded chat/history/request reads and typed foreground sends,
-Stop and request decisions. It confirms the saved environment identity,
+allows bounded conversation, request, media and catalog reads, live events,
+typed foreground sends, inbox changes, Stop, steering, request decisions and
+checkpoint restores. It confirms the saved environment identity,
 forwards only the saved peer credential, refuses redirects, withholds results
 after authority or credential rotation, and publishes no remote cookies.
 
-[PeerChatBody](../../src-ui/src/components/chat-dock/PeerChatBody.tsx) opens in the
-normal dock. The active-chat store retains its remote binding and keyed pending
-message; it never promotes the remote identity to a local conversation ID.
-It polls bounded conversation windows, shares `SessionTranscript` and the shared
-approval and input-form controls, and reuses `SessionReplyComposer` with Activity.
-An uncertain message stays pending and an explicit retry keeps the same key.
-**Edit in New Chat** copies it into a separate draft with the remote choices,
-requires the receiver Project to be chosen again, and never sends automatically.
-The original pending message remains available; the warning asks the person to
-check for delivery before sending changed work. Invalid saved remote bindings
-show a recovery action and cannot fall back to the source chat composer.
-Turning the preview off stops remote operations and leaves retained work visible.
+The normal dock uses [ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx)
+for host, direct and relayed chats. One header says `Via <Station>`; message rows
+do not repeat that attribution. The modal leases the selected connection until
+the new tab takes ownership. Its versioned binding pins Station, principal and
+route lineage; pairing a direct route later cannot silently switch an existing
+relay chat's owner. New chats prefer a verified direct connection.
+
+The shared controller binds transcript, media, stats, inbox, steering, current-turn
+Stop and approval answers to that connection. Approval inspection proofs bind
+the request URL, content and authority; unsupported trust choices stay unavailable.
+The approval picker reads that Station's managed ceiling, not the host's. Server
+enforcement still applies when its summary cannot be read. A failed Stop stays
+visible and retryable; a failed Task stop keeps the confirmation open.
+Full access, arbitrary folders, remote mentions, offline copies/replay, personal
+defaults and local skill/workspace integrations are unavailable on relayed chats.
+
+Dock, Activity, attached records and coding tabs use the same conversation body.
+Attached records retain their read-only access and explicit **Continue in Station**
+action, which confirms continuation into an owned child.
+Owner, member and guest Task histories share record rendering and pagination;
+publication removal still clears a member's readable records. Desktop and mobile
+Inbox share search, activation currency, snooze, dismissal and Undo.
+Child-work notices retain their Station and result source. A structured tool
+return updates an earlier provider summary without adding a duplicate notice.
+
+Request failures use the owning Station's shared translator. Source and target
+access failures name the appropriate Station; provider repair hints keep their
+existing access restrictions. Unknown codes and parser text stay out of normal
+copy. Exact input requests use the common reply editor with their original request
+reference; an older unbound request directs the reader to its session.
+
+A definite refusal appears inside the ordinary not-sent user bubble with Retry
+and Edit, a short target-aware reason and closed Details. An uncertain send keeps
+its key and offers **Check**; it is never automatically replayed remotely.
+Retry requires safe non-delivery evidence. **Edit a copy** retains the uncertain
+original; Discard requires confirmation. Legacy chats without a source receipt
+retain text and draft and offer **Reconnect chat**, with explicit source confirmation
+before import and receiver lookup before any possibly dispatched resend.
+Preview off stops non-host operations and streams while keeping local content and
+drafts readable. See [Station connections](station-connection.md) for the full contract.
 
 Home and New Chat share the heading with its inline Project picker, optional
 No project action, compact Agent/Model row, and Station/location line below the
@@ -361,7 +394,7 @@ The desktop Inbox, embedded mobile Inbox, and start surface share their row anat
 cards allow two title lines while status and metadata keep predictable positions.
 Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed
 clock and ×, while × hides any conversation without stopping work or deleting
-history. Undo and the collapsed Dismissed section restore it on this device.
+history. Undo restores it on this device; inbox search reveals dismissed work with Restore.
 With Sheet gestures preview enabled, mobile rows reveal the same clock and ×
 on a left swipe, with larger targets and short labels. Swiping only reveals;
 Snooze still opens its duration picker, and Details retains the same actions.
@@ -574,7 +607,12 @@ sending holds it in the queue under the same key; an engine that refuses it as
 busy after Station began sending spends that key, and Continue for that
 interruption then only reports the refusal (type a message instead). Only a person's tap
 starts it; the outbox may replay an unanswered tap under the same key, as it
-does any send. A row without answer text has no Basis chip. The pill's state changes animate its width with
+does any send. Behind the separate `continue-unattended-after-restart`
+preview, Station itself may send that note for Task-dispatched or delegated
+work after a restart (#4512), under the same key, so a tap after it joins the
+same turn. Its turn, sent with Station's internal origin, renders as Station's
+row labelled **Continued after restart** (`stationRestartContinuation`), and
+like any newer row it retires the Continue action. A row without answer text has no Basis chip. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
 and approval requests stay still. The streaming row's "Running <tool>" line
@@ -670,9 +708,10 @@ message row starts a turn.
   the turn as ended with an error; otherwise a standalone sub-agent row marks
   it as having started a sub-agent. Sub-agents shown inside a reply's tool
   call, and interrupted turns, are not marked.
-- **Previous turn / Next turn.** Desktop keeps steps beside return-to-latest.
-  Mobile uses **Browse turns** in the conversation overflow instead of arrows
-  beside the composer. The browser pages indexed turn summaries independently
+- **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
+  They appear on hover or keyboard focus on desktop and retain 44px targets on
+  narrow screens, with a reserved gutter so they do not cover message text.
+  **Browse turns** remains in the conversation overflow. The browser pages indexed turn summaries independently
   of transcript bodies; selecting a turn loads older bounded history pages until
   its complete prompt/body window is available, then reveals it. Each request
   is bounded to 64 pages; a retry continues from the retained cursor. Switching
@@ -761,7 +800,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Agent and Model selectors show their selected values without repeating the field labels.
   Their accessible names and tooltips retain the field name, exact Provider/model identity,
   selection source, and any unavailable reason. A long value ends in an ellipsis inside
-  its chip. When the Agent is reached through a model route ("via model-proxy
+  its chip. The Agent chip keeps its name whole up to half the row; the chips beside it
+  give way first. With no model reported the Model chip reads **Model**, and its
+  accessible name keeps "Model & effort". When the Agent is reached through a model route ("via model-proxy
   (home-server)"), a narrow composer drops that route before the Agent's name (#3050); the
   chip's accessible name and tooltip keep it. Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
@@ -1231,19 +1272,30 @@ comparisons. Their duplicate callout and older dock chrome are not current
 acceptance evidence. See the [current improvement round](../plans/onboarding-improvement-rounds.md)
 for actual captures and remaining Terminal and pairing work.
 
-## Open and Settled inbox preview (2026-10-30)
+## Inbox shelves and conversation resolution
 
 The `conversation-resolution` Feature Preview groups actionable work under
-Needs attention and Open. A completed or failed agent turn leaves a standalone
-conversation Open. Settle and Reopen record the person's explicit decision on
+Needs attention, Working, Open, Snoozed, Third-party and Settled. An owed
+decision takes precedence over Working; running turns and monitoring work stay
+in Working. An unsent draft is an indicator on its chat row and does not change
+its status. A chat that has never started stays in Open. A completed or failed
+agent turn leaves a standalone conversation Open. Settle and Reopen record the person's explicit decision on
 the host, shared across their owner devices, separately from last-viewed state,
 snoozing, dismissal and deletion. A closed Task is Settled; automatic Task closure
 continues to follow its existing close-on-merge setting. Linked pull requests
 alone do not automatically settle standalone conversations.
 
-Every inbox group can be collapsed. Find and New chat live in its header;
-Browse all conversations retains paginated history, rename and delete, and
-Refresh lives in overflow with a direct retry on failure. Dismissal offers a
+Every populated shelf can be collapsed; collapsed shelves sit below expanded
+work, with Settled at the bottom by default. Shelf menus offer Move up and
+Move down; that order is saved on this device within expanded and collapsed
+shelves. The inbox header contains search
+and New chat. Search also finds dismissed work; there is no Dismissed shelf in
+the normal list. Third-party sessions can be hidden without stopping the
+external harness, and stay hidden through its status updates. Adoption into
+Station restores their normal status handling. Task family summaries use an
+explicit Open task control; chat rows open chats. Browse all conversations
+retains paginated history, rename and delete. Refresh lives in overflow with a
+direct retry on failure. Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
 

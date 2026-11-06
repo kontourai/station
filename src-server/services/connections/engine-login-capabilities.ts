@@ -26,6 +26,7 @@ import {
   findCliBinaryAsync,
   runCliCommand,
 } from '../../providers/auth/cli-auth.js';
+import { managedEngineRefusalFor } from '../../security/managed-engine-limits.js';
 import {
   type EnrolmentEngine,
   enrolmentLoginArgs,
@@ -161,6 +162,16 @@ async function observeEngineLoginCapabilities(
 ): Promise<EngineLoginCapabilities> {
   const probe = probeFor(engine);
   const observedAt = deps.now().toISOString();
+  // #4515: an engine the managed policy does not allow is never run, not
+  // even to ask how it signs in, so it offers no login.
+  const managed = managedEngineRefusalFor(engine);
+  if (managed)
+    return {
+      engine,
+      evidence: [],
+      observedAt,
+      unavailableReason: managed.message,
+    };
   const binary = await deps.findBinary(engine);
   if (!binary) {
     return {

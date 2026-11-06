@@ -170,7 +170,9 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await page
       .getByRole('button', { name: 'Dismiss from inbox', exact: true })
       .click();
-    await page.getByRole('button', { name: /Dismissed/ }).click();
+    await page.getByRole('button', { name: 'Search inbox' }).click();
+    await page.getByRole('searchbox').fill('Review the inbox');
+    await page.getByRole('region', { name: /Dismissed/ }).waitFor();
     await page
       .getByRole('button', { name: 'Details for Review the inbox' })
       .click();

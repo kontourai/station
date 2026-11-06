@@ -76,7 +76,20 @@ export const NOTIFICATION_SOUND_VALUES = [
  */
 export const INBOX_SCOPE_CURRENT_PROJECT = 'current-project';
 
+export const INBOX_SECTION_IDS = [
+  'needsYou',
+  'running',
+  'open',
+  'idle',
+  'settled',
+  'snoozed',
+  'external',
+  'earlier',
+] as const;
+export type InboxSectionId = (typeof INBOX_SECTION_IDS)[number];
+
 export interface InboxSectionsState {
+  order?: InboxSectionId[];
   snoozed: boolean;
   earlier: boolean;
   needsYou?: boolean;
@@ -337,6 +350,10 @@ export interface DeviceSettings {
   /** archive#3314: sidebar "Open chats"/"Drafts" collapse + removal state. */
   sidebarSections: SidebarSectionsState;
   projectSidebarCollapsed: boolean;
+  /** The Device pane draws a foldable's bent posture in 3D instead of flat. */
+  deviceFoldBentView: boolean;
+  /** The Device pane turns a landscape inner display to fill a portrait view. */
+  deviceFoldTurnToFit: boolean;
   onboardingSetupDismissed: boolean;
   shortcutOverrides: ShortcutOverrides;
   skillShortcuts: SkillShortcuts;
@@ -880,8 +897,8 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'Chat dock inbox sections',
-    help: 'Inbox groups reopen collapsed or expanded as you left them.',
-    description: 'Collapsed/expanded state of the inbox groups.',
+    help: 'Inbox groups keep their order and fold state on this device.',
+    description: 'Order and collapsed/expanded state of the inbox groups.',
     priorStorageKey: 'station.inbox.sections',
     // Confirmed against ChatDockInboxPanel.tsx's DEFAULT_SECTION_STATE.
     defaultValue: DEFAULT_INBOX_SECTIONS,
@@ -907,6 +924,27 @@ export const DEVICE_SETTINGS_REGISTRY = [
     priorStorageKey: 'station-sidebar-collapsed',
     // Confirmed against project-sidebar/utils.ts's readInitialSidebarCollapsed:
     // defaults to expanded so labels are visible on first run.
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'deviceFoldBentView',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Foldable 3D view',
+    help: 'On this device, a foldable in the Device pane is drawn bent in 3D instead of flat with a crease line.',
+    description:
+      'Whether the Device pane draws a foldable’s posture in 3D. Only this viewer’s picture changes; nothing is sent to the device.',
+    // New with foldable support; flat keeps the live picture full size.
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'deviceFoldTurnToFit',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Rotate foldable picture to fit',
+    help: 'On this device, a landscape inner display is turned a quarter to fill a portrait view.',
+    description:
+      'Whether the Device pane turns a landscape inner display to fit a portrait viewer. View-only; touches are mapped back.',
     defaultValue: false,
   }),
   defineDeviceSetting({
@@ -1262,6 +1300,8 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
   'inboxOpen',
   'inboxSections',
   'projectSidebarCollapsed',
+  'deviceFoldBentView',
+  'deviceFoldTurnToFit',
   'firstRunProgress',
   'onboardingSetupDismissed',
 ] as const satisfies readonly (keyof DeviceSettings)[];
@@ -1300,6 +1340,7 @@ export const PREFERENCE_DEVICE_KEYS = [
   'chatAnswerWidth',
   'chatReturnBehavior',
   'hapticsEnabled',
+  'showReleaseNotesAfterUpdate',
   'openLastStationOnLaunch',
   'terminalScreenReader',
   'developerToolsEnabled',

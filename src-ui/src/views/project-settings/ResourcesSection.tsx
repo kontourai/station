@@ -12,6 +12,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { createContext, useContext, useState } from 'react';
 import { NewProjectRepositorySource } from '../../components/modals/NewProjectRepositorySource';
 import { PageSection } from '../../components/PageSection';
+import { StationPath } from '../../components/StationPath';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -66,14 +67,24 @@ const RECORD_COPY: Record<'binding' | 'working-directory', string> = {
 const ResourceRequestScope = createContext<ApiRequestScope | undefined>(
   undefined,
 );
+const ResourceStationName = createContext<string | undefined>(undefined);
+const ResourceWorkspaceNavigation = createContext<{
+  href: string;
+  onNavigate?: () => void;
+}>({ href: '#section-workspace' });
 
 function PathSlot({ slot, value }: { slot: ResourceSlotKind; value: string }) {
+  const stationName = useContext(ResourceStationName);
   return (
     <div className={`resources-section__slot resources-section__slot--${slot}`}>
       <span className="resources-section__slot-label">
         {RESOURCE_SLOT_LABELS[slot]}
       </span>
-      <code className="resources-section__slot-value">{value}</code>
+      <StationPath
+        className="resources-section__slot-value"
+        path={value}
+        stationName={stationName}
+      />
     </div>
   );
 }
@@ -209,6 +220,7 @@ function PointAtCheckoutForm({
  * the repair is that field, which is already on this page.
  */
 function EditWorkingDirectoryPrompt() {
+  const workspace = useContext(ResourceWorkspaceNavigation);
   return (
     <div className="resources-section__repair">
       <span className="editor-hint">
@@ -216,7 +228,22 @@ function EditWorkingDirectoryPrompt() {
         in the Workspace section on this page. Station re-points nothing for
         you.
       </span>
-      <a className="editor-btn" href="#section-workspace">
+      <a
+        className="editor-btn"
+        href={workspace.href}
+        onClick={(event) => {
+          if (
+            !workspace.onNavigate ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey
+          )
+            return;
+          event.preventDefault();
+          workspace.onNavigate();
+        }}
+      >
         Go to Workspace
       </a>
     </div>
@@ -591,10 +618,16 @@ export function ResourcesSection({
   slug,
   requestScope,
   embedded = false,
+  stationName,
+  workspaceHref = '#section-workspace',
+  onNavigateToWorkspace,
 }: {
   slug: string;
   requestScope?: ApiRequestScope;
   embedded?: boolean;
+  stationName?: string;
+  workspaceHref?: string;
+  onNavigateToWorkspace?: () => void;
 }) {
   const { data, isLoading, isError, error, isFetching, refetch } =
     useProjectResolutionQuery(slug, {
@@ -605,40 +638,46 @@ export function ResourcesSection({
 
   return (
     <ResourceRequestScope.Provider value={requestScope}>
-      <PageSection
-        id={embedded ? undefined : 'section-resources'}
-        className="project-settings__section resources-section"
-        eyebrow="Project code"
-        title={embedded ? 'Repositories' : 'Resources'}
-        description="Where this Station finds this project's code."
-      >
-        {isLoading ? (
-          <SkeletonList count={2} />
-        ) : isError ? (
-          <ErrorState
-            title="Could not read this project's resources"
-            description={userFacingErrorMessage(error)}
-            action={
-              <button
-                type="button"
-                className="editor-btn"
-                onClick={() => refetch()}
-              >
-                Retry
-              </button>
-            }
-          />
-        ) : data ? (
-          <ResolutionBody
-            slug={slug}
-            view={data}
-            onReverify={() => refetch()}
-            reverifying={Boolean(isFetching)}
-          />
-        ) : (
-          <SkeletonList count={2} />
-        )}
-      </PageSection>
+      <ResourceStationName.Provider value={stationName}>
+        <ResourceWorkspaceNavigation.Provider
+          value={{ href: workspaceHref, onNavigate: onNavigateToWorkspace }}
+        >
+          <PageSection
+            id={embedded ? undefined : 'section-resources'}
+            className="project-settings__section resources-section"
+            eyebrow="Project code"
+            title={embedded ? 'Repositories' : 'Resources'}
+            description="Where this Station finds this project's code."
+          >
+            {isLoading ? (
+              <SkeletonList count={2} />
+            ) : isError ? (
+              <ErrorState
+                title="Could not read this project's resources"
+                description={userFacingErrorMessage(error)}
+                action={
+                  <button
+                    type="button"
+                    className="editor-btn"
+                    onClick={() => refetch()}
+                  >
+                    Retry
+                  </button>
+                }
+              />
+            ) : data ? (
+              <ResolutionBody
+                slug={slug}
+                view={data}
+                onReverify={() => refetch()}
+                reverifying={Boolean(isFetching)}
+              />
+            ) : (
+              <SkeletonList count={2} />
+            )}
+          </PageSection>
+        </ResourceWorkspaceNavigation.Provider>
+      </ResourceStationName.Provider>
     </ResourceRequestScope.Provider>
   );
 }

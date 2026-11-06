@@ -1,4 +1,5 @@
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
+import { managedEngineEnvironmentLocked } from '../../security/managed-engine-limits.js';
 import { connectionSpawnEnv } from './connection-env.js';
 
 class EngineProxyConfigurationError extends Error {}
@@ -65,6 +66,11 @@ export function engineProxyLaunch(
   args: string[];
   route?: EngineProxyRoute;
 } {
+  // #4520: under a locked managed environment the user's model-proxy route
+  // is not applied either; it would send the engine's traffic to an
+  // endpoint the administrator did not choose.
+  if (managedEngineEnvironmentLocked(engine))
+    return { env: undefined, args: [] };
   const env = connectionSpawnEnv(config, engine);
   const proxy = resolveEngineProxy(config, connections);
   if (!proxy) return { env, args: [] };

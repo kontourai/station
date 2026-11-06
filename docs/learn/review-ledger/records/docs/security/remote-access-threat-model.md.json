@@ -190,7 +190,19 @@
 
     "src-server/services/ssh/__tests__/environment-security-assessment.test.ts",
 
-    "src-server/runtime/conversation/__tests__/local-grant-observation-owner.test.ts"
+    "src-server/runtime/conversation/__tests__/local-grant-observation-owner.test.ts",
+
+    "src-server/routes/environments/peer-chat-policy.ts",
+
+    "src-server/routes/environments/peer-chat-routes.ts",
+
+    "src-server/services/remote-stations/remote-station-forwarder.ts",
+
+    "packages/contracts/src/peer-chat.ts",
+
+    "src-server/routes/orchestration/attachment-staging.ts",
+
+    "src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts"
   ],
 
   "checks": [

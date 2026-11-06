@@ -4,6 +4,7 @@ import { SKILL_EXPERIENCE_METADATA_KEY } from '@kontourai/station-contracts/prov
 import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
+  type TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import type { SkillExperienceInvocationReferenceV1 } from '@kontourai/station-contracts/skill-experience';
 
@@ -48,6 +49,20 @@ function withClientTurnId(
   return { ...event, clientTurnId };
 }
 
+/**
+ * #4512: stamps the origin Station classified at admission on the
+ * `turn.started` that send produced. Only Station sets it; `apply` drops an
+ * adapter-supplied value before this runs.
+ */
+function withDispatchOrigin(
+  event: CanonicalRuntimeEvent,
+  dispatchOrigin: TurnDispatchOrigin | undefined,
+): CanonicalRuntimeEvent {
+  if (event.method !== 'turn.started' || dispatchOrigin === undefined)
+    return event;
+  return { ...event, dispatchOrigin };
+}
+
 /** What a turn-start reserves for its eventual `turn.started` event. */
 interface TurnAttribution {
   invocationId?: string;
@@ -59,10 +74,16 @@ interface TurnAttribution {
    * client can match its message to the turn exactly instead of by text.
    */
   clientTurnId?: string;
+  /** #4512: the send's server-classified origin. */
+  dispatchOrigin?: TurnDispatchOrigin;
 }
 
 function hasAttribution(attribution: TurnAttribution): boolean {
-  return reservesTurn(attribution) || attribution.clientTurnId !== undefined;
+  return (
+    reservesTurn(attribution) ||
+    attribution.clientTurnId !== undefined ||
+    attribution.dispatchOrigin !== undefined
+  );
 }
 
 /**
@@ -71,12 +92,19 @@ function hasAttribution(attribution: TurnAttribution): boolean {
  * relays) keep their events flowing exactly as before, and their key is
  * stamped only when the start arrives after acceptance. User sends always
  * carry an origin or principal, so theirs is held and stamped.
+ *
+ * #4512: a classified dispatch origin other than `unknown` is held too.
+ * Stamped only on a start that arrives after acceptance, a delegated or
+ * Task turn whose engine reported its start early would read as `unknown`,
+ * and boot recovery decides on that field.
  */
 function reservesTurn(attribution: TurnAttribution): boolean {
   return (
     attribution.clientOrigin !== undefined ||
     attribution.principal !== undefined ||
-    attribution.experience !== undefined
+    attribution.experience !== undefined ||
+    (attribution.dispatchOrigin !== undefined &&
+      attribution.dispatchOrigin !== 'unknown')
   );
 }
 
@@ -106,14 +134,22 @@ export class ClientOriginTurnPropagation {
     string,
     Pick<
       TurnAttribution,
-      'principal' | 'clientOrigin' | 'invocationId' | 'clientTurnId'
+      | 'principal'
+      | 'clientOrigin'
+      | 'invocationId'
+      | 'clientTurnId'
+      | 'dispatchOrigin'
     >
   >();
   readonly #legacyAccepted = new Map<
     string,
     Pick<
       TurnAttribution,
-      'principal' | 'clientOrigin' | 'invocationId' | 'clientTurnId'
+      | 'principal'
+      | 'clientOrigin'
+      | 'invocationId'
+      | 'clientTurnId'
+      | 'dispatchOrigin'
     >
   >();
   readonly #legacyEarly = new Map<string, CanonicalRuntimeEvent>();
@@ -124,12 +160,14 @@ export class ClientOriginTurnPropagation {
     principal?: PrincipalRef,
     experience?: SkillExperienceInvocationReferenceV1,
     clientTurnId?: string,
+    dispatchOrigin?: TurnDispatchOrigin,
   ): boolean {
     const attribution: TurnAttribution = {
       clientOrigin,
       principal,
       experience,
       clientTurnId,
+      dispatchOrigin,
     };
     if (!reservesTurn(attribution) || this.#inFlight.has(threadId)) {
       return false;
@@ -137,11 +175,16 @@ export class ClientOriginTurnPropagation {
     if (this.#inFlight.size >= ClientOriginTurnPropagation.MAX_PENDING)
       return false;
     this.#inFlight.set(threadId, attribution);
-    if (principal !== undefined || clientOrigin !== undefined)
+    if (
+      principal !== undefined ||
+      clientOrigin !== undefined ||
+      (dispatchOrigin !== undefined && dispatchOrigin !== 'unknown')
+    )
       this.#legacyPending.set(threadId, {
         principal,
         clientOrigin,
         clientTurnId,
+        dispatchOrigin,
       });
     return true;
   }
@@ -161,6 +204,7 @@ export class ClientOriginTurnPropagation {
     experience?: SkillExperienceInvocationReferenceV1,
     clientTurnId?: string,
     invocationId?: string,
+    dispatchOrigin?: TurnDispatchOrigin,
   ): CanonicalRuntimeEvent | undefined {
     const reserved = this.#inFlight.get(threadId);
     const attribution: TurnAttribution = {
@@ -169,6 +213,7 @@ export class ClientOriginTurnPropagation {
       principal: principal ?? reserved?.principal,
       experience: experience ?? reserved?.experience,
       clientTurnId: clientTurnId ?? reserved?.clientTurnId,
+      dispatchOrigin: dispatchOrigin ?? reserved?.dispatchOrigin,
     };
     this.#inFlight.delete(threadId);
     const legacy = this.#legacyPending.get(threadId);
@@ -203,6 +248,11 @@ export class ClientOriginTurnPropagation {
     if (event.clientTurnId !== undefined) {
       const { clientTurnId: _untrusted, ...unkeyed } = event;
       event = unkeyed;
+    }
+    // #4512: likewise the origin; boot recovery acts on it.
+    if (event.dispatchOrigin !== undefined) {
+      const { dispatchOrigin: _untrusted, ...unclassified } = event;
+      event = unclassified;
     }
     // #2324: a turn the engine opened on its own is no send's turn. Holding
     // it for an in-flight reservation would attribute that send's origin to
@@ -359,15 +409,18 @@ export class ClientOriginTurnPropagation {
     event: CanonicalRuntimeEvent,
     routing: Pick<
       TurnAttribution,
-      'principal' | 'clientOrigin' | 'clientTurnId'
+      'principal' | 'clientOrigin' | 'clientTurnId' | 'dispatchOrigin'
     >,
   ): CanonicalRuntimeEvent {
-    const result = withClientTurnId(
-      withPrincipal(
-        withClientOrigin(event, routing.clientOrigin),
-        routing.principal,
+    const result = withDispatchOrigin(
+      withClientTurnId(
+        withPrincipal(
+          withClientOrigin(event, routing.clientOrigin),
+          routing.principal,
+        ),
+        routing.clientTurnId,
       ),
-      routing.clientTurnId,
+      routing.dispatchOrigin,
     );
     this.#trusted.add(result);
     return result;
@@ -377,12 +430,15 @@ export class ClientOriginTurnPropagation {
     event: CanonicalRuntimeEvent,
     attribution: TurnAttribution,
   ): CanonicalRuntimeEvent {
-    const attributed = withClientTurnId(
-      withPrincipal(
-        withClientOrigin(event, attribution.clientOrigin),
-        attribution.principal,
+    const attributed = withDispatchOrigin(
+      withClientTurnId(
+        withPrincipal(
+          withClientOrigin(event, attribution.clientOrigin),
+          attribution.principal,
+        ),
+        attribution.clientTurnId,
       ),
-      attribution.clientTurnId,
+      attribution.dispatchOrigin,
     );
     const result =
       attribution.experience && attributed.method === 'turn.started'

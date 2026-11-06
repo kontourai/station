@@ -270,13 +270,31 @@ keeps two independent mechanisms and separately labelled actions:
   [CLI `service` reference](../reference/cli.md#service). Any other archive
   names `station upgrade` on the host, or a reinstall.
 
+A machine's [managed policy](managed-policy.md#update-control) can turn both
+checks off, make the nightly channel unavailable, or send them to a mirror.
+
 The update proposal shows **What’s new** for the offered version. Release notes
 come from the exact version’s GitHub Release, with the native updater’s notes
 available as a fallback for desktop downloads. GitHub prose is informational;
-it never determines whether an update is available or safe to install. The
+it never determines whether an update is available or safe to install. Missing
+archives remain an explicit, retryable state; notes from another version are
+never substituted. When no update is offered, **What’s new** stays folded until
+opened. The
 sidebar icon shows a circular download indicator using the updater’s byte
 counts, or an indeterminate arc when the total size is unknown. An observed
 server download can also drive the ring while the panel stays closed.
+
+Desktop and server summaries share their badge, version, and last-check
+layout in Updates and System settings. Their channels publish independently;
+a newer app version alone does not mean a server update is available. The
+sidebar indicator signals an available update or an update in progress,
+not informational version differences or a failed background check.
+
+Controlled component examples: [phone status summary](../learn/media/updates-after-390-dark.png),
+[desktop status summary](../learn/media/updates-after-1440-light.png), and
+[release history](../learn/media/updates-history-after-390-dark.png). These
+illustrate the UI with fixture data; they do not qualify an installed app or
+a provider delivery.
 
 **Previous versions and changelogs** opens a release picker in the same panel.
 It lists versioned releases from GitHub’s most recent 100 releases; **All
@@ -301,6 +319,17 @@ do not become GitHub’s Latest release. Historical comparison links use commit
 SHAs so advancing the rolling marker cannot change their range. Mobile Nightlies read the same cohort’s changelog. If desktop publication
 did not produce an archive for a partial cohort, the notes remain unavailable.
 Earlier Nightlies without a versioned changelog are not reconstructed.
+
+Archive publication checks the Git tag reference before resolving its commit:
+GitHub's commit endpoint returns HTTP 422 for a missing tag. An existing tag
+must resolve to the planned source, and an existing archive must retain the
+same notes. Lookup failures stop publication.
+
+A changelog failure can occur after the desktop assets and updater manifest
+are live, before the rolling marker advances. Compare provider assets and the
+live manifest with the admitted cohort before choosing a recovery action;
+the failed promotion remains `NOT_VERIFIED`. Creating the missing changelog
+alone does not complete or rewrite that cohort's recovery receipt.
 
 An established built-in (embedded sidecar) server never runs the ordinary
 source check at all; its update path is the desktop app itself, including the

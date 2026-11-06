@@ -355,6 +355,12 @@ starts the engine. If the folder no longer resolves to the admitted canonical
 path, or the directory the engine would start in belongs to another scope, the
 request returns the same typed `403` and no engine starts.
 
+On a machine whose [managed policy](../guides/managed-policy.md#engines) does
+not allow the target engine, `/chat`, its continue route and a handoff answer
+`403` with `code: "managed-policy-engine-refused"` (`kind:
+"permission_denied"`, not retryable): no Session starts and no turn reaches an
+existing Session on that engine, which is kept.
+
 An Agent that messages, interrupts, or waits on an existing Session uses
 station-control's [Session control](../guides/self-configuring-agent.md#session-control)
 tools, which call their own agent-only routes under
@@ -561,7 +567,11 @@ refusal; a request alone does not prove storage.
   `POST /chat/<conversationId>/continue`, held or not, under a key
   the inbox holds for someone else in a state it may still send (`queued`,
   `sending`, `unconfirmed`) is refused `409` with `code: "inbox_key_held"`,
-  so nobody takes the turn another person's message waits for. Only a caller
+  so nobody takes the turn another person's message waits for. For a
+  Continue key (`continue-interrupted:<boundary id>`), whether Station queued
+  it after a restart (#4512) or another member holds it, the error reads
+  "This interrupted turn is already being continued." rather than asking for
+  a new key. Only a caller
   who may read the conversation is told so; anyone else gets the dispatch's
   ordinary refusal for a conversation they may not read. While Station is
   sending a held message (from the moment its send begins, and past the point

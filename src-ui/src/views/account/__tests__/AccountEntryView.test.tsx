@@ -4,11 +4,13 @@ import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
 import { StrictMode } from 'react';
@@ -88,6 +90,8 @@ let passkeys: {
   createdAt: string;
   synced: boolean;
 }[];
+let sessionAccount: typeof account;
+let removePasskey: ((id: string) => Response | Promise<Response>) | undefined;
 
 // Invitation tests exercise onboarding after the account action, not chunk loading.
 beforeAll(async () => {
@@ -108,6 +112,8 @@ beforeEach(() => {
   deviceReady = false;
   projectFailureStatus = undefined;
   passkeys = [];
+  sessionAccount = account;
+  removePasskey = undefined;
   webauthn.startRegistration.mockReset();
   webauthn.startAuthentication.mockReset();
   sessionStorage.clear();
@@ -141,7 +147,9 @@ beforeEach(() => {
               recipientEmail: null,
             });
       if (path.endsWith('/session'))
-        return signedIn ? reply(account) : new Response(null, { status: 401 });
+        return signedIn
+          ? reply(sessionAccount)
+          : new Response(null, { status: 401 });
       if (
         path.endsWith('/sign-in/email') ||
         path.endsWith('/sign-in/username')
@@ -270,10 +278,12 @@ beforeEach(() => {
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         if (path.endsWith('/passkey/list')) return reply({ passkeys });
         if (path.endsWith('/passkey/remove'))
-          return Response.json(
-            { error: { code: 'last_sign_in_method' } },
-            { status: 409 },
-          );
+          return removePasskey
+            ? removePasskey(body.id)
+            : Response.json(
+                { error: { code: 'last_sign_in_method' } },
+                { status: 409 },
+              );
         if (body.step === 'options')
           return reply({ options: { challenge: `challenge:${path}` } });
         if (!path.endsWith('/passkey/add')) signedIn = true;
@@ -991,6 +1001,210 @@ describe('member passkeys (#4303)', () => {
     expect(
       screen.queryByRole('button', { name: 'Sign in with a passkey' }),
     ).toBeNull();
+  });
+
+  test('late removal of A preserves the confirmation opened for B after Cancel', async () => {
+    signedIn = true;
+    passkeys = ['A', 'B', 'C'].map((id) => ({
+      id,
+      name: `Laptop ${id}`,
+      createdAt: '2026-10-01T00:00:00.000Z',
+      synced: false,
+    }));
+    let finishA!: (response: Response) => void;
+    removePasskey = (id) => {
+      if (id === 'A')
+        return new Promise<Response>((resolve) => {
+          finishA = resolve;
+        });
+      passkeys = passkeys.filter((entry) => entry.id !== id);
+      return Response.json({ data: {} });
+    };
+    mount({});
+    const rowA = (await screen.findByText('Laptop A')).closest('li')!;
+    fireEvent.click(within(rowA).getByRole('button', { name: 'Remove' }));
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Cancel',
+      }),
+    );
+    expect(passkeyCalls('/passkey/remove')).toEqual([]);
+    expect(screen.getByText('Laptop A')).toBeTruthy();
+
+    fireEvent.click(within(rowA).getByRole('button', { name: 'Remove' }));
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Remove passkey',
+      }),
+    );
+    await waitFor(() =>
+      expect(passkeyCalls('/passkey/remove').map((call) => call.body)).toEqual([
+        { id: 'A' },
+      ]),
+    );
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Cancel',
+      }),
+    );
+    fireEvent.click(
+      within(screen.getByText('Laptop B').closest('li')!).getByRole('button', {
+        name: 'Remove',
+      }),
+    );
+    await screen.findByRole('alertdialog');
+    await act(async () => {
+      passkeys = passkeys.filter((entry) => entry.id !== 'A');
+      finishA(Response.json({ data: {} }));
+    });
+    await waitFor(() => expect(screen.queryByText('Laptop A')).toBeNull());
+    const confirmationB = screen.getByRole('alertdialog');
+    expect(screen.getByText('Laptop C')).toBeTruthy();
+    fireEvent.click(
+      within(confirmationB).getByRole('button', {
+        name: 'Remove passkey',
+      }),
+    );
+    await waitFor(() =>
+      expect(passkeyCalls('/passkey/remove').map((call) => call.body)).toEqual([
+        { id: 'A' },
+        { id: 'B' },
+      ]),
+    );
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByText('Laptop B')).toBeNull());
+    expect(screen.getByText('Laptop C')).toBeTruthy();
+  });
+
+  test('a removal failure keeps its confirmation and retries only that passkey', async () => {
+    signedIn = true;
+    passkeys = ['A', 'B'].map((id) => ({
+      id,
+      name: `Laptop ${id}`,
+      createdAt: '2026-10-01T00:00:00.000Z',
+      synced: false,
+    }));
+    let attempts = 0;
+    removePasskey = (id) => {
+      if (++attempts === 1)
+        return Response.json(
+          {
+            error: {
+              message: 'Passkey removal unavailable.',
+              code: 'account_operation_unavailable',
+            },
+          },
+          { status: 503 },
+        );
+      passkeys = passkeys.filter((entry) => entry.id !== id);
+      return Response.json({ data: {} });
+    };
+    mount({});
+    fireEvent.click(
+      within((await screen.findByText('Laptop A')).closest('li')!).getByRole(
+        'button',
+        { name: 'Remove' },
+      ),
+    );
+    const confirmation = await screen.findByRole('alertdialog');
+    fireEvent.click(
+      within(confirmation).getByRole('button', {
+        name: 'Remove passkey',
+      }),
+    );
+    expect(
+      await within(confirmation).findByText('Try again in a moment.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('alertdialog')).toBe(confirmation);
+    const retry = within(confirmation).getByRole('button', {
+      name: 'Remove passkey',
+    });
+    expect(retry.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByText('Laptop A')).toBeNull());
+    expect(screen.getByText('Laptop B')).toBeTruthy();
+    expect(await screen.findByText('Passkey removed.')).toBeTruthy();
+    expect(passkeyCalls('/passkey/remove').map((call) => call.body)).toEqual([
+      { id: 'A' },
+      { id: 'A' },
+    ]);
+  });
+
+  test('a principal-key remount retires an old member removal outcome', async () => {
+    signedIn = true;
+    passkeys = [
+      {
+        id: 'A',
+        name: 'Old member laptop',
+        createdAt: '2026-10-01T00:00:00.000Z',
+        synced: false,
+      },
+    ];
+    let finishA!: (response: Response) => void;
+    removePasskey = () =>
+      new Promise<Response>((resolve) => {
+        finishA = resolve;
+      });
+    mount({});
+    fireEvent.click(
+      within(
+        (await screen.findByText('Old member laptop')).closest('li')!,
+      ).getByRole('button', { name: 'Remove' }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Remove passkey',
+      }),
+    );
+    await waitFor(() =>
+      expect(passkeyCalls('/passkey/remove')).toHaveLength(1),
+    );
+    await act(async () => {
+      sessionAccount = {
+        ...account,
+        principal: humanPrincipal(
+          'deployment',
+          'replacement',
+          'Replacement member',
+        ),
+      };
+      passkeys = [
+        {
+          id: 'B',
+          name: 'New member laptop',
+          createdAt: '2026-10-01T00:00:00.000Z',
+          synced: false,
+        },
+      ];
+      await clients[clients.length - 1].invalidateQueries({
+        queryKey: ['account', apiBase, 'session'],
+      });
+    });
+    expect(await screen.findByText('Replacement member')).toBeTruthy();
+    fireEvent.click(
+      within(
+        (await screen.findByText('New member laptop')).closest('li')!,
+      ).getByRole('button', { name: 'Remove' }),
+    );
+    const newConfirmation = await screen.findByRole('alertdialog');
+    await act(async () => {
+      finishA(Response.json({ data: {} }));
+    });
+    await waitFor(() =>
+      expect(clients[clients.length - 1].isMutating()).toBe(0),
+    );
+    expect(screen.getByRole('alertdialog')).toBe(newConfirmation);
+    expect(screen.getByText('New member laptop')).toBeTruthy();
+    expect(screen.queryByText('Passkey removed.')).toBeNull();
+    expect(passkeyCalls('/passkey/remove').map((call) => call.body)).toEqual([
+      { id: 'A' },
+    ]);
+    fireEvent.click(
+      within(newConfirmation).getByRole('button', {
+        name: 'Cancel',
+      }),
+    );
   });
 
   test('a signed-in member lists, adds and is told why the last passkey stays', async () => {

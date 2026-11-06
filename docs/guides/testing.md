@@ -518,6 +518,30 @@ The mutation cases `ci-health-concurrency-threshold`, `ci-health-reentry-commits
 
 ## Running Tests
 
+### Conversation surface evidence
+
+`node scripts/conversation-boundary-gate.mjs` checks shared owner consumption,
+explicit authority, control/capability drift and raw failure sinks, including
+durable publishers and `String(error)`. The conversation baseline is empty.
+Exact manifest contracts distinguish host/domain composition and diagnostic
+Details from conversation policy; a changed fingerprint is reviewed again.
+`failureSurfaces` registers error publishers without misclassifying settings or
+other host views as conversation adapters.
+
+Run the gate's known-bad/control tests and the affected consumer tests. The
+browser route is `tests/conversation-surfaces.spec.ts`: local/direct/relay controls,
+owner/member/guest history, attached continuation and desktop/mobile Inbox.
+Typecheck browser fixtures with `npm run typecheck:e2e` and run
+`npm run test:fixtures:check` before the product and smoke-live lanes. Those runners
+require their supported POSIX host; Windows component fixtures do not qualify
+runtime authentication, process settlement or a native shell.
+
+For component captures use production components and CSS, typed domain/failed
+request fixtures and ordinary user actions. Capture 390/1440 pixels in light/dark,
+retain geometry and PNGs outside source, and open every image. State whether a
+capture shows a complete parent or its shared error region; neither substitutes
+for the actual failed-request or two-Station journey.
+
 ### Default implementation loop
 
 ```bash
@@ -976,10 +1000,25 @@ supervisor's terminal workload tests run there too: the workload host with
 real ConPTY shells, and a journey whose shell keeps its pid and journal across
 a handoff of built supervisor and workload host bundles. The command-session
 suite runs there as well: output caps, exits and ACP engine terminals without a
-PTY (its PTY restart cases are POSIX-only). So does the agent-run and
-script-runner suite with the launch builder's cases: package managers' batch
-shims run through cmd.exe, and an approved command reaches cmd with its
-quotes as shown (#3994). A ConPTY cannot change
+PTY (its PTY restart cases are POSIX-only). So do the terminal session,
+real-socket and retention suites, typing into cmd.exe on ConPTY, their cases
+built on POSIX job control POSIX-only; and the agent-run and script-runner
+suite with the launch builder's cases: package managers' batch shims run
+through cmd.exe, and an approved command reaches cmd with its quotes as shown
+(#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
+runs each terminal process suite in a Vitest invocation of its own after the
+other files, so a forked worker that dies (an open,
+intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
+other suite's results; every invocation runs, and any failure fails the floor
+without a retry. Its coordinator records fork PIDs, numeric and hexadecimal
+exit codes, and signals in `.kontourai/verification-output/windows-workers-*.jsonl`;
+the Windows verification artifact retains those records even when the floor
+fails. The observer does not consume worker exceptions or change verdicts.
+The adapter suite also runs in the floor: its owned children cover concurrent
+native exits/resizes, paused silent-reader retirement, and vendor cancellation.
+Issue #4626 records the captured access violation, handle-table reproduction,
+and dependency repair; retained source/binary receipts establish each run's
+qualification. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
@@ -1711,7 +1750,10 @@ accept the arguments) quietly uses `tsc`. Each non-`tsc` compiler keeps its
 own build info file. If `tsc-ts` and `tsc` disagree, treat `tsc` as
 authoritative and report the difference upstream. A test fails when the
 installed `tsc-ts` and `typescript` report different versions, so update them
-together.
+together. The port stays at `tsc-ts` 0.0.10 while the reference compiler is
+7.0.2: the 0.1 series identifies as 7.1.0-beta and is held in Dependabot. Remove
+that hold only with a validated matching compiler pair; the version-parity and
+diagnostic tests remain enforced.
 
 #### Optional Bun diagnostics
 

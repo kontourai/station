@@ -19,6 +19,10 @@ const updateChatSpy = vi.hoisted(() => vi.fn());
 const outboxProps = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', async () => ({
+  useAgentsQuery: (options: { enabled?: boolean }) => {
+    expect(options.enabled).toBe(false);
+    return { data: undefined };
+  },
   useFeaturePreviewsQuery: () => ({ data: [] }),
   useProjectChatDefaultsQuery: () => ({
     data: undefined,
@@ -336,7 +340,11 @@ describe('the outbox facts the pending list reads', () => {
         onSendHeld: (turn: typeof closed) => Promise<void>;
       };
       await onSendHeld(closed);
-      expect(send).toHaveBeenCalledExactlyOnceWith('held-closed');
+      expect(send).toHaveBeenCalledExactlyOnceWith(
+        'held-closed',
+        undefined,
+        undefined,
+      );
       expect(updateChatSpy).not.toHaveBeenCalledWith(
         'offline-thread',
         expect.objectContaining({ queuedMessages: expect.anything() }),
@@ -427,7 +435,8 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       );
       expect(screen.queryByText('Loading chat')).toBeNull();
       expect(screen.queryByText('Loading offline messages')).toBeNull();
-      expect(screen.getByText(/Station unreachable/)).toBeTruthy();
+      expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+      expect(screen.queryByText(/Station unreachable/)).toBeNull();
     }
 
     fetchConversationWindow.mockResolvedValue({

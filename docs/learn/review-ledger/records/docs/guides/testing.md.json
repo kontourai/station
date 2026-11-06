@@ -272,7 +272,25 @@
 
     "src-ui/src/__tests__/local-restart-notice.browser.test.tsx",
 
-    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx"
+    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx",
+
+    "scripts/conversation-boundary-gate.mjs",
+
+    "scripts/conversation-surfaces.json",
+
+    "scripts/conversation-boundary-baseline.json",
+
+    "scripts/__tests__/conversation-boundary-gate.test.ts",
+
+    "tests/station-connection-chat.spec.ts",
+
+    "tests/conversation-surfaces.spec.ts",
+
+    "scripts/windows-portable-floor.mjs",
+
+    "scripts/lib/windows-worker-diagnostics.mjs",
+
+    "scripts/__tests__/windows-portable-floor.test.ts"
   ],
 
   "checks": [

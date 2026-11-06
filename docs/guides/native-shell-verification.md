@@ -814,7 +814,11 @@ These are separate from installed service output. macOS LaunchAgents write
 service log-file path. The public recovery guide links here because this
 operator detail is not admitted to Pages.
 Set `STATION_DESKTOP_LOG_LEVEL=debug` or `trace` before launch when collecting
-a reproduction, and restore the normal level afterward. The file target is
+a reproduction, and restore the normal level afterward. Whatever the level, the updater plugin's own records are dropped and the HTTP
+client's (`reqwest`) are capped at `info`, because they can contain an update
+feed URL, which a [managed policy's](managed-policy.md#update-control) mirror
+may carry a token in. Station logs every update outcome itself, with each URL
+reduced to its scheme, host and port. The file target is
 best effort: if its directory is not writable, the host continues with stdout
 only. The pinned `tauri-plugin-log` 2.9.1 `KeepSome(5)` policy retains up to
 five archived logs plus the active `station.log`. The 5 MiB setting is a

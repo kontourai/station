@@ -377,7 +377,9 @@ Four findings shape the design.
   [`notification.ts`](../../packages/contracts/src/notification.ts).
 - **Ingress.**
   [`public-ingress-origin.ts`](../../src-server/services/tailscale/public-ingress-origin.ts)
-  resolves the Serve origin. It authorizes nothing.
+  resolves the Serve origin. Automations use it only for that address; its
+  separate owned-origin answer feeds browser-origin admission, not automation
+  authority.
 
 ## 3. Model
 

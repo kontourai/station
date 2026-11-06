@@ -1,4 +1,3 @@
-import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import {
   clearSnooze,
   readSnoozes,
@@ -6,7 +5,6 @@ import {
   writeSnooze,
 } from '../../utils/activity-snooze-store';
 import {
-  LIVE_LANE_LABELS,
   type LiveLaneId,
   partitionHomeWorkItems,
 } from '../../views/home/home-lane-model';
@@ -22,7 +20,6 @@ export type MobileActivityGroupId =
   | 'open'
   | 'external'
   | LiveLaneId
-  | 'drafts'
   | 'settled'
   | 'snoozed'
   | 'earlier'
@@ -97,33 +94,7 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
   return item.id;
 }
 
-/**
- * Split work items into Needs you / Running / Idle / Drafts / Just finished /
- * Snoozed / Earlier / From other apps.
- *
- * NOT A SECOND CLASSIFIER (station#3227 A6). This used to carry its own
- * "active" predicate (`Running`/`Needs attention` only) and its own 10-minute
- * settle window, while desktop Home partitioned the SAME items through
- * `partitionHomeWorkItems` (active = not terminal, 15-minute linger) — so
- * one device read "Active now 14" on Home and "Active now 1" in this
- * switcher, with the difference parked under "Just finished" having finished
- * nothing. Same label, two derivations, contradicting counts.
- *
- * The groups are a straight rename of the shared partition's lanes:
- * needsYou/running/idle (`workStatus`), drafts ("Drafts", #2310),
- * recentlyFinished ("Just finished"), snoozed, settled ("Earlier") — the
- * same mapping the Sessions lanes use (`sessions-lane-model.ts`). An
- * unfinished-but-idle item (`Ready`/`Recent`/`Current`/`Unanswerable`) is
- * Idle, not "Active now": nothing is running, and "Just finished"/"Earlier"
- * would assert the work FINISHED, which it did not. Finished work's place
- * comes from its recorded finish time and the person's last view, the same
- * rule on every surface (`partitionHomeWorkItems`, #4266).
- *
- * Still pure and `now`-injected so the linger boundary is testable without
- * faking timers. Input order is preserved within each group — callers hand
- * this list in already sorted by recency, and the partition is a single
- * stable pass.
- */
+/** Inbox shelves reuse the shared status partition; drafts stay with open work. */
 export function groupMobileActivity(
   items: HomeWorkItem[],
   now: number,
@@ -141,65 +112,43 @@ export function groupMobileActivity(
     snoozedUntil: new Map(Object.entries(snoozed)),
   });
 
-  if (resolution) {
-    const openIds = new Set(
-      [...partition.running, ...partition.idle].map((item) => item.id),
-    );
-    return [
-      {
-        id: 'needsYou' as const,
-        label: 'Needs attention',
-        items: partition.needsYou,
-      },
-      {
-        id: 'open' as const,
-        label: 'Open',
-        items: items.filter((item) => openIds.has(item.id)),
-      },
-      { id: 'settled' as const, label: 'Settled', items: partition.settled },
-      { id: 'snoozed' as const, label: 'Snoozed', items: partition.snoozed },
-      { id: 'drafts' as const, label: 'Drafts', items: partition.drafts ?? [] },
-      {
-        id: 'external' as const,
-        label: SESSION_STATUS_WORDS.elsewhere,
-        items: partition.external ?? [],
-      },
-    ].map((group) => ({ ...group, childrenById: partition.childrenById }));
-  }
-  // Live groups are emitted only when non-empty, like Drafts and "From
-  // other apps": three always-present headers would print empty "Needs you"
-  // and "Running" sections above most inboxes. The historic groups below
-  // (Just finished, Snoozed, Earlier) keep their always-present shape.
-  const live = (['needsYou', 'running', 'idle'] as const)
-    .filter((id) => partition[id].length > 0)
-    .map((id) => ({ id, label: LIVE_LANE_LABELS[id], items: partition[id] }));
+  const openIds = new Set(
+    [...partition.idle, ...(partition.drafts ?? [])].map((item) => item.id),
+  );
   const groups: MobileActivityGroup[] = [
-    ...live,
-    // #2310: never-prompted sessions. Their own group rather than a chip in
-    // "Earlier", which asserts the work finished — a draft has not started.
-    // Emitted only when non-empty, like "From other apps".
-    ...(partition.drafts?.length
-      ? [{ id: 'drafts' as const, label: 'Drafts', items: partition.drafts }]
-      : []),
+    { id: 'needsYou', label: 'Needs attention', items: partition.needsYou },
+    { id: 'running', label: 'Working', items: partition.running },
     {
-      id: 'settled',
-      label: 'Just finished',
-      items: partition.recentlyFinished,
+      id: resolution ? 'open' : 'idle',
+      label: 'Open',
+      items: items.filter((item) => openIds.has(item.id)),
     },
-    { id: 'snoozed', label: 'Snoozed', items: partition.snoozed },
-    { id: 'earlier', label: 'Earlier', items: partition.settled },
-    ...(partition.external?.length
+    ...(!resolution
       ? [
           {
-            id: 'external' as const,
-            label: SESSION_STATUS_WORDS.elsewhere,
-            items: partition.external,
+            id: 'settled' as const,
+            label: 'Just finished',
+            items: partition.recentlyFinished,
           },
         ]
       : []),
+    { id: 'snoozed', label: 'Snoozed', items: partition.snoozed },
+    { id: 'external', label: 'Third-party', items: partition.external ?? [] },
+    {
+      id: resolution ? 'settled' : 'earlier',
+      label: 'Settled',
+      items: partition.settled,
+    },
   ];
-  return groups.map((group) => ({
-    ...group,
-    childrenById: partition.childrenById,
-  }));
+  return groups
+    .filter(
+      (group) =>
+        resolution ||
+        !['needsYou', 'running', 'idle', 'external'].includes(group.id) ||
+        group.items.length > 0,
+    )
+    .map((group) => ({
+      ...group,
+      childrenById: partition.childrenById,
+    }));
 }

@@ -19,8 +19,12 @@ import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { absoluteTime, messageTime } from '../../utils/relativeTime';
 import type { PermissionPosture } from '../../utils/sessionDisplay';
+import { describeStationFailure } from '../../utils/stationFailure';
 import type { OverflowMenuHandle } from '../ActionOverflowMenu';
 import { Button } from '../Button';
+import { useDockDeliveryPort } from '../chat-dock/useDockDeliveryPort';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { ConversationDeliveryNotice } from '../conversation/ConversationDeliveryNotice';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -262,10 +266,36 @@ function MessageBubbleComponent({
 }: MessageBubbleProps) {
   const { developerToolsEnabled } = useDeviceSettings();
   const isMobile = useIsMobile();
+  const connection = useOptionalConversationConnection();
+  const hostTaskActions =
+    !connection?.record &&
+    (!connection?.station || connection.station.routeKind === 'host');
   const textContent = typeof msg.content === 'string' ? msg.content : '';
   // The user's own message until the agent has it (`messageDeliveryState`).
   // Hoisted above the early returns below: hooks run unconditionally.
-  const deliveryState = useMessageDeliveryState(activeSession.id, msg);
+  const observedDeliveryState = useMessageDeliveryState(activeSession.id, msg);
+  const recordDelivery = connection?.record?.deliveryFor?.(msg);
+  const deliveryState = recordDelivery
+    ? recordDelivery.state
+    : observedDeliveryState && observedDeliveryState !== 'unanswered'
+      ? observedDeliveryState
+      : (msg.deliveryNotice?.state ?? observedDeliveryState);
+  const dockDeliveryPort = useDockDeliveryPort(
+    activeSession.id,
+    msg.clientId ?? '',
+    textContent,
+    deliveryState,
+  );
+  const deliveryPort = recordDelivery
+    ? recordDelivery.port
+    : msg.deliveryNotice && msg.action?.label === 'Retry'
+      ? {
+          ...dockDeliveryPort,
+          retry: async () => {
+            await msg.action?.handler();
+          },
+        }
+      : dockDeliveryPort;
   // A right-click on the bubble opens its own ⋯ — the user menu on a user
   // bubble, the answer menu on an answer — with the rows that ⋯ shows. Only on
   // the desktop layout and only for the pointer: a held finger in a message is
@@ -301,21 +331,17 @@ function MessageBubbleComponent({
     null,
   );
   const discardUnsent =
-    undelivered === 'not-sent' && msg.clientId
+    undelivered === 'not-sent' && msg.clientId && deliveryPort.discard
       ? () => {
-          const key = msg.clientId!;
           setDeliveryNotice(null);
-          void import('../../lib/messageDeliveryActions')
-            .then(async ({ discardMessage, ALREADY_DELIVERED }) => {
-              if (
-                (await discardMessage(activeSession.id, key, 'not-sent')) ===
-                'delivered'
-              )
-                setDeliveryNotice({ text: ALREADY_DELIVERED, error: false });
+          void deliveryPort
+            .discard?.('not-sent')
+            .then((text) => {
+              if (text) setDeliveryNotice({ text, error: false });
             })
             .catch((error: unknown) =>
               setDeliveryNotice({
-                text: `That didn't work: ${error instanceof Error ? error.message : String(error)}`,
+                text: describeStationFailure(error).body,
                 error: true,
               }),
             );
@@ -522,13 +548,18 @@ function MessageBubbleComponent({
   const stationCheckBack = msg.role === 'user' && msg.stationCheckBack === true;
   const stationMemoryContinuation =
     msg.role === 'user' && msg.stationMemoryContinuation === true;
+  // #4512: Station continued unattended work a restart cut off.
+  const stationRestartContinuation =
+    msg.role === 'user' && msg.stationRestartContinuation === true;
+  const stationAuthored =
+    stationCheckBack || stationMemoryContinuation || stationRestartContinuation;
   const avatarContent = sender ? (
     <span className="agent-incoming__avatar" aria-hidden="true">
       <InboxGlyph />
     </span>
   ) : isAssistant ? (
     <AgentIcon agent={rowAgent ?? FALLBACK_AGENT} size={20} />
-  ) : stationCheckBack || stationMemoryContinuation ? (
+  ) : stationAuthored ? (
     <TimeGlyph className="message__station-glyph" />
   ) : (
     <UserIcon size={20} />
@@ -605,6 +636,7 @@ function MessageBubbleComponent({
   // carry no surrogate action. On desktop it is a row of the bubble's ⋯ menu,
   // like an answer's "Add to Task"; the phone sheet lists it itself.
   const userTaskTarget =
+    hostTaskActions &&
     !replaying &&
     msg.role === 'user' &&
     msg.sourceEventId &&
@@ -813,6 +845,7 @@ function MessageBubbleComponent({
   // screen reader's list of buttons is not a column of identical "Basis".
   const basisLabels = answerBasisLabels(textContent, settledAt);
   const basisChip =
+    !connection?.record &&
     isAssistant &&
     msg.turnId &&
     answerSessionId &&
@@ -862,6 +895,7 @@ function MessageBubbleComponent({
           load={loadTurnActionsMenu}
           componentProps={{
             taskTarget:
+              hostTaskActions &&
               msg.turnId &&
               answerSessionId &&
               msg.answerEligible === true &&
@@ -1186,7 +1220,7 @@ function MessageBubbleComponent({
         onPointerDown={bubbleGesture.onPointerDown}
         onPointerUp={bubbleGesture.onPointerUp}
         onPointerCancel={bubbleGesture.onPointerCancel}
-        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationCheckBack || stationMemoryContinuation ? ' message--station-check-back' : ''}${
+        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationAuthored ? ' message--station-check-back' : ''}${
           // Outlined, not filled, until the agent has the message.
           undelivered
             ? ` message--undelivered message--delivery-${undelivered}`
@@ -1209,12 +1243,14 @@ function MessageBubbleComponent({
         {sender && !isMobile && <IncomingAgentHeader sender={sender} />}
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
-        {stationCheckBack || stationMemoryContinuation ? (
+        {stationAuthored ? (
           <div className="message__station-label">
             {isMobile ? <TimeGlyph className="message__station-glyph" /> : null}
             {stationMemoryContinuation
               ? 'Station continued after the engine ran out of memory'
-              : 'Scheduled check-back'}
+              : stationRestartContinuation
+                ? 'Continued after restart'
+                : 'Scheduled check-back'}
           </div>
         ) : null}
         <div
@@ -1302,12 +1338,15 @@ function MessageBubbleComponent({
             a message that was already delivered when it mounted). */}
         {msg.role === 'user' && msg.clientId && deliveryState ? (
           <MessageDeliveryNote
-            chatKey={activeSession.id}
-            clientTurnId={msg.clientId}
+            port={deliveryPort}
             state={deliveryState}
-            text={textContent}
             notice={deliveryNotice}
           />
+        ) : null}
+        {msg.role === 'user' &&
+        msg.deliveryNotice &&
+        deliveryState === msg.deliveryNotice.state ? (
+          <ConversationDeliveryNotice notice={msg.deliveryNotice} />
         ) : null}
 
         {!isMobile && metadataAfter}

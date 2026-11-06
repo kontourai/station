@@ -73,6 +73,8 @@ vi.mock('../../../contexts/AgentsContext', () => ({
 // /agents/materialize-engine` (archive#3627) — so the batch is observed here
 // as the mutation it really performs, not as an agent-draft create.
 vi.mock('@kontourai/station-sdk', () => ({
+  // #4519: the connected Station has no managed policy.
+  useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   useMaterializeEngineAgentMutation: () => ({
     mutateAsync: materializeEngineAgent,
   }),
@@ -1043,7 +1045,9 @@ describe('first useful chat handoff', () => {
         await act(async () =>
           fireEvent.click(screen.getByRole('button', { name: label })),
         );
-        expect(screen.getByRole('alert').textContent).toContain('offline');
+        expect(screen.getByRole('alert').textContent).toContain(
+          'Try again in a moment.',
+        );
         expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
         expect(recordFirstRunDecision).not.toHaveBeenCalled();
         expect(intent).not.toHaveBeenCalled();

@@ -1,0 +1,39 @@
+.member-project-shared-work > ul {
+  list-style: none;
+  margin: var(--k-space-3) 0;
+  padding: 0;
+}
+.member-project-shared-work > ul > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
+}
+.member-project-shared-work > ul > li > strong {
+  flex: 1 1 12rem;
+}
+.member-project-shared-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  min-width: 0;
+}
+.member-project-shared-details h3,
+.member-project-shared-details h4 {
+  margin: 0 0 var(--k-space-2);
+}
+.member-project-shared-details > section {
+  min-width: 0;
+}
+.member-project-shared-details > section > pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.member-project-shared-details > section > p {
+  color: var(--k-text-muted);
+}

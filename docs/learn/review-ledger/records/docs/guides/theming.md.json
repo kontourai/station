@@ -126,7 +126,9 @@
 
     "packages/sdk/src/theme-signature.ts",
 
-    "src-ui/src/components/ActionRow.tsx"
+    "src-ui/src/components/ActionRow.tsx",
+
+    "src-ui/src/components/editor-controls.css"
   ],
 
   "checks": [

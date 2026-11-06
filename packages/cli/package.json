@@ -48,6 +48,7 @@
   },
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",
+    "koffi": "3.3.6",
     "qrcode": "^1.5.4"
   }
 }

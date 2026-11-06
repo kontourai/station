@@ -1,3 +1,4 @@
+import { useProjectWorkspacePanesQuery } from '@kontourai/station-sdk/workspace-pane';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useProjects } from '../../contexts/ProjectsContext';
@@ -12,6 +13,32 @@ import { RegionToolbarControls } from './RegionToolbarControls';
 import { useHeaderViewModel } from './useHeaderViewModel';
 import '../chat/chat.css';
 import './Header.css';
+
+/**
+ * A direct pane route's name, from the same pane-catalog query the route view
+ * reads (one shared cache entry). Nothing until the catalog names it.
+ */
+function PaneCrumb({
+  projectSlug,
+  descriptorId,
+}: {
+  projectSlug: string;
+  descriptorId: string;
+}) {
+  const { data } = useProjectWorkspacePanesQuery(projectSlug);
+  const name = data?.descriptors.find(
+    (descriptor) => descriptor.id === descriptorId,
+  )?.name;
+  if (!name) return null;
+  return (
+    <>
+      <span className="app-toolbar__breadcrumb-sep">/</span>
+      <span aria-current="page" className="app-toolbar__breadcrumb-current">
+        {name}
+      </span>
+    </>
+  );
+}
 
 interface HeaderProps {
   currentView?: NavigationView;
@@ -102,7 +129,13 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
           views, the section name (clickable up to its root) for standalone
           views. */}
       {breadcrumb && (
-        <div className="app-toolbar__breadcrumb">
+        <div
+          className={
+            breadcrumb.paneDescriptorId
+              ? 'app-toolbar__breadcrumb app-toolbar__breadcrumb--pane'
+              : 'app-toolbar__breadcrumb'
+          }
+        >
           {breadcrumb.projectSlug ? (
             <>
               <span
@@ -128,6 +161,12 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
                     layoutSlug={breadcrumb.layoutSlug}
                   />
                 </>
+              )}
+              {breadcrumb.paneDescriptorId && (
+                <PaneCrumb
+                  projectSlug={breadcrumb.projectSlug}
+                  descriptorId={breadcrumb.paneDescriptorId}
+                />
               )}
             </>
           ) : breadcrumb.section ? (

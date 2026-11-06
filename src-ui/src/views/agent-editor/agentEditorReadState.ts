@@ -1,3 +1,5 @@
+import { describeStationFailure } from '../../utils/stationFailure';
+
 interface AgentEditorReadStateArgs {
   hasLoadedAgent: boolean;
   loadError: unknown;
@@ -15,13 +17,14 @@ export function resolveAgentEditorReadState({
 }: AgentEditorReadStateArgs) {
   const loadErrorMessage =
     loadError instanceof Error
-      ? loadError.message
+      ? describeStationFailure(loadError).body
       : loadError
-        ? String(loadError)
+        ? describeStationFailure(loadError).body
         : null;
   const initialLoadError =
     !isCreating && !hasLoadedAgent ? loadErrorMessage : null;
-  const notFound = initialLoadError === 'Agent not found';
+  const notFound =
+    loadError instanceof Error && loadError.message === 'Agent not found';
 
   return {
     blockingLoadError: notFound ? null : initialLoadError,

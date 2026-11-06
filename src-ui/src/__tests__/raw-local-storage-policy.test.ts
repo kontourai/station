@@ -19,8 +19,6 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'recentLayouts', // Derived MRU used for picker ordering, not a setting.
   'station.switcher.recent', // Derived MRU of saved Station ids for switcher ordering (bounded to 20), not a setting.
   'station-device-settings-v1', // The versioned device-settings envelope itself.
-  'station.activity.snoozed', // Per-work-item snooze state, not a setting.
-  'station.inbox.dismissed.v1', // Bounded per-conversation inbox visibility state, not a setting.
   'station.turnAttention.settled', // Bounded (500) memory of turns whose finish already toasted, so a reload does not re-toast them (#4396); notification bookkeeping, not a setting.
   'station-attached-session-continuations-v1', // Exact Attached Session continuation evidence.
   'station-browser-relay-account-scope-event-v1', // Transient cross-tab relay account-scope signal; written and removed, never a setting or credential.
@@ -65,6 +63,8 @@ const ALLOWED_COMPUTED_KEY_FILES = new Set([
   'contexts/ToastContext.tsx', // Recent messages use a module-private prefix plus Station scope; only bounded caller-approved recall text persists, never actions or raw diagnostics.
   'core/remotePluginBundleConsent.ts', // Consent is scoped by the normalized remote plugin origin.
   'platform/native/deliveryFeed.ts', // The alert cursor is scoped by the feed's scope key; the prefix is module-private and only the default deps read or write it.
+  'utils/activity-snooze-store.ts', // Authority-partitioned snooze map; storageKey is private and exported operations accept work-item identity and namespace, never a raw key.
+  'utils/inbox-dismissal-store.ts', // Authority-partitioned bounded dismissal map; storageKey is private and exported operations accept work-item identity and namespace, never a raw key.
 ]);
 
 function productionFiles(directory: string): string[] {
@@ -124,7 +124,10 @@ function rawLocalStorageUsage(): {
   const unallowlistedComputedKeys: string[] = [];
   const knownProductionConstants = productionLiteralConstants();
   for (const file of productionFiles(SOURCE_ROOT)) {
-    if (path.relative(SOURCE_ROOT, file) === 'lib/device-settings-store.ts') {
+    if (
+      path.relative(SOURCE_ROOT, file).split(path.sep).join('/') ===
+      'lib/device-settings-store.ts'
+    ) {
       continue;
     }
     const sourceFile = ts.createSourceFile(
@@ -153,7 +156,10 @@ function rawLocalStorageUsage(): {
         else if (ts.isIdentifier(key) && knownProductionConstants.has(key.text))
           keys.add(knownProductionConstants.get(key.text)!);
         else {
-          const relativeFile = path.relative(SOURCE_ROOT, file);
+          const relativeFile = path
+            .relative(SOURCE_ROOT, file)
+            .split(path.sep)
+            .join('/');
           if (!ALLOWED_COMPUTED_KEY_FILES.has(relativeFile)) {
             const { line } = sourceFile.getLineAndCharacterOfPosition(
               key?.getStart(sourceFile) ?? node.getStart(sourceFile),

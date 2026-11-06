@@ -154,6 +154,8 @@ describe('approval card with content stored out of line', () => {
       'thread-1',
       'open-big',
       `sha256-${'c'.repeat(64)}`,
+      undefined,
+      undefined,
     );
     // The details show the loaded value, not the reference's preview.
     const details = view.container.querySelector('.tool-call__details');

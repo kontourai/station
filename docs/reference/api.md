@@ -1,5 +1,43 @@
 # Station API Documentation
 
+## Paired Station conversation tunnel
+
+On a personal host with **Paired Station chats** enabled,
+`GET /api/environments/peers/:id/chat-connection` returns `{success:true,data}`
+containing version 1, verified `environmentId`, `stationName`, `principalNamespace`,
+receiver `delegationLocalConversationV1` and the source `read`/`operate`/locality
+ceiling. It contains no credentials. Public capability `peerChatTunnelV1` advertises
+this source protocol; missing receiver support does not enable a polling fallback.
+
+`/api/environments/peers/:id/chat-api/<receiver path>` admits only the exact
+methods, bounded queries and bodies in the [policy](../../src-server/routes/environments/peer-chat-policy.ts).
+Families include chat/continue, commands/receipts, open/event-window/live events,
+inbox/delivery lookup, requests/content, checkpoints, usage, projected catalogs
+and attachment staging/media. The exact `GET /api/settings/managed-policy` reads
+the receiver's approval-policy summary; settings writes remain denied.
+Command discriminants are `interruptTurn`,
+`steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`, `stopSession`
+and `discardDraft`. Arbitrary session mutations and onward remote execution are
+denied. Foreground targets must explicitly select the current receiver; its
+continue/inbox locality guard also checks saved/default execution state.
+
+The source authenticates its current owner Device/operator, rechecks the preview
+and saved peer grant, verifies R's identity and forwards only its saved delegation
+credential. Peer enrollment and credential administration remain operator-only.
+SSE uses streaming byte forwarding, abort/backpressure and idle revocation checks;
+revocation closes the connection rather than emitting a synthetic auth event.
+Attachment uploads authenticate S normally and carry the separate receiver upload
+grant in the staging header; media responses retain bounded binary bytes.
+
+R's 401/403 refusal becomes source-authored HTTP **424** with a version-1
+[refusal observation](../../packages/contracts/src/peer-chat.ts): target environment,
+`failureAuthority:'target'`, `remoteStatus`, `disposition:'refused-before-dispatch'`
+and the original mutation key when applicable. Only a verified source envelope
+bound to that target/key proves definite non-delivery. Raw upstream errors remain
+relayed, without source authority; loss/unknown outcomes stay uncertain. Source
+401 still means reconnect to S. See the [threat model](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)
+and [connection design](../design/station-connection.md) for limits and evidence.
+
 ## Session Goals
 
 While the default-off **Session goals** Feature Preview is enabled,
@@ -529,10 +567,40 @@ query. Pending proposals do not appear in ordinary record lists or search.
 returns the target's `{ kind, id, title }` without changing it. It does not
 calculate a cascade or expose erasure.
 
+Review, recall and briefing use the same authority, root-access check and
+delivery-time recheck, advertised by the `privateMemoryReview` handshake flag
+(withdrawn on hosted deployments):
+
+- `GET /api/knowledge/memory/queue` returns `{ items, recallableWithoutReview }`.
+  Each item has a `question`, plain-language `reasons`, the `proposed` claim, the
+  `current` claim it conflicts with or replaces (or `null`), each with its source
+  excerpt, a `status` of `pending` or `decided`, and the standing human
+  `decision`.
+- `POST /api/knowledge/memory/queue/:itemId/open` marks that the reviewer opened
+  the item; its review time starts here.
+- `POST /api/knowledge/memory/queue/:itemId/decision` takes
+  `{ outcome: accept|correct|reject|hold, correctedValue?, rationale?, requestKey? }`
+  (16 KiB). The body is strict: a reviewer or `reviewerKind` field is a 400. The
+  host records a Survey `ReviewDecision` with the reviewer it attested from the
+  request, and returns `{ itemId, outcome, reviewerKind, promoted, reviewSeconds }`.
+  `promoted` is true only when a human decision changed what recall and the brief
+  show; a decision by anyone else is kept as a note. Every field comes from the
+  record that was kept, so a retry with the same `requestKey` returns the first
+  decision whatever the retry asked for. `hold` leaves the item in the queue.
+- `GET /api/knowledge/memory/recall?q=&limit=` returns `{ entries, withheld, notes }`.
+  Entries carry the Kit's display `text`, `review.label`
+  (`confirmed`, `corrected`, `in-review`, `unreviewed`), `review.routing` (`not-evaluated`, `uncontested` or `routed`), the source
+  excerpt, and `replaces`, `replacedBy` and `conflictsWith`.
+- `GET /api/knowledge/memory/brief[?includeUnreviewed=1]` returns the
+  brief new chats get (`text` is `null` when nothing qualifies; at most 6,144 bytes).
+- `GET /api/knowledge/memory/measurement` returns `station.memory-measurement/1`:
+  figures for the whole root, `runs` with one entry per distillation run,
+  and `lineages` with one row per change, each naming its run.
+
 Unknown identity, hosted access, Project membership and delegation do not grant
 memory access. With the preview off, direct memory requests return the standard
-`feature_preview_disabled` 404. Review, application and erasure are not exposed
-by these routes. See [Private memory](../guides/knowledge.md#private-memory-preview).
+`feature_preview_disabled` 404. Erasure is not exposed by these routes. See
+[Private memory](../guides/knowledge.md#private-memory-preview).
 
 ## Project knowledge source identity
 
@@ -689,6 +757,24 @@ on the host; its success does not establish repository permissions. Discord
 reports gateway state, and webhooks report configuration and active start
 grants; neither proves delivery. Slack is not implemented, and Linear and Jira
 are waiting on tracker support. Probe diagnostics do not expose credentials.
+
+`?include=github-authentication` additionally requests optional `authentication`
+on the GitHub connection: `{state, observedAt, account?, scopes?}`. `observedAt`
+is Unix milliseconds. The **Repository sign-in details** preview is off by default;
+an authorized request while off returns 404 with `code: feature_preview_disabled`,
+`previewId: repository-auth-details`, and its Settings path. Authority and preview
+choice are checked before the probe and response release. Default requests keep
+the earlier closed response shape, so older parsers receive no new fields.
+An older host may ignore the opt-in and omit metadata; omission is not a healthy
+account or a repository permission result.
+
+The metadata read runs the Station’s `gh auth status --hostname github.com --json
+hosts --no-refresh`, never `--show-token`. It selects one active account, refuses
+malformed/beyond-bound metadata, and projects only health, account and scopes.
+Process/output bounds are five seconds/8 KiB and results cache for ten seconds.
+JSON-mode exit zero alone is not sign-in proof. No credential refresh, login,
+repository read/write, scoped credential binding or Peer aggregation is performed.
+
 
 `GET /api/tasks/:taskId/write-back` requires the personal Task room's current
 person and Task scope and paired `orchestration:read` where applicable. It is
@@ -2223,7 +2309,11 @@ Project-effective settings. Invalid/missing Project selections return 400/404.
 With a [managed policy](../guides/managed-policy.md#settings) installed, `data`
 holds the managed values in effect, and `provenance` reports `{source:
 'managed', locked, organization, supportUrl}` for each value the policy
-supplied; it never carries the value.
+supplied; it never carries the value. Under the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
+`defaultApprovalMode` is the default as it applies, lowered to the ceiling
+(the `PUT` response reports it the same way); a saved default above it stays
+saved until a mode at or below the ceiling is written.
 
 ### Update App Configuration
 
@@ -2422,11 +2512,16 @@ returns the current process's product queue, exact-receipt acknowledgements,
 loss/failure counters and OTel callback/probe state. It carries presence flags
 and counters rather than addresses, keys, installation IDs or receipt IDs.
 Unsupported versions and unavailable state must not be replaced with healthy
-defaults or cached success.
+defaults or cached success. Under a managed policy with `limits.telemetry:
+false`, `product.managedDenial` and `otel.managedDenial` carry the policy
+sentence, so a client can disable both connection checks; older servers omit
+them.
 
 `POST /api/usage-telemetry/connection-checks/product` and
 `POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.
-Product checks use a separate content-free source/schema probe;
+Under a managed policy with `limits.telemetry: false` both answer `403` with
+code `managed-policy-capability-disabled` and contact nothing; `PUT /config/app`
+refuses a raised sharing tier the same way. Product checks use a separate content-free source/schema probe;
 OTel checks send empty metrics and trace requests. Neither creates product
 disclosure consent or establishes downstream delivery/query acceptance. The [usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
 owns the protocol, saved authority and failure limits.
@@ -4432,7 +4527,11 @@ listed, as `expired`, until it is revoked.
 
 These [routes](../../src-server/routes/agents/invoke.ts) execute against Station's
 active managed Agent map. An external-engine Agent being listed in the catalog
-does not make it callable through this map; use orchestration for its lifecycle.
+does not make it callable through this map; use orchestration for its lifecycle. On a
+machine whose [managed policy](../guides/managed-policy.md#engines) does not
+allow `station-agent`, `/agents/:slug/invoke`, `/agents/:slug/invoke/stream`
+and `/invoke` answer `403` with `code: "managed-policy-engine-refused"` before
+a run is recorded.
 The [request schemas](../../src-server/routes/schemas/schema-definitions/runtime.ts)
 distinguish `input` on named invoke from `prompt` on global/legacy stream invoke.
 
@@ -4699,10 +4798,22 @@ With one:
 }
 ```
 
-`source.kind` is `file`, or `test-override` for an isolated test instance.
-`limits` holds `maxApprovalMode` (`ask`, `auto` or `never`) when the policy
-sets the [approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
-and is `{}` otherwise. The summary never contains a setting value. There is no error state: a server that
+`source.kind` is `file`, or `test-override` for an isolated test instance. The
+summary never contains a setting value. `limits` holds `maxApprovalMode`
+(`ask`, `auto` or `never`) when the policy sets the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling). A policy with `limits.updates` reports
+`"limits": {"updates": {"mode": "auto" | "off", "mirror": <boolean>,
+"allowNightly": <boolean>}}`; `mirror` says a feed is set, and the feed URL
+itself is never returned. The
+[capability switches](../guides/managed-policy.md#capability-switches) appear
+as set (`"telemetry": false`, `"webhookAutomations": false`, and
+`"registries"` with its `allowedUrls` and switches). A policy that sets
+`limits.engines` (#4520) adds `summary.engines`, which names the allowed
+engines (`null` for all), whether ACP registry agents may run, and each pinned
+engine's `locked`, pinned `fields` and `environmentNames`, never a launch
+value; `summary.limits` then omits `engines`. Routes refuse an engine the
+policy does not allow with `403` and code `managed-policy-engine-refused`.
+There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
 `station policy show` reports as a server too old to report a policy, and
 which the UI reads as no policy.
@@ -4729,6 +4840,21 @@ full-access `mode` on a request's options. A mode carried on a request's
 options as a default (`approvalMode`, `never` included) is lowered to the
 ceiling, not refused. A turn on a chat whose recorded pick is above the ceiling is refused with the
 same `code` and message as a turn refusal (`permission_denied`).
+
+`summary.limits` carries `clients` when the policy sets it, for example
+`{ "clients": ["desktop", "local-browser"] }`. Without `remote` in that list
+(#4519), pairing offers and access requests answer `403` with
+`{ "error": "managed-policy-remote-clients" }` (a pairing code finds no
+offer to match); relay setup
+approvals and invitations answer `403` with that `code` and the policy's
+sentence as `message`; turning on `lanDiscoveryEnabled` through
+`PUT /config/app` answers `403` with that `code`; and credentials of devices
+paired earlier answer as unknown. `GET /api/pairing/devices` still lists
+those devices, each with `suspended: { "by": "managed-policy",
+"organization": "<organization>" }` beside an unchanged `revocation`, and
+the Discord integration status reports `unavailable` with the policy's
+sentence. See
+[Network exposure](../guides/managed-policy.md#network-exposure).
 
 ## Branding
 
@@ -5346,7 +5472,11 @@ records compensation and retained-state limits.
 checks git/registry update sources. Results use the installed manifest name as
 `name`, even when a registry entry ID differs. A caught top-level check failure
 currently returns 200 with `{updates: []}`; that legacy result cannot prove
-there were no available updates.
+there were no available updates. Under a [managed policy](../guides/managed-policy.md#capability-switches)
+`limits.registries.allowedUrls`, a plugin installed from a registry the policy
+refuses is not checked (its git origin is not fetched); it is listed in
+`managedByPolicy` as `{name, message}` with the policy sentence, not as an
+error. Older servers omit the field.
 
 ### Update Plugin
 
@@ -5497,7 +5627,10 @@ caught separately; it is not a universal runtime-activation receipt.
 ### Uninstall Agent from Registry
 
 `DELETE /api/registry/agents/:id` likewise resolves a plugin-backed entry through
-plugin removal, or calls the Agent registry provider. Plugin lifecycle pending
+plugin removal, or calls the Agent registry provider. Removal is never refused
+by a managed `limits.registries`: the lookup applies no signature admission,
+and when the policy refuses the registry, that registry is not contacted and
+the recorded registry install decides. Plugin lifecycle pending
 results retain their activation semantics; a plain provider result is not the
 same receipt.
 
@@ -6147,6 +6280,19 @@ install's progress from its runtime files, or `{state: "unavailable"}` when the
 server is not launcher-supervised. Unknown/ineligible provenance returns 409.
 See the [update owner](../../src-server/routes/system/system-update-routes.ts)
 for exact result branches.
+
+The machine's [managed policy](../guides/managed-policy.md#update-control) can
+refuse these routes (#4522). When its `limits.updates` turns updates off, makes
+this server's nightly ring unavailable, or names a mirror a desktop bundle or
+source checkout cannot update from, `GET /api/system/core-update` contacts
+nothing and returns `updateAvailable: false` with
+`managedPolicyCode: "managed-policy-updates-refused"` and the policy's sentence
+in `message` and `selfUpdateUnavailableReason`. `POST /api/system/core-update`
+and `PUT /api/system/core-update/apply-when-idle` answer 403 with
+`code: "managed-policy-updates-refused"`, and the server's own update
+coordinator neither checks nor downloads. With a mirror, an archive's check
+reads the mirror's copy of its ring's signed manifest instead of the one its
+install recorded.
 
 The server's own update routes (#3851):
 - `GET /api/system/core-update/state` returns its update state
@@ -6954,11 +7100,15 @@ exception for every iframe, image, or link request. See the
 
 ### CORS
 
-The running Station uses the exact browser origins assembled by
-[resolveStationBrowserOrigins](../../src-server/security/station-browser-origins.ts):
-configured additions, its bound-port loopback origins, native shell origins, and
-specific bound-host origins. The CLI adds its UI listener origins. Other origins
-are refused before route dispatch. This is not the permissive helper used when
+The running Station uses one browser-origin policy,
+[stationOriginPolicy](../../src-server/security/station-browser-origins.ts).
+It admits the exact configured origins first: configured additions, its
+bound-port loopback origins, native shell origins, and specific bound-host
+origins (the CLI adds its UI listener origins). It then admits this Station's
+own Tailscale Serve origin, which the local daemon attests and which is trusted
+for at most 1 second per read. The HTTP gates, the pairing check, the
+credential-free voice WebSocket and the sign-in origin picker all read this
+policy. Other origins are refused before route dispatch. This is not the permissive helper used when
 HTTP security is absent, and it does not allow every localhost port. Origin
 admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).

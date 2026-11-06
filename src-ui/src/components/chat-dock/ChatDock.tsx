@@ -1,4 +1,6 @@
+import { chatBelongsToStation } from '../../connections/station-state';
 import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistenceContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import '../chat/TaskShaping.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -101,6 +103,7 @@ import {
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
+import { useFoldSplit } from '../../hooks/useFoldSplit';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
@@ -911,17 +914,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const conversationOpenRecoveryRef = useRef(conversationOpenRecovery);
   conversationOpenRecoveryRef.current = conversationOpenRecovery;
 
-  // station#1301 slice 1: the active session's running-background-task count,
-  // for the tab bar's badge and the Background tasks rows' labels.
-  const backgroundTasksRunningCount = useChatBackgroundTasksRunningCount(
-    activeSessionId,
-    apiBase,
-  );
-  const backgroundTasksLimited = useChatBackgroundTasksLimited(
-    activeSessionId,
-    apiBase,
-  );
-
   // #869 / #1298: a maximized dock is opaque and full-height, so navigating
   // to another part of the app changed the view *underneath* it and nothing
   // moved — from the user's side the click did nothing. `chrome.restoreDockToDocked`
@@ -1086,6 +1078,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSession,
     activeOrchestrationSession,
     activeOrchestrationSessionRead,
+    retryRemoteSessionRead,
     activeSessionForHook,
     agentDefaultModelId,
     bindingStatus,
@@ -1107,6 +1100,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionCwdManaged,
     sessionProjectName,
     unreadCount,
+    conversationConnection,
+    conversationAgents,
   } = useChatDockViewModel({
     activeSessionId,
     availableModels,
@@ -1118,6 +1113,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessionsStatus,
     orchestrationSessionsFetching,
   });
+  // station#1301 slice 1: the active session's running-background-task count,
+  // for the tab bar's badge and the Background tasks rows' labels.
+  const backgroundTasksRunningCount = useChatBackgroundTasksRunningCount(
+    activeSessionId,
+    conversationConnection ?? apiBase,
+  );
+  const backgroundTasksLimited = useChatBackgroundTasksLimited(
+    activeSessionId,
+    conversationConnection ?? apiBase,
+  );
+
   useEffect(() => {
     if (!isFullscreenPlacement && activeSession?.taskShaping)
       setDockState(true, true);
@@ -1127,7 +1133,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       activeSession?.currentSessionId ??
       activeSession?.conversationId ??
       activeSession?.id;
-    if (!sourceThreadId || !activeSession || activeSession.replay) return;
+    if (
+      !sourceThreadId ||
+      !activeSession ||
+      activeSession.replay ||
+      !chatBelongsToStation(activeSession)
+    )
+      return;
     void import('../../hooks/orchestration/replay/controller')
       .then(({ openReplayFromThread }) =>
         openReplayFromThread({
@@ -1140,11 +1152,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         }),
       )
       .catch((error: unknown) => {
-        showToast(
-          error instanceof Error
-            ? error.message
-            : 'Could not open event replay for this conversation.',
-        );
+        showToast(describeStationFailure(error).body);
       });
   }, [activeSession, apiBase, showToast]);
   // The occurrence store's key for THIS dock's inventory. Owned here because
@@ -1157,9 +1165,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     `session-inventory:${randomCorrelationId()}`,
   ).current;
   const inventoryChatStoreId = activeSession?.id;
-  const conversationCanMutate = activeSession
-    ? canMutateConversation(activeSession)
-    : false;
+  const hostConversation =
+    !activeSession || chatBelongsToStation(activeSession);
+  const conversationCanMutate =
+    activeSession && hostConversation
+      ? canMutateConversation(activeSession)
+      : false;
   const inventoryExecutionId = conversationCanMutate
     ? (activeSession?.currentSessionId ?? inventoryChatStoreId)
     : undefined;
@@ -1170,8 +1181,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const conversationBoundaryDialogs = useConversationBoundaryDialogs({
     agents,
     apiBase,
-    activeSession,
-    allSessions,
+    activeSession: hostConversation ? activeSession : null,
+    allSessions: allSessions.filter((session) => chatBelongsToStation(session)),
   });
   const {
     handoffSource,
@@ -1195,6 +1206,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // is (`useChatDockActions.focusSession`). A full-screen placement is
   // already showing.
   const conversationSurfaceRef = useRef<HTMLDivElement>(null);
+  // On a folded display the Inbox snaps to the crease (measured on the
+  // workspace row), and without the Inbox the reader moves off it
+  // (`.fold-avoid-crease`).
+  const workspaceRowRef = useRef<HTMLDivElement>(null);
+  const readerRef = useRef<HTMLDivElement>(null);
+  useFoldSplit(workspaceRowRef);
+  useFoldSplit(readerRef);
   // The dock as it was before a phone draft forced it to full height, so a
   // dismissed draft puts it back and a started one opens its chat at that
   // size. Includes the maximize memory the forcing overwrote.
@@ -1477,7 +1495,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     : effectiveModels;
   // Chat input hook - encapsulates autocomplete, history, and input handling
   const chatInput = useChatInput({
-    apiBase,
+    apiBase: conversationConnection?.targetApiBase ?? apiBase,
+    connection: conversationConnection,
     sessionId: activeSessionId,
     agentSlug: activeSessionForHook?.agentSlug || null,
     conversationId: activeSessionForHook?.conversationId,
@@ -1489,8 +1508,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     agentDefaultModel: agentDefaultModelId,
     attachmentCapabilities,
     workingDirectory: sessionDisplayCwd,
-    mentionRequestScope: requestAuthority,
-    mentionAuthority,
+    mentionRequestScope: conversationConnection
+      ? {
+          ...conversationConnection.requestScope,
+          isCurrent: conversationConnection.isCurrent,
+        }
+      : requestAuthority,
+    mentionAuthority:
+      conversationConnection?.routeKind &&
+      conversationConnection.routeKind !== 'host'
+        ? null
+        : mentionAuthority,
     defaultModelSource: activeSessionForHook?.defaultModelSource,
     onSessionMigrate: (newSessionId) => {
       // A send admission, not the person moving: a draft open over the dock
@@ -1573,6 +1601,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       setPendingGoalSend(null);
       return;
     }
+    if (
+      activeSessionForHook.stationBinding?.affinity.kind !== 'host' &&
+      activeSessionForHook.stationBinding &&
+      !conversationConnection?.isCurrent()
+    )
+      return;
     if (chatInput.sendBlockedReason) return;
     setPendingGoalSend(null);
     if (chatInput.input !== pendingGoalSend.prompt) return;
@@ -1584,6 +1618,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   }, [
     activeSessionId,
     activeSessionForHook?.id,
+    activeSessionForHook?.stationBinding,
+    conversationConnection,
     pendingGoalSend,
     chatInput.input,
     chatInput.handleSend,
@@ -1771,12 +1807,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   });
   // #3628: make this chat the person's coordinator, or stop.
   const coordinatorActions = useCoordinatorDockActions(
-    activeSession && !activeSession.replay && !importedSessionId
+    hostConversation &&
+      activeSession &&
+      !activeSession.replay &&
+      !importedSessionId
       ? activeSession.conversationId
       : undefined,
   );
   const openConversationHistory = () => {
-    if (!activeSession) return;
+    if (!activeSession || !hostConversation) return;
     void import('./timelineOpen').then((module) =>
       module.openTimeline(
         apiBase,
@@ -1812,7 +1851,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * row's business. Dropping either one silently changes what the row opens.
    */
   const turnIntoTask =
-    activeSession && !activeSession.replay && !importedSessionId
+    hostConversation &&
+    activeSession &&
+    !activeSession.replay &&
+    !importedSessionId
       ? () =>
           activeSession.taskShaping
             ? updateChat(activeSessionId!, { taskShaping: false })
@@ -1840,7 +1882,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       : []),
     ...coordinatorActions,
     ...copyActions,
-    ...(activeSession?.conversationId && !activeSession.replay
+    ...(hostConversation &&
+    activeSession?.conversationId &&
+    !activeSession.replay
       ? [
           {
             key: 'conversation-history',
@@ -1861,7 +1905,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           },
         ]
       : []),
-    ...(!scopedProjectSlug && sessionCodingLayout && activeSession?.projectSlug
+    ...(hostConversation &&
+    !scopedProjectSlug &&
+    sessionCodingLayout &&
+    activeSession?.projectSlug
       ? [
           {
             key: 'open-code-layout',
@@ -2413,9 +2460,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             )) === true,
           projectName: (slug) =>
             projects.find((project) => project.slug === slug)?.name,
-          findTab: (conversationId) =>
+          findTab: (conversationId, connection) =>
             Object.entries(activeChatsStore.getSnapshot()).find(
-              ([, chat]) => chat.conversationId === conversationId,
+              ([, chat]) =>
+                chat.conversationId === conversationId &&
+                chatBelongsToStation(chat, connection),
             )?.[0],
           updateChat,
           readChat: (tabId) => activeChatsStore.getSnapshot()[tabId],
@@ -2457,8 +2506,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       () => showToast('Conversation resolution is unavailable. Try again.'),
       (tabId) => activeChatsStore.getSnapshot()[tabId],
       workObservation,
+      conversationConnection,
     );
-  }, [activeSession, apiBase, showToast, updateChat, workObservation]);
+  }, [
+    activeSession,
+    apiBase,
+    showToast,
+    updateChat,
+    workObservation,
+    conversationConnection,
+  ]);
   const retryConversationOpenRecovery = useCallback(async () => {
     if (!conversationOpenRecovery) return;
     await openConversationForDock(conversationOpenRecovery.conversation);
@@ -2981,6 +3038,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSession && !activeSession.replay
       ? (activeSession.conversationId ?? '')
       : '',
+    activeSession && !chatBelongsToStation(activeSession)
+      ? (conversationConnection ?? null)
+      : undefined,
   );
   const sessionContextPendingMessages = activeSession
     ? pendingMessageCount({
@@ -3507,6 +3567,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // While a draft is open the header names the draft only: the
               // covered chat's route and the dock's destination controls would
               // disagree with the draft's own project chip (the one destination).
+              stationName={
+                showNewChatModal
+                  ? undefined
+                  : activeSession?.stationBinding?.affinity.kind !== 'host'
+                    ? activeSession?.stationBinding?.stationName
+                    : undefined
+              }
               routeLabel={
                 showNewChatModal
                   ? undefined
@@ -3525,7 +3592,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   ? newChatDraftTitle
                   : importedSessionId
                     ? importedTitle
-                    : activeSession?.title || 'Chat'
+                    : activeSession?.title === 'New chat' &&
+                        activeOrchestrationSession?.displayTitle
+                      ? activeOrchestrationSession.displayTitle
+                      : activeSession?.title || 'Chat'
               }
               // station#3309: same identity the desktop header leads with,
               // from the same session-committed slug — artwork only when the
@@ -3757,6 +3827,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     acpConnections={acpConnections}
                     executionAgent={activeExecutionAgent}
                     modelLabel={activeChatModelLabel}
+                    stationName={
+                      activeSession.stationBinding?.affinity.kind !== 'host'
+                        ? activeSession.stationBinding?.stationName
+                        : undefined
+                    }
                     routeLabel={activeOrchestrationSession?.modelRoute?.label}
                     inputOrigin={activeOrchestrationSession?.inputOrigin}
                     onClose={removeSession}
@@ -3840,13 +3915,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   first (#1066), and the header above now carries its
                   controls. #1064's no-third-bar decision stands. */}
               {/* Keep drafts and the phone inbox mounted across dock collapse. */}
-              <div className="chat-dock__workspace" hidden={!workspaceShown}>
+              <div
+                className="chat-dock__workspace"
+                ref={workspaceRowRef}
+                hidden={!workspaceShown}
+              >
                 {isMobile && (
                   <LazyBoundary
                     load={loadMobileInboxPanel}
                     componentProps={{
                       open: workspaceShown && mobileInboxShown,
                       tasks: taskItems,
+                      authority: requestAuthority,
                       pending: taskItemsPending,
                       loadError: taskItemsFailed,
                       onRetryLoad: resyncInbox,
@@ -3894,6 +3974,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       componentProps={{
                         exiting: inboxPresence.exiting,
                         items: taskItems,
+                        authority: requestAuthority,
                         agents,
                         gitLocationByThreadId,
                         projectAccentBySlug,
@@ -3949,7 +4030,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     />
                   )}
                 <div
-                  className="chat-dock__reader"
+                  className="chat-dock__reader fold-avoid-crease"
+                  ref={readerRef}
                   hidden={mobileInboxShown}
                   inert={mobileInboxShown}
                 >
@@ -4169,27 +4251,41 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               },
                             );
                           },
-                          onPeerChatStarted: (agent, binding) => {
+                          onConversationStarted: (agent, start) => {
                             const sessionId = openChatForAgentInScopedPane(
                               agent,
-                              dockChromeProjectSlug ?? undefined,
+                              start.projectSlug,
                             );
                             if (!sessionId)
                               throw new Error('Could not open the chat.');
                             updateChat(sessionId, {
-                              peerChat: binding,
+                              stationBinding: start.connection.binding,
+                              projectSlug: start.projectSlug,
+                              projectName: start.projectName,
                               provider: undefined,
-                              executionAgentId: undefined,
+                              executionAgentId: start.executionAgentId,
+                              executionOnCurrentStation: true,
+                              expectedDefinitionFingerprint:
+                                start.expectedDefinitionFingerprint,
+                              requestedModel: start.model,
+                              requestedProviderOptions: start.providerOptions,
                               conversationOpenPending: false,
+                              input: start.text,
                               title:
-                                binding.pending?.text.trim().slice(0, 80) ||
-                                'New chat',
+                                start.text.trim().slice(0, 80) || 'New chat',
                             });
                             settleDockForStartedDraft();
                             setShowNewChatModal(false, undefined, 'started');
                             setNewChatProjectOverride(null);
                             setHandoffSource(null);
                             navigate(pathname, { chat: sessionId });
+                            if (start.text.trim())
+                              setPendingGoalSend({
+                                sessionId,
+                                prompt: start.text,
+                                // The start lease ends with the modal; the tab resolves its persisted owner before sending.
+                                authority: undefined,
+                              });
                           },
                           onTaskStarted: (task, stationName) => {
                             setShowNewChatModal(false, undefined, 'started');
@@ -4260,6 +4356,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         inert={showNewChatModal}
                       >
                         <ChatDockContentArea
+                          connection={conversationConnection}
                           onNewChat={handleStartNewChatWithMessage}
                           onEditPeerChatDraft={(intent) =>
                             requestNewChat({
@@ -4281,11 +4378,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             activeOrchestrationSessionRead
                           }
                           onRetryOrchestrationSessions={() => {
-                            void refetchOrchestrationSessions();
+                            if (retryRemoteSessionRead)
+                              void retryRemoteSessionRead();
+                            else void refetchOrchestrationSessions();
                           }}
                           activeSessionId={activeSessionId}
                           sessions={sessions}
-                          agents={agents}
+                          agents={conversationAgents}
                           projects={projects}
                           projectScope={
                             scopedProjectSlug
@@ -4341,12 +4440,20 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           onOpenConversation={
                             openUserSelectedConversationInScopedPane
                           }
-                          onForkFromTurn={(source) => {
-                            void openForkDraft(source);
-                          }}
-                          onResendFromMessage={(request) => {
-                            void resendFromMessage(request);
-                          }}
+                          onForkFromTurn={
+                            hostConversation
+                              ? (source) => {
+                                  void openForkDraft(source);
+                                }
+                              : undefined
+                          }
+                          onResendFromMessage={
+                            hostConversation
+                              ? (request) => {
+                                  void resendFromMessage(request);
+                                }
+                              : undefined
+                          }
                           onOpenBackgroundTasks={showBackgroundTasks}
                         />
                       </div>
@@ -4415,7 +4522,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           load={loadBackgroundTasksSheet}
           componentProps={{
             chatThreadId: activeSessionId,
-            apiBase,
+            apiBase: conversationConnection?.targetApiBase ?? apiBase,
+            station: conversationConnection,
             anchorRef: backgroundTasksTriggerRef,
             returnFocusTarget: backgroundTasksTriggerRef.current,
             onOpenTranscript: (threadId) => {
@@ -4549,11 +4657,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           showReasoning,
           showToolDetails,
           autoHideEnabled,
-          onReplayConversation: activeSession?.replay
-            ? undefined
-            : handleReplayConversation,
+          onReplayConversation:
+            activeSession?.replay || !hostConversation
+              ? undefined
+              : handleReplayConversation,
           replayCaptureSource:
-            activeSession && !activeSession.replay
+            hostConversation && activeSession && !activeSession.replay
               ? {
                   apiBase,
                   agentName: activeSession.agentName,

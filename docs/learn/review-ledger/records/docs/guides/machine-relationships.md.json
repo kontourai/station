@@ -116,7 +116,17 @@
 
     "src-server/security/runtime-request-security.ts",
 
-    "src-server/security/pairing-route-scopes.ts"
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/routes/environments/peer-chat-policy.ts",
+
+    "src-server/routes/environments/peer-chat-routes.ts",
+
+    "packages/contracts/src/peer-chat.ts",
+
+    "src-ui/src/connections/resolve-station-connection.ts",
+
+    "src-ui/src/components/conversation/LegacyConversationRecovery.tsx"
   ],
 
   "checks": [

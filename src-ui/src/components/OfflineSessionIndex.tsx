@@ -1,8 +1,13 @@
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 /** A separate read-only projection; raw session rows include recovery state. */
-export function OfflineSessionIndex() {
+export function OfflineSessionIndex({
+  requestScope: scope,
+}: {
+  requestScope?: ApiRequestScope;
+}) {
   const client = useQueryClient();
   useEffect(() => {
     const project = () => {
@@ -11,7 +16,13 @@ export function OfflineSessionIndex() {
       const query = client
         .getQueryCache()
         .findAll({ queryKey: ['orchestration-sessions'] })
-        .filter((candidate) => candidate.state.status === 'success')
+        .filter(
+          (candidate) =>
+            candidate.state.status === 'success' &&
+            (candidate.queryKey.length === 1 ||
+              (candidate.queryKey[1] === scope?.apiBase &&
+                candidate.queryKey[2] === scope?.authorityKey)),
+        )
         .sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt)[0];
       if (
         query?.state.status !== 'success' ||
@@ -53,6 +64,6 @@ export function OfflineSessionIndex() {
       )
         project();
     });
-  }, [client]);
+  }, [client, scope?.apiBase, scope?.authorityKey]);
   return null;
 }

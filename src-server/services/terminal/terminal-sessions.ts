@@ -50,6 +50,18 @@ import {
 export const TERMINAL_RESTORED_DIVIDER =
   '\r\n\x1b[2m── restored after restart ──\x1b[0m\r\n';
 
+/**
+ * The divider as a restored shell's journal records it. ConPTY starts by
+ * clearing the screen and painting from its top-left, which would erase the
+ * divider and the earlier output still on screen; on Windows a screenful of
+ * line feeds first moves both into scrollback, above the new shell.
+ */
+function restoredDivider(rows: number): string {
+  return process.platform === 'win32'
+    ? `${TERMINAL_RESTORED_DIVIDER}${'\r\n'.repeat(rows)}`
+    : TERMINAL_RESTORED_DIVIDER;
+}
+
 const limitsSchema = z
   .object({
     maxSessions: z.number().int().min(1).max(256).default(32),
@@ -1297,17 +1309,20 @@ export class TerminalSessions<Principal> {
     // ending it, so the next generation reattaches. The supervisor ends it
     // when the supervisor itself stops.
     const stops = await Promise.allSettled(
-      [...this.live].map(async ([id, session]) => {
-        if (!isHostedShellProcess(session.process)) {
-          await this.stop(id);
-          // Its host is stopping, not the person: it may reopen on restart.
-          const record = this.records.get(id);
-          if (record && record.status === 'exited') record.hostStopped = true;
-          return;
-        }
-        session.process.detach();
-        this.live.delete(id);
-      }),
+      [...new Set([...this.live.keys(), ...this.stopping.keys()])].map(
+        async (id) => {
+          const session = this.live.get(id);
+          if (!session || !isHostedShellProcess(session.process)) {
+            await this.stop(id);
+            // Its host is stopping, not the person: it may reopen on restart.
+            const record = this.records.get(id);
+            if (record && record.status === 'exited') record.hostStopped = true;
+            return;
+          }
+          session.process.detach();
+          this.live.delete(id);
+        },
+      ),
     );
     const flushes = await Promise.allSettled(
       [...this.journals.values()].map(async (journal) =>
@@ -1564,7 +1579,7 @@ export class TerminalSessions<Principal> {
     if (cwd !== record.cwd)
       return this.refuseRestore(record, 'its directory has moved');
     const journal = await this.journal(record);
-    await journal.append(TERMINAL_RESTORED_DIVIDER);
+    await journal.append(restoredDivider(record.rows));
     await journal.flush();
     const proc = await this.host.spawn({
       terminalId: record.terminalId,

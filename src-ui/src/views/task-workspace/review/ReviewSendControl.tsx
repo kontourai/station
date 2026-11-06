@@ -9,6 +9,7 @@ import {
 } from '../../../components/icons/Glyph';
 import { ErrorState } from '../../../components/state';
 import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
+import { describeStationFailure } from '../../../utils/stationFailure';
 import type { ReviewDeliveryActions, ReviewSendMode } from './review-types';
 
 export function ReviewSendControl({
@@ -34,7 +35,7 @@ export function ReviewSendControl({
         setFeedback('Copied');
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Send failed. Retry.');
+      setError(describeStationFailure(cause).body);
     } finally {
       setPending(false);
     }

@@ -146,7 +146,9 @@
 
     "src-server/providers/adapters/station-agent-adapter.ts",
 
-    "docs/decisions/telemetry-tiers.md"
+    "docs/decisions/telemetry-tiers.md",
+
+    "src-server/domain/__tests__/telemetry-publisher-schema.test.ts"
   ],
 
   "checks": [

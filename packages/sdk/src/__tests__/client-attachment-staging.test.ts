@@ -4,12 +4,16 @@ import {
   STATION_COMPAT_MIN_CLIENT_PROTOCOL,
   STATION_COMPAT_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import { PEER_CHAT_UPLOAD_GRANT_HEADER } from '@kontourai/station-contracts/peer-chat';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   getAttachmentStagingCapability,
   uploadAttachmentStage,
 } from '../client/attachment-staging.js';
-import { setClientRawEgressPolicyResolver } from '../client/http.js';
+import {
+  setClientCredentialResolver,
+  setClientRawEgressPolicyResolver,
+} from '../client/http.js';
 
 const validHandshake = {
   schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
@@ -34,6 +38,7 @@ describe('attachment staging client', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     setClientRawEgressPolicyResolver(undefined);
+    setClientCredentialResolver(undefined);
   });
 
   test('allows inline fallback only after a valid Station handshake', async () => {
@@ -52,6 +57,46 @@ describe('attachment staging client', () => {
     await expect(
       getAttachmentStagingCapability('http://station.test'),
     ).resolves.toEqual({ state: 'legacy' });
+  });
+
+  test('relay PUT uses scoped source auth and carries the receiver stage grant separately, with no fabricated progress', async () => {
+    const source = 'http://station.test';
+    const requestScope = { apiBase: source, authorityKey: 'source-lease' };
+    const relay = `${source}/api/environments/peers/receiver/chat-api`;
+    setClientCredentialResolver(() => ({
+      origin: source,
+      credential: 'source-device',
+      requestAuthority: { ...requestScope, isCurrent: () => true },
+    }));
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ stageId: 'stage-1' }));
+    vi.stubGlobal('fetch', fetcher);
+    const progress = vi.fn();
+    const transport = vi.fn();
+    await uploadAttachmentStage(
+      relay,
+      {
+        stageId: 'stage-1',
+        uploadGrant: 'receiver-grant',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+        clientAttachmentId: 'one',
+        kind: 'file',
+        name: 'a.txt',
+        mimeType: 'text/plain',
+        size: 2,
+      },
+      'data:text/plain;base64,aGk=',
+      { requestScope, onProgress: progress, transport },
+    );
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe(`${relay}/api/orchestration/attachment-staging/stage-1`);
+    const headers = new Headers(init!.headers);
+    expect(headers.get('Authorization')).toBe('Bearer source-device');
+    expect(headers.get(PEER_CHAT_UPLOAD_GRANT_HEADER)).toBe('receiver-grant');
+    expect(init!.body).toBe('data:text/plain;base64,aGk=');
+    expect(transport).not.toHaveBeenCalled();
+    expect(progress).not.toHaveBeenCalled();
   });
 
   test('blocks a misrouted 404 even when it carries the old header', async () => {

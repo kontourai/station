@@ -37,6 +37,7 @@ import {
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { managedEngineRefusalWithReason } from '../../security/managed-engine-limits.js';
 import {
   canonicalPath,
   isCanonicalPathWithin,
@@ -72,6 +73,8 @@ export interface ExecutionTargetAgentView extends Partial<AgentSpec> {
   enable?: { engineConnectionId: string };
   available?: boolean;
   unavailableReason?: string;
+  /** The catalog's repair kind; `policy` is a managed engine refusal (#4515). */
+  unavailableFix?: { kind: string; target?: string };
 }
 
 interface ResolvedProjectView {
@@ -637,6 +640,16 @@ export async function resolveExecutionTarget(
     );
   }
   if (agent.available === false) {
+    // #4515: an Agent unavailable because its engine is one the managed
+    // policy does not allow gets the managed refusal (403, its code, the
+    // organization's sentence), not the plain "turned off". Only this
+    // Station's policy applies here; a peer target forwards before
+    // resolution.
+    if (access.kind === 'current' && agent.unavailableFix?.kind === 'policy')
+      throw managedEngineRefusalWithReason(
+        agent.unavailableReason ||
+          `Agent '${resolvedAgentId}' is unavailable under this machine's managed policy`,
+      );
     throw new Error(
       agent.unavailableReason || `Agent '${resolvedAgentId}' is unavailable`,
     );

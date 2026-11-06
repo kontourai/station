@@ -8,6 +8,10 @@ import {
 } from '@kontourai/station-contracts/product-telemetry';
 import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import {
+  managedCapabilityDenial,
+  telemetryAllowedByManagedPolicy,
+} from '../security/managed-capability-limits.js';
+import {
   resolveEnvironmentValue,
   resolveSettingEnvironment,
 } from './settings-environment.js';
@@ -36,7 +40,18 @@ export function resolveTelemetryConfiguration(
     >
   > = {},
   publisherIds: TelemetryPublisherId[] = [],
+  /**
+   * Ignore the managed policy's `limits.telemetry` (#4521). Only for the
+   * choice baseline, which, like Do Not Track, it blocks without changing.
+   */
+  ignoreManagedPolicy = false,
 ): ResolvedTelemetryConfiguration {
+  // #4521: a managed `limits.telemetry: false` turns every publisher off,
+  // whatever the saved choice, environment or Do Not Track say.
+  const managedOff = !ignoreManagedPolicy && !telemetryAllowedByManagedPolicy();
+  const managedDenial = managedOff
+    ? managedCapabilityDenial('usage sharing')
+    : undefined;
   const tierEnvironment = resolveEnvironmentValue<TelemetryTier>(
     'STATION_TELEMETRY_TIER',
     [],
@@ -84,6 +99,7 @@ export function resolveTelemetryConfiguration(
       userChoice,
       doNotTrack: environment.DO_NOT_TRACK,
       hasFullDisclosure: acknowledged,
+      managedOff,
     });
     const source =
       userChoice !== undefined
@@ -99,6 +115,7 @@ export function resolveTelemetryConfiguration(
         : {}),
       source,
       ...(userChoice !== undefined ? { userChoice } : {}),
+      ...(managedDenial !== undefined ? { managedDenial } : {}),
     };
   };
   const publishers: ResolvedTelemetryConfiguration['publishers'] = {
@@ -134,6 +151,7 @@ export function telemetryChoiceDefaults(
     {},
     {},
     [...publisherIds],
+    true,
   ).publishers;
   return Object.fromEntries(
     publisherIds.map((id) => [

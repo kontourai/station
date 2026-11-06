@@ -10,6 +10,7 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { SkeletonBlock } from '../../components/state';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { autoDownloadLabel } from './coreUpdatePresentation';
 
 export function ServerUpdateStageApply({
@@ -119,7 +120,7 @@ export function ServerUpdateStageApply({
       )}
       {action.error && (
         <div className="settings__update-msg settings__update-msg--error">
-          {(action.error as Error).message}
+          {describeStationFailure(action.error as Error).body}
         </div>
       )}
       {active && staged && confirmingVersion === staged.version && (

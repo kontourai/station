@@ -7,7 +7,7 @@ import { buildStationProofMessage } from '@kontourai/station-contracts/environme
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import packageJson from '../../../../package.json' with { type: 'json' };
-import { STATION_CAPABILITY_FLAGS } from '../../../capabilities/station-capability-flags.js';
+import { resolveStationCapabilityFlags } from '../../../capabilities/station-capability-flags.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../../runtime/bootstrap/hosted-tenant-mode.js';
 import { configureRuntimePublicRoutes } from '../../../runtime/routes/runtime-routes.js';
 import { projectFleetContributionManifest } from '../../connections/fleet-contribution-manifest.js';
@@ -130,19 +130,22 @@ describe('public handshake capability flags (station#1095)', () => {
     });
   });
 
-  test('a personal deployment advertises the whole flag registry', async () => {
+  test('a personal deployment advertises served flags and withholds the disabled chat preview', async () => {
     const service = new EnvironmentSecurityService({ homeDir: makeHome() });
 
     const handshake = await service.getPublicHandshake();
 
-    expect(handshake.capabilities).toEqual(STATION_CAPABILITY_FLAGS);
+    expect(handshake.capabilities).toEqual(
+      resolveStationCapabilityFlags({ hosted: false }),
+    );
     expect(handshake.capabilities).toEqual({
       delegationGroups: false,
-
+      delegationLocalConversationV1: true,
       childWorkSteering: true,
       privateOperationalOutcomes: true,
       scheduledConversationTarget: true,
       sshEnvironments: true,
+      privateMemoryReview: true,
       webPushNotifications: true,
       eventStreamResume: true,
       sessionEventWindow: true,
@@ -183,11 +186,12 @@ describe('public handshake capability flags (station#1095)', () => {
     // ships those surfaces.
     expect(body.capabilities).toEqual({
       delegationGroups: false,
-
+      delegationLocalConversationV1: true,
       childWorkSteering: true,
       privateOperationalOutcomes: true,
       scheduledConversationTarget: true,
       sshEnvironments: true,
+      privateMemoryReview: true,
       webPushNotifications: true,
       eventStreamResume: true,
       sessionEventWindow: true,

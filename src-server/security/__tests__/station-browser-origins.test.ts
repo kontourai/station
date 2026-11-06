@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createCredentialFreeOriginVerifier,
+  createStationOriginPolicy,
   resolveStationBrowserOrigins,
 } from '../station-browser-origins.js';
 
@@ -94,7 +95,9 @@ describe('createCredentialFreeOriginVerifier', () => {
     await expect(
       verify(
         {
-          allowedOrigins: ['http://127.0.0.1:4200'],
+          origins: createStationOriginPolicy({
+            configured: ['http://127.0.0.1:4200'],
+          }),
           credentialRequired: false,
           classifyPeer: () => 'remote',
           onRejected,
@@ -109,7 +112,6 @@ describe('createCredentialFreeOriginVerifier', () => {
     await expect(
       verify(
         {
-          allowedOrigins: [],
           credentialRequired: true,
           classifyPeer: () => 'remote',
         },

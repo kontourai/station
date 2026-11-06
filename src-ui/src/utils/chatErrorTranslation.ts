@@ -376,6 +376,15 @@ export function translateChatError(
   const { status, message, code } = input;
   const text = message || '';
 
+  if (text === 'The requested conversation is unavailable.') {
+    return {
+      title: 'This chat could not be resumed',
+      body: 'Station could not access the saved session needed to continue this chat.',
+      hint: 'Repeating Send will not repair the session. If a message has uncertain delivery, use Refresh delivery before sending a copy.',
+      retryable: false,
+    };
+  }
+
   // The server wraps EVERY failed engine start in this code
   // (`runSessionStartWithBoundary`): an expired login and a Codex "thread …
   // already has an active writer" arrive alike, the engine's text followed by
@@ -803,7 +812,8 @@ export function translateChatError(
 
   return {
     title: 'Error',
-    body: text || 'An unknown error occurred.',
+    body: 'Station could not complete this request.',
+    disclosureRaw: true,
     // archive#3299: the fallback classified nothing, so it must not assert
     // that retrying helps \u2014 that is a claim about a cause it does not know.
     hint: 'Retrying may help if this was a temporary failure.',

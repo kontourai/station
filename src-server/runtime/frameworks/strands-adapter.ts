@@ -32,6 +32,7 @@ import {
 } from '@strands-agents/sdk';
 import type { StorageAdapter } from '@voltagent/core';
 import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
+import { gateStationAgentRuns } from '../../security/managed-engine-limits.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   bindDurableAgent,
@@ -790,6 +791,9 @@ export class StrandsFramework {
             .find((provenance) => provenance !== undefined),
       });
 
+      // #4515: a registered Agent is Station's agent; gated before the
+      // durable binding wraps its stream.
+      gateStationAgentRuns(wrapper);
       return !history
         ? bindDurableAgent(wrapper, {
             home: config.projectHomeDir,
@@ -858,6 +862,7 @@ export class StrandsFramework {
   }
 
   async createTempAgent(opts: {
+    purpose: 'agent-run' | 'utility';
     name: string;
     agentId?: string;
     instructions: string | (() => string);
@@ -982,6 +987,7 @@ export class StrandsFramework {
           });
         });
       }
+      if (opts.purpose === 'agent-run') gateStationAgentRuns(wrapper);
       return !history && opts.durable
         ? bindDurableAgent(wrapper, {
             ...opts.durable,

@@ -85,7 +85,7 @@ test('Task refresh and policy controls send current Session/revision and preserv
     new Error('Outcome unknown; check the retained operation.'),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Refresh Task context' }));
-  await screen.findByText('Outcome unknown; check the retained operation.');
+  await screen.findByText('Try again in a moment.');
   expect(api.mutate).toHaveBeenCalledTimes(2);
   expect(api.mutate.mock.calls[1][3]).toMatchObject({
     expectedSessionId: 'current-session',

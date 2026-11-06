@@ -32,6 +32,12 @@ import {
   ManagedApprovalCeilingStartRefusedError,
   managedCeilingRefuses,
 } from '../../security/managed-approval-ceiling.js';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEngineBinaryPath,
+  managedEngineLaunch,
+  managedEnginePrerequisites,
+} from '../../security/managed-engine-limits.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   spawnOwnedChild,
@@ -668,23 +674,50 @@ type MuseTurnSettleOutcome =
       outputText?: string;
     };
 
-function createMuseProcess(
+/**
+ * #4520: one muse launch (`muse exec` or `muse serve`) with the managed
+ * policy's pinned binary, arguments and environment merged in. Pinned
+ * arguments follow Station's own, so the subcommand stays first.
+ */
+function museLaunch(args: readonly string[], envOverrides: NodeJS.ProcessEnv) {
+  // #4515: `muse exec` and `muse serve` both start here, so an engine the
+  // managed policy does not allow is refused before anything is resolved.
+  assertEngineAllowedByManagedPolicy('muse');
+  return managedEngineLaunch(
+    'muse',
+    {
+      command:
+        managedEngineBinaryPath('muse') ?? findCliBinary('muse') ?? 'muse',
+      args,
+      env: {
+        ...process.env,
+        PATH: resolveAugmentedPathSync(),
+        ...envOverrides,
+      } as Record<string, string | undefined>,
+    },
+    'station',
+  );
+}
+
+/** Exported for the #4520 spawn-level test; the adapter is its caller. */
+export function createMuseProcess(
   args: string[],
   cwd?: string,
   /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`). */
   tmpDir?: string,
 ): MuseSpawnResult {
-  const binary = findCliBinary('muse') ?? 'muse';
+  // #4520: a managed policy's pinned launch fields (`managedEngineLaunch`).
+  const launch = museLaunch(args, {});
   // Mirrors the Codex spawn recipe (windowsHide + detached + piped stdio +
   // a Station-owned TMPDIR), routed through `spawnOwnedChild` so a per-turn
   // spawner's children are registered and reapable if Station dies without
   // running cleanup — a per-turn process leaks worse than a per-session one.
-  const { proc, release } = spawnOwnedChild(binary, args, {
+  const { proc, release } = spawnOwnedChild(launch.command, [...launch.args], {
     cwd,
     // #2663: the PATH `muse` was resolved from, so a launcher script found
     // off the service PATH can find its interpreter (see spawnCodexProcess).
     env: childProcessEnvironment({
-      PATH: resolveAugmentedPathSync(),
+      ...launch.env,
       TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
     }),
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -706,27 +739,26 @@ export function buildMuseServeArgs(posture: MuseServeHostPosture): string[] {
   return ['serve', ...(posture.disableSandbox ? ['--disable-sandbox'] : [])];
 }
 
-function createMuseServeHost(
+/** Exported for the #4520 spawn-level test; the adapter is its caller. */
+export function createMuseServeHost(
   posture: MuseServeHostPosture,
   cwd?: string,
   dataHome?: string,
   tmpDir?: string,
 ): MuseServeSpawnResult {
-  const binary = findCliBinary('muse') ?? 'muse';
-  if (dataHome) mkdirSync(dataHome, { recursive: true });
-  const { proc, release } = spawnOwnedChild(
-    binary,
+  const launch = museLaunch(
     buildMuseServeArgs(posture),
-    {
-      cwd,
-      env: childProcessEnvironment({
-        PATH: resolveAugmentedPathSync(),
-        TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
-        ...museServeEnvOverrides(dataHome),
-      }),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    },
+    museServeEnvOverrides(dataHome),
   );
+  if (dataHome) mkdirSync(dataHome, { recursive: true });
+  const { proc, release } = spawnOwnedChild(launch.command, [...launch.args], {
+    cwd,
+    env: childProcessEnvironment({
+      ...launch.env,
+      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
+    }),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
   return { process: proc as unknown as MuseServeProcessLike, release };
 }
 
@@ -1084,6 +1116,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     // key's validity is proven on first use, surfacing as the `runtime.error`
     // `settleTurn` publishes for a turn that ends without a completed
     // terminal, which carries the bounded tail of muse's own stderr.
+    //
+    // #4515: an engine the managed policy does not allow is never run.
+    const managed = managedEnginePrerequisites('muse', 'muse', 'Muse Code');
+    if (managed) return managed;
     return buildCliRuntimePrerequisites({
       command: 'muse',
       displayName: 'Muse Code',

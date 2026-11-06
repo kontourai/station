@@ -8,6 +8,10 @@ import type { ConversationStatsResponse } from '@kontourai/station-contracts/run
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
+import {
+  captureConnectionReadTarget,
+  connectionQueryKey,
+} from '../connection-read-target';
 
 export {
   type UpdateAppLogLevelResult,
@@ -139,14 +143,18 @@ export function useUserQuery(alias: string, config?: QueryConfig<any>) {
  * agents as they are" from "these are the last snapshot we had".
  */
 export function useAgentsQuery(config?: QueryConfig<AgentCatalogProjection>) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
   // Agents change outside this client (plugins, the CLI, other devices), so
   // an invalidation that lands while no view observes `['agents']` must
   // refetch on the next mount (#2345).
   const query = useApiQueryRefetchingInvalidatedOnMount(
-    ['agents'],
+    connectionQueryKey('agents', readTarget),
     async () => {
-      const apiBase = await _getApiBase();
-      return fetchAgentCatalog(apiBase);
+      const apiBase = readTarget?.targetApiBase ?? (await _getApiBase());
+      return fetchAgentCatalog(
+        apiBase,
+        readTarget ? { requestScope: readTarget.requestScope } : undefined,
+      );
     },
     config,
   );
@@ -288,7 +296,7 @@ export function useAgentQuery(
   config?: QueryConfig<any>,
 ) {
   return useQuery({
-    ...agentQueries.agent(agentSlug!),
+    ...agentQueries.agent(agentSlug!, config?.readTarget),
     ...config,
     enabled: !!agentSlug && (config?.enabled ?? true),
   });
@@ -299,13 +307,17 @@ export function useAgentTemplatesQuery(config?: QueryConfig<AgentTemplate[]>) {
 }
 
 export function useModelsQuery(config?: QueryConfig<any>) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
   return useApiQuery(
     // Dedicated safe catalog key: the broader `models` prefix also owns AWS
     // profile and pricing queries and therefore must not be persisted wholesale.
-    ['model-catalog'],
+    connectionQueryKey('model-catalog', readTarget),
     async () => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(`${apiBase}/api/models`);
+      const apiBase = readTarget?.targetApiBase ?? (await _getApiBase());
+      const response = await authenticatedFetch(
+        `${apiBase}/api/models`,
+        ...(readTarget ? [{ requestScope: readTarget.requestScope }] : []),
+      );
       const result = await response.json();
       if (!result.success) {
         throw new Error(result.error);
@@ -395,7 +407,7 @@ export function useAgentToolsQuery(
   config?: QueryConfig<any>,
 ) {
   return useQuery({
-    ...agentQueries.tools(agentSlug!),
+    ...agentQueries.tools(agentSlug!, config?.readTarget),
     // Retry ONLY the activating case, and only within the window. Any other
     // failure keeps react-query's configured behaviour: a 409 is a real
     // answer, and retrying it would just delay saying so.
@@ -641,7 +653,11 @@ export function useStatsQuery(
   config?: QueryConfig<ConversationStatsResponse>,
 ) {
   return useQuery({
-    ...agentQueries.stats(agentSlug || '', conversationId || ''),
+    ...agentQueries.stats(
+      agentSlug || '',
+      conversationId || '',
+      config?.readTarget,
+    ),
     ...config,
     enabled: !!agentSlug && !!conversationId && (config?.enabled ?? true),
   });

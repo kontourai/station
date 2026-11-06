@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect } from 'react';
 import { useStats } from '../../contexts/StatsContext';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { LazyBoundary } from '../LazyBoundary';
 
 // The stats panel is opened from a toolbar toggle and closed most of the time,
@@ -60,8 +61,10 @@ export function ConversationStats({
 
   // The usage tree is a separate read: a conversation with no orchestration
   // record (404) simply has no breakdown, which is not a stats failure.
+  const target = useOptionalConversationConnection();
   const usageTree = useConversationUsageTreeQuery(conversationId, apiBase, {
     enabled: isVisible,
+    readTarget: target?.station,
     refetchInterval: isVisible ? USAGE_TREE_REFRESH_MS : false,
   });
   const usageTreeMissing =

@@ -468,11 +468,14 @@ const { attachVoiceWebSocket } = await import(
  */
 function stationBrowserOriginsFor(port: number) {
   return {
-    allowedBrowserOrigins: expect.arrayContaining([
-      `http://127.0.0.1:${port}`,
-      `http://localhost:${port}`,
-      'tauri://localhost',
-    ]),
+    browserOrigins: expect.objectContaining({
+      admits: expect.any(Function),
+      configured: expect.arrayContaining([
+        `http://127.0.0.1:${port}`,
+        `http://localhost:${port}`,
+        'tauri://localhost',
+      ]),
+    }),
   };
 }
 
@@ -1289,8 +1292,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       expect.objectContaining({
         verifyCredential: expect.any(Function),
         limiter: expect.anything(),
-        allowedBrowserOrigins:
-          stationBrowserOriginsFor(port).allowedBrowserOrigins,
+        browserOrigins: stationBrowserOriginsFor(port).browserOrigins,
       }),
     );
     expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalledTimes(1);
@@ -2127,8 +2129,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       '127.0.0.1',
       expect.objectContaining({
         verifyCredential: expect.any(Function),
-        allowedBrowserOrigins:
-          stationBrowserOriginsFor(port).allowedBrowserOrigins,
+        browserOrigins: stationBrowserOriginsFor(port).browserOrigins,
       }),
     );
   });

@@ -52,6 +52,10 @@ const REPO_ROOT = resolve(import.meta.dirname, '../../../../../');
 const css = [
   '../../../index.css',
   '../../chat/chat.css',
+  '../../ActionOverflowMenu.css',
+  '../../DisclosureToggle.css',
+  '../../header/HeaderMenu.css',
+  '../WorkGroupLabel.css',
   '../../chat-dock/ChatDockInboxPanel.css',
   '../../chat-dock/MobileInboxPanel.css',
   '../../chat-dock/ChatInboxHoverCard.css',
@@ -158,9 +162,9 @@ function panelMarkup(
   );
   // Expand the two collapsed sections the way a user does, so the slim
   // rows are in the measured markup.
-  for (const name of [/^Snoozed/, /^Earlier/]) {
-    const toggle = screen.getByRole('button', { name });
-    if (toggle.getAttribute('aria-expanded') === 'false')
+  for (const name of [/^Snoozed/, /^Settled/]) {
+    const toggle = screen.queryByRole('button', { name });
+    if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
   }
   const markup = `<div style="display:flex;height:900px">${container.innerHTML}</div>`;
@@ -191,9 +195,9 @@ function sheetMarkup(
       workFacts={work.facts}
     />,
   );
-  for (const name of [/^Snoozed/, /^Earlier/]) {
-    const toggle = screen.getByRole('button', { name });
-    if (toggle.getAttribute('aria-expanded') === 'false')
+  for (const name of [/^Snoozed/, /^Settled/]) {
+    const toggle = screen.queryByRole('button', { name });
+    if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
   }
   const markup = document.body.innerHTML;
@@ -1101,6 +1105,79 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       expect(rows.length).toBe(ITEMS.length);
     } finally {
       await pg.close();
+    }
+  });
+
+  // A touch row's always-visible actions (Details, Snooze, Close) are bare
+  // glyphs on a hover chrome, revealed by the pointer. Kept on screen for a
+  // coarse pointer, a bare "i" and clock beside a row read as status icons,
+  // and a `title` never shows to a finger. Each must say what it does to
+  // assistive tech and to the eye: a name, a hover tooltip, and a drawn
+  // button surface.
+  test('a touch row draws its always-visible actions as named buttons, in both themes', async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(pointer: coarse)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    let markup: string;
+    try {
+      markup = panelMarkup();
+    } finally {
+      window.matchMedia = original;
+    }
+    for (const theme of ['dark', 'light'] as const) {
+      for (const width of [1000, 390]) {
+        const pg = await browser.newPage({
+          viewport: { width, height: 900 },
+          hasTouch: true,
+        });
+        try {
+          await pg.setContent(
+            page(markup).replace('data-theme="dark"', `data-theme="${theme}"`),
+          );
+          await settle(pg);
+          const evidence = process.env.STATION_UI_EVIDENCE_DIR;
+          if (evidence)
+            await pg.screenshot({
+              path: `${evidence}/inbox-touch-actions-${width}-${theme}.png`,
+            });
+          const actions = await pg.evaluate(() =>
+            [
+              ...document.querySelectorAll<HTMLElement>(
+                '.inbox-row--touch .inbox-row__action',
+              ),
+            ].map((action) => {
+              const style = getComputedStyle(action);
+              const row = action.closest('.inbox-row')!;
+              return {
+                name: action.getAttribute('aria-label') ?? '',
+                tooltip: action.getAttribute('title') ?? '',
+                drawn:
+                  style.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+                  style.backgroundColor !==
+                    getComputedStyle(row).backgroundColor,
+                outlined:
+                  style.boxShadow !== 'none' ||
+                  Number.parseFloat(style.borderTopWidth) > 0,
+              };
+            }),
+          );
+          expect(actions.length).toBeGreaterThanOrEqual(ITEMS.length);
+          for (const action of actions) {
+            expect(action.name, 'accessible name').not.toBe('');
+            expect(action.tooltip, `${action.name} tooltip`).not.toBe('');
+            expect(
+              action.drawn || action.outlined,
+              `${action.name} is drawn as a button (${theme}, ${width}px)`,
+            ).toBe(true);
+          }
+        } finally {
+          await pg.close();
+        }
+      }
     }
   });
 });

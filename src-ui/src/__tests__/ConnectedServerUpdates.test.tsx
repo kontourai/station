@@ -363,7 +363,7 @@ function inDetails(node: Element): boolean {
 
 /** The header's status badge text. */
 function badgeText(): string {
-  return document.querySelector('.server-update__badge')?.textContent ?? '';
+  return document.querySelector('header [role="status"]')?.textContent ?? '';
 }
 
 async function waitConnected() {

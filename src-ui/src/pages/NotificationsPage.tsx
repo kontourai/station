@@ -29,6 +29,7 @@ import {
 } from '../utils/attention';
 import { errorText } from '../utils/errorText';
 import { notificationCategoryLabel } from '../utils/notificationLabels';
+import { StationUiError } from '../utils/StationUiError';
 import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
@@ -190,7 +191,7 @@ export function NotificationsPage() {
         (outcome) => outcome.status === 'rejected',
       );
       if (failures.length === 0) return;
-      throw new Error(
+      throw new StationUiError(
         `${failures.length} of ${outcomes.length} could not be dismissed: ${errorText(failures[0].reason)}`,
       );
     },

@@ -6,6 +6,10 @@ import { PROVIDER_FAILURE_KINDS } from '../../packages/contracts/src/provider-fa
 
 const root = resolve(import.meta.dirname, '../..');
 const exclusions = {
+  'packages/contracts/src/peer-chat.ts:PEER_CHAT_REFUSAL_CODE': [
+    'peer_chat_target_refused',
+    'Target-authored relay custody/pre-dispatch receipt, not an engine failure kind: 401/403 name target credentials, while 409 retains its specific refusalCode. The SDK parses this envelope before retiring source credentials or settling delivery.',
+  ],
   'src-server/runtime/conversation/runtime-event-log.ts:EventHistoryLimitError.code':
     [
       'event_history_limit_exceeded',
@@ -485,7 +489,10 @@ describe('provider failure source boundaries', () => {
     const seenReaders = new Map<string, number>();
     let writers = 0;
     for (const source of sources.filter((source) =>
-      source.fileName.startsWith(resolve(root, 'src-server')),
+      relative(root, source.fileName)
+        .split(sep)
+        .join('/')
+        .startsWith('src-server/'),
     )) {
       const visit = (node: ts.Node) => {
         if (

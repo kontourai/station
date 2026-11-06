@@ -17,7 +17,7 @@ import { resolveApiBase } from './query-core';
 export async function resolveConversationOpen(
   conversationId: string,
   apiBase?: string,
-  options?: Pick<ClientRequestOptions, 'signal' | 'timeoutMs'>,
+  options?: Pick<ClientRequestOptions, 'signal' | 'timeoutMs' | 'requestScope'>,
 ): Promise<ConversationOpenResolution> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   let response: Response;

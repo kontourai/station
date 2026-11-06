@@ -101,6 +101,9 @@ export function BackgroundTaskNoticeCard({
           </>
         )}
       </p>
+      {notice.stationName && (
+        <p className="task-notice__summary">Via {notice.stationName}</p>
+      )}
       {summary &&
         (summaryRestatesTitle ? (
           <details className="task-notice__details">

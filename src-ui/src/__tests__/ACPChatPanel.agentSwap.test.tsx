@@ -77,6 +77,23 @@ vi.mock('../components/chat/ChatMessageList', () => ({
 
 // ActiveChatsContext is deliberately NOT mocked: the real
 // `useActiveChatSelector` and the real store are the subject.
+// This adapter test observes the shared-body input; its real rendering is covered by ownerWiring.
+vi.mock('../components/conversation/ConversationBody', () => ({
+  ConversationBody: ({
+    activeSession,
+  }: {
+    activeSession: import('../types').ChatSession;
+  }) => {
+    capture.sessions.push(activeSession);
+    return (
+      <>
+        <div data-testid="acp-messages" />
+        <div data-testid="acp-composer" />
+      </>
+    );
+  },
+}));
+
 import { ACPChatPanel } from '../components/acp-connections/ACPChatPanel';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';

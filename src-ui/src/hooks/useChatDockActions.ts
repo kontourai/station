@@ -1,4 +1,6 @@
 import { useCallback } from 'react';
+import type { StationConnection } from '../connections/station-connection';
+import { chatBelongsToStation } from '../connections/station-state';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import type { AgentData } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
@@ -22,6 +24,10 @@ import { useIsMobile } from './useIsMobile';
 const hydratingTabs = new Map<string, symbol>();
 
 interface DerivedSession {
+  stationBinding?: StationConnection['binding'];
+  stationBindingInvalid?: boolean;
+  peerChat?: unknown;
+  peerChatInvalid?: boolean;
   id: string;
   conversationId?: string;
   agentSlug: string;
@@ -53,6 +59,7 @@ export interface OpenConversationOptions
   providerType?: string;
   /** Fetch the deterministic copied transcript of a newly replay-seeded fork. */
   hydrateMessages?: boolean;
+  connection?: StationConnection;
   /** Cancels only client hydration/focus; server idempotency owns request retry. */
   signal?: AbortSignal;
   /** Synchronous route commit immediately before focus; false cancels reentry. */
@@ -238,7 +245,9 @@ export function useChatDockActions({
       if (!agent) return false;
 
       const existing = sessions.find(
-        (s) => s.conversationId === conversationId,
+        (s) =>
+          s.conversationId === conversationId &&
+          chatBelongsToStation(s, options.connection),
       );
       if (existing) {
         if (options.signal?.aborted) return false;
@@ -330,6 +339,7 @@ export function useChatDockActions({
             !options.signal?.aborted && options.isCurrent?.() !== false,
           cleanup,
         },
+        ...(options.connection ? [options.connection] : []),
       );
       const stillOwned = ownsTab();
       if (stillOwned && createdId) hydratingTabs.delete(createdId);
@@ -344,7 +354,8 @@ export function useChatDockActions({
         return false;
       }
       if (options.beforeFocus && !options.beforeFocus()) {
-        if (stillOwned) removeChat(sessionId);
+        if (stillOwned && options.isCurrent?.() === false)
+          removeChat(sessionId);
         return false;
       }
       setActiveSessionId(sessionId);

@@ -9,6 +9,7 @@ import React, {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { conversationAccessFor } from '../../connections/station-connection';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
@@ -17,9 +18,9 @@ import { chatFormDraftsStore } from '../../contexts/chat-form-drafts-store';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useToolApproval } from '../../hooks/useToolApproval';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import type { SavedAnswerQuote } from '../../utils/answer-quotes';
@@ -32,6 +33,8 @@ import {
   chatWaitsOnUser,
   requestsWaitingOnUser,
 } from '../../utils/waiting-approvals';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { AgentIcon } from '../icons/AgentIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { LoadingDots } from '../LoadingDots';
@@ -40,6 +43,7 @@ import {
   type RevealApprovalDetail,
 } from '../status/approvalReveal';
 import { ApprovalSheetProvider } from './ApprovalSheetProvider';
+import { incomingMessageLabel } from './agent-message/IncomingAgentHeader';
 import {
   animateScrollToBottom,
   type ScrollToBottomAnimation,
@@ -73,8 +77,8 @@ import { SmoothStreamingMessage } from './SmoothStreamingMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { SubagentTranscriptCard } from './SubagentTranscriptCard';
 import { ToolCallDisplay } from './ToolCallDisplay';
+import { transcriptMarkerLabel } from './TranscriptMarker';
 import {
-  TranscriptTurnActions,
   TranscriptTurnRail,
   turnLabel,
   turnStepTarget,
@@ -114,6 +118,9 @@ const loadTurnBrowser = () =>
   }));
 
 interface ChatMessageListProps {
+  recordAgents?: ReturnType<typeof useAgents>;
+  externalScrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  preserveReading?: boolean;
   activeSession: ChatSession;
   orchestrationSession?: Pick<
     OrchestrationSessionSummary,
@@ -270,6 +277,11 @@ function sameLandmarks(
 }
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
+  externalScrollContainerRef,
+  preserveReading = false,
+  sendMessage,
+  apiBase,
+  agents,
   activeSession,
   orchestrationSession,
   scrollControlsTarget,
@@ -300,9 +312,14 @@ function ChatMessageListComponent({
   onQuote,
   approvalEvents,
   approvalEventsSettled,
-}: ChatMessageListProps) {
-  const agents = useAgents();
+}: ChatMessageListProps & {
+  sendMessage: ReturnType<typeof useSendMessage>;
+  apiBase: string;
+  agents: ReturnType<typeof useAgents>;
+}) {
   const isMobile = useIsMobile();
+  const coarsePointer = useCoarsePointer();
+  const touchTurnControls = isMobile || coarsePointer;
   const [turnBrowserOpen, setTurnBrowserOpen] = useState(false);
   const [pendingTurnJump, setPendingTurnJump] = useState<string | null>(null);
   useEffect(() => {
@@ -322,12 +339,15 @@ function ChatMessageListComponent({
     setPendingTurnJump(null);
   }, [activeSession.id]);
   const { chatAnswerWidth } = useDeviceSettings();
-  const { apiBase } = useApiBase();
+  const target = useOptionalConversationConnection();
   const handleCopy = useCopyToClipboardToast();
-  const handleToolApproval = useToolApproval(apiBase);
+  const handleToolApproval = useApprovalAnswering(apiBase);
   const pendingApprovalRequests = useMemo(
     () =>
-      approvalEvents && approvalEvents.length > 0 && !activeSession.replay
+      approvalEvents &&
+      approvalEvents.length > 0 &&
+      !activeSession.replay &&
+      !target?.record?.readOnly
         ? unansweredApprovalRequests(
             activeSession.messages,
             approvalEvents
@@ -350,16 +370,16 @@ function ChatMessageListComponent({
       activeSession.openTurnId,
       suppressStreamingRow,
       approvalEvents,
+      target?.record?.readOnly,
     ],
   );
   const transcriptChildren = useMemo(
     () => foldTranscriptChildren(approvalEvents),
     [approvalEvents],
   );
-  const sendMessage = useSendMessage(apiBase);
   const sheetRequests = useMemo(
     () =>
-      activeSession.replay
+      activeSession.replay || target?.record?.readOnly
         ? []
         : unansweredApprovalRequests(
             [],
@@ -367,7 +387,7 @@ function ChatMessageListComponent({
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
           ).filter((request) => !request.inputRequest),
-    [activeSession.replay, approvalEvents],
+    [activeSession.replay, approvalEvents, target?.record?.readOnly],
   );
   // The store is already live at the shell; reading its scalar snapshot here
   // avoids adding a second subscription/allocation to every streaming row.
@@ -378,18 +398,31 @@ function ChatMessageListComponent({
     ? SmoothStreamingMessage
     : StreamingMessage;
 
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const ownScrollRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = externalScrollContainerRef ?? ownScrollRef;
   const visibleAnchorRef = useRef<ChatScrollAnchor | null>(null);
-  const isUserScrolledUpRef = useRef(false);
+  const isUserScrolledUpRef = useRef(preserveReading);
   // The transcript's last known position, ours or the reader's: a reader
   // scroll below it is the reader moving up.
   const lastKnownScrollTopRef = useRef<number | null>(null);
+  const observedHeightRef = useRef(0);
+  const scrollHeightRef = useRef(0);
+  const growthDeltaRef = useRef(0);
+  const tailIntentRef = useRef(false);
+  const measureGrowth = useCallback((element: HTMLElement) => {
+    const height = element.scrollHeight;
+    if (observedHeightRef.current !== height) {
+      growthDeltaRef.current = Math.max(0, height - observedHeightRef.current);
+      observedHeightRef.current = height;
+    }
+    return height;
+  }, []);
   const lastProgrammaticScrollRef = useRef<{
     top: number;
     at: number;
   } | null>(null);
   const lastClientHeightRef = useRef<number | null>(null);
-  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(preserveReading);
   const [scrollAnchorVersion, setScrollAnchorVersion] = useState(0);
   const [readerRestoreRequest, setReaderRestoreRequest] = useState<
     (ChatReaderRestoreRequest & { sessionId: string; version: number }) | null
@@ -458,6 +491,28 @@ function ChatMessageListComponent({
     [noteProgrammaticScroll],
   );
 
+  const recordReaderIdentityRef = useRef(activeSession.id);
+  const recordPreservingRef = useRef(preserveReading);
+  useLayoutEffect(() => {
+    const changed = recordReaderIdentityRef.current !== activeSession.id;
+    const revealing = preserveReading && !recordPreservingRef.current;
+    recordReaderIdentityRef.current = activeSession.id;
+    recordPreservingRef.current = preserveReading;
+    if (!externalScrollContainerRef || (!changed && !revealing)) return;
+    isUserScrolledUpRef.current = preserveReading;
+    setIsUserScrolledUp(preserveReading);
+    visibleAnchorRef.current = null;
+    const element = messagesContainerRef.current;
+    if (element && !preserveReading)
+      writeProgrammaticScroll(element, element.scrollHeight);
+  }, [
+    activeSession.id,
+    preserveReading,
+    externalScrollContainerRef,
+    messagesContainerRef,
+    writeProgrammaticScroll,
+  ]);
+
   // Dock snap changes are known synchronously by the parent. Handle that
   // discrete resize in a layout effect instead of relying solely on the
   // browser's later ResizeObserver delivery, which can arrive after a native
@@ -474,7 +529,12 @@ function ChatMessageListComponent({
     }
     visibleAnchorRef.current = captureChatScrollAnchor(el);
     lastClientHeightRef.current = el.clientHeight;
-  }, [layoutHeight, noteProgrammaticScroll, writeProgrammaticScroll]);
+  }, [
+    layoutHeight,
+    noteProgrammaticScroll,
+    writeProgrammaticScroll,
+    messagesContainerRef,
+  ]);
 
   const submitForm = useCallback(
     (submission: UIBlockFormSubmission, formKey: string) => {
@@ -532,17 +592,21 @@ function ChatMessageListComponent({
     () => ({
       submitForm,
       formScope,
-      readOnly: Boolean(activeSession.replay),
+      readOnly: Boolean(
+        activeSession.replay ||
+          target?.record ||
+          (target?.station &&
+            target.station.capabilities.uiBlockActions.state !== 'allowed'),
+      ),
       canSendChildInstruction:
         !activeSession.replay &&
-        activeSession.conversationOpenState?.callerAccess?.continue === true,
+        !target?.record &&
+        (!target?.station ||
+          target.station.capabilities.childInstruction.state === 'allowed') &&
+        conversationAccessFor(activeSession, target?.station)?.continue ===
+          true,
     }),
-    [
-      submitForm,
-      formScope,
-      activeSession.replay,
-      activeSession.conversationOpenState?.callerAccess?.continue,
-    ],
+    [submitForm, formScope, target, activeSession.replay, activeSession],
   );
 
   const messages = useMemo(() => {
@@ -638,8 +702,6 @@ function ChatMessageListComponent({
   // History replay keeps its own timeline; the live transcript gets the rail.
   const turnNavigation = !activeSession.replay && turnLandmarks.length > 0;
   const turnRailRef = useRef<HTMLElement>(null);
-  // Reported by the rail; until it measures, assume the wide layout.
-  const [turnRailAvailable, setTurnRailAvailable] = useState(true);
   const turnViewport = useTranscriptTurnViewport({
     enabled: turnNavigation,
     scrollElement: messagesContainerRef,
@@ -725,7 +787,7 @@ function ChatMessageListComponent({
     element.addEventListener(CHAT_READER_RESTORE_EVENT, restoreReader);
     return () =>
       element.removeEventListener(CHAT_READER_RESTORE_EVENT, restoreReader);
-  }, [activeSession.id]);
+  }, [activeSession.id, messagesContainerRef]);
 
   useLayoutEffect(() => {
     const element = messagesContainerRef.current;
@@ -745,6 +807,7 @@ function ChatMessageListComponent({
     transcriptRows.length,
     noteProgrammaticScroll,
     writeProgrammaticScroll,
+    messagesContainerRef,
   ]);
 
   // A command-palette transcript result carries the stable runtime message id
@@ -770,7 +833,7 @@ function ChatMessageListComponent({
     // this row, not the one they were on before the link opened.
     const element = messagesContainerRef.current;
     if (element) visibleAnchorRef.current = captureChatScrollAnchor(element);
-  }, [messages, requestedMessageRowId]);
+  }, [messages, requestedMessageRowId, messagesContainerRef]);
   const agent = agents.find((a) => a.slug === activeSession.agentSlug);
 
   // Keep the view pinned to the bottom as content grows (new messages, live
@@ -798,7 +861,7 @@ function ChatMessageListComponent({
         );
       }
     });
-  }, [writeProgrammaticScroll]);
+  }, [writeProgrammaticScroll, messagesContainerRef]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: content growth triggers a pin before paint
   useLayoutEffect(() => {
     pinToLatest();
@@ -833,7 +896,7 @@ function ChatMessageListComponent({
       noteProgrammaticScroll(el);
     }
     visibleAnchorRef.current = captureChatScrollAnchor(el);
-  }, [transcriptRows, noteProgrammaticScroll]);
+  }, [transcriptRows, noteProgrammaticScroll, messagesContainerRef]);
 
   // Container resize is the important keyboard/composer path. Keep a reader's
   // scrollTop stable; only an already-pinned conversation follows the bottom.
@@ -877,7 +940,7 @@ function ChatMessageListComponent({
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [noteProgrammaticScroll, writeProgrammaticScroll]);
+  }, [noteProgrammaticScroll, writeProgrammaticScroll, messagesContainerRef]);
 
   // The scroller's own box does not change when its CONTENT grows, and most
   // growth arrives after the pin above has run: the Markdown renderer, code
@@ -891,6 +954,7 @@ function ChatMessageListComponent({
     const el = messagesContainerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
+      measureGrowth(el);
       // Hidden: no anchor to take (see the size observer above).
       if (el.clientHeight === 0) return;
       // A running glide aims at the live end on every frame already.
@@ -899,8 +963,9 @@ function ChatMessageListComponent({
         // Growth the reader caused (opening a tool card near the end) or that
         // lands while they are scrolling stays where it is.
         if (
-          readerActing() ||
-          performance.now() < readerInputRef.current.interactedUntil
+          !externalScrollContainerRef &&
+          (readerActing() ||
+            performance.now() < readerInputRef.current.interactedUntil)
         )
           return;
         if (el.scrollHeight - el.scrollTop - el.clientHeight > 0) {
@@ -920,6 +985,17 @@ function ChatMessageListComponent({
     });
     for (const child of el.children) observer.observe(child);
     const children = new MutationObserver((mutations) => {
+      if (externalScrollContainerRef) {
+        measureGrowth(el);
+        // A record's sibling metadata can grow before ResizeObserver runs.
+        // Classify a pending upward move before following that growth.
+        if (
+          !isUserScrolledUpRef.current &&
+          !scrollAnimationRef.current &&
+          el.scrollTop >= (lastKnownScrollTopRef.current ?? 0) - 1
+        )
+          writeProgrammaticScroll(el, el.scrollHeight);
+      }
       for (const mutation of mutations) {
         for (const node of mutation.removedNodes)
           if (node instanceof Element) observer.unobserve(node);
@@ -927,12 +1003,29 @@ function ChatMessageListComponent({
           if (node instanceof Element) observer.observe(node);
       }
     });
-    children.observe(el, { childList: true });
+    children.observe(el, {
+      childList: true,
+      ...(externalScrollContainerRef
+        ? {
+            subtree: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ['style', 'class', 'hidden', 'open'],
+          }
+        : {}),
+    });
     return () => {
       observer.disconnect();
       children.disconnect();
     };
-  }, [noteProgrammaticScroll, readerActing, writeProgrammaticScroll]);
+  }, [
+    noteProgrammaticScroll,
+    readerActing,
+    writeProgrammaticScroll,
+    externalScrollContainerRef,
+    measureGrowth,
+    messagesContainerRef,
+  ]);
 
   // Ends the scroll-load suppression a press's restoration holds. Genuine
   // reader input, a session switch and the settle loop all end it the same way.
@@ -1031,10 +1124,10 @@ function ChatMessageListComponent({
       olderRestoreFrameRef.current = requestAnimationFrame(step);
     };
     olderRestoreFrameRef.current = requestAnimationFrame(step);
-  }, [olderCommitEpoch, endOlderRestoreSuppression]);
+  }, [olderCommitEpoch, endOlderRestoreSuppression, messagesContainerRef]);
   useEffect(() => endOlderRestoreSuppression, [endOlderRestoreSuppression]);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  const handleScroll = (e: { currentTarget: HTMLDivElement }) => {
     const target = e.currentTarget;
     // A transcript with no height (a short dock gives the composer priority and
     // shrinks it to nothing) cannot be read, so the scroll event its collapse
@@ -1084,6 +1177,7 @@ function ChatMessageListComponent({
     const echo = lastProgrammaticScrollRef.current;
     if (
       echo &&
+      !tailIntentRef.current &&
       performance.now() - echo.at <= PROGRAMMATIC_SCROLL_ECHO_MS &&
       Math.abs(target.scrollTop - echo.top) <= PROGRAMMATIC_SCROLL_ECHO_PX
     ) {
@@ -1138,7 +1232,27 @@ function ChatMessageListComponent({
       shortBy > 1 &&
       previousTop !== null &&
       target.scrollTop < previousTop - 0.5;
-    const isAtBottom = shortBy <= PINNED_TOLERANCE_PX && !readerMovingUp;
+    const height = measureGrowth(target);
+    const anchored =
+      height > scrollHeightRef.current &&
+      previousTop !== null &&
+      Math.abs(
+        target.scrollTop - previousTop - (height - scrollHeightRef.current),
+      ) <= 1;
+    const reachedOldTail =
+      externalScrollContainerRef &&
+      previousTop !== null &&
+      ((tailIntentRef.current && target.scrollTop >= previousTop) ||
+        (target.scrollTop > previousTop &&
+          !anchored &&
+          shortBy <= growthDeltaRef.current + 2));
+    tailIntentRef.current = false;
+    scrollHeightRef.current = height;
+    const isAtBottom =
+      (shortBy <= (externalScrollContainerRef ? 2 : PINNED_TOLERANCE_PX) ||
+        reachedOldTail) &&
+      !readerMovingUp;
+    if (reachedOldTail) writeProgrammaticScroll(target, height);
     isUserScrolledUpRef.current = !isAtBottom;
     setIsUserScrolledUp(!isAtBottom);
     visibleAnchorRef.current = isAtBottom
@@ -1146,12 +1260,76 @@ function ChatMessageListComponent({
       : captureChatScrollAnchor(target);
   };
 
+  const externalScrollHandler = useRef(handleScroll);
+  externalScrollHandler.current = handleScroll;
+  useEffect(() => {
+    const element = externalScrollContainerRef?.current;
+    if (!element) return;
+    const scroll = () =>
+      externalScrollHandler.current({ currentTarget: element });
+    element.addEventListener('scroll', scroll);
+    return () => element.removeEventListener('scroll', scroll);
+  }, [externalScrollContainerRef]);
+
   const cancelScrollToBottom = useCallback(() => {
     scrollAnimationRef.current?.cancel();
   }, []);
   const onReaderInput = useCallback(
-    (event: React.SyntheticEvent) => {
+    (event: {
+      type: string;
+      target: EventTarget | null;
+      pointerType?: string;
+      button?: number;
+      key?: string;
+      deltaY?: number;
+      deltaMode?: number;
+      ctrlKey?: boolean;
+      shiftKey?: boolean;
+      defaultPrevented?: boolean;
+      preventDefault?: () => void;
+    }) => {
       const input = readerInputRef.current;
+      const element = messagesContainerRef.current;
+      if (element && externalScrollContainerRef) {
+        measureGrowth(element);
+        growthDeltaRef.current = 0;
+        const distance =
+          element.scrollHeight - element.scrollTop - element.clientHeight;
+        const keyStep =
+          event.key === 'End'
+            ? Infinity
+            : event.key === 'ArrowDown'
+              ? 40
+              : event.key === 'PageDown' || event.key === ' '
+                ? element.clientHeight * 0.875
+                : 0;
+        if (
+          event.type === 'keydown' &&
+          event.target === element &&
+          !event.defaultPrevented &&
+          keyStep > 0 &&
+          distance <= keyStep
+        ) {
+          event.preventDefault?.();
+          tailIntentRef.current = true;
+          isUserScrolledUpRef.current = false;
+          setIsUserScrolledUp(false);
+          writeProgrammaticScroll(element, element.scrollHeight);
+          return;
+        }
+        tailIntentRef.current =
+          !event.defaultPrevented &&
+          ((event.type === 'keydown' &&
+            event.target === element &&
+            event.key === 'End') ||
+            (event.type === 'wheel' &&
+              !event.ctrlKey &&
+              !event.shiftKey &&
+              event.deltaMode === 0 &&
+              (event.deltaY ?? 0) > 0 &&
+              element.scrollTop + (event.deltaY ?? 0) >=
+                element.scrollHeight - element.clientHeight - 2));
+      }
       const now = performance.now();
       if (event.type === 'touchstart') {
         input.touching = true;
@@ -1159,22 +1337,22 @@ function ChatMessageListComponent({
         // A touch's events stay with the node it began on. A virtualized row
         // can leave the document mid-drag, and its touchend then never
         // reaches the window: listen on the node itself as well.
-        const origin = event.target as EventTarget;
+        const origin = event.target;
         const listening = new AbortController();
         const release = (end: Event) => {
           listening.abort();
           releaseTouchRef.current(end);
         };
-        origin.addEventListener('touchend', release, {
+        origin?.addEventListener('touchend', release, {
           signal: listening.signal,
         });
-        origin.addEventListener('touchcancel', release, {
+        origin?.addEventListener('touchcancel', release, {
           signal: listening.signal,
         });
       } else if (event.type === 'pointerdown') {
         // A touch is tracked by its touch events: the browser cancels the
         // pointer as soon as the finger starts panning.
-        const pointer = event as React.PointerEvent;
+        const pointer = event;
         // A secondary press opens a context menu that often swallows the
         // release.
         if (pointer.pointerType !== 'touch' && pointer.button === 0)
@@ -1188,8 +1366,28 @@ function ChatMessageListComponent({
       endOlderRestoreSuppression();
       cancelScrollToBottom();
     },
-    [endOlderRestoreSuppression, cancelScrollToBottom],
+    [
+      endOlderRestoreSuppression,
+      cancelScrollToBottom,
+      externalScrollContainerRef,
+      messagesContainerRef,
+      measureGrowth,
+      writeProgrammaticScroll,
+    ],
   );
+  const externalInputHandler = useRef(onReaderInput);
+  externalInputHandler.current = onReaderInput;
+  useEffect(() => {
+    const element = externalScrollContainerRef?.current;
+    if (!element) return;
+    const input = (event: Event) => externalInputHandler.current(event);
+    const types = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+    for (const type of types)
+      element.addEventListener(type, input, { passive: true });
+    return () => {
+      for (const type of types) element.removeEventListener(type, input);
+    };
+  }, [externalScrollContainerRef]);
   // A press can end outside the transcript, so its end is observed globally.
   const releaseTouchRef = useRef<(event: Event) => void>(() => {});
   useEffect(() => {
@@ -1261,13 +1459,9 @@ function ChatMessageListComponent({
     // re-arm the link's hold against the very trip to the end the reader
     // just asked for.
     clearMessageRevealHash();
-    // The control (and the turn steps beside it) leave for the glide; focus
-    // on them stays in the conversation rather than falling to the page.
-    if (
-      document.activeElement?.closest(
-        '.chat-scroll-to-bottom, .transcript-turn-actions',
-      )
-    )
+    // The latest-message control leaves during the glide; keep its focus
+    // in the conversation.
+    if (document.activeElement?.closest('.chat-scroll-to-bottom'))
       el.focus({ preventScroll: true });
     setReaderRestoreRequest(null);
     visibleAnchorRef.current = null;
@@ -1357,7 +1551,7 @@ function ChatMessageListComponent({
       // Every row of a short transcript is mounted: centre the prompt row.
       const node = [
         ...element.querySelectorAll<HTMLElement>(
-          ':scope > .chat-message-anchor[data-chat-message-key]',
+          ':scope > .chat-message-anchor[data-chat-message-key], :scope > .chat-messages > .chat-message-anchor[data-chat-message-key], :scope > .conversation-reader > .chat-messages > .chat-message-anchor[data-chat-message-key]',
         ),
       ].find(
         (candidate) => candidate.dataset.chatMessageKey === landmark.rowId,
@@ -1377,7 +1571,7 @@ function ChatMessageListComponent({
       );
       visibleAnchorRef.current = captureChatScrollAnchor(element);
     },
-    [writeProgrammaticScroll, clearMessageRevealHash],
+    [writeProgrammaticScroll, clearMessageRevealHash, messagesContainerRef],
   );
   useEffect(() => {
     if (!pendingTurnJump) return;
@@ -1484,10 +1678,14 @@ function ChatMessageListComponent({
     [activeSession.pendingApprovals, activeSession.answeredApprovals],
   );
   const permissionPosture = sessionPermissionPosture(orchestrationSession);
-  const callerContinue =
-    activeSession.conversationOpenState?.callerAccess?.continue;
-  const callerStartChat =
-    activeSession.conversationOpenState?.callerAccess?.startChat;
+  const callerContinue = conversationAccessFor(
+    activeSession,
+    target?.station,
+  )?.continue;
+  const callerStartChat = conversationAccessFor(
+    activeSession,
+    target?.station,
+  )?.startChat;
   const bubbleSession: MessageBubbleSession = useMemo(
     () => ({
       id: activeSession.id,
@@ -1614,7 +1812,11 @@ function ChatMessageListComponent({
       }
       resendSource={rowPresentation.get(rowId)?.resend}
       onResendFromMessage={onResendFromMessage}
-      onToolApproval={activeSession.replay ? undefined : handleToolApproval}
+      onToolApproval={
+        activeSession.replay || target?.record?.readOnly
+          ? undefined
+          : handleToolApproval
+      }
       anchorKey={messageAnchorKey(msg)}
       owner={owner}
       accountableHuman={accountableHuman}
@@ -1651,11 +1853,24 @@ function ChatMessageListComponent({
       );
     const messageId = (row.message as ChatMessage & { id?: string }).id;
     return (
-      <div
+      <article
         className="chat-message-anchor"
         data-chat-message-key={row.id}
         data-chat-turn-id={row.message.turnId}
         data-chat-role={row.message.role}
+        data-role={row.message.role}
+        data-transcript-message-id={messageId}
+        data-testid={
+          target?.record && !transcriptMarkerLabel(row.message.contentParts)
+            ? 'session-transcript-message'
+            : undefined
+        }
+        data-agent-sender-session={row.message.sender?.sessionId}
+        aria-label={
+          row.message.sender
+            ? incomingMessageLabel(row.message.sender)
+            : undefined
+        }
         data-chat-text-length={row.message.content?.length ?? 0}
         {...(messageId
           ? { id: `transcript-message-${encodeURIComponent(messageId)}` }
@@ -1666,7 +1881,7 @@ function ChatMessageListComponent({
         >
           {renderMessage(row.message, row.index, row.id)}
         </TranscriptTurnContext.Provider>
-      </div>
+      </article>
     );
   };
 
@@ -1747,40 +1962,7 @@ function ChatMessageListComponent({
     isUserScrolledUp && !scrollingToBottom ? (
       <ScrollToBottomButton onClick={handleScrollToBottom} />
     ) : null;
-  // #342: previous/next turn travel with the return-to-latest control, which
-  // is the transcript's one place for "you are not at the end" actions.
-  // #3862: at the latest message that control is gone, and a column too
-  // narrow for the rail (a phone) would have no turn navigation at all, so
-  // Previous turn alone stays in the same composer slot. Same component in
-  // the same place: stepping keeps focus on the Previous button as the
-  // group grows to its away-from-the-end form.
-  const latestTurnStep =
-    !isMobile &&
-    !scrollToBottomControl &&
-    turnNavigation &&
-    !turnRailAvailable &&
-    Boolean(scrollControlsTarget);
-  const scrollControls =
-    scrollToBottomControl && turnNavigation && !isMobile ? (
-      <TranscriptTurnActions
-        previousTurn={previousTurn}
-        nextTurn={nextTurn}
-        onJump={stepToTurn}
-        floating={!scrollControlsTarget}
-      >
-        {scrollToBottomControl}
-      </TranscriptTurnActions>
-    ) : latestTurnStep ? (
-      <TranscriptTurnActions
-        previousTurn={previousTurn}
-        nextTurn={undefined}
-        onJump={stepToTurn}
-        floating={false}
-        latest
-      />
-    ) : (
-      scrollToBottomControl
-    );
+  const scrollControls = scrollToBottomControl;
 
   return (
     <ApprovalSheetProvider
@@ -1800,6 +1982,7 @@ function ChatMessageListComponent({
           threadId: request.approvalThreadId,
           requestId: request.approvalId,
           requestEventId: request.approvalEventId,
+          requestScope: target?.requestScope,
         });
         const current = activeChatsStore.getSnapshot()[activeSession.id];
         if (outcome === 'pending' && current) {
@@ -1842,25 +2025,34 @@ function ChatMessageListComponent({
               onQuote={onQuote}
             />
           )}
-          <SessionSummaryCard
-            activeSession={activeSession}
-            hasSettingsEntryPoint={hasSettingsEntryPoint}
-          />
+          {!target?.record && (
+            <SessionSummaryCard
+              activeSession={activeSession}
+              hasSettingsEntryPoint={hasSettingsEntryPoint}
+            />
+          )}
           <div
             className="chat-messages"
+            data-touch-turn-controls={
+              (turnNavigation && touchTurnControls) || undefined
+            }
             data-answer-width={chatAnswerWidth}
-            ref={messagesContainerRef}
+            ref={externalScrollContainerRef ? undefined : messagesContainerRef}
             role="log"
             tabIndex={-1}
             aria-label="Conversation transcript"
             data-chat-session-id={activeSession.id}
             aria-live="polite"
             style={{ fontSize: `${fontSize}px` }}
-            onScroll={handleScroll}
-            onWheel={onReaderInput}
-            onTouchStart={onReaderInput}
-            onPointerDown={onReaderInput}
-            onKeyDown={onReaderInput}
+            onScroll={externalScrollContainerRef ? undefined : handleScroll}
+            onWheel={externalScrollContainerRef ? undefined : onReaderInput}
+            onTouchStart={
+              externalScrollContainerRef ? undefined : onReaderInput
+            }
+            onPointerDown={
+              externalScrollContainerRef ? undefined : onReaderInput
+            }
+            onKeyDown={externalScrollContainerRef ? undefined : onReaderInput}
           >
             {hasOlderMessages && (
               <div className="session-history-controls">
@@ -1878,12 +2070,14 @@ function ChatMessageListComponent({
             )}
             {historyNotice}
             {transcriptRows.length === 0 && !isStreaming ? (
-              (emptyState ?? (
+              emptyState !== undefined ? (
+                emptyState
+              ) : (
                 <ChatEmptyState
                   agentSlug={activeSession.agentSlug}
                   agentName={activeSession.agentName}
                 />
-              ))
+              )
             ) : (
               <>
                 {transcriptRows.length > 0 &&
@@ -2074,7 +2268,10 @@ function ChatMessageListComponent({
               activeTurn={turnViewport.activeTurn}
               onJump={jumpToTurn}
               olderHistory={Boolean(hasOlderMessages)}
-              onAvailableChange={setTurnRailAvailable}
+              previousTurn={previousTurn}
+              nextTurn={nextTurn}
+              onStep={stepToTurn}
+              touchControls={touchTurnControls}
             />
           )}
           {/* Mounted with the navigation, before anything is said: a region
@@ -2098,4 +2295,37 @@ function ChatMessageListComponent({
   );
 }
 
-export const ChatMessageList = React.memo(ChatMessageListComponent);
+function LiveChatMessageList(props: ChatMessageListProps) {
+  const host = useApiBase();
+  const target = useOptionalConversationConnection();
+  const sendMessage = useSendMessage(target?.apiBase ?? host.apiBase);
+  const agents = useAgents();
+  return (
+    <ChatMessageListComponent
+      {...props}
+      sendMessage={sendMessage}
+      apiBase={target?.apiBase ?? host.apiBase}
+      agents={
+        target?.station ? (props.recordAgents ?? EMPTY_RECORD_AGENTS) : agents
+      }
+    />
+  );
+}
+const EMPTY_RECORD_AGENTS: ReturnType<typeof useAgents> = [];
+const recordSendUnavailable: ReturnType<typeof useSendMessage> = async () =>
+  false;
+export const ChatMessageList = React.memo(function ChatMessageList(
+  props: ChatMessageListProps,
+) {
+  const target = useOptionalConversationConnection();
+  return target?.record ? (
+    <ChatMessageListComponent
+      {...props}
+      sendMessage={recordSendUnavailable}
+      apiBase={target.apiBase}
+      agents={props.recordAgents ?? EMPTY_RECORD_AGENTS}
+    />
+  ) : (
+    <LiveChatMessageList {...props} />
+  );
+});

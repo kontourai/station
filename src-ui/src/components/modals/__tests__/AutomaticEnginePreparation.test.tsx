@@ -169,7 +169,8 @@ test('keeps a still-starting notice alongside another app failure', async () => 
   await waitFor(() => expect(done).toHaveBeenCalledOnce());
   const [, failure, notice] = done.mock.calls[0]!;
   const text = preparationFeedbackText(failure, notice);
-  expect(text).toContain('Goose did not connect.');
+  expect(text).toContain('Try again in a moment.');
+  expect(text).not.toContain('spawn: not installed');
   expect(text).toContain('Kiro CLI is still starting for the first time.');
   expect(preparationFeedbackText('failed.', undefined)).toBe('failed.');
 });

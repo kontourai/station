@@ -678,9 +678,13 @@ opening a port does not pair the Device. The versioned public handshake can
 confirm an answering Station, while a protected request without credentials is
 expected to be refused. A failed `curl` transport/status `000` can mean DNS,
 TLS, refusal, timeout or routing failure; it is not a unique firewall diagnosis.
-For Tailscale Serve, also allow the exact published HTTPS origin in the
-supervisor startup arguments. A reachable handshake without an Origin header
-does not prove that a browser's pairing request will pass Origin admission.
+For Tailscale Serve, Origin admission trusts the published HTTPS origin
+without a setting only when it is on this node's MagicDNS name, every handler
+there proxies to this Station's API or UI port, and Funnel is off
+([threat model](../security/remote-access-threat-model.md)). Otherwise, also
+allow the exact published HTTPS origin in the supervisor startup arguments. A
+reachable handshake without an Origin header does not prove that a browser's
+pairing request will pass Origin admission.
 Keep other applications' Serve listeners intact; use another HTTPS port when
 the default listener belongs to another service.
 

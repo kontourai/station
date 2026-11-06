@@ -688,7 +688,19 @@
 
     "src-server/services/orchestration/__tests__/ensemble-execution-context.test.ts",
 
-    "src-server/routes/orchestration/__tests__/cli-session-group-runtime.integration.test.ts"
+    "src-server/routes/orchestration/__tests__/cli-session-group-runtime.integration.test.ts",
+
+    "src-server/routes/environments/peer-chat-policy.ts",
+
+    "src-server/routes/environments/peer-chat-routes.ts",
+
+    "src-server/services/remote-stations/remote-station-forwarder.ts",
+
+    "packages/contracts/src/peer-chat.ts",
+
+    "src-server/routes/orchestration/attachment-staging.ts",
+
+    "src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts"
   ],
 
   "checks": [

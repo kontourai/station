@@ -21,6 +21,12 @@ workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts)
 journal, and the core reads it through the workload protocol (see Shell host
 below); otherwise the service owns both.
 
+The adapter admits a Windows launch only after node-pty publishes a positive
+PID on its pinned output-pipe readiness signal. This works without application
+output. Early exit, pipe failure, or the five-second startup bound rejects the
+launch before PID tracking; cancellation closes its owned native allocation and
+pipes. The dependency's worker callback fences late readiness after cancellation.
+
 A personal-operator HTTP control seam at
 `/api/projects/:slug/terminal-sessions` exercises the production service without
 shipping another emulator. It supports project bindings and `thread:<id>`
@@ -42,7 +48,9 @@ close endpoint still used the legacy service; Delivery 6 removed it.
 Session metadata and journal output survive disposal and a new service instance.
 In-process shells do not survive server exit, and restored sessions are ended
 and never execute their old input again. Supervisor workloads do survive (see
-Shell host). Opening with a legacy terminal id imports
+Shell host). Disposal waits for in-process stops already in progress before
+flushing journals and persisting; a failed or timed-out stop is reported.
+Opening with a legacy terminal id imports
 a provenance-bound history filename once and retains the mapping in the durable
 record. The legacy writer emits a receipt only for a fresh file or a previously
 verified receipt; it records the Project id captured when the shell opened,
@@ -82,7 +90,7 @@ Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
 queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
 a backend that ignores backpressure or an explicitly undersized queue can
 still exceed that hard bound. Such overload is latched and uses the same owned
-HUP-to-KILL escalation as close. This is distinct from an ordinary burst under
+termination path as close. This is distinct from an ordinary burst under
 default limits. The real PTY suite sends 8 MiB through disk and memory modes,
 checks continued shell life and retained bounds (memory mode need not pause), then recreates the disk-backed
 service and reads its journal after clean disposal. This provides
@@ -144,7 +152,8 @@ The [real-socket suite](../../src-server/services/terminal/__tests__/terminal-ga
 uses injected identities and current grants with real PTYs. Its observer and
 revocation evidence qualifies that gateway/service boundary, not live pairing.
 The listener integration suite proves the registered gateway mounts and stops
-on the API listener. Windows/ConPTY and remote/native routes remain unqualified.
+on the API listener. Remote and native routes remain unqualified; the suite
+also runs on ConPTY (see [Verification](#verification)).
 
 The gateway evidence stops at b1. The public SDK's output-only
 [`TerminalOutputSession`](../../packages/sdk/src/client/terminal-output-session.ts)
@@ -227,8 +236,9 @@ records the admission and its residual risks.
 The real-socket evidence is in the
 [admission suite](../../src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts)
 (platform-independent, real sockets and the SDK store, scripted PTY) and the
-POSIX [real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts).
-Physical iOS, Android and Desktop devices, Windows/ConPTY and a browser broker
+[real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts),
+which runs on POSIX PTYs and on ConPTY (see [Verification](#verification)).
+Physical iOS, Android and Desktop devices and a browser broker
 (DataChannel) route are not qualified: the broker route has no socket path and
 stays refused at the client. The legacy listener, port discovery and
 `TerminalService` are removed (Delivery 6).
@@ -286,8 +296,37 @@ The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
 unknown or changed tty identity refuses all census signals; the adapter kills
 its owned shell handle and reports the cleanup failure instead of guessing
 at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
-The real PTY tests qualify macOS cleanup of the tested descendants. Windows,
-other POSIX hosts and already-daemonized workloads are not newly qualified;
+Before any census signal, a new POSIX child may still be attaching its
+controlling tty. The adapter retains the native fork's device name and waits
+within the existing census/deadline bounds for that exact binding. A different
+concrete device, an unknown binding after admission, or an ownership change
+still refuses signals; a missing binding never becomes successful cleanup.
+The backend is pinned to node-pty `1.2.0-beta.18`, whose Windows native handle
+registry is synchronized across spawn and exit threads. This pin is a published
+prerelease. Managed Linux installs retain the approved source-build path;
+upstream Linux prebuilds are not selected by directory presence. On Windows the operation ends the shell's process tree with `taskkill /T /F`
+before the ConPTY closes, as the supervisor's workload host does: closing a
+ConPTY ends only processes attached to its console, so before this a
+descendant started detached from every console outlived close and a core
+stop (#3994). After a successful `taskkill` both hosts wait for the exit.
+After an admitted shell exits, the adapter releases it at most once and closes
+its owned pipes, including for a silent or paused process. Its console process
+listing is answered empty: after exit the listing helper cannot attach, and its
+delayed fallback could signal a reused shell PID (#3994). A PID-zero startup
+failure already released by the producer does not receive a second native kill;
+positive-PID failure cleanup retains one release owner. Before exit, public
+`kill()` remains only the reported fallback for a tree `taskkill` that could not
+end the shell.
+`taskkill` follows
+parent links, so a descendant whose parent already exited is not found
+(from its documented behavior; not exercised here).
+Station pins published `node-pty@1.2.0-beta.18` because its native Windows prebuilds include the [PTY-handle locking repair](https://github.com/microsoft/node-pty/pull/922). The 1.1.0 backend concurrently erased and read its global handle vector without synchronization; patching only JavaScript cannot repair that native race. This does not identify a hosted worker crash without its native dump.
+
+The [managed Windows lifecycle patch](../../patches/node-pty-1.2.0-beta.18.patch) observes socket close independently of pipe readiness and cancels pending startup or releases the native console without waiting for first output. Since the new backend starts asynchronously, the adapter waits for a positive PID before workload tracking, pauses reads until its first data subscriber, and retains an observed exit for a late subscriber. Startup failures reject and release the owned worker. The [adapter tests](../../src-server/adapters/__tests__/node-pty-adapter.test.ts) exercise initial output/exit, invalid-directory refusal, and real first-output notification held across termination. The process-group cleanup deadline remains unchanged.
+
+The real PTY tests qualify macOS cleanup of the tested descendants and, on
+ConPTY, of an attached, a `windowsHide` and a detached descendant. Other POSIX
+hosts and already-daemonized workloads are not newly qualified;
 supervisor workload custody remains the route to stronger survival/cleanup.
 A fully detached `setsid` job that has lost both ancestry and its controlling
 tty is outside this census. A real-PTY negative control observes that survivor
@@ -1023,13 +1062,68 @@ verification.
   merges.
 - End to end: open, reload, restart the server, and confirm the same shell
   (same PID) and no lost output; repeat on the mobile webview and Windows.
+  On Windows this runs as
+  [`tests/live/terminal-restart-journey.mjs`](../../tests/live/terminal-restart-journey.mjs)
+  (`npm run test:live:terminal-restart -- --out <dir>`):
+  real Chromium against an isolated `station start` (own temp home and
+  ports), switching on terminal screen reader mode in Settings and reading
+  the rendered text from its mirror. See the Windows/ConPTY item for the run.
 - Retention and restore (#3994): the
   [retention suite](../../src-server/services/terminal/__tests__/terminal-retention.process.test.ts)
-  runs real POSIX PTYs for restore after a host restart (new PID, same
+  runs real PTYs for restore after a host restart (new PID, same
   directory, divider, no re-run), no restore over a reattached or
   self-ended shell, age expiry, location migration, history off, the total
   budget, usage and clearing, stable ordinals, and a two-client race on a
-  real loopback server that yields one shell. ConPTY is not qualified there.
+  real loopback server that yields one shell.
+- Windows/ConPTY (#3994): the session, real-socket and retention suites type
+  into cmd.exe on ConPTY through a
+  [shared shell fixture](../../src-server/services/terminal/__tests__/fixtures/real-shell.ts),
+  beside the supervisor-host, command-session and
+  [real-supervisor handoff](../../src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts)
+  suites that already did; the required Windows PR check runs all six
+  (`npm run test:windows:portable`), with the script-runner and agent-run
+  suite (below). Cases built on POSIX job control (fork, `setsid`, HUP, `ps`)
+  stay POSIX-only. ConPTY is a renderer, not a byte pipe, and the suites assert the
+  differences: the journal records ConPTY's rendering (cursor moves at
+  wrapped rows, a title reset after each program, a whole-screen repaint
+  after a resize), so a newline-free 8 MiB stream becomes about 105,000 rows
+  and the 5000-line retention keeps the newest of them; and cmd's `type`
+  never hands ConPTY a file's 8-bit C1 controls. ConPTY may also write a title update or a
+  cursor show between two characters of one printed word, so on Windows a
+  check of printed text reads the characters with their ECMA-48 control
+  functions removed, while checks of the link filters read the bytes.
+
+  Run on Windows 11 Pro 26200 (Ryzen 5 7600X, Node 24.18.0, node-pty 1.1.0,
+  cmd.exe, Chromium 156): the vitest command of `test:windows:portable` (its 13
+  files, `--maxWorkers=1 --no-file-parallelism`) passed 157 tests (31
+  POSIX-only skipped) at revision `76af54e`, on a saturated host. Fault injection,
+  each reverted with `git checkout` and rerun green: removing the Windows
+  tree kill, making ConPTY resize a no-op, skipping restore, starting a
+  resumed channel one record late, disabling the open-or-adopt reservation
+  and writing the old restore divider each failed the case that names the
+  behavior.
+  `node tests/live/terminal-restart-journey.mjs` passed at `8d1c4f9` (the
+  same code; only this document uncommitted): a reload and
+  `station restart` (a supervisor handoff) kept the shell's PID, a program
+  printing 40 numbered lines across both lost none and the journal's
+  sequence stayed contiguous; a full stop and start restored the same
+  terminal under a new PID in the same directory, with the earlier output
+  and the divider above it in the rendered terminal.
+
+  Fixed on the way (#3994): the in-process host's close and core stop left a
+  shell's descendants without a console running (see
+  [whole-store retention](#whole-store-retention-and-process-custody)); and a
+  restored shell's divider and earlier output were erased from the rendered
+  terminal by the new ConPTY's first frame, which clears the screen and
+  paints from its top-left. On Windows the divider is now followed by a
+  screenful of line feeds, so both move into scrollback first. And on a
+  loaded host, close followed `taskkill` with node-pty's `kill()` when the
+  exit event was late, which signalled the dead shell's pid five seconds on,
+  and a first fix that skipped `kill()` left every closed shell's ConPTY open
+  (see the same section). The adapter suite closes real ConPTY shells by
+  `taskkill` and by `exit`, and fails on a leaked output-reader thread or a
+  later signal to the old pid; the supervisor-host suite holds the exit back
+  past the old grace and fails if the host calls `kill()`.
 - Execution authority (#2497, #492): the
   [authority suite](../../src-server/services/terminal/__tests__/terminal-execution-authority.test.ts)
   runs on every platform with a fake shell host. It covers a shell kept ended,
@@ -1043,14 +1137,6 @@ verification.
   live session, with and without terminal sessions: a `host` session runs,
   a `workspace` one gets `-32600`, and a turn that re-confines the session
   refuses its next command.
-- Fault injection for each isolation check and for the query stripping.
-- Listener isolation (#3994): each store session notifies only its own
-  subscribers and output never enters React state; the
-  [store suite](../../packages/sdk/src/__tests__/terminal-session-store.test.ts)
-  and the [panel suite](../../src-ui/src/components/coding-layout/__tests__/TerminalPanel.test.tsx)
-  fail when a channel's events reach another session or output re-renders a
-  panel.
-
 - Phone (#3994, 2026-11-04, revision `031fed73e8`): real Android Chrome
   124.0.6367.219 with Gboard on the Android 35 x86_64 emulator (Medium Phone,
   1080×2400), typed through taps on Gboard's keys and `adb shell input`,
@@ -1086,6 +1172,14 @@ verification.
   shims run through cmd.exe, an approved command reaches cmd with its quotes
   as shown, and both fail when their fix is reverted.
 
+- Fault injection for each isolation check and for the query stripping.
+- Listener isolation (#3994): each store session notifies only its own
+  subscribers and output never enters React state; the
+  [store suite](../../packages/sdk/src/__tests__/terminal-session-store.test.ts)
+  and the [panel suite](../../src-ui/src/components/coding-layout/__tests__/TerminalPanel.test.tsx)
+  fail when a channel's events reach another session or output re-renders a
+  panel.
+
 **NOT_VERIFIED.** No journey has run on a physical phone, the iOS shell, or
 the Desktop app on macOS or Linux. The Android shell was not exercised: the CI debug APK of
 `470f8b49` installed on the emulator but stopped at "Station couldn't finish
@@ -1097,11 +1191,23 @@ Code chat in a Project was not offered the tool. Desktop copy to the system
 clipboard was not read back. On Windows, Stop does not reach a command's
 descendant whose parent already exited, and the journal does not record
 resizes, so ConPTY output replayed at another size can repaint over lines
-already scrolled. The
-screen reader mode has not been used with real assistive technology
-(VoiceOver, NVDA, TalkBack); Windows/ConPTY is not qualified. The manual
-screen reader pass listed above has not happened. The browser broker
-(DataChannel) route is unsupported by design, not untested.
+already scrolled. Earlier Windows floors lost a forked worker without an
+assertion or diagnostic. Issue #4626 now records the captured access violation
+(`0xc0000005`) and a controlled reproduction in node-pty 1.1's unsynchronized
+native handle-table removal. The exact 1.2.0-beta.18 dependency includes the
+upstream locking and cancellation fixes; the Windows adapter suite checks
+positive-PID admission, an isolated concurrent exit/resize child, paused silent
+exit cleanup, and late vendor readiness after cancellation. Qualification of a
+specific run remains tied to its recorded source and installed binary.
+
+The floor ([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
+continues to run every isolated terminal suite, fails any crash, and never
+retries it. Coordinator PID/code/signal records remain in the Windows artifact.
+The screen reader mode has not been used with real
+assistive technology (VoiceOver, NVDA, TalkBack; the Windows machine above
+has no NVDA), and the manual screen reader pass listed above has not
+happened. The browser broker (DataChannel) route is unsupported by design,
+not untested.
 
 Still open after the execution-authority work: a `workspace` session's
 agent command is refused, not run confined. A confined terminal for Project
@@ -1109,8 +1215,8 @@ members and shared agents, with its receipt, remains #2497's. Hosted terminal,
 file and artifact authority across tenants, revocation and restart races
 remains #492's; restore is bound to the current binding, but terminal records
 still carry no tenant or principal ownership. Restore against a moved binding
-is proved with a fake host; real PTYs cover only a removed Project, on POSIX,
-and not ConPTY.
+is proved with a fake host; real PTYs, on POSIX and on ConPTY, cover only a
+removed Project.
 
 ## Open questions
 

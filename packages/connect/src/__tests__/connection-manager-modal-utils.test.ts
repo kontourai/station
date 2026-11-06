@@ -37,7 +37,7 @@ describe('connection-manager-modal-utils', () => {
     expect(getConnectionManagerTitle('pair-code')).toBe('Enter a pairing code');
     expect(getConnectionManagerTitle('pair-host')).toBe('Pair a Device');
     expect(getConnectionManagerTitle('devices')).toBe('Paired Devices');
-    expect(getConnectionManagerTitle('discover')).toBe('Other Stations');
+    expect(getConnectionManagerTitle('discover')).toBe('Nearby Stations');
   });
 
   it('flags a connection as needing an access request when its credential is missing', () => {

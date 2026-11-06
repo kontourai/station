@@ -16,6 +16,7 @@ const registryOffered = [
   'continue-interrupted-turn',
   'task-capabilities',
   'task-collaboration',
+  'apps-library',
   'chat-apps',
   'visual-skills',
 ];

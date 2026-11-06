@@ -15,6 +15,10 @@ import type {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import {
+  captureConnectionReadTarget,
+  connectionQueryKey,
+} from '../connection-read-target';
+import {
   type MutationOptions,
   type QueryConfig,
   useApiQuery,
@@ -102,11 +106,15 @@ function readInventoryEnvelope<TRow>(
 }
 
 export function useConnectionsQuery(config?: QueryConfig<ConnectionConfig[]>) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
   return useApiQuery(
-    ['connections'],
+    connectionQueryKey('connections', readTarget),
     async () => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(`${apiBase}/api/connections`);
+      const apiBase = readTarget?.targetApiBase ?? (await _getApiBase());
+      const response = await authenticatedFetch(
+        `${apiBase}/api/connections`,
+        ...(readTarget ? [{ requestScope: readTarget.requestScope }] : []),
+      );
       const result = await response.json();
       if (!result.success) {
         throw new Error(result.error);
@@ -120,12 +128,14 @@ export function useConnectionsQuery(config?: QueryConfig<ConnectionConfig[]>) {
 export function useModelConnectionsQuery(
   config?: QueryConfig<ModelConnectionConfig[]>,
 ) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
   return useApiQuery(
-    ['connections', 'models'],
+    connectionQueryKey('connections', readTarget, 'models'),
     async () => {
-      const apiBase = await _getApiBase();
+      const apiBase = readTarget?.targetApiBase ?? (await _getApiBase());
       const response = await authenticatedFetch(
         `${apiBase}/api/connections/models`,
+        ...(readTarget ? [{ requestScope: readTarget.requestScope }] : []),
       );
       return readInventoryEnvelope<ModelConnectionConfig>(
         await response.json(),
@@ -206,13 +216,20 @@ function projectEach<TRecord, TProjected>(
 export function useModelPickerCatalogQuery(
   config?: QueryConfig<ModelPickerCatalog>,
 ) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
   return useApiQueryRefetchingInvalidatedOnMount(
-    ['model-picker-catalog'],
+    connectionQueryKey('model-picker-catalog', readTarget),
     async () => {
-      const apiBase = await _getApiBase();
+      const apiBase = readTarget?.targetApiBase ?? (await _getApiBase());
       const [agentResponse, modelResponse] = await Promise.all([
-        authenticatedFetch(`${apiBase}/api/connections/agents`),
-        authenticatedFetch(`${apiBase}/api/connections/models`),
+        authenticatedFetch(
+          `${apiBase}/api/connections/agents`,
+          ...(readTarget ? [{ requestScope: readTarget.requestScope }] : []),
+        ),
+        authenticatedFetch(
+          `${apiBase}/api/connections/models`,
+          ...(readTarget ? [{ requestScope: readTarget.requestScope }] : []),
+        ),
       ]);
       const [agentResult, modelResult] = await Promise.all([
         agentResponse.json(),
@@ -424,12 +441,14 @@ export function useModelPickerCatalogQuery(
 export function useEngineConnectionsQuery(
   config?: QueryConfig<AgentConnectionView[]>,
 ) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
   return useApiQuery(
-    ['connections', 'engines'],
+    connectionQueryKey('connections', readTarget, 'engines'),
     async () => {
-      const apiBase = await _getApiBase();
+      const apiBase = readTarget?.targetApiBase ?? (await _getApiBase());
       const response = await authenticatedFetch(
         `${apiBase}/api/connections/agents`,
+        ...(readTarget ? [{ requestScope: readTarget.requestScope }] : []),
       );
       return readInventoryEnvelope<AgentConnectionView>(
         await response.json(),
@@ -445,12 +464,14 @@ export function useEngineConnectionsQuery(
 export function useAgentConnectionCatalogQuery(
   config?: QueryConfig<AgentConnectionView[]>,
 ) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
   return useApiQuery(
-    ['connections', 'engines', 'catalog'],
+    connectionQueryKey('connections', readTarget, 'engines', 'catalog'),
     async () => {
-      const apiBase = await _getApiBase();
+      const apiBase = readTarget?.targetApiBase ?? (await _getApiBase());
       const response = await authenticatedFetch(
         `${apiBase}/api/connections/agents/catalog`,
+        ...(readTarget ? [{ requestScope: readTarget.requestScope }] : []),
       );
       const result = await response.json();
       if (!result.success) throw new Error(result.error);

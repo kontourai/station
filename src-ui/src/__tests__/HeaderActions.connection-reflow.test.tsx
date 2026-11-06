@@ -135,6 +135,19 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
  * ceiling. A fixture pinned at zero cannot see that at all.
  */
 let attentionPendingCount = 0;
+/** Station notices: each one adds the chip's "!" mark. */
+let stationConditionCount = 0;
+
+vi.mock(
+  '../components/notifications/StationConditions',
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    useStationConditions: () =>
+      Array.from({ length: stationConditionCount }, (_, index) => ({
+        id: `condition-${index}`,
+      })),
+  }),
+);
 
 vi.mock('@kontourai/station-sdk', () => ({
   useAttentionQuery: () => ({
@@ -293,10 +306,10 @@ describe.skipIf(!chromiumAvailable)(
      * station#1401, retired arithmetic. This used to pin that the widest
      * labelled cluster still fits at the first width that keeps the label
      * (375px), against a 396px row budget derived term by term. There is no
-     * Remedy labels stay hidden on the toolbar at phone widths, while the
-     * healthy state retains the active saved Station label. The reserved
-     * width must keep the whole cluster invariant across every connection
-     * state, and the chip must meet the 44px target floor.
+     * Remedy labels stay hidden on the toolbar at phone widths, and every
+     * state shows the active saved Station name in a fixed-width slot. That
+     * slot must keep the chip and the whole cluster invariant across every
+     * connection state, and the chip must meet the 44px target floor.
      */
     test('the phone cluster is invariant across every state with a touchable status dot (#1401, #2406)', async () => {
       const viewport = { width: 390, height: 200 };
@@ -309,9 +322,16 @@ describe.skipIf(!chromiumAvailable)(
         'awaiting-approval',
       ];
       const clusterWidths: number[] = [];
-      for (const state of states) {
+      const chipWidths: number[] = [];
+      // Every state again with a Station notice: its "!" mark must not
+      // widen the chip either.
+      const cases = [0, 1].flatMap((notices) =>
+        states.map((state) => ({ state, notices })),
+      );
+      for (const { state, notices } of cases) {
         const page = await browser.newPage({ viewport });
         try {
+          stationConditionCount = notices;
           await page.setContent(
             buildFixtureHtml(await renderMarkupForState(state)),
           );
@@ -326,8 +346,8 @@ describe.skipIf(!chromiumAvailable)(
             const chip =
               document.querySelector<HTMLElement>('.app-toolbar__conn');
             if (!chip) throw new Error('connection chip not found');
-            // Hidden at this breakpoint; the compact healthy state has its
-            // saved name in the accessible label.
+            // The state text is hidden at this breakpoint; the Station name
+            // label is shown in every state.
             const label = document.querySelector<HTMLElement>(
               '.app-toolbar__conn-state',
             );
@@ -343,6 +363,10 @@ describe.skipIf(!chromiumAvailable)(
               // this test is about, and a hidden span has no boxes.
               labelBoxes: label?.getClientRects().length ?? 0,
               compactLabelBoxes: compactLabel?.getClientRects().length ?? 0,
+              noticeBoxes:
+                chip
+                  .querySelector('.app-toolbar__conn-notice')
+                  ?.getClientRects().length ?? 0,
               accessibleName: chip.getAttribute('aria-label'),
             };
           });
@@ -351,26 +375,36 @@ describe.skipIf(!chromiumAvailable)(
             `the ${state} state lays out desktop remedy text on a phone`,
           ).toBe(0);
           expect(
-            Math.round(measured.chipWidth),
+            measured.noticeBoxes,
+            `the ${state} chip with ${notices} notice(s) shows its notice mark`,
+          ).toBe(notices);
+          expect(
+            measured.chipWidth,
             `the ${state} chip must meet the 44px touch floor on a phone`,
-          ).toBe(44);
+          ).toBeGreaterThanOrEqual(44);
           expect(
             measured.compactLabelBoxes,
-            `the phone chip must reserve its width for the status dot`,
-          ).toBe(0);
+            `the ${state} phone chip must show its Station name`,
+          ).toBeGreaterThanOrEqual(1);
           expect(
             measured.accessibleName,
             `the ${state} chip must keep its words in the accessible name`,
           ).toBeTruthy();
           clusterWidths.push(Math.round(measured.content * 100) / 100);
+          chipWidths.push(Math.round(measured.chipWidth * 100) / 100);
         } finally {
+          stationConditionCount = 0;
           await page.close();
         }
       }
       expect(
         clusterWidths,
         'The phone action cluster changed width as the connection chip flipped state — the chip must not reflow the toolbar.',
-      ).toEqual(states.map(() => clusterWidths[0]));
+      ).toEqual(cases.map(() => clusterWidths[0]));
+      expect(
+        chipWidths,
+        'The phone connection chip changed width as it flipped state or gained a notice.',
+      ).toEqual(cases.map(() => chipWidths[0]));
     });
 
     test('the trailing control holds its position across every label-bearing state on a desktop-width toolbar', async () => {
@@ -497,8 +531,7 @@ describe.skipIf(!chromiumAvailable)(
             };
           }, theme);
           expect(measured.label).toBe('Default');
-          expect(measured.labelBoxes).toBe(0);
-          expect(measured.width).toBe(44);
+          expect(measured.labelBoxes).toBeGreaterThanOrEqual(1);
           expect(measured.color).not.toBe('rgba(0, 0, 0, 0)');
           expect(measured.background).toBe(
             theme === 'light' ? '#f5f4ef' : '#0a0e13',
@@ -656,7 +689,7 @@ describe.skipIf(!chromiumAvailable)(
       expect(chip.gapBetweenPhrases as number).toBeLessThanOrEqual(24);
     });
 
-    test('lays out no chip text on a phone, so there is no separator to place', async () => {
+    test('lays out no state text on a phone, so there is no separator to place', async () => {
       // The state span itself is `display: none` at this breakpoint, and a
       // `::after` on a hidden element renders nothing — so the trailing "· "
       // the desktop chip prints after the state cannot appear here either.
@@ -674,9 +707,9 @@ describe.skipIf(!chromiumAvailable)(
     /**
      * #1132, retired breakpoint. This used to pin that the chip drops its
      * label below the width the row can hold (375px keeps it, 374px drops
-     * it). The compact Station label stays only in the healthy state; error
-     * remedy text stays in the accessible name and banner, while the reserved
-     * width holds the same mobile toolbar geometry. A
+     * it). On a phone the Station name label shows in every state; error
+     * remedy text stays in the accessible name and banner, and the fixed
+     * name slot holds the same mobile toolbar geometry. A
      * screen reader reads the same sentence whatever the viewport, because
      * the name is the button's `aria-label` and never this span's text.
      *
@@ -687,7 +720,7 @@ describe.skipIf(!chromiumAvailable)(
      * The reachability claim itself is browser-measured against the whole app
      * in `tests/toolbar-reachability.spec.ts`.
      */
-    test('the error chip lays out no text at phone widths, keeping its accessible name (#1132)', async () => {
+    test('the error chip lays out no remedy text at phone widths, keeping its accessible name (#1132)', async () => {
       const measure = async (width: number) => {
         const page = await browser.newPage({
           viewport: { width, height: 200 },
@@ -716,14 +749,14 @@ describe.skipIf(!chromiumAvailable)(
       };
 
       // Both sides of the retired breakpoint: the error label stays gone and
-      // the chip reserves the same 136px width below it.
+      // the chip keeps its touch floor.
       for (const width of [375, 374, 360]) {
         const measured = await measure(width);
         expect(
           measured.labelBoxes,
           `the error state lays out remedy text at ${width}px`,
         ).toBe(0);
-        expect(measured.chipWidth).toBe(44);
+        expect(measured.chipWidth).toBeGreaterThanOrEqual(44);
         expect(measured.accessibleName).toContain("Can't connect");
       }
     });

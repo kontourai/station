@@ -24,7 +24,37 @@
 
     "src-ui/src/hooks/useUnsavedGuard.tsx",
 
-    "scripts/ui-copy-length.mjs"
+    "scripts/ui-copy-length.mjs",
+
+    "src-ui/src/components/conversation/ConversationBody.tsx",
+
+    "src-ui/src/components/conversation/ConversationReader.tsx",
+
+    "src-ui/src/components/conversation/RecordConversationBody.tsx",
+
+    "src-ui/src/components/conversation/useRecordConversationController.ts",
+
+    "src-ui/src/components/conversation/ConversationConnectionContext.tsx",
+
+    "src-ui/src/components/conversation/ConversationStopControl.tsx",
+
+    "src-ui/src/components/conversation/useApprovalAnswering.ts",
+
+    "src-ui/src/components/conversation/SharedTaskHistoryList.tsx",
+
+    "src-ui/src/components/chat-dock/useInboxPanelController.ts",
+
+    "src-ui/src/utils/stationFailure.ts",
+
+    "scripts/conversation-boundary-gate.mjs",
+
+    "scripts/conversation-surfaces.json",
+
+    "scripts/conversation-boundary-baseline.json",
+
+    "scripts/__tests__/conversation-boundary-gate.test.ts",
+
+    "src-ui/src/components/conversation/conversation-transport.ts"
   ],
 
   "checks": [

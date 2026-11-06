@@ -22,6 +22,11 @@ import {
   WORKLOAD_COMMAND_OOM_KILLED_TYPE,
   WORKLOAD_TRANSCRIPT_NAMESPACE,
 } from '@kontourai/station-shared/extension-transcript-markers';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEngineBinaryPath,
+  managedEngineLaunch,
+} from '../../security/managed-engine-limits.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   releaseOwnedChildAfterGroupExit,
@@ -1636,19 +1641,31 @@ export class CodexAdapterTransport {
   }
 }
 
-/** The binary and environment owned by every real fresh Codex process. */
+/** The managed launch owned by every real fresh Codex process. */
 export function resolveCodexSpawnContext(
   extraEnv?: Record<string, string>,
   tmpDir?: string,
+  extraArgs: readonly string[] = [],
 ): {
   binary: string;
+  args: string[];
   env: NodeJS.ProcessEnv;
 } {
+  assertEngineAllowedByManagedPolicy('codex');
+  const launch = managedEngineLaunch(
+    'codex',
+    {
+      command: managedEngineBinaryPath('codex') ?? findCliBinary('codex') ?? 'codex',
+      args: ['app-server', ...extraArgs],
+      env: { ...process.env, PATH: resolveAugmentedPathSync(), ...extraEnv },
+    },
+    'station',
+  );
   return {
-    binary: findCliBinary('codex') ?? 'codex',
+    binary: launch.command,
+    args: [...launch.args],
     env: childProcessEnvironment({
-      PATH: resolveAugmentedPathSync(),
-      ...extraEnv,
+      ...launch.env,
       TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
     }),
   };
@@ -1664,17 +1681,15 @@ function memoryExhaustedMessage(outcome: ChildWorkloadOutcome): string {
   return `Codex ran out of memory and was stopped, along with the commands it was running.${budget} When the chat continues, Station tells Codex which commands were interrupted and to run memory-heavy steps one at a time.`;
 }
 
-function spawnCodexProcess(
+/** Exported for the #4520 spawn-level test; the transport is its caller. */
+export function spawnCodexProcess(
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
   /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`), never env-supplied. */
   tmpDir?: string,
 ): ChildProcessWithoutNullStreams {
-  const { binary, env } = resolveCodexSpawnContext(extraEnv, tmpDir);
-  const invocation = cliInvocation(binary, [
-    'app-server',
-    ...(extraArgs ?? []),
-  ]);
+  const { binary, args, env } = resolveCodexSpawnContext(extraEnv, tmpDir, extraArgs);
+  const invocation = cliInvocation(binary, args);
   // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
   // config overrides (codex-mcp-passthrough.ts) — appended AFTER
   // `app-server` on the spawn argv itself, never written to any config

@@ -353,7 +353,7 @@ for (const width of [1440, 390]) {
       exact: true,
     });
     const draft = review.getByRole('textbox', {
-      name: 'Send input to session',
+      name: 'Message',
       exact: true,
     });
     await draft.fill('Keep this review draft');

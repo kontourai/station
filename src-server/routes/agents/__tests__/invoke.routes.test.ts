@@ -1508,6 +1508,7 @@ test('registered structured invoke retains the real raw VoltAgent three-argument
     }),
   });
   const wrapper = await new VoltAgentFramework().createTempAgent({
+    purpose: 'agent-run',
     name: 'registered',
     instructions: 'Return JSON.',
     model,
@@ -1537,5 +1538,84 @@ test('registered structured invoke retains the real raw VoltAgent three-argument
   });
   expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
     type: 'json',
+  });
+});
+
+// #4515 fix round 3: `/invoke` runs Station's own agent, so a policy that
+// does not allow `station-agent` refuses it with the managed 403 before a run
+// is recorded (a refusal inside the run would read as "may have started").
+describe('invoke routes under the managed engine allow list (#4515)', () => {
+  const load = async () => {
+    const { installManagedEngineLimits } = await import(
+      '../../../security/managed-engine-limits.js'
+    );
+    const { parseManagedPolicyDocument, summarizeManagedPolicy } = await import(
+      '@kontourai/station-contracts/managed-policy'
+    );
+    return (allowed: string[] | null) => {
+      if (!allowed) return installManagedEngineLimits(null);
+      const parsed = parseManagedPolicyDocument({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { engines: { allowed } },
+      });
+      if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+      installManagedEngineLimits({
+        document: parsed.document,
+        summary: summarizeManagedPolicy(parsed.document),
+      });
+    };
+  };
+
+  test.each([
+    '/agents/station/invoke',
+    '/agents/station/invoke/stream',
+    '/invoke',
+  ])('%s answers 403 without touching the runtime', async (path) => {
+    const install = await load();
+    install(['claude']);
+    try {
+      // Every read of the runtime context throws: nothing may run.
+      const ctx = new Proxy(
+        {},
+        {
+          get: () => {
+            throw new Error('the runtime must not be reached');
+          },
+        },
+      );
+      const response = await createInvokeRoutes(ctx as never).request(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'hi', prompt: 'hi' }),
+      });
+      expect(response.status).toBe(403);
+      expect(await json(response)).toMatchObject({
+        success: false,
+        code: 'managed-policy-engine-refused',
+        error: expect.stringContaining('station-agent is not allowed'),
+      });
+    } finally {
+      install(null);
+    }
+  });
+
+  test('control: with station-agent allowed the request reaches the route', async () => {
+    const install = await load();
+    install(['station-agent']);
+    try {
+      const response = await createInvokeRoutes({} as never).request(
+        '/invoke',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      );
+      // The route's own validation answers, not the managed refusal.
+      expect(response.status).not.toBe(403);
+    } finally {
+      install(null);
+    }
   });
 });

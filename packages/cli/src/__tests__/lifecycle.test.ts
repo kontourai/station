@@ -10142,6 +10142,14 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       stderr: '',
       stdout: '{"trusted":true}',
     }));
+    // No managed policy is installed. The real reader would open the Windows
+    // registry, which this process only pretends to be on, and fail closed.
+    vi.doMock('../commands/managed-update-installer.js', async () => ({
+      ...(await vi.importActual<
+        typeof import('../commands/managed-update-installer.js')
+      >('../commands/managed-update-installer.js')),
+      installedManagedUpdates: () => null,
+    }));
     const platform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { value: 'win32' });
     try {
@@ -10152,6 +10160,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       await lifecycle.upgrade();
     } finally {
       if (platform) Object.defineProperty(process, 'platform', platform);
+      vi.doUnmock('../commands/managed-update-installer.js');
     }
 
     const powershell =
@@ -10251,6 +10260,122 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
         'To move this copy to a newer version by hand: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
         `Instance state for the stable channel lives in ${join(TEST_STATION_ROOT, 'state', 'stable')}, outside every version directory, so the new version sees and stops what this one started.`,
       ].join('\n'),
+    );
+    expect(execSync).not.toHaveBeenCalled();
+    expect(execFileSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('station upgrade under the managed update limit (#4522)', () => {
+  const MIRROR = 'https://mirror.example.test/station/t0ken/';
+
+  function installPolicy(updates: Record<string, unknown>): void {
+    const policy = join(TEST_ROOT, `policy-${Math.random()}.json`);
+    ensureDir(TEST_ROOT);
+    writeFileSync(
+      policy,
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { updates },
+      }),
+    );
+    vi.stubEnv('STATION_MANAGED_POLICY_TEST_FILE', policy);
+  }
+
+  /** A signed packaged install, as the packaged-upgrade tests above lay out. */
+  function packagedInstall(releaseChannel: 'stable' | 'nightly') {
+    const runtimeChannel = releaseChannel;
+    const installRoot = join(TEST_ROOT, `managed-portable-${releaseChannel}`);
+    const release = join(installRoot, 'releases', 'a'.repeat(64));
+    const stationHome = join(TEST_ROOT, `managed-home-${releaseChannel}`);
+    ensureDir(release);
+    ensureDir(stationHome);
+    writeFileSync(
+      join(release, '.station-release.json'),
+      `${JSON.stringify({
+        schemaVersion: 2,
+        sha: 'b'.repeat(40),
+        ref: releaseChannel === 'stable' ? 'v1.2.3' : 'v1.2.3-nightly.242704',
+        createdAt: '2026-07-22T00:00:00.000Z',
+        channel: runtimeChannel,
+        releaseChannel,
+        prerelease: releaseChannel !== 'stable',
+      })}\n`,
+    );
+    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
+      mode: 0o700,
+    });
+    writeFileSync(
+      join(installRoot, '.station-portable-install-root'),
+      'station-portable-install-root-v1\n',
+    );
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      `${JSON.stringify({
+        schemaVersion: 4,
+        channel: runtimeChannel,
+        releaseChannel,
+        installRoot,
+        stationRoot: join(TEST_ROOT, `managed-root-${releaseChannel}`),
+        stationHome,
+        manifestUrl: `https://github.com/kontourai/station/releases/download/portable-${releaseChannel}/station-portable-${releaseChannel}-manifest.json`,
+      })}\n`,
+      { mode: 0o600 },
+    );
+    symlinkSync(release, join(installRoot, 'current'));
+    return { release };
+  }
+
+  it.skipIf(process.platform === 'win32')(
+    'a mirror: the installer is pointed at the mirror’s manifest and told to download from the mirror',
+    async () => {
+      installPolicy({ feedUrl: MIRROR });
+      const { release } = packagedInstall('stable');
+      const execFileSync = vi.fn();
+      const execSync = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        cwd: release,
+        childProcessMock: { execFileSync, execSync },
+      });
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+      await lifecycle.upgrade();
+      expect(execFileSync).toHaveBeenCalledTimes(1);
+      const env = execFileSync.mock.calls[0]?.[2]?.env ?? {};
+      expect(env.STATION_INSTALL_PUBLIC_MANIFEST_URL).toBe(
+        `${MIRROR}portable-stable/station-portable-stable-manifest.json`,
+      );
+      expect(env.STATION_INSTALL_MIRROR_URL).toBe(MIRROR);
+      expect(execSync).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allowNightly: false refuses a nightly install before the installer runs', async () => {
+    installPolicy({ allowNightly: false });
+    const { release } = packagedInstall('nightly');
+    const execFileSync = vi.fn();
+    const execSync = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      cwd: release,
+      childProcessMock: { execFileSync, execSync },
+    });
+    await expect(lifecycle.upgrade()).rejects.toThrow(
+      "This machine's managed policy makes the nightly channel unavailable.",
+    );
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(execSync).not.toHaveBeenCalled();
+  });
+
+  it('a mirror refuses a source checkout before any git command', async () => {
+    installPolicy({ feedUrl: MIRROR });
+    ensureDir(join(TEST_CWD, '.git'));
+    const execFileSync = vi.fn();
+    const execSync = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execFileSync, execSync },
+    });
+    await expect(lifecycle.upgrade()).rejects.toThrow(
+      /takes updates only from the organization's mirror, which a source checkout cannot update from/,
     );
     expect(execSync).not.toHaveBeenCalled();
     expect(execFileSync).not.toHaveBeenCalled();

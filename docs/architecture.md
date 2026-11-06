@@ -152,8 +152,10 @@ carries authorized replay/snapshot and live canonical events.
 For Station-engine turns, the `station-agent` adapter relays internally to
 `POST /api/agents/:slug/chat`. That private path owns framework streaming,
 elicitation, transcript-related work and Station-engine behavior. It is not a
-second public chat entry point. External engines retain their own execution
-loops behind adapters. See [ADR 0014](adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md)
+second public chat entry point. On a new session's first turn it may add a short
+brief of the person's confirmed private memory when that preview is on
+([Knowledge guide](guides/knowledge.md#review-recall-and-brief)). External engines
+retain their own execution loops behind adapters. See [ADR 0014](adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md)
 and the [Session API](reference/session-api.md).
 
 ## Module Map

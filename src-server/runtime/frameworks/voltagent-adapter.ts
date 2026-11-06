@@ -27,6 +27,7 @@ import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { createPromptOnlyMemoryView } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { resolveMaxSteps } from '../../constants.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { gateStationAgentRuns } from '../../security/managed-engine-limits.js';
 import {
   publicAgentIdFromRuntimeKey,
   runtimeAgentKey,
@@ -1355,6 +1356,10 @@ export class VoltAgentFramework {
           return createToolView(addAgentTools(tools, additions));
         },
       );
+      // #4515: a registered Agent is Station's agent. Gated on the inner
+      // Agent, which Station registers as the live chat agent (`raw`) and
+      // which the wrapper and its durable binding call into.
+      gateStationAgentRuns(agent);
       return bindDurableAgent(wrapper, {
         home: config.projectHomeDir,
         memory: opts.memoryAdapter,
@@ -1453,6 +1458,7 @@ export class VoltAgentFramework {
   }
 
   async createTempAgent(opts: {
+    purpose: 'agent-run' | 'utility';
     agentId?: string;
     name: string;
     instructions: string | (() => string);
@@ -1531,6 +1537,8 @@ export class VoltAgentFramework {
           return createToolView(addAgentTools(opts.tools ?? [], additions));
         },
       );
+      // #4515: on the inner Agent, as for a registered one (`raw`).
+      if (opts.purpose === 'agent-run') gateStationAgentRuns(agent);
       return opts.durable
         ? bindDurableAgent(wrapper, {
             ...opts.durable,
