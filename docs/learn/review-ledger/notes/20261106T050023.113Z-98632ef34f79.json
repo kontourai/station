@@ -1,0 +1,11 @@
+{
+  "revision": "f66bfc6d7e7c2211c13d88e8eff8eae2730d1a3f",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the release-inventory claim against release-sbom-context.mjs graphPurls, pnpm-dependency-graph.mjs dependencies, the lock importers and the lifecycle allowlist. Shared now declares koffi 3.3.6 as production; portable/desktop/mobile lifecycle metadata shares that production list, while container uses both Linux architectures with development dependencies. The fixture adds four literal PURLs and preserves exact equality. Workspace/optional graph and integrity qualification claims remain accurate.","inputs":["docs/design/pnpm-workspace-installation.md","scripts/__tests__/release-sbom-generation.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the repository-only SBOM generation and assembly section against the fixture repair. Only independent expected koffi 3.3.6 lifecycle identities changed; canonical fragments, four scope bindings, immutable container scanner inputs, completeness assertions and schema validation remain unchanged. Owner suite passes 40 tests; omitting koffi from the producer fails the exact-inventory test and restoration passes. No CLI or release workflow behavior changes.","inputs":["docs/reference/cli.md","scripts/__tests__/release-sbom-generation.test.ts"]},
+
+    {"path":"scripts/__tests__/fixtures/sbom/README.md","note":"Reviewed the four added literal koffi identities in the live-lock lifecycle inventory test. SPDX and CycloneDX schema files, upstream revision, licenses and offline schema-validation paths are unchanged. The 40-test owner suite still exercises these schemas; the repair changes no schema provenance claim.","inputs":["scripts/__tests__/fixtures/sbom/README.md","scripts/__tests__/release-sbom-generation.test.ts"]}
+  ]
+}
