@@ -250,9 +250,13 @@
 
 .sidebar__project-row-main {
   position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .sidebar__project-btn {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -365,10 +369,8 @@
    or the handle itself is focused, so the rail stays quiet; it is still in the
    tab order either way, which is what keeps keyboard reorder reachable. */
 .sidebar__reorder-handle {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
+  margin-inline-end: var(--k-space-2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -423,47 +425,15 @@
     height: 44px;
   }
 
-  .sidebar
-    .sidebar__project-row-main:has(.sidebar__project-disclosure)
-    .sidebar__project-btn {
-    padding-right: calc(var(--k-space-6) * 2 + var(--k-space-3));
-  }
-
   .sidebar__reorder-handle {
     opacity: 1;
-    width: 28px;
+    width: 44px;
     height: 44px;
-    right: 4px;
   }
 
-  /* The handle's 44px target must not exceed the row that contains it. The
-     default row pitch is 34px (6px button padding + a 22px accent), so a 44px
-     handle centred on it overhung 5px at each end and ADJACENT handles
-     overlapped by 10px — a tap low in row N's handle column grabbed row N+1.
-     Raising the row to 44px is the fix that keeps the target at the a11y floor
-     the rest of this file uses; shrinking the handle to the row would have
-     traded an overlap defect for a below-floor touch target. Rows are taller
-     on touch, which is ordinary.
-
-     Note what this does NOT claim: the `touch-action: none` band is still
-     continuous down the handle column, because a drag handle has to own its
-     gesture. What #3331 fixed is that the column is now VISIBLE, so a finger
-     landing there is a choice rather than an ambush; it is 28px of a ~250px
-     rail and scrolling anywhere else is unaffected.
-
-     Collapsed rows render no handle and centre their icon, so they keep the
-     symmetric padding above.
-
-     #2063 retired the expand/collapse chevron with the nested layout tree, so
-     the handle is the row's only overlaid control and takes the column the
-     chevron used to hold: 4-32px from the right edge instead of 34-62px. The
-     text reservation follows it down — 36px clears the 32px the handle
-     occupies by 4px, exactly the clearance the 66px reservation gave when the
-     handle sat outboard of the chevron. archive#3346's rule for the chevron's
-     own 44px target went with the control it sized. */
+  /* Separate flex items keep navigation and reorder targets disjoint. */
   .sidebar:not(.sidebar--collapsed) .sidebar__project-btn {
     min-height: 44px;
-    padding-right: 36px;
   }
 }
 
@@ -555,10 +525,7 @@
 }
 
 .sidebar__project-disclosure {
-  position: absolute;
-  right: var(--k-space-6);
-  top: 50%;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
   width: var(--k-space-5);
   height: var(--k-space-6);
   border: 0;
@@ -566,11 +533,6 @@
   background: transparent;
   color: var(--k-text-muted);
   cursor: pointer;
-}
-
-.sidebar__project-row-main:has(.sidebar__project-disclosure)
-  .sidebar__project-btn {
-  padding-right: calc(var(--k-space-6) * 2);
 }
 
 .sidebar__views-message {
@@ -793,12 +755,6 @@
   .sidebar .sidebar__project-disclosure {
     width: 44px;
     height: 44px;
-  }
-
-  .sidebar
-    .sidebar__project-row-main:has(.sidebar__project-disclosure)
-    .sidebar__project-btn {
-    padding-right: calc(var(--k-space-6) * 2 + var(--k-space-3));
   }
 
   .sidebar__nav-btn {

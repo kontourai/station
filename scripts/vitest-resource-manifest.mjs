@@ -141,6 +141,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Owns a production AccountEntry Vite bundle and pinned Chromium lifecycle.
+  'src-ui/src/__tests__/AccountEntryView.browser.test.tsx',
   // Full 4,800-effect WAL/FULL retention backlog; the small case stays ordinary.
   'packages/agent-runtime/src/__tests__/turn-retention.process.test.ts',
   // Creates a private FIFO and reads it in a bounded child so a blocking regression cannot hang Vitest.
@@ -172,7 +174,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
-  // Loads node-pty with a fake PTY and mocked child-process observations.
+  // Loads node-pty with a fake PTY and mocked child-process observations;
+  // on Windows two real ConPTY shells, one at a time, in the OS temp directory.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
@@ -663,6 +666,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and a symlink to prove `invokedDirectly` reaches the script body.
   // Bounded single-shot children per case.
   'scripts/__tests__/module-entry.test.ts',
+  // Real coordinator/fork processes verify worker exit diagnostics and fatal behavior.
+  'scripts/__tests__/windows-portable-floor.test.ts',
   // #2682: runs the real a11y ratchet (one Biome lint over the tree) as a
   // child process with an empty PATH to prove it needs no npx shim.
   'scripts/__tests__/a11y-ratchet.test.ts',

@@ -106,7 +106,9 @@
 
     "src-ui/src/hooks/ServerEventsMount.tsx",
 
-    "scripts/unsaved-guard-gate.mjs"
+    "scripts/unsaved-guard-gate.mjs",
+
+    "src-ui/src/components/modals/ConfirmModal.tsx"
   ],
 
   "checks": [

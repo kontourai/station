@@ -31,6 +31,96 @@ function writeFixturePackage(
 }
 
 describe('desktop runtime pruning', () => {
+  it('keeps the installed OTLP Node serializers usable through import and require', async () => {
+    const output = join(makeTempDir('station-runtime-otlp-'), 'release');
+    stageDesktopServerRuntime({
+      projectRoot: repoRoot,
+      outputRoot: output,
+      packages: ['@opentelemetry/otlp-transformer'],
+    });
+    const probe = await execFileAsync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { createRequire } from 'node:module';
+import { JsonTraceSerializer, ProtobufTraceSerializer } from '@opentelemetry/otlp-transformer';
+const require = createRequire(import.meta.url);
+const span = {
+  name: 'staged-runtime-span', kind: 0,
+  spanContext: () => ({traceId: '0123456789abcdef0123456789abcdef', spanId: '0123456789abcdef', traceFlags: 1}),
+  resource: {attributes: {'service.name': 'staged-runtime'}},
+  instrumentationScope: {name: 'staging-probe'},
+  startTime: [1, 0], endTime: [2, 0], duration: [1, 0], ended: true, status: {code: 0},
+  attributes: {probe: true}, events: [], links: [],
+  droppedAttributesCount: 0, droppedEventsCount: 0, droppedLinksCount: 0,
+};
+const request = JSON.parse(new TextDecoder().decode(JsonTraceSerializer.serializeRequest([span])));
+console.log(JSON.stringify({
+  name: request.resourceSpans[0].scopeSpans[0].spans[0].name,
+  protobufHasData: ProtobufTraceSerializer.serializeRequest([span]).length > 0,
+  sharedIdentity: JsonTraceSerializer === require('@opentelemetry/otlp-transformer').JsonTraceSerializer,
+}));`,
+      ],
+      { cwd: output, windowsHide: true, timeout: 10_000 },
+    );
+    expect(JSON.parse(probe.stdout)).toEqual({
+      name: 'staged-runtime-span',
+      protobufHasData: true,
+      sharedIdentity: true,
+    });
+    const transformer = join(
+      output,
+      'node_modules/@opentelemetry/otlp-transformer',
+    );
+    expect(existsSync(join(transformer, 'build/src/index.js'))).toBe(true);
+    expect(readFileSync(join(transformer, 'LICENSE'), 'utf8')).toContain(
+      'Apache License',
+    );
+    expect(existsSync(join(transformer, 'build/esm'))).toBe(false);
+    expect(existsSync(join(transformer, 'build/esnext'))).toBe(false);
+  });
+
+  it('scopes alternate OTLP distribution removal to that package', () => {
+    const project = makeTempDir('station-runtime-otlp-scope-');
+    for (const name of ['@opentelemetry/otlp-transformer', 'other-telemetry']) {
+      writeFixturePackage(
+        join(project, 'node_modules', name),
+        { name, version: '1.0.0' },
+        {
+          'build/src/index.js': 'node implementation',
+          'build/esm/index.js': 'module implementation',
+          'build/esnext/index.js': 'esnext implementation',
+          LICENSE: 'license',
+        },
+      );
+    }
+    const output = join(project, 'release');
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['@opentelemetry/otlp-transformer', 'other-telemetry'],
+    });
+    for (const name of ['@opentelemetry/otlp-transformer', 'other-telemetry']) {
+      expect(
+        existsSync(join(output, 'node_modules', name, 'build/src/index.js')),
+      ).toBe(true);
+      expect(existsSync(join(output, 'node_modules', name, 'LICENSE'))).toBe(
+        true,
+      );
+    }
+    expect(
+      existsSync(
+        join(output, 'node_modules/other-telemetry/build/esm/index.js'),
+      ),
+    ).toBe(true);
+    expect(
+      existsSync(
+        join(output, 'node_modules/other-telemetry/build/esnext/index.js'),
+      ),
+    ).toBe(true);
+  });
+
   it('stages the installed RxJS Node exports without browser builds or TypeScript sources', async () => {
     const output = join(makeTempDir('station-runtime-rxjs-'), 'release');
     stageDesktopServerRuntime({

@@ -45,9 +45,10 @@ export async function scrollBrowserFixture(
   const css =
     result.outputFiles.find((file) => file.path.endsWith('.css'))?.text ?? '';
   const browser: Browser = await chromium.launch();
-  const page: Page = await browser.newPage({
+  const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
   });
+  const page: Page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('http://station.test/**', (route) => {

@@ -1314,6 +1314,7 @@ export const PREFERENCE_DEVICE_KEYS = [
   'chatAnswerWidth',
   'chatReturnBehavior',
   'hapticsEnabled',
+  'showReleaseNotesAfterUpdate',
   'openLastStationOnLaunch',
   'terminalScreenReader',
   'developerToolsEnabled',

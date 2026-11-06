@@ -3,6 +3,7 @@
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useSyncExternalStore } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const saveMutate = vi.fn();
@@ -13,6 +14,11 @@ let saveMutationOptions: {
   onError?: (error: Error) => void;
   onSuccess?: (saved: { id: string }, variables: unknown) => void;
 } = {};
+let deleteMutationOptions: {
+  onSuccess?: (data: void, id: string) => void;
+  onError?: (error: Error, id: string) => void;
+} = {};
+let deleteMutationState = { isPending: false };
 let modelConnections: unknown[] = [];
 let modelConnectionsError: Error | null = null;
 const refetchModelConnections = vi.fn();
@@ -50,10 +56,10 @@ vi.mock('@kontourai/station-sdk', () => ({
       isPending: saveMutationState.isPending,
     };
   },
-  useDeleteModelConnectionMutation: () => ({
-    mutate: deleteMutate,
-    isPending: false,
-  }),
+  useDeleteModelConnectionMutation: (options: typeof deleteMutationOptions) => {
+    deleteMutationOptions = options;
+    return { mutate: deleteMutate, isPending: deleteMutationState.isPending };
+  },
   useTestModelConnectionMutation: () => ({
     mutate: testMutate,
     isPending: false,
@@ -85,7 +91,10 @@ vi.mock('../contexts/NavigationContext', () => {
   };
 });
 
+import { getPathForView } from '../app-shell/routing';
+import { navigationStore } from '../contexts/navigation-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import type { NavigationView } from '../types';
 import { ProviderSettingsView } from '../views/ProviderSettingsView';
 
 // The device projection this page now reads. `undefined` is the honest
@@ -94,6 +103,23 @@ import { ProviderSettingsView } from '../views/ProviderSettingsView';
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
+
+function navigateModelView(view: NavigationView) {
+  navigationStore.navigate(getPathForView(view)!);
+}
+
+function ModelSelectionFromNavigation() {
+  const { pathname } = useSyncExternalStore(
+    navigationStore.subscribe,
+    navigationStore.getSnapshot,
+  );
+  return (
+    <ProviderSettingsView
+      selectedProviderId={pathname.split('/')[3]}
+      onNavigate={navigateModelView}
+    />
+  );
+}
 
 describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () => {
   const onNavigate = vi.fn();
@@ -105,6 +131,8 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     onNavigate.mockReset();
     saveMutationState = { isPending: false };
     saveMutationOptions = {};
+    deleteMutationOptions = {};
+    deleteMutationState = { isPending: false };
     modelConnections = [];
     acpRegistryData = [];
     modelConnectionsError = null;
@@ -396,7 +424,13 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
   // RT-17 — agent delete has always opened a confirm modal; provider delete
   // was a single click that removed the connection and its saved API key from
   // disk with no confirmation of any kind.
-  test('provider delete confirms before removing the connection', () => {
+  test('provider delete confirms, then leaves a dirty deleted connection without another discard decision', () => {
+    navigationStore.navigate('/connections/models/anthropic-1');
+    onNavigate.mockImplementation((view) => {
+      if (view.type === 'connections-models') {
+        navigationStore.navigate('/connections/models');
+      }
+    });
     modelConnections = [
       {
         id: 'anthropic-1',
@@ -417,6 +451,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       />,
     );
 
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Unsaved name' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(deleteMutate).not.toHaveBeenCalled();
 
@@ -427,6 +464,11 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(deleteMutate).not.toHaveBeenCalled();
     expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByLabelText('Name')).toHaveProperty(
+      'value',
+      'Unsaved name',
+    );
+    expect(window.location.pathname).toBe('/connections/models/anthropic-1');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     fireEvent.click(
@@ -437,7 +479,121 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         ) as HTMLElement,
     );
     expect(deleteMutate).toHaveBeenCalledWith('anthropic-1');
+
+    act(() => {
+      deleteMutationOptions.onError!(
+        new Error('Deletion refused'),
+        'anthropic-1',
+      );
+    });
+    expect(screen.getByText('Deletion refused')).toBeTruthy();
+    expect(screen.getByLabelText('Name')).toHaveProperty(
+      'value',
+      'Unsaved name',
+    );
+    act(() => navigationStore.navigate('/connections/models'));
+    expect(
+      screen.getByRole('dialog', { name: 'Unsaved Changes' }),
+    ).toBeTruthy();
+    expect(window.location.pathname).toBe('/connections/models/anthropic-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByLabelText('Name')).toHaveProperty(
+      'value',
+      'Unsaved name',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(
+      screen
+        .getAllByRole('button', { name: 'Delete' })
+        .find((button) =>
+          button.closest('.station-dialog__footer'),
+        ) as HTMLElement,
+    );
+    expect(deleteMutate).toHaveBeenCalledTimes(2);
+    act(() => {
+      deleteMutationOptions.onSuccess!(undefined, 'anthropic-1');
+    });
+
+    expect(window.location.pathname).toBe('/connections/models');
+    expect(
+      screen.queryByRole('dialog', { name: 'Unsaved Changes' }),
+    ).toBeNull();
+    expect(screen.queryByLabelText('Name')).toBeNull();
   });
+
+  test.each(['success', 'failure'] as const)(
+    'a pending deletion %s for another Model preserves the current selection and unsaved draft',
+    (outcome) => {
+      const first = {
+        id: 'anthropic-1',
+        kind: 'model',
+        type: 'anthropic',
+        name: 'First model',
+        config: {},
+        enabled: true,
+        capabilities: ['llm'],
+        status: 'ready',
+        prerequisites: [],
+      };
+      modelConnections = [
+        first,
+        { ...first, id: 'anthropic-2', name: 'Second model' },
+      ];
+      navigationStore.navigate('/connections/models/anthropic-1');
+      const view = render(<ModelSelectionFromNavigation />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      fireEvent.click(
+        screen
+          .getAllByRole('button', { name: 'Delete' })
+          .find((button) =>
+            button.closest('.station-dialog__footer'),
+          ) as HTMLElement,
+      );
+      expect(deleteMutate).toHaveBeenCalledWith('anthropic-1');
+      deleteMutationState = { isPending: true };
+      view.rerender(<ModelSelectionFromNavigation />);
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+
+      fireEvent.click(screen.getByText('Second model'));
+      expect(window.location.pathname).toBe('/connections/models/anthropic-2');
+      fireEvent.change(screen.getByLabelText('Name'), {
+        target: { value: 'Second model draft' },
+      });
+
+      act(() => {
+        deleteMutationState = { isPending: false };
+        if (outcome === 'success') {
+          deleteMutationOptions.onSuccess!(undefined, 'anthropic-1');
+        } else {
+          deleteMutationOptions.onError!(
+            new Error('Old deletion refused'),
+            'anthropic-1',
+          );
+        }
+      });
+
+      view.rerender(<ModelSelectionFromNavigation />);
+      expect(screen.getByLabelText('Name')).toHaveProperty(
+        'value',
+        'Second model draft',
+      );
+      expect(window.location.pathname).toBe('/connections/models/anthropic-2');
+      expect(screen.queryByText('Old deletion refused')).toBeNull();
+      act(() => navigationStore.navigate('/connections/models'));
+      expect(
+        screen.getByRole('dialog', { name: 'Unsaved Changes' }),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(window.location.pathname).toBe('/connections/models/anthropic-2');
+      expect(screen.getByLabelText('Name')).toHaveProperty(
+        'value',
+        'Second model draft',
+      );
+    },
+  );
 
   // The draft stays on `new` until it is created. It used to navigate to the
   // not-yet-created id the moment a type was picked, which reads fine here —
