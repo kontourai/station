@@ -197,7 +197,7 @@ async function buildDesktopResourceFixture(root: string) {
       db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA wal_autocheckpoint=0; CREATE TABLE payload(bytes BLOB); INSERT INTO payload VALUES(zeroblob(6291456))');
       try {
         const {dev,ino} = statSync(path);
-        const worker = new Worker(pathToFileURL(${JSON.stringify(join(serverOutput, 'durable-agent-checkpoint-worker.js'))}), {workerData:{path,dev,ino}});
+        const worker = new Worker(pathToFileURL(${JSON.stringify(join(serverOutput, 'durable-agent-checkpoint-worker.js'))}), {workerData:{path,dev,ino},execArgv:[]});
         let reply;
         worker.once('message', value => {reply=value});
         await new Promise((resolve,reject) => {worker.once('error',reject);worker.once('exit', code => code===0 && reply===null ? resolve() : reject(new Error('checkpoint worker did not acknowledge')))});
