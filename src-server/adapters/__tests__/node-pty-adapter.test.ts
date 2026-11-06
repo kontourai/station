@@ -1,4 +1,5 @@
 import { ChildProcess, execFile } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
@@ -87,6 +88,67 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
       expect.objectContaining({ cwd: '/tmp', cols: 80, rows: 24 }),
     );
   });
+});
+
+describe('Windows PTY output-pipe custody', () => {
+  test.each(['connected', 'exited-before-connect'] as const)(
+    'tree cleanup waits for pipe wiring: %s',
+    async (ending) => {
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      const socket = new EventEmitter();
+      const exits = new Set<(event: { exitCode: number }) => void>();
+      const exit = () => {
+        for (const listener of [...exits]) listener({ exitCode: 0 });
+      };
+      const pty = {
+        pid: 4242,
+        _socket: socket,
+        onData: () => ({ dispose() {} }),
+        onExit: (listener: (event: { exitCode: number }) => void) => {
+          exits.add(listener);
+          return { dispose: () => exits.delete(listener) };
+        },
+        write: vi.fn(),
+        resize: vi.fn(),
+        kill: vi.fn(),
+      };
+      const taskkill = vi
+        .mocked(execFile)
+        .mockImplementation((_command, _args, _options, callback) => {
+          callback!(null, '', '');
+          exit();
+          return new ChildProcess();
+        });
+      let stopped: Promise<void> | undefined;
+      try {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        const adapter = new NodePtyAdapter(
+          () =>
+            Promise.resolve({ spawn: () => pty }) as unknown as Promise<
+              typeof import('node-pty')
+            >,
+        );
+        const proc = await adapter.spawn(SPAWN_INPUT);
+        let completed = false;
+        stopped = proc.terminate!().then(() => {
+          completed = true;
+        });
+        await Promise.resolve();
+        expect(taskkill).not.toHaveBeenCalled();
+        if (ending === 'exited-before-connect') {
+          exit();
+          await vi.waitFor(() => expect(completed).toBe(true));
+        } else socket.emit('ready_datapipe');
+        await stopped;
+        expect(taskkill).toHaveBeenCalledTimes(ending === 'connected' ? 1 : 0);
+      } finally {
+        socket.emit('ready_datapipe');
+        await stopped;
+        Object.defineProperty(process, 'platform', platform);
+        vi.mocked(execFile).mockReset();
+      }
+    },
+  );
 });
 
 describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {

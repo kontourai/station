@@ -71,6 +71,7 @@ function getNodePty(): Promise<typeof import('node-pty')> {
 class NodePtyProcess implements IPtyProcess {
   private exited = false;
   private termination?: Promise<void>;
+  private readonly outputPipeReady: Promise<void>;
   readonly terminate?: () => Promise<void>;
   private paused = false;
   private pauseEpoch = 0;
@@ -78,8 +79,29 @@ class NodePtyProcess implements IPtyProcess {
   private pauseWatch?: ReturnType<typeof setTimeout>;
 
   constructor(private pty: import('node-pty').IPty) {
+    const socket = '_socket' in pty ? pty._socket : undefined;
+    let finishPipeWait: (() => void) | undefined;
+    // node-pty 1.1 wires Windows socket-close to exit only after this event.
+    // Register before yielding the spawn result; an earlier taskkill can lose
+    // the exit observation while the output worker is still connecting.
+    if (
+      process.platform === 'win32' &&
+      typeof socket === 'object' &&
+      socket !== null &&
+      'once' in socket &&
+      typeof socket.once === 'function'
+    ) {
+      const once = socket.once.bind(socket);
+      this.outputPipeReady = new Promise<void>((resolve) => {
+        finishPipeWait = resolve;
+        once('ready_datapipe', resolve);
+      });
+    } else {
+      this.outputPipeReady = Promise.resolve();
+    }
     pty.onExit(() => {
       this.exited = true;
+      finishPipeWait?.();
       if (this.paused) this.outputIncomplete = true;
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
@@ -135,6 +157,7 @@ class NodePtyProcess implements IPtyProcess {
    */
   private terminateTree(): Promise<void> {
     this.termination ??= (async () => {
+      await this.outputPipeReady;
       if (this.exited) return;
       const exited = new Promise<void>((resolve) => {
         const subscription = this.pty.onExit(() => {

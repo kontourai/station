@@ -288,8 +288,12 @@ The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
 unknown or changed tty identity refuses all census signals; the adapter kills
 its owned shell handle and reports the cleanup failure instead of guessing
 at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
-On Windows the operation ends the shell's process tree with `taskkill /T /F`
-before the ConPTY closes, as the supervisor's workload host does: closing a
+On Windows the adapter waits for node-pty to connect its output pipe and wire
+socket-close to the exit event. It waits for pipe wiring rather than the
+shell's first output; killing before that wiring can lose the exit observation.
+An exit observed while waiting skips the later tree signal. The existing
+cleanup deadline is unchanged. It then ends the shell's process tree with
+`taskkill /T /F` before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
 stop (#3994). After a successful `taskkill` both hosts wait for the exit.
