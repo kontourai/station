@@ -156,7 +156,11 @@ test('shows actual server states and keeps keyless entries read-only without per
   await screen.findByText('3 pending');
   expand();
   expect(screen.getByText('another sender')).toBeTruthy();
-  expect(screen.getByText('May have been sent')).toBeTruthy();
+  expect(
+    screen.getByText('May have reached the agent', {
+      selector: '[role="status"]',
+    }),
+  ).toBeTruthy();
   expect(screen.queryByRole('button', { name: /Dismiss held/ })).toBeNull();
   expect(
     screen.queryByRole('button', { name: /Remove held message: sending/ }),
@@ -245,7 +249,11 @@ test('an unknown steer offers explicit review and resend without automatically s
   mount({ messages: [] }, review);
   await screen.findByText('1 pending');
   expand();
-  expect(screen.getByText('May have been sent')).toBeTruthy();
+  expect(
+    screen.getByText('May have reached the agent', {
+      selector: '[role="status"]',
+    }),
+  ).toBeTruthy();
   expect(review).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Review and resend' }));
   await waitFor(() => expect(dismissed).toBe(true));

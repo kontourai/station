@@ -104,6 +104,7 @@ category.
 - [shell-plugins-distributions.md](shell-plugins-distributions.md) — Shell kernel, plugin contributions and distribution manifests
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (archive#193 shell convergence)
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
+- [station-connection.md](station-connection.md) — Station connections and shared conversations
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
 - [station-peer-pairing.md](station-peer-pairing.md) — Design: Station-to-Station peer pairing (spike, #70)
 - [station-routes.md](station-routes.md) — Station routes: one saved Station, many ways to reach it

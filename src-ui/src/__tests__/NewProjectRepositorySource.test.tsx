@@ -15,6 +15,10 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
+vi.mock('../hooks/useActiveStationName', () => ({
+  useActiveStationName: () => 'Kontour Station',
+}));
+
 const authority = vi.hoisted(() => ({
   scope: {
     apiBase: 'http://station.test',

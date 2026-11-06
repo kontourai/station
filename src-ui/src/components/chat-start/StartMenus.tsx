@@ -203,6 +203,7 @@ export function StartAgentMenu({
             />
           ))}
         <AgentPickerGroups
+          selectionOnly
           groups={groups}
           flatList={flatList}
           selectedIndex={activeIndex}

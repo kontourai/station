@@ -8,6 +8,7 @@ import {
 import { type FormEvent, useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../utils/errorText';
+import { describeStationFailure } from '../utils/stationFailure';
 import { useProjectCreationRecovery } from './useProjectCreationRecovery';
 import { useProjectDraftState } from './useProjectDraftState';
 import { trackRecentLayout } from './useRecentLayouts';
@@ -204,9 +205,9 @@ export function useNewProjectSubmit({
       const status = (result.error as { status?: unknown }).status;
       return {
         message:
-          result.error instanceof Error
-            ? result.error.message
-            : String(result.error),
+          status === 404
+            ? 'Folder not found'
+            : describeStationFailure(result.error).body,
         verdict: typeof status === 'number' && status >= 400 && status < 500,
       };
     }
@@ -338,9 +339,7 @@ export function useNewProjectSubmit({
         onComplete(project.slug, project.layoutSlug, project.startIntent);
       else onComplete(project.slug, project.layoutSlug);
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? userFacingErrorMessage(err) : String(err),
-      );
+      setError(userFacingErrorMessage(err));
     }
   }
 
@@ -358,11 +357,7 @@ export function useNewProjectSubmit({
         setCreatedProject(null);
         setError(null);
       } catch (error) {
-        setError(
-          error instanceof Error
-            ? userFacingErrorMessage(error)
-            : String(error),
-        );
+        setError(userFacingErrorMessage(error));
       }
     },
     error,

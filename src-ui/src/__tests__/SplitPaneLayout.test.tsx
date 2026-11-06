@@ -252,7 +252,7 @@ describe('SplitPaneLayout', () => {
 
     expect(screen.queryByText('No installed skills yet')).toBeNull();
     expect(screen.getByText('Unable to load skills')).toBeTruthy();
-    expect(screen.getByText('skills read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
@@ -283,7 +283,7 @@ describe('SplitPaneLayout', () => {
 
     expect(screen.getByText('Pizza skill')).toBeTruthy();
     expect(screen.queryByText('Unable to load skills')).toBeNull();
-    expect(screen.queryByText('skills read failed')).toBeNull();
+    expect(screen.queryByText('Try again in a moment.')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 

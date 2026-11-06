@@ -15,6 +15,7 @@ import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { CompanionProductTrends } from './CompanionProductTrends';
 import { newCompanionOperationId } from './companion-operation-id';
 import './CompanionManaged.css';
@@ -265,11 +266,7 @@ export function CompanionManaged({
         {privatePreparation.isError ? (
           <ErrorState
             title="Storage request unavailable"
-            description={
-              privatePreparation.error instanceof Error
-                ? privatePreparation.error.message
-                : 'Ask the person for a fresh request.'
-            }
+            description={describeStationFailure(privatePreparation.error).body}
             action={
               <Button onClick={() => void privatePreparation.refetch()}>
                 Check request again

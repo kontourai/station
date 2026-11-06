@@ -182,6 +182,8 @@ export function useProjectTaskRoomDiscoveryQuery(
 }
 export function useProjectTaskRoomHistoryQuery(taskId: string) {
   return useInfiniteQuery({
+    // Keep an admitted page visible and let the owner retry the failed page.
+    retry: false,
     queryKey: projectTaskRoomQueries.history(taskId).queryKey,
     enabled: taskId.length > 0,
     initialPageParam: { cursor: undefined as string | undefined },
@@ -413,6 +415,20 @@ export function useProjectTaskRoomStream(
       if (!isCurrentStream()) return;
       notifyProjectTaskRoomCallback(callback);
     };
+    const invalidateHistory = () => {
+      const queryKey = projectTaskRoomQueries.history(taskId).queryKey;
+      void client.invalidateQueries(
+        {
+          queryKey,
+          // Presence snapshots must not silently retry a failed admitted page.
+          refetchType:
+            client.getQueryState(queryKey)?.status === 'error'
+              ? 'none'
+              : 'active',
+        },
+        { cancelRefetch: false },
+      );
+    };
     const recoverDocument = (
       gap: { kind: 'gap'; floor: string } | { kind: 'unavailable' } = {
         kind: 'unavailable',
@@ -476,9 +492,7 @@ export function useProjectTaskRoomStream(
             if (live?.scope.taskId === taskId)
               notifyCurrent(() => callbackRef.current?.onRoom?.(live));
             else {
-              void client.invalidateQueries({
-                queryKey: projectTaskRoomQueries.history(taskId).queryKey,
-              });
+              invalidateHistory();
               void client.invalidateQueries({
                 queryKey: ['task-graph', taskId],
               });
@@ -515,9 +529,7 @@ export function useProjectTaskRoomStream(
             void client.invalidateQueries({
               queryKey: projectTaskRoomQueries.discovery(taskId).queryKey,
             });
-            void client.invalidateQueries({
-              queryKey: projectTaskRoomQueries.history(taskId).queryKey,
-            });
+            invalidateHistory();
             if (document?.kind === 'snapshot' || document?.kind === 'delta') {
               // The ordinary document GET commonly starts before this initial
               // stream snapshot. Abort its exact query before publishing the

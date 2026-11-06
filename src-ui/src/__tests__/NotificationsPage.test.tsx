@@ -599,7 +599,7 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Unable to load notifications')).toBeTruthy();
-    expect(screen.getByText('Notification service unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(invalidateQueries).toHaveBeenCalledWith({
@@ -956,7 +956,7 @@ describe('NotificationsPage', () => {
     await waitFor(() =>
       expect(
         within(screen.getByRole('dialog')).getByText(
-          /1 of 2 could not be dismissed: Could not record dismissal/,
+          /1 of 2 could not be dismissed: Try again in a moment/,
         ),
       ).toBeTruthy(),
     );
@@ -1520,7 +1520,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
 
       await waitFor(() =>
         expect(
-          screen.getByText(/Couldn't unsnooze:.*Snooze storage is unavailable/),
+          screen.getByText(/Couldn't unsnooze:.*Try again in a moment/),
         ).toBeTruthy(),
       );
       expect(screen.getByText('Snoozed failure')).toBeTruthy();

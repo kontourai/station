@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   type WorkflowPlanArtifact,
   WorkflowPlanPanel,
@@ -144,8 +145,9 @@ export function WorkflowPlanInspectorContent({
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const initFlow = useInitFlowMutation(projectSlug);
-  const initError =
-    initFlow.error instanceof Error ? initFlow.error.message : null;
+  const initError = initFlow.error
+    ? describeStationFailure(initFlow.error).body
+    : null;
 
   // A plan artifact can still arrive from chat even without a `.flow/` layout;
   // only show the setup CTA when neither a flow layout nor a live artifact
@@ -199,8 +201,9 @@ export function ReadinessInspectorContent({
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const initReadiness = useInitReadinessMutation(projectSlug);
-  const initError =
-    initReadiness.error instanceof Error ? initReadiness.error.message : null;
+  const initError = initReadiness.error
+    ? describeStationFailure(initReadiness.error).body
+    : null;
   const result = initReadiness.data as ReadinessInitResultVM | undefined;
   const noCli = result?.outcome === 'no-cli';
 

@@ -330,7 +330,7 @@ describe('MessageBubble delivery state', () => {
     );
     await waitFor(() => expect(outbox.discard).toHaveBeenCalledWith(KEY));
     expect((await within(bubble).findByRole('alert')).textContent).toContain(
-      'storage is unavailable',
+      'Try again in a moment.',
     );
     expect(
       activeChatsStore
@@ -639,10 +639,15 @@ describe('MessageDeliveryNote held-on-device', () => {
     );
     render(
       <MessageDeliveryNote
-        chatKey={CHAT}
-        clientTurnId={KEY}
+        port={{
+          savedOnDevice: true,
+          canDiscardUnconfirmed: false,
+          check: async () => undefined,
+          retry: async () => {},
+          edit: async () => null,
+          discard: async () => null,
+        }}
         state="held-on-device"
-        text={TEXT}
       />,
     );
     expect(

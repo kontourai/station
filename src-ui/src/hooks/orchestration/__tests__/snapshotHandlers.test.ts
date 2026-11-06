@@ -33,6 +33,9 @@ const updateChat = vi.fn((threadId: string, updates: any) => {
 
 vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: {
+    forStation() {
+      return this;
+    },
     // A COPY, matching `ActiveChatsStore.notify`'s `{...this.chats }`: the
     // real store hands out a fresh map after every write, so a caller that
     // captured `getSnapshot` before one keeps reading the PRE-write chat.
@@ -168,6 +171,7 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
       'http://api',
       'thread-1',
       new Map([['req-1', 'new-toast']]),
+      undefined,
     );
   });
 

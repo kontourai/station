@@ -1,5 +1,6 @@
 import { flowRunDisplayIdentity } from '@kontourai/station-contracts';
 import { telemetry } from '@kontourai/station-sdk';
+import type { StationStateScope } from '../../connections/station-state';
 import type {
   ChatMessage,
   FlowGateVerdictInfo,
@@ -8,10 +9,15 @@ import type {
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { OrchestrationEvent } from './types';
 
-function appendFlowMessage(threadId: string, message: ChatMessage) {
-  const chat = activeChatsStore.getChatForExecutionSession(threadId);
+function appendFlowMessage(
+  threadId: string,
+  message: ChatMessage,
+  station?: StationStateScope,
+) {
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(threadId);
   if (!chat) return;
-  activeChatsStore.updateChat(threadId, {
+  chatStore.updateChat(threadId, {
     messages: [...(chat.messages || []), message],
   });
 }
@@ -51,7 +57,9 @@ function buildFlowGateVerdictSummary(info: FlowGateVerdictInfo) {
 
 export function handleFlowRunAttachedEvent(
   event: Extract<OrchestrationEvent, { method: 'flow.run-attached' }>,
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
   const binding: FlowRunBinding = {
     runId: event.runId,
     definitionId: event.definitionId,
@@ -60,16 +68,20 @@ export function handleFlowRunAttachedEvent(
     currentStep: event.currentStep,
     freshness: event.freshness,
   };
-  activeChatsStore.updateChat(event.threadId, { flowRun: binding });
+  chatStore.updateChat(event.threadId, { flowRun: binding });
   telemetry.track('ui.flow_gate.run_attached', {
     resumed: String(event.resumed),
   });
-  appendFlowMessage(event.threadId, {
-    ...flowEventMessageMetadata(event),
-    role: 'system',
-    content: `Flow run ${event.resumed ? 're-attached' : 'attached'}: ${flowRunDisplayIdentity(event.definitionId, event.runId)}`,
-    contentParts: [{ type: 'flow-run-attached', flowRunAttached: binding }],
-  });
+  appendFlowMessage(
+    event.threadId,
+    {
+      ...flowEventMessageMetadata(event),
+      role: 'system',
+      content: `Flow run ${event.resumed ? 're-attached' : 'attached'}: ${flowRunDisplayIdentity(event.definitionId, event.runId)}`,
+      contentParts: [{ type: 'flow-run-attached', flowRunAttached: binding }],
+    },
+    station,
+  );
 }
 
 /**
@@ -111,14 +123,13 @@ function foldVerdictIntoBinding(
 
 export function handleFlowGateVerdictEvent(
   event: Extract<OrchestrationEvent, { method: 'flow.gate-verdict' }>,
+  station?: StationStateScope,
 ) {
-  const bound = activeChatsStore.getChatForExecutionSession(
-    event.threadId,
-  )?.flowRun;
+  const chatStore = activeChatsStore.forStation(station);
+  const bound = chatStore.getChatForExecutionSession(event.threadId)?.flowRun;
   if (bound) {
     const folded = foldVerdictIntoBinding(bound, event);
-    if (folded)
-      activeChatsStore.updateChat(event.threadId, { flowRun: folded });
+    if (folded) chatStore.updateChat(event.threadId, { flowRun: folded });
   }
   const info: FlowGateVerdictInfo = {
     runId: event.runId,
@@ -134,10 +145,14 @@ export function handleFlowGateVerdictEvent(
     exceptionRequired: event.exceptionRequired,
   };
   telemetry.track('ui.flow_gate.verdict', { verdict: event.verdict });
-  appendFlowMessage(event.threadId, {
-    ...flowEventMessageMetadata(event),
-    role: 'system',
-    content: buildFlowGateVerdictSummary(info),
-    contentParts: [{ type: 'flow-gate-verdict', flowGateVerdict: info }],
-  });
+  appendFlowMessage(
+    event.threadId,
+    {
+      ...flowEventMessageMetadata(event),
+      role: 'system',
+      content: buildFlowGateVerdictSummary(info),
+      contentParts: [{ type: 'flow-gate-verdict', flowGateVerdict: info }],
+    },
+    station,
+  );
 }

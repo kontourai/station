@@ -18,6 +18,7 @@ import {
   pluginRegistry,
 } from '../core/PluginRegistry';
 import { LayoutRenderer } from '../layouts';
+import { describeStationFailure } from '../utils/stationFailure';
 import { PluginWorkspacePaneSDKBoundary } from './PluginWorkspacePaneSDKBoundary';
 import './PluginDraftPreviewPane.css';
 
@@ -438,10 +439,7 @@ function DraftRevisionHost({
           if (controller.signal.aborted) return;
           setLoad({
             state: 'failed',
-            message:
-              error instanceof Error
-                ? error.message
-                : 'The draft could not be loaded.',
+            message: describeStationFailure(error).body,
           });
         },
       );

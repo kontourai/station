@@ -346,7 +346,7 @@ test('a caller that is not the operator is told so, and a refused apply shows it
     }),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
-  expect(await screen.findByText(/supervisor did not answer/)).toBeTruthy();
+  expect(await screen.findByText(/Try again in a moment/)).toBeTruthy();
 });
 
 test('the section is absent until its Feature Preview is on, and asks for nothing', async () => {

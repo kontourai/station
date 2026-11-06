@@ -163,9 +163,7 @@ describe('Monitoring historical read failure (station#3658)', () => {
       expect(screen.getByText('Unable to load event history')).toBeTruthy(),
     );
     // The server's own sentence, not a shrug — `describeReadFailure`.
-    expect(
-      screen.getByText('Monitoring events request rejected with HTTP 500'),
-    ).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     // The defect itself: the empty state is withheld, not merely joined.
     expect(screen.queryByText('No events yet')).toBeNull();
     expect(screen.queryByText('Waiting for agent activity...')).toBeNull();
@@ -185,7 +183,7 @@ describe('Monitoring historical read failure (station#3658)', () => {
     render(<MonitoringViewWithBoundary />);
 
     await waitFor(() =>
-      expect(screen.getByText('monitoring store unreachable')).toBeTruthy(),
+      expect(screen.getByText('Try again in a moment.')).toBeTruthy(),
     );
 
     everyReadReturns([AGENT_START_EVENT]);

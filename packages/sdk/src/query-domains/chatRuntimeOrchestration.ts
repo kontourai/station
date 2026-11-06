@@ -68,6 +68,10 @@ import {
   rememberSentTurnKey,
 } from '../client/sent-turn-key';
 import { isStationAnswer } from '../client/station-envelope';
+import {
+  type ConnectionReadTarget,
+  captureConnectionReadTarget,
+} from '../connection-read-target';
 import { OrchestrationSessionsContext } from '../orchestrationSessionsContext';
 import {
   type MutationOptions,
@@ -180,14 +184,23 @@ export function useOrchestrationSessionActivityQuery(
   apiBase?: string,
   config?: QueryConfig<OrchestrationSessionEventWindow>,
 ) {
+  const target = captureConnectionReadTarget(config?.readTarget);
+  apiBase = target?.targetApiBase ?? apiBase;
   return useApiQuery(
-    ['orchestration-session-activity', apiBase ?? 'default', threadId],
+    [
+      'orchestration-session-activity',
+      ...(target
+        ? [target.requestScope.authorityKey, target.runtimeKey ?? '']
+        : []),
+      apiBase ?? 'default',
+      threadId,
+    ],
     (signal) =>
       fetchOrchestrationSessionEventWindow(
         threadId,
         apiBase,
         { direction: 'newest', turnLimit: 1 },
-        { signal },
+        { signal, requestScope: target?.requestScope },
       ),
     {
       enabled: Boolean(threadId) && (config?.enabled ?? true),
@@ -230,11 +243,20 @@ export async function fetchOrchestrationConversationEventWindow(
 export function useConversationUsageTreeQuery(
   conversationId: string,
   apiBase?: string,
-  config?: { enabled?: boolean; refetchInterval?: number | false },
+  config?: {
+    enabled?: boolean;
+    refetchInterval?: number | false;
+    readTarget?: ConnectionReadTarget;
+  },
 ) {
+  const target = captureConnectionReadTarget(config?.readTarget);
+  apiBase = target?.targetApiBase ?? apiBase;
   return useQuery({
     queryKey: [
       'orchestration-conversation-usage-tree',
+      ...(target
+        ? [target.runtimeKey ?? target.requestScope.authorityKey]
+        : []),
       apiBase ?? 'default',
       conversationId,
     ],
@@ -242,6 +264,7 @@ export function useConversationUsageTreeQuery(
     queryFn: async ({ signal }) =>
       getConversationUsageTree(await resolveApiBase(apiBase), conversationId, {
         signal,
+        requestScope: target?.requestScope,
       }),
     retry: false,
     staleTime: 2_000,
@@ -1344,6 +1367,7 @@ export async function setOrchestrationApprovalMode(input: {
    */
   basedOnSequence: number | null;
   apiBase?: string;
+  requestScope?: import('../client/http').ApiRequestScope;
 }): Promise<
   import('@kontourai/station-contracts/orchestration').SetApprovalModeResult
 > {
@@ -1355,6 +1379,8 @@ export async function setOrchestrationApprovalMode(input: {
       basedOnSequence: input.basedOnSequence,
     },
     input.apiBase,
+    undefined,
+    { requestScope: input.requestScope },
   );
 }
 
@@ -1365,8 +1391,11 @@ export async function inspectOrchestrationSteerInput(input: {
   turnId?: string;
   clientInputId: string;
   apiBase?: string;
+  requestScope?: import('../client/http').ApiRequestScope;
 }) {
-  return inspectSteerInputClient(await resolveApiBase(input.apiBase), input);
+  return inspectSteerInputClient(await resolveApiBase(input.apiBase), input, {
+    requestScope: input.requestScope,
+  });
 }
 
 /** Add user input to the currently open turn; this never queues a future turn. */
@@ -1376,16 +1405,21 @@ export async function steerOrchestrationTurn(input: {
   turnId?: string;
   clientInputId?: string;
   apiBase?: string;
+  requestScope?: import('../client/http').ApiRequestScope;
 }) {
-  return steerTurnClient(await resolveApiBase(input.apiBase), input);
+  return steerTurnClient(await resolveApiBase(input.apiBase), input, {
+    requestScope: input.requestScope,
+  });
 }
 
 export function useOrchestrationProvidersQuery(
   config?: QueryConfig<OrchestrationProviderSummary[]>,
 ) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
+  const query = orchestrationQueries.providers(readTarget);
   return useApiQuery(
-    orchestrationQueries.providers().queryKey,
-    () => fetchOrchestrationProviders(),
+    query.queryKey,
+    () => (readTarget ? query.queryFn() : fetchOrchestrationProviders()),
     {
       staleTime:
         config?.staleTime ?? orchestrationQueries.providers().staleTime,
@@ -1400,22 +1434,29 @@ export function useOrchestrationSessionsQuery(
   requestScope?: ApiRequestScope | null,
 ) {
   const host = useContext(OrchestrationSessionsContext);
+  const target = captureConnectionReadTarget(config?.readTarget);
   const scope =
-    requestScope === null ? undefined : (requestScope ?? host?.scope);
+    requestScope === null
+      ? undefined
+      : (target?.requestScope ?? requestScope ?? host?.scope);
   const streamLive =
+    !target &&
     host?.streamLive === true &&
     host.scope?.apiBase === scope?.apiBase &&
     host.scope?.authorityKey === scope?.authorityKey;
   return useApiQueryWithSharing(
     requestScope === null
       ? ['orchestration-sessions-unavailable']
-      : orchestrationQueries.sessions(scope).queryKey,
+      : orchestrationQueries.sessions(scope, target).queryKey,
     (signal) => {
       if (requestScope === null) throw new StationRequestAuthorityError();
-      return fetchOrchestrationSessions(scope?.apiBase, {
-        signal,
-        ...(scope ? { requestScope: scope } : {}),
-      });
+      return fetchOrchestrationSessions(
+        target?.targetApiBase ?? scope?.apiBase,
+        {
+          signal,
+          ...(scope ? { requestScope: scope } : {}),
+        },
+      );
     },
     shareSessionReadModel,
     {

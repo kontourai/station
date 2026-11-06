@@ -40,7 +40,7 @@ afterEach(() => {
  * fetcher's error keeps the status it arrived under.
  */
 describe('SecretBindingPicker load failure', () => {
-  test('shows the route reason and keeps the status on the error', async () => {
+  test('shows safe recovery and keeps the route status on the error', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -67,7 +67,7 @@ describe('SecretBindingPicker load failure', () => {
       />,
     );
     expect(screen.getByRole('alert').textContent).toContain(
-      'Binding configuration could not be loaded: Secret binding consumer service unavailable.',
+      'Binding configuration could not be loaded: Try again in a moment.',
     );
   });
 });

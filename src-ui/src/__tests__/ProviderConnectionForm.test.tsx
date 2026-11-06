@@ -235,7 +235,8 @@ describe('ProviderConnectionForm — Bedrock auth modes (docs/design/connections
     );
 
     expect(screen.getByText("Couldn't load AWS profiles")).toBeTruthy();
-    expect(screen.getByText('the AWS profiles route failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('the AWS profiles route failed')).toBeNull();
     expect(screen.queryByText('AWS profiles will appear here')).toBeNull();
     expect(screen.queryByLabelText('Loading AWS profiles')).toBeNull();
   });

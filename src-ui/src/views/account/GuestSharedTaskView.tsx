@@ -17,10 +17,13 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
+import {
+  projectTaskHistory,
+  SharedTaskHistoryList,
+} from '../../components/conversation/SharedTaskHistoryList';
 import { IconButton } from '../../components/IconButton';
 import { CloseGlyph, RefreshGlyph } from '../../components/icons/Glyph';
 import { Empty, SkeletonBlock, SkeletonList } from '../../components/state';
-import { RoomAvatar } from '../../workspace-panes/ProjectTaskRoomPresence';
 import {
   GuestAccountRequired,
   requireGuestAccount,
@@ -55,29 +58,6 @@ async function authorizedRead<Value>(
       throw new GuestSharedScopeLost();
     throw cause;
   }
-}
-
-function SharedMessageText({ text }: { text: string }) {
-  const mention = /^\*\*@(.+?)\*\*\s+/.exec(text);
-  return (
-    <p>
-      {mention ? (
-        <>
-          <span className="task-room-mention">@{mention[1]}</span>{' '}
-          {text.slice(mention[0].length)}
-        </>
-      ) : (
-        text
-      )}
-    </p>
-  );
-}
-
-function historyState(kind: string) {
-  if (kind === 'too-large') return 'Shared history is too large to display.';
-  if (kind === 'unavailable') return 'Shared history is unavailable.';
-  if (kind === 'not-found') return 'This Task is no longer shared.';
-  return 'Shared history is incomplete and cannot be shown as a complete record.';
 }
 
 function documentState(kind: string) {
@@ -188,20 +168,8 @@ export function GuestSharedTaskView({
     retry: false,
     gcTime: 0,
   });
-  const lastHistoryPage = historyPages.data?.pages.at(-1);
-  const history = {
-    ...historyPages,
-    data:
-      lastHistoryPage?.kind === 'available'
-        ? {
-            ...lastHistoryPage,
-            records:
-              historyPages.data?.pages.flatMap((page) =>
-                page.kind === 'available' ? page.records : [],
-              ) ?? [],
-          }
-        : lastHistoryPage,
-  };
+  const history = historyPages;
+  const historyProjection = projectTaskHistory(history.data?.pages ?? []);
   const document = useQuery({
     queryKey: ['guest-shared-task-document', ...projectKey, ...selectedKey],
     queryFn: ({ signal }) => {
@@ -241,7 +209,8 @@ export function GuestSharedTaskView({
     if (scopeLost) onScopeLostRef.current();
   }, [scopeLost]);
   const taskUnshared =
-    history.data?.kind === 'not-found' || document.data?.kind === 'not-found';
+    historyProjection.outcome === 'not-found' ||
+    document.data?.kind === 'not-found';
   useEffect(() => {
     if (!taskUnshared) return;
     setSelectedTaskId(undefined);
@@ -398,60 +367,31 @@ export function GuestSharedTaskView({
               </Button>
             ))}
           </div>
-          {(tab === 'Chat' ? history.isPending : document.isPending) && (
-            <SkeletonList count={2} label="Reading shared Task content" />
+          {tab === 'Chat' && (
+            <SharedTaskHistoryList
+              records={historyProjection.records}
+              readable={
+                !scopeLost && tasks.isSuccess && !tasks.isFetching && !!selected
+              }
+              pending={history.isPending}
+              failed={history.isError}
+              outcome={historyProjection.outcome}
+              hasEarlier={history.hasNextPage}
+              loadingEarlier={history.isFetchingNextPage}
+              onLoadEarlier={() => void history.fetchNextPage()}
+              onRetry={() =>
+                void (history.isFetchNextPageError
+                  ? history.fetchNextPage()
+                  : history.refetch())
+              }
+            />
           )}
-          {(tab === 'Chat' ? history.isError : document.isError) &&
-            !scopeLost && (
-              <p role="alert">Shared Task content is unavailable.</p>
-            )}
-          {history.data?.kind === 'available' ? (
-            <div
-              className="account-entry__shared-history"
-              hidden={tab !== 'Chat'}
-            >
-              {history.data.hasMore && (
-                <p role="status">More shared messages are available.</p>
-              )}
-              {history.hasNextPage && (
-                <Button
-                  onClick={() => void history.fetchNextPage()}
-                  pending={history.isFetchingNextPage}
-                >
-                  Load more messages
-                </Button>
-              )}
-              {history.data.records.length === 0 ? (
-                <Empty
-                  variant="compact"
-                  label="Human messages were not published in this page."
-                />
-              ) : (
-                <ol aria-label="Shared messages">
-                  {history.data.records.map((record, index, records) => {
-                    const grouped =
-                      records[index - 1]?.actor.label === record.actor.label;
-                    return (
-                      <li
-                        key={record.sequence}
-                        className={
-                          grouped
-                            ? 'task-room-guest-message--grouped'
-                            : undefined
-                        }
-                      >
-                        {!grouped && <RoomAvatar name={record.actor.label} />}
-                        {!grouped && <strong>{record.actor.label}</strong>}
-                        <SharedMessageText text={record.body.text} />
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </div>
-          ) : history.data && tab === 'Chat' ? (
-            <p role="status">{historyState(history.data.kind)}</p>
-          ) : null}
+          {tab === 'Brief' && document.isPending && (
+            <SkeletonList count={2} label="Reading shared document" />
+          )}
+          {tab === 'Brief' && document.isError && (
+            <p role="alert">Shared document is unavailable.</p>
+          )}
           {document.data?.kind === 'snapshot' ? (
             <div
               className="account-entry__shared-document task-room-brief-rendered"

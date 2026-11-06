@@ -255,7 +255,9 @@ test('a delegate from the session read model shows in All with its provenance an
   ).toBeTruthy();
   expect(screen.getByText('🦉')).toBeTruthy();
   expect(screen.getByText('Nightly audit')).toBeTruthy();
-  expect(screen.getByText('Recorded origin: CLI (reported)')).toBeTruthy();
+  expect(
+    screen.getByText('Recorded origin: CLI (reported) · Via Fixture Station'),
+  ).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
   expect(showSurface).toHaveBeenCalledWith('activity', {
@@ -684,3 +686,7 @@ test('the pane resolves a delegate child from its Station-scoped ingress binding
   render(<AgentsWorkspacePane />);
   expect(screen.getByText('Station-scoped nested work')).toBeTruthy();
 });
+
+vi.mock('../../hooks/useActiveStationName', () => ({
+  useActiveStationName: () => 'Fixture Station',
+}));

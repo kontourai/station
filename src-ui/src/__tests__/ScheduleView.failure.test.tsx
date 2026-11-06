@@ -519,10 +519,10 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
 
     fireEvent.click(runButton('nightly-digest'));
     expect(toast.showToast).toHaveBeenCalledWith(
-      "Failed to run 'nightly-digest': Scheduler invocation failed.",
+      "Failed to run 'nightly-digest': Try again in a moment.",
     );
     expect(screen.getByRole('alert').textContent).toBe(
-      "Failed to run 'nightly-digest': Scheduler invocation failed.",
+      "Failed to run 'nightly-digest': Try again in a moment.",
     );
   });
 

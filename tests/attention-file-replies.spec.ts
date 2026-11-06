@@ -19,6 +19,7 @@ test.beforeAll(async () => {
       contents: `
     import {useState} from 'react';import {createRoot} from 'react-dom/client';import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
     import {NeedsInputReply} from './src-ui/src/components/attention/NeedsInputReply';
+    import {PreviewProvider} from './src-ui/src/contexts/PreviewContext';
     import {setClientCredentialResolver} from '@kontourai/station-sdk/client';
     import {chatDraftsStore} from './src-ui/src/contexts/chat-drafts-store';
     window.inputAuthority=true;
@@ -32,7 +33,7 @@ test.beforeAll(async () => {
       <section aria-label="First request"><NeedsInputReply item={first} scope={scope}/></section>
       <section aria-label="Second request"><NeedsInputReply item={make('second')} scope={scope}/></section>
     </main>;}
-    createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient()}><Harness/></QueryClientProvider>);
+    createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient()}><PreviewProvider><Harness/></PreviewProvider></QueryClientProvider>);
   `,
     },
     bundle: true,
@@ -224,7 +225,11 @@ test('file-only answers retain upload failure and retry one immutable send witho
   const first = page.getByRole('region', { name: 'First request' });
   const second = page.getByRole('region', { name: 'Second request' });
   await second.getByRole('textbox').fill('Separate answer');
-  await first.getByLabel('Files for this answer').setInputFiles({
+  const firstFileChooser = page.waitForEvent('filechooser');
+  await first
+    .getByRole('button', { name: 'Attach files', exact: true })
+    .click();
+  await (await firstFileChooser).setFiles({
     name: 'answer.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('hi'),
@@ -245,7 +250,7 @@ test('file-only answers retain upload failure and retry one immutable send witho
   await first
     .getByRole('button', { name: 'Retry same answer', exact: true })
     .click();
-  await expect(first.getByRole('status')).toHaveText('Answer sent.');
+  await expect(first.getByText('Answer sent.', { exact: true })).toBeVisible();
   expect(fixture.sent).toHaveLength(2);
   expect(fixture.sent[1]).toEqual(fixture.sent[0]);
   expect(fixture.sent[0]).toMatchObject({
@@ -298,7 +303,11 @@ test('an image-only answer stays bound to the second request', async ({
     return canvas.toDataURL('image/png').split(',')[1];
   });
   const second = page.getByRole('region', { name: 'Second request' });
-  await second.getByLabel('Files for this answer').setInputFiles({
+  const secondFileChooser = page.waitForEvent('filechooser');
+  await second
+    .getByRole('button', { name: 'Attach files', exact: true })
+    .click();
+  await (await secondFileChooser).setFiles({
     name: 'answer.png',
     mimeType: 'image/png',
     buffer: Buffer.from(png, 'base64'),
@@ -309,7 +318,7 @@ test('an image-only answer stays bound to the second request', async ({
   await second
     .getByRole('button', { name: 'Send answer', exact: true })
     .click();
-  await expect(second.getByRole('status')).toHaveText('Answer sent.');
+  await expect(second.getByText('Answer sent.', { exact: true })).toBeVisible();
   expect(fixture.sent).toHaveLength(1);
   expect(fixture.sent[0]).toMatchObject({
     message: '',

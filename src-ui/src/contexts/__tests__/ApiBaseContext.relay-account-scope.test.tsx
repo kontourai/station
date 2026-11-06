@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { useConnections } from '@kontourai/station-connect';
+import { authenticatedFetch } from '@kontourai/station-sdk/client';
 import {
   QueryClient,
   QueryClientProvider,
@@ -8,6 +9,7 @@ import {
 } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { captureStationConnectionAuthority } from '../../connections/station-connection-authority';
 import {
   browserRelayAccountScopeKey,
   publishBrowserRelayAccountScope,
@@ -61,6 +63,40 @@ afterEach(() => {
 });
 
 describe('relay account request scope', () => {
+  it('refuses an unprepared non-active broker profile without raw HTTP egress', async () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <ApiBaseProvider>{children}</ApiBaseProvider>
+    );
+    const { result } = renderHook(() => useConnections(), { wrapper });
+    const activeId = result.current.activeConnection?.id;
+    let id = '';
+    act(() => {
+      id = result.current.addBrokerRoute({
+        name: 'Unavailable background broker',
+        applicationOrigin: 'https://unprepared-broker.test',
+        brokerRoute: route,
+      }).id;
+    });
+    const rawFetch = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', rawFetch);
+    try {
+      await expect(captureStationConnectionAuthority(id)).rejects.toMatchObject(
+        { name: 'StationRequestAuthorityError' },
+      );
+      await expect(
+        authenticatedFetch('https://unprepared-broker.test/api/boot', {
+          requestScope: {
+            apiBase: 'https://unprepared-broker.test',
+            authorityKey: 'unregistered',
+          },
+        }),
+      ).rejects.toMatchObject({ name: 'StationRequestAuthorityError' });
+      expect(rawFetch).not.toHaveBeenCalled();
+      expect(result.current.activeConnection?.id).toBe(activeId);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it('a browser talking to its own Station directly does not require an enrolled credential (#2598)', async () => {
     const queryClient = new QueryClient();
     const wrapper = ({ children }: { children: React.ReactNode }) => (

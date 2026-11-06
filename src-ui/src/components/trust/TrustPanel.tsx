@@ -7,6 +7,7 @@ import {
 } from '@kontourai/station-sdk';
 import { Badge, toneClass } from '@kontourai/ui/react';
 import { useMemo, useState } from 'react';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { surfaceClaimTone } from '../kontour/station-tones';
 import { Empty, SkeletonBlock } from '../state';
 import './TrustPanel.css';
@@ -242,9 +243,7 @@ export function TrustPanel({ projectSlug }: { projectSlug: string }) {
           {!bundlesLoading && bundlesError && (
             <p className="trust-panel__error" role="alert">
               Trust bundles unavailable:{' '}
-              {bundlesError instanceof Error
-                ? bundlesError.message
-                : String(bundlesError)}
+              {describeStationFailure(bundlesError).body}
             </p>
           )}
           {!bundlesLoading && !bundlesError && sortedBundles.length === 0 && (
@@ -280,9 +279,7 @@ export function TrustPanel({ projectSlug }: { projectSlug: string }) {
           {sortedBundles.length > 0 && !reportLoading && reportError && (
             <p className="trust-panel__error" role="alert">
               Trust report unavailable:{' '}
-              {reportError instanceof Error
-                ? reportError.message
-                : String(reportError)}
+              {describeStationFailure(reportError).body}
             </p>
           )}
           {sortedBundles.length > 0 &&

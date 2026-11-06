@@ -39,6 +39,7 @@ import {
   nativeProfileRepository,
   usePlatformProfile,
 } from '../../platform/PlatformProfileContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { NativeRelayEnrollmentWizard } from './NativeRelayEnrollmentWizard';
 import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
 import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
@@ -910,9 +911,7 @@ export function RelayRouteProfiles({
       );
       setRemoveTarget(null);
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'Could not remove route.',
-      );
+      setError(describeStationFailure(cause).body);
     }
   }
 

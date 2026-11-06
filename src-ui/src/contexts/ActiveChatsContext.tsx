@@ -38,6 +38,7 @@ type ActiveChatsContextType = {
       };
       fullAccessRefusal?: FullAccessRefusalNotice;
       sendFailure?: boolean;
+      deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
       queuedRetry?: boolean;
     },
   ) => void;
@@ -113,6 +114,7 @@ export function ActiveChatsProvider({ children }: { children: ReactNode }) {
           confirm?: 'unconfirmed-discard';
         };
         sendFailure?: boolean;
+        deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
         queuedRetry?: boolean;
       },
     ) => {
@@ -328,9 +330,13 @@ export function useActiveChatSelector<T>(
   );
 }
 
-export function useActiveChatActions() {
+export function useActiveChatActions(
+  optional: true,
+): ActiveChatsContextType | undefined;
+export function useActiveChatActions(): ActiveChatsContextType;
+export function useActiveChatActions(optional = false) {
   const context = useContext(ActiveChatsContext);
-  if (!context) {
+  if (!context && !optional) {
     throw new Error(
       'useActiveChatActions must be used within ActiveChatsProvider',
     );

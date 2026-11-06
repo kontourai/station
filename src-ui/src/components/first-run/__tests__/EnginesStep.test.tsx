@@ -454,9 +454,7 @@ describe('confirming the checklist', () => {
     });
     expect(
       (await screen.findByTestId('first-run-engines-report')).textContent,
-    ).toContain(
-      'Kiro CLI: could not be set up. Kiro CLI could not be connected',
-    );
+    ).toContain('Kiro CLI: could not be set up. Try again in a moment.');
   });
 
   // A cold engine's first start continues on the server after the add
@@ -700,7 +698,7 @@ describe('reporting what actually happened', () => {
     expect(materializeEngineAgent).toHaveBeenCalledTimes(2);
     const report = await screen.findByTestId('first-run-engines-report');
     expect(report.textContent).toContain(
-      'Codex: could not be set up. name already taken',
+      'Codex: could not be set up. Try again in a moment.',
     );
     expect(report.textContent).toContain('Claude Code: set up as');
     // A failure has to be read, so the run waits for the user here — and the
@@ -736,7 +734,7 @@ describe('reporting what actually happened', () => {
     });
     expect(
       (await screen.findByTestId('first-run-engines-report')).textContent,
-    ).toContain('offline');
+    ).toContain('Try again in a moment.');
     fireEvent.click(screen.getByTestId('first-run-engines-give-up'));
     expect(onGiveUp).toHaveBeenCalledTimes(1);
     expect(onDone).not.toHaveBeenCalled();

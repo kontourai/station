@@ -53,6 +53,11 @@ vi.mock('../../../contexts/useShowSurface', () => ({
 }));
 // Activity no longer mounts the host-wide collaborator roster. Any
 // live-activity read from this surface would be that roster coming back.
+vi.mock('@kontourai/station-sdk/client', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk/client')>()),
+  interruptTurn: (apiBase: string, input: { threadId: string }) =>
+    interruptTurn({ apiBase, threadId: input.threadId }),
+}));
 vi.mock('@kontourai/station-sdk/live-activity', () => ({
   useLiveActivityQuery,
 }));
@@ -1125,17 +1130,20 @@ describe('Home, the dock and Activity agree on one item', () => {
     expect(read()).toEqual({ home: '4m', dock: '4m', activity: '4m' });
   });
 
-  test('a group heading reads "Needs you · 1" wherever a count shows, as visible text in the UI face', () => {
+  test('attention headings use visible shared count formatting on every surface', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
     summaries = [
       summary('Answer my question', { lifecycleState: 'needs_input' }),
     ];
     const { activity, home, dock, sheet } = surfaces();
-    const needsYouLabel = (root: HTMLElement) => {
+    const attentionLabel = (
+      root: HTMLElement,
+      heading: 'Needs you' | 'Needs attention',
+    ) => {
       const labels = Array.from(
         root.querySelectorAll<HTMLElement>('.work-group-label'),
-      ).filter((label) => label.textContent?.startsWith('Needs you'));
+      ).filter((label) => label.textContent?.startsWith(heading));
       expect(labels).toHaveLength(1);
       const [label] = labels;
       // A count is read with its label: nothing between it and the root
@@ -1143,15 +1151,17 @@ describe('Home, the dock and Activity agree on one item', () => {
       expect(label.closest('[aria-hidden="true"]')).toBeNull();
       return label.textContent;
     };
-    expect(needsYouLabel(home)).toBe('Needs you · 1');
-    expect(needsYouLabel(activity)).toBe('Needs you · 1');
-    expect(needsYouLabel(sheet)).toBe('Needs you · 1');
+    expect(attentionLabel(home, 'Needs you')).toBe('Needs you · 1');
+    expect(attentionLabel(activity, 'Needs you')).toBe('Needs you · 1');
+    expect(attentionLabel(sheet, 'Needs attention')).toBe(
+      'Needs attention · 1',
+    );
     // The desktop dock shows no counts (its host's choice); the words are
     // still the shared label's.
-    expect(needsYouLabel(dock)).toBe('Needs you');
+    expect(attentionLabel(dock, 'Needs attention')).toBe('Needs attention');
     // No surface keeps a format of its own beside the shared one.
     for (const root of [home, activity, dock, sheet]) {
-      expect(root.textContent).not.toMatch(/Needs you \(\d+\)/);
+      expect(root.textContent).not.toMatch(/Needs (?:you|attention) \(\d+\)/);
       expect(root.querySelector('.chat-dock-inbox__group-count')).toBeNull();
     }
   });

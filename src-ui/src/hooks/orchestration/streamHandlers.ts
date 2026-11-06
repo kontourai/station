@@ -5,6 +5,7 @@ import type {
   InputRequestRecord,
 } from '@kontourai/station-contracts/input-request';
 import { toolPurposeView } from '../../components/chat/tool-display-view';
+import type { StationStateScope } from '../../connections/station-state';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { serverTurnLive } from '../../utils/conversation-activity';
@@ -63,8 +64,14 @@ const turnlessRefetch = new Map<
   { timer: ReturnType<typeof setTimeout>; firstAt: number }
 >();
 
-function scheduleTurnlessRefetch(threadId: string, now = Date.now()): void {
-  const pending = turnlessRefetch.get(threadId);
+function scheduleTurnlessRefetch(
+  threadId: string,
+  now = Date.now(),
+  station?: StationStateScope,
+): void {
+  const chatStore = activeChatsStore.forStation(station);
+  const refetchKey = JSON.stringify([station?.runtimeKey ?? 'host', threadId]);
+  const pending = turnlessRefetch.get(refetchKey);
   if (pending) clearTimeout(pending.timer);
   const firstAt = pending?.firstAt ?? now;
   const delay = Math.max(
@@ -75,24 +82,26 @@ function scheduleTurnlessRefetch(threadId: string, now = Date.now()): void {
     ),
   );
   const timer = setTimeout(() => {
-    turnlessRefetch.delete(threadId);
-    const chat = activeChatsStore.getChatForExecutionSession(threadId);
+    turnlessRefetch.delete(refetchKey);
+    const chat = chatStore.getChatForExecutionSession(threadId);
     if (!chat) return;
-    activeChatsStore.updateChat(threadId, {
+    chatStore.updateChat(threadId, {
       orchestrationHistoryRevision:
         (chat.orchestrationHistoryRevision ?? 0) + 1,
     });
   }, delay);
-  turnlessRefetch.set(threadId, { timer, firstAt });
+  turnlessRefetch.set(refetchKey, { timer, firstAt });
 }
 
 export function handleTextDeltaEvent(
   event: Extract<OrchestrationEvent, { method: 'content.text-delta' }>,
+  station?: StationStateScope,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   if (isTurnlessDelta(chat, event)) {
-    scheduleTurnlessRefetch(event.threadId);
+    scheduleTurnlessRefetch(event.threadId, undefined, station);
     return;
   }
   const streamingMessage = getStreamingMessage(chat);
@@ -112,7 +121,7 @@ export function handleTextDeltaEvent(
 
   // #2309: no `status: 'sending'` here. A delta is content for a turn some
   // other signal already opened; it never mints liveness on its own.
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     // Real content is flowing — the transient "Thinking…" hint is stale.
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
@@ -129,11 +138,13 @@ export function handleTextDeltaEvent(
 
 export function handleReasoningDeltaEvent(
   event: Extract<OrchestrationEvent, { method: 'content.reasoning-delta' }>,
+  station?: StationStateScope,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   if (isTurnlessDelta(chat, event)) {
-    scheduleTurnlessRefetch(event.threadId);
+    scheduleTurnlessRefetch(event.threadId, undefined, station);
     return;
   }
   const streamingMessage = getStreamingMessage(chat);
@@ -147,7 +158,7 @@ export function handleReasoningDeltaEvent(
     ),
   };
 
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
     // The terminal fold also parses the final unterminated line.
@@ -234,8 +245,10 @@ function upsertToolPartOnEventTurn(
     { method: 'tool.started' | 'tool.progress' }
   >,
   updates: Parameters<typeof upsertToolPart>[2],
+  station?: StationStateScope,
 ): void {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   if (turnContradicts(chat.openTurnId, event.turnId)) {
     const messages = chat.messages ?? [];
@@ -250,12 +263,12 @@ function upsertToolPartOnEventTurn(
           updates,
         ),
       };
-      activeChatsStore.updateChat(event.threadId, { messages: nextMessages });
+      chatStore.updateChat(event.threadId, { messages: nextMessages });
       return;
     }
   }
   const streamingMessage = getStreamingMessage(chat);
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     activityHint: undefined,
     isProcessingStep: true,
     ...(event.method === 'tool.started'
@@ -279,33 +292,43 @@ function upsertToolPartOnEventTurn(
 
 export function handleToolStartedEvent(
   event: Extract<OrchestrationEvent, { method: 'tool.started' }>,
+  station?: StationStateScope,
 ) {
-  upsertToolPartOnEventTurn(event, {
-    toolName: event.toolName,
-    ...(event.toolKind !== undefined ? { toolKind: event.toolKind } : {}),
-    purpose: toolPurposeView(event),
-    args: event.arguments || {},
-    // docs/design/event-content-spill.md: lets the row load spilled values.
-    ...(event.spilledContent ? { contentThreadId: event.threadId } : {}),
-    state: 'running',
-    activityAt: event.createdAt,
-    // `activityAt` moves with every progress frame; this is the start the
-    // row's elapsed time counts from (the projection stamps the same value).
-    startedAt: event.createdAt,
-  });
+  upsertToolPartOnEventTurn(
+    event,
+    {
+      toolName: event.toolName,
+      ...(event.toolKind !== undefined ? { toolKind: event.toolKind } : {}),
+      purpose: toolPurposeView(event),
+      args: event.arguments || {},
+      // docs/design/event-content-spill.md: lets the row load spilled values.
+      ...(event.spilledContent ? { contentThreadId: event.threadId } : {}),
+      state: 'running',
+      activityAt: event.createdAt,
+      // `activityAt` moves with every progress frame; this is the start the
+      // row's elapsed time counts from (the projection stamps the same value).
+      startedAt: event.createdAt,
+    },
+    station,
+  );
 }
 
 export function handleToolProgressEvent(
   event: Extract<OrchestrationEvent, { method: 'tool.progress' }>,
+  station?: StationStateScope,
 ) {
-  upsertToolPartOnEventTurn(event, {
-    state: 'running',
-    progressMessage: event.message,
-    ...(event.outputReceipt?.truncated
-      ? { outputTruncated: true as const }
-      : {}),
-    activityAt: event.createdAt,
-  });
+  upsertToolPartOnEventTurn(
+    event,
+    {
+      state: 'running',
+      progressMessage: event.message,
+      ...(event.outputReceipt?.truncated
+        ? { outputTruncated: true as const }
+        : {}),
+      activityAt: event.createdAt,
+    },
+    station,
+  );
 }
 
 /**
@@ -332,14 +355,16 @@ function holdsToolCall(
 
 export function handleToolCompletedEvent(
   event: Extract<OrchestrationEvent, { method: 'tool.completed' }>,
+  station?: StationStateScope,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   if (
     chat.activityHint?.kind === 'retrying' &&
     !turnContradicts(chat.openTurnId, event.turnId)
   ) {
-    activeChatsStore.updateChat(event.threadId, { activityHint: undefined });
+    chatStore.updateChat(event.threadId, { activityHint: undefined });
   }
   const streamingMessage = getStreamingMessage(chat);
 
@@ -478,7 +503,7 @@ export function handleToolCompletedEvent(
       };
       // `isProcessingStep` describes the turn in flight. A result for an
       // EARLIER turn says nothing about it, so it is left alone.
-      activeChatsStore.updateChat(event.threadId, { messages: nextMessages });
+      chatStore.updateChat(event.threadId, { messages: nextMessages });
       return;
     }
   }
@@ -494,7 +519,7 @@ export function handleToolCompletedEvent(
   // message of its own either. That is pre-existing behaviour and unchanged
   // here. There is nowhere else to put the row, and dropping a terminal
   // outright would leave its call running forever.
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     activityHint: undefined,
     isProcessingStep: false,
     streamingMessage: {
@@ -517,8 +542,10 @@ export function openInputRequestRecordPart(
   record: InputRequestRecord,
   /** A decision bound to a call already on the shell has its row; skip it. */
   toolCallId?: string,
+  station?: StationStateScope,
 ): void {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat?.streamingMessage || !chat.orchestrationTurnOpen) return;
   if (turnContradicts(chat.openTurnId, event.turnId)) return;
   const parts = chat.streamingMessage.contentParts ?? [];
@@ -532,7 +559,7 @@ export function openInputRequestRecordPart(
       parts.some((part) => part.toolCallId === toolCallId))
   )
     return;
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     streamingMessage: {
       ...chat.streamingMessage,
       contentParts: [
@@ -546,8 +573,10 @@ export function openInputRequestRecordPart(
 export function settleInputRequestRecordPart(
   event: { threadId: string; requestId: string },
   outcome: (kind: InputRequestRecord['kind']) => InputRequestOutcome,
+  station?: StationStateScope,
 ): void {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   const parts = chat?.streamingMessage?.contentParts;
   if (!chat?.streamingMessage || !parts) return;
   const index = parts.findIndex(
@@ -562,7 +591,7 @@ export function settleInputRequestRecordPart(
     ...parts[index],
     inputRequestRecord: { ...record, outcome: outcome(record.kind) },
   };
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     streamingMessage: { ...chat.streamingMessage, contentParts: next },
   });
 }
@@ -575,8 +604,10 @@ export function settleInputRequestRecordPart(
  */
 export function handleHostImagesEvent(
   event: Extract<OrchestrationEvent, { method: 'content.host-images' }>,
+  station?: StationStateScope,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   const messages = chat.messages ?? [];
   const index = committedMessageIndexForTurn(messages, event.turnId);
@@ -593,5 +624,5 @@ export function handleHostImagesEvent(
         }
       : next,
   };
-  activeChatsStore.updateChat(event.threadId, { messages: nextMessages });
+  chatStore.updateChat(event.threadId, { messages: nextMessages });
 }

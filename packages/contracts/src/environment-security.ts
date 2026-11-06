@@ -1218,6 +1218,8 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  peerChatTunnelV1?: boolean;
+  delegationLocalConversationV1?: boolean;
   /** Child steering and its separately paged instruction history. */
   childWorkSteering?: boolean;
   /** Consented private terminal outcome reads. */

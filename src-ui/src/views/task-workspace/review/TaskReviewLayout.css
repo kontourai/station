@@ -769,8 +769,8 @@
 .task-review[data-mobile]
   .review-thread__footer
   :is(.button, .action-overflow__trigger) {
-  min-height: calc(var(--k-space-6) + var(--k-space-3));
-  min-width: calc(var(--k-space-6) + var(--k-space-3));
+  min-height: 44px;
+  min-width: 44px;
 }
 .task-review[data-mobile] .review-thread__footer {
   height: auto;
@@ -792,8 +792,8 @@
 .review-thread[data-coarse-pointer]
   .review-thread__footer
   :is(.button, .action-overflow__trigger) {
-  min-height: calc(var(--k-space-6) + var(--k-space-3));
-  min-width: calc(var(--k-space-6) + var(--k-space-3));
+  min-height: 44px;
+  min-width: 44px;
 }
 .review-thread[data-coarse-pointer] .review-thread__footer {
   height: auto;

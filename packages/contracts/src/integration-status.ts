@@ -57,9 +57,63 @@ export interface IntegrationActionStatus<
   readonly reason: string;
 }
 
+/** Observed CLI credentials on the answering Station; never a repository grant. */
+export interface GitHubCliAuthentication {
+  readonly state: 'signed-in' | 'failed' | 'unknown';
+  readonly observedAt: number;
+  readonly account?: string;
+  readonly scopes?: readonly string[];
+}
+
+export function parseGitHubCliAuthentication(
+  value: unknown,
+): GitHubCliAuthentication | null {
+  if (
+    !closedRecord(value, ['state', 'observedAt', 'account', 'scopes']) ||
+    !enumValue(value.state, ['signed-in', 'failed', 'unknown']) ||
+    !Number.isSafeInteger(value.observedAt) ||
+    typeof value.observedAt !== 'number' ||
+    value.observedAt < 0
+  )
+    return null;
+  if (
+    value.state !== 'signed-in' &&
+    (value.account !== undefined || value.scopes !== undefined)
+  )
+    return null;
+  if (
+    value.account !== undefined &&
+    (typeof value.account !== 'string' ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9-]{0,38}(?:\[bot\])?$/.test(value.account))
+  )
+    return null;
+  if (
+    value.scopes !== undefined &&
+    (!Array.isArray(value.scopes) ||
+      value.scopes.length > 32 ||
+      value.scopes.some(
+        (scope) =>
+          typeof scope !== 'string' ||
+          scope.length > 64 ||
+          !/^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)*$/.test(scope) ||
+          /^(?:gh[pousr]_|github_pat_)/.test(scope),
+      ) ||
+      new Set(value.scopes).size !== value.scopes.length)
+  )
+    return null;
+  return {
+    state: value.state,
+    observedAt: value.observedAt,
+    ...(value.account !== undefined ? { account: value.account } : {}),
+    ...(value.scopes !== undefined ? { scopes: [...value.scopes] } : {}),
+  };
+}
+
 export interface IntegrationConnectionStatus {
   readonly connectionId: string;
   readonly provider: IntegrationProvider;
+  /** Opt-in metadata; absent on older hosts and ordinary status reads. */
+  readonly authentication?: GitHubCliAuthentication;
   readonly actions: readonly IntegrationActionStatus[];
 }
 
@@ -90,11 +144,25 @@ export function parseIntegrationConnectionStatus(
   value: unknown,
 ): IntegrationConnectionStatus | null {
   if (
-    !closedRecord(value, ['connectionId', 'provider', 'actions']) ||
+    !closedRecord(value, [
+      'connectionId',
+      'provider',
+      'actions',
+      'authentication',
+    ]) ||
     !boundaryText(value.connectionId, INTEGRATION_STATUS_LIMITS.idChars) ||
     !enumValue(value.provider, INTEGRATION_PROVIDERS) ||
     !Array.isArray(value.actions) ||
     value.actions.length > INTEGRATION_STATUS_LIMITS.actionsPerConnection
+  )
+    return null;
+  const authentication =
+    value.authentication === undefined
+      ? undefined
+      : parseGitHubCliAuthentication(value.authentication);
+  if (
+    value.authentication !== undefined &&
+    (!authentication || value.provider !== 'github')
   )
     return null;
   const actions: IntegrationActionStatus[] = [];
@@ -109,6 +177,7 @@ export function parseIntegrationConnectionStatus(
     connectionId: value.connectionId,
     provider: value.provider,
     actions,
+    ...(authentication ? { authentication } : {}),
   };
 }
 

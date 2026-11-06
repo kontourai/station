@@ -19,6 +19,8 @@
 import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
+  peerChatTunnelV1: true,
+  delegationLocalConversationV1: true,
   childWorkSteering: true,
   privateOperationalOutcomes: true,
   // Automation targets: src-server/routes/operations/scheduler.ts accepts a
@@ -140,6 +142,7 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
 export interface StationCapabilityDeployment {
   /** A hosted tenant registry is configured (`STATION_HOSTED_TENANT_REGISTRY_FILE`). */
   hosted: boolean;
+  peerChatEnabled?: boolean;
 }
 
 /**
@@ -214,6 +217,9 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
     >
   >
 > = {
+  peerChatTunnelV1: (deployment) =>
+    !deployment.hosted && deployment.peerChatEnabled === true,
+  delegationLocalConversationV1: (deployment) => !deployment.hosted,
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,

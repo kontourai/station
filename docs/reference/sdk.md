@@ -16,6 +16,14 @@ The React-free client exports `mutateBinary(url, method, options, blob)` for
 binary requests. Pass a captured `requestScope` to bind dispatch and response
 reads to that Station authority; the helper sends `application/octet-stream`.
 
+Credential and raw-egress resolvers receive an optional request selector with
+the destination URL and a snapshotted `requestScope`. Scoped consumers retain
+the captured scope rather than select credentials by URL: profiles can share
+an origin. A replaced authority raises `StationRequestAuthorityError` before
+dispatch or publication. This also fences whole-body readers, clones, stream
+readers, iterators, branches and pipes; cancellation remains available after
+retirement. Unscoped calls retain the selected host contract.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
@@ -220,15 +228,22 @@ with status 503, code `busy` and `retryAfterMs: 5000`; direct transcription
 results also include `busy` in the failed reason union. These exports require a build
 containing this change. See [local speech](../guides/local-speech.md).
 
+<a id="managed-policy-status"></a>
+
 ## Managed policy
 
-The root exports `fetchManagedPolicyStatus(apiBase?)` and
+The root exports `fetchManagedPolicyStatus(apiBase?, { requestScope?, signal? })` and
 `useManagedPolicyStatusQuery(apiBase?, config?)`, which read
-`GET /api/settings/managed-policy` as a `ManagedPolicyStatus` from
-`@kontourai/station-contracts/managed-policy`. A host older than the route
-answers 404, which reads as `{ state: 'none' }`; any other failure, or a body
-the contract parser refuses, throws. The status is fixed for the server's
-lifetime, so the query never goes stale. The server enforces the policy
+`GET /api/settings/managed-policy`: the [managed policy](../guides/managed-policy.md)
+the server loaded at startup. After a successful response, the reader lazily
+loads `parseManagedPolicyStatus` from
+`@kontourai/station-contracts/managed-policy-status` to validate the body as a
+`ManagedPolicyStatus`, without loading the policy registry. A host older than
+the route answers 404, which reads as `{ state: 'none' }`; any other failure,
+or a body the decoder refuses, throws. The status is fixed for the server's
+lifetime, so the query uses `staleTime: Infinity`. The query accepts `config.readTarget`
+to bind reads and cache identity to the owning Station, authority and route generation.
+The server enforces the policy
 whatever a client shows; use it to explain a managed control, such as the
 [approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling).
 This surface requires a published SDK version containing it.
@@ -406,22 +421,6 @@ Station does not deliver it (`not-delivered`); older hosts omit it.
 only for an integration whose `trustReview` this host returned. It
 invalidates the integrations queries.
 
-## Managed policy status
-
-The SDK root exports `fetchManagedPolicyStatus(apiBase?)` and
-`useManagedPolicyStatusQuery(apiBase?, config?)`, which read
-`GET /api/settings/managed-policy`: the [managed policy](../guides/managed-policy.md)
-the server loaded at startup. After a successful response, the reader lazily
-loads the status decoder and validates the response with
-`parseManagedPolicyStatus` from
-`@kontourai/station-contracts/managed-policy-status` and throws on a malformed
-one rather than reading it as unmanaged. A host older than the route answers
-404, which means it enforces no policy, so that reads as `{ state: "none" }`.
-The query keeps its result for the life of the page (`staleTime: Infinity`),
-because the server fixes the policy for its own lifetime. A client uses it only
-to explain a managed control; the server enforces the policy whatever a client
-shows.
-
 ## Integration capability status and Task write-back
 
 The SDK root exports `fetchIntegrationStatus(apiBase, options?)` and
@@ -433,8 +432,19 @@ cache data, refresh on mount, do not retain previous results, and do not retry
 automatically. The Task query also partitions by Task ID and may be disabled
 until the history is opened.
 
+Set `includeGithubAuthentication: true` on either integration reader to request
+`?include=github-authentication`; the query key separates this opt-in from the
+legacy status read. The GitHub connection may carry bounded `authentication`
+with `state`, Unix-millisecond `observedAt`, optional `account` and `scopes`.
+Missing metadata on an older host stays missing. A preview-disabled 404 preserves
+its typed `StationHttpError.code`, `previewId`, `settingsPath` and enablement
+message; it is not converted to a host-update instruction. Metadata needs the
+owning Station’s operator and enabled Repository sign-in details preview. These
+facts describe the machine CLI, not Project credentials or repository permissions.
+
+
 Both readers validate the bounded response and reject malformed data. The
-status reader throws `IntegrationStatusUnsupportedError` on 404; the Task
+status reader throws `IntegrationStatusUnsupportedError` on an ordinary 404; the Task
 reader's 404 can mean a refused or absent Task, or an older host. Neither
 reader substitutes an empty or working result for a failure. These exports
 require an SDK version and Station host containing them. See the
@@ -2415,6 +2425,32 @@ input. `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
 and the target API base as its second argument. Explicit target reads partition
 cache entries by that target and authority. These options grant no access and
 expose no outbound peer credential.
+
+The [Station connection contract](../design/station-connection.md) binds these
+options to host/direct/relay leases. For relay, `targetApiBase` names S's tunnel
+subtree while `requestScope` continues to name S's credential authority. For a
+direct connection both belong to R's independently paired profile. Credential
+and raw-egress resolvers receive the captured selector; equal origins do not imply
+equal principals. Never temporarily select a profile or forward R's credential
+to S. Lease retirement fences dispatch, response readers and stream chunks.
+
+The [conversation transport](../../src-ui/src/components/conversation/conversation-transport.ts)
+binds send, Stop, steering, request inspection/answers and delivery lookup.
+`steerTurn(apiBase, input, opts?)`, `inspectSteerInput(apiBase, input, opts?)` and
+`getConversationUsageTree(apiBase, conversationId, opts?)` accept captured
+`ClientRequestOptions.requestScope`. `setOrchestrationApprovalMode` takes
+`requestScope` in its input; `useConversationUsageTreeQuery` also scopes its read.
+Content inspection is URL-and-authority qualified. Shared controls consume
+capability decisions from that connection; reachability cannot grant full access
+or folder authority.
+
+The [attachment adapter](../../packages/sdk/src/client/attachment-staging.ts)
+keeps the ephemeral receiver upload grant separate from the credential that
+authenticates S's tunnel. Binary uploads/media preserve bytes. A typed
+[target refusal](../../packages/contracts/src/peer-chat.ts) is definite only when
+its source envelope, target and original mutation key match the current relay
+lease. R's authentication failure is HTTP 424 and must not retire S's credential.
+An unverified error or lost response remains uncertain; retain the key for lookup.
 
 ## API Functions
 

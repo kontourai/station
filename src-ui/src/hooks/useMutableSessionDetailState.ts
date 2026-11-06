@@ -10,16 +10,12 @@ import type {
   OrchestrationSessionSummary,
 } from '@kontourai/station-sdk';
 import {
-  interruptOrchestrationTurn,
-  resolveOrchestrationRequest,
-  sendOrchestrationTurn,
   useAcknowledgeAttentionItemMutation,
   useAttentionQuery,
   useSessionBuilderRunQuery,
   useSessionFlowRunQuery,
   useWorkflowTasksQuery,
 } from '@kontourai/station-sdk';
-import { useMutation, useMutationState } from '@tanstack/react-query';
 import {
   type SetStateAction,
   useCallback,
@@ -45,6 +41,7 @@ import {
   sessionTitle,
 } from '../utils/sessionDisplay';
 import { isFailedSession, sessionFailureText } from '../utils/sessionFailure';
+import { describeStationFailure } from '../utils/stationFailure';
 import type { OrchestrationEvent } from './orchestration/types';
 
 /** Flow-agents sidecar statuses excluded from the "Project workflows"
@@ -239,49 +236,14 @@ function isDuplicateOfPendingRequest(
   return item.requestType === pendingRequest.requestType;
 }
 
-function requestPresentation(request: OpenRequest): {
-  label: string;
-  accept: string;
-  decline: string;
-} {
-  switch (request.requestType) {
-    case 'permission':
-      return {
-        label: 'Permission requested',
-        accept: 'Approve',
-        decline: 'Decline',
-      };
-    case 'confirmation':
-      return {
-        label: 'Confirmation needed',
-        accept: 'Confirm',
-        decline: 'Cancel',
-      };
-    case 'input':
-      return {
-        label: 'Input requested',
-        accept: 'Continue',
-        decline: 'Cancel',
-      };
-    default:
-      return {
-        label: 'Approval requested',
-        accept: 'Approve',
-        decline: 'Decline',
-      };
-  }
-}
-
 /**
- * All query/mutation wiring and derived state for `MutableSessionDetail`
- * (archive#1204) — the render tree lives in the component; this hook owns
- * every piece of state, derivation, and side effect it renders from.
+ * Activity metadata, draft and attention state. Conversation actions belong
+ * to the shared record controller.
  */
 export function useMutableSessionDetailState({
   apiBase,
   draftScope = apiBase,
   session,
-  onTaskChanged,
   events,
   visualViewport,
 }: {
@@ -311,48 +273,7 @@ export function useMutableSessionDetailState({
   const isDelegated = Boolean(session.delegation);
   const { showToast } = useToast();
 
-  const sendKey = ['activity-session-send', apiBase, threadId];
-  const sendTurn = useMutation({
-    mutationKey: sendKey,
-    mutationFn: ({ text }: { text: string }) =>
-      sendOrchestrationTurn({ threadId, text, apiBase }),
-    onSuccess: (_result, { text }) => {
-      if (chatDraftsStore.getActivityDraft(draftScope, threadId) === text)
-        chatDraftsStore.clearActivityDraft(draftScope, threadId);
-    },
-  });
-  const sendAttempts = useMutationState({
-    filters: { mutationKey: sendKey, exact: true },
-    select: (mutation) => ({
-      status: mutation.state.status,
-      error: mutation.state.error,
-    }),
-  });
-  const sendTurnPending = sendAttempts.some(
-    (attempt) => attempt.status === 'pending',
-  );
-  const sendTurnError = sendAttempts.at(-1)?.error ?? null;
-  const respond = useMutation({
-    mutationFn: (decision: 'accept' | 'decline') => {
-      const request = latestOpenRequest(events);
-      if (!request) return Promise.resolve();
-      return resolveOrchestrationRequest({
-        threadId,
-        requestId: request.requestId,
-        decision,
-        apiBase,
-      });
-    },
-  });
-  const stopTask = useMutation({
-    mutationFn: () => interruptOrchestrationTurn({ threadId, apiBase }),
-    onSuccess: onTaskChanged,
-  });
-
   const pendingRequest = latestOpenRequest(events);
-  const pendingRequestPresentation = pendingRequest
-    ? requestPresentation(pendingRequest)
-    : null;
   const isStreaming = isStreamingSession(session);
   // archive#3244: this used to be a hand-written `['completed', 'failed',
   // 'canceled']` — a third copy of exactly the drift archive#1548 deleted
@@ -451,10 +372,9 @@ export function useMutableSessionDetailState({
   // Distinguishing the two here, rather than absorbing the failure into a
   // silent empty list, is what "reliably show why" actually requires.
   const attentionCheckFailed = attentionQuery.isError;
-  const attentionErrorMessage =
-    attentionQuery.error instanceof Error
-      ? attentionQuery.error.message
-      : 'The attention check failed to load — this session may still need a response.';
+  const attentionErrorMessage = describeStationFailure(
+    attentionQuery.error,
+  ).body;
   // A `needs_input` session's own generic compose box must never flash
   // visible before the attention query resolves and `hideGenericCompose`
   // flips it back off — `session.lifecycleState` is available synchronously
@@ -514,8 +434,6 @@ export function useMutableSessionDetailState({
       showToast(copied ? 'Session ID copied' : 'Could not copy the session ID');
     });
   };
-
-  const canSend = input.trim().length > 0 && !isStreaming && !sendTurnPending;
 
   // archive#189 supersedes the older "archive#582: sessions carry no join key"
   // note that stood here. Sessions CAN now be joined to a flow-agents task —
@@ -587,13 +505,7 @@ export function useMutableSessionDetailState({
     input,
     setInput,
     isDelegated,
-    sendTurn,
-    sendTurnPending,
-    sendTurnError,
-    respond,
-    stopTask,
     pendingRequest,
-    pendingRequestPresentation,
     isStreaming,
     isStopped,
     isFailed,
@@ -614,7 +526,6 @@ export function useMutableSessionDetailState({
     acknowledgeFailurePending: acknowledgeMutation.isPending,
     acknowledgeFailureError: acknowledgeMutation.error,
     copySessionId,
-    canSend,
     linkedFlowRun,
     builderRun,
     workflowEntries,
