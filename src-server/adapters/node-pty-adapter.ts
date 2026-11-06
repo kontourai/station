@@ -131,7 +131,7 @@ function waitForPendingPtyPid(pty: import('node-pty').IPty): Promise<void> {
   });
 }
 
-/** Public Windows kill waits for output; native release must not. */
+/** The managed patch makes public Windows kill immediate; own both pipes too. */
 function releaseNativePty(pty: import('node-pty').IPty): void {
   if ('_agent' in pty) {
     const agent = pty._agent;
@@ -148,7 +148,7 @@ function releaseNativePty(pty: import('node-pty').IPty): void {
       )
         agent._getConsoleProcessList = () => Promise.resolve([]);
       try {
-        agent.kill();
+        pty.kill();
       } finally {
         const output = '_socket' in pty ? pty._socket : undefined;
         const input = 'inSocket' in agent ? agent.inSocket : undefined;
@@ -163,6 +163,7 @@ function releaseNativePty(pty: import('node-pty').IPty): void {
 
 class NodePtyProcess implements IPtyProcess {
   private exited = false;
+  private conptyReleased = false;
   private termination?: Promise<void>;
   private readonly controllingTty: string | undefined;
   readonly terminate?: () => Promise<void>;
@@ -170,14 +171,19 @@ class NodePtyProcess implements IPtyProcess {
   private pauseEpoch = 0;
   private outputIncomplete = false;
   private pauseWatch?: ReturnType<typeof setTimeout>;
+  private exitEvent?: { exitCode: number; signal?: number };
 
-  constructor(private pty: import('node-pty').IPty) {
+  constructor(
+    private pty: import('node-pty').IPty,
+    private startupReadPaused = false,
+  ) {
     const tty = '_pty' in pty ? pty._pty : undefined;
     this.controllingTty =
       typeof tty === 'string' ? tty.replace(/^\/dev\//, '') : undefined;
-    pty.onExit(() => {
+    pty.onExit((event) => {
+      this.exitEvent = event;
       this.exited = true;
-      if (this.paused) this.outputIncomplete = true;
+      if (this.paused || this.startupReadPaused) this.outputIncomplete = true;
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
       if ('_agent' in pty) this.releaseConpty();
@@ -199,7 +205,9 @@ class NodePtyProcess implements IPtyProcess {
    * process (#3994). After the exit there is nothing to list, so that step is
    * answered empty for this terminal before `kill()` releases the rest.
    */
-  private releaseConpty(): void {
+  releaseConpty(): void {
+    if (this.conptyReleased) return;
+    this.conptyReleased = true;
     try {
       releaseNativePty(this.pty);
     } catch (error) {
@@ -360,6 +368,10 @@ class NodePtyProcess implements IPtyProcess {
 
   onData(cb: (data: string) => void): () => void {
     const disposable = this.pty.onData(cb);
+    if (this.startupReadPaused) {
+      this.startupReadPaused = false;
+      if (!this.paused) this.pty.resume();
+    }
     return () => disposable.dispose();
   }
 
@@ -370,6 +382,21 @@ class NodePtyProcess implements IPtyProcess {
       outputIncomplete?: boolean;
     }) => void,
   ): () => void {
+    if (this.exitEvent) {
+      const event = this.exitEvent;
+      let active = true;
+      queueMicrotask(() => {
+        if (active)
+          cb({
+            exitCode: event.exitCode,
+            signal: event.signal ?? null,
+            outputIncomplete: this.outputIncomplete,
+          });
+      });
+      return () => {
+        active = false;
+      };
+    }
     const disposable = this.pty.onExit(({ exitCode, signal }) =>
       cb({
         exitCode,
@@ -441,6 +468,7 @@ export class NodePtyAdapter implements IPtyAdapter {
       input.env,
     );
     let pty: import('node-pty').IPty | undefined;
+    let proc: NodePtyProcess | undefined;
     let exited = false;
     let startupExit: { dispose(): void } | undefined;
     try {
@@ -458,23 +486,28 @@ export class NodePtyAdapter implements IPtyAdapter {
       startupExit = pty.onExit(() => {
         exited = true;
       });
+      // Retain early output until the consumer has installed its data listener.
+      const starting = process.platform === 'win32' && pty.pid <= 0;
+      if (starting) pty.pause();
       if (pty.pid === 0) await waitForPendingPtyPid(pty);
       if (exited) throw new Error('PTY exited before startup completed');
       if (!Number.isSafeInteger(pty.pid) || pty.pid <= 0) {
         throw new Error('PTY startup did not report a positive process ID');
       }
+      const result = new NodePtyProcess(pty, starting);
+      proc = result;
       trackChildWorkload(launch, pty.pid);
-      const proc = new NodePtyProcess(pty);
-      pty.onExit(() => {
-        void closeChildWorkload(proc.pid).catch((error) =>
+      result.onExit(() => {
+        void closeChildWorkload(result.pid).catch((error) =>
           logger.warn('Terminal workload cleanup failed', { error }),
         );
       });
-      return proc;
+      return result;
     } catch (error) {
-      if (pty && !exited) {
+      if (pty && (!exited || pty.pid > 0)) {
         try {
-          releaseNativePty(pty);
+          if (proc) proc.releaseConpty();
+          else releaseNativePty(pty);
         } catch (cleanupError) {
           logger.warn('Failed PTY launch cleanup failed', {
             error: cleanupError,

@@ -39,6 +39,7 @@ const RUNG_GLYPHS: Record<
   answer: QuestionGlyph,
   waiting: HandGlyph,
   queued: OutboxGlyph,
+  'delivery-unconfirmed': WarningGlyph,
   blocked: LockGlyph,
   interrupted: WarningGlyph,
   failed: CloseGlyph,
