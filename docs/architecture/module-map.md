@@ -4682,7 +4682,10 @@ exercise these boundaries without qualifying native shells or physical devices.
 failures at this boundary, composing provider repair policy with source/target
 attribution. A relay refusal needs the source-authored observation, current lease,
 expected target and original mutation key before it proves non-delivery. Unknown
-response text remains diagnostic. The [surface manifest](../../scripts/conversation-surfaces.json)
+response text remains diagnostic. Locally authored validation and fixed domain
+translations use [StationUiError](../../src-ui/src/utils/StationUiError.ts) to retain
+actionable copy without promoting caught diagnostics into UI text. This marker
+does not prove delivery or refusal. The [surface manifest](../../scripts/conversation-surfaces.json)
 registers shared owners and error publishers; its exact host/domain and diagnostic
 contracts are structural scope declarations, not permission or runtime evidence.
 

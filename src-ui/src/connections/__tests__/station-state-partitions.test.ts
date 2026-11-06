@@ -214,6 +214,38 @@ function resolved(): ConversationOpenResolution {
 }
 
 describe('Station state partitions', () => {
+  it('keeps a repeated session-posture warning on its owning Station when session ids collide', async () => {
+    const { a, b } = await setup();
+    activeChatsStore.initChat('same-session');
+    const event = {
+      method: 'runtime.warning',
+      provider: 'claude',
+      threadId: 'same-session',
+      createdAt: '2026-11-04T00:00:00Z',
+      severity: 'warning',
+      code: 'muse-serve-unavailable',
+      message: 'The approval channel is unavailable for this session.',
+    };
+    for (const id of ['1', '2']) {
+      frame(a, SERVER_EVENTS.ORCHESTRATION_EVENT, { event }, id);
+    }
+    await waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot()['a-tab'].ephemeralMessages,
+      ).toHaveLength(1),
+    );
+    expect(
+      activeChatsStore.getSnapshot()['a-tab'].ephemeralMessages?.[0].content,
+    ).toBe(event.message);
+    expect(
+      activeChatsStore.forStation(b).getSnapshot()['b-tab'].ephemeralMessages ??
+        [],
+    ).toEqual([]);
+    expect(
+      activeChatsStore.getSnapshot()['same-session'].ephemeralMessages ?? [],
+    ).toEqual([]);
+  });
+
   it('coalesced deltas carry their Station through event cloning instead of reaching a colliding host tab', async () => {
     const { a, b } = await setup();
     activeChatsStore.initChat('same-session');

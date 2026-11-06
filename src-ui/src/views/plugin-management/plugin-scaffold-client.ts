@@ -1,4 +1,5 @@
 import { mutateJson } from '@kontourai/station-sdk';
+import { StationUiError } from '../../utils/StationUiError';
 
 export type PluginScaffoldTemplateChoice = 'pane' | 'full' | 'provider';
 
@@ -39,11 +40,23 @@ function plural(count: number, noun: string): string {
  */
 function refusalMessage(envelope: ScaffoldEnvelope, status: number): string {
   const base =
-    envelope.error || `Station could not scaffold the plugin (${status})`;
-  if (envelope.presentCount !== undefined) {
+    envelope.code === 'working-directory-not-empty'
+      ? "The Project's folder is not empty"
+      : envelope.code === 'partial-scaffold'
+        ? 'Part of this plugin is already in the Project folder'
+        : `Station could not scaffold the plugin (${status})`;
+  if (
+    Number.isSafeInteger(envelope.presentCount) &&
+    envelope.presentCount !== undefined &&
+    envelope.presentCount >= 0
+  ) {
     return `${base}. ${plural(envelope.presentCount, 'file')} of this plugin ${envelope.presentCount === 1 ? 'is' : 'are'} already there.`;
   }
-  if (envelope.entryCount) {
+  if (
+    Number.isSafeInteger(envelope.entryCount) &&
+    envelope.entryCount !== undefined &&
+    envelope.entryCount > 0
+  ) {
     return `${base}. It holds ${plural(envelope.entryCount, 'item')}.`;
   }
   return base;
@@ -68,7 +81,7 @@ export async function scaffoldProjectPlugin(
     // An unreadable body still has a status to report below.
   }
   if (!response.ok || !envelope.success || !envelope.data) {
-    throw new Error(refusalMessage(envelope, response.status));
+    throw new StationUiError(refusalMessage(envelope, response.status));
   }
   return envelope.data;
 }

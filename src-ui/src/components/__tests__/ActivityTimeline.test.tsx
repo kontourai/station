@@ -48,7 +48,7 @@ describe('ActivityTimeline (#771)', () => {
     render(<ActivityTimeline />);
 
     expect(screen.getByText('Could not load activity')).toBeTruthy();
-    expect(screen.getByText('activity unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalledTimes(1);

@@ -1,3 +1,4 @@
+import { useConnections } from '@kontourai/station-connect';
 import { useMemo } from 'react';
 import { useStationConnectionsOptional } from '../../connections/StationConnectionsContext';
 import type { StationConnection } from '../../connections/station-connection';
@@ -8,6 +9,7 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { readRetainedChatTranscript } from '../../lib/retained-chat-transcript';
+import { ownerAttributionFromStation } from '../../utils/ownerAttribution';
 import { Button } from '../Button';
 import {
   ConversationBody,
@@ -35,9 +37,17 @@ export function ChatDockBody({
   const { apiBase } = useApiBase();
   const requestScope = useHostRequestAuthorityScope();
   const connections = useStationConnectionsOptional();
+  const { activeConnection } = useConnections();
   const { navigate } = useNavigationActions();
   const { connection, resolving, unavailable, retry } =
     useChatStationConnection(props.activeSession, provided);
+  const owner = useMemo(
+    () =>
+      connection
+        ? { id: connection.environmentId, label: connection.stationName }
+        : ownerAttributionFromStation(activeConnection, undefined),
+    [connection, activeConnection],
+  );
   const value = useMemo(
     () =>
       connection
@@ -57,7 +67,7 @@ export function ChatDockBody({
     props.activeSession.stationBinding,
     props.activeSession.conversationId,
   );
-  if (resolving) return <SkeletonList label="Connecting to Station" />;
+  if (resolving) return <SkeletonList label="Connecting to this Station" />;
   if (unavailable)
     return (
       <div className="chat-messages">
@@ -116,7 +126,10 @@ export function ChatDockBody({
     );
   return (
     <ConversationConnectionProvider value={value}>
-      <ConversationBody {...props} />
+      <ConversationBody
+        {...props}
+        owner={props.owner === undefined ? owner : props.owner}
+      />
     </ConversationConnectionProvider>
   );
 }

@@ -634,7 +634,7 @@ test('phone attached Send carries its reply but still asks other dirty work owne
       target: { value: 'A separate unsaved edit' },
     },
   );
-  fireEvent.click(review.getByRole('button', { name: 'Send' }));
+  fireEvent.click(review.getByRole('button', { name: 'Continue in Station' }));
   const layer = model.readPhoneLayer();
   const discard = await screen.findByRole('dialog', {
     name: 'Unsaved Changes',
@@ -644,7 +644,7 @@ test('phone attached Send carries its reply but still asks other dirty work owne
     expect(
       (
         review.getByRole('button', {
-          name: 'Send',
+          name: 'Continue in Station',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false),
@@ -654,7 +654,7 @@ test('phone attached Send carries its reply but still asks other dirty work owne
     'Only the submitted reply moves',
   );
   expect(screen.queryByRole('dialog', { name: 'Continue here?' })).toBeNull();
-  fireEvent.click(review.getByRole('button', { name: 'Send' }));
+  fireEvent.click(review.getByRole('button', { name: 'Continue in Station' }));
   const secondDecision = await screen.findByRole('dialog', {
     name: 'Unsaved Changes',
   });

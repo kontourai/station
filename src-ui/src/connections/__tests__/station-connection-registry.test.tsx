@@ -427,6 +427,9 @@ describe('Station connection registry', () => {
 
   it('retires direct and host leases when the mounted authority namespace is replaced', async () => {
     const client = new QueryClient();
+    client.setQueryData(['system-status'], {
+      devicePresentation: { hostName: 'Development workstation' },
+    });
     client.setQueryData(
       ['feature-previews', 'default'],
       [
@@ -475,6 +478,8 @@ describe('Station connection registry', () => {
       ),
     );
     const lease = await connectionApi().station.resolve();
+    expect(connectionApi().profiles.activeConnection?.name).toBe('Default');
+    expect(lease.connection.stationName).toBe('Development workstation');
     const direct = await connectionApi().station.resolve({
       environmentId: 'namespace-target',
     });

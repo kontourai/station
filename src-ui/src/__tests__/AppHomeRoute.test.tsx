@@ -35,6 +35,11 @@ vi.mock('../connections/StationConnectionsContext', () => ({
 vi.mock('../hooks/ServerEventsMount', () => ({
   ServerEventsMount: serverEventsMount,
 }));
+// Outbox transport is qualified by its mounted controller suites. This shell
+// routing fixture has no credential graph or QueryClient.
+vi.mock('../hooks/OutboundQueueFlushMount', () => ({
+  OutboundQueueFlushMount: () => null,
+}));
 
 vi.mock('../components/chat/TaskShapingComposer', () => ({
   TaskShapingHost: () => null,

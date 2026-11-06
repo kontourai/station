@@ -45,8 +45,7 @@ function restoreFailureMessage(cause: unknown): string {
               : 'The checkpoint identity changed. Review a new preview.';
     return `${action} No files were changed.`;
   }
-  const detail =
-    cause instanceof Error ? userFacingErrorMessage(cause) : String(cause);
+  const detail = userFacingErrorMessage(cause).replace(/\.$/u, '');
   return `Restore outcome not confirmed: ${detail}. Inspect the workspace before trying again.`;
 }
 

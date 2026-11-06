@@ -20,6 +20,7 @@ import {
   parseBrowserRelayTurnConfiguration,
 } from '../../lib/browserRelayTurnCustody';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { StationUiError } from '../../utils/StationUiError';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { BrowserStationTrustApproval } from './BrowserStationTrustApproval';
 import { RelaySetupHelp } from './RelaySetupHelp';
@@ -116,7 +117,7 @@ export function BrowserRelayRoutes({
     > | null = null;
     try {
       if (submitted.length > 8192)
-        throw new Error('Broker invitation is too large.');
+        throw new StationUiError('Broker invitation is too large.');
       // The operator CLI currently emits a private JSON file, while a future
       // share flow may encode the same typed invitation in a fragment link.
       // redeemBrokerRouteInvitation validates either form before broker use.
@@ -133,7 +134,7 @@ export function BrowserRelayRoutes({
         (address.protocol !== 'https:' &&
           !(address.protocol === 'http:' && loopback))
       )
-        throw new Error('Enter a secure Station application origin.');
+        throw new StationUiError('Enter a secure Station application origin.');
       const brokerRoute = {
         brokerOrigin: invitation.brokerOrigin,
         scope: invitation.scope,
@@ -152,7 +153,7 @@ export function BrowserRelayRoutes({
           connection.url !== origin,
       );
       if (conflicting)
-        throw new Error(
+        throw new StationUiError(
           'This broker route is already saved for a different Station application address.',
         );
       const alreadySaved = routes.some(
@@ -169,7 +170,7 @@ export function BrowserRelayRoutes({
             brokerRoute.scope.browserOrigin,
       );
       if (alreadySaved)
-        throw new Error(
+        throw new StationUiError(
           'This broker route is already saved. Use Configure TURN to change its TURN settings, or forget the route before accepting another invitation.',
         );
       trustStore = await openDeviceConnectionTrustStore();
@@ -177,18 +178,18 @@ export function BrowserRelayRoutes({
       const trustRecord = await trustStore.read(invitation.scope.stationId);
       controller.signal.throwIfAborted();
       if (trustRecord?.status === 'revoked')
-        throw new Error(
+        throw new StationUiError(
           'Station trust is revoked on this browser. Independently approve the current rotated Station key before accepting this invitation.',
         );
       if (
         !trustRecord ||
         trustRecord.trust.enrollmentId !== invitation.scope.enrollmentId
       )
-        throw new Error(
+        throw new StationUiError(
           'Approve this Station’s signing key from the operator’s separate key report before accepting its broker invitation.',
         );
       if (trustRecord.status !== 'approved')
-        throw new Error(
+        throw new StationUiError(
           'Approve this Station’s signing key before accepting its broker invitation.',
         );
       const hasTurnInput =
@@ -196,7 +197,9 @@ export function BrowserRelayRoutes({
       let turnConfiguration = null;
       if (hasTurnInput) {
         if (!turnUrl || !turnUsername || !turnCredential)
-          throw new Error('Complete all TURN fields or leave them all blank.');
+          throw new StationUiError(
+            'Complete all TURN fields or leave them all blank.',
+          );
         turnConfiguration = parseBrowserRelayTurnConfiguration({
           schemaVersion: 1,
           url: turnUrl,

@@ -1,7 +1,12 @@
-import { TerminalSessionError } from '@kontourai/station-sdk';
+import {
+  EngineStillStartingError,
+  TerminalHistoryUnsupportedError,
+  TerminalSessionError,
+} from '@kontourai/station-sdk';
 import { ChatHttpError, StationHttpError } from '@kontourai/station-sdk/client';
 import { describe, expect, it } from 'vitest';
 import type { StationConnection } from '../../connections/station-connection';
+import { StationUiError } from '../StationUiError';
 import { describeStationFailure } from '../stationFailure';
 
 const connection = (
@@ -32,6 +37,34 @@ const refusal = (remoteStatus: 401 | 403 | 409, overrides = {}) =>
   );
 
 describe('Station authority failure translation', () => {
+  it('keeps curated application copy without accepting lookalike diagnostic fields', () => {
+    const local = new StationUiError(
+      'Choose another folder before continuing.',
+    );
+    local.message = 'raw_machine_code';
+    const result = describeStationFailure(local);
+    expect(result.body).toBe('Choose another folder before continuing.');
+    expect(result.delivery).toBe('uncertain');
+    const forged = Object.assign(new Error('raw_machine_code'), {
+      userMessage: 'raw_machine_code',
+    });
+    expect(describeStationFailure(forged).body).not.toContain(
+      'raw_machine_code',
+    );
+  });
+  it('reconstructs typed engine-start and unsupported-history guidance without the diagnostic message', () => {
+    const starting = new EngineStillStartingError('Kiro CLI');
+    starting.message = 'raw_machine_code';
+    expect(describeStationFailure(starting).body).toContain(
+      'Kiro CLI is still starting for the first time.',
+    );
+    const unsupported = new TerminalHistoryUnsupportedError();
+    unsupported.message = 'raw_machine_code';
+    expect(describeStationFailure(unsupported).body).toBe(
+      'This Station does not report terminal history.',
+    );
+    expect(describeStationFailure(unsupported).delivery).toBe('uncertain');
+  });
   it.each([
     'This Station cannot be forgotten here.',
     "This app's own Station cannot be forgotten.",
@@ -47,7 +80,7 @@ describe('Station authority failure translation', () => {
   });
   it.each([
     ['raw-egress-unavailable', 'direct Station connection'],
-    ['credential-unavailable', 'Reconnect to Station'],
+    ['credential-unavailable', 'Reconnect to this Station'],
     ['unsupported-host', 'Update the host'],
     ['refused', 'Terminal access was refused.'],
   ] as const)('keeps safe terminal guidance for %s', (code, copy) => {

@@ -204,7 +204,10 @@ export function useNewProjectSubmit({
       // that did not happen (see `RejectedDirectory`).
       const status = (result.error as { status?: unknown }).status;
       return {
-        message: describeStationFailure(result.error).body,
+        message:
+          status === 404
+            ? 'Folder not found'
+            : describeStationFailure(result.error).body,
         verdict: typeof status === 'number' && status >= 400 && status < 500,
       };
     }

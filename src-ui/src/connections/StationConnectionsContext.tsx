@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
+import { useActiveStationName } from '../hooks/useActiveStationName';
 import type {
   resolveStationConnection,
   StationConnectionSource,
@@ -44,6 +45,7 @@ export function StationConnectionsProvider({
   const { namespace, observation } = useAuthorityPersistence();
   const queryClient = useQueryClient();
   const { activeConnection, connections } = useConnections();
+  const activeStationName = useActiveStationName();
   const scope = useHostRequestAuthorityScope();
   const previews = useFeaturePreviewsQuery();
   const remoteEnabled =
@@ -95,7 +97,7 @@ export function StationConnectionsProvider({
           authorityNamespace: namespace,
           observation,
           connectionId: activeConnection.id,
-          stationName: activeConnection.name,
+          stationName: activeStationName ?? activeConnection.name,
           requestScope: scope,
           mutationAllowed:
             !activeConnection.brokerRoute &&
@@ -119,6 +121,7 @@ export function StationConnectionsProvider({
       observation,
       scope,
       activeConnection,
+      activeStationName,
       connections,
       remoteEnabled,
       previews.isPending,

@@ -16,6 +16,7 @@ import {
   removeProjectCreationRecovery,
   writeProjectCreationRecovery,
 } from '../lib/project-onboarding-recovery';
+import { StationUiError } from '../utils/StationUiError';
 import { describeStationFailure } from '../utils/stationFailure';
 
 const pendingSchema = z
@@ -178,7 +179,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
       startIntent: ProjectStartIntent = 'workspace',
     ): Promise<PendingCreation | null> {
       if (current.corrupt)
-        throw new Error(
+        throw new StationUiError(
           'The saved creation request could not be read. Clear it explicitly before creating another Project.',
         );
       if (current.pending) return current.pending;
@@ -187,9 +188,11 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         ? capability.data
         : (await capability.refetch()).data;
       if (availability === undefined)
-        throw new Error('Project recovery could not be checked. Try again.');
+        throw new StationUiError(
+          'Project recovery could not be checked. Try again.',
+        );
       if (!scope.isCurrent())
-        throw new Error(
+        throw new StationUiError(
           'Station access changed. Try again on the selected Station.',
         );
       if (!availability) return null;
@@ -208,13 +211,13 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
           }),
         ).length > 32768
       )
-        throw new Error(
+        throw new StationUiError(
           'Project setup is too large to retain. Shorten its description and try again.',
         );
       if (!scope) throw new Error('Station recovery identity is unavailable.');
       const existing = retained(recoveryScope);
       if (existing.corrupt)
-        throw new Error(
+        throw new StationUiError(
           'The saved creation request could not be read. Clear it explicitly before creating another Project.',
         );
       if (existing.pending) {
@@ -224,7 +227,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
           existing.pending.starterLayoutId !== starterLayoutId ||
           (existing.pending.startIntent ?? 'workspace') !== startIntent
         )
-          throw new Error(
+          throw new StationUiError(
             'Another Project setup is saved for this Station account. Reopen New Project to inspect it first.',
           );
         setState({ key, ...existing });
@@ -236,7 +239,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
     },
     clear(expectedRequestId = current.pending?.requestId) {
       if (scope && !scope.isCurrent())
-        throw new Error(
+        throw new StationUiError(
           'Station access changed. Return to the creating account.',
         );
       const existing = retained(recoveryScope);
@@ -247,7 +250,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         : existing.pending?.requestId === expectedRequestId;
       if (!matches && (existing.raw !== null || existing.corrupt)) {
         setState({ key, ...existing });
-        throw new Error(
+        throw new StationUiError(
           'Saved setup changed in another tab. Inspect the newer request before setting it aside.',
         );
       }

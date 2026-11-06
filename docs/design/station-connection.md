@@ -457,6 +457,14 @@ Unknown errors get a useful fixed fallback. Raw `error.message` or `.code` is
 diagnostic data, never UI copy. Preserve domain-specific safe hints and their
 capability gates.
 
+Locally authored validation guidance uses
+[`StationUiError`](../../src-ui/src/utils/StationUiError.ts). Construct it from
+application copy or a domain code's fixed translation, never from a caught
+diagnostic or an arbitrary response string. Typed engine-start and unsupported
+history errors retain their recovery guidance without reading their messages.
+Curated copy does not establish refusal or delivery: the verified envelope,
+current authority and relay observation rules above still decide those facts.
+
 An upstream definite rejection is refused, retaining an editable draft. Only
 loss of an answer after possible dispatch is indeterminate: preserve the key
 and offer Check delivery. Retry requires the existing outbox's proof of

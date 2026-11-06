@@ -18,6 +18,7 @@ import {
   type TaskShapingRequest,
 } from '../../lib/task-shaping';
 import { resolveAgentExecution } from '../../utils/execution';
+import { StationUiError } from '../../utils/StationUiError';
 import { describeStationFailure } from '../../utils/stationFailure';
 
 export function TaskShapingHost() {
@@ -72,12 +73,13 @@ export function TaskShapingHost() {
           }
         }
         if (!entry)
-          throw new Error(
+          throw new StationUiError(
             'Open this conversation in chat, then choose New Task from this.',
           );
         const [key, chat] = entry;
         const agent = chat.agentSlug;
-        if (!agent) throw new Error('The conversation has no selected Agent.');
+        if (!agent)
+          throw new StationUiError('The conversation has no selected Agent.');
         navigation.setActiveChat(key);
         showChatPageOrDock(() => navigation.setDockState(true, true));
         // An explicit promotion sends a new turn, without consuming a person's unsent draft or files.
@@ -111,7 +113,7 @@ export function TaskShapingHost() {
             attachments: savedAttachments,
           });
         if (sent === false)
-          throw new Error(
+          throw new StationUiError(
             'The shaping message could not be sent. Inspect the chat for its delivery status.',
           );
       }

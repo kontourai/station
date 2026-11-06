@@ -430,7 +430,7 @@ describe('#2316 inline approval card', () => {
           },
           { status: 404 },
         ),
-      /Unknown Claude permission request: req-claude-b/,
+      /Your decision was not delivered/,
     ],
     [
       'the network fails',
@@ -515,7 +515,7 @@ describe('#2316 inline approval card', () => {
     const alert = await screen.findByText(/Your decision was not delivered/);
     expect(alert.closest('[role="alert"]')).not.toBeNull();
     expect(alert.closest('[role="alert"]')?.textContent).toMatch(
-      /Approval request not found/,
+      /Your decision was not delivered/,
     );
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({

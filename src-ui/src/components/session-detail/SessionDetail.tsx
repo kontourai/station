@@ -126,7 +126,7 @@ export function SessionDetail(
   });
   if (!remote && connections && !station) {
     if (owner?.key !== key || !owner.error)
-      return <SkeletonBlock label="Connecting to Station" />;
+      return <SkeletonBlock label="Connecting to this Station" />;
     return (
       <ErrorState
         title="Station unavailable"
@@ -143,7 +143,7 @@ export function SessionDetail(
       !open.isError &&
       props.session.conversationId
     )
-      return <SkeletonBlock label="Connecting to Station" />;
+      return <SkeletonBlock label="Connecting to this Station" />;
     return (
       <ErrorState
         title="Station unavailable"

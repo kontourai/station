@@ -5,6 +5,7 @@ import {
   type ChatErrorTranslation,
   translateChatError,
 } from './chatErrorTranslation';
+import { StationUiError } from './StationUiError';
 import { isStationTransportFailure } from './stationTransportFailure';
 
 const TERMINAL_RECOVERY_COPY = new Map([
@@ -12,7 +13,7 @@ const TERMINAL_RECOVERY_COPY = new Map([
     'raw-egress-unavailable',
     'Terminals need a direct Station connection. Select a direct connection and try again.',
   ],
-  ['credential-unavailable', 'Reconnect to Station to use this terminal.'],
+  ['credential-unavailable', 'Reconnect to this Station to use this terminal.'],
   [
     'unsupported-host',
     'This host does not support terminal sessions. Update the host to use this feature.',
@@ -83,7 +84,22 @@ export function describeStationFailure(
     'This Station cannot be forgotten here.',
     "This app's own Station cannot be forgotten.",
     'Learning review is unsupported on this host. Enable its Feature Preview or update this Station.',
+    'Another sign-in is starting. Try again shortly.',
   ].find((copy) => copy === message);
+  const startingEngine =
+    value?.name === 'EngineStillStartingError' &&
+    'engineName' in value &&
+    typeof value.engineName === 'string'
+      ? value.engineName
+      : undefined;
+  const applicationCopy =
+    value instanceof StationUiError
+      ? value.userMessage
+      : startingEngine
+        ? `${startingEngine} is still starting for the first time. If it connects while Station is running, its Agent is added then; otherwise add it again later.`
+        : value?.name === 'TerminalHistoryUnsupportedError'
+          ? 'This Station does not report terminal history.'
+          : localCopy;
   // TerminalSessionError carries terminal transport codes, not model errors.
   // Use fixed recovery copy; even a typed error's message may be diagnostic.
   const terminalCopy =
@@ -106,6 +122,7 @@ export function describeStationFailure(
     };
   if (
     (remoteStatus === 401 || remoteStatus === 403) &&
+    !applicationCopy &&
     (!domain || domain.title === 'Error')
   ) {
     const body =
@@ -156,8 +173,8 @@ export function describeStationFailure(
       message: value && 'stationEnvelope' in value ? message : '',
     });
   const reasons = envelopeReasons(details);
-  const safe = localCopy
-    ? { title: 'Request not ready', body: localCopy, retryable: false }
+  const safe = applicationCopy
+    ? { title: 'Request not ready', body: applicationCopy, retryable: false }
     : connection?.routeKind !== 'relay' && status === 400 && reasons.length > 0
       ? { title: 'Not sent', body: reasons.join(' '), retryable: false }
       : translated.title === 'Error'

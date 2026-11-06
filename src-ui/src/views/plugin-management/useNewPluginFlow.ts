@@ -10,6 +10,7 @@ import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { StationUiError } from '../../utils/StationUiError';
 import {
   buildPluginAuthoringPrimer,
   startPluginAuthoringChat,
@@ -126,11 +127,15 @@ export function useNewPluginFlow(onDone: () => void) {
           const status = (createError as { status?: unknown }).status;
           const code = (createError as { code?: unknown }).code;
           if (status === 403 && code === 'insufficient_scope') {
-            throw new Error(INSUFFICIENT_SCOPE_REFUSED);
+            throw new StationUiError(INSUFFICIENT_SCOPE_REFUSED);
           }
           if (needsSharedOverride && status === 403 && code === undefined) {
-            throw new Error(WORKTREE_OVERRIDE_REFUSED);
+            throw new StationUiError(WORKTREE_OVERRIDE_REFUSED);
           }
+          if (status === 403 && code === 'working-directory-not-granted')
+            throw new StationUiError(
+              "Only this Station's operator, or a device the operator allowed to run commands, can choose a Project's folder. Nothing was saved.",
+            );
           throw createError;
         }
         project = { slug: result.slug, name: result.name ?? displayName };

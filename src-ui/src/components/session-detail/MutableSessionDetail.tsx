@@ -419,6 +419,10 @@ export function MutableSessionDetail({
               items={visibleAttentionItems}
               answerHere={!isPeerRecord}
             />
+          </>
+        }
+        afterTranscript={
+          <>
             <details
               ref={detailsRef}
               className="sessions-detail__disclosure"
