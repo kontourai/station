@@ -96,12 +96,25 @@ async function harness(
   const backgroundGate = deferred();
   const backgroundEntered = deferred();
   const original = adapter.startSession.bind(adapter);
+  let observedStarts = 0;
   vi.spyOn(adapter, 'startSession').mockImplementation(async (input) => {
     if (input.threadId === 'background') {
       backgroundEntered.release();
       await backgroundGate.promise;
     }
-    return original(input);
+    const session = await original(input);
+    if (options.credentialRecovery)
+      adapter.events.push({
+        method: 'session.started',
+        eventId: `observed-start-${++observedStarts}`,
+        provider: adapter.provider,
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        createdAt: session.createdAt,
+        initialState: 'created',
+        metadata: input.metadata,
+      });
+    return session;
   });
   /**
    * The production Project-directory resolver every start awaits to
@@ -300,9 +313,11 @@ async function harness(
         input: {
           threadId,
           provider: 'claude',
-          ...(options.project
-            ? { cwd: projectRoot, metadata: { projectSlug: PROJECT.slug } }
-            : {}),
+          ...(options.project ? { cwd: projectRoot } : {}),
+          metadata: {
+            userId,
+            ...(options.project ? { projectSlug: PROJECT.slug } : {}),
+          },
         },
       },
       { ...ownerContext, userId },
@@ -1043,6 +1058,14 @@ describe('review corrections at the engine-start owner boundary', () => {
     const h = await harness({ credentialRecovery: true });
     h.service.initialize();
     expect(await h.freshStart('live')).toMatchObject({ status: 'accepted' });
+    await vi.waitFor(async () => {
+      expect(h.eventStore.findSessionOwnerUserId('live')).toBe('owner');
+      expect(
+        (await h.service.readSession('live', reader('owner')))?.session
+          .threadId,
+      ).toBe('live');
+    });
+    expect(await h.service.readSession('live', reader('stranger'))).toBeNull();
     vi.spyOn(h.adapter, 'sendTurn').mockImplementation(async (input) => {
       h.adapter.events.push({
         method: 'turn.started',
@@ -1052,6 +1075,7 @@ describe('review corrections at the engine-start owner boundary', () => {
         turnId: 'turn-B',
         createdAt: new Date().toISOString(),
         prompt: input.input,
+        invocationId: input.invocationId,
         resourceAdmissionIntent: 'interactive_user',
       });
       return { threadId: 'live', turnId: 'turn-B' };
@@ -1069,6 +1093,7 @@ describe('review corrections at the engine-start owner boundary', () => {
         h.eventStore.latestEventByMethod('live', 'turn.started')?.payload,
       ).toMatchObject({
         turnId: 'turn-B',
+        invocationId: expect.any(String),
         clientTurnId: 'B',
         dispatchOrigin: 'interactive',
         resourceAdmissionIntent: intent,
@@ -1077,11 +1102,18 @@ describe('review corrections at the engine-start owner boundary', () => {
     const lease = await h.holdStartLease();
     const reserve = vi.spyOn(h.resourcePosture, 'reserveEngineStart');
     const waiting = h.waitPublished('live', true);
+    const source = h.eventStore.latestEventByMethod(
+      'live',
+      'turn.started',
+    )?.payload;
+    if (source?.method !== 'turn.started' || !source.invocationId)
+      throw new Error('Recovery fixture has no observed source invocation');
     h.adapter.events.push({
       eventId: 'account-failure-B',
       provider: 'claude',
       threadId: 'live',
       turnId: 'turn-B',
+      invocationId: source.invocationId,
       method: 'runtime.error',
       severity: 'error',
       createdAt: new Date().toISOString(),
