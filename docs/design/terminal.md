@@ -288,18 +288,31 @@ The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
 unknown or changed tty identity refuses all census signals; the adapter kills
 its owned shell handle and reports the cleanup failure instead of guessing
 at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
-On Windows the operation ends the shell's process tree with `taskkill /T /F`
-before the ConPTY closes, as the supervisor's workload host does: closing a
+Before any census signal, a new POSIX child may still be attaching its
+controlling tty. The adapter retains the native fork's device name and waits
+within the existing census/deadline bounds for that exact binding. A different
+concrete device, an unknown binding after admission, or an ownership change
+still refuses signals; a missing binding never becomes successful cleanup.
+The backend is pinned to node-pty `1.2.0-beta.18`, whose Windows native handle
+registry is synchronized across spawn and exit threads. This pin is a published
+prerelease. Managed Linux installs retain the approved source-build path;
+upstream Linux prebuilds are not selected by directory presence. Its Windows
+connection is asynchronous:
+the adapter waits for the output pipe and a valid PID before publishing the
+process or tracking its workload. A startup exit is refused; the backend already
+owns cleanup when no PID was published. Readiness waits for pipe wiring rather
+than first output. The existing cleanup deadline is unchanged. It then ends
+the shell's process tree with
+`taskkill /T /F` before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
 stop (#3994). After a successful `taskkill` both hosts wait for the exit.
-node-pty 1.1 releases a ConPTY (its pseudoconsole and output-reader thread)
-only in `kill()`, and that call first lists the console's processes through
+The pinned node-pty releases its output-reader worker in `kill()`, and that
+call first lists the console's processes through
 a helper that cannot attach once the shell has gone, then five seconds later
-signals the old shell pid, which Windows may have reused (on a loaded runner,
-a later shell's console host, which failed its CreateProcess with error 87).
-So on every exit, natural or not, the adapter releases the ConPTY through
-`kill()` with that listing answered empty. Before the exit, `kill()` is only
+can signal the old shell PID, which Windows may have reused.
+On a started shell's exit, the adapter calls `kill()` with that listing
+answered empty. Before the exit, `kill()` is only
 the fallback for a tree `taskkill` could not end, which is reported.
 `taskkill` follows
 parent links, so a descendant whose parent already exited is not found

@@ -71,6 +71,8 @@ function getNodePty(): Promise<typeof import('node-pty')> {
 class NodePtyProcess implements IPtyProcess {
   private exited = false;
   private termination?: Promise<void>;
+  private readonly outputPipeReady: Promise<void>;
+  private readonly controllingTty: string | undefined;
   readonly terminate?: () => Promise<void>;
   private paused = false;
   private pauseEpoch = 0;
@@ -78,12 +80,36 @@ class NodePtyProcess implements IPtyProcess {
   private pauseWatch?: ReturnType<typeof setTimeout>;
 
   constructor(private pty: import('node-pty').IPty) {
+    const tty = '_pty' in pty ? pty._pty : undefined;
+    this.controllingTty =
+      typeof tty === 'string' ? tty.replace(/^\/dev\//, '') : undefined;
+    const socket = '_socket' in pty ? pty._socket : undefined;
+    let finishPipeWait: (() => void) | undefined;
+    // The pinned node-pty wires socket-close to exit only after this event.
+    // Register before yielding the spawn result; an earlier taskkill can lose
+    // the exit observation while the output worker is still connecting.
+    if (
+      process.platform === 'win32' &&
+      typeof socket === 'object' &&
+      socket !== null &&
+      'once' in socket &&
+      typeof socket.once === 'function'
+    ) {
+      const once = socket.once.bind(socket);
+      this.outputPipeReady = new Promise<void>((resolve) => {
+        finishPipeWait = resolve;
+        once('ready_datapipe', resolve);
+      });
+    } else {
+      this.outputPipeReady = Promise.resolve();
+    }
     pty.onExit(() => {
       this.exited = true;
+      finishPipeWait?.();
       if (this.paused) this.outputIncomplete = true;
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
-      if (process.platform === 'win32') this.releaseConpty();
+      if (process.platform === 'win32' && this.pid > 0) this.releaseConpty();
     });
     this.terminate =
       process.platform === 'win32'
@@ -91,19 +117,27 @@ class NodePtyProcess implements IPtyProcess {
         : () => this.terminateGroups();
   }
 
+  async waitForReady(): Promise<void> {
+    await this.outputPipeReady;
+    if (this.exited)
+      throw new Error('Terminal exited before startup readiness');
+    if (!Number.isSafeInteger(this.pid) || this.pid <= 0)
+      throw new Error('Terminal backend did not publish a valid process id');
+  }
+
   /**
    * Windows, once the shell has exited (its exit event follows the output
-   * socket's flush and close): node-pty 1.1 releases a ConPTY, its
-   * pseudoconsole and conout worker thread, only in `kill()`, so after a
-   * natural or taskkill exit both stayed open, one thread and console host
-   * per shell. `kill()` first lists the console's processes through a helper
+   * socket's flush and close): node-pty releases its output-reader worker
+   * in `kill()`. Startup failures before a PID exists already clean up in
+   * the backend. For started shells, `kill()` first lists console processes
+   * through a helper
    * that cannot attach to a console whose shell has gone, and five seconds
    * later signals the old shell pid, which Windows may have given to another
    * process (#3994). After the exit there is nothing to list, so that step is
    * answered empty for this terminal before `kill()` releases the rest.
    */
   private releaseConpty(): void {
-    // node-pty 1.1's private WindowsTerminal._agent._getConsoleProcessList,
+    // The pinned WindowsTerminal._agent._getConsoleProcessList,
     // found at runtime. Without it (another node-pty) kill() still releases.
     const { pty } = this;
     if ('_agent' in pty) {
@@ -135,6 +169,7 @@ class NodePtyProcess implements IPtyProcess {
    */
   private terminateTree(): Promise<void> {
     this.termination ??= (async () => {
+      await this.outputPipeReady;
       if (this.exited) return;
       const exited = new Promise<void>((resolve) => {
         const subscription = this.pty.onExit(() => {
@@ -167,7 +202,11 @@ class NodePtyProcess implements IPtyProcess {
   private terminateGroups(): Promise<void> {
     this.termination ??= (async () => {
       try {
-        await terminatePtyProcessGroups(this.pid, () => !this.exited);
+        await terminatePtyProcessGroups(
+          this.pid,
+          () => !this.exited,
+          this.controllingTty,
+        );
       } catch (error) {
         if (!this.exited) this.pty.kill('SIGKILL');
         throw error;
@@ -353,6 +392,7 @@ export class NodePtyAdapter implements IPtyAdapter {
       input.env,
     );
     let pty: import('node-pty').IPty;
+    let readyProcess: NodePtyProcess;
     try {
       pty = nodePty.spawn(
         launch?.command ?? input.shell,
@@ -365,6 +405,8 @@ export class NodePtyAdapter implements IPtyAdapter {
           env: (launch?.env ?? input.env) as Record<string, string>,
         },
       );
+      readyProcess = new NodePtyProcess(pty);
+      if (process.platform === 'win32') await readyProcess.waitForReady();
     } catch (error) {
       await launch?.close();
       throw error;
@@ -375,6 +417,6 @@ export class NodePtyAdapter implements IPtyAdapter {
         logger.warn('Terminal workload cleanup failed', { error }),
       );
     });
-    return new NodePtyProcess(pty);
+    return readyProcess;
   }
 }

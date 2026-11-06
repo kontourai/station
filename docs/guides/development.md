@@ -73,12 +73,20 @@ resolves and checks that package-manager pin. On Linux,
 `make`, `python3`) when the `node-pty` terminal module must be compiled.
 macOS and Windows normally use the supported prebuild paths. The Linux
 [prebuild manifest](../../packaging/node-pty-prebuilds/manifest.json) is currently
-empty. Its future artifact channel needs the libc compatibility admission in
+empty. Managed Linux installs require the approved source-built addon even
+though the upstream tarball includes Linux prebuilds. Its future artifact
+channel needs the libc compatibility admission in
 [#2813](https://github.com/kontourai/station/issues/2813) before it can replace
 source builds on supported hosts. `npm_config_build_from_source=true` opts out
 of prebuild staging. Other native dependencies retain their own platform
 requirements. Rust and platform SDKs are needed for native builds/checks; a server/UI-only
 loop need not run them.
+
+Station pins node-pty `1.2.0-beta.18` for its synchronized Windows native handle
+registry. The prerelease supplies ConPTY rather than the removed WinPTY backend.
+Windows process publication waits for connection readiness and a valid PID;
+a startup exit is an error. Keep the exact package/hook/artifact review aligned
+when changing this pin; macOS checks do not qualify Windows or ARM64 behavior.
 
 Scoped terminal process-group cleanup on POSIX also needs `ps` with PID, PPID
 and process-group columns. A missing or failed census is a cleanup error, not
