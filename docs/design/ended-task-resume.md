@@ -133,8 +133,8 @@ A person, through a person-only route, never an agent and never GitHub:
   inside the store mutation that commits the resume, against the same Task
   incarnation (`createdAt`) and Project.
 - In personal mode that is the local operator. In account mode it is an
-  `active` Project member whose actions include `execute`, or a Task share
-  that grants it.
+  `active` Project member whose actions include `execute`; a Task share
+  alone grants reading, not `execute`.
 
 ### Which Tasks
 
