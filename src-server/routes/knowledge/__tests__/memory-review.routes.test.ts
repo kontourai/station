@@ -1062,6 +1062,19 @@ test.each(['restart recovery', 'same request retry'] as const)(
         ).rejects.toThrow('after settlement');
         interrupted.mockRestore();
       }
+      const reviewPath = join(
+        h.home,
+        'knowledge',
+        'memory-review',
+        memoryOwnerHash(OWNER),
+        'review.json',
+      );
+      for (const path of [reviewPath, `${reviewPath}.previous`]) {
+        if (existsSync(path))
+          expect(readFileSync(path, 'utf8')).not.toContain(
+            'interrupted-erased-correction',
+          );
+      }
       await h.seed(mysql());
       const after = await h.json(await h.get('/memory/recall'));
       expect(after.entries[0].review.label).toBe('unreviewed');
