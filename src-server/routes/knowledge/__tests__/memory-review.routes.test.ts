@@ -1045,16 +1045,23 @@ test.each(['restart recovery', 'same request retry'] as const)(
       expect((await h.get('/memory/recall')).status).toBe(503);
       spy.mockRestore();
       if (recovery === 'restart recovery') await coordinator.recoverAll();
-      else
-        await coordinator.erase(
-          owner,
-          h.root,
-          () => {},
-          'proposal',
-          proposalId,
-          preview!.impact.revision,
-          'interrupted-review-test',
-        );
+      else {
+        const interrupted = vi
+          .spyOn(coordinator, 'reconcileRoot')
+          .mockRejectedValueOnce(new Error('after settlement'));
+        await expect(
+          coordinator.erase(
+            owner,
+            h.root,
+            () => {},
+            'proposal',
+            proposalId,
+            preview!.impact.revision,
+            'interrupted-review-test',
+          ),
+        ).rejects.toThrow('after settlement');
+        interrupted.mockRestore();
+      }
       await h.seed(mysql());
       const after = await h.json(await h.get('/memory/recall'));
       expect(after.entries[0].review.label).toBe('unreviewed');
