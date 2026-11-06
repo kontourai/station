@@ -145,7 +145,13 @@ available; carrying envelope metadata cannot supply those missing owners.
 Inherited native requests must remain incomplete until enforcement exists.
 The finalizer selection reproduces one unchanged 60-second timeout with eight
 controls passing. A separate diagnostic CPU profile reproduces it; no timeout
-or qualification guard is relaxed. Whole-epic delivery remains NOT_READY.
+or qualification guard is relaxed. A fixture-only candidate then used the real
+per-command publication owner and shared transaction facades; independent
+source review found no lifetime or authority blocker, but the unchanged
+60-second scenario still timed out. The candidate is retained separately at
+`/tmp/child-work-finalizer-scoped-fixture-candidate.patch`; the committed fixture
+was restored byte-exactly. No performance or full-caller success is claimed.
+Whole-epic delivery remains NOT_READY.
 
 ### Historical delivery checkpoint at `5a212193a67d`
 
