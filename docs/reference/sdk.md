@@ -406,6 +406,22 @@ Station does not deliver it (`not-delivered`); older hosts omit it.
 only for an integration whose `trustReview` this host returned. It
 invalidates the integrations queries.
 
+## Managed policy status
+
+The SDK root exports `fetchManagedPolicyStatus(apiBase?)` and
+`useManagedPolicyStatusQuery(apiBase?, config?)`, which read
+`GET /api/settings/managed-policy`: the [managed policy](../guides/managed-policy.md)
+the server loaded at startup. After a successful response, the reader lazily
+loads the status decoder and validates the response with
+`parseManagedPolicyStatus` from
+`@kontourai/station-contracts/managed-policy-status` and throws on a malformed
+one rather than reading it as unmanaged. A host older than the route answers
+404, which means it enforces no policy, so that reads as `{ state: "none" }`.
+The query keeps its result for the life of the page (`staleTime: Infinity`),
+because the server fixes the policy for its own lifetime. A client uses it only
+to explain a managed control; the server enforces the policy whatever a client
+shows.
+
 ## Integration capability status and Task write-back
 
 The SDK root exports `fetchIntegrationStatus(apiBase, options?)` and
@@ -3245,7 +3261,9 @@ when its shape does not match `isPluginRegistryTrust` from
 `@kontourai/station-contracts/registry-trust`.
 The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
-longer matches. See [registry trust policy](../design/registry-trust-policy.md).
+longer matches. A managed policy's signature requirement instead answers `403`
+with `managed-policy-capability-disabled` and reason
+`managed-signature-required`. See [registry trust policy](../design/registry-trust-policy.md).
 
 `consent` is required (archive#4288). It records the operator's decision from
 the preview they read: the permission set the preview derived, the digest of

@@ -1,7 +1,7 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { jsonSchema } from 'ai';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { DEFAULT_MAX_STEPS } from '../../constants.js';
 import { createAgentHooks } from '../../runtime/agents/agent-hooks.js';
 import {
@@ -13,6 +13,10 @@ import {
 import { createRuntimeModelSelection } from '../../runtime/plugins/runtime-provider-resolution.js';
 import { guardRuntimeGenerationTools } from '../../runtime/tools/runtime-generation-tools.js';
 import type { ITool, RuntimeContext } from '../../runtime/types.js';
+import {
+  managedEngineRefusalBody,
+  managedEngineRefusalFor,
+} from '../../security/managed-engine-limits.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
@@ -96,29 +100,47 @@ export function createInvokeRoutes(
 ) {
   const app = new Hono();
 
+  // #4515: each invoke route runs Station's own agent. Refused before a run
+  // is recorded: a refusal inside the run would read as "may have started".
+  // Attached per route, with literal paths, so the pairing-scope leaf scan
+  // can read every registration.
+  const refuseUnlessStationAgentAllowed: MiddlewareHandler = async (
+    c,
+    next,
+  ) => {
+    const refusal = managedEngineRefusalFor('station');
+    if (refusal) return c.json(managedEngineRefusalBody(refusal), 403);
+    await next();
+  };
+
   // POST /agents/:slug/invoke — silent agent invocation
-  app.post('/agents/:slug/invoke', validate(invokeSchema), async (c) => {
-    try {
-      const slug = param(c, 'slug');
-      const { input, model, tools: toolNames, schema } = getBody(c);
-      chatRequests.add(1, { op: 'invoke' });
-      const { response } = await invokeAgent(
-        ctx,
-        slug,
-        input,
-        model,
-        toolNames,
-        schema,
-      );
-      return response;
-    } catch (error: unknown) {
-      return nativeInvocationErrorResponse(
-        ctx,
-        'Failed to invoke agent',
-        error,
-      );
-    }
-  });
+  app.post(
+    '/agents/:slug/invoke',
+    refuseUnlessStationAgentAllowed,
+    validate(invokeSchema),
+    async (c) => {
+      try {
+        const slug = param(c, 'slug');
+        const { input, model, tools: toolNames, schema } = getBody(c);
+        chatRequests.add(1, { op: 'invoke' });
+        const { response } = await invokeAgent(
+          ctx,
+          slug,
+          input,
+          model,
+          toolNames,
+          schema,
+        );
+        return response;
+      } catch (error: unknown) {
+        return nativeInvocationErrorResponse(
+          ctx,
+          'Failed to invoke agent',
+          error,
+        );
+      }
+    },
+  );
 
   // POST /agents/:slug/tools/:toolName — raw MCP tool call
   app.post('/agents/:slug/tools/:toolName', async (c) => {
@@ -138,6 +160,7 @@ export function createInvokeRoutes(
   // POST /agents/:slug/invoke/stream
   app.post(
     '/agents/:slug/invoke/stream',
+    refuseUnlessStationAgentAllowed,
     validate(invokeStreamSchema),
     async (c) => {
       try {
@@ -222,6 +245,7 @@ export function createInvokeRoutes(
             logger: ctx.logger,
           });
           const tempAgent = await ctx.framework.createTempAgent({
+            purpose: 'agent-run',
             name: `${slug}-temp`,
             instructions:
               (agent as { instructions?: string }).instructions || '',
@@ -360,32 +384,37 @@ export function createInvokeRoutes(
   );
 
   // POST /invoke — global invoke using globalToolRegistry
-  app.post('/invoke', validate(globalInvokeSchema), async (c) => {
-    try {
-      const {
-        prompt,
-        schema,
-        tools: toolIds = [],
-        maxSteps = DEFAULT_MAX_STEPS,
-        model,
-        structureModel,
-        system,
-      } = getBody(c);
-      chatRequests.add(1, { op: 'invoke_global' });
-      const response = await invokeGlobalPrompt(ctx, {
-        prompt,
-        schema,
-        tools: toolIds,
-        maxSteps,
-        model,
-        structureModel,
-        system,
-      });
-      return c.json(response);
-    } catch (error: unknown) {
-      return nativeInvocationErrorResponse(ctx, 'Failed to invoke', error);
-    }
-  });
+  app.post(
+    '/invoke',
+    refuseUnlessStationAgentAllowed,
+    validate(globalInvokeSchema),
+    async (c) => {
+      try {
+        const {
+          prompt,
+          schema,
+          tools: toolIds = [],
+          maxSteps = DEFAULT_MAX_STEPS,
+          model,
+          structureModel,
+          system,
+        } = getBody(c);
+        chatRequests.add(1, { op: 'invoke_global' });
+        const response = await invokeGlobalPrompt(ctx, {
+          prompt,
+          schema,
+          tools: toolIds,
+          maxSteps,
+          model,
+          structureModel,
+          system,
+        });
+        return c.json(response);
+      } catch (error: unknown) {
+        return nativeInvocationErrorResponse(ctx, 'Failed to invoke', error);
+      }
+    },
+  );
 
   return app;
 }

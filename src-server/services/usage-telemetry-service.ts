@@ -567,6 +567,9 @@ export class UsageTelemetryService {
         : null,
       lastFailure: this.lastFailure ? { ...this.lastFailure } : null,
       probe: this.probeSnapshot(),
+      ...(operator.managedDenial !== undefined
+        ? { managedDenial: operator.managedDenial }
+        : {}),
     };
   }
   private probeSnapshot(): TelemetryConnectionProbeStatus {

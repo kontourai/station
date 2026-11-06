@@ -1290,6 +1290,14 @@ async function pairingOfferError(response: Response): Promise<{
         'This Station does not allow pairing from the current app address. Update its trusted app address, then try again.',
     };
   }
+  if (code === 'managed-policy-remote-clients') {
+    // #4519: no retry or operator review can change this.
+    return {
+      auth: false,
+      message:
+        'Your organization’s policy allows only this computer to connect to Station, so it cannot pair other devices. Contact your administrator for help.',
+    };
+  }
   if (response.status === 403) {
     return {
       auth: false,

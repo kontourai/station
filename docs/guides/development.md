@@ -514,7 +514,7 @@ npm run dev:ui
 # http://127.0.0.1:5173
 ```
 
-It listens on IPv4 loopback, and the Tauri development shell uses that same endpoint. Direct LAN or other non-loopback exposure of the root Vite server is unsupported. When developing on a remote machine, keep Vite on loopback and forward it explicitly from your local machine:
+It listens on IPv4 loopback, and the Tauri development shell uses that same endpoint. Direct LAN or other non-loopback exposure of the root Vite server is unsupported. Under a [managed policy](managed-policy.md#network-exposure) without `remote` clients, Vite refuses to start with a non-loopback `--host`. When developing on a remote machine, keep Vite on loopback and forward it explicitly from your local machine:
 
 ```bash
 ssh -L 5173:127.0.0.1:5173 user@remote-host

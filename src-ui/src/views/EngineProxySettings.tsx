@@ -6,8 +6,11 @@ export function EngineProxySettings({
   connection,
   onChange,
   onManageModels,
+  managedLocked = false,
 }: {
   connection: AgentConnectionView;
+  /** #4520: the managed policy owns the launch environment; not applied. */
+  managedLocked?: boolean;
   onChange: (config: Record<string, unknown>) => void;
   onManageModels: () => void;
 }) {
@@ -41,6 +44,7 @@ export function EngineProxySettings({
         id="engine-model-route"
         className="editor-input"
         value={selected || (custom ? 'custom' : '')}
+        disabled={managedLocked}
         onChange={(event) => choose(event.target.value)}
       >
         <option value="">Your account</option>

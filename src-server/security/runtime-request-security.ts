@@ -512,6 +512,11 @@ export interface RuntimeHttpSecurityOptions {
    * nothing.
    */
   telemetryProducers?: import('../services/telemetry-producers/telemetry-producer-store.js').TelemetryProducerAuthority;
+  /**
+   * #4519: the managed policy allows no remote clients, so a telemetry
+   * producer allowed to send from off the machine is held to this machine.
+   */
+  localClientsOnly?: boolean;
 }
 
 function isPublicRuntimeRoute(method: string, path: string): boolean {

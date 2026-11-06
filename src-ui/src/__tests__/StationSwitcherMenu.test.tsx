@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import type { SavedConnection } from '@kontourai/station-connect';
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 import {
   act,
   cleanup,
@@ -9,6 +10,15 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { StationSwitcherMenu } from '../components/header/StationSwitcherMenu';
+
+// #4519: the managed limit, set per test.
+const managed = vi.hoisted(() => ({
+  limit: undefined as ManagedPolicySummary | undefined,
+}));
+vi.mock('../hooks/useManagedRemoteClientsRefusal', () => ({
+  useManagedRemoteClientsLimit: () => managed.limit,
+}));
+
 import { navigationStore } from '../contexts/navigation-store';
 import { toastStore } from '../contexts/ToastContext';
 import { MOBILE_MEDIA_QUERY } from '../hooks/useIsMobile';
@@ -520,5 +530,57 @@ test('a phone offers to connect another device, not to pair a phone', () => {
   fireEvent.click(
     screen.getByRole('menuitem', { name: 'Connect another device' }),
   );
+  expect(pair).toHaveBeenCalledOnce();
+});
+
+test('#4519: under the managed limit "Pair phone" is disabled and the managed sentence and Get help link show beside it', () => {
+  const anchor = document.createElement('button');
+  document.body.append(anchor);
+  unregister.push(() => anchor.remove());
+  const pair = vi.fn();
+  const renderWith = () =>
+    render(
+      <StationSwitcherMenu
+        anchor={anchor}
+        connections={[station]}
+        activeConnectionId="one"
+        activeStatus="connected"
+        activeStatusLabel="Connected"
+        onSelect={vi.fn(async () => {})}
+        onForget={vi.fn(async () => {})}
+        canForget={() => true}
+        onClose={vi.fn()}
+        onManage={vi.fn()}
+        onPairPhone={pair}
+      />,
+    );
+  managed.limit = {
+    organization: 'Acme',
+    supportUrl: 'https://help.acme.example/station',
+    lockedSettings: [],
+    limits: { clients: ['desktop', 'local-browser'] },
+  } as ManagedPolicySummary;
+  try {
+    const { unmount } = renderWith();
+    const item = screen.getByRole('menuitem', { name: 'Pair phone' });
+    expect((item as HTMLButtonElement).disabled).toBe(true);
+    // Round 2, item 7: visible text, not a hover tooltip.
+    expect(item.getAttribute('title')).toBeNull();
+    const note = screen.getByText(/Acme.s policy manages remote access/);
+    expect(item.getAttribute('aria-describedby')).toBe(note.id);
+    const help = screen.getByRole('link', { name: 'Get help' });
+    expect(help.getAttribute('href')).toBe('https://help.acme.example/station');
+    expect(note.contains(help)).toBe(true);
+    fireEvent.click(item);
+    expect(pair).not.toHaveBeenCalled();
+    unmount();
+  } finally {
+    managed.limit = undefined;
+  }
+  renderWith();
+  const enabled = screen.getByRole('menuitem', { name: 'Pair phone' });
+  expect((enabled as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.queryByText(/policy manages remote access/)).toBeNull();
+  fireEvent.click(enabled);
   expect(pair).toHaveBeenCalledOnce();
 });

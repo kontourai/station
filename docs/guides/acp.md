@@ -126,7 +126,7 @@ See `src-server/providers/adapters/acp-adapter.ts` and
 
 ### Connection Lifecycle (Connections Hub)
 
-Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, completing `initialize` and opening a session to read its modes and config options, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity.
+Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, completing `initialize` and opening a session to read its modes and config options, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity. Under a [managed policy](managed-policy.md#engines) that does not allow ACP engines, or that stops agents added from the public ACP registry, `ACPProcess.start()` refuses before anything is spawned, so the probe, a session and sign-in start nothing.
 
 The probe does not leave a new stored session behind on each run (#3411). Agents that persist sessions would otherwise collect one per probe, about 240 a day per connection. If the agent advertises `session/delete`, the probe deletes its session after reading it. Otherwise, if it advertises `session/resume` or `loadSession`, the background sweep reattaches to the session the probe created earlier.
 

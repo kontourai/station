@@ -670,7 +670,7 @@ async function admitTelemetryProducerRequest(call: {
       'telemetry_producer_expired',
     );
   if (
-    !producer.allowRemote &&
+    (!producer.allowRemote || security.localClientsOnly === true) &&
     classifyOperatorCredentialPosition(c) === 'off-host'
   )
     return refused(

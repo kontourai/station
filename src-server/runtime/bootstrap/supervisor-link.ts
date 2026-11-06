@@ -385,6 +385,28 @@ export class SupervisorLink implements ListenerLink {
    * it this way leaves the handle untouched; listening on it to ask the
    * server would make closing that probe close the only copy of the handle.
    */
+  /**
+   * #4519: the address every adopted listener is bound to, read the same
+   * way as {@link adoptedPort}; `null` for one that cannot be read. A later
+   * generation serves on these sockets whatever host it is configured with,
+   * so a policy that requires loopback checks them before serving.
+   */
+  adoptedAddresses(): Array<string | null> {
+    return [...this.adopted.values()].map((value) => {
+      const handle = value as
+        | { getsockname?: (out: Record<string, unknown>) => number }
+        | undefined;
+      if (typeof handle?.getsockname !== 'function') return null;
+      const out: Record<string, unknown> = {};
+      try {
+        if (handle.getsockname(out) !== 0) return null;
+      } catch {
+        return null;
+      }
+      return typeof out.address === 'string' ? out.address : null;
+    });
+  }
+
   adoptedPort(name: SupervisorListenerName): number | null {
     const handle = this.adopted.get(name) as
       | { getsockname?: (out: Record<string, unknown>) => number }

@@ -50,6 +50,12 @@ import {
   type StationEngineAvailabilitySource,
 } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import {
+  isManagedEngineRefusal,
+  managedEngineAllowListActive,
+  managedEngineRefusalBody,
+  managedEngineRefusalFor,
+} from '../../security/managed-engine-limits.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import { ForegroundInvocationUnavailableError } from '../../services/orchestration/foreground-invocation-admission.js';
 import { chatTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
@@ -249,6 +255,14 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         options: rawOptions,
         ambientContext,
       });
+      // #4515: the engine this turn would run on, refused before any path
+      // (an active Station agent, a model-override agent, the unavailable
+      // reasons) can start it.
+      const managedRefusal = await managedChatEngineRefusal(ctx, slug);
+      if (managedRefusal) {
+        nativeForeground?.refuse();
+        return c.json(managedEngineRefusalBody(managedRefusal), 403);
+      }
       const optionsForPreparation = { ...rawOptions, clientTurnId };
       delete optionsForPreparation[WORKSPACE_PANE_HOST_ACTION_METADATA_KEY];
       const configurationLease = captureRuntimeConfigurationLease(ctx);
@@ -327,6 +341,12 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
             slug,
           );
           if (unavailableReason) {
+            if (unavailableReason.kind === 'managed') {
+              return c.json(
+                managedEngineRefusalBody(unavailableReason.error),
+                403,
+              );
+            }
             if (unavailableReason.kind === 'redirect') {
               return c.json(
                 {
@@ -431,6 +451,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
       const isCredentialError = providerFailure
         ? providerFailure.credentialsInferred
         : isCredentialShapedMessage(errMsg);
+      // #4515: the framework's own gate on a Station agent run.
+      if (isManagedEngineRefusal(error))
+        return c.json(managedEngineRefusalBody(error), 403);
       const status =
         error instanceof RuntimeConfigurationConflictError
           ? 409
@@ -482,13 +505,20 @@ export function chatStationEngineAvailabilitySource(
   };
 }
 
-async function resolveUnavailablePersistedAgent(
+type ChatAgentSpec = NonNullable<
+  Awaited<ReturnType<ChatRuntimeContext['configLoader']['loadAgent']>>
+>;
+
+/**
+ * The record `slug` names, with a registry default's (and the reserved
+ * Station identity's) runtime engine binding applied; undefined when there
+ * is none or it cannot be read.
+ */
+async function chatAgentSpec(
   ctx: ChatRuntimeContext,
   slug: string,
-): Promise<
-  { kind: 'redirect' } | { kind: 'unavailable'; reason: string } | null
-> {
-  let spec: Awaited<ReturnType<typeof ctx.configLoader.loadAgent>> | undefined;
+): Promise<ChatAgentSpec | undefined> {
+  let spec: ChatAgentSpec | undefined;
   try {
     spec = await ctx.configLoader.loadAgent(slug);
   } catch {
@@ -537,6 +567,53 @@ async function resolveUnavailablePersistedAgent(
     }
   }
 
+  return spec ?? undefined;
+}
+
+/**
+ * #4515: the managed refusal for the engine a direct chat on `slug` would
+ * run on, or null. An Agent bound to an engine connection runs on that
+ * engine: refused when the policy does not allow it, and left to the
+ * redirect below when it is allowed and on. Anything else on this route
+ * runs on Station's own agent runtime (`station-agent`), the active agent
+ * and a model-override agent alike. Nothing is read without an allow list.
+ */
+async function managedChatEngineRefusal(
+  ctx: ChatRuntimeContext,
+  slug: string,
+): Promise<ReturnType<typeof managedEngineRefusalFor>> {
+  if (!managedEngineAllowListActive()) return null;
+  const connectionId = (await chatAgentSpec(ctx, slug))?.execution
+    ?.agentConnectionId;
+  if (connectionId && ctx.connectionService) {
+    let bound: { type: string; enabled: boolean } | undefined;
+    try {
+      bound = (await ctx.connectionService.listRuntimeConnections()).find(
+        (connection) => connection.id === connectionId,
+      );
+    } catch {
+      bound = undefined;
+    }
+    if (bound) {
+      const refusal = managedEngineRefusalFor(bound.type);
+      if (refusal) return refusal;
+      if (bound.enabled) return null;
+    }
+  }
+  return managedEngineRefusalFor('station');
+}
+
+async function resolveUnavailablePersistedAgent(
+  ctx: ChatRuntimeContext,
+  slug: string,
+): Promise<
+  | { kind: 'redirect' }
+  | { kind: 'unavailable'; reason: string }
+  | { kind: 'managed'; error: Error }
+  | null
+> {
+  const spec = await chatAgentSpec(ctx, slug);
+
   if (!spec) {
     return null;
   }
@@ -568,6 +645,14 @@ async function resolveUnavailablePersistedAgent(
       if (isHonestlyAvailableConnectedAgent(spec, runtimeConnectionsById)) {
         return { kind: 'redirect' };
       }
+      // #4515: an engine the managed policy does not allow reads as off;
+      // answer with the managed refusal rather than a Station-engine reason.
+      const bound = spec.execution?.agentConnectionId
+        ? runtimeConnectionsById.get(spec.execution.agentConnectionId)
+        : undefined;
+      const managed =
+        bound && !bound.enabled ? managedEngineRefusalFor(bound.type) : null;
+      if (managed) return { kind: 'managed', error: managed };
     } catch {
       // Fall through to the Station-engine lens below.
     }
@@ -650,6 +735,7 @@ async function launchPersistedAgentWithOverride({
       usageAggregator: ctx.usageAggregator,
     });
     const agent = await ctx.framework.createTempAgent({
+      purpose: 'agent-run',
       agentId: slug,
       name: slug,
       instructions: () => {

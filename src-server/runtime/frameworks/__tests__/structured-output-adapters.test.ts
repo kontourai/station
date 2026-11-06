@@ -37,6 +37,7 @@ test('VoltAgent requires a schema and forwards output limits and cancellation to
     }),
   });
   const agent = await new VoltAgentFramework().createTempAgent({
+    purpose: 'agent-run',
     name: 'structure',
     instructions: 'Return JSON.',
     model,
@@ -111,6 +112,7 @@ test.each([
   async (_name, structuredOutputSchema) => {
     const model = new StructuredModel();
     const agent = await new StrandsFramework().createTempAgent({
+      purpose: 'agent-run',
       name: 'structure',
       instructions: 'Return JSON.',
       model,

@@ -48,6 +48,18 @@ host; retirement itself never revokes access. Browser storage remains a
 platform dependency, and site-data deletion or device/storage loss is outside
 this recovery guarantee. See the [completion contract](../architecture/module-map.md#pendingpairingcompletion).
 
+## Managed network exposure
+
+A [managed policy](../guides/managed-policy.md#network-exposure) whose
+`limits.clients` leaves out `remote` (#4519) removes the remote surface below:
+loopback-only listeners (each later listener included), no pairing or relay
+enrollment, no Discord gateway, no Tailscale Serve route to Station's ports
+as each listener starts (asked of a root-owned or signed Tailscale CLI only),
+and only home-possession device credentials accepted. Earlier devices are
+suspended, not revoked: lifting the policy restores them, so revoke a
+compromised one. Its limits, including port forwarding with other tools,
+are in the [decision record](../decisions/managed-policy.md#network-exposure).
+
 ## Trust boundary
 
 Station classifies a caller from the directly connected socket peer and request

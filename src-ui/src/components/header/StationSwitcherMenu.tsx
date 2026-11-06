@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { navigationStore } from '../../contexts/navigation-store';
 import { toastStore } from '../../contexts/ToastContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClientsRefusal';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
   forgetStationProbe,
@@ -26,6 +27,7 @@ import {
   readRecentStations,
   type StationReachability,
 } from '../../lib/stationSwitcher';
+import { ManagedRemoteClientsNote } from '../managed/ManagedRemoteClientsNote';
 import { useStationConditions } from '../notifications/StationConditions';
 import { openStationDetails } from '../notifications/stationDetailsEvents';
 import { FilteredEmpty } from '../state';
@@ -80,6 +82,11 @@ export function StationSwitcherMenu({
   /** The active Station's name as the header chip shows it. */
   activeDisplayName?: string;
 }) {
+  // #4519: under the managed limit "Pair phone" is disabled, and the
+  // policy's sentence and Get help link show below it, as on every other
+  // pairing entry point.
+  const remoteClientsLimit = useManagedRemoteClientsLimit();
+  const pairPhoneNoteId = useId();
   const conditions = useStationConditions();
   const isMobile = useIsMobile();
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
@@ -481,7 +488,11 @@ export function StationSwitcherMenu({
               <button
                 type="button"
                 role="menuitem"
-                className="menu-row"
+                className={`menu-row${remoteClientsLimit ? ' station-switcher__row--refused' : ''}`}
+                disabled={remoteClientsLimit !== undefined}
+                aria-describedby={
+                  remoteClientsLimit ? pairPhoneNoteId : undefined
+                }
                 onClick={() => {
                   onClose();
                   onPairPhone();
@@ -505,6 +516,14 @@ export function StationSwitcherMenu({
               Manage
             </button>
           </div>
+          {onPairPhone && remoteClientsLimit && (
+            <div role="none" className="station-switcher__managed-note">
+              <ManagedRemoteClientsNote
+                summary={remoteClientsLimit}
+                id={pairPhoneNoteId}
+              />
+            </div>
+          )}
         </div>
       </div>
     </>,

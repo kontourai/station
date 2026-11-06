@@ -48,6 +48,7 @@ import {
   useOnboardingSetupState,
 } from '../contexts/onboarding-setup-store';
 import { useToast } from '../contexts/ToastContext';
+import { useManagedRemoteClientsLimit } from '../hooks/useManagedRemoteClientsRefusal';
 import { usePairingDeepLink } from '../hooks/usePairingDeepLink';
 import { useRecoveryConfig } from '../hooks/useRecoveryConfig';
 import { useSystemStatus } from '../hooks/useSystemStatus';
@@ -82,6 +83,7 @@ import './OnboardingGate.css';
 import { triggerHaptic } from '../platform/native/haptics';
 import { primeNativeNotifications } from '../platform/native/notify';
 import { LazyBoundary } from './LazyBoundary';
+import { ManagedRemoteClientsNote } from './managed/ManagedRemoteClientsNote';
 import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 
 type ConnectionModalMode =
@@ -192,6 +194,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const closeModalAwaiting = (requestId: string) => {
     if (modalAwaitingRequestIdRef.current === requestId) closeConnectionModal();
   };
+  // #4519: the connected Station's policy allows no remote clients, so its
+  // pairing panel explains that instead of offering a code.
+  const remoteClientsLimit = useManagedRemoteClientsLimit();
   const [connectionModalMode, setConnectionModalMode] =
     useState<ConnectionModalMode>('list');
   const [pairingPayload, setPairingPayload] = useState<string | undefined>();
@@ -931,6 +936,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setStationSetupOpen(true);
         }}
         initialPanel={connectionModalMode}
+        pairingRefusal={
+          remoteClientsLimit ? (
+            <ManagedRemoteClientsNote summary={remoteClientsLimit} />
+          ) : undefined
+        }
         renderConnectionDetails={(connection) =>
           connection.id === activeConnection?.id ? (
             <StationExtensionsAccess />

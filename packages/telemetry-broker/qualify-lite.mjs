@@ -36,7 +36,7 @@ const dailyPing = () => ({
 async function checkLiteReceiver(store, pool, base, operatorKey, privateBase) {
   const source = `qa-${randomUUID()}`;
   const other = `qa-${randomUUID()}`;
-  const publisher = `publisher:@qa/plugin-${randomUUID()}`;
+  const publisher = `publisher:qa-plugin-${randomUUID()}`;
   const key = `stq_${randomBytes(32).toString('base64url')}`;
   const agent = 'private-user-agent-must-never-persist';
   const forwarded = '198.51.100.73';

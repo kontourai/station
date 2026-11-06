@@ -398,3 +398,72 @@ describe('Tailscale Serve pairing endpoint', () => {
     ).rejects.toThrow(/MagicDNS is unavailable/);
   });
 });
+
+describe('managed policy without remote clients (#4519)', () => {
+  const loaded =
+    (clients: Array<'desktop' | 'local-browser' | 'remote'>) => () =>
+      ({
+        source: { kind: 'file', location: '/etc/station/policy.json' },
+        digest: `sha256:${'a'.repeat(64)}`,
+        document: {
+          schemaVersion: 1,
+          organization: 'Acme',
+          limits: { clients },
+        },
+        summary: {
+          organization: 'Acme',
+          supportUrl: null,
+          lockedSettings: [],
+          limits: { clients },
+        },
+      }) as never;
+
+  test('refuses Serve setup before running any Tailscale command', async () => {
+    const command = vi.fn<TailscaleCommand>();
+    await expect(
+      resolveTailscaleOfferEndpoint({
+        localApiBase: LOCAL_API,
+        environmentId: ENVIRONMENT_ID,
+        dependencies: {
+          command,
+          loadManagedPolicy: loaded(['desktop', 'local-browser']),
+        },
+      }),
+    ).rejects.toThrow(
+      "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help. Station cannot set up Tailscale Serve.",
+    );
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  test('an installed policy that cannot be loaded refuses too, and one listing remote does not', async () => {
+    const command = vi.fn<TailscaleCommand>(async () => ({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'stop here',
+    }));
+    await expect(
+      resolveTailscaleOfferEndpoint({
+        localApiBase: LOCAL_API,
+        environmentId: ENVIRONMENT_ID,
+        dependencies: {
+          command,
+          loadManagedPolicy: () => {
+            throw new Error('STATION_MANAGED_POLICY_INVALID: unreadable');
+          },
+        },
+      }),
+    ).rejects.toThrow('STATION_MANAGED_POLICY_INVALID');
+    expect(command).not.toHaveBeenCalled();
+    await expect(
+      resolveTailscaleOfferEndpoint({
+        localApiBase: LOCAL_API,
+        environmentId: ENVIRONMENT_ID,
+        dependencies: {
+          command,
+          loadManagedPolicy: loaded(['desktop', 'local-browser', 'remote']),
+        },
+      }),
+    ).rejects.toThrow('Tailscale could not read Tailscale status');
+    expect(command).toHaveBeenCalledOnce();
+  });
+});

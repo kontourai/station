@@ -21,6 +21,7 @@ import type {
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { isPrivateNetworkHost } from '@kontourai/station-shared/remote-address-guard';
 import { stationCuratedCatalog as curatedSubregistry } from '@kontourai/station-shared/station-curation';
+import { managedToolServerCatalogDenial } from '../../security/managed-capability-limits.js';
 import { allowPrivateCatalogAddresses } from '../../services/plugins/remote-mcp-address-policy.js';
 import { hasToolServerOAuthCapability } from '../../services/plugins/tool-server-oauth-capabilities.js';
 import { resolveHomeDir } from '../../utils/paths.js';
@@ -163,6 +164,8 @@ export class McpSubregistryIntegrationProvider
       preRegisteredClients: false,
       allowPrivateAddresses: false,
     }),
+    /** #4521: the managed policy's refusal of this catalog, if any. */
+    readonly managedDenial?: string,
   ) {
     this.registryKey = `mcp-subregistry:${source.id}`;
     this.displayName = source.displayName;
@@ -307,6 +310,14 @@ export function mcpSubregistryIntegrationProviders(
   } catch (error) {
     urlError = (error as Error).message;
   }
+  // #4521: a refused catalog stays listed with the policy sentence, and with
+  // no URL it is never fetched, refreshed or read from its saved copy.
+  const managedDenial =
+    url === undefined ? undefined : managedToolServerCatalogDenial(url, false);
+  if (managedDenial !== undefined) {
+    url = undefined;
+    urlError = managedDenial;
+  }
   const key = JSON.stringify([
     homeDir,
     curatedOff,
@@ -344,6 +355,7 @@ export function mcpSubregistryIntegrationProviders(
           cacheDir: join(homeDir, 'cache', 'mcp-subregistry'),
         }),
         policy,
+        managedDenial,
       ),
     );
   cached = { key, providers, hasPreRegisteredClients };

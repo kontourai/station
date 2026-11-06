@@ -6,7 +6,7 @@ import {
 import {
   clampApprovalModeToCeiling,
   managedApprovalCeiling,
-} from '@kontourai/station-contracts/managed-policy-status';
+} from '@kontourai/station-contracts/managed-policy-controls';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import { useRef, useState } from 'react';
