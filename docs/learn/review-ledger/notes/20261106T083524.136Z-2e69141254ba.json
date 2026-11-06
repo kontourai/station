@@ -1,0 +1,7 @@
+{
+  "revision": "d4b8b716437b48bb881e728bcd7fb2df37b3d717",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts from module-map.md (docs:mcp:generate). The only changed topic is RuntimeResourcePostureController, carrying the #4568 section verbatim; this reference's description of the shipped MCP topic set and its generation is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
