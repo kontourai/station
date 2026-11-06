@@ -1692,7 +1692,13 @@
 
     "src-ui/src/views/TaskWorkspaceView.css",
 
-    "src-ui/src/components/chat/TranscriptTurnRail.tsx"
+    "src-ui/src/components/chat/TranscriptTurnRail.tsx",
+
+    "src-ui/src/hooks/useChatDockActions.ts",
+
+    "src-ui/src/__tests__/useChatDockActions.test.tsx",
+
+    "src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"
   ],
 
   "checks": [
