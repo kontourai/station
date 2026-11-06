@@ -436,6 +436,19 @@ impl<H: Clone> Controller<H> {
         }
     }
 
+    /// #4522: disabled because the machine's managed policy refuses updates.
+    /// The policy's sentence rides beside the phase, so the window says why
+    /// rather than reading as a build without an updater.
+    pub fn refused_by_policy(mut self, message: String) -> Self {
+        self.phase = UpdatePhase::Disabled;
+        self.error = Some(UpdateError {
+            context: ErrorContext::Check,
+            message,
+            version: None,
+        });
+        self
+    }
+
     pub fn state(&self) -> DesktopUpdateState {
         DesktopUpdateState {
             // A startup restore is reported as `checking`: it is the app
@@ -1069,10 +1082,50 @@ pub use tauri_glue::*;
 
 mod tauri_glue {
     use super::*;
+    use crate::managed_update_policy::{
+        download_allowed, mirror_redirect_refusal, redact_urls, UpdateRoute,
+    };
     use tauri::{AppHandle, Emitter, Manager, Runtime, State};
     use tauri_plugin_updater::{Update, UpdaterExt};
 
     pub type AppDesktopUpdater = DesktopUpdater<Update>;
+
+    /// An updater error as text that carries no URL path, query or
+    /// credential (#4522): a mirror's feed URL may hold a path token, and
+    /// this text reaches the window state, Tauri events and logs. A reqwest
+    /// error is rebuilt from its parts: its message without the URL, then
+    /// the URL's origin alone. Every other error's text passes through
+    /// `redact_urls`.
+    pub(super) fn updater_error_text(error: tauri_plugin_updater::Error) -> String {
+        match error {
+            tauri_plugin_updater::Error::Reqwest(error) => {
+                let origin = error
+                    .url()
+                    .map(|url| url.origin())
+                    .filter(url::Origin::is_tuple)
+                    .map(|origin| origin.ascii_serialization());
+                let text = redact_urls(&error.without_url().to_string());
+                match origin {
+                    Some(origin) => format!("{text} for url ({origin}/…)"),
+                    None => text,
+                }
+            }
+            other => redact_urls(&other.to_string()),
+        }
+    }
+
+    /// #4522: where the managed policy lets this app update from, decided
+    /// once at startup by `managed_update_policy::route`.
+    pub struct ManagedUpdateRoute(pub UpdateRoute);
+
+    /// The managed route; the build's own endpoints when none was managed.
+    fn managed_route<R: Runtime>(app: &AppHandle<R>) -> UpdateRoute {
+        app.try_state::<ManagedUpdateRoute>()
+            .map(|route| route.0.clone())
+            .unwrap_or(UpdateRoute::Default)
+    }
+
+    const DOWNLOAD_OUTSIDE_MIRROR: &str = "This machine's managed policy takes updates only from the organization's mirror, and the mirror's feed names a download outside it";
 
     impl UpdateHandle for Update {
         fn version(&self) -> &str {
@@ -1103,19 +1156,65 @@ mod tauri_glue {
         timeouts: Timeouts,
     ) -> Result<tauri_plugin_updater::Updater, String> {
         let stall = timeouts.stall;
-        app.updater_builder()
-            .timeout(timeouts.check)
+        let mut builder = app.updater_builder().timeout(timeouts.check);
+        match managed_route(app) {
             // Copied into every update handle's client, so it also bounds
             // downloads.
-            .configure_client(move |client| client.read_timeout(stall))
-            .build()
-            .map_err(|error| error.to_string())
+            UpdateRoute::Default => {
+                builder = builder.configure_client(move |client| client.read_timeout(stall));
+            }
+            // Unreachable while the controller is disabled; refused here too
+            // so no path builds an updater the policy forbids.
+            UpdateRoute::Refused(reason) => return Err(reason),
+            UpdateRoute::Mirror { endpoints, base } => {
+                let endpoints = endpoints
+                    .iter()
+                    .map(|endpoint| url::Url::parse(endpoint).map_err(|error| error.to_string()))
+                    .collect::<Result<Vec<_>, _>>()?;
+                // The client follows redirects itself, so the mirror's hops
+                // are confined here, for the feed and (the handle copies this
+                // client setup) every download: each one must stay on the
+                // mirror's origin.
+                builder = builder
+                    .endpoints(endpoints)
+                    .map_err(updater_error_text)?
+                    .configure_client(move |client| {
+                        let base = base.clone();
+                        client
+                            .read_timeout(stall)
+                            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                                match mirror_redirect_refusal(
+                                    &base,
+                                    attempt.url(),
+                                    attempt.previous().len().saturating_sub(1),
+                                ) {
+                                    None => attempt.follow(),
+                                    Some(refusal) => attempt.error(refusal),
+                                }
+                            }))
+                    });
+            }
+        }
+        builder.build().map_err(updater_error_text)
     }
 
     /// Manages the updater state for the app. `enabled` is the existing
     /// `desktop_updater_plugin_configured` decision: an unconfigured build
-    /// reports `disabled`, restores nothing and never checks.
-    pub fn manage<R: Runtime>(app: &AppHandle<R>, enabled: bool) {
+    /// reports `disabled`, restores nothing and never checks. A `route` the
+    /// managed policy refuses (#4522) does the same, with the policy's
+    /// sentence beside the phase.
+    pub fn manage<R: Runtime>(app: &AppHandle<R>, enabled: bool, route: UpdateRoute) {
+        let refusal = match &route {
+            UpdateRoute::Refused(reason) => Some(reason.clone()),
+            _ => None,
+        };
+        if let Some(reason) = &refusal {
+            log::warn!("desktop updates are off: {reason}");
+        } else if matches!(route, UpdateRoute::Mirror { .. }) {
+            log::info!("desktop updates come from the managed policy's mirror");
+        }
+        let enabled = enabled && refusal.is_none();
+        app.manage(ManagedUpdateRoute(route));
         let emitter = app.clone();
         let packages = PackageStore::new(
             app.path()
@@ -1123,12 +1222,16 @@ mod tauri_glue {
                 .unwrap_or_else(|_| std::env::temp_dir().join(&app.config().identifier))
                 .join("desktop-update"),
         );
+        let controller = Controller::new(
+            enabled,
+            app.package_info().version.to_string(),
+            app.path().app_config_dir().ok(),
+        );
         let updater = AppDesktopUpdater::new(
-            Controller::new(
-                enabled,
-                app.package_info().version.to_string(),
-                app.path().app_config_dir().ok(),
-            ),
+            match refusal {
+                Some(reason) => controller.refused_by_policy(reason),
+                None => controller,
+            },
             Arc::new(move |state: &DesktopUpdateState| {
                 if let Err(error) = emitter.emit(STATE_EVENT, state) {
                     log::warn!("could not emit desktop update state: {error}");
@@ -1177,7 +1280,11 @@ mod tauri_glue {
         app: &AppHandle<R>,
         timeouts: Timeouts,
     ) -> Result<Option<(Offer, Update)>, String> {
+        let route = managed_route(app);
         match build_updater(app, timeouts)?.check().await {
+            Ok(Some(update)) if !download_allowed(&route, update.download_url.as_str()) => {
+                Err(DOWNLOAD_OUTSIDE_MIRROR.to_string())
+            }
             Ok(Some(update)) => Ok(Some((
                 Offer {
                     version: update.version.clone(),
@@ -1186,7 +1293,7 @@ mod tauri_glue {
                 update,
             ))),
             Ok(None) => Ok(None),
-            Err(error) => Err(error.to_string()),
+            Err(error) => Err(updater_error_text(error)),
         }
     }
 
@@ -1200,11 +1307,14 @@ mod tauri_glue {
     ) -> Result<Option<Update>, String> {
         let Some(update) = build_updater(app, TIMEOUTS)?
             .restore_update(manifest.clone())
-            .map_err(|error| error.to_string())?
+            .map_err(updater_error_text)?
         else {
             return Ok(None);
         };
-        update.verify(bytes).map_err(|error| error.to_string())?;
+        if !download_allowed(&managed_route(app), update.download_url.as_str()) {
+            return Err(DOWNLOAD_OUTSIDE_MIRROR.to_string());
+        }
+        update.verify(bytes).map_err(updater_error_text)?;
         Ok(Some(update))
     }
 
@@ -1225,7 +1335,7 @@ mod tauri_glue {
         for_download(update)
             .download(|chunk, total| on_chunk(chunk, total), || {})
             .await
-            .map_err(|error| error.to_string())
+            .map_err(updater_error_text)
     }
 
     #[tauri::command]
@@ -1280,8 +1390,7 @@ mod tauri_glue {
         let installer = updater.clone();
         let installed = tauri::async_runtime::spawn_blocking(move || {
             // `Update::install` verifies the signature of the bytes first.
-            installer
-                .install(|update, bytes| update.install(bytes).map_err(|error| error.to_string()))
+            installer.install(|update, bytes| update.install(bytes).map_err(updater_error_text))
         })
         .await
         .map_err(|error| format!("desktop update install task failed: {error}"))?;
@@ -1333,6 +1442,44 @@ mod tauri_glue {
             let request = String::from_utf8_lossy(&request[..read]).to_string();
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
             let target = tauri_plugin_updater::target().unwrap();
+            // #4522: a mirror feed that redirects within the mirror's origin
+            // (`127.0.0.1`), or to another origin (`localhost`, the same
+            // listener under another host name).
+            if path == "/mirror/redirect-in.json" || path == "/mirror/redirect-out.json" {
+                let host = if path == "/mirror/redirect-in.json" {
+                    "127.0.0.1"
+                } else {
+                    "localhost"
+                };
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 302 Found\r\nLocation: http://{host}:{port}/mirror/latest.json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                return;
+            }
+            // #4522: a mirror's feed, offering a package under the mirror or,
+            // for `/mirror/elsewhere.json`, outside it.
+            if path == "/mirror/latest.json" || path == "/mirror/elsewhere.json" {
+                let package = if path == "/mirror/latest.json" {
+                    "mirror/slow"
+                } else {
+                    "slow"
+                };
+                let body = serde_json::json!({
+                    "version": "99.0.0",
+                    "platforms": { target: {
+                        "url": format!("http://127.0.0.1:{port}/{package}"),
+                        "signature": "not-a-signature",
+                    }},
+                })
+                .to_string();
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                return;
+            }
             match path.as_str() {
                 "/latest.json" | "/stall.json" => {
                     let package = if path == "/latest.json" {
@@ -1547,6 +1694,122 @@ mod tauri_glue {
             newer["version"] = "99.0.0".into();
             assert!(native_restore(app.handle(), &newer, b"bytes").is_err());
         }
+
+        /// #4522: an app whose build points at the default release feed,
+        /// which is never contacted here, with the managed `route` and a
+        /// loopback mirror at `/mirror/`.
+        fn managed_app(
+            route: impl FnOnce(u16) -> UpdateRoute,
+        ) -> tauri::App<tauri::test::MockRuntime> {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            serve(listener);
+            let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+            context.config_mut().plugins.0.insert(
+                "updater".into(),
+                serde_json::json!({
+                    "pubkey": "not-a-real-key",
+                    "endpoints": ["https://github.com/kontourai/station/releases/download/stable-desktop/latest.json"],
+                    "dangerousInsecureTransportProtocol": true,
+                }),
+            );
+            let app = tauri::test::mock_builder()
+                .plugin(tauri_plugin_updater::Builder::new().build())
+                .build(context)
+                .unwrap();
+            app.manage(ManagedUpdateRoute(route(port)));
+            app
+        }
+
+        fn mirror(port: u16, feed: &str) -> UpdateRoute {
+            UpdateRoute::Mirror {
+                endpoints: vec![format!("http://127.0.0.1:{port}/mirror/{feed}")],
+                base: format!("http://127.0.0.1:{port}/mirror/"),
+            }
+        }
+
+        #[test]
+        fn a_mirror_route_checks_the_mirror_and_never_the_build_endpoint() {
+            let app = managed_app(|port| mirror(port, "latest.json"));
+            let (offer, update) = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .unwrap()
+                .expect("the mirror announces an update");
+            assert_eq!(offer.version, "99.0.0");
+            assert!(update.download_url.as_str().contains("/mirror/slow"));
+        }
+
+        #[test]
+        fn a_mirror_feed_naming_a_download_outside_the_mirror_is_refused() {
+            let app = managed_app(|port| mirror(port, "elsewhere.json"));
+            let error = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .err()
+                .expect("a download outside the mirror is refused");
+            assert_eq!(error, DOWNLOAD_OUTSIDE_MIRROR);
+        }
+
+        #[test]
+        fn a_mirror_redirect_is_followed_on_the_mirror_origin_and_refused_off_it() {
+            let app = managed_app(|port| mirror(port, "redirect-in.json"));
+            let (offer, _) = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .unwrap()
+                .expect("a redirect within the mirror is followed");
+            assert_eq!(offer.version, "99.0.0");
+
+            let app = managed_app(|port| mirror(port, "redirect-out.json"));
+            let error = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .err()
+                .expect("a redirect off the mirror's origin is refused");
+            assert!(error.contains("redirect"), "{error}");
+            // The feed's path (where a mirror keeps its token) is redacted.
+            assert!(!error.contains("/mirror/"), "{error}");
+        }
+
+        /// #4522 round 2: a real reqwest error for a feed whose path holds
+        /// parentheses keeps only the mirror's origin; no part of the path
+        /// (where a mirror keeps its token) survives.
+        #[test]
+        fn a_mirror_request_error_keeps_only_the_origin_of_a_path_with_parentheses() {
+            let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = closed.local_addr().unwrap().port();
+            drop(closed);
+            let app = managed_app(move |_| UpdateRoute::Mirror {
+                endpoints: vec![format!(
+                    "http://127.0.0.1:{port}/a(secret)/t0ken/stable-desktop/latest.json"
+                )],
+                base: format!("http://127.0.0.1:{port}/"),
+            });
+            let error = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .err()
+                .expect("nothing listens on the mirror's port");
+            assert!(
+                error.ends_with(&format!(" for url (http://127.0.0.1:{port}/…)")),
+                "{error}"
+            );
+            for secret in ["secret", "t0ken", "stable-desktop", "latest.json", "(", "'"] {
+                assert!(
+                    !error
+                        .replace(&format!("(http://127.0.0.1:{port}/…)"), "")
+                        .contains(secret),
+                    "{secret} in {error}"
+                );
+            }
+        }
+
+        #[test]
+        fn a_refused_route_builds_no_updater_and_checks_nothing() {
+            let app = managed_app(|_| {
+                UpdateRoute::Refused(
+                    "This machine's managed policy turns off Station updates".into(),
+                )
+            });
+            let error = tauri::async_runtime::block_on(native_check(app.handle(), SHORT))
+                .err()
+                .expect("a refused route checks nothing");
+            assert_eq!(
+                error,
+                "This machine's managed policy turns off Station updates"
+            );
+        }
     }
 }
 
@@ -1667,6 +1930,35 @@ mod tests {
         }));
         assert_eq!(called.load(Ordering::SeqCst), 0);
         assert!(harness.emitted().is_empty());
+    }
+
+    #[test]
+    fn a_managed_policy_refusal_is_disabled_says_why_and_never_checks() {
+        let root = tempfile::tempdir().unwrap();
+        let updater = DesktopUpdater::new(
+            Controller::<FakeHandle>::new(true, VERSION.to_string(), None).refused_by_policy(
+                "This machine's managed policy turns off Station updates".into(),
+            ),
+            Arc::new(|_: &DesktopUpdateState| {}),
+            Arc::new(|| T0),
+            PackageStore::new(root.path().join("desktop-update")),
+        );
+        let state = updater.snapshot();
+        assert_eq!(state.phase, UpdatePhase::Disabled);
+        assert_eq!(
+            state.error,
+            Some(UpdateError {
+                context: ErrorContext::Check,
+                message: "This machine's managed policy turns off Station updates".into(),
+                version: None,
+            })
+        );
+        let called = AtomicUsize::new(0);
+        tauri::async_runtime::block_on(updater.check(|| async {
+            called.fetch_add(1, Ordering::SeqCst);
+            Ok(None)
+        }));
+        assert_eq!(called.load(Ordering::SeqCst), 0);
     }
 
     #[test]

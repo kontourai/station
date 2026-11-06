@@ -375,6 +375,110 @@ if [ -z "${STATION_INSTALL_PUBLIC_MANIFEST_URL:-}" ] && \
   STATION_INSTALL_PUBLIC_MANIFEST_URL=$default_manifest_url
 fi
 
+# A managed mirror (#4522). `station upgrade` and the service launcher set
+# STATION_INSTALL_MIRROR_URL when the machine's managed policy names an
+# update feed. The mirror reproduces Station's release download tree, so
+# every archive the signed manifest names at
+# $RELEASE_DOWNLOAD_BASE<tag>/<asset> is downloaded from
+# <mirror>/<tag>/<asset> instead; its signed size and sha256 still bind the
+# bytes. The manifest itself must come from the mirror, and nothing is
+# downloaded from anywhere else: not the authenticated GitHub path, and not
+# the pinned Node.js.
+RELEASE_DOWNLOAD_BASE="https://github.com/$REPOSITORY/releases/download/"
+mirror_url="${STATION_INSTALL_MIRROR_URL:-}"
+if [ -n "$mirror_url" ]; then
+  case "$mirror_url" in
+    https://*) ;;
+    http://*|file://*)
+      [ "${STATION_INSTALL_ALLOW_INSECURE_TEST_URLS:-0}" = 1 ] || \
+        fail 'STATION_INSTALL_MIRROR_URL must be an https URL' ;;
+    *) fail 'STATION_INSTALL_MIRROR_URL must be an https URL' ;;
+  esac
+  case "$mirror_url" in
+    *[?#\ ]*) fail 'STATION_INSTALL_MIRROR_URL must not contain a query, a fragment or spaces' ;;
+    */) ;;
+    *) mirror_url="$mirror_url/" ;;
+  esac
+  case "${STATION_INSTALL_PUBLIC_MANIFEST_URL:-}" in
+    "$mirror_url"?*) ;;
+    *) fail 'STATION_INSTALL_MIRROR_URL is set, so the signed manifest must come from the mirror; set STATION_INSTALL_PUBLIC_MANIFEST_URL to the mirror copy of it' ;;
+  esac
+fi
+
+
+# Prints the canonical form of <url> when it is on <mirror>'s origin
+# (scheme, host and port), and fails otherwise. curl and Node's URL parser
+# disagree on some text: for `https://mirror:443\@other:443/x` Node reads `\`
+# as a path separator (host `mirror`), while curl reads everything before `@`
+# as a user name and contacts `other`. So the text must leave no room for two
+# readings: printable ASCII only, an explicit `//` authority with no user
+# name, `@` or `%`, and no backslash anywhere. The caller then fetches only
+# the printed `href`, never the text it checked.
+mirror_canonical_url() {
+  node -e '
+    const plain = (text) =>
+      /^[\x21-\x7e]+$/.test(text) && !text.includes("\\") &&
+      /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/?#]/.test(text) &&
+      !/[@%]/.test(text.replace(/^[^:]*:\/\//, "").split(/[/?#]/, 1)[0]);
+    const [mirrorText, nextText] = process.argv.slice(1);
+    // A file:// mirror (test-only, allowed above) has no origin and no
+    // redirects; it holds only the files under it.
+    if (process.env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS === "1" &&
+        mirrorText.startsWith("file:///") && nextText.startsWith(mirrorText) &&
+        /^[\x21-\x7e]+$/.test(nextText) && !nextText.includes("\\")) {
+      process.stdout.write(nextText);
+      process.exit(0);
+    }
+    if (!plain(mirrorText) || !plain(nextText)) process.exit(1);
+    let mirror, next;
+    try { mirror = new URL(mirrorText); next = new URL(nextText); } catch { process.exit(1); }
+    if (mirror.origin === "null" || next.origin !== mirror.origin) process.exit(1);
+    if (next.username || next.password) process.exit(1);
+    process.stdout.write(next.href);
+  ' "$1" "$2"
+}
+
+# Downloads <url> to <destination>, at most <max bytes> when one is given.
+# Without a mirror curl follows redirects itself, as GitHub's release assets
+# need. Under a mirror (#4522) curl follows none: each hop, the first one
+# included, must pass mirror_canonical_url, and curl fetches only the
+# canonical URL it prints, so a mirror cannot hand a download to another
+# server. Neither URL is printed, since a mirror URL may carry a path token.
+MIRROR_MAX_REDIRECTS=5
+fetch_release_file() {
+  fr_destination=$1
+  fr_max=$2
+  fr_url=$3
+  if [ -z "$mirror_url" ]; then
+    if [ -n "$fr_max" ]; then
+      curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize "$fr_max" -o "$fr_destination" -- "$fr_url"
+    else
+      curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$fr_destination" -- "$fr_url"
+    fi
+    return
+  fi
+  fr_hops=0
+  fr_url="$(mirror_canonical_url "$mirror_url" "$fr_url")" || \
+    fail "a download URL is outside the managed policy's mirror or is not a plain URL; STATION_INSTALL_MIRROR_URL allows downloads only from the mirror's own origin"
+  while :; do
+    if [ -n "$fr_max" ]; then
+      fr_meta="$(curl -fsS --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize "$fr_max" -o "$fr_destination" -w '%{http_code} %{redirect_url}' -- "$fr_url")" || return
+    else
+      fr_meta="$(curl -fsS --retry 3 --retry-connrefused --connect-timeout 10 -o "$fr_destination" -w '%{http_code} %{redirect_url}' -- "$fr_url")" || return
+    fi
+    case "${fr_meta%% *}" in
+      3??) ;;
+      *) return 0 ;;
+    esac
+    fr_next=${fr_meta#* }
+    [ -n "$fr_next" ] || fail 'a download from the mirror redirected without a location'
+    [ "$fr_hops" -lt "$MIRROR_MAX_REDIRECTS" ] || \
+      fail "a download from the mirror redirected more than $MIRROR_MAX_REDIRECTS times"
+    fr_url="$(mirror_canonical_url "$mirror_url" "$fr_next")" || \
+      fail "a download redirected outside the managed policy's mirror or to a URL that is not plain; STATION_INSTALL_MIRROR_URL allows redirects only within the mirror's own origin"
+    fr_hops=$((fr_hops + 1))
+  done
+}
 
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -449,6 +553,8 @@ node_is_adequate() {
 }
 
 download_pinned_node() {
+  [ -z "$mirror_url" ] || \
+    fail "Node.js $MINIMUM_VERIFIER_NODE_MAJOR or newer is required to verify this install, and STATION_INSTALL_MIRROR_URL forbids downloading it; install Node.js $MINIMUM_VERIFIER_NODE_MAJOR or newer and rerun"
   node_target="$(host_target)"
   pinned_node_distribution "$node_target" || \
     fail "no pinned Node.js distribution for $node_target; install Node.js $MINIMUM_VERIFIER_NODE_MAJOR or newer and rerun"
@@ -1357,7 +1463,7 @@ if [ -n "$public_manifest_url" ]; then
   # A signed manifest is a few kilobytes. curl 8.4.0 and newer stop at
   # 1 MiB; older curl, and some builds for file:// URLs, enforce the cap only
   # on a declared Content-Length, so the size is also checked after the fact.
-  curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize 1048576 -o "$manifest_file" -- "$public_manifest_url" || {
+  fetch_release_file "$manifest_file" 1048576 "$public_manifest_url" || {
     download_status=$?
     [ "$download_status" != 63 ] || fail 'the public ecosystem manifest is larger than 1 MiB'
     fail 'could not download public ecosystem manifest'
@@ -1510,6 +1616,12 @@ if [ -n "$public_manifest_url" ]; then
   release_version="$(cat "$manifest_values/version")"
   release_sha="$(cat "$manifest_values/sourceSha")"
   asset_url="$(cat "$manifest_values/url")"
+  if [ -n "$mirror_url" ]; then
+    case "$asset_url" in
+      "$RELEASE_DOWNLOAD_BASE"?*) asset_url="$mirror_url${asset_url#"$RELEASE_DOWNLOAD_BASE"}" ;;
+      *) fail 'the signed manifest names an archive outside the release download tree, which the mirror does not serve' ;;
+    esac
+  fi
   expected_checksum="$(cat "$manifest_values/sha256")"
   [ "$version" = latest ] || [ "$version" = "$release_tag" ] || fail 'requested version does not match public ecosystem manifest'
   [ "$release_channel" = "$runtime_release_channel" ] || \
@@ -1536,14 +1648,14 @@ if [ -n "$public_manifest_url" ]; then
     # older curl (Ubuntu 22.04's 7.81, Debian 12's 7.88) only refuses a
     # response whose Content-Length exceeds it, so a chunked response is
     # unbounded there. The size and sha256 checks below refuse it either way.
-    curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize "$archive_size" -o "$archive" -- "$asset_url" || {
+    fetch_release_file "$archive" "$archive_size" "$asset_url" || {
       download_status=$?
       [ "$download_status" != 63 ] || \
         fail "$archive_name is larger than the $archive_size bytes the signed manifest says"
       fail "could not download $archive_name"
     }
   else
-    curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$archive" -- "$asset_url" || fail "could not download $archive_name"
+    fetch_release_file "$archive" '' "$asset_url" || fail "could not download $archive_name"
   fi
   if [ "$release_kind" = archive ]; then
     downloaded_size="$(wc -c <"$archive" | tr -d ' ')"

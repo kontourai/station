@@ -210,6 +210,7 @@ async function fixture(
     framework === 'voltagent' ? VoltAgentFramework : StrandsFramework;
   const makeAgent = () =>
     new Framework().createTempAgent({
+      purpose: 'agent-run',
       agentId: 'assistant',
       name: 'Assistant',
       instructions: 'Use probe once.',

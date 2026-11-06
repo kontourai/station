@@ -133,6 +133,7 @@ test.each([
       }),
     });
     const agent = await new VoltAgentFramework().createTempAgent({
+      purpose: 'agent-run',
       name: 'approval-proof',
       instructions,
       model,

@@ -846,6 +846,7 @@ describe('thread inbox (#3568)', () => {
       });
       let tools = 0;
       const agent = await new VoltAgentFramework().createTempAgent({
+        purpose: 'agent-run',
         name: 'inbox-proof',
         memoryAdapter: memory,
         hooks: { beforeToolCall: async () => true },
@@ -1141,6 +1142,7 @@ describe('thread inbox (#3568)', () => {
       ]);
       if (!held && !conflict && !refused) {
         const later = await new VoltAgentFramework().createTempAgent({
+          purpose: 'agent-run',
           name: 'inbox-proof',
           instructions: 'Reply.',
           model,

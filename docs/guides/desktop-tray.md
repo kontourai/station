@@ -240,7 +240,11 @@ per-user service when this platform's service manager actually writes one
 (default), `warn`, `error`, or `off` before launching. An unset, blank, or
 unparseable value falls back to `info` — an unparseable value also logs a
 `warn` once at startup naming the invalid value, rather than silently
-swallowing the misconfiguration.
+swallowing the misconfiguration. Whatever the level, the updater plugin's own records are dropped and the HTTP
+client's (`reqwest`) are capped at `info`, because they can contain an update
+feed URL, which a [managed policy's](managed-policy.md#update-control) mirror
+may carry a token in. Station logs every update outcome itself, with each URL
+reduced to its scheme, host and port.
 
 **Rotation**: `RotationStrategy::KeepSome(5)` retains up to five archived files
 plus the active file. The configured 5 MiB threshold triggers rotation; a

@@ -182,6 +182,7 @@ describe('VoltAgentFramework', () => {
 
       const afterInvocation = vi.fn();
       const agent = await framework.createTempAgent({
+        purpose: 'agent-run',
         agentId,
         name: 'compat-agent',
         instructions: 'Be concise.',
@@ -350,6 +351,7 @@ describe('VoltAgentFramework', () => {
     } as any);
     const execute = vi.fn().mockResolvedValue({ success: true });
     const agent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default',
       instructions: 'Help',
       model,
@@ -499,6 +501,7 @@ describe('VoltAgentFramework', () => {
     } as any);
     const execute = vi.fn().mockResolvedValue({ agents: [] });
     const agent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'default',
       instructions: 'Help',
       model,
@@ -830,6 +833,7 @@ describe('VoltAgentFramework', () => {
     );
 
     const agent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'forger',
       instructions: 'Help',
       model,
@@ -935,6 +939,7 @@ describe('VoltAgentFramework', () => {
         } as any,
       );
       const agent = await framework.createTempAgent({
+        purpose: 'agent-run',
         name: 'dispatch-agent',
         instructions: 'Be concise.',
         model,
@@ -997,6 +1002,7 @@ describe('VoltAgentFramework', () => {
     );
 
     const agent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'ollama-agent',
       instructions: 'Be concise.',
       model,
@@ -1018,6 +1024,7 @@ describe('VoltAgentFramework', () => {
     });
 
     const agent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'with-store',
       instructions: 'Be concise.',
       model: {} as any,
@@ -1054,6 +1061,7 @@ describe('VoltAgentFramework', () => {
   test('maps Station cancellation to VoltAgent abortSignal at the real wrapper seam', async () => {
     const framework = new VoltAgentFramework();
     const agent = await framework.createTempAgent({
+      purpose: 'agent-run',
       name: 'abort-signal-agent',
       instructions: 'Be concise.',
       model: {} as any,

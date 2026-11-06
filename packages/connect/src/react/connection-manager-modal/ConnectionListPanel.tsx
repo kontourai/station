@@ -66,6 +66,8 @@ interface ConnectionListPanelProps {
   onEnterPairingCode: () => void;
   enterPairingCodeRef?: Ref<HTMLButtonElement>;
   onPairPhone?: () => void;
+  /** #4519: why this Station cannot pair other devices; disables the invite. */
+  pairingRefusal?: ReactNode;
   /**
    * station#2205: this device has a Station of its own — the web UI served by
    * that Station, or a native desktop supervising its local server. On a
@@ -602,6 +604,7 @@ export function ConnectionListPanel({
   onEnterPairingCode,
   enterPairingCodeRef,
   onPairPhone,
+  pairingRefusal,
   hasLocalStation = true,
   onViewDevices,
   onDiscover,
@@ -855,17 +858,27 @@ export function ConnectionListPanel({
             aria-label="Manage access to this Station"
           >
             <h3>Connect another device to this Station</h3>
-            <p>
-              Invite your phone to{' '}
-              {connections.find(
-                (connection) => connection.id === activeConnectionId,
-              )?.name ?? 'the selected Station'}
-              . Both devices use the same Station server.
-            </p>
+            {pairingRefusal != null ? (
+              <div id="connection-list-pairing-refusal">{pairingRefusal}</div>
+            ) : (
+              <p>
+                Invite your phone to{' '}
+                {connections.find(
+                  (connection) => connection.id === activeConnectionId,
+                )?.name ?? 'the selected Station'}
+                . Both devices use the same Station server.
+              </p>
+            )}
             {onPairPhone && (
               <button
                 type="button"
                 onClick={onPairPhone}
+                disabled={pairingRefusal != null}
+                aria-describedby={
+                  pairingRefusal != null
+                    ? 'connection-list-pairing-refusal'
+                    : undefined
+                }
                 className="station-connect-btn station-connect-btn--primary"
               >
                 Connect another device

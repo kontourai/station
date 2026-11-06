@@ -54,6 +54,7 @@ import {
   resolveSelfUpdateEligibility,
   type SelfUpdateEligibility,
 } from './install-provenance.js';
+import { managedUpdateRefusalFor } from './managed-update-policy.js';
 import {
   emitRestartDiagnostic,
   readSelfUpdateRestartRecord,
@@ -725,9 +726,20 @@ export function createSystemUpdateRoutes(
   deps: SystemStatusDeps,
   logger: any,
   restartStateWriter: typeof writeSelfUpdateRestartRecord = writeSelfUpdateRestartRecord,
-  options: SystemUpdateRouteOptions = {},
+  routeOptions: SystemUpdateRouteOptions = {},
 ) {
   const app = new Hono();
+  const options: SystemUpdateRouteOptions = {
+    managedUpdates: deps.managedUpdates ?? null,
+    ...routeOptions,
+  };
+  /**
+   * #4522: the managed policy's refusal for this server's install, answered
+   * before any network, git or file work, so a refused update contacts
+   * nothing.
+   */
+  const managedRefusal = (provenance: InstallProvenance) =>
+    managedUpdateRefusalFor(provenance, options.managedUpdates);
   const moduleDir =
     options.moduleDir ?? dirname(fileURLToPath(import.meta.url));
   const provenanceOfThisServer = () => resolveInstallProvenance(moduleDir);
@@ -912,6 +924,21 @@ export function createSystemUpdateRoutes(
     const provenance = provenanceOfThisServer();
     const provenanceIssue: UpdateProvenanceIssue | null =
       provenance.installKind === 'unknown' ? provenance.reason : null;
+
+    const managed = managedRefusal(provenance);
+    if (managed) {
+      return c.json({
+        installKind: provenance.installKind,
+        updateAvailable: false,
+        message: `${managed.sentence}.`,
+        managedPolicyCode: managed.code,
+        serverIdentity,
+        provenanceIssue,
+        technicalDetail: null,
+        selfUpdateUnavailableReason: managed.sentence,
+        selfUpdateUnavailableCode: null,
+      });
+    }
 
     if (provenance.installKind === 'desktop-bundle') {
       const status = await desktopBundleUpdateStatus(provenance);
@@ -1175,6 +1202,12 @@ export function createSystemUpdateRoutes(
 
   /** Apply the staged version once no agent turn runs (#3851). */
   app.put('/core-update/apply-when-idle', async (c) => {
+    const managed = managedRefusal(provenanceOfThisServer());
+    if (managed)
+      return c.json(
+        { success: false, error: `${managed.sentence}.`, code: managed.code },
+        403,
+      );
     if (!deps.serverUpdate)
       return c.json(
         { success: false, error: 'This server cannot update itself.' },
@@ -1215,6 +1248,12 @@ export function createSystemUpdateRoutes(
     // (archive#1624). Everything else refuses cleanly instead of letting
     // resolveGitInfo throw "Not a git repository" into a 500.
     const provenance = provenanceOfThisServer();
+    const managed = managedRefusal(provenance);
+    if (managed)
+      return c.json(
+        { success: false, error: `${managed.sentence}.`, code: managed.code },
+        403,
+      );
     if (provenance.installKind === 'desktop-bundle') {
       const eligibility = await resolveSelfUpdateEligibility(provenance);
       if (!eligibility.eligible) {
@@ -1279,7 +1318,14 @@ export function createSystemUpdateRoutes(
                   intent: action,
                 });
       if (!result.ok) {
-        return c.json({ success: false, error: result.error }, result.status);
+        return c.json(
+          {
+            success: false,
+            error: result.error,
+            ...(result.code ? { code: result.code } : {}),
+          },
+          result.status,
+        );
       }
       const requestId = result.requestId;
       if (!requestId)

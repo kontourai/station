@@ -181,6 +181,12 @@ export interface ProductTelemetryDeliveryStatus {
   } | null;
   lastFailure: TelemetryRequestFailure | null;
   probe: TelemetryConnectionProbeStatus;
+  /**
+   * #4521: set when the machine's managed policy turned telemetry off, so
+   * nothing is sent and the connection check is refused. The sentence
+   * clients show. Absent otherwise and on older servers.
+   */
+  managedDenial?: string;
 }
 
 export interface OtelExportDeliveryStatus {
@@ -210,6 +216,12 @@ export interface OtelTelemetryDeliveryStatus {
   metrics: OtelExportDeliveryStatus;
   traces: OtelExportDeliveryStatus;
   probe: TelemetryConnectionProbeStatus;
+  /**
+   * #4521: set when the machine's managed policy turned telemetry off, so no
+   * exporter was registered whatever the saved or environment endpoint says.
+   * The sentence clients show. Absent otherwise and on older servers.
+   */
+  managedDenial?: string;
 }
 
 export interface TelemetryDeliveryStatus {

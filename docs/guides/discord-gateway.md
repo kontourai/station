@@ -218,6 +218,9 @@ Station answers in the channel when it cannot run a turn:
 - **Hosted Stations:** a Station running in hosted tenant mode cannot start
   turns from Discord; every message receives "Station could not start this
   turn."
+- **Managed policy:** under a [managed policy](managed-policy.md#network-exposure)
+  that allows no remote clients, the gateway does not connect, and its status
+  is `unavailable` with the policy's sentence. The configuration is kept.
 
 ## Monitoring
 

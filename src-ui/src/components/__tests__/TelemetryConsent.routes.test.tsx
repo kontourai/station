@@ -34,6 +34,8 @@ const bridge = vi.hoisted(() => ({
   config: {} as AppConfig,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // #4519: the connected Station has no managed policy.
+  useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   getJson: (...args: unknown[]) => bridge.scopedRead(...args),
   mutateJson: (url: string, method: string, _options: unknown, body: unknown) =>
     bridge.request(url, {
