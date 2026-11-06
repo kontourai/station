@@ -1247,7 +1247,9 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         historyNotice.getByRole('button', { name: 'Retry', exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByText('Recovery fixture history unavailable', { exact: false }),
+        page.getByText('Recovery fixture history unavailable', {
+          exact: false,
+        }),
       ).toHaveCount(0);
       const failedHistoryReads = historyReads;
       expect(failedHistoryReads).toBeGreaterThan(0);
