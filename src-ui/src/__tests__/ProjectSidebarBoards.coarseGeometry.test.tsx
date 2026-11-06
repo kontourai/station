@@ -40,6 +40,7 @@ import {
 } from '../../../tests/helpers/css-cascade-fixture';
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   usePersonalLayoutsQuery: () => ({
     data: [{ slug: 'daily', name: 'Daily brief', icon: '▦' }],
   }),
