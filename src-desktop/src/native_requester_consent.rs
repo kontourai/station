@@ -12,6 +12,9 @@ pub(crate) struct Pending {
 }
 
 pub(crate) fn is_creation_request(method: &str, url: &Url) -> bool {
+    if method == "PUT" && url.path() == "/api/operator/account-sharing" {
+        return true;
+    }
     if method != "POST" {
         return false;
     }
@@ -26,7 +29,13 @@ pub(crate) fn is_creation_request(method: &str, url: &Url) -> bool {
 }
 
 impl Pending {
-    pub fn capture(origin: &str, binding_id: &str, cookie: &str, body: &[u8]) -> Option<Self> {
+    pub fn capture(
+        origin: &str,
+        binding_id: &str,
+        request_path: &str,
+        cookie: &str,
+        body: &[u8],
+    ) -> Option<Self> {
         if body.len() > 65536 {
             return None;
         }
@@ -47,10 +56,19 @@ impl Pending {
             return None;
         }
         let body: serde_json::Value = serde_json::from_slice(body).ok()?;
-        let approval = body.get("approval")?;
+        let sharing = request_path == "/api/operator/account-sharing";
+        let approval = if sharing {
+            let data = body.get("data")?;
+            if !body.get("success")?.as_bool()? || !data.get("changed")?.as_bool()? {
+                return None;
+            }
+            data.get("confirmation")?
+        } else {
+            body.get("approval")?
+        };
         let request_id = approval.get("id")?.as_str()?;
         uuid::Uuid::parse_str(request_id).ok()?;
-        if approval.get("status")?.as_str()? != "pending" {
+        if !sharing && approval.get("status")?.as_str()? != "pending" {
             return None;
         }
         let review = Url::parse(approval.get("reviewUrl")?.as_str()?).ok()?;
@@ -58,7 +76,10 @@ impl Pending {
         if review.host_str() != source.host_str()
             || review.origin() == source.origin()
             || !matches!(review.scheme(), "http" | "https")
-            || (source.scheme() == "https" && review.scheme() != "https")
+            // Sharing's default browser URL names a loopback-only HTTP listener.
+            // This is metadata: native review sends its secret only to the
+            // captured API origin, never to this URL or its consent port.
+            || (!sharing && source.scheme() == "https" && review.scheme() != "https")
             || !review.username().is_empty()
             || review.password().is_some()
             || review.path() != format!("/consent/{request_id}")
@@ -101,8 +122,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sharing_confirmation_binds_the_private_session_to_the_host_and_profile() {
+        let origin = "https://station.tailnet.test";
+        let path = "/api/operator/account-sharing";
+        let id = "11234567-89ab-4cde-8fab-0123456789ab";
+        let cookie = format!(
+            "station-consent={}; HttpOnly; Path=/consent; SameSite=Strict",
+            "a".repeat(43)
+        );
+        let body = |host: &str, changed: bool| {
+            serde_json::to_vec(&serde_json::json!({
+                "success": true,
+                "data": {"changed": changed, "confirmation": {
+                    "id": id,
+                    "reviewUrl": format!("http://{host}:3144/consent/{id}"),
+                    "expiresAt": 2000000000000_u64
+                }}
+            }))
+            .unwrap()
+        };
+        let url = Url::parse(&format!("{origin}{path}")).unwrap();
+        assert!(is_creation_request("PUT", &url));
+        assert!(!is_creation_request("POST", &url));
+        assert!(!is_creation_request("GET", &url));
+        let bytes = body("station.tailnet.test", true);
+        let pending = Pending::capture(origin, "profile-a", path, &cookie, &bytes).unwrap();
+        assert_eq!(pending.request_id, id);
+        assert!(pending.is_current(origin, "profile-a"));
+        assert!(!pending.is_current(origin, "profile-b"));
+        for invalid in [
+            body("other.test", true),
+            body("station.tailnet.test", false),
+        ] {
+            assert!(Pending::capture(origin, "profile-a", path, &cookie, &invalid).is_none());
+        }
+        assert!(Pending::capture(origin, "profile-a", path, "", &bytes).is_none());
+        assert!(Pending::capture(
+            origin,
+            "profile-a",
+            "/api/analytics/source-grant-approvals",
+            &cookie,
+            &bytes
+        )
+        .is_none());
+    }
+
+    #[test]
     fn requester_capture_binds_the_server_issued_review_and_private_cookie() {
         let origin = "https://source.test";
+        let path = "/api/analytics/source-grant-approvals";
         let id = "11234567-89ab-4cde-8fab-0123456789ab";
         let cookie = format!(
             "station-consent={}; HttpOnly; Path=/consent; SameSite=Strict",
@@ -117,7 +185,7 @@ mod tests {
         let bytes = body(&format!(
             "https://source.test:444/consent/{id}?scope=person:test"
         ));
-        let pending = Pending::capture(origin, "epoch-a", &cookie, &bytes).unwrap();
+        let pending = Pending::capture(origin, "epoch-a", path, &cookie, &bytes).unwrap();
         assert_eq!(pending.scope.as_deref(), Some("person:test"));
         assert!(pending.is_current(origin, "epoch-a"));
         assert!(!pending.is_current(origin, "epoch-b"));
@@ -130,19 +198,25 @@ mod tests {
             format!("https://source.test:444/consent/{id}?scope=one&scope=two"),
             "https://source.test:444/consent/wrong-id".into(),
         ] {
-            assert!(Pending::capture(origin, "epoch-a", &cookie, &body(&review)).is_none());
+            assert!(Pending::capture(origin, "epoch-a", path, &cookie, &body(&review)).is_none());
         }
-        assert!(
-            Pending::capture(origin, "epoch-a", &cookie.replace("HttpOnly", ""), &bytes).is_none()
-        );
         assert!(Pending::capture(
             origin,
             "epoch-a",
+            path,
+            &cookie.replace("HttpOnly", ""),
+            &bytes
+        )
+        .is_none());
+        assert!(Pending::capture(
+            origin,
+            "epoch-a",
+            path,
             &cookie.replace("Path=/consent", "Path=/"),
             &bytes
         )
         .is_none());
-        assert!(Pending::capture(origin, "epoch-a", &cookie, &vec![b'a'; 65537]).is_none());
+        assert!(Pending::capture(origin, "epoch-a", path, &cookie, &vec![b'a'; 65537]).is_none());
         assert!(is_creation_request(
             "POST",
             &Url::parse("https://source.test/api/analytics/source-grant-approvals").unwrap()

@@ -186,7 +186,19 @@
 
     "src-server/services/terminal/terminal-tickets.ts",
 
-    "src-server/services/terminal/terminal-gateway.ts"
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-desktop/src/native_requester_consent.rs",
+
+    "src-ui/src/platform/native/requesterConsent.ts",
+
+    "src-ui/src/views/settings/AccountSharingSection.tsx",
+
+    "src-ui/src/views/settings/__tests__/AccountSharingSection.test.tsx",
+
+    "src-server/routes/system/account-sharing-routes.ts",
+
+    "src-server/routes/consent/consent-native-routes.ts"
   ],
 
   "checks": [
