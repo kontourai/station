@@ -159,8 +159,8 @@
       "lock": "pnpm-lock.yaml",
       "path": "node_modules/node-pty",
       "name": "node-pty",
-      "version": "1.2.0-beta.14",
-      "integrity": "sha512-XORU9BQgpxVgqr7WivjJ17mLenOHUgKKWzuZZNaw3NDYgHc/wPJQMSaoLDrpEgqV6aU1nNwil1o/OqYj6lWmUA==",
+      "version": "1.2.0-beta.17",
+      "integrity": "sha512-GapdTQQjXyS9ICBgsnBG27Ltfkh3hzTbFcC8r1MxRLsTVyA/3/8z1Vu+DJSNWhtKjwfTjoSPyCN6hQ/fwxlh9A==",
       "hooks": [
         {
           "name": "install",
@@ -200,7 +200,7 @@
         },
         "proof": "node-pty-smoke"
       },
-      "purl": "pkg:npm/node-pty@1.2.0-beta.14",
+      "purl": "pkg:npm/node-pty@1.2.0-beta.17",
       "reviewedAt": "2026-11-05",
       "expiresAt": "2026-11-23",
       "recheck": "dependency refresh, advisory, or platform build change",

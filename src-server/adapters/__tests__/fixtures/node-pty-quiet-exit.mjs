@@ -18,6 +18,7 @@ let exited = false;
 let outputBytes = 0;
 let exitCode;
 let signal;
+let outputIncomplete;
 let unsubscribeData;
 
 try {
@@ -35,6 +36,8 @@ try {
   unsubscribeData = terminal.onData((chunk) => {
     outputBytes += Buffer.byteLength(chunk);
   });
+  // ConPTY can emit startup controls even for a silent program; hold first data.
+  terminal.pause();
   const event = await new Promise((resolve, reject) => {
     let unsubscribe = () => {};
     const timer = setTimeout(() => {
@@ -50,6 +53,7 @@ try {
   });
   exitCode = event.exitCode;
   signal = event.signal;
+  outputIncomplete = event.outputIncomplete;
   if (exitCode !== 0) throw new Error(`Quiet PTY exited with code ${exitCode}`);
   if (signal !== null && signal !== 0)
     throw new Error(`Quiet PTY exited with signal ${signal}`);
@@ -63,6 +67,8 @@ try {
       `Quiet PTY output reader did not retire: ${readerPortsBefore} before, ${readerPortsAfter} after`,
     );
   }
+  if (outputIncomplete !== true)
+    throw new Error('Paused exit lost its incomplete-output marker');
   if (outputBytes !== 0)
     throw new Error(`Quiet PTY produced ${outputBytes} output bytes`);
   console.log(
@@ -71,6 +77,7 @@ try {
       status: 'PASS',
       pid: terminal.pid,
       outputBytes,
+      outputIncomplete,
       exitCode,
       signal,
       readerPortsBefore,
@@ -85,6 +92,7 @@ try {
       pid: terminal?.pid,
       exited,
       outputBytes,
+      outputIncomplete,
       exitCode,
       signal,
       readerPortsBefore,

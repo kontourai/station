@@ -941,7 +941,7 @@ describe('dependency lifecycle policy', () => {
     ).toEqual([]);
     expect(allowlistDigest(policy)).toMatch(/^[a-f0-9]{64}$/);
     expect(expectedLifecyclePurls(policy)).toContain(
-      'pkg:npm/node-pty@1.2.0-beta.14',
+      'pkg:npm/node-pty@1.2.0-beta.17',
     );
   });
 
@@ -1699,7 +1699,7 @@ describe('dependency lifecycle policy', () => {
       mkdirSync(packageRoot, { recursive: true });
       writeFileSync(
         resolve(packageRoot, 'package.json'),
-        JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.14' }),
+        JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.17' }),
       );
       const artifactDir = resolve(
         fixtureRoot,
@@ -1715,7 +1715,7 @@ describe('dependency lifecycle policy', () => {
         JSON.stringify({
           schemaVersion: 1,
           package: 'node-pty',
-          version: '1.2.0-beta.14',
+          version: '1.2.0-beta.17',
           artifacts: { 'linux-arm64': { sha256 } },
         }),
       );
@@ -1801,7 +1801,7 @@ describe('dependency lifecycle policy', () => {
         assertNodePtyPrebuildConsistency(policy, {
           schemaVersion: 1,
           package: 'node-pty',
-          version: '1.2.0-beta.14',
+          version: '1.2.0-beta.17',
           artifacts: { 'linux-arm64': { sha256: 'a'.repeat(64) } },
         }),
       ).toThrow(/disagree for linux-arm64/);
@@ -1859,7 +1859,7 @@ describe('dependency lifecycle policy', () => {
         mkdirSync(resolve(helper, '..'), { recursive: true });
         writeFileSync(
           resolve(packageRoot, 'package.json'),
-          JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.14' }),
+          JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.17' }),
         );
         writeFileSync(helper, '#!/bin/sh\nexit 0\n');
         chmodSync(helper, 0o644);
@@ -1991,7 +1991,7 @@ describe('dependency lifecycle policy', () => {
       });
       writeFileSync(
         resolve(packageRoot, 'package.json'),
-        JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.14' }),
+        JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.17' }),
       );
       writeFileSync(helper, '#!/bin/sh\nexit 0\n');
       symlinkSync(

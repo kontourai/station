@@ -70,7 +70,7 @@ function getNodePty(): Promise<typeof import('node-pty')> {
   return nodePtyPromise;
 }
 
-/** node-pty 1.2.0-beta.14 publishes its Windows PID at this private seam. */
+/** node-pty 1.2.0-beta.17 publishes its Windows PID at this private seam. */
 function waitForPendingPtyPid(pty: import('node-pty').IPty): Promise<void> {
   const socket = '_socket' in pty ? pty._socket : undefined;
   if (!(socket instanceof EventEmitter)) {

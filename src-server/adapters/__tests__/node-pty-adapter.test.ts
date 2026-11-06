@@ -389,7 +389,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
     expect(receipt.resizes, diagnostic).toBeGreaterThan(0);
   }, 30_000);
 
-  test('a silent native child exits and releases its output reader', async () => {
+  test('a paused silent native child exits and releases its output reader', async () => {
     const { receipt, diagnostic } = await runNativeFixture(
       new URL('./fixtures/node-pty-quiet-exit.mjs', import.meta.url),
       'station-pty-quiet-exit/1',
@@ -402,6 +402,31 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
     expect(receipt.readerPortsAfter, diagnostic).toBeLessThanOrEqual(
       receipt.readerPortsBefore,
     );
+  }, 30_000);
+
+  test('cancelled vendor allocation ignores late worker readiness and errors', async () => {
+    const receipt = await runNativeFixture(
+      new URL('./fixtures/node-pty-cancel-ready.mjs', import.meta.url),
+      'station-pty-cancel-ready/1',
+      'vendor readiness cancellation',
+    );
+    expect(receipt).toMatchObject({
+      status: 'PASS',
+      cancelled: {
+        mode: 'cancel',
+        connections: 0,
+        errors: 0,
+        pid: 0,
+        disposals: 1,
+      },
+      timedOut: {
+        mode: 'timeout',
+        connections: 0,
+        errors: 1,
+        pid: 0,
+        disposals: 1,
+      },
+    });
   }, 30_000);
 
   /** node-pty runs each ConPTY's output reader on a worker thread. */
