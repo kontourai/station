@@ -708,6 +708,22 @@ describe('status facts for chat, task and merged rows', () => {
     ).toBe('Queued to send');
   });
 
+  it('an uncertain message reads as delivery unconfirmed instead of queued to send', () => {
+    expect(
+      build({
+        status: 'queued',
+        outboundQueuedTurns: [
+          {
+            clientTurnId: 'uncertain',
+            content: 'continue',
+            createdAt: NOW,
+            status: 'may-have-started',
+          },
+        ],
+      }).line,
+    ).toBe('Delivery unconfirmed');
+  });
+
   it('a send queued while offline reads as queued', () => {
     expect(build({ status: 'queued' }).line).toBe('Queued to send');
   });

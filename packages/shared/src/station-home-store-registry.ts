@@ -120,6 +120,8 @@ export const STATION_HOME_ROOTS: Readonly<
   runtime: 'state',
   'runtime-auth-health.json': 'state',
   scheduler: 'state',
+  // No-project chat workspaces may contain files created during a conversation.
+  scratch: 'state',
   security: 'state',
   'session-summaries': 'state',
   'setup-imports.json': 'state',

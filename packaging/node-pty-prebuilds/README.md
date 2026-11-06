@@ -2,22 +2,23 @@
 
 This directory defines an optional digest-pinned Linux prebuild channel for
 the exact `node-pty` version in `pnpm-lock.yaml`. **The current manifest has no
-artifacts**, so Linux uses the existing source-build path and still needs its
-toolchain. A future reviewed artifact can be staged into
+artifacts**, so managed Linux installs compile from source and still need their
+toolchain. The pinned upstream package also bundles Linux binaries. Without an
+approved Station artifact, the managed staging phase removes the current Linux
+target's bundled prebuild directory before the install hook runs; otherwise its
+presence alone would suppress compilation while artifact verification still
+requires `build/Release/pty.node`. Redirected paths fail before deletion, and
+other platform directories are retained. The lifecycle runner also forces the
+upstream source-build option for this artifact decision. macOS and Windows keep their upstream
+prebuild paths. A future reviewed Station artifact can still be staged into
 `node_modules/node-pty/prebuilds/<target>/` by the dependency lifecycle (#1245).
-The pinned upstream package also ships Linux prebuilds. Station's current
-Linux approval requires `build/Release/pty.node`; the lifecycle runner forces
-the upstream source-build option for that decision. The presence of an upstream
-prebuild directory does not approve its compatibility. A future reviewed
-prebuild decision uses upstream's own `prebuilds/` layout without a fork or
-vendored package.
 
 ## Contents
 
 - `manifest.json` — which targets have a pinned artifact, with each file's
   sha256 and its measured glibc/libstdc++ symbol-version floor. An empty
-  `artifacts` map means no prebuild ships yet and every Linux install
-  compiles from source exactly as before.
+  `artifacts` map means no Station prebuild is approved; managed Linux
+  installation removes the unapproved current target and compiles from source.
 - `<target>/pty.node` — the binary for `linux-x64` / `linux-arm64` (glibc),
   present only for targets listed in `manifest.json`.
 
