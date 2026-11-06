@@ -101,7 +101,17 @@ test('an unavailable GitHub read retains updater notes and can be retried', asyn
 });
 
 test('a missing exact release never substitutes the rolling latest release', async () => {
-  const fetcher = vi.fn(async () => new Response('', { status: 404 }));
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(new Response('', { status: 404 }))
+    .mockImplementation(async () =>
+      Response.json(
+        release(
+          'desktop-v0.1.11-nightly.2499.3',
+          '- Newly published changelog',
+        ),
+      ),
+    );
   vi.stubGlobal('fetch', fetcher);
   mount(<ReleaseNotes version="0.1.11-nightly.2499.3" nativeApp />);
   await screen.findByText(
@@ -109,4 +119,8 @@ test('a missing exact release never substitutes the rolling latest release', asy
   );
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
   expect(screen.queryByRole('alert')).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Check release notes again' }),
+  );
+  expect(await screen.findByText('Newly published changelog')).toBeTruthy();
 });
