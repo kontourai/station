@@ -19,6 +19,12 @@ import {
   type WindowsProcessLister,
 } from '../infra/process-utils.js';
 import {
+  type CommandChild,
+  GuardSpawnError,
+  resolveWindowsCommandGuard,
+  spawnGuardedCommand,
+} from './windows-command-guard.js';
+import {
   attributeWindowsProcesses,
   type OwnedWindowsProcess,
   windowsNowUs,
@@ -101,7 +107,7 @@ class CommandProcess implements IPtyProcess {
   private terminating: Promise<void> | undefined;
 
   constructor(
-    private readonly child: ChildProcess,
+    private readonly child: CommandChild,
     private readonly outputCapBytes: number,
     /** No later than the leader's creation, in the process table's clock. */
     private readonly spawnedUs: bigint,
@@ -178,9 +184,10 @@ class CommandProcess implements IPtyProcess {
    * Ends the command and what it started, and resolves only once none of it
    * remains: the leader exiting is not enough, since a process it started
    * can ignore SIGTERM or outlive its parent. POSIX: its process group,
-   * SIGTERM then SIGKILL. Windows: every process proven to descend from it,
-   * forcibly, until a process table shows none left. Rejects when that
-   * cannot be established before the deadline.
+   * SIGTERM then SIGKILL. Windows: its whole Job when it runs in one (the
+   * guard confirms the Job is empty); otherwise every process proven to
+   * descend from it, forcibly, until a process table shows none left.
+   * Rejects when that cannot be established before the deadline.
    */
   terminate(): Promise<void> {
     if (this.exit && !this.terminating) return Promise.resolve();
@@ -213,6 +220,21 @@ class CommandProcess implements IPtyProcess {
 
   private async terminateWindows(): Promise<void> {
     const deadline = Date.now() + WINDOWS_KILL_DEADLINE_MS;
+    // A command in a Job (#4624): ending the Job ends every process the
+    // command started, including one whose parent already exited, and the
+    // guard confirms none is left.
+    if (this.child.endJob) {
+      if (!(await this.within(this.child.endJob(), WINDOWS_KILL_DEADLINE_MS)))
+        throw new Error('The command or a process it started did not exit');
+      if (
+        !(await this.within(
+          this.closed,
+          Math.max(0, deadline - Date.now()) || 1,
+        ))
+      )
+        throw new Error('The command did not exit');
+      return;
+    }
     // The command ends now, never after a process-table read: that read
     // goes through PowerShell, and a cold one can take tens of seconds.
     // Node holds the leader's process handle until it reports the exit, so
@@ -384,9 +406,11 @@ function isWindowsCommandProcessor(
 /**
  * Starts a command and resolves once it has started, or rejects with a
  * `CommandSpawnError` (a missing or unrunnable executable) without leaving an
- * unhandled `error` event behind.
+ * unhandled `error` event behind. On Windows the command runs in a Job
+ * through the Station Job guard when one is available
+ * (`windows-command-guard.ts`), so Stop reaches every process it started.
  */
-export function spawnCommandProcess(
+export async function spawnCommandProcess(
   input: {
     command: string;
     args: readonly string[];
@@ -395,6 +419,11 @@ export function spawnCommandProcess(
     outputCapBytes?: number;
     /** Test seam: the Windows process table and per-pid kill. */
     windowsCensus?: WindowsCommandCensus;
+    /**
+     * Test seam: the Windows Job guard to start the command through; null
+     * starts it directly. Absent: the one this process resolves.
+     */
+    windowsGuard?: string | null;
   },
   spawn: (
     command: string,
@@ -403,6 +432,41 @@ export function spawnCommandProcess(
   ) => ChildProcess = (command, args, options) =>
     nodeSpawn(command, [...args], options),
 ): Promise<CommandProcess> {
+  const guard =
+    process.platform !== 'win32'
+      ? null
+      : input.windowsGuard === undefined
+        ? await resolveWindowsCommandGuard()
+        : input.windowsGuard;
+  const outputCapBytes =
+    input.outputCapBytes ?? DEFAULT_COMMAND_OUTPUT_CAP_BYTES;
+  if (guard) {
+    // Before the spawn: no later than the process's creation time.
+    const spawnedUs = windowsNowUs();
+    try {
+      const child = await spawnGuardedCommand(
+        guard,
+        {
+          command: input.command,
+          args: input.args,
+          cwd: input.cwd,
+          env: input.env,
+          verbatim: isWindowsCommandProcessor(input.command),
+        },
+        spawn,
+      );
+      return new CommandProcess(
+        child,
+        outputCapBytes,
+        spawnedUs,
+        input.windowsCensus,
+      );
+    } catch (error) {
+      if (error instanceof GuardSpawnError)
+        throw new CommandSpawnError(error.message, error.code);
+      throw error;
+    }
+  }
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
     // Before the spawn: no later than the process's creation time.
@@ -438,7 +502,7 @@ export function spawnCommandProcess(
       resolve(
         new CommandProcess(
           child,
-          input.outputCapBytes ?? DEFAULT_COMMAND_OUTPUT_CAP_BYTES,
+          outputCapBytes,
           spawnedUs,
           input.windowsCensus,
         ),

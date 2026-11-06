@@ -986,7 +986,10 @@ runs each terminal process suite in a Vitest invocation of its own after the
 other files, so a forked worker that dies (an open,
 intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
 other suite's results; every invocation runs, and any failure fails the floor
-without a retry. A ConPTY cannot change
+without a retry. A failed invocation leaves its crash evidence in
+`.kontourai/verification-output/windows-portable-floor/`, which the job
+uploads: how each Vitest worker ended (exit code or signal), Node fatal-error
+reports, and the Application log's crash entries since it started (#4626). A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
