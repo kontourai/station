@@ -48,7 +48,9 @@ close endpoint still used the legacy service; Delivery 6 removed it.
 Session metadata and journal output survive disposal and a new service instance.
 In-process shells do not survive server exit, and restored sessions are ended
 and never execute their old input again. Supervisor workloads do survive (see
-Shell host). Opening with a legacy terminal id imports
+Shell host). Disposal waits for in-process stops already in progress before
+flushing journals and persisting; a failed or timed-out stop is reported.
+Opening with a legacy terminal id imports
 a provenance-bound history filename once and retains the mapping in the durable
 record. The legacy writer emits a receipt only for a fresh file or a previously
 verified receipt; it records the Project id captured when the shell opened,
@@ -88,7 +90,7 @@ Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
 queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
 a backend that ignores backpressure or an explicitly undersized queue can
 still exceed that hard bound. Such overload is latched and uses the same owned
-HUP-to-KILL escalation as close. This is distinct from an ordinary burst under
+termination path as close. This is distinct from an ordinary burst under
 default limits. The real PTY suite sends 8 MiB through disk and memory modes,
 checks continued shell life and retained bounds (memory mode need not pause), then recreates the disk-backed
 service and reads its journal after clean disposal. This provides
