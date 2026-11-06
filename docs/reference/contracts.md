@@ -27,6 +27,11 @@ shared by pre-install CI intake and the trusted Station publisher. Its `.d.mts`
 entry supplies types without duplicating the implementation. See
 [isolated repairs](../guides/agent-efficiency.md#run-an-isolated-github-repair).
 
+`@kontourai/station-contracts/product-telemetry` owns the pure
+`isTelemetryPublisherId` validator used by config, CLI and receiver boundaries.
+It accepts the built-ins plus bounded legacy and registry-namespaced publisher
+IDs; see the [publisher ID grammar](usage-telemetry.md#plugin-publishers).
+
 ## Ownership rules
 
 - This package owns stable cross-package types and constants. Existing domain

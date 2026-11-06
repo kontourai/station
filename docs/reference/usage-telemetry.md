@@ -693,7 +693,15 @@ in `publicTelemetryRegistries`; absent classification refuses the declaration.
 Distribution manifests remain design-only and will share the declaration schema
 and tier resolver.
 
-Publishers appear in the existing status map as `publisher:<24 hex registry-key digest>/<verified registry item id>`. `station telemetry set publisher:<digest>/writer off` stores an independent choice;
+Publishers appear in the existing status map as `publisher:<24 lowercase hex registry-key digest>/<verified registry item id>`.
+The item follows the telemetry declaration grammar: a lowercase ASCII letter or
+digit, then lowercase letters, digits, `.`, `_`, `:`, or `-`, with a maximum of
+128 characters. Uppercase items and trailing newlines are refused.
+Reserved item keys `constructor` and `prototype` are refused; the digest segment
+must be exactly 24 lowercase hex characters. Extra `/` segments are refused.
+Legacy `publisher:<id>` remains accepted with lowercase letters and the same
+128-character item bound. `station telemetry set publisher:<digest>/writer lite`
+stores and reloads an independent choice; use `off` to disable that publisher;
 `station telemetry outbox --publisher publisher:<digest>/writer` filters the shared ledger.
 The status API keeps its top-level built-in inventory fields. Each plugin publisher
 adds `destination`, `endpointConfigured`, `liteInventoryRevision`, `liteInventory`,

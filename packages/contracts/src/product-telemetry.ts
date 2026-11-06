@@ -1,7 +1,8 @@
-import type {
-  PluginDailyPing,
-  PluginTelemetryBatch,
-  PluginTelemetryEvent,
+import {
+  PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN,
+  type PluginDailyPing,
+  type PluginTelemetryBatch,
+  type PluginTelemetryEvent,
 } from './plugin-telemetry.js';
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL = 2;
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY =
@@ -16,6 +17,16 @@ export type TelemetryPublisherId =
   | 'kontour'
   | 'operator'
   | `publisher:${string}`;
+export function isTelemetryPublisherId(
+  value: unknown,
+): value is TelemetryPublisherId {
+  if (value === 'kontour' || value === 'operator') return true;
+  if (typeof value !== 'string' || !value.startsWith('publisher:'))
+    return false;
+  const item = value.slice('publisher:'.length).replace(/^[a-f0-9]{24}\//, '');
+  return PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN.test(item);
+}
+
 export type TelemetryTierChoices = Partial<
   Record<TelemetryPublisherId, TelemetryTier>
 >;

@@ -810,9 +810,13 @@ station telemetry set kontour anonymous
 station telemetry set kontour off
 station telemetry set operator full
 station telemetry outbox --publisher operator
-station telemetry set publisher:<registry-digest>/writer off
+station telemetry set publisher:<registry-digest>/writer lite
 station telemetry outbox --publisher publisher:<registry-digest>/writer
 ```
+
+The registry digest is exactly 24 lowercase hex characters; the item ID is bounded
+to 128 characters. See the [publisher ID grammar](usage-telemetry.md#plugin-publishers)
+for permitted characters, reserved keys, and the retained legacy form.
 
 Plugin publishers default Off. Choose Lite or Full explicitly after reviewing the opt-in prompt; a notice receipt does not enable sending. Plugin Lite contains plugin-chosen counts which can encode identifiers.
 
