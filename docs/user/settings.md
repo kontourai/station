@@ -28,8 +28,9 @@ not reset it to the Station default.
 
 Folder paths identify the Station that owns them. A path shown while using a
 phone or remote browser belongs to that Station, rather than to the viewing
-device. **Sources → Repositories and folders** contains repository attachment
-and working-copy repair; **Workspace** edits the Project's local working folder.
+device. **Sources** shows repository links and checkout locations. Use
+**Add a repository** to attach a checkout and **Advanced: checkout repair**
+for filesystem repair. **Workspace** edits the Project's local working folder.
 
 ## Feature previews
 

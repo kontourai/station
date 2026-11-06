@@ -9,7 +9,7 @@ additional tool permission.
 
 ## Review a Project's working configuration
 
-In **Project settings → Sources → Where Agent work starts**, discover the
+In **Project settings → Sources → Where new chats start**, discover the
 repository guidance, then review the proposed rules, validation commands,
 completion criteria, checkpoints and evidence pointers before applying them.
 Only the operator in person can discover or change this host-filesystem
