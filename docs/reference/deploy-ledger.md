@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-06T08:43:18Z | nightly-android | 0.1.11-nightly.20261106 | `73f13cf` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42180658259) |
 | 2026-11-06T07:40:34Z | nightly-npm | 0.11.0-nightly.20261106.42180658259 | `73f13cf` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42180658259) |
 | 2026-11-05T20:33:31Z | nightly-android | 0.1.11-nightly.20261105.1 | `b6c3135` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/42089381567) |
 | 2026-11-05T19:16:38Z | nightly-npm | 0.11.0-nightly.20261105.42089381567 | `b6c3135` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42089381567) |
@@ -424,6 +425,38 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-06T08:43:18Z · nightly-android · 0.1.11-nightly.20261106
+
+- Ship SHA: `73f13cfe8c862552709faeba9dc9e6fab763dab8`
+- Artifact built at: `2026-11-06T07:44:05.155Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 42180658259)
+
+### Changelog
+
+Commits since `b6c3135` ([full sha](https://github.com/kontourai/station/commit/b6c313500d51d189df6bf4e17bc103c04710a013)):
+
+**Features**
+
+- [#4609](https://github.com/kontourai/station/pull/4609) feat(knowledge): review, recall and brief private memory (#4484)
+- [#4585](https://github.com/kontourai/station/pull/4585) feat(managed-policy): network, engine, update, capability limits and macOS/Windows policy sources
+- [#4583](https://github.com/kontourai/station/pull/4583) feat(recovery): record turn dispatch origin and continue unattended work after restart
+
+**Fixes**
+
+- [#4633](https://github.com/kontourai/station/pull/4633) fix(terminal): await startup with synchronized Windows PTY backend
+- [#4622](https://github.com/kontourai/station/pull/4622) fix(mobile): pairing, Tailscale peering, browser and devices on phones, and iPhone Duo
+- [#4634](https://github.com/kontourai/station/pull/4634) fix(codex): keep scratch folders through Station home aliases
+- [#4617](https://github.com/kontourai/station/pull/4617) fix(telemetry): save tiers for namespaced plugin publishers
+- [#4555](https://github.com/kontourai/station/pull/4555) fix(ui): preserve current work and focus across pending actions
+- [#4611](https://github.com/kontourai/station/pull/4611) fix(updates): restore changelog publication and device preference reset
+
+**Other**
+
+- [#4623](https://github.com/kontourai/station/pull/4623) build(deps): update semver to 7.8.6
+- [#4578](https://github.com/kontourai/station/pull/4578) test(terminal): qualify ConPTY and Windows journeys
+- [#4613](https://github.com/kontourai/station/pull/4613) build(deps): consolidate open Dependabot updates
 
 ## 2026-11-06T07:40:34Z · nightly-npm · 0.11.0-nightly.20261106.42180658259
 
