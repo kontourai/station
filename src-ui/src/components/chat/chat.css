@@ -2516,7 +2516,7 @@
     .conversation-reader[data-transcript-mobile="false"]
     .message.assistant
     .message__sender {
-    padding-inline-end: calc(var(--k-space-8) * 4);
+    padding-inline-end: calc(var(--k-space-6) * 4);
   }
 
   .turn-footer__actions {
