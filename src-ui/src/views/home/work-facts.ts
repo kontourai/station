@@ -50,6 +50,7 @@ export type WorkAttentionKind =
   | 'answer'
   | 'interrupted'
   | 'blocked'
+  | 'delivery-unconfirmed'
   | 'queued'
   | 'waiting';
 
@@ -86,6 +87,7 @@ const WORK_ATTENTION_ORDER: readonly WorkAttentionKind[] = [
   'approval',
   'answer',
   'waiting',
+  'delivery-unconfirmed',
   'queued',
   'blocked',
   'interrupted',
@@ -149,6 +151,14 @@ function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
   // Requests still waiting on the user, not every one open on the server: an
   // answered one waits on the engine (utils/waiting-approvals).
   if (requestsWaitingOnUser(chat).length > 0) return 'approval';
+  if (
+    chat.outboundQueuedTurns?.some(
+      (turn) =>
+        turn.status === 'may-have-started' ||
+        (turn.status === 'invoking' && turn.awaitingLookup),
+    )
+  )
+    return 'delivery-unconfirmed';
   if (chat.status === 'queued') return 'queued';
   if (chat.orchestrationStatus === 'awaiting-approval') return 'waiting';
   return undefined;
