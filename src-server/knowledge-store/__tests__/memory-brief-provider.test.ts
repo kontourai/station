@@ -336,6 +336,25 @@ test('a brief assembled before erasure cannot reach the agent afterwards', async
   const h = await setup();
   const brief = await h.provider(h.request);
   expect(brief?.text).toContain('eu-west-1');
+  const positive = await h.provider(h.request);
+  const positiveCall = vi.fn(async () => emptyAgentResult());
+  const positiveApp = buildChatHarnessApp({
+    agent: {
+      getMemory: () => null,
+      model: { modelId: 'test' },
+      streamText: positiveCall,
+    },
+    conversations: createHarnessConversationStore(),
+    dedupStore: new ChatTurnDedupStore(join(h.home, 'positive-dedup.json')),
+    memoryBrief: positive!,
+    input: positive!.text!,
+  });
+  await (
+    await positiveApp.request('/chat?clientTurnId=live-brief', {
+      method: 'POST',
+    })
+  ).text();
+  expect(positiveCall).toHaveBeenCalledTimes(1);
   const index = new SqliteVecIndexProvider({
     dbPath: join(h.home, 'index.db'),
   });
@@ -362,6 +381,9 @@ test('a brief assembled before erasure cannot reach the agent afterwards', async
       preview!.impact.revision,
       'brief-erasure-test',
     );
+    expect(await brief!.invokeIfCurrent(async () => 'should not run')).toEqual({
+      current: false,
+    });
     const streamText = vi.fn(async () => emptyAgentResult());
     const app = buildChatHarnessApp({
       agent: { getMemory: () => null, model: { modelId: 'test' }, streamText },
@@ -373,7 +395,7 @@ test('a brief assembled before erasure cannot reach the agent afterwards', async
     const response = await app.request('/chat?clientTurnId=erased-brief', {
       method: 'POST',
     });
-    await response.text();
+    expect(await response.text()).toContain('The response stream failed.');
     expect(streamText).not.toHaveBeenCalled();
   } finally {
     index.close();

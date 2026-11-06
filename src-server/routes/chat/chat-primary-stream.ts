@@ -622,41 +622,47 @@ export function streamPrimaryAgentChat({
       }
 
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
-      const invokeAgent = async () => {
+      const invokeAgent = () => {
         if (abortController.signal.aborted) {
           completionReason = 'aborted';
           throw new Error('Stream aborted by client');
         }
-        const invoke = () => {
-          if (abortController.signal.aborted)
-            throw new Error('Stream aborted by client');
-          if (clientTurnId && ownsClientTurnClaim)
-            dedupStore?.beginInvocation(clientTurnId);
-          agentInvoked = true;
-          memoryBrief?.delivered();
-          return agent.streamText(input as string, streamOptions);
-        };
-        if (!memoryBrief) return invoke();
-        const checked = await memoryBrief.invokeIfCurrent(invoke);
+        if (clientTurnId && ownsClientTurnClaim)
+          dedupStore?.beginInvocation(clientTurnId);
+        agentInvoked = true;
+        memoryBrief?.delivered();
+        return agent.streamText(input as string, streamOptions);
+      };
+      const callWithForeground = () =>
+        nativeForeground
+          ? nativeForeground.invoke(
+              {
+                get spec() {
+                  return ctx.agentSpecs.get(slug);
+                },
+                isCurrent: () =>
+                  runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
+                  ctx.activeAgents.get(slug) === nativeRuntimeAgent,
+              },
+              invokeAgent,
+            )
+          : invokeAgent();
+      if (memoryBrief) {
+        const checked = await memoryBrief.invokeIfCurrent(async () => {
+          const pending = callWithForeground();
+          void pending.catch(() => {});
+          if (nativeForeground)
+            await nativeForeground.waitForInvocation(abortController.signal);
+          return { pending };
+        });
         if (!checked.current)
           throw new Error(
             'Private memory changed before the turn was sent. Retry the message.',
           );
-        return checked.result;
-      };
-      result = nativeForeground
-        ? await nativeForeground.invoke(
-            {
-              get spec() {
-                return ctx.agentSpecs.get(slug);
-              },
-              isCurrent: () =>
-                runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
-                ctx.activeAgents.get(slug) === nativeRuntimeAgent,
-            },
-            invokeAgent,
-          )
-        : await invokeAgent();
+        result = await checked.result.pending;
+      } else {
+        result = await callWithForeground();
+      }
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       ctx.agentStatus.set(slug, 'running');
 

@@ -294,6 +294,8 @@ export function MemoryErasurePreview() {
       setId('');
       setNotice('');
       void proposals.refetch();
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['memory'] });
     },
     onError: (error) => {

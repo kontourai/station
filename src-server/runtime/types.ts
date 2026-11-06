@@ -711,7 +711,7 @@ export interface RuntimeContext {
     /** The turn ended without reaching the agent; the conversation may be briefed again. */
     abandoned: () => void;
     invokeIfCurrent<T>(
-      invoke: () => T,
+      invoke: () => Promise<T>,
     ): Promise<{ current: true; result: T } | { current: false }>;
   } | null>;
   feedbackService: FeedbackService;

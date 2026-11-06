@@ -1,4 +1,4 @@
-import { mkdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import type { ReviewDecision, ReviewSessionEvent } from '@kontourai/survey';
@@ -20,13 +20,14 @@ import { assertExistingPathInside } from '../utils/path-containment.js';
  *
  * Records hold only identifiers, decision fields and, for a correction, the
  * reviewer's own value. When the memory they refer to is erased they are
- * ignored on every read and dropped on the next write. The retained prior copy
- * can still hold them until the write after that.
+ * filtered on reads. Station erasure and reconciliation prune them and remove
+ * the prior copy before completing cleanup. External copies have their own retention.
  */
 export interface MemoryReviewState {
   version: 1;
   decisions: ReviewDecision[];
   events: ReviewSessionEvent[];
+  bindings?: Record<string, string>;
 }
 
 const EMPTY: MemoryReviewState = { version: 1, decisions: [], events: [] };
@@ -89,23 +90,43 @@ export class MemoryReviewStore {
     return this.json.read(decode);
   }
 
-  async eraseItems(itemNames: readonly string[]): Promise<void> {
-    if (!itemNames.length) return;
-    const erased = new Set(itemNames);
+  async bindItems(live: Record<string, string>): Promise<void> {
+    if (!existsSync(this.file) && !existsSync(`${this.file}.previous`)) return;
     await this.mutate(
       () => {},
       (state) => ({
-        state: {
-          version: 1,
-          decisions: state.decisions.filter(
-            (d) => !erased.has(d.spec.reviewItemName),
-          ),
-          events: state.events.filter(
-            (e) => !e.spec.reviewItemName || !erased.has(e.spec.reviewItemName),
-          ),
-        },
+        state: { ...state, bindings: { ...live, ...state.bindings } },
         result: undefined,
       }),
+    );
+  }
+
+  async pruneItems(live: Record<string, string>): Promise<void> {
+    if (!existsSync(this.file) && !existsSync(`${this.file}.previous`)) return;
+    await this.mutate(
+      () => {},
+      (state) => {
+        const keep = (id: string) =>
+          Boolean(
+            live[id] &&
+              (!state.bindings?.[id] || state.bindings[id] === live[id]),
+          );
+        return {
+          state: {
+            version: 1,
+            decisions: state.decisions.filter((d) =>
+              keep(d.spec.reviewItemName),
+            ),
+            events: state.events.filter(
+              (e) => !e.spec.reviewItemName || keep(e.spec.reviewItemName),
+            ),
+            bindings: Object.fromEntries(
+              Object.entries(state.bindings ?? {}).filter(([id]) => keep(id)),
+            ),
+          },
+          result: undefined,
+        };
+      },
     );
     try {
       unlinkSync(`${this.file}.previous`);

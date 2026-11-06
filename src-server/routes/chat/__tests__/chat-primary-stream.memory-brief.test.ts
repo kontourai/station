@@ -28,9 +28,9 @@ describe('streamPrimaryAgentChat memory brief settlement', () => {
   const brief = () => ({
     delivered: vi.fn(),
     abandoned: vi.fn(),
-    invokeIfCurrent: async <T>(invoke: () => T) => ({
+    invokeIfCurrent: async <T>(invoke: () => Promise<T>) => ({
       current: true as const,
-      result: invoke(),
+      result: await invoke(),
     }),
   });
   const agentFor = (

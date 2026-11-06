@@ -170,6 +170,50 @@ export interface MemoryReviewDeps {
  * keeps the person's decisions. Every method takes request-derived authority
  * and re-checks it through the root manager before touching anything.
  */
+function readableMemoryProposals(proposals: readonly KitCreateProposal[]) {
+  const seen = new Set<string>();
+  const claims: LoadedClaim[] = [];
+  const notes: { proposalId: string; title: string }[] = [];
+  const ordered = [...proposals].sort(
+    (a, b) =>
+      instant(a.proposed_at) - instant(b.proposed_at) || (a.id < b.id ? -1 : 1),
+  );
+  for (const proposal of ordered) {
+    if (proposal.erasure || proposal.state === 'rejected') continue;
+    if (proposal.candidate.category !== MEMORY_CLAIM_CATEGORY) {
+      notes.push({
+        proposalId: proposal.id,
+        title: proposal.candidate.title,
+      });
+      continue;
+    }
+    const decoded = decodeMemoryEnvelope(proposal.candidate.body);
+    if (!decoded || seen.has(decoded.claim.id)) continue;
+    seen.add(decoded.claim.id);
+    claims.push({
+      proposalId: proposal.id,
+      claim: decoded.claim,
+      agreement: decoded.agreement,
+      proposedAt: proposal.proposed_at,
+      itemName: memoryReviewItemName(decoded.claim.id),
+      sittingId: decoded.sittingId,
+      decision: null,
+    });
+  }
+  return { claims, notes };
+}
+
+export function memoryReviewBindings(
+  proposals: readonly KitCreateProposal[],
+): Record<string, string> {
+  return Object.fromEntries(
+    readableMemoryProposals(proposals).claims.map((entry) => [
+      entry.itemName,
+      entry.proposalId,
+    ]),
+  );
+}
+
 export class MemoryReviewService {
   private readonly now: () => Date;
 
@@ -215,11 +259,16 @@ export class MemoryReviewService {
       this.deps.home,
       memoryOwnerHash(authority.userId),
     );
-    const state = store.read();
-    const live = this.readable(proposals);
+    const live = readableMemoryProposals(proposals);
     const itemNames = new Set(live.claims.map((entry) => entry.itemName));
-    const decisions = state.decisions.filter((decision) =>
-      itemNames.has(decision.spec.reviewItemName),
+    const bindings = memoryReviewBindings(proposals);
+    const state = this.pruned(store.read(), bindings);
+    const decisions = state.decisions.filter(
+      (decision) =>
+        itemNames.has(decision.spec.reviewItemName) &&
+        (!state.bindings?.[decision.spec.reviewItemName] ||
+          state.bindings[decision.spec.reviewItemName] ===
+            bindings[decision.spec.reviewItemName]),
     );
     const rejected = new Set(
       live.claims
@@ -294,41 +343,6 @@ export class MemoryReviewService {
       presented: new Map(presented.map((claim) => [claim.id, claim])),
       withheld: withheld.length,
     };
-  }
-
-  /** Pending and applied proposals only: rejected and erased ones never reach a reader. */
-  private readable(proposals: readonly KitCreateProposal[]) {
-    const seen = new Set<string>();
-    const claims: LoadedClaim[] = [];
-    const notes: { proposalId: string; title: string }[] = [];
-    const ordered = [...proposals].sort(
-      (a, b) =>
-        instant(a.proposed_at) - instant(b.proposed_at) ||
-        (a.id < b.id ? -1 : 1),
-    );
-    for (const proposal of ordered) {
-      if (proposal.erasure || proposal.state === 'rejected') continue;
-      if (proposal.candidate.category !== MEMORY_CLAIM_CATEGORY) {
-        notes.push({
-          proposalId: proposal.id,
-          title: proposal.candidate.title,
-        });
-        continue;
-      }
-      const decoded = decodeMemoryEnvelope(proposal.candidate.body);
-      if (!decoded || seen.has(decoded.claim.id)) continue;
-      seen.add(decoded.claim.id);
-      claims.push({
-        proposalId: proposal.id,
-        claim: decoded.claim,
-        agreement: decoded.agreement,
-        proposedAt: proposal.proposed_at,
-        itemName: memoryReviewItemName(decoded.claim.id),
-        sittingId: decoded.sittingId,
-        decision: null,
-      });
-    }
-    return { claims, notes };
   }
 
   private view(snapshot: Snapshot, entry: LoadedClaim): MemoryClaimView {
@@ -465,11 +479,11 @@ export class MemoryReviewService {
       assertCurrent,
       (proposals) =>
         snapshot.store.mutate(assertCurrent, async (state) => {
-          const live = new Set(
-            this.readable(proposals).claims.map((entry) => entry.itemName),
-          );
-          const next = this.pruned(state, live);
+          const bindings = memoryReviewBindings(proposals);
+          const live = new Set(Object.keys(bindings));
+          const next = this.pruned(state, bindings);
           if (!live.has(itemId)) return { state: next, result: false };
+          next.bindings = { ...next.bindings, [itemId]: bindings[itemId] };
           next.events.push(
             this.event(next, authority.userId, reviewerKind, {
               eventType: 'item-selected',
@@ -544,11 +558,11 @@ export class MemoryReviewService {
       assertCurrent,
       (proposals) =>
         snapshot.store.mutate(assertCurrent, async (state) => {
-          const live = new Set(
-            this.readable(proposals).claims.map((entry) => entry.itemName),
-          );
-          const next = this.pruned(state, live);
+          const bindings = memoryReviewBindings(proposals);
+          const live = new Set(Object.keys(bindings));
+          const next = this.pruned(state, bindings);
           if (!live.has(itemId)) return { state: next, result: null };
+          next.bindings = { ...next.bindings, [itemId]: bindings[itemId] };
           const existing = next.decisions.find(
             (candidate) => candidate.metadata.name === name,
           );
@@ -590,14 +604,25 @@ export class MemoryReviewService {
   /** Records and events for memory that still exists; the rest were erased and are dropped. */
   private pruned(
     state: MemoryReviewState,
-    live: ReadonlySet<string>,
+    live: Record<string, string>,
   ): MemoryReviewState {
+    const keep = (id: string) =>
+      Boolean(
+        live[id] && (!state.bindings?.[id] || state.bindings[id] === live[id]),
+      );
     return {
       version: 1,
-      decisions: state.decisions.filter((d) => live.has(d.spec.reviewItemName)),
+      decisions: state.decisions.filter((d) => keep(d.spec.reviewItemName)),
       events: state.events.filter(
-        (e) => !e.spec.reviewItemName || live.has(e.spec.reviewItemName),
+        (e) => !e.spec.reviewItemName || keep(e.spec.reviewItemName),
       ),
+      ...(state.bindings
+        ? {
+            bindings: Object.fromEntries(
+              Object.entries(state.bindings).filter(([id]) => keep(id)),
+            ),
+          }
+        : {}),
     };
   }
 

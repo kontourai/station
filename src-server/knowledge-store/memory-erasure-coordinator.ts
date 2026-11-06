@@ -1,16 +1,15 @@
 import { createHash } from 'node:crypto';
-import type { PurgeResult } from '@kontourai/corpus-store';
-import { memoryReviewItemName } from '@kontourai/flow-agents/memory-routing';
+import type { KitCreateProposal, PurgeResult } from '@kontourai/corpus-store';
 import type { KnowledgeIndexProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { KnowledgeStoreProvider } from './knowledge-store-provider.js';
-import { decodeMemoryEnvelope } from './memory-envelope.js';
 import {
   type MemoryErasureIntent,
   MemoryErasureIntentStore,
   type MemoryErasureReceipt,
 } from './memory-erasure-intent.js';
+import { memoryReviewBindings } from './memory-review.js';
 import { MemoryReviewStore } from './memory-review-store.js';
 import { MemoryRootManager, memoryOwnerHash } from './memory-root.js';
 
@@ -46,11 +45,13 @@ export class MemoryErasureCoordinator {
     private readonly index: KnowledgeIndexProvider,
   ) {}
 
-  private async cleanReview(intent: MemoryErasureIntent): Promise<void> {
-    await new MemoryReviewStore(
-      this.home,
-      memoryOwnerHash(intent.ownerId),
-    ).eraseItems(intent.reviewItems ?? []);
+  private async cleanReview(
+    owner: string,
+    proposals: KitCreateProposal[],
+  ): Promise<void> {
+    await new MemoryReviewStore(this.home, memoryOwnerHash(owner)).pruneItems(
+      memoryReviewBindings(proposals),
+    );
   }
 
   private async clean(
@@ -147,7 +148,10 @@ export class MemoryErasureCoordinator {
                 throw new MemoryErasureError('STALE_REVISION');
               }
               await this.clean(journal, intent, erasedIds(intent.impact));
-              await this.cleanReview(intent);
+              await this.cleanReview(
+                intent.ownerId,
+                await adapter.reviewableProposals(),
+              );
               if (
                 journal.settle(root.id, purgeId, 'placed', null).kind !==
                 'applied'
@@ -167,19 +171,11 @@ export class MemoryErasureCoordinator {
           if (preview.revision !== revision)
             throw new MemoryErasureError('STALE_REVISION');
           const impact = 'proposalId' in preview ? preview.record : preview;
-          const affectedProposals = new Set([
-            ...(kind === 'proposal' ? [id] : []),
-            ...(impact?.proposalsScrubbed ?? []),
-            ...(impact?.proposalsBlocked ?? []),
-          ]);
-          const reviewItems = (await adapter.listProposals()).flatMap(
-            (proposal) => {
-              if (!affectedProposals.has(proposal.id)) return [];
-              const claim = decodeMemoryEnvelope(
-                proposal.candidate.body,
-              )?.claim;
-              return claim ? [memoryReviewItemName(claim.id)] : [];
-            },
+          await new MemoryReviewStore(
+            this.home,
+            memoryOwnerHash(authority.userId),
+          ).bindItems(
+            memoryReviewBindings(await adapter.reviewableProposals()),
           );
           const intent: MemoryErasureIntent = {
             version: 1,
@@ -192,7 +188,6 @@ export class MemoryErasureCoordinator {
             targetKind: kind,
             targetId: id,
             revision,
-            reviewItems,
             ...(impact ? { impact } : {}),
           };
           const submitted = journal.submit(intent);
@@ -238,7 +233,10 @@ export class MemoryErasureCoordinator {
           const result =
             actual.kind === 'record' ? actual.result : actual.result.record;
           await this.clean(journal, intent, erasedIds(result));
-          await this.cleanReview(intent);
+          await this.cleanReview(
+            intent.ownerId,
+            await adapter.reviewableProposals(),
+          );
           const settled = journal.settle(root.id, purgeId, 'placed', actual);
           if (settled.kind !== 'applied')
             throw new MemoryErasureError('CLEANUP_PENDING');
@@ -278,7 +276,7 @@ export class MemoryErasureCoordinator {
           intent.targetKind,
           intent.targetId,
           intent.binding,
-          async (erased) => {
+          async (erased, proposals) => {
             const latest = journal.read(
               root.id,
               intent.purgeId,
@@ -313,7 +311,7 @@ export class MemoryErasureCoordinator {
                 await this.index.removeErasedRecords!(root.id, ids);
               } else {
                 await this.clean(journal, intent, ids);
-                await this.cleanReview(intent);
+                await this.cleanReview(intent.ownerId, proposals);
               }
             }
             const settled = journal.settle(
@@ -342,35 +340,39 @@ export class MemoryErasureCoordinator {
       !this.index.removeErasedRecords
     )
       throw new Error('Memory erasure reconciliation is unavailable.');
-    await this.manager.withRecoveryTombstones(root, async (ids, binding) => {
-      if (!ids.length) return;
-      const journal = new MemoryErasureIntentStore(this.home);
-      try {
-        const parent: MemoryErasureIntent = {
-          version: 1,
-          operation: 'purge',
-          purgeId: createHash('sha256')
-            .update(
-              JSON.stringify([
-                'reconcile',
-                root.id,
-                root.registrationId,
-                binding,
-              ]),
-            )
-            .digest('hex'),
-          rootId: root.id,
-          ownerId: root.readPolicy!.ownerId,
-          registrationId: root.registrationId!,
-          binding,
-          targetKind: 'record',
-          targetId: ids[0],
-          revision: 'reconcile',
-        };
-        await this.clean(journal, parent, ids);
-      } finally {
-        await journal.close();
-      }
-    });
+    await this.manager.withRecoveryTombstones(
+      root,
+      async (ids, binding, proposals) => {
+        await this.cleanReview(root.readPolicy!.ownerId, proposals);
+        if (!ids.length) return;
+        const journal = new MemoryErasureIntentStore(this.home);
+        try {
+          const parent: MemoryErasureIntent = {
+            version: 1,
+            operation: 'purge',
+            purgeId: createHash('sha256')
+              .update(
+                JSON.stringify([
+                  'reconcile',
+                  root.id,
+                  root.registrationId,
+                  binding,
+                ]),
+              )
+              .digest('hex'),
+            rootId: root.id,
+            ownerId: root.readPolicy!.ownerId,
+            registrationId: root.registrationId!,
+            binding,
+            targetKind: 'record',
+            targetId: ids[0],
+            revision: 'reconcile',
+          };
+          await this.clean(journal, parent, ids);
+        } finally {
+          await journal.close();
+        }
+      },
+    );
   }
 }

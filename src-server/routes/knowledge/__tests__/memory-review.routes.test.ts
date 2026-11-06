@@ -997,24 +997,93 @@ test('a claim with an erased source is excluded even when another source survive
   }
 });
 
-test('interrupted review cleanup blocks reads until journal recovery removes the decision', async () => {
+test.each(['restart recovery', 'same request retry'] as const)(
+  'interrupted review cleanup blocks reads until %s removes the decision',
+  async (recovery) => {
+    const h = await setup();
+    const proposalId = await h.seed(mysql());
+    const item = (await h.json(await h.get('/memory/recall'))).entries[0];
+    expect(
+      (
+        await h.post(`/memory/queue/${item.itemId}/decision`, {
+          outcome: 'correct',
+          correctedValue: 'interrupted-erased-correction',
+        })
+      ).status,
+    ).toBe(201);
+    const index = new SqliteVecIndexProvider({
+      dbPath: join(h.home, 'index.db'),
+    });
+    const spy = vi
+      .spyOn(MemoryReviewStore.prototype, 'pruneItems')
+      .mockRejectedValueOnce(new Error('cleanup interrupted'));
+    try {
+      const coordinator = new MemoryErasureCoordinator(
+        h.home,
+        h.store,
+        h.manager,
+        index,
+      );
+      const preview = await h.manager.previewErasureTarget(
+        owner,
+        h.root,
+        () => {},
+        'proposal',
+        proposalId,
+      );
+      await expect(
+        coordinator.erase(
+          owner,
+          h.root,
+          () => {},
+          'proposal',
+          proposalId,
+          preview!.impact.revision,
+          'interrupted-review-test',
+        ),
+      ).rejects.toThrow('cleanup interrupted');
+      expect((await h.get('/memory/recall')).status).toBe(503);
+      spy.mockRestore();
+      if (recovery === 'restart recovery') await coordinator.recoverAll();
+      else
+        await coordinator.erase(
+          owner,
+          h.root,
+          () => {},
+          'proposal',
+          proposalId,
+          preview!.impact.revision,
+          'interrupted-review-test',
+        );
+      await h.seed(mysql());
+      const after = await h.json(await h.get('/memory/recall'));
+      expect(after.entries[0].review.label).toBe('unreviewed');
+      expect(JSON.stringify(after)).not.toContain(
+        'interrupted-erased-correction',
+      );
+    } finally {
+      spy.mockRestore();
+      index.close();
+    }
+  },
+);
+
+test('erasing one of two identical proposals does not transfer its decision to the other', async () => {
   const h = await setup();
   const proposalId = await h.seed(mysql());
+  await h.seed(mysql());
   const item = (await h.json(await h.get('/memory/recall'))).entries[0];
   expect(
     (
       await h.post(`/memory/queue/${item.itemId}/decision`, {
         outcome: 'correct',
-        correctedValue: 'interrupted-erased-correction',
+        correctedValue: 'private correction',
       })
     ).status,
   ).toBe(201);
   const index = new SqliteVecIndexProvider({
     dbPath: join(h.home, 'index.db'),
   });
-  const spy = vi
-    .spyOn(MemoryReviewStore.prototype, 'eraseItems')
-    .mockRejectedValueOnce(new Error('cleanup interrupted'));
   try {
     const coordinator = new MemoryErasureCoordinator(
       h.home,
@@ -1029,28 +1098,28 @@ test('interrupted review cleanup blocks reads until journal recovery removes the
       'proposal',
       proposalId,
     );
-    await expect(
-      coordinator.erase(
-        owner,
-        h.root,
-        () => {},
-        'proposal',
-        proposalId,
-        preview!.impact.revision,
-        'interrupted-review-test',
-      ),
-    ).rejects.toThrow('cleanup interrupted');
-    expect((await h.get('/memory/recall')).status).toBe(503);
-    spy.mockRestore();
-    await coordinator.recoverAll();
-    await h.seed(mysql());
-    const after = await h.json(await h.get('/memory/recall'));
-    expect(after.entries[0].review.label).toBe('unreviewed');
-    expect(JSON.stringify(after)).not.toContain(
-      'interrupted-erased-correction',
+    await coordinator.erase(
+      owner,
+      h.root,
+      () => {},
+      'proposal',
+      proposalId,
+      preview!.impact.revision,
+      'duplicate-review-test',
     );
+    const recall = await h.json(await h.get('/memory/recall'));
+    expect(recall.entries).toHaveLength(1);
+    expect(recall.entries[0].review.label).toBe('unreviewed');
+    expect(JSON.stringify(recall)).not.toContain('private correction');
+    const journal = join(h.home, 'data', 'memory-erasure', 'intents.sqlite');
+    expect(readFileSync(journal).includes(Buffer.from(item.itemId))).toBe(
+      false,
+    );
+    if (existsSync(`${journal}-wal`))
+      expect(
+        readFileSync(`${journal}-wal`).includes(Buffer.from(item.itemId)),
+      ).toBe(false);
   } finally {
-    spy.mockRestore();
     index.close();
   }
 });

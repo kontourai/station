@@ -339,7 +339,7 @@ export class MemoryRootManager {
     root: KnowledgeStoreRoot,
     assertCurrent: () => void,
     operation: (
-      adapter: Pick<
+      adapter: { reviewableProposals(): Promise<KitCreateProposal[]> } & Pick<
         KitDefaultStoreAdapter,
         | 'rootBinding'
         | 'get'
@@ -362,6 +362,7 @@ export class MemoryRootManager {
           get: (id) => adapter.get(id),
           getProposal: (id) => adapter.getProposal(id),
           listProposals: () => adapter.listProposals(),
+          reviewableProposals: () => this.reviewableProposals(adapter),
           previewPurge: (ids) => adapter.previewPurge(ids),
           previewPurgeProposal: (id) => adapter.previewPurgeProposal(id),
           purge: (ids, evidence, options) =>
@@ -408,7 +409,7 @@ export class MemoryRootManager {
     kind: 'record' | 'proposal',
     id: string,
     expectedBinding: string,
-    operation: (erased: boolean) => Promise<T>,
+    operation: (erased: boolean, proposals: KitCreateProposal[]) => Promise<T>,
   ): Promise<T> {
     return this.withRecovery(root, async (adapter) => {
       if (adapter.rootBinding() !== expectedBinding)
@@ -417,13 +418,20 @@ export class MemoryRootManager {
         kind === 'proposal'
           ? Boolean((await adapter.getProposal(id))?.erasure)
           : (await adapter.get(id))?.status === 'purged';
-      return operation(erased);
+      return operation(
+        erased,
+        erased ? await this.reviewableProposals(adapter) : [],
+      );
     });
   }
 
   async withRecoveryTombstones<T>(
     root: KnowledgeStoreRoot,
-    operation: (ids: string[], binding: string) => Promise<T>,
+    operation: (
+      ids: string[],
+      binding: string,
+      proposals: KitCreateProposal[],
+    ) => Promise<T>,
   ): Promise<T> {
     return this.withRecovery(root, async (adapter) => {
       const types: KitRecordType[] = [
@@ -440,7 +448,11 @@ export class MemoryRootManager {
         }))
           if (record.status === 'purged') ids.push(record.id);
       }
-      return operation(ids, adapter.rootBinding());
+      return operation(
+        ids,
+        adapter.rootBinding(),
+        await this.reviewableProposals(adapter),
+      );
     });
   }
 
@@ -452,6 +464,32 @@ export class MemoryRootManager {
     return this.withOwner(authority, root, assertCurrent, (adapter) =>
       adapter.listProposals(),
     );
+  }
+
+  private async reviewableProposals(
+    adapter: KitDefaultStoreAdapter,
+  ): Promise<KitCreateProposal[]> {
+    const proposals = await adapter.listProposals();
+    const checked = new Map<string, boolean>();
+    const readable: KitCreateProposal[] = [];
+    for (const proposal of proposals) {
+      const sources = new Set([
+        ...(proposal.candidate.provenance?.source_ids ?? []),
+        ...(proposal.candidate.links ?? [])
+          .filter((link) => link.kind === 'source')
+          .map((link) => link.target_id),
+      ]);
+      let permitted = true;
+      for (const id of sources) {
+        if (!checked.has(id)) {
+          const record = await adapter.get(id);
+          checked.set(id, Boolean(record && record.status !== 'purged'));
+        }
+        if (!checked.get(id)) permitted = false;
+      }
+      if (permitted) readable.push(proposal);
+    }
+    return readable;
   }
 
   async withProposals<T>(
@@ -478,27 +516,7 @@ export class MemoryRootManager {
           await journal.close();
         }
       }
-      const proposals = await adapter.listProposals();
-      const checked = new Map<string, boolean>();
-      const readable: KitCreateProposal[] = [];
-      for (const proposal of proposals) {
-        const sources = new Set([
-          ...(proposal.candidate.provenance?.source_ids ?? []),
-          ...(proposal.candidate.links ?? [])
-            .filter((link) => link.kind === 'source')
-            .map((link) => link.target_id),
-        ]);
-        let permitted = true;
-        for (const id of sources) {
-          if (!checked.has(id)) {
-            const record = await adapter.get(id);
-            checked.set(id, Boolean(record && record.status !== 'purged'));
-          }
-          if (!checked.get(id)) permitted = false;
-        }
-        if (permitted) readable.push(proposal);
-      }
-      return operation(readable);
+      return operation(await this.reviewableProposals(adapter));
     });
   }
 

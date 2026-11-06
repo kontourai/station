@@ -35,7 +35,7 @@ export interface MemoryBriefDelivery {
   delivered(): void;
   abandoned(): void;
   invokeIfCurrent<T>(
-    invoke: () => T,
+    invoke: () => Promise<T>,
   ): Promise<{ current: true; result: T } | { current: false }>;
 }
 
@@ -164,7 +164,7 @@ export function createMemoryBriefProvider(
           abandoned: () => {},
           invokeIfCurrent: async (invoke) => ({
             current: true,
-            result: invoke(),
+            result: await invoke(),
           }),
         };
       }
@@ -179,7 +179,7 @@ export function createMemoryBriefProvider(
             assertCurrent,
             async (digest) =>
               digest === after
-                ? { current: true as const, result: invoke() }
+                ? { current: true as const, result: await invoke() }
                 : { current: false as const },
           ),
         delivered: () => {

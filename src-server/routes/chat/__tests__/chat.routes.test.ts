@@ -260,9 +260,9 @@ describe('Chat Routes', () => {
       const makeDelivery = () => ({
         delivered: vi.fn(),
         abandoned: vi.fn(),
-        invokeIfCurrent: async <T>(invoke: () => T) => ({
+        invokeIfCurrent: async <T>(invoke: () => Promise<T>) => ({
           current: true as const,
-          result: invoke(),
+          result: await invoke(),
         }),
       });
       const prepared = (delivery: ReturnType<typeof makeDelivery>) => ({

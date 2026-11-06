@@ -404,6 +404,7 @@ test.each([
     }),
   );
   mount();
+  clients[0].setQueryData(['memory', 'queue', 'owner'], { items: ['old'] });
   fireEvent.click(
     await screen.findByRole('button', { name: 'Look up proposal' }),
   );
@@ -414,6 +415,11 @@ test.each([
     }),
   );
   expect(await screen.findByText(message)).toBeTruthy();
+  await waitFor(() =>
+    expect(
+      clients[0].getQueryState(['memory', 'queue', 'owner'])?.isInvalidated,
+    ).toBe(true),
+  );
 });
 
 test('explains an unavailable store and a missing target without offering retry', async () => {
