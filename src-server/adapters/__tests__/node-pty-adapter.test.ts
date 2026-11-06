@@ -405,12 +405,12 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
   }, 30_000);
 
   test('cancelled vendor allocation ignores late worker readiness and errors', async () => {
-    const receipt = await runNativeFixture(
+    const { receipt, diagnostic } = await runNativeFixture(
       new URL('./fixtures/node-pty-cancel-ready.mjs', import.meta.url),
       'station-pty-cancel-ready/1',
       'vendor readiness cancellation',
     );
-    expect(receipt).toMatchObject({
+    expect(receipt, diagnostic).toMatchObject({
       status: 'PASS',
       cancelled: {
         mode: 'cancel',
