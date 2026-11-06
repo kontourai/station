@@ -86,7 +86,7 @@ for installed-shell and physical-network evidence requirements. The source and
 unit checks do not qualify permission prompts, real mobile discovery or background
 recovery.
 
-### Personal analytics requester consent
+### Requester consent for analytics and Project sharing
 
 [The requester adapter](../../src-ui/src/platform/native/requesterConsent.ts)
 selects the browser popup or native requester-session path. Browser review opens
@@ -95,7 +95,13 @@ origin. Native review uses the host's existing consent-dialog capability; that
 capability alone grants no decision authority.
 
 [The native requester owner](../../src-desktop/src/native_requester_consent.rs)
-captures a transaction cookie only from the known analytics approval creators.
+captures a transaction cookie only from the known analytics approval creators
+and the Project sharing setting's `PUT /api/operator/account-sharing` response
+(`202 Accepted`). The sharing confirmation's browser URL can name the default
+HTTP consent listener, which is normally bound to loopback. Native review never
+navigates to that URL: it sends the captured transaction secret only to the
+active authenticated API origin's native consent routes and displays the
+canonical review in OS chrome. A different review hostname is still refused.
 Pending custody is bounded, expiring and bound to the active profile, API origin
 and request ID. The secret and render nonce remain in the host. Generic native
 HTTP cannot relay consent routes or supply the requester-secret header, and the

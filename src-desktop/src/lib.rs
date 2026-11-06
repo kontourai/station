@@ -4857,7 +4857,8 @@ fn station_native_http_request_to_sink_blocking(
                 }
 
                 let status = response.status().as_u16();
-                let requester_cookie = if status == 200 && requester_binding.is_some() {
+                let requester_cookie = if matches!(status, 200 | 202) && requester_binding.is_some()
+                {
                     response
                         .headers()
                         .get_all("set-cookie")
@@ -4957,9 +4958,13 @@ fn station_native_http_request_to_sink_blocking(
                     requester_cookie.as_deref(),
                     requester_body.as_deref(),
                 ) {
-                    if let Some(pending) =
-                        native_requester_consent::Pending::capture(&origin, binding, cookie, body)
-                    {
+                    if let Some(pending) = native_requester_consent::Pending::capture(
+                        &origin,
+                        binding,
+                        parsed_url.path(),
+                        cookie,
+                        body,
+                    ) {
                         if let Ok(mut state) = authority.0.lock() {
                             if state
                                 .active

@@ -19,6 +19,7 @@ import { ErrorState, SkeletonBlock } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { isLoopbackOrigin } from '../../lib/accountSharingOrigin';
+import { prepareRequesterConsentReview } from '../../platform/native/requesterConsent';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 /** How often to look again while the Station restarts into a change. */
@@ -91,9 +92,11 @@ function SharingControls({
     since: string;
   }>();
   const [confirmation, setConfirmation] = useState<{
+    id: string;
     reviewUrl: string;
     choice: AccountSharingChoice;
   }>();
+  const [reviewing, setReviewing] = useState(false);
   const query = useQuery({
     queryKey: key,
     queryFn: ({ signal }) =>
@@ -145,6 +148,7 @@ function SharingControls({
       const result = await mutation.mutateAsync(draft);
       if (result.changed && 'confirmation' in result) {
         setConfirmation({
+          id: result.confirmation.id,
           reviewUrl: result.confirmation.reviewUrl,
           choice: draft,
         });
@@ -159,6 +163,38 @@ function SharingControls({
       await client.invalidateQueries({ queryKey: key });
     } finally {
       mutation.reset();
+    }
+  }
+
+  async function reviewConfirmation() {
+    if (!confirmation || reviewing) return;
+    const surface = prepareRequesterConsentReview();
+    if (!surface) {
+      setError('Allow pop-ups to open the confirmation page.');
+      return;
+    }
+    setError(undefined);
+    setReviewing(true);
+    const since = new Date().toISOString();
+    try {
+      const status = await surface.show(confirmation.id, confirmation.reviewUrl);
+      if (status !== undefined) {
+        setConfirmation(undefined);
+        if (status === 'approved') {
+          setRestarting({
+            choice: confirmation.choice,
+            since,
+          });
+        }
+        await client.invalidateQueries({ queryKey: key });
+      }
+    } catch (cause) {
+      surface.close();
+      setDraft(confirmation.choice);
+      setConfirmation(undefined);
+      setError(userFacingErrorMessage(cause));
+    } finally {
+      setReviewing(false);
     }
   }
 
@@ -378,6 +414,11 @@ function SharingControls({
             href={confirmation.reviewUrl}
             target="_blank"
             rel="noopener noreferrer"
+            aria-disabled={reviewing}
+            onClick={(event) => {
+              event.preventDefault();
+              void reviewConfirmation();
+            }}
           >
             Open the separate confirmation page
           </a>{' '}

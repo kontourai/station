@@ -16,6 +16,13 @@ const host = vi.hoisted(() => ({
   apiBase: 'https://station.example.test',
   authorityKey: 'operator-one',
 }));
+const review = vi.hoisted(() => ({
+  show: vi.fn<(...args: string[]) => Promise<string | undefined>>(),
+  close: vi.fn(),
+}));
+vi.mock('../../../platform/native/requesterConsent', () => ({
+  prepareRequesterConsentReview: () => review,
+}));
 const previews = vi.hoisted(() => ({
   data: [{ id: 'project-sharing-setting', enabled: true }] as
     | Array<{ id: string; enabled: boolean }>
@@ -29,6 +36,8 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 }));
 const clients: QueryClient[] = [];
 beforeEach(() => {
+  review.show.mockReset().mockResolvedValue(undefined);
+  review.close.mockReset();
   previews.data = [{ id: 'project-sharing-setting', enabled: true }];
   setClientCredentialResolver(() => ({
     origin: host.apiBase,
@@ -169,38 +178,89 @@ test('reports an uncertain publication while Station restarts', async () => {
   ).toBeTruthy();
 });
 
-test('opens a separate review before any restart is reported', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (_url: string, init?: RequestInit) =>
-      init?.method === 'PUT'
-        ? reply({
-            changed: true,
-            confirmation: {
-              id: '12345678-1234-4123-8123-123456789abc',
-              reviewUrl:
-                'http://localhost:3144/consent/12345678-1234-4123-8123-123456789abc',
-              expiresAt: 2000000000000,
-            },
-          })
-        : reply(off),
-    ),
-  );
-  mount();
-  fireEvent.click(
-    await screen.findByRole('switch', {
-      name: 'Project sharing with local accounts',
-    }),
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
-  const link = await screen.findByRole('link', {
-    name: 'Open the separate confirmation page',
-  });
-  expect(link.getAttribute('href')).toBe(
-    'http://localhost:3144/consent/12345678-1234-4123-8123-123456789abc',
-  );
-  expect(screen.queryByText(/Station is restarting to apply this/)).toBeNull();
-});
+test.each([
+  ['browser', undefined],
+  ['native approval', 'approved'],
+  ['native cancellation', 'denied'],
+  ['native failure', 'error'],
+])(
+  'hands the sharing transaction to requester review: %s',
+  async (_label, outcome) => {
+    if (outcome === 'error')
+      review.show.mockRejectedValue(new Error('Review unavailable'));
+    else review.show.mockResolvedValue(outcome);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) =>
+        init?.method === 'PUT'
+          ? reply({
+              changed: true,
+              confirmation: {
+                id: '12345678-1234-4123-8123-123456789abc',
+                reviewUrl:
+                  'http://localhost:3144/consent/12345678-1234-4123-8123-123456789abc',
+                expiresAt: 2000000000000,
+              },
+            })
+          : reply(off),
+      ),
+    );
+    mount();
+    fireEvent.click(
+      await screen.findByRole('switch', {
+        name: 'Project sharing with local accounts',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
+    const link = await screen.findByRole('link', {
+      name: 'Open the separate confirmation page',
+    });
+    expect(link.getAttribute('href')).toBe(
+      'http://localhost:3144/consent/12345678-1234-4123-8123-123456789abc',
+    );
+    expect(screen.queryByText(/Station is restarting to apply this/)).toBeNull();
+    fireEvent.click(link);
+    await waitFor(() =>
+      expect(review.show).toHaveBeenCalledWith(
+        '12345678-1234-4123-8123-123456789abc',
+        'http://localhost:3144/consent/12345678-1234-4123-8123-123456789abc',
+      ),
+    );
+    if (outcome === 'error') {
+      expect(await screen.findByRole('alert')).toHaveProperty(
+        'textContent',
+        'Review unavailable',
+      );
+      expect(review.close).toHaveBeenCalledOnce();
+      expect(screen.getByRole('button', { name: 'Review change' })).toHaveProperty(
+        'disabled',
+        false,
+      );
+    } else if (outcome !== undefined) {
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('link', {
+            name: 'Open the separate confirmation page',
+          }),
+        ).toBeNull(),
+      );
+      expect(review.close).not.toHaveBeenCalled();
+      if (outcome === 'approved') {
+        expect(
+          await screen.findByText('Station is restarting to apply this…'),
+        ).toBeTruthy();
+      } else {
+        expect(
+          screen.queryByText('Station is restarting to apply this…'),
+        ).toBeNull();
+      }
+    } else {
+      expect(
+        screen.getByRole('link', { name: 'Open the separate confirmation page' }),
+      ).toBeTruthy();
+    }
+  },
+);
 
 test('the operator picks an offered address, confirms, and Station restarts into it', async () => {
   const writes: unknown[] = [];

@@ -83,6 +83,12 @@ force, so turning the preview off never signs invited people out.
   machine, the browser's transaction-bound consent session permits that review;
   the page's one-use nonce and origin keep app-origin scripts from deciding it.
   The listener and browser must be able to use the consent session on its host.
+  In the native app, the confirmation action instead opens the existing OS
+  consent dialog over the authenticated Station connection. It does not require
+  exposing the separate consent port to the phone. Browser review over Tailscale
+  still requires a separate HTTPS consent mapping and
+  `STATION_TRUSTED_CONSENT_ORIGIN`; see
+  [reaching the consent origin](deployment.md#reaching-the-consent-origin-over-https).
   This is not a passkey or proof that a person is present: a local script with
   the operator credential can automate the review and decision. A device-bound
   operator passkey session is not accepted by this setting yet.
