@@ -76,7 +76,13 @@
 
     "scripts/conversation-boundary-baseline.json",
 
-    "scripts/__tests__/conversation-boundary-gate.test.ts"
+    "scripts/__tests__/conversation-boundary-gate.test.ts",
+
+    "src-ui/src/components/chat/OutboundQueuedMessages.tsx",
+
+    "src-ui/src/components/chat/UnsentMessages.tsx",
+
+    "src-ui/src/__tests__/OutboundQueuedMessages.station.test.tsx"
   ],
 
   "checks": [
