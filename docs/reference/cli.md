@@ -2307,22 +2307,58 @@ intentionally API-only.
 ### `automation`
 
 ```
-station automation deliveries [--limit=<1-200>] [--api-base=<url>]
+station automation deliveries [--limit=<1-200>]
+station automation episodes [--limit=<1-200>]
+station automation retry-episode <rule-id> <episode-id>
+station automation sources
+station automation source-create --data=<json>|--file=<path>
+station automation source-enable <source-id> [--expected-fingerprint=<sha256>]
+station automation source-disable <source-id>
+station automation source-delete <source-id>
+station automation rules
+station automation rule-create --data=<json>|--file=<path>
+station automation rule-update <rule-id> --data=<json>|--file=<path>
+station automation enable <rule-id> [--expected-fingerprint=<sha256>]
+station automation disable <rule-id>
+station automation delete <rule-id>
 ```
 
-Requires management access and the **GitHub automation observations** Feature
-Preview. Prints `deliveries` (default 50) and `polls` through
-`GET /automations/deliveries`: each row's outcome (`matched`, `no-match`,
-`ignored`, `refused` with a reason, or `duplicate`), its semantic key, and its
-rule and episode ids. Each row's `decisions` lists every matched `observe` or
-`live` rule with its mode and outcome: `would-start` or `suppressed` (with a
-reason) for an `observe` rule, `intent-retained` or `suppressed` for a `live`
-one, plus the rule name, action kind, Project, Agent and episode id. `polls`
-retains partial coverage and failed observations with their last poll time and
-cursor; missing coverage is not success. This command reads history only; an
-`observe` rule never starts work, and `live` rules act only through the separate
-action previews. The other `AUTOMATION_OPERATOR_SURFACE` verbs are not available
-yet.
+Every action takes `--api-base=<url>`. Each is one `AUTOMATION_OPERATOR_SURFACE`
+verb under `/automations` (see
+[Operator surface](../design/automations.md#operator-surface)). Reads need
+management access; every change needs the operator in person, so an agent
+session or Station Control is refused. Everything except `disable`,
+`source-disable`, `delete` and `source-delete` also needs the **GitHub
+automation observations** Feature Preview.
+
+`deliveries` prints `deliveries` (default 50) and `polls`: each row's outcome
+(`matched`, `no-match`, `ignored`, `suppressed` or `refused` with a reason,
+`started`, `failed`, `indeterminate` or `duplicate`), its semantic key, and its
+rule and episode ids. A delivery whose action is held by a limit reads
+`suppressed` with that reason. Each row's `decisions` lists every matched
+`observe` or `live` rule with its mode and outcome: `would-start` or
+`suppressed` (with a reason) for an `observe` rule, `intent-retained` or
+`suppressed` for a `live` one, plus the rule name, action kind, Project, Agent
+and episode id. `polls` retains partial coverage and failed observations with
+their last poll time and cursor; missing coverage is not success.
+
+`sources` and `rules` print the configuration with its
+`configurationFingerprint`. `source-create` creates a disabled `github-poll`
+source; `rule-create` creates a `dispatch-task` rule (JSON with `sourceId`,
+`name`, `match`, optional `episode`, `action` and `rateLimit`) in `observe`
+mode; `rule-update` replaces those fields except `sourceId`. `enable` sets a
+rule `live` and `disable` sets it `off`. `enable`, `source-enable` and
+`rule-update` read the current fingerprint unless you pin the one you reviewed
+with `--expected-fingerprint` (or `expectedFingerprint` in the JSON). Isolated
+repair rules, and sources that grant repair or publication, are managed by the
+isolated repair API instead. A source can be deleted only once no rule names
+it.
+
+`episodes` lists unclosed episodes (`open`, `exhausted`, `indeterminate`).
+`retry-episode` gives an exhausted episode exactly one more attempt under the
+rule's current policy; it is refused for an indeterminate episode, one with
+pending or running work, an event older than 72 hours, or a rule that may not
+act now.
 
 ### `runs`
 

@@ -756,6 +756,72 @@ describe('TaskWorkspaceView', () => {
     ).toBeNull();
   });
 
+  test('shows the automation mandate outright on Details, with its stop reason (#4511)', () => {
+    queryResult.data = graph({
+      createdBy: 'automation-rule',
+      status: 'blocked',
+      automation: {
+        state: 'running',
+        amendments: [],
+        revocation: {
+          at: '2026-11-06T00:00:00.000Z',
+          cause: 'rule-disabled',
+          message: 'Stopped: automation rule “Diagnose” was disabled.',
+        },
+        mandate: {
+          ruleId: 'rule-1',
+          ruleName: 'Diagnose',
+          sourceId: 'source-1',
+          episodeId: '42',
+          policyFingerprint: 'a'.repeat(64),
+          capturedAt: '2026-11-06T00:00:00.000Z',
+          event: {
+            type: 'github.workflow_run.completed',
+            semanticKey: 'workflow_run:42:1:completed',
+            occurredAt: '2026-11-06T00:00:00.000Z',
+            fields: {
+              repository: 'kontourai/station',
+              'workflow.path': '.github/workflows/ci.yml',
+              'run.id': '42',
+              'run.conclusion': 'failure',
+              'run.html_url':
+                'https://github.com/kontourai/station/actions/runs/42',
+            },
+          },
+          action: {
+            kind: 'dispatch-task',
+            projectId: 'project-alpha',
+            agentId: 'agent-alpha',
+            instructions: 'Diagnose the failing run.',
+            budget: { maxTurns: 2, maxTokens: 1000, maxWallRuntimeMs: 60000 },
+          },
+        },
+      },
+    });
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+    const block = screen.getByRole('region', { name: 'Started by automation' });
+    // Not folded into the collapsed record details.
+    expect(block.closest('details')).toBeNull();
+    expect(
+      within(block).getByText(
+        'Stopped: automation rule “Diagnose” was disabled.',
+      ),
+    ).toBeTruthy();
+    expect(within(block).getByText('Diagnose the failing run.')).toBeTruthy();
+    expect(
+      within(block).getByRole('link', {
+        name: 'https://github.com/kontourai/station/actions/runs/42',
+      }),
+    ).toBeTruthy();
+  });
+
+  test('a Task no automation started shows no mandate block', () => {
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.queryByRole('region', { name: 'Started by automation' }),
+    ).toBeNull();
+  });
+
   test('retains a previously verified Task room as read-only async context', () => {
     roomDiscoveryResult = {
       data: {

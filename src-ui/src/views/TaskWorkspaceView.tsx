@@ -736,12 +736,14 @@ function TaskWorkspaceContent({
             taskCreatedAt={graph.task.createdAt}
           />
         )}
+        {/* #4511: why an automation started (and stopped) this Task is shown
+          outright, not folded into the record details. */}
+        {graph.task.automation ? (
+          <AutomationMandateSection automation={graph.task.automation} />
+        ) : null}
         <details className="task-workspace__record-details">
           <summary>Task identity and workspace</summary>
           <TaskIdentitySection task={graph.task} />
-          {graph.task.automation ? (
-            <AutomationMandateSection automation={graph.task.automation} />
-          ) : null}
           <WorkspaceBindingSection task={graph.task} />
         </details>
         <TaskRoomWorkspaceSection

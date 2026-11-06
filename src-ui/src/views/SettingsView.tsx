@@ -76,6 +76,7 @@ import { AboutSection } from './settings/AboutSection';
 import { AccountSharingSection } from './settings/AccountSharingSection';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
+import { AutomationsSection } from './settings/AutomationsSection';
 import { BrowserDevicesSection } from './settings/BrowserDevicesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
 import { downloadDiagnosticsBundle } from './settings/diagnostics-download';
@@ -1240,6 +1241,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               scope because the shares live on this Station and every client
               of it sees the same list. */}
                 {sectionVisible('answer-shares') && <AnswerSharesSection />}
+
+                {/* #4513: GitHub automation sources, rules, open episodes and
+              deliveries; each count is the length of the list it heads. */}
+                {sectionVisible('github-automations') && <AutomationsSection />}
 
                 {/* #2067: per-principal plugin visibility. Station scope — the
               grants live on this Station — and the section renders nothing
