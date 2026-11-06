@@ -48,6 +48,11 @@ updates:
           - "minor"
           - "patch"
     ignore:
+      # Keep the experimental port paired with the pinned reference compiler.
+      # 0.1.0 reports TypeScript 7.1.0-beta; Station requires 7.0.2.
+      # Remove this hold with a validated compiler-pair migration.
+      - dependency-name: tsc-ts
+        versions: ['>=0.1.0']
       # vite 8 replaces Rollup with Rolldown. The entry bundle grows about
       # 80 KB gzip from finer chunking, not from added weight (#260, parent
       # #61), and the cross-chunk-cycle guard in vite.config.ts goes inert

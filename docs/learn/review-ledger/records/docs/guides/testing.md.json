@@ -270,7 +270,13 @@
 
     "src-ui/src/__tests__/local-restart-notice.browser.test.tsx",
 
-    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx"
+    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx",
+
+    "scripts/windows-portable-floor.mjs",
+
+    "scripts/lib/windows-worker-diagnostics.mjs",
+
+    "scripts/__tests__/windows-portable-floor.test.ts"
   ],
 
   "checks": [

@@ -1,5 +1,97 @@
 [
   {
+    "timestampUtc": "2026-11-05T20:33:31Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261105.1",
+    "sha": "b6c313500d51d189df6bf4e17bc103c04710a013",
+    "artifactBuiltAt": "2026-11-05T19:15:52.839Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42089381567",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery success (run 42089381567)",
+      "macos: NOT_VERIFIED (macos provider outcome unknown: unresolved:run:42089381567:github-release-upload-or-readback (the provider effect may already be live))",
+      "windows: NOT_VERIFIED (windows provider outcome unknown: unresolved:run:42089381567:desktop-upload-or-readback (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "3876f626e588bcaac041582594506f6c82c45d6c",
+      "groups": {
+        "feat": [
+          "[#4571](https://github.com/kontourai/station/pull/4571) feat(tasks): dispatched Tasks honour the Project's worktree isolation (#4507)",
+          "[#4560](https://github.com/kontourai/station/pull/4560) feat(automation): per-rule observe mode for Automation rules (#4509)",
+          "[#4573](https://github.com/kontourai/station/pull/4573) feat(releases): show UTC dates in Nightly versions",
+          "[#4559](https://github.com/kontourai/station/pull/4559) feat(tasks): preview Project capabilities and evidence path",
+          "[#4602](https://github.com/kontourai/station/pull/4602) feat: retain child work and show result provenance across Station views",
+          "[#4546](https://github.com/kontourai/station/pull/4546) feat(knowledge): protect private memory and preview erasure targets"
+        ],
+        "fix": [
+          "[#4540](https://github.com/kontourai/station/pull/4540) fix(ui): recover automation reads and malformed run links",
+          "[#4567](https://github.com/kontourai/station/pull/4567) fix(skills): preserve search and keyboard focus after removal",
+          "[#4565](https://github.com/kontourai/station/pull/4565) fix(knowledge): clarify transcript uploads and retain Gallery diagnostics",
+          "[#4543](https://github.com/kontourai/station/pull/4543) fix(notifications): retain Unsnooze error and retry state",
+          "[#4607](https://github.com/kontourai/station/pull/4607) fix(ci): bind metadata workflow trust to live main",
+          "[#4590](https://github.com/kontourai/station/pull/4590) fix(terminal): bind agent commands and restore to execution authority"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4610](https://github.com/kontourai/station/pull/4610) docs(marketing): align public introductions with the delivery vision"
+        ],
+        "other": [
+          "[#4577](https://github.com/kontourai/station/pull/4577) perf(docs): reuse state and group value bindings during history replay"
+        ]
+      },
+      "note": null,
+      "commitCount": 14
+    }
+  },
+  {
+    "timestampUtc": "2026-11-05T19:16:38Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261105.42089381567",
+    "sha": "b6c313500d51d189df6bf4e17bc103c04710a013",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42089381567",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261105.42089381567 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "3876f626e588bcaac041582594506f6c82c45d6c",
+      "groups": {
+        "feat": [
+          "[#4571](https://github.com/kontourai/station/pull/4571) feat(tasks): dispatched Tasks honour the Project's worktree isolation (#4507)",
+          "[#4560](https://github.com/kontourai/station/pull/4560) feat(automation): per-rule observe mode for Automation rules (#4509)",
+          "[#4573](https://github.com/kontourai/station/pull/4573) feat(releases): show UTC dates in Nightly versions",
+          "[#4559](https://github.com/kontourai/station/pull/4559) feat(tasks): preview Project capabilities and evidence path",
+          "[#4602](https://github.com/kontourai/station/pull/4602) feat: retain child work and show result provenance across Station views",
+          "[#4546](https://github.com/kontourai/station/pull/4546) feat(knowledge): protect private memory and preview erasure targets"
+        ],
+        "fix": [
+          "[#4540](https://github.com/kontourai/station/pull/4540) fix(ui): recover automation reads and malformed run links",
+          "[#4567](https://github.com/kontourai/station/pull/4567) fix(skills): preserve search and keyboard focus after removal",
+          "[#4565](https://github.com/kontourai/station/pull/4565) fix(knowledge): clarify transcript uploads and retain Gallery diagnostics",
+          "[#4543](https://github.com/kontourai/station/pull/4543) fix(notifications): retain Unsnooze error and retry state",
+          "[#4607](https://github.com/kontourai/station/pull/4607) fix(ci): bind metadata workflow trust to live main",
+          "[#4590](https://github.com/kontourai/station/pull/4590) fix(terminal): bind agent commands and restore to execution authority"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4610](https://github.com/kontourai/station/pull/4610) docs(marketing): align public introductions with the delivery vision"
+        ],
+        "other": [
+          "[#4577](https://github.com/kontourai/station/pull/4577) perf(docs): reuse state and group value bindings during history replay"
+        ]
+      },
+      "note": null,
+      "commitCount": 14
+    }
+  },
+  {
     "timestampUtc": "2026-11-05T10:18:38Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2500",

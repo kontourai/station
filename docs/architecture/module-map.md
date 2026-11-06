@@ -2233,6 +2233,74 @@ with no tool row, taking its outcome from `request.resolved`. This boundary
 does not redact engine history or establish engine acknowledgement.
 
 
+### Turn dispatch origin
+
+Each `turn.started` a send produces records who caused the turn
+(`dispatchOrigin`, #4512): `interactive`, `task-dispatch`, `delegation`,
+`automation` or `unknown`. Station classifies it when it admits the
+`sendTurn`, never from a request body or an engine. A server caller passes
+its own classification in the dispatch's internal options
+(`dispatchOrigin`); without one, `classifyTurnDispatchOrigin` in the
+[orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
+reads a person's client (operator or paired device) as `interactive` and
+anything else as `unknown`. Who passes what:
+
+- The delegation start, and any foreground send carrying a delegation
+  context Station derived or attested (`executeExecutionTargetMessage`, by
+  its `caller-derived`/`runtime-attested` provenance; Station Control
+  `send_message` arrives through `/chat/delegated`), pass `delegation` when
+  it starts a new conversation or the conversation's current Session is
+  itself unattended (`OrchestrationService.sessionDispatchFacts`: bound to a
+  Task, or a Station-derived delegated child); an agent's message into a
+  person's own chat passes `unknown`. A requester's own `direct-claim`
+  context never counts.
+- A scheduled Automation's first run on its dedicated conversation passes
+  `automation` ([`scheduledDedicatedStartPort`](../../src-server/runtime/routes/conversation-start-ports.ts)).
+- The conversation inbox's placement ([`inboxPlacementStartPort`](../../src-server/runtime/routes/conversation-start-ports.ts))
+  uses [`inboxTurnDispatchOrigin`](../../src-server/services/orchestration/thread-inbox.ts)
+  over the entry and the placing Session's room execution binding, first
+  match wins: an Automation action's entry is `automation`; then the
+  origin the Station sender wrote on the entry (`dispatchOrigin`: a
+  scheduled run's `automation`, a person's memory Continue or Task review
+  send `interactive`, an automatic memory continuation the killed turn's
+  own origin, coordinator and Project supervision wakes `unknown`);
+  then a person's entry is `interactive`; a delegated child's result
+  (server-stamped `delegation-result` sender, also delivered through
+  `delegationResultStartPort`) is `delegation` when the parent Session is
+  itself unattended (bound to a Task, or a delegated child whose start
+  carries Station's provenance stamp), and otherwise takes the parent's own
+  newest non-result turn's origin (`readSessionDispatchFacts`), so a
+  person's chat stays `interactive`; Station's other entries (a
+  Task question wake, a check-back) are
+  `task-dispatch` on a Session bound to a Task and `unknown` elsewhere.
+
+[`ClientOriginTurnPropagation`](../../src-server/services/orchestration/client-origin-propagation.ts)
+stamps the value. A classified origin holds an early start back until the
+send is accepted, as a client origin does, and an engine-supplied value is
+dropped. Readers use `turnDispatchOrigin` from
+`@kontourai/station-contracts/runtime-events`, which reads a missing or
+unrecognised value, including every event persisted before the field, as
+`unknown`. Steers and engine-opened turns carry none. The value is the
+admitting Station's claim: a `turn.started` mirrored from another Station
+carries that Station's, so restart recovery must act only on this Station's
+own Sessions. Its one consumer is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
+(preview `continue-unattended-after-restart`): after boot it continues each
+`task-dispatch` or `delegation` turn interrupted-turn recovery settled
+(`whenInterruptedTurnsRecovered`), once, through the conversation inbox under
+the chat's Continue key, oldest Task first, skipping restart continuations,
+moved-on Sessions and done/canceled/blocked Tasks. Automations keep their own
+recovery. `isStationRestartContinuationTurn` marks that turn **Continued after
+restart** in the transcript. Evidence for the continuation:
+`restart-continuation.test.ts` (real service, inbox and production start port
+across two restarts) and `MessageBubble.stationRestartContinuation.test.tsx`. Evidence: `turn-dispatch-origin.test.ts` (real service and event
+store, early engine start), `client-origin-propagation.test.ts`,
+`conversation-start-ports.test.ts` (the production start ports over a real
+room binding), `scheduled-conversation-run-dispatch.test.ts` (a scheduled
+run into a Task-bound chat reads `automation`), `coordinator-wake-dispatch.test.ts`,
+`task-review-send.test.ts`, `task-dispatch-agent-binding.routes.test.ts`
+(a real dispatched Task Session) and the classifier table in
+`thread-inbox.test.ts`.
+
 ## SessionLifecycleModule
 
 Marking a Session complete can race a new turn. The [lifecycle module](../../src-server/services/orchestration/session-lifecycle-module.ts) coordinates the transition with provider invocation and reruns its checks after completion preparation, so an old view cannot close newly active work.

@@ -1051,6 +1051,9 @@ export class CoordinatorWakeDelivery {
             ...COORDINATOR_WAKE_CLIENT_ORIGIN,
             sender: { kind: 'coordinator', sessionId: wake.conversationId },
           },
+          // #4512: a person's coordinator is not unattended work, whatever
+          // its Session is bound to; recovery leaves it to the person.
+          dispatchOrigin: 'unknown',
         },
       });
     } catch (error) {

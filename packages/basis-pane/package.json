@@ -43,7 +43,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "^2.0.3",
+    "@modelcontextprotocol/ext-apps": "^2.0.4",
     "@kontourai/station-contracts": "^0.13.0",
     "@kontourai/station-sdk": "^0.13.0",
     "@kontourai/surface": "^6.2.1",

@@ -33,6 +33,7 @@ import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
 import { MuseAdapter } from '../../../providers/adapters/muse-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { createCoordinatorRoutes } from '../../../routes/orchestration/coordinator.js';
+import { inboxPlacementStartPort } from '../../../runtime/routes/conversation-start-ports.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import {
@@ -141,28 +142,36 @@ function boot(adapters: ProviderAdapterShape[]): World {
         INTERNAL_SESSION_READ_SCOPE,
         inputDigest,
       ),
-    start: async ({ conversationId, threadId, payload, clientTurnId }) => {
-      const dispatched = await service.dispatchWithReceipt(
-        {
-          type: 'sendTurn',
-          input: { threadId, input: payload.message, clientTurnId },
-        },
-        {
-          userId: payload.actor.userId,
-          ...(payload.clientOrigin
-            ? { clientOrigin: payload.clientOrigin }
-            : {}),
-        },
-      );
-      const result = dispatched.result as { turnId?: string } | undefined;
-      if (!result?.turnId) return { outcome: 'indeterminate' };
-      return {
-        outcome: 'started',
-        conversationId,
-        sessionId: threadId,
-        turnId: result.turnId,
-      };
-    },
+    // Production's start port (#4512 dispatch origin included); only the
+    // foreground execution behind it is this direct dispatch.
+    start: inboxPlacementStartPort({
+      readProjectTaskRoomExecutionBinding: (sessionId) =>
+        store.readProjectTaskRoomExecutionBinding(sessionId),
+      continueAsRecordedActor: async (input, threadId) => {
+        const dispatched = await service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId,
+              input: input.message,
+              clientTurnId: input.clientTurnId,
+            },
+          },
+          { userId: input.userId, clientOrigin: input.clientOrigin },
+          input.dispatchOrigin
+            ? { dispatchOrigin: input.dispatchOrigin }
+            : undefined,
+        );
+        const result = dispatched.result as { turnId?: string } | undefined;
+        if (!result?.turnId) return { outcome: 'indeterminate' };
+        return {
+          outcome: 'started',
+          conversationId: input.conversationId,
+          sessionId: threadId,
+          turnId: result.turnId,
+        };
+      },
+    }),
     subscribe: (listener) =>
       bus.subscribe((frame) => {
         const event = (frame.data as { event?: CanonicalRuntimeEvent })?.event;
@@ -315,6 +324,15 @@ describe('a worker finishing wakes the coordinator once', () => {
   test('ACP: the coordinator engine is prompted with one framed Station turn', async () => {
     const { world, coordinatorProcess, workerProcess, prompts } =
       await acpWorld();
+    // #4512: even a coordinator Session bound to a Task is a person's
+    // coordinator; its wake is not unattended Task work.
+    expect(
+      await world.store.bindProjectTaskRoomExecution({
+        projectId: 'project-1',
+        taskId: 'task-1',
+        sessionId: COORDINATOR,
+      }),
+    ).toEqual({ kind: 'bound' });
 
     await world.service.dispatchWithReceipt(
       { type: 'sendTurn', input: { threadId: WORKER, input: 'build it' } },
@@ -343,6 +361,7 @@ describe('a worker finishing wakes the coordinator once', () => {
         actor: { kind: 'internal' },
         sender: { kind: 'coordinator', sessionId: COORDINATOR },
       },
+      dispatchOrigin: 'unknown',
     });
 
     // The wake turn ends: its own "finished" does not wake it again.

@@ -17,9 +17,17 @@ async function settleFocus() {
 function TriggerHarness({
   onHostClick,
   onHostPointerDown,
+  onConfirm,
+  pending = false,
+  error = null,
+  confirmDisabled = false,
 }: {
   onHostClick?: () => void;
   onHostPointerDown?: () => void;
+  onConfirm?: () => void;
+  pending?: boolean;
+  error?: string | null;
+  confirmDisabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   // The root-level `onClick` mirrors ACPConnectionCard: a container that both
@@ -41,8 +49,11 @@ function TriggerHarness({
         confirmLabel="Remove"
         cancelLabel="Cancel"
         variant="danger"
-        onConfirm={() => setOpen(false)}
+        onConfirm={onConfirm ?? (() => setOpen(false))}
         onCancel={() => setOpen(false)}
+        pending={pending}
+        error={error}
+        confirmDisabled={confirmDisabled}
       />
     </div>
   );
@@ -50,7 +61,8 @@ function TriggerHarness({
 
 describe('ConfirmModal focus contract (station#1110)', () => {
   test('opens with focus inside the dialog and restores the trigger on close', async () => {
-    render(<TriggerHarness />);
+    const onConfirm = vi.fn();
+    const view = render(<TriggerHarness onConfirm={onConfirm} />);
     const trigger = screen.getByRole('button', { name: 'Remove connection' });
     trigger.focus();
     fireEvent.click(trigger);
@@ -60,6 +72,35 @@ describe('ConfirmModal focus contract (station#1110)', () => {
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Cancel' }),
     );
+
+    const confirm = screen.getByRole('button', { name: 'Remove' });
+    fireEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledOnce();
+    view.rerender(<TriggerHarness onConfirm={onConfirm} pending />);
+    const pending = screen.getByRole('button', { name: 'Remove…' });
+    expect(pending).toBe(confirm);
+    expect(pending).toHaveProperty('disabled', false);
+    expect(pending.getAttribute('aria-busy')).toBe('true');
+    expect(pending.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(pending);
+    expect(onConfirm).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty(
+      'disabled',
+      false,
+    );
+
+    view.rerender(
+      <TriggerHarness onConfirm={onConfirm} error="Removal unavailable." />,
+    );
+    expect(screen.getByRole('alert').textContent).toBe('Removal unavailable.');
+    expect(confirm.getAttribute('aria-busy')).toBeNull();
+    expect(confirm.getAttribute('aria-disabled')).toBeNull();
+    fireEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledTimes(2);
+    view.rerender(<TriggerHarness onConfirm={onConfirm} confirmDisabled />);
+    expect(confirm).toHaveProperty('disabled', true);
+    fireEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledTimes(2);
 
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     await settleFocus();

@@ -174,6 +174,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'dockSlotPlacement',
         // station#1954:
         'hapticsEnabled',
+        'showReleaseNotesAfterUpdate',
         'openLastStationOnLaunch',
         // station#2652 — guided first-run progress on this device.
         'firstRunProgress',
