@@ -713,7 +713,13 @@ function createStationOwner(home: string) {
     },
     pause() {
       if (pausing) return pausing;
-      pausing = (async () => {
+      let resolve!: () => void;
+      let reject!: (error: unknown) => void;
+      pausing = new Promise<void>((accept, deny) => {
+        resolve = accept;
+        reject = deny;
+      });
+      void (async () => {
         for (const job of jobs.values()) job.pause();
         runtime.pause();
         await Promise.all(
@@ -731,7 +737,7 @@ function createStationOwner(home: string) {
             owners.delete(home);
           }
         }
-      })();
+      })().then(resolve, reject);
       return pausing;
     },
     list() {

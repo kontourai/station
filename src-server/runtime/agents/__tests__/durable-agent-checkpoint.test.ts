@@ -138,7 +138,7 @@ it('closing an in-flight checkpoint reaps the worker and retains committed data'
   }
 });
 
-it('a failed final checkpoint closes SQLite and releases the owner without losing committed data', async () => {
+it('a reentrant final-checkpoint failure closes SQLite and releases the owner without losing committed data', async () => {
   const home = temp('durable-checkpoint-close-failure-');
   const path = join(home, 'data', 'agent-runtime', 'steps.sqlite');
   const owner = stationAgentRuntimeOwner(home);
@@ -151,7 +151,7 @@ it('a failed final checkpoint closes SQLite and releases the owner without losin
   owner.registerAgent('assistant', 'definition/1', async () => {
     throw new Error('No model invocation expected');
   });
-  await owner.runtime.start({
+  const lease = await owner.runtime.start({
     key: {
       scopeId: 'station',
       conversationId: 'conversation',
@@ -166,11 +166,22 @@ it('a failed final checkpoint closes SQLite and releases the owner without losin
       options: { conversationId: 'conversation', userId: 'owner' },
     }),
   });
+  let reentered: Promise<void> | undefined;
+  lease.signal.addEventListener(
+    'abort',
+    () => {
+      reentered = owner.pause();
+      void reentered.catch(() => {});
+    },
+    { once: true },
+  );
   const close = vi.spyOn(DatabaseSync.prototype, 'close');
   try {
     const closing = owner.pause();
     queueMicrotask(() => renameSync(path, `${path}.held`));
+    await Promise.allSettled([closing, reentered]);
     await expect(closing).rejects.toThrow('ENOENT');
+    expect(reentered).toBe(closing);
     renameSync(`${path}.held`, path);
     expect(close).toHaveBeenCalledOnce();
     expect(close.mock.contexts[0]).toHaveProperty('isOpen', false);
