@@ -14,3 +14,14 @@
   content: "";
   transform: translate(-50%, -50%);
 }
+
+/* Shared controls keep the same touch geometry in semantic flows and Settings. */
+.content-stack .control,
+.settings__field .select .control {
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+}
+
+.content-stack .field__label,
+.settings__field .field__label {
+  font-size: var(--k-text-sm);
+}

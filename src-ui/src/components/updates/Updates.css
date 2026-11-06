@@ -46,36 +46,17 @@
   border-radius: var(--k-radius-control);
   background: var(--k-action);
 }
-.updates-panel {
-  display: grid;
-  gap: var(--k-space-5);
-}
 .updates-panel section {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.updates-panel section + section {
-  border-top: 1px solid var(--k-line);
-  padding-top: var(--k-space-4);
-}
 .updates-panel h3 {
-  margin: 0 0 var(--k-space-2);
+  margin: 0;
   font-size: var(--k-text-md);
 }
-.updates-panel p {
-  margin: 0 0 var(--k-space-3);
-}
-.updates-panel__identity {
+.updates-panel__notice {
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
-}
-.updates-panel__notice {
-  margin-bottom: var(--k-space-3);
-}
-/* The server card spaces its own rows. */
-.updates-panel .server-update p,
-.updates-panel .server-update .updates-panel__notice {
-  margin: 0;
 }
 .updates-panel a {
   display: inline-flex;
@@ -149,26 +130,31 @@
   display: inline-flex;
   align-items: center;
   min-height: calc(var(--k-space-6) + var(--k-space-3));
+  min-width: calc(var(--k-space-6) + var(--k-space-3));
   color: var(--k-action);
 }
-.release-history summary {
-  cursor: pointer;
-  display: list-item;
-  align-content: center;
-  min-height: calc(var(--k-space-6) + var(--k-space-3));
+.release-notes__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2) var(--k-space-4);
+  font-size: var(--k-text-sm);
 }
-.release-history label,
-.release-history select {
-  display: block;
-  width: 100%;
+.release-notes .empty {
+  padding: 0;
+}
+.release-notes__body {
+  line-height: var(--k-leading-normal);
+}
+.release-notes__body :is(h1, h2, h3) {
+  font-size: var(--k-text-md);
+  margin-block: var(--k-space-3) var(--k-space-2);
+}
+.release-notes__body :is(p, ul, ol) {
   margin-block: var(--k-space-2);
 }
-.release-history select {
-  min-height: calc(var(--k-space-6) + var(--k-space-3));
-  background: var(--k-panel);
-  color: var(--k-text);
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-control);
+.release-notes__body li + li {
+  margin-block-start: var(--k-space-2);
 }
 .release-notes__preference {
   width: 100%;
@@ -184,6 +170,5 @@
   align-items: center;
   gap: var(--k-space-2);
   min-height: calc(var(--k-space-6) + var(--k-space-3));
-  margin-top: var(--k-space-3);
   font-size: var(--k-text-sm);
 }
