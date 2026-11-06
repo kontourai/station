@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
+import type { BrowserSessionView } from '@kontourai/station-contracts/workspace-browser-pane';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
-const data = vi.hoisted(() => ({ rows: [] as unknown[] }));
+const data = vi.hoisted(() => ({ rows: [] as BrowserSessionView[] }));
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(
     async (url: string) =>
@@ -46,15 +47,23 @@ const scope = {
   threadIds: ['thread'],
   conversationKey: 'conversation',
 };
-function row(overrides: Record<string, unknown> = {}) {
+function row(overrides: Partial<BrowserSessionView> = {}): BrowserSessionView {
   return {
     browserSessionId: 'exact',
     projectId: 'p',
     projectSlug: 'project',
     principalKey: 'owner',
+    reach: 'operator',
     threadId: 'thread',
+    url: 'https://example.test/',
+    viewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
+    generation: 1,
     state: 'live',
     surfaceId: 'surface',
+    createdAt: '2026-11-06T12:00:00.000Z',
+    updatedAt: '2026-11-06T12:00:00.000Z',
+    history: { entries: [], total: 0 },
+    activity: { agentDriven: true },
     ...overrides,
   };
 }
