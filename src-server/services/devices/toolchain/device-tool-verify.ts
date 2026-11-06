@@ -19,7 +19,13 @@
  *   through them.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import type { DeviceToolFailure } from '@kontourai/station-contracts/device-toolchain';
@@ -159,6 +165,16 @@ function listFiles(dir: string, base = dir): string[] {
  * Verify `dir` (a finished `npm ci` of `pin`'s lockfile, with its private
  * cache at `dir/.npm-cache`). Returns the first problem, or undefined.
  */
+/** Anything at `path`, a dangling link included (lstat, not stat). */
+function entryExists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function verifyInstalledTree(
   dir: string,
   pin: DeviceToolPin,
@@ -175,6 +191,15 @@ export function verifyInstalledTree(
   for (const [path, entry] of Object.entries(pin.lock.packages)) {
     if (path === '') continue;
     const actual = recorded.packages[path];
+    // An optional package the install omitted is legitimately absent — from
+    // npm's record AND from the tree. One that is on disk but unrecorded
+    // (or recorded) is present, and must match its pin like any other.
+    if (
+      actual === undefined &&
+      entry.optional === true &&
+      !entryExists(join(dir, path))
+    )
+      continue;
     if (actual?.integrity !== entry.integrity)
       return {
         reason: 'integrity-mismatch',

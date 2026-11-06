@@ -1,16 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { outboundStationIdentity } from '../../connections/station-state';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { FileAttachment } from '../../types';
+import { outboxTurnDeliveryState } from '../../utils/messageDeliveryState';
+import { describeStationFailure } from '../../utils/stationFailure';
+import { useDockDeliveryPort } from '../chat-dock/useDockDeliveryPort';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { EditGlyph } from '../icons/Glyph';
-import {
-  AWAITING_CONFIRMATION_LABEL,
-  MAY_HAVE_REACHED_LABEL,
-} from './deliveryLabels';
-import {
-  UnconfirmedDiscardConfirm,
-  useUnconfirmedDiscardDisclosure,
-} from './UnconfirmedDiscardConfirm';
+import { MessageDeliveryNote } from './message-bubble/MessageDeliveryNote';
 import './QueuedMessages.css';
 
 interface OutboundQueuedTurn {
@@ -40,18 +39,6 @@ interface OutboundQueuedTurn {
  * proven running. A closed or crashed window's claim, or one released with
  * no answer, waits for Station's delivery lookup like its bubble says.
  */
-function sendingElsewhere(turn: OutboundQueuedTurn): boolean {
-  return (
-    turn.status === 'invoking' &&
-    turn.sendUnderWay === true &&
-    !turn.awaitingLookup
-  );
-}
-
-function awaitingConfirmation(turn: OutboundQueuedTurn): boolean {
-  return turn.status === 'invoking' && !sendingElsewhere(turn);
-}
-
 interface OutboundQueuedMessagesProps {
   sessionId: string;
   turns: readonly OutboundQueuedTurn[];
@@ -97,6 +84,20 @@ export function OutboundQueuedMessages({
   onStartNewChat,
   onSendHeld,
 }: OutboundQueuedMessagesProps) {
+  const station = useOptionalConversationConnection()?.station;
+  const conversationId = useSyncExternalStore(
+    activeChatsStore.subscribe,
+    () => activeChatsStore.getSnapshot()[sessionId]?.conversationId,
+  );
+  const queueScope = (): readonly [
+    station?: ReturnType<typeof outboundStationIdentity>,
+    conversationId?: string,
+  ] => {
+    if (!station) return [] as const;
+    if (!station.isCurrent())
+      throw new Error('Reconnect to this chat’s Station.');
+    return [outboundStationIdentity(station), conversationId] as const;
+  };
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(
     null,
   );
@@ -121,11 +122,11 @@ export function OutboundQueuedMessages({
   const reorder = (clientTurnId: string, direction: 'up' | 'down') =>
     void import('../../lib/outboundQueue')
       .then(({ outboundDispatch }) =>
-        outboundDispatch.reorder(clientTurnId, direction),
+        outboundDispatch.reorder(clientTurnId, direction, ...queueScope()),
       )
       .catch((error) =>
         onError(
-          `Could not reorder queued message: ${error instanceof Error ? error.message : String(error)}`,
+          `Could not reorder queued message: ${describeStationFailure(error).body}`,
         ),
       );
 
@@ -137,11 +138,11 @@ export function OutboundQueuedMessages({
     setSavingId(editing.id);
     try {
       const { outboundDispatch } = await import('../../lib/outboundQueue');
-      await outboundDispatch.edit(editing.id, content);
+      await outboundDispatch.edit(editing.id, content, ...queueScope());
       setEditing((current) => (current === editing ? null : current));
     } catch (error) {
       onError(
-        `Could not edit the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+        `Could not edit the durable offline turn: ${describeStationFailure(error).body}`,
       );
     } finally {
       saveInFlight.current = false;
@@ -230,12 +231,13 @@ export function OutboundQueuedMessages({
                         outboundDispatch.merge(
                           turn.clientTurnId,
                           nextTurn.clientTurnId,
+                          ...queueScope(),
                         ),
                       )
                       .then(() => setMergePreviewId(null))
                       .catch((error) =>
                         onError(
-                          `Could not merge queued messages: ${error instanceof Error ? error.message : String(error)}`,
+                          `Could not merge queued messages: ${describeStationFailure(error).body}`,
                         ),
                       );
                   }}
@@ -244,85 +246,54 @@ export function OutboundQueuedMessages({
                 </button>
               </div>
             ) : null}
-            <StationWaitNote waitingForStation={turn.waitingForStation} />
-            <HeldCopyNotice turn={turn} onError={onError} onSend={onSendHeld} />
-            {turn.status === 'may-have-started' ||
-            turn.status === 'invoking' ? (
-              <span
-                className={`queued-messages__label${
-                  // Another window's send under way is not a caution.
-                  sendingElsewhere(turn)
-                    ? ' queued-messages__label--sending'
-                    : ' queued-messages__label--unconfirmed'
-                }`}
-              >
-                {sendingElsewhere(turn)
-                  ? 'Sending'
-                  : awaitingConfirmation(turn)
-                    ? AWAITING_CONFIRMATION_LABEL
-                    : MAY_HAVE_REACHED_LABEL}
-              </span>
-            ) : turn.status === 'failed' ? (
-              <span className="queued-messages__label">
-                {workspaceRefused ? (
-                  <>
-                    Refused{' '}
-                    {onStartNewChat ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          // A failed discard leaves the row actionable on
-                          // purpose — the draft exists either way; surfacing
-                          // the error beats a silent duplicate-capable state.
-                          void Promise.resolve(
-                            onStartNewChat(
-                              turn.content,
-                              turn.attachments,
-                              turn.clientTurnId,
-                            ),
-                          ).catch((error: unknown) =>
-                            onError(
-                              error instanceof Error &&
-                                error.name === 'NewChatUnavailableError'
-                                ? error.message
-                                : `New chat created; old queued turn kept: ${error instanceof Error ? error.message : String(error)}`,
-                            ),
-                          )
-                        }
-                      >
-                        New chat
-                      </button>
-                    ) : null}
-                    {threadAdvanced ? (
-                      <span className="queued-message__advanced-context">
-                        The conversation moved on — this may have been answered
-                        from the original workspace
-                      </span>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    Needs retry{' '}
-                    <button
-                      type="button"
-                      onClick={() => void onRetry(turn.clientTurnId)}
-                    >
-                      Retry
-                    </button>
-                  </>
-                )}
-              </span>
-            ) : turn.status === 'accepted' ? (
-              <span className="queued-messages__label queued-messages__label--accepted">
-                Accepted · waiting for the agent to finish
-              </span>
-            ) : null}
-            <UnconfirmedRowActions
+            <HeldCopyNotice turn={turn} />
+            <OutboundDeliveryNote
               sessionId={sessionId}
               turn={turn}
+              onRetry={onRetry}
+              onSendHeld={onSendHeld}
+              onEdit={() =>
+                setEditing({ id: turn.clientTurnId, value: turn.content })
+              }
               onDiscarded={() => onDiscarded?.(turns.length - 1)}
-              onError={onError}
             />
+            {workspaceRefused && (
+              <span className="queued-messages__label">
+                {' '}
+                {onStartNewChat ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      // A failed discard leaves the row actionable on
+                      // purpose — the draft exists either way; surfacing
+                      // the error beats a silent duplicate-capable state.
+                      void Promise.resolve(
+                        onStartNewChat(
+                          turn.content,
+                          turn.attachments,
+                          turn.clientTurnId,
+                        ),
+                      ).catch((error: unknown) =>
+                        onError(
+                          error instanceof Error &&
+                            error.name === 'NewChatUnavailableError'
+                            ? error.message
+                            : `New chat created; old queued turn kept: ${describeStationFailure(error).body}`,
+                        ),
+                      )
+                    }
+                  >
+                    New chat
+                  </button>
+                ) : null}
+                {threadAdvanced ? (
+                  <span className="queued-message__advanced-context">
+                    The conversation moved on — this may have been answered from
+                    the original workspace
+                  </span>
+                ) : null}
+              </span>
+            )}
             {turn.status !== 'accepted' &&
             turn.status !== 'invoking' &&
             turn.status !== 'may-have-started' &&
@@ -366,11 +337,14 @@ export function OutboundQueuedMessages({
                     onClick={() =>
                       void import('../../lib/outboundQueue')
                         .then(({ outboundDispatch }) =>
-                          outboundDispatch.unmerge(turn.clientTurnId),
+                          outboundDispatch.unmerge(
+                            turn.clientTurnId,
+                            ...queueScope(),
+                          ),
                         )
                         .catch((error) =>
                           onError(
-                            `Could not undo queued-message merge: ${error instanceof Error ? error.message : String(error)}`,
+                            `Could not undo queued-message merge: ${describeStationFailure(error).body}`,
                           ),
                         )
                     }
@@ -379,7 +353,7 @@ export function OutboundQueuedMessages({
                     Undo merge
                   </button>
                 ) : null}
-                {turn.heldElsewhere ? null : (
+                {turn.heldElsewhere || turn.status === 'failed' ? null : (
                   <button
                     type="button"
                     onClick={() => {
@@ -400,12 +374,15 @@ export function OutboundQueuedMessages({
                   onClick={() =>
                     void import('../../lib/outboundQueue')
                       .then(async ({ outboundDispatch }) => {
-                        await outboundDispatch.discard(turn.clientTurnId);
+                        await outboundDispatch.discard(
+                          turn.clientTurnId,
+                          ...queueScope(),
+                        );
                         onDiscarded?.(turns.length - 1);
                       })
                       .catch((error) =>
                         onError(
-                          `Could not discard the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+                          `Could not discard the durable offline turn: ${describeStationFailure(error).body}`,
                         ),
                       )
                   }
@@ -435,17 +412,8 @@ export function OutboundQueuedMessages({
  * A copy held for after a reply by another window, or by one that closed: it
  * is sent only when the user says so (`sendHeld`), with its own key.
  */
-function HeldCopyNotice({
-  turn,
-  onError,
-  onSend,
-}: {
-  turn: OutboundQueuedTurn;
-  onError: (message: string) => void;
-  onSend?: (turn: OutboundQueuedTurn) => Promise<void>;
-}) {
+function HeldCopyNotice({ turn }: { turn: OutboundQueuedTurn }) {
   if (!turn.heldElsewhere) return null;
-  const { clientTurnId } = turn;
   return (
     <span
       className="queued-messages__label queued-messages__label--held"
@@ -456,129 +424,100 @@ function HeldCopyNotice({
       }
     >
       {turn.heldByClosedWindow
-        ? 'From a closed window. Not sent.'
+        ? 'From a closed window.'
         : 'Queued in another window.'}{' '}
-      <button
-        type="button"
-        onClick={() =>
-          void (
-            onSend
-              ? onSend(turn)
-              : import('../../lib/outboundQueue').then(({ outboundDispatch }) =>
-                  outboundDispatch.sendHeld(clientTurnId),
-                )
-          ).catch((error: unknown) =>
-            onError(
-              `Could not send this message: ${error instanceof Error ? error.message : String(error)}`,
-            ),
-          )
-        }
-      >
-        Send
-      </button>
     </span>
   );
 }
 
-/** Asks Station again what became of a possibly-started message; never resends. */
-function RecheckDeliveryButton({
-  clientTurnId,
-  onError,
-}: {
-  clientTurnId: string;
-  onError: (message: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() =>
-        void import('../../lib/deliveryLookup')
-          .then(({ recheckOutboundTurn }) => recheckOutboundTurn(clientTurnId))
-          .catch((error: unknown) =>
-            onError(
-              `Could not check this message: ${error instanceof Error ? error.message : String(error)}`,
-            ),
-          )
-      }
-    >
-      Check
-    </button>
-  );
-}
-
-/**
- * The user's explicit way out of a message that may have reached the agent
- * (#3596): never automatic, and only after the risk is stated. A row still
- * `invoking` has no such action: its send may still be under way.
- */
-function UnconfirmedRowActions({
+/** The queue adapts the same bound actions used by the message bubble. */
+function OutboundDeliveryNote({
   sessionId,
   turn,
+  onRetry,
+  onEdit,
   onDiscarded,
-  onError,
+  onSendHeld,
 }: {
   sessionId: string;
   turn: OutboundQueuedTurn;
+  onRetry: (key: string) => Promise<void>;
+  onEdit: () => void;
   onDiscarded: () => void;
-  onError: (message: string) => void;
+  onSendHeld?: (turn: OutboundQueuedTurn) => Promise<void>;
 }) {
-  const disclosure = useUnconfirmedDiscardDisclosure();
-  if (turn.status !== 'may-have-started' && turn.status !== 'invoking')
-    return null;
-  // Under way in a running window: its answer is coming there, and a Check
-  // here would find nothing to ask.
-  if (sendingElsewhere(turn)) return null;
-  const { clientTurnId } = turn;
-  const discardable =
+  const target = useOptionalConversationConnection();
+  const state =
+    turn.status === 'pending' && turn.heldByClosedWindow
+      ? 'held-for-send'
+      : turn.status === 'invoking' && turn.sendUnderWay && !turn.awaitingLookup
+        ? 'sending'
+        : (outboxTurnDeliveryState(turn) ?? 'unanswered');
+  const uncertain =
     turn.status === 'may-have-started' || turn.awaitingLookup === true;
-  return (
-    <>
-      <span className="queued-message__actions">
-        {turn.waitingForStation ? null : (
-          <RecheckDeliveryButton
-            clientTurnId={clientTurnId}
-            onError={onError}
-          />
-        )}
-        {discardable ? (
-          <button type="button" {...disclosure.triggerProps}>
-            Discard…
-          </button>
-        ) : null}
-      </span>
-      {discardable && disclosure.open ? (
-        <span className="queued-message__confirm">
-          <UnconfirmedDiscardConfirm
-            {...disclosure.confirmProps}
-            onConfirm={() =>
-              void import('../../lib/messageDeliveryActions')
-                .then(({ discardMessage }) =>
-                  discardMessage(sessionId, clientTurnId, 'unconfirmed'),
-                )
-                .then(onDiscarded)
-                .catch((error: unknown) =>
-                  onError(
-                    `Could not discard this message: ${error instanceof Error ? error.message : String(error)}`,
-                  ),
-                )
-            }
-          />
-        </span>
-      ) : null}
-    </>
+  const port = useDockDeliveryPort(
+    sessionId,
+    turn.clientTurnId,
+    turn.content,
+    state,
+    uncertain,
   );
-}
-
-/** A row written for another Station waits for that one; it is never sent elsewhere. */
-function StationWaitNote({
-  waitingForStation,
-}: {
-  waitingForStation?: string;
-}) {
-  if (!waitingForStation) return null;
   return (
-    <span className="queued-messages__label">
-      Waiting for {waitingForStation}; it is only sent there
-    </span>
+    <MessageDeliveryNote
+      variant="inline"
+      state={state}
+      port={{
+        ...port,
+        savedOnDevice: true,
+        release:
+          turn.heldElsewhere && turn.status === 'pending'
+            ? async () => {
+                if (
+                  target?.station &&
+                  (!target.station.isCurrent() ||
+                    target.station.capabilities.send.state !== 'allowed')
+                )
+                  throw new Error('Reconnect to this chat’s Station.');
+                if (onSendHeld) await onSendHeld(turn);
+                else {
+                  const { outboundDispatch } = await import(
+                    '../../lib/outboundQueue'
+                  );
+                  if (target?.station)
+                    await outboundDispatch.sendHeld(
+                      turn.clientTurnId,
+                      outboundStationIdentity(target.station),
+                      activeChatsStore.getSnapshot()[sessionId]?.conversationId,
+                    );
+                  else await outboundDispatch.sendHeld(turn.clientTurnId);
+                }
+              }
+            : undefined,
+        canRetry: !isWorkspaceRefusedTurn(turn),
+        retry: () => onRetry(turn.clientTurnId),
+        edit:
+          state === 'not-sent'
+            ? async () => {
+                onEdit();
+                return null;
+              }
+            : uncertain
+              ? port.edit
+              : undefined,
+        check:
+          !turn.waitingForStation &&
+          (uncertain || state === 'awaiting-confirmation')
+            ? port.check
+            : undefined,
+        canDiscardUnconfirmed: uncertain,
+        discard: port.discard
+          ? async () => {
+              const outcome = await port.discard!();
+              onDiscarded();
+              return outcome;
+            }
+          : undefined,
+      }}
+    />
   );
 }

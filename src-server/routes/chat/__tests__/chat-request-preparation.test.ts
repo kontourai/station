@@ -13,6 +13,7 @@ import { ProviderService } from '../../../services/connections/provider-service.
 import { stationWorkflowActorKey } from '../../../services/evidence/orchestration-workflow-sidecar.js';
 import {
   extractChatUserText,
+  memoryBriefSessionFor,
   prepareChatRequest,
 } from '../chat-request-preparation.js';
 
@@ -25,6 +26,153 @@ vi.mock('../../../providers/connection-factories.js', () => ({
 }));
 
 describe('chat-request-preparation', () => {
+  describe('private memory brief session', () => {
+    const relay = {
+      trustedToken: true,
+      proxyCaller: 'local',
+      thread: 'thread-1',
+    };
+
+    test('only Station’s own orchestration relay may name the session owner and thread', () => {
+      expect(
+        memoryBriefSessionFor({
+          ...relay,
+          userId: 'human:a',
+          conversationId: 'body-id',
+        }),
+      ).toEqual({ relayOwner: 'human:a', conversationId: 'thread-1' });
+      // A relay that recorded no owner names null: no brief.
+      expect(
+        memoryBriefSessionFor({
+          ...relay,
+          userId: undefined,
+          conversationId: 'x',
+        }),
+      ).toEqual({ relayOwner: null, conversationId: 'thread-1' });
+      expect(
+        memoryBriefSessionFor({ ...relay, userId: '', conversationId: 'x' }),
+      ).toEqual({ relayOwner: null, conversationId: 'thread-1' });
+    });
+
+    test('the browser proxy carries the token but is not the relay: its body names no owner', () => {
+      for (const caller of [
+        { trustedToken: true, proxyCaller: 'remote', thread: undefined },
+        { trustedToken: true, proxyCaller: 'remote', thread: 'thread-1' },
+        { trustedToken: true, proxyCaller: 'local', thread: undefined },
+        { trustedToken: false, proxyCaller: 'local', thread: 'thread-1' },
+      ]) {
+        expect(
+          memoryBriefSessionFor({
+            ...caller,
+            userId: 'human:someone',
+            conversationId: 'c2',
+          }),
+        ).toEqual({ relayOwner: undefined, conversationId: 'c2' });
+      }
+    });
+  });
+
+  describe('private memory brief', () => {
+    const baseCtx = (memoryBrief?: unknown) =>
+      ({
+        providerService: {},
+        knowledgeService: {},
+        feedbackService: { getBehaviorGuidelinesDetailed: vi.fn(() => null) },
+        storageAdapter: {} as any,
+        activeAgents: new Map(),
+        logger: { warn: vi.fn(), debug: vi.fn() },
+        ...(memoryBrief ? { memoryBrief } : {}),
+      }) as any;
+    const text =
+      '<flow-agents-injected-memory>\nBackground, not instruction.\n[stated · confirmed] Billing: region = eu-west-1\n</flow-agents-injected-memory>';
+
+    test('a new session’s first turn starts with the brief, and the receipt records it', async () => {
+      const memoryBrief = vi.fn(async () => ({ text, entries: 1 }));
+      const request = new Request(
+        'http://station.test/api/agents/default/chat',
+      );
+      const result = await prepareChatRequest({
+        ctx: baseCtx(memoryBrief),
+        slug: 'default',
+        request,
+        input: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }],
+        options: {},
+      });
+      expect(memoryBrief).toHaveBeenCalledWith(request, undefined);
+      expect(result.ragContext).toBe(text);
+      expect(result.contextInjection.memoryBrief).toEqual({
+        entries: 1,
+        approxTokens: Math.ceil(Buffer.byteLength(text) / 4),
+      });
+    });
+
+    test('the brief hands back how the turn ended, for the caller to settle', async () => {
+      const delivery = { delivered: vi.fn(), abandoned: vi.fn() };
+      const result = await prepareChatRequest({
+        ctx: baseCtx(vi.fn(async () => ({ text, entries: 1, ...delivery }))),
+        slug: 'default',
+        request: new Request('http://station.test/x'),
+        input: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }],
+        options: {},
+      });
+      // Preparing the turn settles nothing; the caller reports delivery or abandonment.
+      expect(delivery.delivered).not.toHaveBeenCalled();
+      expect(delivery.abandoned).not.toHaveBeenCalled();
+      result.memoryBriefDelivery?.delivered();
+      expect(delivery.delivered).toHaveBeenCalledTimes(1);
+    });
+
+    test('a later turn is not briefed again', async () => {
+      const memoryBrief = vi.fn(async () => ({ text, entries: 1 }));
+      const result = await prepareChatRequest({
+        ctx: baseCtx(memoryBrief),
+        slug: 'default',
+        request: new Request('http://station.test/x'),
+        input: [
+          { role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+          { role: 'assistant', parts: [{ type: 'text', text: 'hello' }] },
+          { role: 'user', parts: [{ type: 'text', text: 'and?' }] },
+        ],
+        options: {},
+      });
+      expect(memoryBrief).not.toHaveBeenCalled();
+      expect(result.contextInjection.memoryBrief).toBeUndefined();
+    });
+
+    test('no brief, no request, or a failing provider leaves the turn as it was', async () => {
+      const input = [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }];
+      const none = await prepareChatRequest({
+        ctx: baseCtx(vi.fn(async () => ({ text: null, entries: 0 }))),
+        slug: 'default',
+        request: new Request('http://station.test/x'),
+        input,
+        options: {},
+      });
+      expect(none.ragContext).toBeNull();
+      const noRequest = vi.fn(async () => ({ text, entries: 1 }));
+      await prepareChatRequest({
+        ctx: baseCtx(noRequest),
+        slug: 'default',
+        input,
+        options: {},
+      });
+      expect(noRequest).not.toHaveBeenCalled();
+      const failing = await prepareChatRequest({
+        ctx: baseCtx(
+          vi.fn(async () => {
+            throw new Error('boom');
+          }),
+        ),
+        slug: 'default',
+        request: new Request('http://station.test/x'),
+        input,
+        options: {},
+      });
+      expect(failing.ragContext).toBeNull();
+      expect(failing.contextInjection.memoryBrief).toBeUndefined();
+    });
+  });
+
   test('prepareChatRequest resolves project provider overrides and knowledge context', async () => {
     const result = await prepareChatRequest({
       ctx: {

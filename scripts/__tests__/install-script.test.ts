@@ -1,7 +1,13 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  type ChildProcess,
+  execFileSync,
+  spawn,
+  spawnSync,
+} from 'node:child_process';
 import { createHash, generateKeyPairSync, type KeyObject } from 'node:crypto';
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -3000,4 +3006,310 @@ describe('install ports (#2675 slice C)', {
       expect(existsSync(harness.installRoot)).toBe(false);
     },
   );
+});
+
+describe('installs from a managed mirror (#4522)', {
+  timeout: MAX_INSTALLER_RUNS_PER_TEST * INSTALLER_RUN_TIMEOUT_MS,
+}, () => {
+  const tempDir = trackTempDirs();
+  const DEFAULT_BASE =
+    'https://github.com/kontourai/station/releases/download/';
+
+  /** A mirror of the release download tree holding one signed release. */
+  function mirrorFixture(
+    prefix: string,
+    artifactUrl?: (name: string) => string,
+  ) {
+    const harness = archiveHarness(tempDir(prefix));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const mirror = join(harness.root, 'mirror');
+    mkdirSync(join(mirror, 'v1.2.3'), { recursive: true });
+    mkdirSync(join(mirror, 'portable-stable'), { recursive: true });
+    copyFileSync(archive.archive, join(mirror, 'v1.2.3', archive.name));
+    const signed = archiveManifest(harness, archive, {
+      artifact: {
+        url:
+          artifactUrl?.(archive.name) ??
+          `${DEFAULT_BASE}v1.2.3/${archive.name}`,
+      },
+    });
+    const manifest = join(
+      mirror,
+      'portable-stable',
+      'station-portable-stable-manifest.json',
+    );
+    copyFileSync(signed, manifest);
+    // The default location never holds the archive here, so a download from
+    // it could not succeed.
+    rmSync(archive.archive);
+    return {
+      harness,
+      manifest,
+      mirrorUrl: pathToFileURL(mirror).href,
+    };
+  }
+
+  it('downloads the signed archive from the mirror, by tag and file name', () => {
+    const { harness, manifest, mirrorUrl } = mirrorFixture(
+      'station-mirror-install-',
+    );
+    const result = runArchiveInstaller(harness, manifest, [], {
+      STATION_INSTALL_MIRROR_URL: mirrorUrl,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const installRoot = realpathSync(harness.installRoot);
+    expect(
+      existsSync(
+        join(installRoot, 'versions', '1.2.3', '.station-install-complete'),
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses an archive outside the release download tree, and a manifest from elsewhere', () => {
+    const outside = mirrorFixture(
+      'station-mirror-outside-',
+      (name) => `https://downloads.example.invalid/v1.2.3/${name}`,
+    );
+    const refused = runArchiveInstaller(outside.harness, outside.manifest, [], {
+      STATION_INSTALL_MIRROR_URL: outside.mirrorUrl,
+    });
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain(
+      'the signed manifest names an archive outside the release download tree',
+    );
+
+    const elsewhere = mirrorFixture('station-mirror-manifest-');
+    const result = runArchiveInstaller(
+      elsewhere.harness,
+      elsewhere.manifest,
+      [],
+      {
+        STATION_INSTALL_MIRROR_URL: `${elsewhere.mirrorUrl}-other/`,
+      },
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      'the signed manifest must come from the mirror',
+    );
+    expect(existsSync(join(elsewhere.harness.installRoot, 'current'))).toBe(
+      false,
+    );
+  });
+  /**
+   * The mirror over http on two loopback ports: `/m/` (the mirror) and `/n/`
+   * both serve the mirror tree, and each path in `redirects` answers 302 to
+   * `/n/<same path>` on the mirror's port (`same`) or the other port
+   * (`other`), or to a Location template where `{a}` is the mirror's port,
+   * `{b}` the other port and `{rest}` the path. `otherHits()` counts every
+   * request the other port received. A separate process, because the
+   * installer runs under spawnSync, which blocks this one.
+   */
+  const servers: ChildProcess[] = [];
+  afterEach(() => {
+    for (const server of servers.splice(0)) server.kill();
+  });
+  async function serveMirror(
+    root: string,
+    redirects: Record<string, string>,
+  ): Promise<{
+    mirrorUrl: string;
+    manifestUrl: string;
+    otherHits: () => Promise<number>;
+  }> {
+    const script = join(tempDir('station-mirror-server-'), 'server.cjs');
+    writeFileSync(
+      script,
+      `const http = require('node:http'), fs = require('node:fs'), path = require('node:path');
+const [root, redirectsJson] = process.argv.slice(2);
+const redirects = JSON.parse(redirectsJson);
+const ports = {};
+let otherHits = 0;
+const handler = (req, res) => {
+  const url = new URL(req.url, 'http://127.0.0.1');
+  if (req.socket.localPort === ports.b) otherHits += 1;
+  else if (url.pathname === '/other-hits') return res.end(String(otherHits));
+  const rest = url.pathname.replace(/^\\/(m|n)\\//, '');
+  if (url.pathname.startsWith('/m/') && redirects[rest]) {
+    const template = redirects[rest] === 'same'
+      ? 'http://127.0.0.1:{a}/n/{rest}'
+      : redirects[rest] === 'other'
+        ? 'http://127.0.0.1:{b}/n/{rest}'
+        : redirects[rest];
+    const location = template.replaceAll('{a}', ports.a).replaceAll('{b}', ports.b).replaceAll('{rest}', rest);
+    res.writeHead(302, { location });
+    return res.end();
+  }
+  const file = path.join(root, rest);
+  if (!/^\\/(m|n)\\//.test(url.pathname) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { 'content-length': fs.statSync(file).size });
+  fs.createReadStream(file).pipe(res);
+};
+const a = http.createServer(handler).listen(0, '127.0.0.1', () => {
+  ports.a = a.address().port;
+  const b = http.createServer(handler).listen(0, '127.0.0.1', () => {
+    ports.b = b.address().port;
+    process.stdout.write(JSON.stringify(ports) + '\\n');
+  });
+});
+`,
+    );
+    const server = spawn(
+      process.execPath,
+      [script, root, JSON.stringify(redirects)],
+      { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
+    );
+    servers.push(server);
+    const ports = await new Promise<{ a: number }>((resolvePorts, reject) => {
+      let out = '';
+      server.stdout?.on('data', (chunk) => {
+        out += chunk;
+        if (out.includes('\n')) resolvePorts(JSON.parse(out));
+      });
+      server.once('exit', () => reject(new Error('mirror server exited')));
+    });
+    const mirrorUrl = `http://127.0.0.1:${ports.a}/m/`;
+    return {
+      mirrorUrl,
+      manifestUrl: `${mirrorUrl}portable-stable/station-portable-stable-manifest.json`,
+      otherHits: async () =>
+        Number(
+          await (await fetch(`http://127.0.0.1:${ports.a}/other-hits`)).text(),
+        ),
+    };
+  }
+
+  it('follows a redirect only within the mirror’s origin, for the manifest and the archive', async () => {
+    const MANIFEST_PATH =
+      'portable-stable/station-portable-stable-manifest.json';
+    const archiveName = (root: string) =>
+      readdirSync(join(root, 'mirror', 'v1.2.3'))[0] as string;
+
+    // Same origin: both hops are followed and the release installs.
+    const followed = mirrorFixture('station-mirror-redirect-same-');
+    const sameServer = await serveMirror(
+      join(followed.harness.root, 'mirror'),
+      {
+        [MANIFEST_PATH]: 'same',
+        [`v1.2.3/${archiveName(followed.harness.root)}`]: 'same',
+      },
+    );
+    const installed = runArchiveInstaller(
+      followed.harness,
+      followed.manifest,
+      [],
+      {
+        STATION_INSTALL_MIRROR_URL: sameServer.mirrorUrl,
+        STATION_INSTALL_PUBLIC_MANIFEST_URL: sameServer.manifestUrl,
+      },
+    );
+    expect(installed.status, installed.stderr).toBe(0);
+    expect(
+      existsSync(
+        join(
+          realpathSync(followed.harness.installRoot),
+          'versions',
+          '1.2.3',
+          '.station-install-complete',
+        ),
+      ),
+    ).toBe(true);
+
+    // Another port on the same host is another origin: refused, for the
+    // archive and for the manifest, and nothing is installed.
+    for (const escaping of ['archive', 'manifest'] as const) {
+      const fixture = mirrorFixture(`station-mirror-redirect-${escaping}-`);
+      const server = await serveMirror(join(fixture.harness.root, 'mirror'), {
+        [escaping === 'manifest'
+          ? MANIFEST_PATH
+          : `v1.2.3/${archiveName(fixture.harness.root)}`]: 'other',
+      });
+      const refused = runArchiveInstaller(
+        fixture.harness,
+        fixture.manifest,
+        [],
+        {
+          STATION_INSTALL_MIRROR_URL: server.mirrorUrl,
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: server.manifestUrl,
+        },
+      );
+      expect(refused.status, escaping).not.toBe(0);
+      expect(refused.stderr).toContain(
+        "a download redirected outside the managed policy's mirror",
+      );
+      expect(refused.stderr).not.toContain(server.mirrorUrl);
+      expect(existsSync(join(fixture.harness.installRoot, 'current'))).toBe(
+        false,
+      );
+    }
+  });
+
+  // #4522 round 2: Node's URL parser and curl must never read one Location
+  // two ways. `\` is a path separator to Node but part of a user name to
+  // curl, so the first form below looked like the mirror to the check while
+  // curl contacted the other port. Each form is refused for the manifest and
+  // the archive, and the other port is never contacted.
+  it.each([
+    [
+      'a backslash before @ (the reported repro)',
+      'http://127.0.0.1:{a}\\@127.0.0.1:{b}/n/{rest}',
+    ],
+    ['a backslash in the path', 'http://127.0.0.1:{a}/n\\..\\{rest}'],
+    ['a user name on the mirror origin', 'http://user@127.0.0.1:{a}/n/{rest}'],
+    // curl decodes a percent-encoded host itself (`127.0.0.%31` reaches the
+    // check as `127.0.0.1`), but passes `%40` through verbatim.
+    [
+      'a percent-encoded @ in the authority',
+      'http://127.0.0.1:{b}%40127.0.0.1:{a}/n/{rest}',
+    ],
+    ['a space in the path', 'http://127.0.0.1:{a}/n/ {rest}'],
+    ['a tab', 'http://127.0.0.1:{a}\t@127.0.0.1:{b}/n/{rest}'],
+  ])(
+    'refuses a redirect with %s, for the manifest and the archive',
+    async (_name, location) => {
+      const MANIFEST_PATH =
+        'portable-stable/station-portable-stable-manifest.json';
+      for (const escaping of ['manifest', 'archive'] as const) {
+        const fixture = mirrorFixture(`station-mirror-ambiguous-${escaping}-`);
+        const archive = readdirSync(
+          join(fixture.harness.root, 'mirror', 'v1.2.3'),
+        )[0] as string;
+        const server = await serveMirror(join(fixture.harness.root, 'mirror'), {
+          [escaping === 'manifest' ? MANIFEST_PATH : `v1.2.3/${archive}`]:
+            location,
+        });
+        const refused = runArchiveInstaller(
+          fixture.harness,
+          fixture.manifest,
+          [],
+          {
+            STATION_INSTALL_MIRROR_URL: server.mirrorUrl,
+            STATION_INSTALL_PUBLIC_MANIFEST_URL: server.manifestUrl,
+          },
+        );
+        expect(refused.status, `${escaping}: ${refused.stderr}`).not.toBe(0);
+        expect(refused.stderr, escaping).toContain(
+          "a download redirected outside the managed policy's mirror or to a URL that is not plain",
+        );
+        expect(await server.otherHits(), escaping).toBe(0);
+        expect(existsSync(join(fixture.harness.installRoot, 'current'))).toBe(
+          false,
+        );
+      }
+    },
+  );
+
+  it('refuses a first download URL that is not plain, before contacting anything', async () => {
+    const fixture = mirrorFixture('station-mirror-ambiguous-first-');
+    const server = await serveMirror(join(fixture.harness.root, 'mirror'), {});
+    const port = new URL(server.mirrorUrl).port;
+    const refused = runArchiveInstaller(fixture.harness, fixture.manifest, [], {
+      STATION_INSTALL_MIRROR_URL: server.mirrorUrl,
+      // Starts with the mirror's text, so it passes the prefix check.
+      STATION_INSTALL_PUBLIC_MANIFEST_URL: `${server.mirrorUrl}x\\@127.0.0.1:${port}/n/portable-stable/station-portable-stable-manifest.json`,
+    });
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain(
+      "a download URL is outside the managed policy's mirror or is not a plain URL",
+    );
+  });
 });

@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../../utils/stationFailure';
 /**
  * Agent activity on this phone: registering the Android or iOS app with the
  * active Station so it pushes Live Update cards (Android) or Live Activities
@@ -177,7 +178,7 @@ export function describeAgentActivityError(error: unknown): string {
   if (error instanceof Error && error.name === 'DevicePairingRequiredError') {
     return 'Pair this phone with the Station first.';
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = describeStationFailure(error).body;
   return message || 'Something went wrong.';
 }
 

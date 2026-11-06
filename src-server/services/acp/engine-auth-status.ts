@@ -26,6 +26,7 @@ import {
   findCliBinaryAsync,
   runCliCommand,
 } from '../../providers/auth/cli-auth.js';
+import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import {
   namesSameExecutable,
   registryAuthFor,
@@ -221,6 +222,9 @@ async function statusCommandFor(
 async function runStatusCommand(
   connection: ConnectionLike,
 ): Promise<Observation | null> {
+  // #4515: an ACP engine the managed policy does not allow is never run,
+  // not even for its sign-in status.
+  if (!engineAllowedByManagedPolicy('acp')) return null;
   const auth = registryAuthFor(connection)?.auth;
   const rule = auth?.statusRule;
   const target = await statusCommandFor(connection);

@@ -13,8 +13,8 @@ import {
 export type { ACPConnectionInfo, ACPConnectionRegistryEntry };
 export { recheckACPConnectionRegistry, refreshACPPublicRegistrySource };
 
-export function useACPConnections() {
-  return useACPConnectionsQuery();
+export function useACPConnections(enabled = true) {
+  return useACPConnectionsQuery({ enabled });
 }
 
 /** Live probe status; polled only while `enabled` (a first start runs). */

@@ -14,7 +14,10 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import type { TurnDeliveryInspection } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import {
   sendExecutionMessage,
   sentTurnKey,
@@ -369,6 +372,42 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     };
     return { root, store, adapter, service, app, send, lookup };
   }
+
+  test('a stopped unstarted successor does not make the original conversation delivery ledger unavailable', async () => {
+    const { store, service, send } = station();
+    const conversationId = 'conversation:stopped-reservation';
+    const sent = await send(conversationId, 'original-key');
+    expect(sent.status, await sent.clone().text()).toBe(200);
+    const { sessionId } = (
+      (await sent.json()) as { data: { sessionId: string } }
+    ).data;
+    const scope = sessionReadAuthorityFromRequest(OWNER, undefined, undefined);
+    expect(
+      service.inspectTurnDelivery(conversationId, 'original-key', scope)
+        ?.outcome,
+    ).toBe('started');
+    store.reserveNextConversationSession({
+      conversationId,
+      predecessorSessionId: sessionId,
+      proposedSessionId: 'unstarted-child',
+      createdAt: new Date().toISOString(),
+    });
+    store.markSessionClosed('unstarted-child', 'claude');
+    expect(
+      service.inspectTurnDelivery(conversationId, 'original-key', scope)
+        ?.outcome,
+    ).toBe('started');
+    expect(
+      service.inspectTurnDelivery(conversationId, 'next-key', scope)?.outcome,
+    ).toBe('not-received');
+    expect(
+      service.inspectTurnDelivery(
+        conversationId,
+        'original-key',
+        sessionReadAuthorityFromRequest(STRANGER, undefined, undefined),
+      ),
+    ).toBeNull();
+  });
 
   test.each(['cancelled', 'definitively-refused'] as const)(
     'a %s key answers a closed 409 to its reader and rejects replay without exposing it to another caller',

@@ -11,6 +11,7 @@ import {
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { createStationOriginPolicy } from '../../../security/station-browser-origins.js';
 import {
   accountSharingOriginOptions,
   offeredAccountSharingOrigin,
@@ -196,14 +197,16 @@ describe('offered sign-in origins (#4305)', () => {
     apiPort: 3141,
     uiPort: 3000,
     uiIngressAuthority: '192.168.1.20:3000',
-    browserOrigins: [
-      'http://localhost:3141',
-      'http://127.0.0.1:3141',
-      'http://[::1]:3141',
-      'http://localhost:3000',
-      'https://station.tailnet.ts.net',
-      'http://192.168.1.20:3000',
-    ],
+    originPolicy: createStationOriginPolicy({
+      configured: [
+        'http://localhost:3141',
+        'http://127.0.0.1:3141',
+        'http://[::1]:3141',
+        'http://localhost:3000',
+        'https://station.tailnet.ts.net',
+        'http://192.168.1.20:3000',
+      ],
+    }),
     allowedOrigins: [
       'http://localhost:3000',
       'https://station.tailnet.ts.net',
@@ -215,8 +218,8 @@ describe('offered sign-in origins (#4305)', () => {
     ],
   };
 
-  test('lists known origins with their sources and why any cannot be chosen', () => {
-    const options = accountSharingOriginOptions(base);
+  test('lists known origins with their sources and why any cannot be chosen', async () => {
+    const options = await accountSharingOriginOptions(base);
     expect(options).toEqual([
       {
         origin: 'https://station.tailnet.ts.net',
@@ -239,8 +242,8 @@ describe('offered sign-in origins (#4305)', () => {
     ]);
   });
 
-  test('only a selectable option is accepted, compared exactly', () => {
-    const options = accountSharingOriginOptions(base);
+  test('only a selectable option is accepted, compared exactly', async () => {
+    const options = await accountSharingOriginOptions(base);
     expect(
       offeredAccountSharingOrigin(options, 'https://station.tailnet.ts.net'),
     ).toBe('https://station.tailnet.ts.net');
@@ -254,13 +257,15 @@ describe('offered sign-in origins (#4305)', () => {
       expect(offeredAccountSharingOrigin(options, refused)).toBeUndefined();
   });
 
-  test('a bound UI host is unavailable without HTTPS, and spelling must be admitted exactly', () => {
-    const options = accountSharingOriginOptions({
+  test('a bound UI host is unavailable without HTTPS, and spelling must be admitted exactly', async () => {
+    const options = await accountSharingOriginOptions({
       ...base,
       host: '100.64.0.7',
       uiIngressAuthority: 'station.tailnet.ts.net',
       allowedOrigins: ['https://station.tailnet.ts.net/'],
-      browserOrigins: ['https://station.tailnet.ts.net/'],
+      originPolicy: createStationOriginPolicy({
+        configured: ['https://station.tailnet.ts.net/'],
+      }),
       tailscaleServeOrigins: [],
     });
     expect(options.slice(0, 3)).toEqual([
@@ -282,8 +287,8 @@ describe('offered sign-in origins (#4305)', () => {
     ]);
   });
 
-  test('does not offer API listener origins even when allowed', () => {
-    const options = accountSharingOriginOptions({
+  test('does not offer API listener origins even when allowed', async () => {
+    const options = await accountSharingOriginOptions({
       ...base,
       allowedOrigins: [
         ...base.allowedOrigins,
@@ -307,15 +312,15 @@ describe('offered sign-in origins (#4305)', () => {
     );
   });
 
-  test('does not treat an unobserved allowed origin as UI ingress', () => {
-    const options = accountSharingOriginOptions({
+  test('does not treat an unobserved allowed origin as UI ingress', async () => {
+    const options = await accountSharingOriginOptions({
       ...base,
       allowedOrigins: [...base.allowedOrigins, 'https://api.example.test'],
     });
     expect(options.map((option) => option.origin)).not.toContain(
       'https://api.example.test',
     );
-    const observed = accountSharingOriginOptions({
+    const observed = await accountSharingOriginOptions({
       ...base,
       uiIngressAuthority: 'api.example.test',
       allowedOrigins: ['https://api.example.test'],

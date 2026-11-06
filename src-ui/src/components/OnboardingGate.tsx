@@ -48,6 +48,7 @@ import {
   useOnboardingSetupState,
 } from '../contexts/onboarding-setup-store';
 import { useToast } from '../contexts/ToastContext';
+import { useManagedRemoteClientsLimit } from '../hooks/useManagedRemoteClientsRefusal';
 import { usePairingDeepLink } from '../hooks/usePairingDeepLink';
 import { useRecoveryConfig } from '../hooks/useRecoveryConfig';
 import { useSystemStatus } from '../hooks/useSystemStatus';
@@ -82,6 +83,7 @@ import './OnboardingGate.css';
 import { triggerHaptic } from '../platform/native/haptics';
 import { primeNativeNotifications } from '../platform/native/notify';
 import { LazyBoundary } from './LazyBoundary';
+import { ManagedRemoteClientsNote } from './managed/ManagedRemoteClientsNote';
 import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 
 type ConnectionModalMode =
@@ -178,6 +180,23 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     showModalRef.current = showModal;
   }, [showModal]);
+  // The request the open manager is showing a waiting view for. The shell's
+  // reconciler owns its completion; the manager closes once it settles.
+  const modalAwaitingRequestIdRef = useRef<string | null>(null);
+  const closeConnectionModal = () => {
+    modalAwaitingRequestIdRef.current = null;
+    showModalRef.current = false;
+    setShowModal(false);
+    pairingPayloadRef.current = undefined;
+    setPairingPayload(undefined);
+    setPairingLinkError(undefined);
+  };
+  const closeModalAwaiting = (requestId: string) => {
+    if (modalAwaitingRequestIdRef.current === requestId) closeConnectionModal();
+  };
+  // #4519: the connected Station's policy allows no remote clients, so its
+  // pairing panel explains that instead of offering a code.
+  const remoteClientsLimit = useManagedRemoteClientsLimit();
   const [connectionModalMode, setConnectionModalMode] =
     useState<ConnectionModalMode>('list');
   const [pairingPayload, setPairingPayload] = useState<string | undefined>();
@@ -498,7 +517,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     // one twice over here, since the sentence before it had just named the
     // Station. Naming it again is what the map does.
     if (effectivePendingExchange?.exchangeAttempt)
-      return `Pairing with ${serverLabel} may have granted access without saving it, and won’t be retried. On that computer, revoke that access, then start again.`;
+      return `Access to ${serverLabel} wasn’t saved here. Pair again to replace it.`;
     const waitMessage = waitingForTransport
       ? `Waiting to reach ${serverLabel} again. The request stays open.`
       : pairingStateCopy(
@@ -529,7 +548,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       actions: [
         {
           label: effectivePendingExchange?.exchangeAttempt
-            ? 'Review connection'
+            ? 'Pair again'
             : 'Cancel request',
           variant: 'secondary',
           onClick: () => {
@@ -802,8 +821,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           pending={null}
           componentProps={{
             pending: effectivePendingExchange,
-            enabled: !showModal,
             onCompleted: () => {
+              closeModalAwaiting(effectivePendingExchange.requestId);
               setPairingFailure(null);
               setPendingExchange(null);
               setIgnoredPendingRequestId(effectivePendingExchange.requestId);
@@ -823,6 +842,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             // phone went on reading that it was still waiting, with the
             // decline and its only remedy collapsed behind the stack cap.
             onTerminalFailure: (title: string, message: string) => {
+              closeModalAwaiting(effectivePendingExchange.requestId);
               // The target is optional on the record's type. Every producer
               // sets it (`resolvePendingTarget`), and `restoredPendingExchange`
               // will not surface a record missing it — so the fallback is for a
@@ -847,6 +867,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             onConnectionWaiting: () => setWaitingForTransport(true),
             onApprovalWaiting: () => setWaitingForTransport(false),
             onIndeterminate: (held: PendingPairingExchange) => {
+              closeModalAwaiting(held.requestId);
               setWaitingForTransport(false);
               setPendingExchange((current) =>
                 current?.exchangeAttempt ? current : held,
@@ -890,13 +911,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       ) : null}
       <ConnectionManagerModal
         isOpen={showModal}
-        onClose={() => {
-          showModalRef.current = false;
-          setShowModal(false);
-          pairingPayloadRef.current = undefined;
-          setPairingPayload(undefined);
-          setPairingLinkError(undefined);
-        }}
+        onClose={closeConnectionModal}
         checkHealth={checkServerHealthDetailed}
         activeHealth={
           activeConnection
@@ -921,6 +936,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setStationSetupOpen(true);
         }}
         initialPanel={connectionModalMode}
+        pairingRefusal={
+          remoteClientsLimit ? (
+            <ManagedRemoteClientsNote summary={remoteClientsLimit} />
+          ) : undefined
+        }
         renderConnectionDetails={(connection) =>
           connection.id === activeConnection?.id ? (
             <StationExtensionsAccess />
@@ -980,7 +1000,19 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setIgnoredPendingRequestId(null);
           setWaitingForTransport(false);
           setPairingPayload(undefined);
-          setShowModal(false);
+          // The manager stays open on its waiting view (or closes itself for
+          // an address-only request); the reconciler polls either way.
+          modalAwaitingRequestIdRef.current = pending.requestId;
+        }}
+        onApprovalCancelled={(pending) => {
+          if (modalAwaitingRequestIdRef.current === pending.requestId)
+            modalAwaitingRequestIdRef.current = null;
+          // Retiring the shell's copy unmounts the reconciler, aborting its
+          // flight; without this it would keep claiming a request the person
+          // abandoned. An exchange already in flight stays held, as on any abort.
+          setPendingExchange(null);
+          setIgnoredPendingRequestId(pending.requestId);
+          setWaitingForTransport(false);
         }}
       />
     </>

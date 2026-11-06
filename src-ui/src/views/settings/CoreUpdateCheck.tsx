@@ -28,6 +28,7 @@ import {
   type ConnectedServerUpdateContext,
   coreUpdateScopeFromContext,
 } from '../../hooks/useConnectedServerUpdateContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   ComparisonMessage,
   comparisonMetadata,
@@ -798,7 +799,7 @@ export function CoreUpdateCheck({
       )}
       {updateMutation.error && (
         <div className="settings__update-msg settings__update-msg--error">
-          {(updateMutation.error as Error).message}
+          {describeStationFailure(updateMutation.error).body}
         </div>
       )}
       {comparisonSuperseded && status && historicalTime && (

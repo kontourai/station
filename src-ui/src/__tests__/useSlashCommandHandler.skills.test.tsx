@@ -268,7 +268,7 @@ describe('typing a command skill', () => {
     await expect(run('/release-check')).resolves.toBe(true);
     expect(mocks.addEphemeralMessage).toHaveBeenCalledWith('session-1', {
       role: 'system',
-      content: 'Could not read /release-check: skill read failed',
+      content: 'Could not read /release-check: Try again in a moment.',
     });
     expect(mocks.runSkill).not.toHaveBeenCalled();
   });

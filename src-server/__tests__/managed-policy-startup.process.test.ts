@@ -12,6 +12,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   symlinkSync,
@@ -19,6 +20,13 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import {
+  EVERY_KEY_ENGINE_GATEWAY,
+  EVERY_KEY_ENGINE_SUMMARY,
+  EVERY_KEY_FEED_URL,
+  EVERY_KEY_POLICY,
+  EVERY_KEY_SUMMARY_LIMITS,
+} from '../../packages/contracts/src/__tests__/managed-policy-every-key.fixture.js';
 import { localLabEnvironment } from '../../scripts/lib/local-collaboration-process.mjs';
 import {
   captureOwnedProcessOutput,
@@ -152,6 +160,62 @@ async function expectRefusal(
   return { stderr: markerLine as string, fullStderr: stderr.text, policyPath };
 }
 
+/** Boot a server on `policyPath` and mint a local credential for it. */
+async function bootWithGrant(
+  root: string,
+  policyPath: string,
+  extraEnv: Record<string, string> = {},
+) {
+  const env = { ...isolatedEnv(root, policyPath), ...extraEnv };
+  const { owned } = startServer(env);
+  const child = owned.child;
+  if (!('stdout' in child) || !child.stdout)
+    throw new Error('Station stdout unavailable');
+  let pending = '';
+  const ready = new Promise<number>((resolveReady) => {
+    child.stdout?.on('data', (chunk: Buffer) => {
+      pending += chunk.toString('utf8');
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+      for (const line of lines)
+        if (line.startsWith(readyPrefix))
+          resolveReady(JSON.parse(line).port as number);
+    });
+  });
+  const early = owned.completion.then((result) => {
+    throw new Error(`Station exited before listening (${result.status})`);
+  });
+  void early.catch(() => {});
+  const port = await bounded(
+    Promise.race([ready, early]),
+    'readiness',
+    150_000,
+  );
+  const apiBase = `http://127.0.0.1:${port}`;
+
+  const grant = await fetch(
+    `${apiBase}/.well-known/station/v1/pairing/local-grant`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: readFileSync(
+          join(env.STATION_HOME, 'runtime/local-grant.secret'),
+          'utf8',
+        ).trim(),
+        deviceName: 'managed-policy-test',
+        clientInstanceId: randomUUID(),
+      }),
+    },
+  );
+  const grantBody = await grant.text();
+  expect(grant.status, grantBody).toBe(200);
+  const { credential } = JSON.parse(grantBody) as { credential: string };
+  expect(credential).toBeTruthy();
+
+  return { env, apiBase, credential };
+}
+
 describe('managed policy at real server startup', () => {
   test.each([
     {
@@ -174,14 +238,15 @@ describe('managed policy at real server startup', () => {
       reason: 'schemaVersion: 2 is newer than this version of Station',
     },
     {
-      name: 'a limits key this build does not enforce',
+      name: 'a limits key this build does not know',
       body: JSON.stringify({
         schemaVersion: 1,
         organization: 'Acme',
-        limits: { telemetry: false },
+        // Every planned limit is enforced (#4515): no reserved key remains.
+        limits: { retentionDays: 30 },
       }),
       reason:
-        'limits.telemetry: this limit is not supported by this version of Station',
+        'limits.retentionDays: unknown limit; this version of Station refuses keys it cannot enforce',
     },
     {
       name: 'a schema mismatch (organization is not a string)',
@@ -286,53 +351,7 @@ describe('managed policy at real server startup', () => {
         '{"organization":"Acme","schemaVersion":1,"supportUrl":"https://help.example/station"}',
       )
       .digest('hex')}`;
-    const env = isolatedEnv(root, policyPath);
-    const { owned } = startServer(env);
-    const child = owned.child;
-    if (!('stdout' in child) || !child.stdout)
-      throw new Error('Station stdout unavailable');
-    let pending = '';
-    const ready = new Promise<number>((resolveReady) => {
-      child.stdout?.on('data', (chunk: Buffer) => {
-        pending += chunk.toString('utf8');
-        const lines = pending.split('\n');
-        pending = lines.pop() ?? '';
-        for (const line of lines)
-          if (line.startsWith(readyPrefix))
-            resolveReady(JSON.parse(line).port as number);
-      });
-    });
-    const early = owned.completion.then((result) => {
-      throw new Error(`Station exited before listening (${result.status})`);
-    });
-    void early.catch(() => {});
-    const port = await bounded(
-      Promise.race([ready, early]),
-      'readiness',
-      150_000,
-    );
-    const apiBase = `http://127.0.0.1:${port}`;
-
-    const grant = await fetch(
-      `${apiBase}/.well-known/station/v1/pairing/local-grant`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret: readFileSync(
-            join(env.STATION_HOME, 'runtime/local-grant.secret'),
-            'utf8',
-          ).trim(),
-          deviceName: 'managed-policy-test',
-          clientInstanceId: randomUUID(),
-        }),
-      },
-    );
-    const grantBody = await grant.text();
-    expect(grant.status, grantBody).toBe(200);
-    const { credential } = JSON.parse(grantBody) as { credential: string };
-    expect(credential).toBeTruthy();
-
+    const { env, apiBase, credential } = await bootWithGrant(root, policyPath);
     const unauthenticated = await fetch(
       `${apiBase}/api/settings/managed-policy`,
     );
@@ -548,3 +567,361 @@ describe('managed policy at real server startup', () => {
     expect(stored).not.toHaveProperty('checkoutStaleAfterDays');
   }, 300_000);
 });
+
+describe('the managed update limit at a real server (#4522)', () => {
+  test('off refuses the core update check and apply, and the summary never carries the feed URL', async () => {
+    const root = fixtureRoot();
+    const policyPath = join(root, 'policy.json');
+    writeFileSync(
+      policyPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: {
+          updates: {
+            mode: 'off',
+            feedUrl: 'https://mirror.example/feed-secret-token/',
+            allowNightly: false,
+          },
+        },
+      }),
+    );
+    const { apiBase, credential } = await bootWithGrant(root, policyPath);
+    const headers = { Authorization: `Bearer ${credential}` };
+
+    const summary = await fetch(`${apiBase}/api/settings/managed-policy`, {
+      headers,
+    });
+    const summaryText = await summary.text();
+    expect(summary.status, summaryText).toBe(200);
+    expect(summaryText).not.toContain('feed-secret-token');
+    expect(JSON.parse(summaryText).data.summary.limits).toEqual({
+      updates: { mode: 'off', mirror: true, allowNightly: false },
+    });
+
+    const check = await fetch(`${apiBase}/api/system/core-update`, {
+      headers,
+    });
+    expect(check.status).toBe(200);
+    expect(await check.json()).toMatchObject({
+      updateAvailable: false,
+      managedPolicyCode: 'managed-policy-updates-refused',
+      message: "This machine's managed policy turns off Station updates.",
+    });
+
+    const apply = await fetch(`${apiBase}/api/system/core-update`, {
+      method: 'POST',
+      headers,
+    });
+    expect(apply.status).toBe(403);
+    expect(await apply.json()).toMatchObject({
+      code: 'managed-policy-updates-refused',
+    });
+  }, 300_000);
+});
+
+describe('every enforced key at a real server (#4515)', () => {
+  // The combined policy the contracts round trip and `station policy check`
+  // use. Startup composes every slice's installation (settings overlay,
+  // capability switches, listener admission, update limit), so one boot
+  // proves they load together and each still enforces.
+  test('starts, reports every limit as clients see it, and each slice still refuses', async () => {
+    const root = fixtureRoot();
+    const policyPath = join(root, 'policy.json');
+    writeFileSync(policyPath, JSON.stringify(EVERY_KEY_POLICY));
+    const { apiBase, credential } = await bootWithGrant(root, policyPath);
+    const headers = { Authorization: `Bearer ${credential}` };
+
+    const summary = await fetch(`${apiBase}/api/settings/managed-policy`, {
+      headers,
+    });
+    const summaryText = await summary.text();
+    expect(summary.status, summaryText).toBe(200);
+    expect(summaryText).not.toContain(EVERY_KEY_FEED_URL);
+    expect(summaryText).not.toContain(EVERY_KEY_ENGINE_GATEWAY);
+    expect(JSON.parse(summaryText).data.summary).toEqual({
+      organization: 'Acme',
+      supportUrl: 'https://help.example/station',
+      lockedSettings: ['defaultMaxTurns'],
+      limits: EVERY_KEY_SUMMARY_LIMITS,
+      engines: EVERY_KEY_ENGINE_SUMMARY,
+    });
+
+    // #4522: updates are off.
+    const check = await fetch(`${apiBase}/api/system/core-update`, {
+      headers,
+    });
+    expect(check.status).toBe(200);
+    expect(await check.json()).toMatchObject({
+      managedPolicyCode: 'managed-policy-updates-refused',
+    });
+
+    // #4521: inbound webhooks are refused before anything is read.
+    const webhook = await fetch(`${apiBase}/api/webhooks/inbound`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    const webhookText = await webhook.text();
+    expect(webhook.status, webhookText).toBe(403);
+    expect(JSON.parse(webhookText).code).toBe(
+      'managed-policy-capability-disabled',
+    );
+
+    // #4517: the locked setting is in effect and refuses a write.
+    const write = await fetch(`${apiBase}/config/app`, {
+      method: 'PUT',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultMaxTurns: 41 }),
+    });
+    const writeText = await write.text();
+    expect(write.status, writeText).toBe(403);
+    expect(JSON.parse(writeText).code).toBe('managed_setting_locked');
+  }, 300_000);
+});
+
+// Engine programs installed on the test's own PATH, so the engine-default
+// Agents are listed whether or not the host has the real CLIs. Each one only
+// reports a version.
+function installedEngines(root: string): Record<string, string> {
+  const bin = join(root, 'installed-engines');
+  mkdirSync(bin, { recursive: true });
+  for (const name of ['claude', 'codex', 'muse'])
+    writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} 1.0.0"\n`, {
+      mode: 0o755,
+    });
+  return {
+    PATH: `${bin}:${process.env.PATH ?? ''}`,
+    STATION_DISABLE_LOGIN_PATH_RESOLVE: '1',
+  };
+}
+
+describe.skipIf(process.platform === 'win32')(
+  '#4515: a disallowed engine answers the managed refusal on the real chat and delegation routes',
+  () => {
+    // No injected refusal: the real server, the real connection inspector
+    // (which reads a disallowed engine as disabled), the real Agent catalog
+    // and the real execution-target resolver. The verifier saw these answer
+    // 400 "Codex is turned off." under a policy that does not allow codex.
+    const send = async (
+      apiBase: string,
+      credential: string,
+      route: 'chat' | 'delegations',
+      agent: string,
+    ) => {
+      const target = { environment: { kind: 'current' }, agent };
+      const body =
+        route === 'chat'
+          ? {
+              target,
+              conversationId: `chat:${randomUUID()}`,
+              clientTurnId: randomUUID(),
+              message: 'hello',
+            }
+          : { target, prompt: 'hello', clientTurnId: randomUUID() };
+      const response = await fetch(`${apiBase}/api/orchestration/${route}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as { error?: string; code?: string },
+      };
+    };
+
+    // The engine-default Agents are listed once the connections are
+    // inspected; wait for codex as a person opening the picker would.
+    const waitForAgent = async (
+      apiBase: string,
+      credential: string,
+      slug: string,
+    ) => {
+      const deadline = Date.now() + 120_000;
+      let last = 0;
+      while (Date.now() < deadline) {
+        const response = await fetch(`${apiBase}/api/agents/${slug}`, {
+          headers: { Authorization: `Bearer ${credential}` },
+        });
+        last = response.status;
+        await response.body?.cancel();
+        if (response.ok) return;
+        await new Promise((wait) => setTimeout(wait, 500));
+      }
+      throw new Error(`the ${slug} Agent was never listed (last ${last})`);
+    };
+
+    test('with codex not allowed, chat and delegation answer 403 with the code and the organization', async () => {
+      const root = fixtureRoot();
+      const policyPath = join(root, 'policy.json');
+      writeFileSync(
+        policyPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          organization: 'Acme',
+          limits: { engines: { allowed: ['claude', 'station-agent'] } },
+        }),
+      );
+      const { apiBase, credential } = await bootWithGrant(
+        root,
+        policyPath,
+        installedEngines(root),
+      );
+      await waitForAgent(apiBase, credential, 'codex');
+      for (const route of ['chat', 'delegations'] as const) {
+        const { status, body } = await send(
+          apiBase,
+          credential,
+          route,
+          'codex',
+        );
+        expect(status, `${route}: ${JSON.stringify(body)}`).toBe(403);
+        expect(body.code, route).toBe('managed-policy-engine-refused');
+        expect(body.error, route).toContain(
+          "Acme's policy manages which engines run on this computer: codex is not allowed",
+        );
+      }
+    }, 300_000);
+
+    test('control: an engine the user turned off keeps the plain message', async () => {
+      const root = fixtureRoot();
+      const policyPath = join(root, 'policy.json');
+      // A policy that limits nothing about engines.
+      writeFileSync(
+        policyPath,
+        JSON.stringify({ schemaVersion: 1, organization: 'Acme' }),
+      );
+      const { apiBase, credential } = await bootWithGrant(
+        root,
+        policyPath,
+        installedEngines(root),
+      );
+      const off = await fetch(`${apiBase}/config/app`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentConnections: { codex: { enabled: false } },
+        }),
+      });
+      expect(off.status).toBe(200);
+      await waitForAgent(apiBase, credential, 'codex');
+      for (const route of ['chat', 'delegations'] as const) {
+        const { status, body } = await send(
+          apiBase,
+          credential,
+          route,
+          'codex',
+        );
+        expect(status, `${route}: ${JSON.stringify(body)}`).toBe(400);
+        expect(body.error, route).toBe('Codex is turned off.');
+        expect(body.code, route).toBeUndefined();
+      }
+    }, 300_000);
+  },
+);
+
+describe.skipIf(process.platform === 'win32')(
+  '#4515: a disallowed engine program is never run, at boot, for Accounts or for system status',
+  () => {
+    // Executables named for each engine, first on the server's PATH, that
+    // record every run. The login-shell PATH is not consulted, so nothing
+    // else of the same name can be found instead.
+    const markerEngines = (root: string) => {
+      const bin = join(root, 'engines-bin');
+      const log = join(root, 'engine-runs.log');
+      mkdirSync(bin, { recursive: true });
+      for (const name of ['claude', 'codex', 'muse'])
+        writeFileSync(
+          join(bin, name),
+          `#!/bin/sh\nprintf '%s %s\\n' "${name}" "$*" >> ${JSON.stringify(log)}\nexit 1\n`,
+          { mode: 0o755 },
+        );
+      return {
+        env: {
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+          STATION_DISABLE_LOGIN_PATH_RESOLVE: '1',
+        },
+        runs: () =>
+          existsSync(log)
+            ? readFileSync(log, 'utf8').split('\n').filter(Boolean)
+            : [],
+      };
+    };
+
+    const exercise = async (allowed: string[]) => {
+      const root = fixtureRoot();
+      const policyPath = join(root, 'policy.json');
+      writeFileSync(
+        policyPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          organization: 'Acme',
+          limits: { engines: { allowed } },
+        }),
+      );
+      const engines = markerEngines(root);
+      const { apiBase, credential } = await bootWithGrant(
+        root,
+        policyPath,
+        engines.env,
+      );
+      const get = async (path: string) => {
+        const response = await fetch(`${apiBase}${path}`, {
+          headers: { Authorization: `Bearer ${credential}` },
+        });
+        const text = await response.text();
+        return { status: response.status, text };
+      };
+      // The engine connections are listed once inspection completes.
+      const accounts: Record<string, { status: number; text: string }> = {};
+      for (const engine of ['claude', 'codex']) {
+        const deadline = Date.now() + 120_000;
+        do {
+          accounts[engine] = await get(
+            `/api/connections/agent/${engine}/accounts`,
+          );
+          if (accounts[engine].status !== 404) break;
+          await new Promise((wait) => setTimeout(wait, 500));
+        } while (Date.now() < deadline);
+        if (accounts[engine].status === 404)
+          accounts[engine].text +=
+            ` connections: ${(await get('/api/connections')).text.slice(0, 3000)}`;
+      }
+      const status = await get('/api/system/status');
+      // Boot priming is fire-and-forget; give every probe it or the
+      // requests above started time to run before reading the record.
+      await new Promise((wait) => setTimeout(wait, 5_000));
+      return { accounts, status, runs: engines.runs() };
+    };
+
+    test('with no engine allowed, nothing named for an engine runs', async () => {
+      const { accounts, status, runs } = await exercise([]);
+      for (const [engine, answer] of Object.entries(accounts))
+        expect(answer.status, `${engine}: ${answer.text}`).toBe(200);
+      expect(status.status, status.text).toBe(200);
+      expect(runs).toEqual([]);
+    }, 300_000);
+
+    test('control: with claude and codex allowed, the same boot and requests run both', async () => {
+      const { accounts, status, runs } = await exercise([
+        'claude',
+        'codex',
+        'station-agent',
+      ]);
+      for (const [engine, answer] of Object.entries(accounts))
+        expect(answer.status, `${engine}: ${answer.text}`).toBe(200);
+      expect(status.status, status.text).toBe(200);
+      const ran = new Set(runs.map((line) => line.split(' ')[0]));
+      expect([...ran].sort(), runs.join('\n')).toEqual(
+        expect.arrayContaining(['claude', 'codex']),
+      );
+      expect(ran.has('muse'), runs.join('\n')).toBe(false);
+    }, 300_000);
+  },
+);

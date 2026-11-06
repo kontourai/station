@@ -9,6 +9,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
+import { PEER_CHAT_UPLOAD_GRANT_HEADER } from '@kontourai/station-contracts/peer-chat';
 import { envelopeError } from './api-error-message';
 import { ChatHttpError } from './chatHttpError';
 import {
@@ -16,6 +17,7 @@ import {
   type ClientRequestOptions,
   getJson,
   mutateJson,
+  mutateText,
 } from './http';
 import { unlessDeadline } from './request-deadline';
 import { isStationAnswer, observeStationResponse } from './station-envelope';
@@ -210,6 +212,25 @@ export async function uploadAttachmentStage(
     opts?.requestScope,
   );
   const url = `${apiBase}${ROOT}/${encodeURIComponent(preparation.stageId)}`;
+  if (/\/api\/environments\/peers\/[^/]+\/chat-api$/.test(apiBase)) {
+    if (!opts?.requestScope)
+      throw new Error('Relay upload requires source request authority.');
+    return await read<StagedAttachmentReference>(
+      await mutateText(
+        url,
+        'PUT',
+        {
+          ...opts,
+          headers: {
+            ...opts.headers,
+            [PEER_CHAT_UPLOAD_GRANT_HEADER]: preparation.uploadGrant,
+          },
+        },
+        dataUrl,
+      ),
+      'Attachment staging could not be uploaded.',
+    );
+  }
   const response = opts?.transport
     ? await opts.transport({
         url,

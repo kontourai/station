@@ -143,7 +143,7 @@ test('lost attachment response retains the same request identity for explicit co
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: 'Attach S3 prefix' }));
-  await screen.findByText('Lost attachment response');
+  await screen.findByText('Try again in a moment.');
   const id = state.attach.mock.calls[0]![0].id;
   expect(state.attach).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh S3 sources' }));
@@ -204,5 +204,5 @@ test('a selected object is ETag-pinned and cached text is withheld on a fresh er
   state.readError = true;
   view.rerender(<ProjectS3Sources {...props} />);
   expect(screen.queryByText('Private selected text')).toBeNull();
-  expect(screen.getByText(/Object changed/)).toBeTruthy();
+  expect(screen.getByText(/Try again in a moment/)).toBeTruthy();
 });

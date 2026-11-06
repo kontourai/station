@@ -253,6 +253,7 @@ export const SESSION_STATUS_WORDS = {
   answer: 'Needs answer',
   waiting: 'Waiting on you',
   queued: 'Queued to send',
+  'delivery-unconfirmed': 'Delivery unconfirmed',
   blocked: 'Blocked',
   interrupted: 'Interrupted',
   failed: 'Failed',

@@ -1,12 +1,8 @@
+import { isRecord } from './record-guard.js';
 import { isWellFormedUnicode } from './task-graph.js';
 
 /** Internal parser primitives; no public package subpath. */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
+export { isRecord } from './record-guard.js';
 
 export function onlyKeys(
   record: Record<string, unknown>,

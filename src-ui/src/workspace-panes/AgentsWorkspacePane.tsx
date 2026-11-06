@@ -32,6 +32,7 @@ import {
 import { useNavigation } from '../contexts/NavigationContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import { useActiveStationName } from '../hooks/useActiveStationName';
 import {
   useChatBackgroundTasks,
   useChatStoreKey,
@@ -188,6 +189,7 @@ export function AgentsWorkspacePane() {
   // No chat on screen: there is no "this conversation" to show.
   const scope: ChildWorkScope = chatKey ? (storedScope ?? 'chat') : 'all';
   const { apiBase } = useApiBase();
+  const stationName = useActiveStationName();
   const tools = useChatBackgroundTasks(
     scope === 'chat' ? chatKey : null,
     apiBase,
@@ -341,6 +343,7 @@ export function AgentsWorkspacePane() {
     <ChildWorkRow
       key={row.key}
       row={row}
+      stationName={stationName}
       now={now}
       agent={
         row.item.producer === 'station-delegate'

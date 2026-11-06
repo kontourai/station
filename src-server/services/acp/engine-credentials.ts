@@ -7,6 +7,7 @@
  * one place, the environment of that connection's own engine processes.
  */
 
+import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import { ToolServerCredentialStore } from '../plugins/tool-server-credential-store.js';
 import { registryAuthFor } from './acp-engine-descriptors.js';
 
@@ -125,6 +126,9 @@ export function engineCredentialEnvFor(connection: {
   id: string;
   command: string;
 }): Record<string, string> | undefined {
+  // #4515: a key stored for an ACP engine the managed policy does not allow
+  // is never read, whichever caller asks (launch, probe, sign-in, status).
+  if (!engineAllowedByManagedPolicy('acp')) return undefined;
   const store = registered;
   if (!store) return undefined;
   const names = registryAuthFor(connection)?.auth.credentialEnvVars ?? [];

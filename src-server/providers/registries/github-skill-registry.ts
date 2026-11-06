@@ -20,6 +20,7 @@ import {
 import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import type { ISkillRegistryProvider } from '../provider-interfaces.js';
 import { readBoundedJson } from './catalog-http.js';
+import { fetchRegistryResource, managedRegistryHop } from './registry-fetch.js';
 
 interface GitHubTreeItem {
   path: string;
@@ -112,15 +113,20 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
 
   private async request(path: string, signal?: AbortSignal): Promise<Response> {
     const url = `https://api.github.com/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/${path}`;
-    const response = await fetch(url, {
-      signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
-        : AbortSignal.timeout(15000),
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'station',
+    // #4521: every redirect hop is checked before it is requested.
+    const response = await fetchRegistryResource(
+      url,
+      {
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
+          : AbortSignal.timeout(15000),
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'station',
+        },
       },
-    });
+      managedRegistryHop,
+    );
     if (!response.ok) throw new Error(`GitHub API ${response.status}`);
     return response;
   }
@@ -141,10 +147,14 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
   ): Promise<Buffer> {
     this.assertSha(entry.sha);
     const url = `https://raw.githubusercontent.com/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/${commit}/${entry.path.split('/').map(encodeURIComponent).join('/')}`;
-    const response = await fetch(url, {
-      signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
-      headers: { 'User-Agent': 'station' },
-    });
+    const response = await fetchRegistryResource(
+      url,
+      {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+        headers: { 'User-Agent': 'station' },
+      },
+      managedRegistryHop,
+    );
     if (!response.ok)
       throw new Error(
         `GitHub skill blob acquisition failed: ${response.status}`,

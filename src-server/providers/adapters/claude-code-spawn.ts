@@ -6,6 +6,12 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEngineBinaryPath,
+  managedEngineLaunch,
+  managedEngineLaunchRefusal,
+} from '../../security/managed-engine-limits.js';
 import { terminateProcessTree } from '../../services/infra/process-utils.js';
 import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import {
@@ -73,6 +79,42 @@ function tailOf(text: string): string {
 }
 
 /**
+ * #4520: the SDK's launch with a managed policy's pins merged in: pinned
+ * arguments after the SDK's own, pinned environment over it. The pinned
+ * executable reaches the SDK as `pathToClaudeCodeExecutable` (the adapter's
+ * `resolveClaudeExecutable`), and the SDK either spawns it or runs it with
+ * Node; a launch that runs neither (the bundled copy, because the pinned
+ * path is missing or cannot be spawned) is refused here instead of starting
+ * an engine the policy did not choose.
+ */
+export function managedClaudeLaunch(options: {
+  command: string;
+  args: readonly string[];
+  env: Record<string, string | undefined>;
+}): Omit<ClaudeSpawnLaunch, 'cwd'> {
+  // #4515: every Claude CLI the SDK starts comes through here.
+  assertEngineAllowedByManagedPolicy('claude');
+  const pinned = managedEngineBinaryPath('claude');
+  if (
+    pinned !== undefined &&
+    options.command !== pinned &&
+    !options.args.includes(pinned)
+  )
+    throw managedEngineLaunchRefusal(
+      'claude',
+      `the pinned executable ${pinned} could not be launched`,
+    );
+  // The executable is already the SDK's choice; only arguments and the
+  // environment are merged.
+  const { args, env } = managedEngineLaunch(
+    'claude',
+    { command: options.command, args: options.args, env: options.env },
+    'station',
+  );
+  return { command: options.command, args, env };
+}
+
+/**
  * #2932: owns the Claude CLI spawn so Station can read the permission asks
  * on its stdout. Agent SDK 0.3.278 reads `stdout` from whatever its
  * `spawnClaudeCodeProcess` option returns, and gives a custom spawner none
@@ -110,10 +152,8 @@ export function createClaudeEngineProcess(
     if (retired)
       throw new Error('The Claude engine process owner has retired.');
     const launch: ClaudeSpawnLaunch = {
-      command: options.command,
-      args: options.args,
       cwd: options.cwd,
-      env: options.env,
+      ...managedClaudeLaunch(options),
     };
     const { command, args, cwd, env } = wrap ? wrap(launch) : launch;
     spawned = { command, args: [...args] };

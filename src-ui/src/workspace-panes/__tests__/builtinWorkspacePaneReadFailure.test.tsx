@@ -104,7 +104,8 @@ describe('coding pane layout read failure (Review H1)', () => {
       expect(
         screen.getByText("Unable to load this Project's layout"),
       ).toBeTruthy();
-      expect(screen.getByText('layout read failed')).toBeTruthy();
+      expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+      expect(screen.queryByText('layout read failed')).toBeNull();
       expect(screen.queryByText('Workspace directory needed')).toBeNull();
     },
   );

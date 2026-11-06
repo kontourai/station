@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-sdk';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { SettingsPageRow as PageRow } from './SettingsPageRow';
 import { SettingsSection } from './SettingsSection';
 
@@ -83,7 +84,9 @@ export function FeaturePreviewsSection() {
                 }
               />
             ))}
-            {update.error && <p role="alert">{update.error.message}</p>}
+            {update.error && (
+              <p role="alert">{describeStationFailure(update.error).body}</p>
+            )}
           </>
         )}
       </div>

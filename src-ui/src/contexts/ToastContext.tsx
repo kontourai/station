@@ -1,5 +1,6 @@
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
+  type ContextType,
   createContext,
   type ReactNode,
   useCallback,
@@ -891,9 +892,13 @@ export function ToastProvider({
   );
 }
 
-export function useToast() {
+export function useToast(optional: true): ContextType<typeof ToastContext>;
+export function useToast(
+  optional?: false,
+): NonNullable<ContextType<typeof ToastContext>>;
+export function useToast(optional = false) {
   const context = useContext(ToastContext);
-  if (!context) {
+  if (!context && !optional) {
     throw new Error('useToast must be used within ToastProvider');
   }
   return context;

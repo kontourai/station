@@ -40,12 +40,31 @@ export class LanDiscovery {
     .replace(/[^a-zA-Z0-9-]/g, '-')
     .slice(0, 24)} ${randomUUID().slice(0, 8)}`;
 
+  /** #4519: why the managed policy forbids discovery, when it does. */
+  private managedRefusal?: string;
+
   snapshot(): LanDiscoveryStatus {
     return { ...this.status };
   }
 
+  /**
+   * #4519: the managed policy allows no remote clients. Discovery stays off
+   * whatever the configuration says, its status gives `message`, and the
+   * configuration route refuses turning it on.
+   */
+  refuseByManagedPolicy(message: string): void {
+    this.managedRefusal = message;
+    this.status = { state: 'disabled', message };
+  }
+
+  /** {@link refuseByManagedPolicy}'s message, when set. */
+  managedPolicyRefusal(): string | undefined {
+    return this.managedRefusal;
+  }
+
   configure(config: Pick<AppConfig, 'lanDiscoveryEnabled'>): Promise<void> {
-    const enabled = config.lanDiscoveryEnabled === true;
+    const enabled =
+      config.lanDiscoveryEnabled === true && this.managedRefusal === undefined;
     if (enabled === this.enabled) return this.queue;
     this.enabled = enabled;
     return this.reconcile();
@@ -113,7 +132,7 @@ export class LanDiscovery {
         if (!this.enabled) {
           this.status = {
             state: 'disabled',
-            message: 'Nearby discovery is off.',
+            message: this.managedRefusal ?? 'Nearby discovery is off.',
           };
           return;
         }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  parseLiveSurfaceFold,
   parseLiveSurfaceFrameHeader,
   parseLiveSurfaceInput,
   parseLiveSurfaceStreamState,
@@ -114,5 +115,93 @@ describe('producer status in the stream state', () => {
     { hostId: '' },
   ])('refuses %o', (bad) => {
     expect(parseLiveSurfaceStreamState({ ...state, ...bad })).toBeNull();
+  });
+});
+
+describe('foldables', () => {
+  test.each([
+    { kind: 'fold', posture: 'book' },
+    { kind: 'fold', posture: 'tent' },
+    { kind: 'fold', hingeAngle: 0 },
+    { kind: 'fold', hingeAngle: 112.5 },
+    { kind: 'fold', hingeAngle: 180 },
+    { kind: 'fold', tableMode: true },
+    { kind: 'fold', facing: 'up' },
+    { kind: 'fold', facing: 'down' },
+  ])('fold input %o', (value) => {
+    expect(parseLiveSurfaceInput(value)).toEqual(value);
+  });
+
+  test.each([
+    { kind: 'fold' },
+    { kind: 'fold', posture: 'flipped' },
+    { kind: 'fold', hingeAngle: -1 },
+    { kind: 'fold', hingeAngle: 181 },
+    { kind: 'fold', hingeAngle: Number.NaN },
+    { kind: 'fold', hingeAngle: '90' },
+    { kind: 'fold', tableMode: 'yes' },
+    { kind: 'fold', facing: 'sideways' },
+    { kind: 'fold', facing: 'down', tableMode: true },
+    // Exactly one control per event.
+    { kind: 'fold', posture: 'book', hingeAngle: 90 },
+    { kind: 'fold', posture: 'book', extra: 1 },
+  ])('refuses fold input %o', (value) => {
+    expect(parseLiveSurfaceInput(value)).toBeNull();
+  });
+
+  const fold = {
+    activeDisplay: 'inner',
+    hingeAngle: 90,
+    posture: 'book',
+    postures: ['closed', 'open', 'book'],
+    angleControl: true,
+  };
+
+  test('fold state is carried by a stream state record', () => {
+    const parsed = parseLiveSurfaceStreamState({
+      surfaceId: 'device:ios:1',
+      lease: {
+        surfaceId: 'device:ios:1',
+        epoch: 0,
+        holder: null,
+        expiresAt: null,
+      },
+      effectiveParams: {
+        maxFps: 10,
+        quality: 70,
+        maxWidth: 1280,
+        maxHeight: 1280,
+      },
+      fold,
+    });
+    expect(parsed?.fold).toEqual(fold);
+  });
+
+  test.each([
+    { ...fold, activeDisplay: 'back' },
+    { ...fold, hingeAngle: 200 },
+    { ...fold, posture: 'flat' },
+    { ...fold, postures: ['closed', 'sideways'] },
+    { ...fold, angleControl: 'yes' },
+    { ...fold, tableMode: 1 },
+    { ...fold, facingControl: 'yes' },
+    { ...fold, extra: true },
+  ])('refuses fold state %o', (value) => {
+    expect(parseLiveSurfaceFold(value)).toBeNull();
+  });
+
+  test('unknown hinge and posture are null, not absent', () => {
+    expect(
+      parseLiveSurfaceFold({ ...fold, hingeAngle: null, posture: null }),
+    ).toMatchObject({ hingeAngle: null, posture: null });
+  });
+
+  test('a frame names the display it shows', () => {
+    expect(
+      parseLiveSurfaceFrameHeader({ ...header, display: 'cover' }),
+    ).toMatchObject({ display: 'cover' });
+    expect(
+      parseLiveSurfaceFrameHeader({ ...header, display: 'back' }),
+    ).toBeNull();
   });
 });

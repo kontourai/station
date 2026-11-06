@@ -65,6 +65,9 @@ vi.mock('../contexts/NavigationContext', () => ({
 vi.mock('../views/settings/MemoryErasurePreview', () => ({
   MemoryErasurePreview: () => null,
 }));
+vi.mock('../views/settings/MemoryReview', () => ({
+  MemoryReview: () => null,
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   useKnowledgeRootsQuery: () => rootsQueryResult,
@@ -182,7 +185,8 @@ describe('KnowledgeStoreSection', () => {
     render(<KnowledgeStoreSection />);
 
     expect(screen.getByText("Couldn't load your knowledge store")).toBeTruthy();
-    expect(screen.getByText('network down')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('network down')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalled();
   });
@@ -190,9 +194,9 @@ describe('KnowledgeStoreSection', () => {
   // #2708: a refused create shows the error the REAL knowledge fetcher throws
   // for the route's own failure body. `POST /api/knowledge/roots` answers a
   // plain string `error` and no validation `details`
-  // (`knowledge-store-routes.ts`), so the view shows that sentence; the
-  // fetcher's error keeps the status.
-  test('a refused store create shows the route reason', async () => {
+  // (`knowledge-store-routes.ts`). The SDK retains its status and diagnostic;
+  // the view uses safe copy when there are no structured validation reasons.
+  test('a refused store create keeps safe copy and the SDK diagnostic status', async () => {
     const { createKnowledgeRoot, StationHttpError } = await import(
       '@kontourai/station-sdk/client'
     );
@@ -220,8 +224,12 @@ describe('KnowledgeStoreSection', () => {
     render(<KnowledgeStoreSection />);
 
     expect(
-      screen.getAllByText('Unknown adapterId: kit-missing-store').length,
-    ).toBeGreaterThan(0);
+      screen.getByText("Couldn't create your knowledge store"),
+    ).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(
+      screen.queryByText('Unknown adapterId: kit-missing-store'),
+    ).toBeNull();
   });
 
   test('empty state: creates the default personal knowledge store on click', () => {

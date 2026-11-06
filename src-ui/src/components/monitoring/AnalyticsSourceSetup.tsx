@@ -18,6 +18,7 @@ import { useState } from 'react';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { copyToClipboard } from '../../lib/clipboard';
 import { prepareRequesterConsentReview } from '../../platform/native/requesterConsent';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 
@@ -101,9 +102,7 @@ export function AnalyticsSourceSetup({
       if (result.message) setMessage(result.message);
       return result;
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : 'Source setup failed',
-      );
+      setMessage(describeStationFailure(error).body);
       return undefined;
     }
   }
@@ -136,9 +135,7 @@ export function AnalyticsSourceSetup({
         setMessage(`Requester review: ${status}.`);
     } catch (error) {
       windowRef.close();
-      setMessage(
-        error instanceof Error ? error.message : 'Requester review unavailable',
-      );
+      setMessage(describeStationFailure(error).body);
     }
   }
   const sourceDecision =
@@ -315,11 +312,7 @@ export function AnalyticsSourceSetup({
                   proof: parseAnalyticsTransfer(proofInput),
                 });
               } catch (error) {
-                setMessage(
-                  error instanceof Error
-                    ? error.message
-                    : 'Invalid receiving proof',
-                );
+                setMessage(describeStationFailure(error).body);
               }
             }}
           >
@@ -423,11 +416,7 @@ export function AnalyticsSourceSetup({
                   setRecipientId(result.recipient.candidate.claims.recipientId);
                 }
               } catch (error) {
-                setMessage(
-                  error instanceof Error
-                    ? error.message
-                    : 'Invalid source offer',
-                );
+                setMessage(describeStationFailure(error).body);
               }
             }}
           >
@@ -491,11 +480,7 @@ export function AnalyticsSourceSetup({
                   setRecipientId(result.recipient.candidate.claims.recipientId);
                 }
               } catch (error) {
-                setMessage(
-                  error instanceof Error
-                    ? error.message
-                    : 'Invalid encrypted connection',
-                );
+                setMessage(describeStationFailure(error).body);
               }
             }}
           >

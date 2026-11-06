@@ -374,6 +374,9 @@ const PAIRING_REQUEST_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
     'This Station has already granted you as many devices as it allows. Revoke one under Paired Devices on the Station, then try again.',
   unattributed_credential_quota_reached:
     'This Station has already granted as many devices as it allows. Revoke one under Paired Devices on the Station, then try again.',
+  // #4519: the Station's managed policy allows no remote clients.
+  'managed-policy-remote-clients':
+    'This Station’s organization allows only its own computer to connect. Ask its administrator for help.',
   [CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE]:
     'This Station no longer supports this version of the app. Install the latest Station app on this device, then pair again.',
 };
@@ -775,6 +778,9 @@ export function observePendingPairingApproval(
     );
     if (!record) continue;
     if (record.expiresAt <= now) continue;
+    // A held exchange attempt already left the approval stage: its outcome
+    // needs review, so no surface may describe it as awaiting approval.
+    if (record.exchangeAttempt) continue;
     const span =
       typeof record.requestedAt === 'number'
         ? record.expiresAt - record.requestedAt

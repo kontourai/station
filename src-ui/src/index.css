@@ -1397,6 +1397,14 @@ button:hover {
   background: var(--bg-input);
   overflow: hidden;
   position: relative;
+  /* The route outlet's side safe areas, at its own boundary: the toolbar and
+     the dock already inset themselves, and nothing inside the outlet does. A
+     foldable's cover display carries its status bar and camera as a vertical
+     column on one side (iOS 27.1's vertical bar), and a phone held sideways
+     its notch and rounded corner; without this the page's heading, cards and
+     banner actions ran under them. 0px wherever the platform reports none. */
+  padding-left: var(--safe-left, 0px);
+  padding-right: var(--safe-right, 0px);
 }
 
 .content-view {
@@ -1427,6 +1435,25 @@ button:hover {
 /* Fill frames delegate scrolling to their bodies and need the full width. */
 .content-view:not(:has(> .route-transition--fill, > .page-frame--fill)) {
   scrollbar-gutter: stable;
+}
+
+/* A folded display (Book posture): a single column must not run across the
+   crease, so it moves wholly into the larger side of it. `useFoldSplit`
+   measures the element and writes `data-fold-split` and the `--fold-split-*`
+   lengths; this class is the single-column treatment, and SplitPaneLayout and
+   the dock's Inbox row are the split one. A layout inside that places its own
+   panes on each side marks itself `data-fold-aware`, and the column then
+   leaves it the full width. Physical sides, because the crease is physical. */
+.fold-avoid-crease[data-fold-split="vertical"][data-fold-larger="end"]:not(
+  :has([data-fold-aware])
+) {
+  padding-left: calc(var(--fold-split-start) + var(--fold-split-gap));
+}
+
+.fold-avoid-crease[data-fold-split="vertical"][data-fold-larger="start"]:not(
+  :has([data-fold-aware])
+) {
+  padding-right: calc(var(--fold-split-end) + var(--fold-split-gap));
 }
 
 /* Root-route (`/`) restore placeholder (archive#223) — holds the content pane's
@@ -1560,6 +1587,15 @@ button:hover {
      edge would cut them off. The body is handled per region instead — chat
      via `.chat-dock__body`, the non-chat panes via the collapsed
      `.dock-slot__body` hide in the desktop block below. */
+}
+
+/* `DockShell` sets this only on a collapsed phone bar while a software
+   keyboard types into another surface: the bar would otherwise ride on top of
+   the keyboard. `visibility` also takes it out of the tab order and the
+   accessibility tree for that interval. */
+.chat-dock[data-keyboard-hidden] {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .chat-dock__file-drop-overlay {
@@ -3922,6 +3958,7 @@ button:hover {
 
 .message.assistant {
   align-self: flex-start;
+  color: var(--k-text);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
 }
@@ -5374,6 +5411,44 @@ button.tool-call__line:hover {
 
 /* Workspace dashboard styles are provided by plugins via their CSS bundles */
 
+/* Native menus follow the app theme, including options rendered by the OS. */
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:where(select) {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 36px;
+  max-width: 100%;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background-color: var(--k-panel);
+  color: var(--k-text);
+  font-family: inherit;
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+
+:where(select):disabled {
+  color: var(--k-text-muted);
+  cursor: not-allowed;
+}
+
+:where(select option, select optgroup) {
+  background-color: var(--k-panel);
+  color: var(--k-text);
+}
+
+.app--pane-pop-out .content-view {
+  --dock-bottom-clearance: 0px;
+}
+
 /* Shared value-picker treatment. Callers own labels, menus and authority. */
 .choice-trigger {
   display: inline-flex;
@@ -6491,8 +6566,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      second line that the clip removes, so the app name is either shown in full
      or not at all - a text-overflow ellipsis here is what produced "S...". The
      logo stays (it is the home link) and the toolbar stays one row. The
-     connection chip is a fixed 44px dot (chat.css), so the lockup is the one
-     member of the row that gives up width. Both children are 22px tall and
+     connection chip is a 44px dot, or a dot and a Station name capped at
+     120px when healthy (chat.css), so the lockup is the one member of the row
+     that gives up width. Both children are 22px tall and
      share one line, so nothing of the wrapped line peeks into the clip. */
   .app-toolbar__lockup {
     display: flex;
@@ -6564,6 +6640,43 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     display: none;
   }
 
+  /* Except on a direct pane route: it renders its pane edge to edge with no
+     identity header below, so the crumb (project / pane) is the only "where
+     am I" on the screen. It takes the row's spare width and truncates; the
+     wordmark yields to it (the logo stays the home link). */
+  .app-toolbar .app-toolbar__breadcrumb.app-toolbar__breadcrumb--pane {
+    display: flex;
+    flex: 1 1 auto;
+    gap: var(--k-space-1);
+    min-width: 0;
+    margin-right: 0;
+    white-space: nowrap;
+  }
+
+  .app-toolbar__breadcrumb--pane > * {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .app-toolbar__breadcrumb--pane > .app-toolbar__breadcrumb-sep {
+    flex: none;
+  }
+
+  /* The project yields first; the pane name is the page's title. */
+  .app-toolbar__breadcrumb--pane > .app-toolbar__breadcrumb-link {
+    flex: 0 1 auto;
+  }
+
+  .app-toolbar__breadcrumb--pane > .app-toolbar__breadcrumb-current {
+    flex: none;
+    max-width: 60%;
+  }
+
+  .app-toolbar:has(.app-toolbar__breadcrumb--pane) .app-toolbar__brand {
+    display: none;
+  }
+
   .app-toolbar {
     gap: 8px;
     --app-toolbar-gutter: 12px;
@@ -6593,8 +6706,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      action cluster stays on-screen at <=390px because the lockup is the one
      member of the row that gives up width. */
 
-  /* Phone connection chrome is a touchable status dot. Its full accessible
-     name and long-press hint are owned by HeaderActions; chat.css sizes it. */
+  /* Phone connection chrome is a touchable status dot, with the Station's
+     short name beside it when healthy. Its full accessible name and
+     long-press hint are owned by HeaderActions; chat.css sizes it. */
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
     display: none;
@@ -7503,6 +7617,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
 }
 
+.app-toolbar__breadcrumb-current {
+  color: var(--text-primary);
+}
+
 /* ── ChatDock Session Info Bar ──────────────────────────────────── */
 
 .chat-dock__session-info {
@@ -7605,11 +7723,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   .app__main:has(> [data-region="left"].is-collapsed) {
-    --region-left-track: 36px;
+    --region-left-track: 0;
   }
 
   .app__main:has(> [data-region="right"].is-collapsed) {
-    --region-right-track: 36px;
+    --region-right-track: 0;
   }
 
   .app__main:has(> [data-region="bottom"].is-collapsed) {
@@ -7679,74 +7797,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     width: 100%;
   }
 
+  /* Keep hidden pane lifecycles mounted; the toolbar reopens each region. */
   .app__main > :is([data-region="left"], [data-region="right"]).is-collapsed {
+    visibility: hidden;
     overflow: hidden;
-    border-left: 1px solid var(--border-primary);
-  }
-
-  .app__main > [data-region="left"].is-collapsed {
-    grid-column: 1;
-    border-left: none;
-    border-right: 1px solid var(--border-primary);
-  }
-
-  .app__main
-    > :is([data-region="left"], [data-region="right"]).is-collapsed
-    .chat-dock__header {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    padding: 12px 8px;
-    justify-content: flex-start;
-    border-bottom: none;
-    height: 100%;
-    flex-direction: row;
-  }
-
-  .app__main
-    > :is([data-region="left"], [data-region="right"]).is-collapsed
-    .chat-dock__header-actions {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    flex-direction: row;
-    gap: 8px;
-    margin-top: auto;
-    align-items: center;
-  }
-
-  /* #4401 A31: the pane's identity (avatar, title, ×) and its status chip are
-     horizontal rows with their own floors; in the 36px vertical strip they ran
-     out of it, over the main content and past the window edge. The strip is
-     the region's controls alone; Show <surface> names it. Every button keeps
-     inside the strip's width. */
-  .app__main
-    > :is([data-region="left"], [data-region="right"]).is-collapsed
-    :is(.chat-dock__header-identity, .session-context-chip) {
-    display: none;
-  }
-
-  .app__main
-    > :is([data-region="left"], [data-region="right"]).is-collapsed
-    .chat-dock__header
-    button {
-    max-width: 100%;
-    padding-left: 4px;
-    padding-right: 4px;
-  }
-
-  .app__main
-    > :is([data-region="left"], [data-region="right"]).is-collapsed
-    .chat-dock__counter {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-  }
-
-  .app__main
-    > :is([data-region="left"], [data-region="right"]).is-collapsed
-    .chat-dock__activity,
-  .app__main
-    > :is([data-region="left"], [data-region="right"]).is-collapsed
-    .chat-dock__badge {
-    display: none;
+    border: 0;
   }
 
   /* UX audit 2026-09-05 D3: a side region collapsed to its 36px rail kept
@@ -9602,6 +9657,27 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    its saved Half/Full preference. The keyboard may leave only ~150 CSS pixels:
    preserve the header and a single-line composer instead of clipping Send. */
 @media (max-height: 540px) and (pointer: coarse) {
+  /* Compact chrome: a phone held sideways, or a foldable's cover in Tent
+     posture, has ~400 CSS px of height, and the toolbar plus the collapsed
+     dock bar took over 100 of it. Both keep their 44px controls and give up
+     only the block padding around them: toolbar 52 -> 44, dock bar
+     53 -> 45 (44 + its 1px border). Literals, like the tokens they replace:
+     the dock's snap math parses `--chat-dock-header-height` in script. */
+  :root {
+    --app-toolbar-height: 44px;
+    --chat-dock-header-height: 45px;
+  }
+
+  .app__main .app-toolbar {
+    padding-top: var(--safe-top, 0px);
+    padding-bottom: 0;
+  }
+
+  .app__main .chat-dock__header,
+  .app__main .chat-dock__mobile-header {
+    padding-block: 0;
+  }
+
   .app__main .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
     top: calc(var(--chat-visual-viewport-top, 0px) + var(--safe-top));
     bottom: auto;

@@ -1,3 +1,4 @@
+import { MANAGED_POLICY_REMOTE_CLIENTS_CODE } from '@kontourai/station-contracts/managed-policy';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { RelayManagementView } from '@kontourai/station-contracts/relay-management';
 import {
@@ -51,6 +52,12 @@ export function createRelayManagementRoutes(deps: {
     actor: PrincipalRef,
   ): RelayManagementApproval;
   recordDecision?(request: Request, operation: string, subject: string): void;
+  /**
+   * #4519: the managed policy's refusal sentence when it allows no remote
+   * clients. Then nothing that lets a device in through the relay (a setup
+   * approval, an invitation, a device approval) is done.
+   */
+  managedRemoteRefusal?: () => string | undefined;
 }) {
   const app = new Hono();
 
@@ -91,6 +98,20 @@ export function createRelayManagementRoutes(deps: {
       '/devices/:enrollmentId/deny',
     ],
     managerGuard,
+  );
+  app.on(
+    'POST',
+    ['/approvals', '/invitations', '/devices/:enrollmentId/approve'],
+    async (c, next) => {
+      const refusal = deps.managedRemoteRefusal?.();
+      if (refusal === undefined) return next();
+      return c.json(
+        {
+          error: { code: MANAGED_POLICY_REMOTE_CLIENTS_CODE, message: refusal },
+        },
+        403,
+      );
+    },
   );
   app.get('/', async (c) => {
     try {

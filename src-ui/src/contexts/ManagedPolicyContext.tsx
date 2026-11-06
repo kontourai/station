@@ -2,15 +2,18 @@ import { isKnownFullAccessAcpModeId } from '@kontourai/station-contracts/acp';
 import {
   approvalModeExceedsCeiling,
   clampApprovalModeToCeiling,
-  type ManagedPolicySummary,
   managedApprovalCeiling,
-} from '@kontourai/station-contracts/managed-policy-status';
+} from '@kontourai/station-contracts/managed-policy-controls';
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 import {
   type ApprovalMode,
   type ConcreteApprovalMode,
   isConcreteApprovalMode,
 } from '@kontourai/station-contracts/provider';
-import { useManagedPolicyStatusQuery } from '@kontourai/station-sdk';
+import {
+  type ConnectionReadTarget,
+  useManagedPolicyStatusQuery,
+} from '@kontourai/station-sdk';
 import { createContext, type ReactNode, useContext } from 'react';
 import { useApiBase } from './ApiBaseContext';
 
@@ -30,9 +33,42 @@ export function useManagedPolicySummary(): ManagedPolicySummary | undefined {
 }
 
 /** Mounted inside the verified authority boundary, beside account preferences. */
-export function ManagedPolicyProvider({ children }: { children: ReactNode }) {
+export function ManagedPolicyProvider({
+  children,
+  target,
+}: {
+  children: ReactNode;
+  target?: ConnectionReadTarget;
+}) {
+  return target ? (
+    <TargetManagedPolicyProvider target={target}>
+      {children}
+    </TargetManagedPolicyProvider>
+  ) : (
+    <HostManagedPolicyProvider>{children}</HostManagedPolicyProvider>
+  );
+}
+function HostManagedPolicyProvider({ children }: { children: ReactNode }) {
   const { apiBase } = useApiBase();
   const status = useManagedPolicyStatusQuery(apiBase);
+  return (
+    <ManagedPolicyContext.Provider
+      value={status.data?.state === 'loaded' ? status.data.summary : undefined}
+    >
+      {children}
+    </ManagedPolicyContext.Provider>
+  );
+}
+function TargetManagedPolicyProvider({
+  children,
+  target,
+}: {
+  children: ReactNode;
+  target: ConnectionReadTarget;
+}) {
+  const status = useManagedPolicyStatusQuery(target.targetApiBase, {
+    readTarget: target,
+  });
   return (
     <ManagedPolicyContext.Provider
       value={status.data?.state === 'loaded' ? status.data.summary : undefined}

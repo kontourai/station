@@ -8,6 +8,7 @@ import {
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { z } from 'zod/v3';
 import type { InstallProvenance } from '../routes/system/install-provenance.js';
+import { admitManagedListener } from '../security/managed-network-exposure.js';
 import { runInProcessGroup } from '../utils/process-group-exec.js';
 import { readTelemetryCompanionHost } from './telemetry-companion.js';
 import { readTelemetryCompanionArchivePreparation } from './telemetry-companion-archive.js';
@@ -520,6 +521,14 @@ export async function installTelemetryCompanion(
       installationPort(),
     ]);
     if (new Set(ports).size !== 3) throw new Error('Companion ports collided');
+    // #4519: Docker publishes these on 127.0.0.1; under the managed limit
+    // no Tailscale Serve route may forward to them.
+    for (const port of ports)
+      await admitManagedListener({
+        name: 'telemetry companion',
+        host: '127.0.0.1',
+        port,
+      });
     await companionDurableJson(join(directory, 'ports.json'), ports);
     Object.assign(state, { ports });
     Object.assign(env, {

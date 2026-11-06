@@ -123,7 +123,7 @@ test('keeps an uncertain transport failure outcome unconfirmed', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Restore workspace' }));
   await waitFor(() =>
     expect(screen.getByRole('alert').textContent).toBe(
-      'Restore outcome not confirmed: Failed to fetch. Inspect the workspace before trying again.',
+      'Restore outcome not confirmed: Could not reach Station. Check the connection, then try again. Inspect the workspace before trying again.',
     ),
   );
   expect(screen.getByRole('alert').textContent).not.toContain(

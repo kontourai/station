@@ -48,6 +48,18 @@ host; retirement itself never revokes access. Browser storage remains a
 platform dependency, and site-data deletion or device/storage loss is outside
 this recovery guarantee. See the [completion contract](../architecture/module-map.md#pendingpairingcompletion).
 
+## Managed network exposure
+
+A [managed policy](../guides/managed-policy.md#network-exposure) whose
+`limits.clients` leaves out `remote` (#4519) removes the remote surface below:
+loopback-only listeners (each later listener included), no pairing or relay
+enrollment, no Discord gateway, no Tailscale Serve route to Station's ports
+as each listener starts (asked of a root-owned or signed Tailscale CLI only),
+and only home-possession device credentials accepted. Earlier devices are
+suspended, not revoked: lifting the policy restores them, so revoke a
+compromised one. Its limits, including port forwarding with other tools,
+are in the [decision record](../decisions/managed-policy.md#network-exposure).
+
 ## Trust boundary
 
 Station classifies a caller from the directly connected socket peer and request
@@ -222,7 +234,26 @@ Origin and authentication are independent controls:
 
 `ALLOWED_ORIGINS` adds exact browser origins to the CORS allowlist. It does not
 configure proxy attestation, grant network access, or replace the bearer
-credential. An external single-origin reverse proxy is not trusted to provide
+credential.
+
+Every origin decision reads one policy (`StationOriginPolicy`): the HTTP origin
+gates, the pairing provenance check, the credential-free WebSocket origin
+verifier, and the sign-in origin picker. Configured origins are checked first;
+the policy also accepts one daemon-attested origin class with no configuration: the exact canonical
+HTTPS origin (MagicDNS name and port) that the local `tailscale serve`
+configuration publishes on this node's own MagicDNS name. Every handler on that
+origin must proxy to this Station's API or UI-proxy port, Funnel must be off for
+it, and no foreground `serve` session or raw TCP forward can replace it. The
+facts come from `tailscale status --json` and `tailscale serve status --json`
+(an admission read trusted for at most 1 second from when it started, refused
+when the daemon fails or its reply comes later than that, never the 30-second
+endpoint-suggestion cache), never from the request.
+Only an HTTPS Origin on a MagicDNS name triggers a lookup. Because the daemon serves
+nothing but Station at that origin, a page presenting it is Station's own UI.
+Trusting it is equivalent to the operator listing it in `ALLOWED_ORIGINS`, and,
+like that entry, it grants no authentication or approval. Mappings for other
+hosts, other local ports, plain-HTTP spellings, Funnel-exposed authorities, and
+origins shared with another service stay refused unless explicitly listed. An external single-origin reverse proxy is not trusted to provide
 Station's internal attestation. The optional Tailscale Serve origin must be an
 exact HTTPS origin behind the loopback-only Station UI proxy; it is disabled by
 default. Funnel is rejected outright. Authority mismatches and missing or
@@ -234,7 +265,7 @@ malformed identity never produce verified provenance.
 |---|---|---|---|
 | `GET /.well-known/station/v1` | Public | Public | Public |
 | `POST /.well-known/station/v1/proof` | Public, bounded | Public, bounded | Public, bounded |
-| `POST /.well-known/station/v1/pairing/access-request` | Allowed only from an exact configured same-origin browser; rate-limited; cannot approve itself | Same | Same |
+| `POST /.well-known/station/v1/pairing/access-request` | Allowed only from an exact configured, same-origin, or own-Tailscale-Serve origin; rate-limited; cannot approve itself | Same | Same |
 | `POST /.well-known/station/v1/pairing/request` and `/pairing/exchange` | Public, bounded | Public, bounded | Public, bounded |
 | `GET /api/system/liveness` | Public | Public | Public |
 | CORS `OPTIONS` | Allowed only with an allowed Origin | Same | Same |
@@ -267,6 +298,23 @@ not records or search inputs. Project membership and delegation do not grant
 access. The owner or an approved personal-account device may read under the
 existing private-root rule; an unknown identity is refused. Disabling the
 preview retains the store and withholds it from Knowledge reads.
+
+Review, recall and the session brief read under the same rule and delivery-time
+recheck.
+
+Only the signed-in person, working directly on their Station, can promote a
+memory. A decision sent through an agent tool call, Station's internal token or a
+delegated device is saved as a note and changes nothing. Station works out who is
+reviewing from the request; a request body that names a reviewer is refused.
+
+The brief holds only memory a person confirmed, and it is sent to the chat's model
+provider. Station builds no brief for a hosted request, an unknown person, a
+request that fails the access or delivery check, or a session that belongs to
+someone else. Only Station's own orchestration relay (internal token, local
+caller, named thread) may say who owns a session; the browser proxy carries the
+same token but cannot. A conversation is briefed once, when its first message
+reaches the model; a refused or replayed message does not use it up. A restart
+can brief a long-running conversation once more.
 
 When the default-off experimental S3 flag is enabled, separate Knowledge leaves
 admit current Project readers to source metadata, a bounded selected-prefix page
@@ -1242,7 +1290,45 @@ on the host (`ui-bootstrap`):
   the host browser's limits: device grants only, never a delegation, never a
   protected administration or consent scope
   (`isProtectedPairingPromotionScope`, and the existing `access:devices` and
-  `home:control` refusals).
+  `home:control` refusals);
+- the [Paired Station chat bridge](../design/chat-composer.md#paired-station-foreground-chats)'s
+  enumerated mutations under `/api/environments/peers/:id/chat-api`, matched by
+  the shared [method/path/body policy](../../src-server/routes/environments/peer-chat-policy.ts) in
+  [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts),
+  so the owner can chat on a paired Station from a phone. The bridge's own
+  allowlist and agent-origin refusal still apply, and the receiver still
+  checks the saved peer grant. Every other peer-family write (adding,
+  replacing, enrolling or removing outbound peer credentials) stays
+  operator-only.
+
+The [tunnel boundary](../../src-server/routes/environments/peer-chat-routes.ts)
+negotiates `peerChatTunnelV1` and receiver `delegationLocalConversationV1` through
+an authenticated `chat-connection` descriptor. The descriptor exposes identity,
+principal namespace and an operation ceiling, never the outbound credential.
+Allowed families cover bounded conversation/history/request/usage/catalog/media
+reads, the exact `GET /api/settings/managed-policy` approval-summary read, live
+orchestration events and enumerated send, command, inbox, staging and
+checkpoint mutations. Unknown methods, leaves, query keys and commands are denied.
+Receiver schemas reparse bodies; foreground targets must be explicitly current.
+The receiver's [orchestration locality guard](../../src-server/routes/orchestration/orchestration.ts)
+also prevents continue and inbox operations from reaching an onward environment,
+including a saved/default remote target. Agent-origin requests cannot use the tunnel.
+
+The [stream forwarder](../../src-server/services/remote-stations/remote-station-forwarder.ts)
+preserves event bytes and backpressure, owns cancellation and rechecks source and
+peer currency before chunks and during idle periods. Revocation closes the stream;
+the next authenticated request must establish current access. A close is not an
+invented authorization-expired SSE event or proof that remote execution stopped.
+
+Receiver authentication refusal is source-authored HTTP **424**, carrying the typed
+[target refusal observation](../../packages/contracts/src/peer-chat.ts), original
+target and mutation key. It never becomes a source 401 that retires S's Device.
+Raw upstream responses remain relayed and cannot acquire S's verified envelope.
+Only the current, target/key-bound source observation proves a pre-dispatch refusal;
+unknown or lost responses retain uncertainty. A confirmed acceptance outranks a
+later refusal. Receiver attachment upload grants travel only in the exact staging
+header, separately from the source credential authenticating the tunnel. Binary
+media uses bounded byte forwarding and validated response headers, not text decoding.
 
 **What it does not grant.** No mint-time possession proof: everything keyed
 on `isBoundLocalGrantMintedOperator` (native consent custody, outside-agent

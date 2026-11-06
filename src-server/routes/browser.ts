@@ -359,8 +359,19 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     }
     // A browser that is set up but died or failed to start is a different
     // fact from one that is not set up (409 `browser-unavailable`).
+    // Only the classified code leaves the server: the reason can quote the
+    // browser's stderr (paths, environment) and is logged server-side.
     if (error instanceof BrowserHostExitedError) {
-      return c.json({ success: false, code: 'browser-host-failed' }, 503);
+      return c.json(
+        {
+          success: false,
+          code:
+            error.failure === 'sandbox-unavailable'
+              ? 'browser-sandbox-unavailable'
+              : 'browser-host-failed',
+        },
+        503,
+      );
     }
     // The host's own policy refused the command (e.g. Back onto an entry
     // whose URL is outside the pane's scope).

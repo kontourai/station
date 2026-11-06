@@ -1,0 +1,80 @@
+.shared-task-history {
+  min-width: 0;
+}
+.shared-task-history > ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.shared-task-history .task-room-message {
+  display: flex;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-3);
+  min-width: 0;
+}
+.shared-task-history .task-room-message article {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.shared-task-history .task-room-message header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--k-space-2);
+  margin-bottom: var(--k-space-1);
+}
+.shared-task-history .task-room-message--grouped {
+  padding-top: 0;
+  padding-left: calc(var(--k-space-6) + var(--k-space-3));
+}
+.shared-task-history .task-room-message-text p {
+  margin-block: 0 var(--k-space-2);
+}
+.shared-task-history .task-room-message-text pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.shared-task-history > .button {
+  min-height: 44px;
+}
+
+.task-room-messages > .shared-task-history {
+  margin-top: auto;
+}
+
+.task-room-avatar {
+  width: var(--k-space-6);
+  height: var(--k-space-6);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: color-mix(in oklab, var(--room-avatar-ink) 14%, var(--k-panel));
+  color: var(--room-avatar-ink);
+  font: 600 var(--k-text-sm) / 1 var(--k-font-ui);
+}
+
+.task-room-avatar--agent {
+  background: var(--k-brand);
+  border-radius: var(--k-radius-control);
+  border-color: var(--k-brand);
+  color: var(--k-brand-contrast);
+}
+
+.task-room-agent-badge {
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  border: 1px solid var(--k-line);
+  padding: 0 var(--k-space-1);
+  border-radius: var(--k-radius-control);
+}
+
+.task-room-mention {
+  display: inline-block;
+  color: var(--k-brand);
+  background: color-mix(in oklab, var(--k-brand) 12%, transparent);
+  border-radius: var(--k-radius-control);
+  padding-inline: var(--k-space-1);
+  font-weight: 600;
+}

@@ -550,9 +550,9 @@
       "kind": "image",
       "digest": "3669d9ea4f4569f917fad426bc5dbbd6aac4a131e9d182b16175f2e568202410",
       "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
-      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "caption": "Captured component access-state comparison; source content closes on refusal.",
       "scenario": "Bounded agent work review",
-      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "evidence": "Local-file Chromium render of the captured components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
       "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
       "documents": [
         "docs/guides/agent-efficiency.md"
@@ -563,9 +563,9 @@
       "kind": "image",
       "digest": "4a9e2c5bebdcfa6befb44f25db5fca80ae366296535d2c39b1ae7082cafff6c3",
       "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
-      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "caption": "Captured component access-state comparison; source content closes on refusal.",
       "scenario": "Bounded agent work review",
-      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "evidence": "Local-file Chromium render of the captured components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
       "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
       "documents": [
         "docs/guides/agent-efficiency.md"
@@ -576,9 +576,9 @@
       "kind": "image",
       "digest": "67ee0c9b9c8f5c0fc071e8675c380718e455c5ad5bd63cbe29838f5e1b434d5f",
       "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
-      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "caption": "Captured component access-state comparison; source content closes on refusal.",
       "scenario": "Bounded agent work review",
-      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "evidence": "Local-file Chromium render of the captured components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
       "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
       "documents": [
         "docs/guides/agent-efficiency.md"
@@ -589,9 +589,9 @@
       "kind": "image",
       "digest": "c953aa47dff4dce4f52cec25e34e68c123c67bd917b507e4f3a224e4ebe576cf",
       "alt": "Source inspector and copied learning proposal before and after a protected read refusal.",
-      "caption": "Current component access-state comparison; source content closes on refusal.",
+      "caption": "Captured component access-state comparison; source content closes on refusal.",
       "scenario": "Bounded agent work review",
-      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "evidence": "Local-file Chromium render of the captured components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
       "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
       "documents": [
         "docs/guides/agent-efficiency.md"
@@ -604,7 +604,7 @@
       "alt": "Reviewed Project working configuration with rules, checks and source guidance.",
       "caption": "Controlled Project configuration fixture.",
       "scenario": "Bounded agent work review",
-      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "evidence": "Local-file Chromium render of the captured components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
       "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
       "documents": [
         "docs/guides/agent-efficiency.md"
@@ -617,7 +617,7 @@
       "alt": "Context compaction policy and retained Task state controls.",
       "caption": "Controlled Task context fixture.",
       "scenario": "Bounded agent work review",
-      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "evidence": "Local-file Chromium render of the captured components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
       "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
       "documents": [
         "docs/guides/agent-efficiency.md"
@@ -630,7 +630,7 @@
       "alt": "Task supervision with an unknown original wake and pause or stop controls.",
       "caption": "Controlled supervision fixture; an unknown wake is not resent.",
       "scenario": "Bounded agent work review",
-      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "evidence": "Local-file Chromium render of the captured components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
       "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
       "documents": [
         "docs/guides/agent-efficiency.md"
@@ -643,7 +643,7 @@
       "alt": "Usage rollup with incomplete coverage and separately attributed reported cost.",
       "caption": "Controlled usage fixture; no live billing qualification.",
       "scenario": "Bounded agent work review",
-      "evidence": "Local-file Chromium render of current components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
+      "evidence": "Local-file Chromium render of the captured components/CSS with controlled canonical owner DTOs; source bytes match committed 4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514. Inspected 390/1440 widths and both themes without horizontal overflow/page errors. Learning comparison panels compose granted/refused states of the SAME component, not code-revision comparisons. Hono/SDK tests separately establish authorization/cache behavior. No live account, provider, installed/native or Windows acceptance. See agent-efficiency-captures.json for hashes and scope.",
       "capturedRevision": "4e6e41b700af7bcfd1c6bf78b2b42b7b7bcf8514",
       "documents": [
         "docs/guides/agent-efficiency.md"

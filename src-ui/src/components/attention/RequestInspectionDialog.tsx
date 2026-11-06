@@ -1,14 +1,11 @@
 import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
-import {
-  useAttentionRequestInspection,
-  useQueryClient,
-} from '@kontourai/station-sdk';
-import { respondToRequest } from '@kontourai/station-sdk/client';
+import { useApiQuery, useQueryClient } from '@kontourai/station-sdk';
 import { useMutation, useMutationState } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
+import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -31,16 +28,44 @@ type CapturedAuthority = NonNullable<
 export function useExactRequestDecision(
   reference: AttentionRequestReference,
   authority: CapturedAuthority,
+  answer: ReturnType<typeof useApprovalAnswering>,
 ) {
   const current = authority.isCurrent();
-  const query = useAttentionRequestInspection(reference, authority, current);
+  const inspection = useApiQuery(
+    [...answer.inspectionKey(reference, authority)],
+    (signal) => answer.inspect(reference, authority, signal),
+    {
+      enabled: current,
+      staleTime: 0,
+      refetchOnMount: 'always',
+      retry: false,
+      cancelWhenInactive: true,
+      gcTime: 30_000,
+    },
+  );
+  const query = {
+    ...inspection,
+    data:
+      inspection.isFetchedAfterMount &&
+      inspection.status === 'success' &&
+      !inspection.isFetching
+        ? inspection.data
+        : undefined,
+    isLoading:
+      !inspection.isFetchedAfterMount ||
+      inspection.isLoading ||
+      inspection.isFetching,
+  };
   const queryClient = useQueryClient();
   const inFlight = useRef(false);
   const [checking, setChecking] = useState(false);
+  const [inspectionBase, inspectionAuthority] = answer
+    .inspectionKey(reference, authority)
+    .slice(1, 3);
   const mutationKey = [
     'attention-request-response',
-    authority.apiBase,
-    authority.authorityKey,
+    inspectionBase,
+    inspectionAuthority,
     reference.threadId,
     reference.requestId,
     reference.requestEventId,
@@ -68,8 +93,8 @@ export function useExactRequestDecision(
         for (const mutation of cache.findAll({
           mutationKey: [
             'attention-request-response',
-            authority.apiBase,
-            authority.authorityKey,
+            inspectionBase,
+            inspectionAuthority,
           ],
         }))
           cache.remove(mutation);
@@ -77,8 +102,8 @@ export function useExactRequestDecision(
         for (const mutation of cache.findAll({
           mutationKey: [
             'attention-request-response',
-            authority.apiBase,
-            authority.authorityKey,
+            inspectionBase,
+            inspectionAuthority,
             reference.threadId,
             reference.requestId,
             reference.requestEventId,
@@ -94,7 +119,7 @@ export function useExactRequestDecision(
         }
       }
     };
-  }, [queryClient, authority, reference]);
+  }, [queryClient, authority, reference, inspectionBase, inspectionAuthority]);
   useEffect(() => {
     if (query.data?.state !== 'resolved' && query.data?.state !== 'changed')
       return;
@@ -102,8 +127,8 @@ export function useExactRequestDecision(
     for (const mutation of cache.findAll({
       mutationKey: [
         'attention-request-response',
-        authority.apiBase,
-        authority.authorityKey,
+        inspectionBase,
+        inspectionAuthority,
         reference.threadId,
         reference.requestId,
         reference.requestEventId,
@@ -112,7 +137,7 @@ export function useExactRequestDecision(
     })) {
       if (mutation.state.status === 'error') cache.remove(mutation);
     }
-  }, [query.data, queryClient, authority, reference]);
+  }, [query.data, queryClient, reference, inspectionBase, inspectionAuthority]);
   const attempted = attempts.some((status) => status !== 'idle');
   const response = useMutation({
     mutationKey,
@@ -122,16 +147,7 @@ export function useExactRequestDecision(
         throw new Error(
           'Station authorization changed. Close and inspect the request again.',
         );
-      return respondToRequest(
-        authority.apiBase,
-        {
-          threadId: reference.threadId,
-          requestId: reference.requestId,
-          expectedRequestEventId: reference.requestEventId,
-          decision,
-        },
-        { requestScope: authority },
-      );
+      return answer.exact(reference, decision, authority);
     },
     onError: () => {
       for (const mutation of queryClient
@@ -171,6 +187,7 @@ export function useExactRequestDecision(
       query.isFetching ||
       checking ||
       !current ||
+      !answer.answerAllowed ||
       query.data?.state !== 'open' ||
       !query.data.canRespond ||
       query.data.requiresAnswers
@@ -219,6 +236,7 @@ export function useExactRequestDecision(
     !query.isFetching &&
     !checking &&
     current &&
+    answer.answerAllowed &&
     query.data?.state === 'open' &&
     query.data.canRespond &&
     !query.data.requiresAnswers;
@@ -248,6 +266,7 @@ export function RequestInspectionDialog({
   openHref?: string;
   onClose: () => void;
 }) {
+  const answer = useApprovalAnswering(authority.apiBase);
   const {
     attempted,
     capacityReached,
@@ -259,7 +278,7 @@ export function RequestInspectionDialog({
     recheck,
     response,
     result,
-  } = useExactRequestDecision(reference, authority);
+  } = useExactRequestDecision(reference, authority, answer);
   return (
     <ResponsiveDialogSurface
       layer="dialog"

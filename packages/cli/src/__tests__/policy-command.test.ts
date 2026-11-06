@@ -4,11 +4,24 @@
  * the contract an administrator's rollout script branches on.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+import {
+  EVERY_KEY_ENGINE_GATEWAY,
+  EVERY_KEY_ENGINE_SUMMARY,
+  EVERY_KEY_FEED_URL,
+  EVERY_KEY_POLICY,
+  EVERY_KEY_SUMMARY_LIMITS,
+} from '../../../contracts/src/__tests__/managed-policy-every-key.fixture.js';
 
 const repoRoot = resolve(import.meta.dirname, '../../../..');
 const makeTempDir = trackTempDirs();
@@ -58,6 +71,33 @@ function write(body: string): string {
 }
 
 describe('station policy check', () => {
+  // #4515: the combined policy the contracts round trip uses, every enforced
+  // key at once, accepted by the real CLI exactly as server startup would.
+  test('accepts a policy that sets every enforced key, and its summary never names the mirror', () => {
+    const path = write(JSON.stringify(EVERY_KEY_POLICY));
+    const text = check(path);
+    expect(text.status, text.stderr).toBe(0);
+    expect(text.stdout).toContain(`Policy ${path} is valid.`);
+    // #4515: the names of the limits it sets, never their values.
+    expect(text.stdout).toContain(
+      '  Limits: maxApprovalMode, telemetry, webhookAutomations, registries, clients, updates, engines\n    Approval ceiling: Auto (maxApprovalMode: auto)\n',
+    );
+    expect(Object.keys(EVERY_KEY_POLICY.limits)).toHaveLength(7);
+    expect(text.stdout).toContain('defaultMaxTurns');
+    expect(text.stdout).not.toContain(EVERY_KEY_FEED_URL);
+    expect(text.stdout).not.toContain(EVERY_KEY_ENGINE_GATEWAY);
+
+    const json = check(path, '--json');
+    expect(json.status, json.stderr).toBe(0);
+    const report = JSON.parse(json.stdout);
+    expect(report).toMatchObject({ valid: true, path });
+    expect(report.summary.limits).toEqual(EVERY_KEY_SUMMARY_LIMITS);
+    expect(report.summary.engines).toEqual(EVERY_KEY_ENGINE_SUMMARY);
+    expect(report.summary.lockedSettings).toEqual(['defaultMaxTurns']);
+    expect(json.stdout).not.toContain(EVERY_KEY_FEED_URL);
+    expect(json.stdout).not.toContain(EVERY_KEY_ENGINE_GATEWAY);
+  });
+
   test('exits 0 on a valid policy and prints what it does', () => {
     const path = write(
       JSON.stringify({
@@ -95,7 +135,7 @@ describe('station policy check', () => {
     const result = check(path);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain(
-      'Limits:\n    Approval ceiling: Ask first (maxApprovalMode: ask)\n',
+      'Limits: maxApprovalMode\n    Approval ceiling: Ask first (maxApprovalMode: ask)\n',
     );
     expect(result.stdout).not.toContain('Limits: 1');
   }, 120_000);
@@ -125,7 +165,7 @@ describe('station policy check', () => {
       /checkoutStaleAfterDays \([^)]+\): defaults to 9 where nothing closer is set/,
     );
     expect(result.stdout).toContain(
-      'Limits:\n    Approval ceiling: Auto (maxApprovalMode: auto)\n',
+      'Limits: maxApprovalMode\n    Approval ceiling: Auto (maxApprovalMode: auto)\n',
     );
 
     const json = check(path, '--json');
@@ -238,13 +278,14 @@ describe('station policy check', () => {
       'schemaVersion: must be 1',
     ],
     [
-      'an unsupported limit',
+      'an unknown limit',
       JSON.stringify({
         schemaVersion: 1,
         organization: 'A',
-        limits: { updates: { mode: 'off' } },
+        // Every planned limit is enforced (#4515): no reserved key remains.
+        limits: { retentionDays: 30 },
       }),
-      'limits.updates: this limit is not supported by this version of Station',
+      'limits.retentionDays: unknown limit; this version of Station refuses keys it cannot enforce',
     ],
     [
       'an unknown setting',
@@ -339,4 +380,189 @@ describe('station policy check', () => {
     },
     120_000,
   );
+});
+
+function templates(...args: string[]) {
+  const root = fixture();
+  const result = spawnSyncBounded(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      join(repoRoot, 'scripts/station-cli.ts'),
+      'policy',
+      'templates',
+      ...args,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 60_000,
+      killSignal: 'SIGKILL',
+      env: {
+        ...process.env,
+        STATION_HOME: join(root, 'home'),
+        STATION_ROOT: join(root, 'home'),
+        STATION_PORT: '9',
+      },
+    },
+  );
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+describe('station policy templates', () => {
+  const FILES = [
+    'macos/station.mobileconfig',
+    'windows/station.admx',
+    'windows/en-US/station.adml',
+  ];
+
+  test('writes the profile and the Group Policy template; --policy fills the profile', () => {
+    const policy = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: { telemetry: false },
+      }),
+    );
+    for (const args of [['--policy', policy], [`--policy=${policy}`]]) {
+      const out = join(fixture(), 'templates');
+      const result = templates(out, ...args);
+      expect(result.status, result.stderr).toBe(0);
+      for (const file of FILES)
+        expect(existsSync(join(out, file)), file).toBe(true);
+      const profile = readFileSync(join(out, FILES[0]), 'utf8');
+      expect(profile).toContain('<string>Acme</string>');
+      expect(profile).toContain('<key>telemetry</key>');
+      expect(readFileSync(join(out, FILES[1]), 'utf8')).toContain(
+        'key="SOFTWARE\\Policies\\Kontour\\Station"',
+      );
+    }
+  });
+
+  test('without --policy the profile names a placeholder organization', () => {
+    const out = join(fixture(), 'templates');
+    const result = templates(out);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Run again with --policy <file>');
+    expect(readFileSync(join(out, FILES[0]), 'utf8')).toContain(
+      'Example Organization',
+    );
+  });
+
+  test('an invalid --policy writes nothing and exits 1', () => {
+    const policy = write(
+      JSON.stringify({ schemaVersion: 1, organization: 'Acme', extra: 1 }),
+    );
+    const out = join(fixture(), 'templates');
+    const result = templates(out, '--policy', policy);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('no templates were written');
+    expect(existsSync(out)).toBe(false);
+  });
+
+  // #4515: a policy the contract parser accepts but the settings schema
+  // refuses (#4517) is one every server refuses at startup, so it must not
+  // reach a configuration profile either.
+  test('a --policy whose managed setting fails the settings schema writes nothing', () => {
+    const policy = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        settings: {
+          approvalGuardian: { value: { enabled: 'false' }, locked: true },
+        },
+      }),
+    );
+    // The same file is refused by `check`, the startup validation.
+    expect(check(policy).status).toBe(1);
+    const out = join(fixture(), 'templates');
+    const result = templates(out, '--policy', policy);
+    expect(result.status, result.stdout).toBe(1);
+    expect(result.stderr).toContain('no templates were written');
+    expect(result.stderr).toContain(
+      'a managed setting does not match the settings schema',
+    );
+    expect(existsSync(out)).toBe(false);
+  }, 120_000);
+
+  test.each([[[]], [['a', 'b']], [['out', '--policy']], [['out', '--nope']]])(
+    'refuses bad arguments %j',
+    (args) => {
+      const result = templates(...args);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'station policy templates <dir> [--policy <file>]',
+      );
+    },
+  );
+});
+
+// #4515 fix round 3: `policy show` reports the installed policy with the
+// same lines `policy check` prints for it (managed settings included).
+describe('station policy show', () => {
+  test('prints the lines policy check prints for the same file', () => {
+    const path = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        supportUrl: 'https://help.example/station',
+        settings: {
+          defaultMaxTurns: { value: 40, locked: true },
+          checkoutStaleAfterDays: { value: 9, locked: false },
+        },
+        limits: { maxApprovalMode: 'auto', telemetry: false },
+      }),
+    );
+    const root = fixture();
+    const show = spawnSyncBounded(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        join(repoRoot, 'scripts/station-cli.ts'),
+        'policy',
+        'show',
+      ],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 60_000,
+        killSignal: 'SIGKILL',
+        env: {
+          ...process.env,
+          STATION_HOME: join(root, 'home'),
+          STATION_ROOT: join(root, 'station-root'),
+          STATION_MANAGED_POLICY_TEST_FILE: path,
+          STATION_PORT: '9',
+        },
+      },
+    );
+    expect(show.status, show.stderr).toBe(0);
+    const checked = check(path);
+    expect(checked.status, checked.stderr).toBe(0);
+    // The effect lines: from the organization to the fingerprint.
+    const effect = (text: string) => {
+      const lines = String(text).split('\n');
+      const start = lines.findIndex((line) =>
+        line.startsWith('  Organization: '),
+      );
+      const end = lines.findIndex((line) => line.startsWith('  Fingerprint: '));
+      return lines.slice(start, end);
+    };
+    const shown = effect(show.stdout);
+    expect(shown).toEqual(effect(checked.stdout));
+    // Pinned: the settings lines and the limits are there.
+    expect(shown.join('\n')).toContain('Managed settings: 2');
+    expect(shown.join('\n')).toMatch(
+      /defaultMaxTurns \([^)]+\): locked to 40;/,
+    );
+    expect(shown).toContain('  Limits: maxApprovalMode, telemetry');
+  }, 180_000);
 });

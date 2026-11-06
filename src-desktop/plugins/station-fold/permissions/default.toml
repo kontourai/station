@@ -1,0 +1,4 @@
+"$schema" = "schemas/schema.json"
+[default]
+description = "Read the display's hinge geometry and posture, and listen for the `change` nudge when either moves. Read-only: it controls nothing."
+permissions = ["allow-state", "allow-register-listener", "allow-remove-listener"]

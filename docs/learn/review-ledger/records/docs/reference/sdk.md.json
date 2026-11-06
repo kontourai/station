@@ -838,8 +838,6 @@
 
     "packages/sdk/src/query-domains/runtimeEventContent.ts",
 
-    "src-ui/src/components/chat/ChatRequestContext.ts",
-
     "src-ui/src/components/chat/LoadFullContent.tsx",
 
     "src-ui/src/components/chat/useApprovalContent.tsx",
@@ -854,7 +852,21 @@
 
     "packages/sdk/src/__tests__/tool-library-query.test.tsx",
 
-    "packages/sdk/src/release-notes-query.ts"
+    "packages/sdk/src/release-notes-query.ts",
+
+    "src-ui/src/components/conversation/ConversationConnectionContext.tsx",
+
+    "src-ui/src/components/conversation/conversation-transport.ts",
+
+    "packages/sdk/src/connection-read-target.ts",
+
+    "packages/sdk/src/client/attachment-staging.ts",
+
+    "packages/sdk/src/query-domains/managedPolicy.ts",
+
+    "packages/contracts/src/peer-chat.ts",
+
+    "packages/sdk/src/__tests__/managed-policy-query.test.ts"
   ],
 
   "checks": [

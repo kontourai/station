@@ -1,0 +1,123 @@
+.memory-review {
+  display: grid;
+  gap: var(--k-space-3);
+  margin-bottom: var(--k-space-5);
+}
+
+.memory-review h3,
+.memory-review h4 {
+  margin: 0;
+}
+
+.memory-review__list {
+  display: grid;
+  gap: var(--k-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-review__card {
+  display: grid;
+  gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md, 0.5rem);
+  background: var(--k-panel);
+}
+
+.memory-review__card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+}
+
+.memory-review__claim {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.memory-review__subject {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.memory-review__reasons {
+  margin: 0;
+  padding-left: var(--k-space-4);
+  color: var(--k-text-muted);
+}
+
+.memory-review__compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--k-space-3);
+}
+
+.memory-review__evidence {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: var(--k-space-3);
+  border-left: 3px solid var(--k-line);
+}
+
+.memory-review__evidence figcaption {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.memory-review blockquote {
+  margin: 0;
+  color: var(--k-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.memory-review__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.memory-review__correct,
+.memory-review__search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--k-space-3);
+}
+
+.memory-review__correct label,
+.memory-review__search label {
+  display: grid;
+  flex: 1 1 14rem;
+  gap: var(--k-space-1);
+}
+
+.memory-review__history {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+}
+
+.memory-review__history dt {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.memory-review__history dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.memory-review__count,
+.memory-review__note {
+  margin: 0;
+  color: var(--k-text-muted);
+}

@@ -139,7 +139,11 @@ test('boots the built shell under CSP and opens its connection recovery UI', asy
   );
   const connectionControl = page.getByTestId('app-toolbar-connection');
   await expect(connectionControl).toBeVisible({ timeout: 15_000 });
-  await expect(connectionControl.getByText('CSP Station')).toBeVisible();
+  // The chip carries the name twice: the phone label and the desktop
+  // identity, with CSS showing one at each width.
+  await expect(
+    connectionControl.getByText('CSP Station').filter({ visible: true }),
+  ).toBeVisible();
   await connectionControl.click();
   await page
     .getByRole('menu', { name: 'Choose Station', exact: true })

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import {
   PLUGIN_TELEMETRY_LIMITS as LIMITS,
+  PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN,
   type PluginDailyPing,
   type PluginTelemetryCountBucket,
   type PublisherTelemetryDeclaration,
@@ -9,7 +10,6 @@ import {
 import { isPublicIp } from './public-network.js';
 
 const TOKEN = /^[a-z][a-z0-9_]{0,47}$/;
-const ID = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
 const RESERVED = new Set(['__proto__', 'prototype', 'constructor']);
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -25,19 +25,8 @@ function fail(): never {
     'Invalid telemetry declaration: use bounded enums/countBuckets, declared names and an HTTPS endpoint without credentials, query or fragment.',
   );
 }
-export function isTelemetryPublisherId(
-  value: unknown,
-): value is import('@kontourai/station-contracts/product-telemetry').TelemetryPublisherId {
-  return (
-    value === 'kontour' ||
-    value === 'operator' ||
-    (typeof value === 'string' &&
-      value.startsWith('publisher:') &&
-      (ID.test(value.slice(10)) ||
-        /^[a-f0-9]{24}\/[a-z0-9][a-z0-9._:-]{0,127}$/.test(value.slice(10))) &&
-      !RESERVED.has(value.slice(10)))
-  );
-}
+
+export { isTelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 export function parsePublisherTelemetryDeclaration(
   value: unknown,
 ): PublisherTelemetryDeclaration {
@@ -45,8 +34,7 @@ export function parsePublisherTelemetryDeclaration(
     !object(value) ||
     !exact(value, ['publisher', 'endpoint', 'events']) ||
     typeof value.publisher !== 'string' ||
-    !ID.test(value.publisher) ||
-    RESERVED.has(value.publisher) ||
+    !PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN.test(value.publisher) ||
     typeof value.endpoint !== 'string' ||
     value.endpoint.length > 2048
   )

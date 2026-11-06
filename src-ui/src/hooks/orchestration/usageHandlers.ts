@@ -1,4 +1,5 @@
 import { isValidContextObservation } from '@kontourai/station-shared/usage-semantics';
+import type { StationStateScope } from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { OrchestrationEvent } from './types';
 
@@ -15,8 +16,10 @@ import type { OrchestrationEvent } from './types';
  */
 export function handleTokenUsageUpdatedEvent(
   event: Extract<OrchestrationEvent, { method: 'token-usage.updated' }>,
+  station?: StationStateScope,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 
   const hasTokenUsage =
@@ -47,7 +50,7 @@ export function handleTokenUsageUpdatedEvent(
       : {}),
   };
 
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     liveUsage: {
       ...mergedUsage,
       ...(hasTokenUsage

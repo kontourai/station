@@ -270,6 +270,9 @@ keeps two independent mechanisms and separately labelled actions:
   [CLI `service` reference](../reference/cli.md#service). Any other archive
   names `station upgrade` on the host, or a reinstall.
 
+A machine's [managed policy](managed-policy.md#update-control) can turn both
+checks off, make the nightly channel unavailable, or send them to a mirror.
+
 The update proposal shows **What’s new** for the offered version. Release notes
 come from the exact version’s GitHub Release, with the native updater’s notes
 available as a fallback for desktop downloads. GitHub prose is informational;

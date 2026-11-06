@@ -9,6 +9,7 @@ import { Button } from '../components/Button';
 import { ErrorState } from '../components/state';
 import { SDKAdapter } from '../core/SDKAdapter';
 import { LayoutRenderer } from '../layouts';
+import { describeStationFailure } from '../utils/stationFailure';
 import { layoutWorkspaceShape } from './layout-workspace-shape';
 import { PersonalBoardWorkspace } from './personal-board/PersonalBoardWorkspace';
 
@@ -48,7 +49,7 @@ export function PersonalBoardView({ boardSlug }: { boardSlug: string }) {
         description={
           missing
             ? 'This Board no longer exists. A Board that was moved into a project is listed under that project.'
-            : ((error as Error | undefined)?.message ??
+            : (describeStationFailure(error as Error | undefined).body ??
               'Station could not read this Board.')
         }
         action={

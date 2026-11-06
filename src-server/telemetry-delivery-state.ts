@@ -115,8 +115,17 @@ export function beginOtelExport(
   };
 }
 
+/**
+ * #4521: the managed policy turned telemetry off, so this process registers
+ * no exporter. Saved endpoint changes then need no restart to stay inert.
+ */
+export function markOtelTelemetryManagedOff(denial: string): void {
+  current.status.managedDenial = denial;
+}
+
 /** Collector changes are restart-activated; saved changes revoke the old process's export authority now. */
 export function reconfigureOtelTelemetryDelivery(config: AppConfig): void {
+  if (current.status.managedDenial !== undefined) return;
   const observed = savedConfiguration(config);
   if (
     current.savedConfig.otelTelemetryEndpoint ===

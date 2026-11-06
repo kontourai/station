@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useRef } from 'react';
 import { showChatPageOrDock } from '../../app-shell/chat-placement';
+import { chatBelongsToStation } from '../../connections/station-state';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
@@ -17,6 +18,8 @@ import {
   type TaskShapingRequest,
 } from '../../lib/task-shaping';
 import { resolveAgentExecution } from '../../utils/execution';
+import { StationUiError } from '../../utils/StationUiError';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 export function TaskShapingHost() {
   const { apiBase } = useApiBase();
@@ -46,10 +49,11 @@ export function TaskShapingHost() {
       if (source) {
         let entry = Object.entries(activeChatsStore.getSnapshot()).find(
           ([key, chat]) =>
-            key === source.sessionId ||
-            chat.currentSessionId === source.sessionId ||
-            (source.conversationId &&
-              chat.conversationId === source.conversationId),
+            chatBelongsToStation(chat) &&
+            (key === source.sessionId ||
+              chat.currentSessionId === source.sessionId ||
+              (source.conversationId &&
+                chat.conversationId === source.conversationId)),
         );
         if (!entry && source.conversationId && source.agentSlug) {
           const sourceAgent = agents.find(
@@ -69,12 +73,13 @@ export function TaskShapingHost() {
           }
         }
         if (!entry)
-          throw new Error(
+          throw new StationUiError(
             'Open this conversation in chat, then choose New Task from this.',
           );
         const [key, chat] = entry;
         const agent = chat.agentSlug;
-        if (!agent) throw new Error('The conversation has no selected Agent.');
+        if (!agent)
+          throw new StationUiError('The conversation has no selected Agent.');
         navigation.setActiveChat(key);
         showChatPageOrDock(() => navigation.setDockState(true, true));
         // An explicit promotion sends a new turn, without consuming a person's unsent draft or files.
@@ -108,16 +113,12 @@ export function TaskShapingHost() {
             attachments: savedAttachments,
           });
         if (sent === false)
-          throw new Error(
+          throw new StationUiError(
             'The shaping message could not be sent. Inspect the chat for its delivery status.',
           );
       }
     } catch (error) {
-      toastStore.show(
-        error instanceof Error
-          ? error.message
-          : 'The shaping message could not be sent. Try again.',
-      );
+      toastStore.show(describeStationFailure(error).body);
     } finally {
       pending.current = false;
     }

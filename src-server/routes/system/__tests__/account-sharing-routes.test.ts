@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { HandoffRequestOutcome } from '../../../runtime/bootstrap/supervisor-link.js';
+import { createStationOriginPolicy } from '../../../security/station-browser-origins.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { accountSharingOriginOptions } from '../../../services/identity/account-sharing-origins.js';
@@ -75,14 +76,16 @@ async function harness(
     origins: async () =>
       accountSharingOriginOptions({
         allowedOrigins: [OFFERED, 'http://192.168.1.20:3000'],
-        browserOrigins: [
-          OFFERED,
-          'http://192.168.1.20:3000',
-          'http://localhost:3141',
-          'http://localhost:3000',
-          'http://127.0.0.1:3141',
-          'http://[::1]:3141',
-        ],
+        originPolicy: createStationOriginPolicy({
+          configured: [
+            OFFERED,
+            'http://192.168.1.20:3000',
+            'http://localhost:3141',
+            'http://localhost:3000',
+            'http://127.0.0.1:3141',
+            'http://[::1]:3141',
+          ],
+        }),
         apiPort: 3141,
         uiPort: 3000,
         uiIngressAuthority: '192.168.1.20:3000',

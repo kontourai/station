@@ -965,16 +965,16 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
   const { rerender } = render(
     <ReviewThreadCard thread={threads[3]} {...props} />,
   );
-  expect(screen.getByText('Queued').getAttribute('title')).toBe(
-    'Queued: agent is working',
-  );
+  expect(screen.getByRole('img', { name: 'Received' })).toBeTruthy();
   rerender(
     <ReviewThreadCard
       thread={{ ...threads[3], deliveryStatus: 'unconfirmed' }}
       {...props}
     />,
   );
-  expect(screen.getByText('Unconfirmed')).toBeTruthy();
+  expect(
+    screen.getAllByText('May have reached the agent').length,
+  ).toBeGreaterThan(0);
   expect(screen.queryByText('Queued')).toBeNull();
   rerender(
     <ReviewThreadCard
@@ -982,16 +982,12 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
       {...props}
     />,
   );
-  const failure = screen.getByText('Not sent');
-  expect(failure.getAttribute('title')).toBe('Delivery failed');
+  const failure = screen.getAllByText('Not sent')[0]!;
   expect(failure.closest('header')).toBeTruthy();
-  expect(failure.querySelector('svg')).toBeTruthy();
   expect(screen.queryByText('Delivery failed')).toBeNull();
-  const retry = screen.getByRole('button', { name: 'Retry sending thread 8' });
+  const retry = screen.getByRole('button', { name: 'Retry' });
   expect(retry.parentElement?.querySelector('button')).toBe(retry);
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Retry sending thread 8' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   await waitFor(() => expect(send).toHaveBeenCalledWith(['failed'], 'send'));
   rerender(
     <ReviewThreadCard
@@ -1002,14 +998,14 @@ it('shows queued and unconfirmed delivery distinctly and retries failed sends', 
       {...props}
     />,
   );
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   expect(
-    screen.queryByRole('button', { name: 'Retry sending thread 8' }),
-  ).toBeNull();
-  expect(screen.queryByText('Not sent')).toBeNull();
+    screen
+      .getAllByRole('status')
+      .some((node) => node.textContent === 'Not sent'),
+  ).toBe(false);
   expect(screen.queryByText('Delivery failed')).toBeNull();
-  expect(screen.getByText('Queued').getAttribute('title')).toBe(
-    'Queued: agent is working',
-  );
+  expect(screen.getByRole('img', { name: 'Received' })).toBeTruthy();
 });
 
 it('clamps the selection composer inside the viewport near its bottom-right edge', () => {

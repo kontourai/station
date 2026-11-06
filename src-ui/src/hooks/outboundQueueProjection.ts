@@ -1,7 +1,17 @@
+import type { StationConnection } from '../connections/station-connection';
+import {
+  chatBelongsToStation,
+  outboundStationIdentity,
+  stationStateKey,
+} from '../connections/station-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   currentOutboundStation,
   type OutboundDispatchTurn,
+  type OutboundRetiredKeys,
+  type OutboundStationIdentity,
+  outboundStationKey,
+  outboundTurnKey,
   rowBelongsToStation,
 } from '../lib/outboundQueue';
 
@@ -48,13 +58,17 @@ function pendingBehindUnsent(
   const sessionsBlocked = new Set<string>();
   for (const entry of entries) {
     if (entry.status === 'failed' && !entry.heldBy) {
-      sessionsBlocked.add(entry.sessionId);
+      sessionsBlocked.add(
+        JSON.stringify([outboundStationKey(entry.station), entry.sessionId]),
+      );
     } else if (
       entry.status === 'pending' &&
       !entry.heldBy &&
-      sessionsBlocked.has(entry.sessionId)
+      sessionsBlocked.has(
+        JSON.stringify([outboundStationKey(entry.station), entry.sessionId]),
+      )
     ) {
-      blocked.add(entry.clientTurnId);
+      blocked.add(outboundTurnKey(entry));
     }
   }
   return blocked;
@@ -62,15 +76,27 @@ function pendingBehindUnsent(
 
 export function projectOutboundQueueEntries(
   entries: readonly OutboundDispatchTurn[],
-  retired: { discarded: readonly string[]; accepted: readonly string[] } = {
+  retired: OutboundRetiredKeys = {
     discarded: [],
     accepted: [],
   },
+  connection?: StationConnection,
+  retainedStation?: OutboundStationIdentity,
 ): void {
-  settleRetiredBubbles(retired);
+  const belongs = (chat: Parameters<typeof chatBelongsToStation>[0]) =>
+    retainedStation?.binding
+      ? !chat.stationBindingInvalid &&
+        stationStateKey(chat.stationBinding) ===
+          stationStateKey(retainedStation.binding)
+      : chatBelongsToStation(chat, connection);
+  settleRetiredBubbles(retired, belongs);
   const behindUnsent = pendingBehindUnsent(entries);
   const groups = new Map<string, OutboundDispatchTurn[]>();
   for (const entry of entries) {
+    const owner = connection
+      ? outboundStationIdentity(connection)
+      : retainedStation;
+    if (owner && !rowBelongsToStation(entry, owner)) continue;
     // A live send this renderer is still waiting on is already on screen as
     // its own bubble, with the chat saying "Sending"; listing it here too
     // would show the message twice and call the chat queued.
@@ -103,7 +129,7 @@ export function projectOutboundQueueEntries(
   for (const [sessionId, chat] of Object.entries(
     activeChatsStore.getSnapshot(),
   )) {
-    if (groups.has(sessionId)) continue;
+    if (!belongs(chat) || groups.has(sessionId)) continue;
     if (
       !chat.outboundQueuedTurns?.length &&
       !chat.ephemeralMessages?.some((message) => message.queuedRetry)
@@ -119,6 +145,8 @@ export function projectOutboundQueueEntries(
   }
 
   for (const [sessionId, queued] of groups) {
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    if (chat && !belongs(chat)) continue;
     if (!activeChatsStore.getSnapshot()[sessionId]) {
       const first = queued[0]!;
       activeChatsStore.initChat(sessionId, {
@@ -126,6 +154,14 @@ export function projectOutboundQueueEntries(
         agentName: first.agentSlug,
         title: 'Queued message',
         conversationId: first.conversationId,
+        stationBinding: first.station?.binding,
+        executionAgentId: first.executionAgentId,
+        executionOnCurrentStation: first.executionOnCurrentStation,
+        expectedDefinitionFingerprint: first.expectedDefinitionFingerprint,
+        requestedModel: first.requestedModel,
+        requestedProviderOptions: first.requestedProviderOptions,
+        model: first.model,
+        providerOptions: first.providerOptions,
         ...(first.projectSlug ? { projectSlug: first.projectSlug } : {}),
       });
     }
@@ -148,6 +184,7 @@ export function projectOutboundQueueEntries(
           mergedTurns,
           deliveryCheck,
           station,
+          conversationId,
           heldBy,
           awaitingLookup,
           sendUnderWay,
@@ -167,11 +204,24 @@ export function projectOutboundQueueEntries(
             : {}),
           ...(awaitingLookup ? { awaitingLookup: true as const } : {}),
           ...(sendUnderWay ? { sendUnderWay: true as const } : {}),
-          ...(behindUnsent.has(clientTurnId)
+          ...(behindUnsent.has(
+            outboundTurnKey({
+              clientTurnId,
+              station,
+              conversationId,
+              sessionId,
+            }),
+          )
             ? { behindUnsent: true as const }
             : {}),
           ...(station &&
-          !rowBelongsToStation({ station }, currentOutboundStation())
+          (retainedStation ||
+            !rowBelongsToStation(
+              { station },
+              connection
+                ? outboundStationIdentity(connection)
+                : currentOutboundStation(),
+            ))
             ? { waitingForStation: station.apiBase }
             : {}),
         }),
@@ -187,16 +237,23 @@ export function projectOutboundQueueEntries(
  * rather than reading as unanswered. Only this window's own unsent bubbles
  * (a key, no turn) are touched; history is never changed.
  */
-function settleRetiredBubbles(retired: {
-  discarded: readonly string[];
-  accepted: readonly string[];
-}): void {
+function settleRetiredBubbles(
+  retired: OutboundRetiredKeys,
+  belongs: (chat: Parameters<typeof chatBelongsToStation>[0]) => boolean,
+): void {
   if (retired.discarded.length === 0 && retired.accepted.length === 0) return;
-  const discarded = new Set(retired.discarded);
-  const accepted = new Set(retired.accepted);
   for (const [sessionId, chat] of Object.entries(
     activeChatsStore.getSnapshot(),
   )) {
+    if (!belongs(chat)) continue;
+    const partitions = retired.byConversation;
+    const selected = partitions
+      ? [partitions['*'], partitions[chat.conversationId ?? sessionId]]
+      : [retired];
+    const discarded = new Set(
+      selected.flatMap((keys) => keys?.discarded ?? []),
+    );
+    const accepted = new Set(selected.flatMap((keys) => keys?.accepted ?? []));
     const unsent = (chat.messages ?? []).filter(
       (message) =>
         message.role === 'user' &&

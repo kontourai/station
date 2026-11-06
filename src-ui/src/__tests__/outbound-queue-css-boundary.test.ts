@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createUiModuleGraph } from '../../../scripts/lib/ui-module-graph.mjs';
 
 const uiRoot = join(__dirname, '..');
 
@@ -18,7 +19,9 @@ describe('outbound queue lazy stylesheet boundary (station#2751)', () => {
     const queueCss = source('components/chat/QueuedMessages.css');
     const localQueue = source('components/chat/QueuedMessages.tsx');
     const component = source('components/chat/OutboundQueuedMessages.tsx');
-    const chatDock = source('components/chat-dock/ChatDockBody.tsx');
+    const conversationBody = source(
+      'components/conversation/ConversationBody.tsx',
+    );
 
     for (const selector of [
       '.queued-message__advanced-context',
@@ -30,12 +33,41 @@ describe('outbound queue lazy stylesheet boundary (station#2751)', () => {
     }
     expect(component).toContain("import './QueuedMessages.css'");
     expect(localQueue).toContain("import './QueuedMessages.css'");
-    expect(chatDock).toContain("import('../chat/OutboundQueuedMessages')");
+    expect(conversationBody).toContain(
+      "import('../chat/OutboundQueuedMessages')",
+    );
     // The local queue loads inside the one pending-message surface's chunk.
-    expect(chatDock).toContain("import('../chat/ConversationInboxMessages')");
+    expect(conversationBody).toContain(
+      "import('../chat/ConversationInboxMessages')",
+    );
     expect(source('components/chat/ConversationInboxMessages.tsx')).toContain(
       "from './QueuedMessages'",
     );
+  });
+
+  it('keeps recovery, route negotiation and history surfaces out of eager owners', () => {
+    const graph = createUiModuleGraph(join(uiRoot, '../..'));
+    for (const [owner, lazyModule] of [
+      ['contexts/active-chats-store.ts', 'lib/outboundQueue.ts'],
+      ['lib/peer-chat.ts', 'lib/outboundQueue.ts'],
+      [
+        'connections/StationConnectionsContext.tsx',
+        'connections/resolve-station-connection.ts',
+      ],
+    ]) {
+      const edges = graph.edges(`src-ui/src/${owner}`);
+      expect(edges.static).not.toContain(`src-ui/src/${lazyModule}`);
+      expect(edges.dynamic).toContain(`src-ui/src/${lazyModule}`);
+    }
+    expect(
+      graph.edges('src-ui/src/contexts/ProjectsContext.tsx').static,
+    ).not.toContain(
+      'src-ui/src/components/conversation/SharedTaskHistoryList.tsx',
+    );
+    expect(
+      graph.edges('src-ui/src/components/conversation/ConversationComposer.tsx')
+        .static,
+    ).not.toContain('src-ui/src/components/chat/ChatInputArea.tsx');
   });
 
   it('keeps the shared queue style authority out of the eager sheet', () => {

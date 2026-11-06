@@ -9,7 +9,7 @@ additional tool permission.
 
 ## Review a Project's working configuration
 
-In **Project settings → Sources → Where Agent work starts**, discover the
+In **Project settings → Sources → Where new chats start**, discover the
 repository guidance, then review the proposed rules, validation commands,
 completion criteria, checkpoints and evidence pointers before applying them.
 Only the operator in person can discover or change this host-filesystem
@@ -159,7 +159,7 @@ or causal cost savings. Those remain separate acceptance observations.
 
 [Controlled visual captures](../learn/media/agent-efficiency-captures.json) retain
 390/1440 light/dark examples. The learning comparisons show access granted →
-read refused in the same current component, with synthetic owner data. They do
+read refused in the same captured component, with synthetic owner data. They do
 not establish a live account, installed app or causal savings result.
 
 ## Run an isolated GitHub repair
@@ -170,6 +170,10 @@ off. This is a personal-host operator API preview: it has no agent/MCP grant
 surface or hosted-tenant execution. Running the model can spend provider credits.
 Docker, Python 3 and an immutable image containing the pinned Codex CLI must be
 available. The command below prepares and separately qualifies that image.
+Under a [managed policy](managed-policy.md#network-exposure) that allows no
+remote clients, the worker's relay binds loopback, and repairs are refused on
+Linux (`repair-network-local-only`), where Docker reaches the host over its
+bridge instead.
 
 Use the authenticated operator API at `/api/isolated-repairs`. Requests use the
 same current operator credential/session as other host administration; a paired

@@ -57,7 +57,7 @@ export function MemberProjectHeader({
   refreshDisabled: boolean;
 }) {
   return (
-    <div className="project-page__header">
+    <div className="project-page__header project-page__header--member">
       <div className="project-page__identity">
         <ProjectIcon project={project} size={48} fallback="initials" />
         <div className="project-page__identity-info">

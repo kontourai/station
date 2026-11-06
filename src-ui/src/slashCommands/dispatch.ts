@@ -13,6 +13,7 @@ import {
   parseShellWords,
   substituteSkillVariables,
 } from '../utils/skill-commands';
+import { describeStationFailure } from '../utils/stationFailure';
 import { loadSlashCommands } from './load';
 import { getAllCommands, getCommand } from './registry';
 
@@ -127,7 +128,7 @@ export async function dispatchSlashCommand(
     } catch (error) {
       addEphemeralMessage(sessionId, {
         role: 'system',
-        content: `Could not read /${cmd}: ${error instanceof Error ? error.message : 'unknown error'}`,
+        content: `Could not read /${cmd}: ${describeStationFailure(error).body}`,
       });
       cleanup();
       return true;
@@ -202,7 +203,7 @@ export async function dispatchSlashCommand(
   } catch (error) {
     addEphemeralMessage(sessionId, {
       role: 'system',
-      content: `Could not load Station's built-in commands, so ${command} was not sent. Try again. (${error instanceof Error ? error.message : 'unknown error'})`,
+      content: `Could not load Station's built-in commands, so ${command} was not sent. Try again. (${describeStationFailure(error).body})`,
     });
     cleanup();
     return true;

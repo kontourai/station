@@ -25,6 +25,7 @@ export function SectionNavigation({
       <label className="section-navigation__picker">
         {pickerLabel}
         <select
+          aria-label={pickerLabel}
           className="editor-select"
           value={activeKey}
           onChange={(event) => onNavigate(event.target.value)}

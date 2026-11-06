@@ -1,6 +1,7 @@
 import type {
   LiveSurfaceFrameHeader,
   LiveSurfaceInput,
+  LiveSurfaceProducerStatus,
   LiveSurfaceStreamParams,
 } from '@kontourai/station-contracts/live-surface';
 import type {
@@ -32,6 +33,10 @@ export class SyntheticLiveSurfaceProducer implements LiveSurfaceProducer {
   private outstanding: number | null = null;
   private readonly backpressure: boolean;
   dispatchImpl: (input: LiveSurfaceInput) => Promise<void> = async () => {};
+  /** A foldable's display to tag frames with (absent: no tag). */
+  display: LiveSurfaceFrameHeader['display'];
+  /** Producer status to report (absent: none). */
+  status?: () => LiveSurfaceProducerStatus;
 
   constructor(
     readonly surfaceId: string,
@@ -114,6 +119,7 @@ export class SyntheticLiveSurfaceProducer implements LiveSurfaceProducer {
         height: this.size.height,
         deviceScaleFactor: this.size.deviceScaleFactor,
         capturedAt: Date.now(),
+        ...(this.display ? { display: this.display } : {}),
       },
       syntheticFrameBody(seq),
     );

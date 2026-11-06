@@ -14,30 +14,6 @@
 .chat-dock__mobile-identity:hover {
   background: transparent;
 }
-/* New and its destination project, one split control: New starts a chat,
-   the caret half shows and changes where. Both halves keep the bar's quiet
-   chrome; one shared frame says they belong together. */
-.chat-dock__new-split {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  border: var(--k-border-thin, 1px) solid var(--border-primary);
-  border-radius: var(--radius-md);
-}
-
-.chat-dock__new-split .chat-dock__tab-actions {
-  flex: 0 0 auto;
-}
-
-.chat-dock__header-actions .chat-dock__new-split .chat-dock__new {
-  border: 0;
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
-}
-
-.chat-dock__new-split:not(:has(.chat-dock__project-context)) .chat-dock__new {
-  border-radius: var(--radius-md);
-}
-
 /* The inbox toggle carries the working chats' count, and a dot for unread
    replies; both facts are also in its name. */
 .chat-dock__inbox-toggle {

@@ -3025,6 +3025,38 @@ export class EventStore {
         stationTurnDedupHost(turnProcessIdentity),
       );
       ensureOrchestrationSessionStateColumns(this.db);
+      // Older Stop handling materialized reserved children that never started.
+      // Keep their lineage and diagnostic events; only remove the empty projection.
+      this.db.exec(`
+        DELETE FROM provider_session_state
+        WHERE status = 'closed' AND model IS NULL AND cwd IS NULL
+          AND resume_cursor IS NULL AND tenant_execution_context IS NULL
+          AND control_mode = 'station-owned' AND attached_source IS NULL
+          AND continuation_source_thread_id IS NULL AND adoption_idempotency_key IS NULL
+          AND persist_session = 0 AND ephemeral = 0
+          AND thread_id IN (
+            SELECT session_id FROM orchestration_conversation_sessions
+            WHERE predecessor_session_id IS NOT NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_events e
+            WHERE e.thread_id = provider_session_state.thread_id
+              AND e.method NOT IN ('session.exited', 'runtime.warning')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_command_receipts r
+            WHERE r.thread_id = provider_session_state.thread_id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_turn_boundaries b
+            WHERE b.thread_id = provider_session_state.thread_id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_prepared_turns p
+            WHERE p.thread_id = provider_session_state.thread_id
+          )
+      `);
+
       ensureNativeInvocationRunColumns(this.db);
       ensureVoiceTurnRunColumns(this.db);
       ensureOrchestrationRecoverySettlementColumns(this.db);
@@ -13014,6 +13046,17 @@ export class EventStore {
       this.reserveEventAppendWriter();
       const lineage =
         this.conversationSessionLineage.sessionForExecution(threadId);
+      // A peer can materialize the reserved child before this writer is acquired.
+      if (
+        !existing &&
+        lineage?.predecessorSessionId &&
+        !this.db
+          .prepare('SELECT 1 FROM provider_session_state WHERE thread_id = ?')
+          .get(threadId)
+      ) {
+        this.db.exec('RELEASE SAVEPOINT mark_session_closed_lineage');
+        return;
+      }
       this.db
         .prepare(
           `INSERT INTO provider_session_state

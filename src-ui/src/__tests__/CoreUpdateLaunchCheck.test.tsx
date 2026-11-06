@@ -228,7 +228,7 @@ describe('CoreUpdateLaunchCheck notices', () => {
       expect(notices).toEqual([
         expect.objectContaining({
           target: 'desktop',
-          detail: 'offline',
+          detail: 'Try again in a moment.',
           actionLabel: 'Retry update check',
         }),
       ]),
@@ -263,24 +263,24 @@ describe('CoreUpdateLaunchCheck notices', () => {
       'insecure release',
       'https://updates.example.test/feed',
       'http://downloads.example/app.apk',
-      /must use HTTPS/,
     ],
     [
       'cross-origin response',
       'https://cdn.example.test/feed',
       'https://updates.example.test/app',
-      /not trusted/,
     ],
   ])(
     'rejects %s without publishing an install action',
-    async (_label, url, releaseUrl, detail) => {
+    async (_label, url, releaseUrl) => {
       isMobile = true;
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ...feedResponse('2.0.0', releaseUrl),
         url,
       });
       renderCheck(feedProps);
-      await waitFor(() => expect(notices[0]?.detail).toMatch(detail));
+      await waitFor(() =>
+        expect(notices[0]?.detail).toBe('Try again in a moment.'),
+      );
       expect(notices.some((notice) => notice.href)).toBe(false);
     },
   );

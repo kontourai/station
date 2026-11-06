@@ -102,7 +102,9 @@
   gap: var(--space-2, 8px);
   left: var(--space-2, 8px);
   position: absolute;
-  right: var(--space-2, 8px);
+  /* Clear of the live view's 44px Full screen button in the bottom-right
+     corner (LiveSurfaceCanvas.css), so a notice never sits under it. */
+  right: calc(var(--k-space-1) + 44px + var(--space-2, 8px));
   z-index: 1;
 }
 
@@ -139,11 +141,28 @@
   color: var(--accent-warning, var(--text-primary));
 }
 
+/* A notice's "How to fix" guide link; the underline marks it as a link. */
+.browser-pane__notice a {
+  color: var(--k-action);
+  text-decoration: underline;
+}
+
+/* Its own row under the reason, a full 44px touch target. */
+.browser-pane__notice .browser-pane__notice-help {
+  align-items: center;
+  display: flex;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--k-space-1);
+  margin-inline-start: calc(-1 * var(--k-space-1));
+  width: fit-content;
+}
+
 .browser-pane__panel {
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md, 6px);
-  flex: 0 1 auto;
-  max-height: 45%;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   /* On touch, the shared Toggle's 44px hit area reaches 12px past its 20px
      track (Toggle.css). A narrow panel wraps that switch onto its last row,
@@ -521,6 +540,9 @@
 }
 
 .browser-pane__console {
+  /* Inspection shares space with the live page; the session picker can fill it. */
+  flex: 0 1 auto;
+  max-height: 45%;
   display: flex;
   flex-direction: column;
   gap: var(--space-2, 8px);
@@ -750,4 +772,18 @@
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.browser-pane__open {
+  width: 44px;
+  padding-inline: 0;
+}
+
+.browser-pane__start-kicker {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
 }

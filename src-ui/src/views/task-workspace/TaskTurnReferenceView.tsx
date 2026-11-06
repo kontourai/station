@@ -19,6 +19,7 @@ import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { TurnProvenanceCard } from '../../components/chat/TurnProvenanceCard';
 import { Dialog } from '../../components/Dialog';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { useBasisPaneLauncher } from '../../workspace-panes/BasisPaneLauncher';
 
 type AvailableReference = Extract<
@@ -132,11 +133,7 @@ export function TaskTurnReferenceView({
         <ErrorState
           variant="compact"
           title="Unable to load kept answers"
-          description={
-            error instanceof Error
-              ? error.message
-              : 'Answer references were not returned.'
-          }
+          description={describeStationFailure(error).body}
           action={
             <Button size="sm" onClick={() => void refetch()}>
               Retry

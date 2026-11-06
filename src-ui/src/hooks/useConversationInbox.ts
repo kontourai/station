@@ -14,12 +14,15 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
+import type { StationConnection } from '../connections/station-connection';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { subscribeSharedOrchestrationStream } from './orchestration/sharedStreamListeners';
 
 type InboxScope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 interface Cancellation {
+  apiBase: string;
   scope: InboxScope;
   client: QueryClient;
   queryKey: readonly unknown[];
@@ -48,15 +51,11 @@ export const INBOX_ACTIVE_POLL_MS = 2_000;
 export const INBOX_IDLE_POLL_MS = 15_000;
 
 function inboxQueryKey(
-  scope: ReturnType<typeof useHostRequestAuthorityScope>,
+  scope: { apiBase: string; authorityKey: string } | undefined,
   conversationId: string,
+  apiBase = scope?.apiBase,
 ) {
-  return [
-    'conversation-inbox',
-    scope?.apiBase,
-    scope?.authorityKey,
-    conversationId,
-  ];
+  return ['conversation-inbox', apiBase, scope?.authorityKey, conversationId];
 }
 
 /**
@@ -66,10 +65,20 @@ function inboxQueryKey(
  */
 export function useConversationInboxSnapshot(
   conversationId: string,
+  connection?: StationConnection | null,
 ): ConversationInboxEntry[] {
-  const scope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useOptionalConversationConnection();
+  const scope =
+    connection === null
+      ? undefined
+      : (connection?.requestScope ?? target?.requestScope ?? hostScope);
+  const apiBase =
+    connection === null
+      ? undefined
+      : (connection?.targetApiBase ?? target?.apiBase ?? scope?.apiBase);
   const query = useQuery<ConversationInboxEntry[]>({
-    queryKey: inboxQueryKey(scope, conversationId),
+    queryKey: inboxQueryKey(scope, conversationId, apiBase),
     queryFn: skipToken,
     gcTime: 0,
   });
@@ -82,11 +91,14 @@ export function useConversationInbox(
   conversationId: string,
   { active = false }: { active?: boolean } = {},
 ) {
-  const scope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useOptionalConversationConnection();
+  const scope = target?.requestScope ?? hostScope;
+  const apiBase = target?.apiBase ?? scope?.apiBase;
   const constrainedNetwork = useConstrainedNetwork();
   const client = useQueryClient();
   const enabled = Boolean(conversationId && scope?.isCurrent());
-  const queryKey = inboxQueryKey(scope, conversationId);
+  const queryKey = inboxQueryKey(scope, conversationId, apiBase);
   const query = useQuery<ConversationInboxEntry[]>({
     queryKey,
     enabled,
@@ -109,20 +121,16 @@ export function useConversationInbox(
     queryFn: async ({ signal }): Promise<ConversationInboxEntry[]> => {
       if (!scope?.isCurrent())
         throw new Error('The Station connection changed.');
-      const entries = await listConversationInbox(
-        scope.apiBase,
-        conversationId,
-        {
-          requestScope: scope,
-          requireCredential: scope.requiresEnrolledCredential !== false,
-          signal,
-          timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
-          onHead: (head) => {
-            if (!signal.aborted && scope.isCurrent())
-              client.setQueryData([...queryKey, 'head'], head);
-          },
+      const entries = await listConversationInbox(apiBase!, conversationId, {
+        requestScope: scope,
+        requireCredential: scope.requiresEnrolledCredential !== false,
+        signal,
+        timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+        onHead: (head) => {
+          if (!signal.aborted && scope.isCurrent())
+            client.setQueryData([...queryKey, 'head'], head);
         },
-      );
+      });
       if (!scope.isCurrent())
         throw new Error('The Station connection changed.');
       return entries;
@@ -130,7 +138,7 @@ export function useConversationInbox(
   });
   useEffect(() => {
     if (!scope || !conversationId) return;
-    const subscription = subscribeSharedOrchestrationStream(scope.apiBase, {
+    const subscription = subscribeSharedOrchestrationStream(apiBase!, {
       onMessage: (frame) => {
         if (
           frame.event !== SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED ||
@@ -153,7 +161,7 @@ export function useConversationInbox(
         void client.invalidateQueries({
           queryKey: [
             'conversation-inbox',
-            scope.apiBase,
+            apiBase,
             scope.authorityKey,
             conversationId,
           ],
@@ -162,7 +170,7 @@ export function useConversationInbox(
       },
     });
     return () => subscription.close();
-  }, [scope, client, conversationId]);
+  }, [scope, apiBase, client, conversationId]);
   const availability =
     !enabled || query.isError || query.isPaused
       ? 'unavailable'
@@ -191,7 +199,7 @@ export function useConversationInbox(
       if (!request.scope.isCurrent())
         throw new Error('The Station connection changed.');
       const entry = await cancelConversationInboxEntry(
-        request.scope.apiBase,
+        request.apiBase,
         request.conversationId,
         request.key,
         {
@@ -243,6 +251,7 @@ export function useConversationInbox(
       )
         throw new Error('Read this queued message again before removing it.');
       return cancellation.mutateAsync({
+        apiBase: apiBase!,
         scope,
         client,
         queryKey,

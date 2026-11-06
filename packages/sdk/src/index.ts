@@ -458,6 +458,14 @@ export {
 } from './layoutProviders';
 export { NotificationsAPI } from './notifications/index.js';
 export { OrchestrationSessionsContext } from './orchestrationSessionsContext';
+export {
+  createPrivateMemoryClient,
+  type PrivateMemoryClient,
+  type PrivateMemoryFailure,
+  type PrivateMemoryHostSupport,
+  PrivateMemoryRequestError,
+  privateMemoryHostSupport,
+} from './private-memory.js';
 // Re-export components
 export {
   LayoutNavigationProvider,
@@ -1626,6 +1634,7 @@ export type {
 export {
   AgentToolsRequestError,
   agentQueries,
+  type ConnectionReadTarget,
   conversationQueries,
   isAgentToolsActivatingError,
   knowledgeQueries,

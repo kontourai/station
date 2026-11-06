@@ -48,6 +48,7 @@ import {
   ConfinementRefusedError,
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
+import { managedEnginePrerequisites } from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { prepareManagedEngineWorkspace } from '../../services/infra/managed-engine-workspace.js';
@@ -1033,6 +1034,14 @@ export class CodexAdapter implements ProviderAdapterShape {
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
+    // #4515: an engine the managed policy does not allow is never run, not
+    // even for `--version` or `login status`.
+    const managed = managedEnginePrerequisites(
+      'codex',
+      CODEX_CLI_COMMAND,
+      'Codex',
+    );
+    if (managed) return managed;
     // The `codex login status` probe runs under the connection env, as every
     // `codex app-server` child of this connection does — so a configured
     // configHome (→ CODEX_HOME) is the account readiness reports on. The

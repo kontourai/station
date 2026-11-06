@@ -1,13 +1,12 @@
 /** @vitest-environment jsdom */
 
+import { TerminalHistoryUnsupportedError } from '@kontourai/station-sdk';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { TerminalHistoryUsage } from '../TerminalHistoryUsage';
 
-const { query, mutation, Unsupported } = vi.hoisted(() => {
-  class Unsupported extends Error {}
+const { query, mutation } = vi.hoisted(() => {
   return {
-    Unsupported,
     query: {
       isLoading: false,
       error: null as Error | null,
@@ -25,7 +24,6 @@ const { query, mutation, Unsupported } = vi.hoisted(() => {
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
-  TerminalHistoryUnsupportedError: Unsupported,
   useTerminalHistoryQuery: () => query,
   useClearTerminalHistoryMutation: () => mutation,
 }));
@@ -87,9 +85,7 @@ test('a read failure offers Retry, and an older Station says it cannot report', 
   const view = render(<TerminalHistoryUsage />);
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(query.refetch).toHaveBeenCalled();
-  query.error = new Unsupported(
-    'This Station does not report terminal history.',
-  );
+  query.error = new TerminalHistoryUnsupportedError();
   view.rerender(<TerminalHistoryUsage />);
   expect(
     screen.getByText('This Station does not report terminal history.'),

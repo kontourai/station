@@ -204,9 +204,10 @@ describe('Desktop app updates settings card', () => {
       expect((await screen.findByRole('alert')).textContent).toBe(
         'Station could not read the desktop app’s update state.',
       );
+      expect(screen.getByText('Try again in a moment.')).not.toBeNull();
       expect(
-        screen.getByText('native update connection unavailable'),
-      ).not.toBeNull();
+        screen.queryByText('native update connection unavailable'),
+      ).toBeNull();
       native.invoke.mockImplementation(answer);
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       expect(await screen.findByText('Ready to restart')).not.toBeNull();
@@ -236,7 +237,8 @@ describe('Desktop app updates settings card', () => {
 
     fireEvent.click(trigger);
     fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
-    expect(await screen.findByText('installer access denied')).not.toBeNull();
+    expect(await screen.findByText('Try again in a moment.')).not.toBeNull();
+    expect(screen.queryByText('installer access denied')).toBeNull();
     expect(screen.getByRole('dialog').textContent).toContain(
       'The update did not install, and Station did not restart.',
     );

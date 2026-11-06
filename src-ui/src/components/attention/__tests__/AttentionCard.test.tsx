@@ -662,7 +662,7 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     renderCard(basePairing());
 
     expect(screen.getByRole('alert').textContent).toContain(
-      'Could not record dismissal',
+      'Try again in a moment.',
     );
   });
 });

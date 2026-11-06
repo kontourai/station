@@ -23,6 +23,7 @@ import { Empty, SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useCoarseNow } from '../hooks/useCoarseNow';
 import { openExternalLink } from '../platform/openExternalLink';
+import { describeStationFailure } from '../utils/stationFailure';
 import './EngineAccountOverview.css';
 
 export function EngineAccountOverview({
@@ -435,7 +436,7 @@ function AccountLogin({
   }, [login, onCompleted]);
   const act = (action: Parameters<typeof mutation.mutate>[0]) =>
     mutation.mutate(action, {
-      onError: (error) => setFailure(error.message),
+      onError: (error) => setFailure(describeStationFailure(error).body),
       onSettled: () => {
         mutation.reset();
         void query.refetch();

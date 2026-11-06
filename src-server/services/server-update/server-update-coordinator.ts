@@ -63,6 +63,7 @@ import {
   archiveUpdateStatus,
 } from '../../routes/system/archive-update.js';
 import type { InstallProvenance } from '../../routes/system/install-provenance.js';
+import { managedUpdateRefusalFor } from '../../routes/system/managed-update-policy.js';
 
 type ArchiveProvenance = Extract<InstallProvenance, { installKind: 'archive' }>;
 
@@ -173,7 +174,7 @@ interface CachedCheck {
 
 export type ServerUpdateActionResult =
   | { ok: true; state: ServerUpdateState; requestId?: string }
-  | { ok: false; status: 409 | 500; error: string };
+  | { ok: false; status: 403 | 409 | 500; error: string; code?: string };
 
 const VERSION = /^[0-9A-Za-z][0-9A-Za-z.+-]*$/;
 
@@ -692,6 +693,10 @@ export class ServerUpdateCoordinator {
   ): Promise<ArchiveUpdateStatus | null> {
     const archive = this.archive();
     if (!archive || this.stopped) return null;
+    // #4522: a policy that refuses updates refuses this server's own checks
+    // too, so nothing is fetched (and so nothing is downloaded by policy).
+    if (managedUpdateRefusalFor(archive, this.deps.options?.managedUpdates))
+      return null;
     const ttl = this.deps.checkTtlMs ?? SERVER_UPDATE_CHECK_TTL_MS;
     if (!options.force && this.cached && this.now() - this.cached.at < ttl)
       return this.cached.status;
@@ -980,6 +985,17 @@ export class ServerUpdateCoordinator {
         status: 409,
         error:
           'This Station server is not run by the Station service’s launcher, so it cannot update itself.',
+      };
+    const managed = managedUpdateRefusalFor(
+      archive,
+      this.deps.options?.managedUpdates,
+    );
+    if (managed)
+      return {
+        ok: false,
+        status: 403,
+        error: `${managed.sentence}.`,
+        code: managed.code,
       };
     const progress = readServiceUpdateProgress(archive.installRoot);
     if (progress.state !== 'staged' || progress.version !== version)

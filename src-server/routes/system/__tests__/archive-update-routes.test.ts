@@ -140,11 +140,15 @@ function makeInstall({
   installerOwned = true,
   manifestUrl = MANIFEST_URL as string | null,
   stateSchema = 4,
+  ring = 'preview' as 'preview' | 'nightly',
 }: {
   installerOwned?: boolean;
   manifestUrl?: string | null;
   stateSchema?: 3 | 4;
+  ring?: 'preview' | 'nightly';
 } = {}): Install {
+  const channel = ring === 'nightly' ? 'nightly' : 'beta';
+  const version = ring === 'nightly' ? '0.8.0-nightly.1' : RUNNING;
   const installRoot = makeTempDir('station-archive-install-');
   if (installerOwned) {
     writeFileSync(
@@ -153,8 +157,8 @@ function makeInstall({
     );
   }
   const common = {
-    channel: 'beta',
-    releaseChannel: 'preview',
+    channel,
+    releaseChannel: ring,
     installRoot,
     stationRoot: join(installRoot, 'root'),
     stationHome: join(installRoot, 'root', 'instances', 'beta'),
@@ -169,7 +173,7 @@ function makeInstall({
         : { schemaVersion: 3, ...common },
     )}\n`,
   );
-  const versionRoot = join(installRoot, 'versions', RUNNING);
+  const versionRoot = join(installRoot, 'versions', version);
   const moduleDir = join(versionRoot, 'dist-server');
   mkdirSync(moduleDir, { recursive: true });
   writeFileSync(
@@ -181,10 +185,10 @@ function makeInstall({
     `${JSON.stringify({
       schemaVersion: 2,
       sha: SHA,
-      ref: `v${RUNNING}`,
+      ref: `v${version}`,
       createdAt: '2026-09-20T00:00:00.000Z',
-      channel: 'beta',
-      releaseChannel: 'preview',
+      channel,
+      releaseChannel: ring,
       prerelease: true,
     })}\n`,
   );
@@ -1143,6 +1147,8 @@ function coordinatorFor(
     policyGate?: Promise<void>;
     /** Runs before each policy read returns. */
     onPolicyRead?: () => Promise<void> | void;
+    /** #4522: the managed policy's `limits.updates`. */
+    managedUpdates?: Record<string, unknown>;
   } = {},
 ) {
   const clock = options.clock ?? { now: Date.parse('2026-10-19T10:00:00Z') };
@@ -1164,6 +1170,9 @@ function coordinatorFor(
       pinnedKeys: TEST_KEYS,
       platform: 'linux',
       arch: 'x64',
+      ...(options.managedUpdates
+        ? { managedUpdates: options.managedUpdates }
+        : {}),
     },
     readDownloadPolicy: async () => {
       if (options.policyGate) await options.policyGate;
@@ -2472,5 +2481,189 @@ describe('the coordinator hears settings saves on its own subscription (#3851)',
       ),
     );
     coordinator.stop();
+  });
+});
+
+describe('the managed policy’s update limit (#4522)', () => {
+  const MIRROR = 'https://mirror.example.test/station/t0ken';
+  const MIRRORED_MANIFEST = `${MIRROR}/portable-preview/station-portable-preview-manifest.json`;
+  const OFF = { mode: 'off' };
+
+  test('off: the check contacts nothing and every install request is refused', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const app = createApp(install, { extraDeps: { managedUpdates: OFF } });
+
+    const check = await json(await app.request('/core-update'));
+    expect(check).toMatchObject({
+      installKind: 'archive',
+      updateAvailable: false,
+      managedPolicyCode: 'managed-policy-updates-refused',
+      message: "This machine's managed policy turns off Station updates.",
+      selfUpdateUnavailableReason:
+        "This machine's managed policy turns off Station updates",
+    });
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    const request = serviceUpdatePaths(install.installRoot).request;
+    for (const body of [
+      undefined,
+      { action: 'stage' },
+      { action: 'apply', version: NEWER },
+    ]) {
+      const res = await app.request('/core-update', {
+        method: 'POST',
+        ...(body
+          ? {
+              body: JSON.stringify(body),
+              headers: { 'content-type': 'application/json' },
+            }
+          : {}),
+      });
+      expect(res.status).toBe(403);
+      expect(await json(res)).toEqual({
+        success: false,
+        error: "This machine's managed policy turns off Station updates.",
+        code: 'managed-policy-updates-refused',
+      });
+      expect(existsSync(request)).toBe(false);
+    }
+    const idle = await app.request('/core-update/apply-when-idle', {
+      method: 'PUT',
+      body: JSON.stringify({ version: NEWER }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(idle.status).toBe(403);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  test('off: the coordinator neither checks nor downloads nor applies by itself', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator, timers, clock, request } = coordinatorFor(install, {
+      policy: 'immediately',
+      managedUpdates: OFF,
+    });
+    coordinator.start();
+    clock.now += 60_000;
+    await timers.fireDue();
+    expect(await coordinator.check('forced', { force: true })).toBeNull();
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(await coordinator.stage()).toMatchObject({
+      ok: false,
+      status: 403,
+      code: 'managed-policy-updates-refused',
+    });
+    expect(await coordinator.apply(NEWER)).toMatchObject({
+      ok: false,
+      status: 403,
+    });
+    expect(await coordinator.setApplyWhenIdle(NEWER)).toMatchObject({
+      ok: false,
+      status: 403,
+    });
+    expect(request()).toBeNull();
+    coordinator.stop();
+  });
+
+  test('a mirror: the check and the coordinator read the mirror’s manifest, never the recorded default', async () => {
+    const install = makeInstall({
+      manifestUrl:
+        'https://github.com/kontourai/station/releases/download/portable-preview/station-portable-preview-manifest.json',
+    });
+    const managedUpdates = { feedUrl: MIRROR };
+    const app = createApp(install, { extraDeps: { managedUpdates } });
+    expect(await json(await app.request('/core-update'))).toMatchObject({
+      releaseCheck: 'verified',
+      latestVersion: NEWER,
+      updateAvailable: true,
+    });
+    const { coordinator } = coordinatorFor(install, {
+      policy: 'never',
+      managedUpdates,
+    });
+    expect(await coordinator.check('forced', { force: true })).toMatchObject({
+      releaseCheck: 'verified',
+    });
+    expect(fetchFn.mock.calls.map((call) => call[0])).toEqual([
+      MIRRORED_MANIFEST,
+      MIRRORED_MANIFEST,
+    ]);
+    // An install that recorded no manifest still updates from the mirror.
+    const unrecorded = makeInstall({ manifestUrl: null });
+    const res = await createApp(unrecorded, {
+      extraDeps: { managedUpdates },
+    }).request('/core-update', { method: 'POST' });
+    expect(res.status).toBe(202);
+    expect(fetchFn.mock.calls.at(-1)?.[0]).toBe(MIRRORED_MANIFEST);
+  });
+
+  test('a mirror: a redirect hop is followed only on the mirror’s own origin', async () => {
+    const install = makeInstall();
+    const managedUpdates = { feedUrl: MIRROR };
+    const manifest = signedManifest(releasePayload(NEWER));
+    const redirectTo = (location: string) =>
+      fetchFn.mockImplementation(async (url: string) =>
+        url === MIRRORED_MANIFEST
+          ? new Response(null, { status: 302, headers: { location } })
+          : new Response(manifest, { status: 200 }),
+      );
+    const check = () =>
+      createApp(install, { extraDeps: { managedUpdates } }).request(
+        '/core-update',
+      );
+
+    const sameOrigin = 'https://mirror.example.test/elsewhere/manifest.json';
+    redirectTo(sameOrigin);
+    expect(await json(await check())).toMatchObject({
+      releaseCheck: 'verified',
+    });
+    expect(fetchFn.mock.calls.map((call) => call[0])).toEqual([
+      MIRRORED_MANIFEST,
+      sameOrigin,
+    ]);
+
+    for (const offMirror of [
+      'https://github.com/kontourai/station/releases/download/portable-preview/station-portable-preview-manifest.json',
+      'https://mirror.example.test:8443/station/t0ken/manifest.json',
+      'https://cdn.mirror.example.test/manifest.json',
+    ]) {
+      fetchFn.mockClear();
+      redirectTo(offMirror);
+      expect(await json(await check())).toMatchObject({
+        releaseCheck: 'unverified',
+        updateAvailable: false,
+        technicalDetail:
+          "the release manifest redirect leaves the managed policy's mirror",
+      });
+      expect(fetchFn.mock.calls.map((call) => call[0])).toEqual([
+        MIRRORED_MANIFEST,
+      ]);
+    }
+  });
+
+  test('allowNightly: false refuses a nightly install and leaves another ring alone', async () => {
+    const nightly = makeInstall({ ring: 'nightly' });
+    expect(resolveInstallProvenance(nightly.moduleDir)).toMatchObject({
+      installKind: 'archive',
+      release: { releaseChannel: 'nightly' },
+    });
+    const managedUpdates = { allowNightly: false };
+    const refused = createApp(nightly, { extraDeps: { managedUpdates } });
+    expect(await json(await refused.request('/core-update'))).toMatchObject({
+      updateAvailable: false,
+      managedPolicyCode: 'managed-policy-updates-refused',
+      message:
+        "This machine's managed policy makes the nightly channel unavailable.",
+    });
+    const post = await refused.request('/core-update', { method: 'POST' });
+    expect(post.status).toBe(403);
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    const preview = createApp(makeInstall(), { extraDeps: { managedUpdates } });
+    expect(await json(await preview.request('/core-update'))).toMatchObject({
+      releaseCheck: 'verified',
+      updateAvailable: true,
+    });
   });
 });

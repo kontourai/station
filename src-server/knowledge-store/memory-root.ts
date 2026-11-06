@@ -33,6 +33,11 @@ import {
 
 export const MEMORY_ADAPTER_ID = 'corpus-private-memory';
 
+/** The one derivation of an owner's directory and root id; review records use the same key. */
+export function memoryOwnerHash(owner: string): string {
+  return createHash('sha256').update(owner).digest('hex');
+}
+
 /** Corpus tombstones are not ordinary Knowledge records. The erasure surface owns their projection. */
 function readableRecord(record: CorpusRecord): KitRecord | null {
   const { status, ...rest } = record;

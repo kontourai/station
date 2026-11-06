@@ -106,7 +106,12 @@ A restart can preserve a conversation while marking its unfinished turn as
 interrupted. This does not mean the Agent resumed. If a send lost its reply,
 the browser checks its original message key before retrying. A queued answer
 keeps those checks running; a started answer confirms delivery and removes the
-retry notice. Uncertain delivery remains fenced to prevent duplicate work.
+retry notice. After three consecutive failed delivery reads, automatic checks
+pause. The message stays saved and is labeled **Delivery unconfirmed** instead
+of **Queued to send**. **Refresh delivery** asks once and shows the result; it
+does not resend. If Station confirms it never received the message, **Retry**
+sends it using the same key. **More message actions → Copy message** preserves its text for recovery.
+Uncertain delivery remains fenced to prevent duplicate work.
 
 Native steering has engine-defined placement. Station-owned steering waits for
 an observed tool boundary, otherwise the next turn. If a handoff may already

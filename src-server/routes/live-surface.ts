@@ -108,6 +108,12 @@ const AUTHORIZATION_CONTEXT_QUERY_KEY = 'projectSlug';
 const CODEC_QUERY_KEY = 'codec';
 /** `?agentActions=1` asks for agent action geometry in state records. */
 const AGENT_ACTIONS_QUERY_KEY = 'agentActions';
+/**
+ * `?fold=1` asks for a foldable's `fold` state and display-tagged frames.
+ * Without it the records are the ones an earlier client validates (an
+ * unknown state key or frame key makes it drop the stream and reconnect).
+ */
+const FOLD_QUERY_KEY = 'fold';
 
 const STREAM_QUERY_KEYS: readonly (keyof LiveSurfaceStreamParams)[] = [
   'maxFps',
@@ -122,6 +128,7 @@ const KNOWN_FRAMES_QUERY_KEYS: ReadonlySet<string> = new Set([
   AUTHORIZATION_CONTEXT_QUERY_KEY,
   CODEC_QUERY_KEY,
   AGENT_ACTIONS_QUERY_KEY,
+  FOLD_QUERY_KEY,
 ]);
 
 function failure(
@@ -234,7 +241,8 @@ export function createLiveSurfaceRoutes(
         (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
           key !== AUTHORIZATION_CONTEXT_QUERY_KEY &&
           key !== CODEC_QUERY_KEY &&
-          key !== AGENT_ACTIONS_QUERY_KEY) ||
+          key !== AGENT_ACTIONS_QUERY_KEY &&
+          key !== FOLD_QUERY_KEY) ||
         (c.req.queries(key)?.length ?? 0) > 1,
     );
     if (refusedKey !== undefined)
@@ -247,6 +255,9 @@ export function createLiveSurfaceRoutes(
     const agentActions = c.req.query(AGENT_ACTIONS_QUERY_KEY);
     if (agentActions !== undefined && agentActions !== '1')
       return failure(c, 'invalid-request', 400, AGENT_ACTIONS_QUERY_KEY);
+    const fold = c.req.query(FOLD_QUERY_KEY);
+    if (fold !== undefined && fold !== '1')
+      return failure(c, 'invalid-request', 400, FOLD_QUERY_KEY);
     const parsed = parseLiveSurfaceStreamParams({
       maxFps: c.req.query('maxFps'),
       quality: c.req.query('quality'),
@@ -266,6 +277,7 @@ export function createLiveSurfaceRoutes(
         ...(agentActions === '1'
           ? { agentActions: () => options.agentActionsEnabled?.() === true }
           : {}),
+        fold: fold === '1',
         codec:
           codec === 'h264' &&
           entry.hub.producer.capabilities.codecs.includes('h264')
