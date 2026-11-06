@@ -85,7 +85,7 @@ class NodePtyProcess implements IPtyProcess {
       typeof tty === 'string' ? tty.replace(/^\/dev\//, '') : undefined;
     const socket = '_socket' in pty ? pty._socket : undefined;
     let finishPipeWait: (() => void) | undefined;
-    // node-pty 1.1 wires Windows socket-close to exit only after this event.
+    // The pinned node-pty wires socket-close to exit only after this event.
     // Register before yielding the spawn result; an earlier taskkill can lose
     // the exit observation while the output worker is still connecting.
     if (
@@ -109,7 +109,7 @@ class NodePtyProcess implements IPtyProcess {
       if (this.paused) this.outputIncomplete = true;
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
-      if (process.platform === 'win32') this.releaseConpty();
+      if (process.platform === 'win32' && this.pid > 0) this.releaseConpty();
     });
     this.terminate =
       process.platform === 'win32'
@@ -117,19 +117,27 @@ class NodePtyProcess implements IPtyProcess {
         : () => this.terminateGroups();
   }
 
+  async waitForReady(): Promise<void> {
+    await this.outputPipeReady;
+    if (this.exited)
+      throw new Error('Terminal exited before startup readiness');
+    if (!Number.isSafeInteger(this.pid) || this.pid <= 0)
+      throw new Error('Terminal backend did not publish a valid process id');
+  }
+
   /**
    * Windows, once the shell has exited (its exit event follows the output
-   * socket's flush and close): node-pty 1.1 releases a ConPTY, its
-   * pseudoconsole and conout worker thread, only in `kill()`, so after a
-   * natural or taskkill exit both stayed open, one thread and console host
-   * per shell. `kill()` first lists the console's processes through a helper
+   * socket's flush and close): node-pty releases its output-reader worker
+   * in `kill()`. Startup failures before a PID exists already clean up in
+   * the backend. For started shells, `kill()` first lists console processes
+   * through a helper
    * that cannot attach to a console whose shell has gone, and five seconds
    * later signals the old shell pid, which Windows may have given to another
    * process (#3994). After the exit there is nothing to list, so that step is
    * answered empty for this terminal before `kill()` releases the rest.
    */
   private releaseConpty(): void {
-    // node-pty 1.1's private WindowsTerminal._agent._getConsoleProcessList,
+    // The pinned WindowsTerminal._agent._getConsoleProcessList,
     // found at runtime. Without it (another node-pty) kill() still releases.
     const { pty } = this;
     if ('_agent' in pty) {
@@ -384,6 +392,7 @@ export class NodePtyAdapter implements IPtyAdapter {
       input.env,
     );
     let pty: import('node-pty').IPty;
+    let readyProcess: NodePtyProcess;
     try {
       pty = nodePty.spawn(
         launch?.command ?? input.shell,
@@ -396,6 +405,8 @@ export class NodePtyAdapter implements IPtyAdapter {
           env: (launch?.env ?? input.env) as Record<string, string>,
         },
       );
+      readyProcess = new NodePtyProcess(pty);
+      if (process.platform === 'win32') await readyProcess.waitForReady();
     } catch (error) {
       await launch?.close();
       throw error;
@@ -406,6 +417,6 @@ export class NodePtyAdapter implements IPtyAdapter {
         logger.warn('Terminal workload cleanup failed', { error }),
       );
     });
-    return new NodePtyProcess(pty);
+    return readyProcess;
   }
 }

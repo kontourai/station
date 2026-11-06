@@ -80,6 +80,12 @@ of prebuild staging. Other native dependencies retain their own platform
 requirements. Rust and platform SDKs are needed for native builds/checks; a server/UI-only
 loop need not run them.
 
+Station pins node-pty `1.2.0-beta.18` for its synchronized Windows native handle
+registry. The prerelease supplies ConPTY rather than the removed WinPTY backend.
+Windows process publication waits for connection readiness and a valid PID;
+a startup exit is an error. Keep the exact package/hook/artifact review aligned
+when changing this pin; macOS checks do not qualify Windows or ARM64 behavior.
+
 Scoped terminal process-group cleanup on POSIX also needs `ps` with PID, PPID
 and process-group columns. A missing or failed census is a cleanup error, not
 proof that descendants stopped. The new cleanup path has real-PTY macOS

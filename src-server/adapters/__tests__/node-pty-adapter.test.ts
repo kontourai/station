@@ -1,9 +1,16 @@
 import { ChildProcess, execFile } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
+import { trackChildWorkload } from '@kontourai/station-shared/child-workload';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { NodePtyAdapter } from '../node-pty-adapter.js';
+
+vi.mock('@kontourai/station-shared/child-workload', async (original) => {
+  const actual =
+    await original<typeof import('@kontourai/station-shared/child-workload')>();
+  return { ...actual, trackChildWorkload: vi.fn(actual.trackChildWorkload) };
+});
 
 const census = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('node:child_process', async (original) => {
@@ -92,16 +99,21 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
 
 describe('Windows PTY output-pipe custody', () => {
   test.each(['connected', 'exited-before-connect'] as const)(
-    'tree cleanup waits for pipe wiring: %s',
+    'spawn waits for a connected process before publishing its PID: %s',
     async (ending) => {
       const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      vi.mocked(trackChildWorkload).mockClear();
       const socket = new EventEmitter();
       const exits = new Set<(event: { exitCode: number }) => void>();
       const exit = () => {
         for (const listener of [...exits]) listener({ exitCode: 0 });
+        exits.clear();
       };
+      let pid = 0;
       const pty = {
-        pid: 4242,
+        get pid() {
+          return pid;
+        },
         _socket: socket,
         onData: () => ({ dispose() {} }),
         onExit: (listener: (event: { exitCode: number }) => void) => {
@@ -119,7 +131,7 @@ describe('Windows PTY output-pipe custody', () => {
           exit();
           return new ChildProcess();
         });
-      let stopped: Promise<void> | undefined;
+      let spawning: ReturnType<NodePtyAdapter['spawn']> | undefined;
       try {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         const adapter = new NodePtyAdapter(
@@ -128,22 +140,43 @@ describe('Windows PTY output-pipe custody', () => {
               typeof import('node-pty')
             >,
         );
-        const proc = await adapter.spawn(SPAWN_INPUT);
-        let completed = false;
-        stopped = proc.terminate!().then(() => {
-          completed = true;
+        let published = false;
+        spawning = adapter.spawn(SPAWN_INPUT).then((proc) => {
+          published = true;
+          return proc;
         });
-        await Promise.resolve();
+        await vi.waitFor(() =>
+          expect(socket.listenerCount('ready_datapipe')).toBe(1),
+        );
+        expect(published).toBe(false);
+        expect(trackChildWorkload).not.toHaveBeenCalled();
         expect(taskkill).not.toHaveBeenCalled();
         if (ending === 'exited-before-connect') {
+          const failed = expect(spawning).rejects.toThrow(
+            'Terminal exited before startup readiness',
+          );
           exit();
-          await vi.waitFor(() => expect(completed).toBe(true));
-        } else socket.emit('ready_datapipe');
-        await stopped;
-        expect(taskkill).toHaveBeenCalledTimes(ending === 'connected' ? 1 : 0);
+          await failed;
+          expect(pty.kill).not.toHaveBeenCalled();
+        } else {
+          pid = 4242;
+          socket.emit('ready_datapipe');
+          const proc = await spawning;
+          expect(proc.pid).toBe(4242);
+          expect(trackChildWorkload).toHaveBeenCalledTimes(1);
+          expect(vi.mocked(trackChildWorkload).mock.calls[0]?.[1]).toBe(4242);
+          await proc.terminate!();
+          expect(taskkill).toHaveBeenCalledExactlyOnceWith(
+            'taskkill',
+            ['/T', '/F', '/PID', '4242'],
+            { timeout: 5_000, windowsHide: true },
+            expect.any(Function),
+          );
+        }
       } finally {
         socket.emit('ready_datapipe');
-        await stopped;
+        exit();
+        await spawning?.catch(() => undefined);
         Object.defineProperty(process, 'platform', platform);
         vi.mocked(execFile).mockReset();
       }
