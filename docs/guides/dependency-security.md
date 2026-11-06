@@ -362,6 +362,14 @@ existing export-error handling and OpenTelemetry timeout semantics. A timeout ca
 settle the flush attempt while its exporter remains active, so stream completion
 is not proof that every exporter or other run resource has settled. This change
 does not extend the 2.10.0 patch or qualify cancellation and early-return paths.
+
+The process keeper audits Core 2.11.0 with AI 6.0.322. Requalification on Node 24
+and macOS inspected the installed patched CJS/ESM exports and AI's stream-finish
+source, then passed all eight format/strategy cases with the held-processor,
+callback, EOF-ordering, and child/resource-settlement assertions intact. A
+dependency change that trips its version guard requires that source review and
+full matrix before advancing the audited pair; retain the watchdogs and assertions.
+
 The lifecycle allowlist still owns the stronger
 exact-hook and artifact proofs; a successful raw pnpm install is not their
 receipt.
