@@ -213,7 +213,6 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
     const refuse = (): never => {
       throw Error('unexpected execution');
     };
-    const retentionFails = true;
     const withController = <Value>(
       work: (
         controller: ReturnType<typeof createDelegationRoundsController>,
@@ -240,14 +239,8 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
                 retainObservation: async () => refuse(),
                 confirmTerminal: async () => refuse(),
                 requestDescendantCancellation: async () => refuse(),
-                retainContinuation: async (spec, receipt) => {
-                  if (retentionFails)
-                    throw Error('injected receipt retention outage');
-                  return persistence.retainReportContinuation(
-                    spec.groupId,
-                    receipt,
-                    current,
-                  );
+                retainContinuation: async () => {
+                  throw Error('injected receipt retention outage');
                 },
                 flow: {
                   executionHost: refuse,
