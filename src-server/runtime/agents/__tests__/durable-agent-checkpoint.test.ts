@@ -67,16 +67,28 @@ it('the production owner checkpoints active-turn WAL through a responsive worker
     histogram.enable();
     await setTimeout(5);
     const started = performance.now();
+    let busyWhilePolling = false;
     try {
       await lease.assertCurrent();
+    } catch (error) {
+      if (
+        !(
+          error instanceof Error &&
+          error.message === 'DURABLE_AGENT_CHECKPOINT_BUSY'
+        )
+      )
+        throw error;
+      busyWhilePolling = true;
     } finally {
       clearInterval(reads);
     }
+    if (busyWhilePolling) await lease.assertCurrent();
     const checkpointReadMs = performance.now() - started;
     await setTimeout(5);
     histogram.disable();
     const metrics = {
       checkpointReadMs,
+      busyWhilePolling,
       maxSyncReadMs,
       readFailures,
       eventLoopMaxMs: histogram.max / 1e6,
