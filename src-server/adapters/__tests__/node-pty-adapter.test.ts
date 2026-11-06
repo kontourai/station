@@ -247,7 +247,10 @@ describe('pending native PTY startup admission', () => {
     else {
       const proc = await pending;
       expect(proc.pid).toBe(9321);
-      if (ending === 'after admission') backend.exit();
+      if (ending === 'after admission') {
+        proc.onData(() => {});
+        backend.exit();
+      }
       const cancelled = vi.fn();
       proc.onExit(cancelled)();
       const replay = vi.fn();
@@ -257,7 +260,8 @@ describe('pending native PTY startup admission', () => {
       expect(replay).toHaveBeenCalledExactlyOnceWith({
         exitCode: 1,
         signal: null,
-        outputIncomplete: false,
+        outputIncomplete:
+          ending === 'during workload tracking' && process.platform === 'win32',
       });
     }
     await vi.waitFor(() => expect(backend.launch.close).toHaveBeenCalledOnce());
