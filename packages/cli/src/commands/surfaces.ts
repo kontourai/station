@@ -859,7 +859,7 @@ async function runAutomationCommand(args: string[]) {
       printFetched(
         await createAutomationSource(
           apiBase,
-          body as unknown as AutomationPollSourceInput,
+          body as AutomationPollSourceInput,
         ),
       );
       return;
@@ -894,7 +894,7 @@ async function runAutomationCommand(args: string[]) {
       printFetched(
         await createAutomationRule(
           apiBase,
-          body as unknown as Parameters<typeof createAutomationRule>[1],
+          body as Parameters<typeof createAutomationRule>[1],
         ),
       );
       return;
@@ -905,7 +905,7 @@ async function runAutomationCommand(args: string[]) {
       announceMutationTarget(parsed);
       printFetched(
         await updateAutomationRule(apiBase, id, {
-          ...(body as unknown as AutomationDispatchRuleInput),
+          ...(body as AutomationDispatchRuleInput),
           expectedFingerprint:
             typeof body.expectedFingerprint === 'string'
               ? body.expectedFingerprint

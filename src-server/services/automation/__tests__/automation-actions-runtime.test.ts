@@ -904,7 +904,7 @@ async function editRule(
     id: w.rule.id,
     expectedFingerprint: automationConfigurationFingerprint(w.store.read()),
     kinds: ['dispatch-task'],
-    rule: rest as never,
+    rule: rest,
   });
 }
 

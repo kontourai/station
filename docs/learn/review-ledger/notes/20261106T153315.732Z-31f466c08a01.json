@@ -1,0 +1,7 @@
+{
+  "revision": "fd490c7eb5e94222b0425de8e8855ddea94391f3",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed policy-change and start-mandate claims against automation-actions-runtime.ts and the 31-case runtime suite: durable Task/Session lookup preserves admission after settlement/restart; failed hand-over or approval persistence refuses before provider send. Current 20-suite run passes 471 tests with 1 inherited skip. Rendering evidence is fixture-backed; live provider and container qualification remain separate.","inputs":["docs/design/automations.md"]}
+  ]
+}
