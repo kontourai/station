@@ -940,7 +940,9 @@ describe('dependency lifecycle policy', () => {
       }),
     ).toEqual([]);
     expect(allowlistDigest(policy)).toMatch(/^[a-f0-9]{64}$/);
-    expect(expectedLifecyclePurls(policy)).toContain('pkg:npm/node-pty@1.1.0');
+    expect(expectedLifecyclePurls(policy)).toContain(
+      'pkg:npm/node-pty@1.2.0-beta.14',
+    );
   });
 
   it.each([
@@ -1283,13 +1285,10 @@ describe('dependency lifecycle policy', () => {
     ]);
     for (const arch of ['x64', 'arm64'])
       expect(pty.artifact.platforms[`win32/${arch}`]).toEqual([
-        `prebuilds/win32-${arch}/pty.node`,
         `prebuilds/win32-${arch}/conpty.node`,
         `prebuilds/win32-${arch}/conpty_console_list.node`,
         `prebuilds/win32-${arch}/conpty/conpty.dll`,
         `prebuilds/win32-${arch}/conpty/OpenConsole.exe`,
-        `prebuilds/win32-${arch}/winpty.dll`,
-        `prebuilds/win32-${arch}/winpty-agent.exe`,
       ]);
   });
 
@@ -1700,7 +1699,7 @@ describe('dependency lifecycle policy', () => {
       mkdirSync(packageRoot, { recursive: true });
       writeFileSync(
         resolve(packageRoot, 'package.json'),
-        JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+        JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.14' }),
       );
       const artifactDir = resolve(
         fixtureRoot,
@@ -1716,7 +1715,7 @@ describe('dependency lifecycle policy', () => {
         JSON.stringify({
           schemaVersion: 1,
           package: 'node-pty',
-          version: '1.1.0',
+          version: '1.2.0-beta.14',
           artifacts: { 'linux-arm64': { sha256 } },
         }),
       );
@@ -1802,7 +1801,7 @@ describe('dependency lifecycle policy', () => {
         assertNodePtyPrebuildConsistency(policy, {
           schemaVersion: 1,
           package: 'node-pty',
-          version: '1.1.0',
+          version: '1.2.0-beta.14',
           artifacts: { 'linux-arm64': { sha256: 'a'.repeat(64) } },
         }),
       ).toThrow(/disagree for linux-arm64/);
@@ -1860,7 +1859,7 @@ describe('dependency lifecycle policy', () => {
         mkdirSync(resolve(helper, '..'), { recursive: true });
         writeFileSync(
           resolve(packageRoot, 'package.json'),
-          JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+          JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.14' }),
         );
         writeFileSync(helper, '#!/bin/sh\nexit 0\n');
         chmodSync(helper, 0o644);
@@ -1992,7 +1991,7 @@ describe('dependency lifecycle policy', () => {
       });
       writeFileSync(
         resolve(packageRoot, 'package.json'),
-        JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+        JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.14' }),
       );
       writeFileSync(helper, '#!/bin/sh\nexit 0\n');
       symlinkSync(

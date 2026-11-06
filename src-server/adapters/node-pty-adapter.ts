@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, readlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
@@ -68,6 +69,84 @@ function getNodePty(): Promise<typeof import('node-pty')> {
   return nodePtyPromise;
 }
 
+/** node-pty 1.2.0-beta.14 publishes its Windows PID at this private seam. */
+function waitForPendingPtyPid(pty: import('node-pty').IPty): Promise<void> {
+  const socket = '_socket' in pty ? pty._socket : undefined;
+  if (!(socket instanceof EventEmitter)) {
+    throw new Error('PTY startup did not expose its readiness signal');
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let exitSubscription: { dispose(): void } | undefined;
+    const finish = (error?: Error, pipeClosed = false) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.off('ready_datapipe', ready);
+      socket.off('close', closed);
+      exitSubscription?.dispose();
+      if (error) {
+        // Keep the pipe owned through cleanup, including node-pty's own error dispatch.
+        if (pipeClosed) socket.off('error', failed);
+        else socket.once('close', () => socket.off('error', failed));
+        reject(error);
+      } else {
+        socket.off('error', failed);
+        resolve();
+      }
+    };
+    const ready = () => {
+      // Let all ready listeners finish before admitting a launch that may fail there.
+      queueMicrotask(() =>
+        finish(
+          Number.isInteger(pty.pid) && pty.pid > 0
+            ? undefined
+            : new Error('PTY startup did not report a positive process ID'),
+        ),
+      );
+    };
+    const failed = (error: unknown) =>
+      finish(
+        error instanceof Error
+          ? error
+          : new Error('PTY output pipe failed during startup'),
+      );
+    const closed = () =>
+      finish(
+        new Error('PTY output pipe closed before startup completed'),
+        true,
+      );
+    socket.once('ready_datapipe', ready);
+    socket.on('error', failed);
+    socket.once('close', closed);
+    exitSubscription = pty.onExit(() =>
+      finish(new Error('PTY exited before startup completed')),
+    );
+    timer = setTimeout(
+      () => finish(new Error('PTY startup readiness timed out')),
+      5_000,
+    );
+  });
+}
+
+function killFailedPty(pty: import('node-pty').IPty): void {
+  if ('_agent' in pty) {
+    const agent = pty._agent;
+    if (
+      typeof agent === 'object' &&
+      agent !== null &&
+      'kill' in agent &&
+      typeof agent.kill === 'function'
+    ) {
+      // WindowsTerminal.kill() defers until output; a failed silent launch has none.
+      agent.kill();
+      return;
+    }
+  }
+  pty.kill();
+}
+
 class NodePtyProcess implements IPtyProcess {
   private exited = false;
   private termination?: Promise<void>;
@@ -93,7 +172,7 @@ class NodePtyProcess implements IPtyProcess {
 
   /**
    * Windows, once the shell has exited (its exit event follows the output
-   * socket's flush and close): node-pty 1.1 releases a ConPTY, its
+   * socket's flush and close): node-pty releases a ConPTY, its
    * pseudoconsole and conout worker thread, only in `kill()`, so after a
    * natural or taskkill exit both stayed open, one thread and console host
    * per shell. `kill()` first lists the console's processes through a helper
@@ -103,7 +182,7 @@ class NodePtyProcess implements IPtyProcess {
    * answered empty for this terminal before `kill()` releases the rest.
    */
   private releaseConpty(): void {
-    // node-pty 1.1's private WindowsTerminal._agent._getConsoleProcessList,
+    // node-pty's private WindowsTerminal._agent._getConsoleProcessList,
     // found at runtime. Without it (another node-pty) kill() still releases.
     const { pty } = this;
     if ('_agent' in pty) {
@@ -352,7 +431,9 @@ export class NodePtyAdapter implements IPtyAdapter {
       input.args ?? [],
       input.env,
     );
-    let pty: import('node-pty').IPty;
+    let pty: import('node-pty').IPty | undefined;
+    let exited = false;
+    let startupExit: { dispose(): void } | undefined;
     try {
       pty = nodePty.spawn(
         launch?.command ?? input.shell,
@@ -365,16 +446,42 @@ export class NodePtyAdapter implements IPtyAdapter {
           env: (launch?.env ?? input.env) as Record<string, string>,
         },
       );
+      startupExit = pty.onExit(() => {
+        exited = true;
+      });
+      if (pty.pid === 0) await waitForPendingPtyPid(pty);
+      if (exited) throw new Error('PTY exited before startup completed');
+      if (!Number.isInteger(pty.pid) || pty.pid <= 0) {
+        throw new Error('PTY startup did not report a positive process ID');
+      }
+      trackChildWorkload(launch, pty.pid);
+      const proc = new NodePtyProcess(pty);
+      pty.onExit(() => {
+        void closeChildWorkload(proc.pid).catch((error) =>
+          logger.warn('Terminal workload cleanup failed', { error }),
+        );
+      });
+      return proc;
     } catch (error) {
-      await launch?.close();
+      if (pty && !exited) {
+        try {
+          killFailedPty(pty);
+        } catch (cleanupError) {
+          logger.warn('Failed PTY launch cleanup failed', {
+            error: cleanupError,
+          });
+        }
+      }
+      try {
+        await launch?.close();
+      } catch (cleanupError) {
+        logger.warn('Failed terminal workload cleanup failed', {
+          error: cleanupError,
+        });
+      }
       throw error;
+    } finally {
+      startupExit?.dispose();
     }
-    trackChildWorkload(launch, pty.pid);
-    pty.onExit(() => {
-      void closeChildWorkload(pty.pid).catch((error) =>
-        logger.warn('Terminal workload cleanup failed', { error }),
-      );
-    });
-    return new NodePtyProcess(pty);
   }
 }
