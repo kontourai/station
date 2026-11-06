@@ -157,6 +157,7 @@ class MemberAdapter extends GateTestAdapter {
     return typeof cursor === 'string' ? { sessionId: cursor } : undefined;
   }
   readonly starts: ProviderSessionStartInput[] = [];
+  private readonly retainedNativeSessions = new Set<string>();
   startGate: Promise<void> = Promise.resolve();
   private readonly sessions = new Map<
     string,
@@ -239,6 +240,11 @@ class MemberAdapter extends GateTestAdapter {
   }
   override async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
+    if (
+      typeof input.resumeCursor === 'string' &&
+      !this.retainedNativeSessions.has(input.resumeCursor)
+    )
+      throw new Error('Native transcript was not retained');
     await this.startGate;
     captureNativeAuthenticationLaunch(
       this,
@@ -252,8 +258,11 @@ class MemberAdapter extends GateTestAdapter {
     const session = {
       ...(await super.startSession(input)),
       resumeCursor: `native-${input.threadId}`,
+      persistSession: input.persistSession === true,
       cwd: input.cwd,
     };
+    if (input.persistSession)
+      this.retainedNativeSessions.add(session.resumeCursor);
     this.sessions.set(input.threadId, session);
     this.events.push({
       eventId: randomUUID(),

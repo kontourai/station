@@ -48,6 +48,7 @@ class SyncAdapter extends GateTestAdapter {
     const session = {
       ...(await super.startSession(input)),
       resumeCursor: 'same-native-session',
+      persistSession: input.persistSession,
       cwd: input.cwd,
     };
     this.events.push({
@@ -115,7 +116,7 @@ class SyncAdapter extends GateTestAdapter {
   }
 }
 
-async function fixture() {
+async function fixture(persistSession = true) {
   const root = temporary('station-retained-sync-');
   const adapter = new SyncAdapter();
   const store = new EventStore(join(root, 'events.sqlite'));
@@ -138,6 +139,7 @@ async function fixture() {
       input: {
         threadId: 'retained',
         provider: 'claude',
+        persistSession,
         cwd: root,
         metadata: { userId: 'owner' },
       },
@@ -273,4 +275,16 @@ test('revocation during restricted materialization refuses the send and retains 
     { type: 'stopSession', threadId: 'retained' },
     { userId: 'owner' },
   );
+});
+
+test('a nonpersistent native Session refuses sync before restart or another turn', async () => {
+  const f = await fixture(false);
+  await expect(
+    f.service.assertRetainedSessionSyncAvailable('retained', f.input.context),
+  ).rejects.toThrow('group_sync_unavailable');
+  await expect(f.service.syncRetainedSession(f.input)).rejects.toThrow(
+    'group_sync_unavailable',
+  );
+  expect(f.adapter.starts).toHaveLength(1);
+  expect(f.adapter.sends).toHaveLength(1);
 });

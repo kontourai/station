@@ -2188,6 +2188,7 @@ export class OrchestrationService {
       session && this.options.adapterRegistry.get(session.provider);
     if (
       session?.provider !== 'claude' ||
+      session.persistSession === false ||
       !adapter?.assertContextSyncRuntime ||
       !adapter.nativeSessionIdentity?.(session.resumeCursor) ||
       typeof this.preparedTurnBinding(threadId).nativeBindingKey !== 'string' ||
@@ -2234,6 +2235,7 @@ export class OrchestrationService {
     if (
       !session ||
       session.provider !== 'claude' ||
+      session.persistSession === false ||
       !adapter ||
       !native ||
       typeof nativeBindingKey !== 'string' ||

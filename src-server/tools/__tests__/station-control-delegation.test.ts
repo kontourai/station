@@ -955,6 +955,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       input: {
         threadId: 'task:11111111-1111-4111-8111-111111111111',
         provider: 'station-agent',
+        persistSession: true,
         metadata: {
           agentId: 'reviewer',
           targetKind: 'agent',
