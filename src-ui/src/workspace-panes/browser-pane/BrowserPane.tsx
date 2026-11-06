@@ -66,7 +66,7 @@ import {
   DRIVER_TEXT,
   useRecentDriver,
 } from '../../float-over-chat/recentDriver';
-import { useAnnounceShownSource } from '../../float-over-chat/shownSources';
+import { usePaneSourceVisibility } from '../../float-over-chat/shownSources';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
@@ -882,7 +882,7 @@ function BrowserSessionPane({
   const pendingDialog = record?.pendingDialog;
   // #90 D9: while this pane's live view is on screen, the float-over-chat
   // hides for this session (and so never streams it a second time).
-  useAnnounceShownSource(
+  const ownsLiveView = usePaneSourceVisibility(
     !floating &&
       !session.isError &&
       record?.state === 'live' &&
@@ -1600,6 +1600,8 @@ function BrowserSessionPane({
     body = (
       <Empty label="The live view isn't available for this session right now" />
     );
+  } else if (record?.surfaceId && !ownsLiveView) {
+    body = <Empty label="This Browser is shown in another view" />;
   } else if (record?.surfaceId) {
     body = (
       <LiveSurfaceCanvas

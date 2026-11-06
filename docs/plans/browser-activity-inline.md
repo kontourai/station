@@ -23,6 +23,11 @@ than copying its separate browser runtime or recording store.
   live-surface lease. Extract browser-specific viewer chrome from
   `FloatOverChatHost` for both placements.
 - Session/access queries: one scope-aware owner shared by inline and float.
+- Viewer input lifetime: extend the existing lease/input routes and registry
+  with bounded, authenticated source registration. Sealing a retiring source
+  rejects late queued input and cancels only its held presses. Failed cleanup
+  retains custody and fences input until neutral cleanup succeeds. This does
+  not complete the broader [input safety proposal](live-surface-input-safety.md).
 - Tool state, approvals and results: existing transcript parts and
   `ToolCallDisplay`; one browser grouping path for streaming and settled work.
 - Visibility: existing `shownSources` arbitration. A hidden viewer must not
@@ -77,7 +82,8 @@ interactive browser controls by mounting a card.
   principal, conversation or Station cannot select the source.
 - Inline, float and pane placement does not create duplicate frame streams.
   Off-screen views release viewing resources and held input follows the
-  existing cleanup path.
+  source-scoped cleanup path. Failed cleanup retains custody and blocks input;
+  another viewer's empty close cannot clear that failure.
 - Settled cards describe historical calls. Opening the current session is
   labeled separately from playback of a real recording. Reload or generation
   loss must not manufacture historical media.

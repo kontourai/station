@@ -75,6 +75,12 @@ show the same page and login. A visible pane takes precedence over the
 inline view. Hiding a viewer ends its frame subscription, not its browser
 session.
 
+A card's **Take control**, **Release control** and **Full screen** actions use
+the shared live-view controls. When a viewer disappears, it releases its own
+held keys and buttons without ending the browser session or releasing another
+viewer's newer input. If neutral cleanup fails, further input is refused until
+cleanup succeeds; changing placement is not evidence that the page is ready.
+
 A finished activity summarizes its calls; it does not present the current
 page as a historical screenshot. Recording is a separate, explicit action
 with the existing [Browser recording](#record-a-task-walkthrough) controls

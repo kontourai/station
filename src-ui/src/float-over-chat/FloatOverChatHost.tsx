@@ -127,6 +127,7 @@ import {
 } from './recentDriver';
 import {
   isSourceShown,
+  useFloatSourceVisibility,
   useShownSourcesVersion,
   useSourceShown,
 } from './shownSources';
@@ -467,6 +468,17 @@ export function FloatOverChatHost({
         )
       : sourceKey;
   const shownInPane = useSourceShown(visibilityKey);
+  const browserCandidate =
+    source?.kind === 'browser' &&
+    list?.some(
+      (candidate) =>
+        candidate.browserSessionId === source.browserSessionId &&
+        candidate.state === 'live' &&
+        candidate.surfaceId === source.surfaceId,
+    );
+  const ownsBrowserView = useFloatSourceVisibility(
+    browserCandidate ? visibilityKey : null,
+  );
   const deviceHandedOff =
     source?.kind === 'device' && sourceKey !== null
       ? isFloatHandedOff(conversationKey, sourceKey, shownInPane)
@@ -486,7 +498,15 @@ export function FloatOverChatHost({
         float
       />
       {noticeCard}
-      {source && !shownInPane && !deviceHandedOff ? renderSource(source) : null}
+      {browserCandidate && !shownInPane && !ownsBrowserView ? (
+        <p role="status">Browser is shown in another view.</p>
+      ) : null}
+      {source &&
+      !shownInPane &&
+      !deviceHandedOff &&
+      (source.kind !== 'browser' || ownsBrowserView)
+        ? renderSource(source)
+        : null}
     </>
   );
 

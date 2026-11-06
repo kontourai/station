@@ -21,6 +21,17 @@ test('does not send queued input to a different surface after an old request set
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/frames')) return new Response(new ReadableStream());
+      if (url.endsWith('/lease')) {
+        const action = JSON.parse(String(init?.body)).action;
+        if (action === 'open-input-source')
+          return Response.json({
+            success: true,
+            data: { sourceId: '00000000-0000-4000-8000-000000000001' },
+          });
+        if (action === 'close-input-source')
+          return Response.json({ success: true });
+        throw new Error(`Unexpected lease action: ${action}`);
+      }
       requests.push(url);
       bodies.push(String(init?.body));
       return url.includes('/first/') ? inputReply : Response.json({});
@@ -75,7 +86,27 @@ test('past the per-origin cap a viewer waits as queued, without a request, until
   const opened: string[] = [];
   const transport = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
-      opened.push(new URL(String(input)).pathname.split('/')[3]!);
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/lease')) {
+        const action = JSON.parse(String(init?.body)).action;
+        if (action === 'open-input-source')
+          return Response.json({
+            success: true,
+            data: { sourceId: '00000000-0000-4000-8000-000000000001' },
+          });
+        if (action === 'close-input-source')
+          return Response.json({ success: true });
+        throw new Error(`Unexpected lease action: ${action}`);
+      }
+      opened.push(url.pathname.split('/')[3]!);
+      if (url.pathname.endsWith('/input'))
+        return Response.json({
+          data: {
+            ok: true,
+            accepted: 1,
+            lease: { surfaceId: 'c', epoch: 1, holder: null, expiresAt: null },
+          },
+        });
       return new Response(
         new ReadableStream({
           start(controller) {
@@ -177,4 +208,82 @@ test('after the hub switches a viewer to images, reconnects and a reopened pane 
   ]);
   reopened.unmount();
   liveSurfaceH264Declines.clear();
+});
+
+test('unmount seals its input source while a sent key is in flight', async () => {
+  const sourceId = '00000000-0000-4000-8000-000000000001';
+  let finishDown!: () => void;
+  const downDone = new Promise<void>((resolve) => {
+    finishDown = resolve;
+  });
+  const calls: string[] = [];
+  const transport = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/frames'))
+        return new Response(new ReadableStream());
+      const body = JSON.parse(String(init?.body));
+      if (body.action === 'open-input-source') {
+        calls.push('open');
+        return Response.json({ success: true, data: { sourceId } });
+      }
+      if (body.action === 'close-input-source') {
+        calls.push(`close:${body.sourceId}`);
+        return Response.json({ success: true });
+      }
+      calls.push(`down:${body.sourceId}`);
+      await downDone;
+      return Response.json({
+        data: {
+          ok: true,
+          accepted: 1,
+          lease: {
+            surfaceId: 'first',
+            epoch: 1,
+            holder: null,
+            expiresAt: null,
+          },
+        },
+      });
+    },
+  );
+  const { result, unmount } = renderHook(() =>
+    useLiveSurface({
+      apiBase: 'http://station.test',
+      surfaceId: 'first',
+      visibilityRef: createRef<Element>(),
+      onFrame: () => {},
+      transport,
+    }),
+  );
+  act(() =>
+    result.current.sendInput([
+      { kind: 'key', type: 'down', key: 'a', code: 'KeyA' },
+    ]),
+  );
+  await waitFor(() => expect(calls).toEqual(['open', `down:${sourceId}`]));
+  unmount();
+  await waitFor(() =>
+    expect(calls).toEqual(['open', `down:${sourceId}`, `close:${sourceId}`]),
+  );
+  finishDown();
+  await downDone;
+});
+
+test('unmount without input does not register or close a source', () => {
+  const transport = vi.fn(
+    async (_input: RequestInfo | URL) => new Response(new ReadableStream()),
+  );
+  const { unmount } = renderHook(() =>
+    useLiveSurface({
+      apiBase: 'http://station.test',
+      surfaceId: 'first',
+      visibilityRef: createRef<Element>(),
+      onFrame: () => {},
+      transport,
+    }),
+  );
+  unmount();
+  expect(
+    transport.mock.calls.every(([url]) => String(url).endsWith('/frames')),
+  ).toBe(true);
 });

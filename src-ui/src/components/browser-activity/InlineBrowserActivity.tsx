@@ -13,6 +13,10 @@ import {
 import { useInlineSourceVisibility } from '../../float-over-chat/shownSources';
 import { useBrowserSessionReads } from '../../float-over-chat/useBrowserSessionReads';
 import type { LiveSurfaceControlState } from '../../live-surface/LiveSurfaceCanvas';
+import {
+  DRIVER_TEXT,
+  LiveSurfaceViewerControls,
+} from '../../live-surface/LiveSurfaceViewerControls';
 import { Button } from '../Button';
 import type { BrowserActivityScope } from '../chat/BrowserActivityContext';
 import { ErrorState, SkeletonBlock } from '../state';
@@ -34,6 +38,8 @@ export function InlineBrowserActivity({
   children?: ReactNode;
 }) {
   const [showCurrent, setShowCurrent] = useState(false);
+  const [control, setControl] = useState<LiveSurfaceControlState | null>(null);
+  const [controlError, setControlError] = useState<string | null>(null);
   useFloatStoreVersion();
   const currentFloat = getFloatingSource(scope.conversationKey);
   const floating =
@@ -84,9 +90,15 @@ export function InlineBrowserActivity({
       : null;
   const { visible, paneShown, onScreen } = useInlineSourceVisibility(key, ref);
   const onControlState = useCallback(
-    (_state: LiveSurfaceControlState) => {},
+    (state: LiveSurfaceControlState) => setControl(state),
     [],
   );
+  const changeControl = (action: () => Promise<void>) => {
+    setControlError(null);
+    void action().catch(() =>
+      setControlError('Could not change browser control. Try again.'),
+    );
+  };
   const openInPanel =
     session &&
     openBrowser &&
@@ -166,9 +178,36 @@ export function InlineBrowserActivity({
                 }
                 onControlState={onControlState}
                 openInPanel={openInPanel}
-                hostControls={false}
+                hostControls
               />
             </div>
+          )}
+          {session && !floating && visible && control && (
+            <LiveSurfaceViewerControls
+              label="Browser activity controls"
+              actionClassName="inline-browser-activity__control"
+              status={DRIVER_TEXT[control.tone]}
+              tone={control.tone}
+              onClaim={
+                control.status === 'live' && control.tone !== 'you'
+                  ? () => changeControl(control.claimControl)
+                  : null
+              }
+              onRelease={
+                control.tone === 'you'
+                  ? () => changeControl(control.releaseControl)
+                  : null
+              }
+              onToggleImmersive={
+                control.immersive
+                  ? control.exitImmersive
+                  : control.enterImmersive
+              }
+              immersive={control.immersive}
+            />
+          )}
+          {controlError && (
+            <ErrorState variant="compact" title={controlError} />
           )}
           {session && (floating || !visible) && (
             <p>

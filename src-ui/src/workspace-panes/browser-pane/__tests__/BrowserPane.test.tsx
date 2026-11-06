@@ -207,7 +207,7 @@ function renderPane(
       <QueryClientProvider client={client}>{node}</QueryClientProvider>
     </KeyboardShortcutsProvider>
   );
-  render(
+  const view = render(
     wrap(
       <BrowserPane
         projectSlug="alpha"
@@ -217,7 +217,7 @@ function renderPane(
       />,
     ),
   );
-  return { ...station, onAttach };
+  return { ...station, onAttach, unmount: view.unmount };
 }
 
 afterEach(() => {
@@ -2261,4 +2261,23 @@ describe('BrowserPane on a phone-width pane (Duo audit)', () => {
     ).toBeTruthy();
     expect(reads).toBe(2);
   });
+});
+
+test('two panes share one browser viewer and transfer it on unmount', async () => {
+  const routes = {
+    'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+    [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+  };
+  const first = renderPane(routes);
+  await screen.findByTestId('live-canvas');
+  renderPane(routes);
+  await screen.findByText('This Browser is shown in another view');
+  expect(screen.getAllByTestId('live-canvas')).toHaveLength(1);
+  first.unmount();
+  await waitFor(() =>
+    expect(screen.getAllByTestId('live-canvas')).toHaveLength(1),
+  );
+  expect(
+    screen.queryByText('This Browser is shown in another view'),
+  ).toBeNull();
 });

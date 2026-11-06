@@ -25,3 +25,8 @@
   border-top: var(--k-border-thin, 1px) solid var(--k-line);
   padding-top: var(--k-space-2);
 }
+
+.inline-browser-activity__control {
+  min-width: 44px;
+  min-height: 44px;
+}

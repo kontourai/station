@@ -5719,7 +5719,15 @@ refused for (`field`): a key the route knows, `stream-params`, or `unknown`,
 never the caller's own query text. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
 a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
-coalesces input through one in-flight POST. It opens a frame stream only with a
+coalesces input through one in-flight POST. It lazily registers a per-viewer
+input source on the first input. Target,
+transport or viewer retirement seals that source and queues cancellation behind
+prior dispatch. The registry rejects sealed and foreign source IDs at queued
+dispatch and cancels only source-owned presses, preserving newer same-person
+input. Failed neutral cleanup retains its pressed snapshot and fences further
+input until a whole-surface cleanup succeeds. Legacy batches remain accepted;
+the current viewer does not silently fall back when registration is unavailable.
+Frame streams remain separate from source registration and open only with a
 slot from `liveSurfaceStreamAdmission.ts`: two per origin, shared across tabs
 through Web Locks (per page where Web Locks is missing), so input and lease
 requests keep a connection; a viewer past the cap reads `queued`. A viewer

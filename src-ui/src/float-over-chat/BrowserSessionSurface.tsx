@@ -15,6 +15,7 @@ import {
   describeBrowserFailure,
 } from '../workspace-panes/browser-pane/browserPaneApi';
 import type { FloatFetch } from './FloatOverChatHost';
+import './BrowserSessionSurface.css';
 
 export function browserSessionHost(url: string): string {
   try {
