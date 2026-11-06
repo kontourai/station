@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import * as subpath from '@kontourai/station-contracts/automation';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
+  AutomationAction,
   AutomationDeliveryOutcome,
   AutomationEvent,
   AutomationEventType,
@@ -30,8 +31,8 @@ describe('@kontourai/station-contracts/automation', () => {
   });
 
   it('keeps the delivery outcome union closed', () => {
+    // #4513: no `received` — nothing ever wrote it.
     expect(subpath.AUTOMATION_DELIVERY_OUTCOMES).toEqual([
-      'received',
       'duplicate',
       'refused',
       'ignored',
@@ -95,6 +96,17 @@ describe('@kontourai/station-contracts/automation', () => {
     }
   });
 
+  it('names no notify action: it was validated but never executed (#4513)', () => {
+    expect(subpath.AUTOMATION_ACTION_KINDS).toEqual([
+      'dispatch-task',
+      'isolated-repair',
+      'publish-branch',
+    ]);
+    expectTypeOf<AutomationAction['kind']>().toEqualTypeOf<
+      'dispatch-task' | 'isolated-repair'
+    >();
+  });
+
   it('keeps every default inside its published bounds', () => {
     const limits = subpath.AUTOMATION_EXECUTION_LIMITS;
     expect(limits.defaultEpisodeMaxAttempts).toBeLessThanOrEqual(
@@ -131,7 +143,6 @@ describe('@kontourai/station-contracts/automation', () => {
     const accepted: readonly string[] =
       subpath.AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES;
     expect(accepted).not.toContain('refused');
-    expect(accepted).not.toContain('received');
     expect(accepted).not.toContain('duplicate');
   });
 });

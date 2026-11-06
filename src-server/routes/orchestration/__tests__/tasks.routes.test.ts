@@ -662,6 +662,42 @@ describe('Task routes', () => {
     readTaskBasis.mockResolvedValueOnce({ status: 'unavailable' });
     expect((await app.request(`/${task.id}/basis`)).status).toBe(503);
   });
+  test('Task reads carry the server-derived automation mandate; a failed read omits it, never the Task (#4511)', async () => {
+    const service = createRouteService();
+    const task = await service.createTask({
+      projectId: 'project-alpha',
+      title: 'Automation: Diagnose',
+    });
+    const automation = {
+      mandate: { ruleId: 'rule-1', ruleName: 'Diagnose' },
+      state: 'running',
+      amendments: [],
+    } as never;
+    let fail = false;
+    const app = createTaskRoutes(service, {
+      taskDispatcher: inertTaskDispatcher,
+      readAuthorityForRequest: () =>
+        sessionReadAuthorityFromRequest('owner', undefined, undefined),
+      readAutomationTask: (read) => {
+        if (fail) throw new Error('ledger unavailable');
+        return read.id === task.id ? automation : undefined;
+      },
+    });
+    for (const path of [`/${task.id}`, `/${task.id}/graph`]) {
+      const body = (await readJson(await app.request(path))) as {
+        data: { automation?: unknown; task?: { automation?: unknown } };
+      };
+      expect(body.data.automation ?? body.data.task?.automation, path).toEqual(
+        automation,
+      );
+    }
+    fail = true;
+    const response = await app.request(`/${task.id}`);
+    expect(response.status).toBe(200);
+    expect(
+      ((await readJson(response)) as { data: Record<string, unknown> }).data,
+    ).not.toHaveProperty('automation');
+  });
   test('attaches and reopens a task-owned safe tool-result projection', async () => {
     const service = createRouteService();
     const authority = sessionReadAuthorityFromRequest(

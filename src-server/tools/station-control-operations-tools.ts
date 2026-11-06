@@ -1,4 +1,5 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { AUTOMATION_OPERATOR_SURFACE } from '@kontourai/station-contracts/automation';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { environmentId as toEnvironmentId } from '@kontourai/station-contracts/execution-target';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
@@ -19,6 +20,10 @@ import {
   getReviewRequestStatus,
   getSchedulerStats,
   getSchedulerStatus,
+  listAutomationDeliveries,
+  listAutomationEpisodes,
+  listAutomationRules,
+  listAutomationSources,
   listJobs,
   listProjectLayouts,
   listReviewReceipts,
@@ -351,6 +356,62 @@ export function registerOperationsTools(
             controlApiBase(),
             projectSlug,
             receiptId,
+            controlRequestOptions(),
+          ),
+        ),
+      ),
+  );
+
+  // #4513: Automation reads only. Every Automation mutation's `mcp` is null
+  // in the contract: an agent can never create, widen, enable or retry its
+  // own triggers.
+  server.tool(
+    AUTOMATION_OPERATOR_SURFACE['list-sources'].mcp!,
+    'List Automation event sources (webhook secrets are never returned)',
+    {},
+    async () =>
+      jsonToolResult(
+        await toOperationsEnvelope(
+          listAutomationSources(controlApiBase(), controlRequestOptions()),
+        ),
+      ),
+  );
+  server.tool(
+    AUTOMATION_OPERATOR_SURFACE['list-rules'].mcp!,
+    'List Automation rules with the configuration fingerprint',
+    {},
+    async () =>
+      jsonToolResult(
+        await toOperationsEnvelope(
+          listAutomationRules(controlApiBase(), controlRequestOptions()),
+        ),
+      ),
+  );
+  server.tool(
+    AUTOMATION_OPERATOR_SURFACE.deliveries.mcp!,
+    'List recent Automation deliveries with their outcome and reason',
+    { limit: z.number().int().min(1).max(200).optional() },
+    async ({ limit }) =>
+      jsonToolResult(
+        await toOperationsEnvelope(
+          listAutomationDeliveries(
+            controlApiBase(),
+            limit === undefined ? {} : { limit },
+            controlRequestOptions(),
+          ),
+        ),
+      ),
+  );
+  server.tool(
+    AUTOMATION_OPERATOR_SURFACE.episodes.mcp!,
+    'List open, exhausted and indeterminate Automation episodes',
+    { limit: z.number().int().min(1).max(200).optional() },
+    async ({ limit }) =>
+      jsonToolResult(
+        await toOperationsEnvelope(
+          listAutomationEpisodes(
+            controlApiBase(),
+            limit === undefined ? {} : { limit },
             controlRequestOptions(),
           ),
         ),

@@ -71,8 +71,11 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import {
   AUTOMATION_EXECUTION_LIMITS,
+  AUTOMATION_REFUSAL_REASONS,
   AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES,
+  AUTOMATION_SUPPRESSION_REASONS,
   type AutomationActionIntent,
+  type AutomationAmendment,
   type AutomationDeliveryOutcome,
   type AutomationDeliveryRecord,
   type AutomationEpisodeState,
@@ -90,7 +93,10 @@ import {
 import { checkSqliteIntegrity } from '@kontourai/station-shared/sqlite-integrity';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
-import { decodeAutomationActionIntent } from './automation-intent.js';
+import {
+  automationIntentId,
+  decodeAutomationActionIntent,
+} from './automation-intent.js';
 import { AutomationPolicyUnavailableError } from './automation-store.js';
 
 const require = createRequire(import.meta.url);
@@ -175,7 +181,6 @@ CREATE TABLE IF NOT EXISTS automation_action_intents (
   body TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS automation_action_intents_rule ON automation_action_intents(rule_id, invoked_ms);
-CREATE UNIQUE INDEX IF NOT EXISTS automation_action_intents_episode ON automation_action_intents(rule_id, episode_id);
 CREATE TABLE IF NOT EXISTS automation_rule_decisions (
   delivery_key TEXT NOT NULL,
   rule_id TEXT NOT NULL,
@@ -320,9 +325,42 @@ export interface AutomationActionReceipt {
 export type ClaimActionOutcome =
   | Readonly<{ kind: 'claimed'; receipt: AutomationActionReceipt }>
   | Readonly<{ kind: 'not-found' }>
-  | Readonly<{ kind: 'busy' }>
+  | Readonly<{
+      kind: 'busy';
+      /** Which admission limit held the claim (#4513); the claim may succeed later. */
+      reason: Extract<
+        AutomationSuppressionReason,
+        | 'concurrency-limit'
+        | 'rule-active-limit'
+        | 'rate-limited'
+        | 'episode-active'
+      >;
+    }>
   | Readonly<{ kind: 'exhausted' }>
   | Readonly<{ kind: 'indeterminate' }>;
+
+/** Why `retryEpisode` refused, or the retained retry intent. */
+export type RetryEpisodeOutcome =
+  | Readonly<{ kind: 'retried'; intent: AutomationActionIntent }>
+  | Readonly<{
+      kind:
+        | 'not-found'
+        | 'not-exhausted'
+        | 'indeterminate'
+        | 'active'
+        | 'no-intent'
+        | 'stale'
+        | 'policy-unavailable';
+    }>;
+
+/** The current policy a retry adopts, or undefined when it may not act. */
+export type RetryEpisodePolicy = (latest: AutomationActionIntent) =>
+  | Readonly<{
+      policyFingerprint: string;
+      authorityFingerprint: string;
+      action: AutomationActionIntent['action'];
+    }>
+  | undefined;
 
 export interface AutomationLedger {
   recordIntake(input: {
@@ -341,7 +379,33 @@ export interface AutomationLedger {
     closedEpisodeIds: string[];
   };
   readIntent(intentId: string): AutomationActionIntent | undefined;
+  /** The intent bound to `taskId`, newest retry first; undefined when none. */
+  intentForTask(taskId: string): AutomationActionIntent | undefined;
   listActionIntents(): AutomationActionIntent[];
+  /**
+   * Records why a pending intent's claim was held (#4513): its delivery row
+   * becomes `suppressed(reason)` while the delivery is still `matched` or
+   * `suppressed`. A row that already started, failed or was refused is left
+   * alone. The intent itself stays pending.
+   */
+  recordSuppression(
+    intentId: string,
+    reason: AutomationSuppressionReason,
+    now: number,
+  ): void;
+  /**
+   * Operator `retry-episode` (#4513): an exhausted episode is allowed exactly
+   * one more attempt, and a new pending intent for that attempt is retained
+   * under `policy` (the current rule, never the old snapshot). Refused for an
+   * indeterminate episode (its earlier effect is unknown), an episode with
+   * live work, a stale event, or a rule that may not act now.
+   */
+  retryEpisode(input: {
+    ruleId: string;
+    episodeId: string;
+    now: number;
+    policy: RetryEpisodePolicy;
+  }): RetryEpisodeOutcome;
   updateIntent(
     intentId: string,
     update: Partial<
@@ -355,10 +419,26 @@ export interface AutomationLedger {
         | 'turnId'
         | 'deadlineAt'
         | 'reason'
+        | 'mandate'
+        | 'revocation'
+        | 'personTakeoverAt'
       >
     >,
     now: number,
   ): void;
+  /**
+   * Adopts an amendment (#4511): the intent's action and fingerprint move to
+   * the new version and the amendment is listed. Its mandate never changes.
+   */
+  amendIntent(
+    intentId: string,
+    amendment: Readonly<{
+      action: AutomationActionIntent['action'];
+      policyFingerprint: string;
+      changed: AutomationAmendment['changed'];
+    }>,
+    now: number,
+  ): AutomationActionIntent;
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome;
   updateDelivery(deliveryKey: string, update: DeliveryUpdate): boolean;
   listDeliveries(limit?: number): AutomationDeliveryRecord[];
@@ -371,6 +451,8 @@ export interface AutomationLedger {
   episode(episodeKey: string): AutomationEpisodeRecord | undefined;
   /** Newest first, at most `limit` (default 100, ceiling 1,000). */
   listEpisodes(limit?: number): AutomationEpisodeRecord[];
+  /** Unclosed episodes (open, exhausted, indeterminate), newest first. */
+  listOpenEpisodes(limit?: number): AutomationEpisodeRecord[];
   claimAction(input: {
     episodeKey: string;
     deliveryKey: string;
@@ -411,6 +493,71 @@ export type OpenEpisodeInput = Readonly<{
 
 /** Rows each retention pass may delete, so one write never does unbounded work. */
 const PRUNE_BATCH = 64;
+
+/**
+ * #4511/#4513 additive migration, idempotent. `retry` lets an operator's
+ * `retry-episode` retain a second intent for the same episode (the old
+ * `(rule_id, episode_id)` uniqueness becomes `(rule_id, episode_id, retry)`),
+ * and `task_id` lets the Task read API find the intent bound to a Task.
+ *
+ * Downgrade: an older Station re-creates its `(rule_id, episode_id)` unique
+ * index on open. Once an episode has been retried that fails, so the older
+ * ledger refuses to open and reads as `policy_unavailable`: it fails closed.
+ */
+function migrateIntentColumns(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { all: (...args: unknown[]) => unknown[] };
+}): void {
+  const columns = new Set(
+    (
+      db.prepare('PRAGMA table_info(automation_action_intents)').all() as {
+        name: string;
+      }[]
+    ).map((column) => column.name),
+  );
+  if (!columns.has('retry'))
+    db.exec(
+      'ALTER TABLE automation_action_intents ADD COLUMN retry INTEGER NOT NULL DEFAULT 0',
+    );
+  if (!columns.has('task_id')) {
+    db.exec('ALTER TABLE automation_action_intents ADD COLUMN task_id TEXT');
+    db.exec(
+      "UPDATE automation_action_intents SET task_id = json_extract(body, '$.taskId') WHERE task_id IS NULL",
+    );
+  }
+  db.exec(`DROP INDEX IF EXISTS automation_action_intents_episode;
+CREATE UNIQUE INDEX IF NOT EXISTS automation_action_intents_episode_retry
+  ON automation_action_intents(rule_id, episode_id, retry);
+CREATE INDEX IF NOT EXISTS automation_action_intents_task
+  ON automation_action_intents(task_id) WHERE task_id IS NOT NULL;`);
+}
+
+/**
+ * The delivery row an intent's terminal transition writes (#4513). A refusal
+ * keeps its specific reason: `policy_changed` is never reported as
+ * `policy_unavailable`, and a suppression reason makes the row `suppressed`.
+ */
+function deliveryEffect(
+  state: 'refused' | 'failed' | 'indeterminate',
+  reason: string | undefined,
+): {
+  outcome: AutomationDeliveryOutcome;
+  reason: AutomationRefusalReason | AutomationSuppressionReason | null;
+} {
+  if (state !== 'refused') return { outcome: state, reason: null };
+  if ((AUTOMATION_SUPPRESSION_REASONS as readonly unknown[]).includes(reason))
+    return {
+      outcome: 'suppressed',
+      reason: reason as AutomationSuppressionReason,
+    };
+  if ((AUTOMATION_REFUSAL_REASONS as readonly unknown[]).includes(reason))
+    return { outcome: 'refused', reason: reason as AutomationRefusalReason };
+  return { outcome: 'refused', reason: 'admission_refused' };
+}
+
+/** Intent states that have not reached a terminal outcome. */
+const LIVE_INTENT_STATES_SQL =
+  "('pending','invoking','queued','running','indeterminate')";
 
 const SEMANTIC_OUTCOMES_SQL = AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES.map(
   (outcome) => `'${outcome}'`,
@@ -707,6 +854,7 @@ class SqliteAutomationLedger implements AutomationLedger {
         onUnavailable: 'throw',
       });
       db.exec(SCHEMA);
+      migrateIntentColumns(db);
       // SQLite creates -wal/-shm with the database's mode; tighten anyway in
       // case they predate it.
       tightenIfPresent(`${databasePath}-wal`);
@@ -866,7 +1014,7 @@ class SqliteAutomationLedger implements AutomationLedger {
   ): RuleDecision {
     const intent = this.db
       .prepare(
-        'SELECT delivery_key FROM automation_action_intents WHERE rule_id = ? AND episode_id = ?',
+        'SELECT delivery_key FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? AND retry = 0',
       )
       .get(candidate.ruleId, candidate.episodeId) as
       | { delivery_key: string }
@@ -999,6 +1147,9 @@ class SqliteAutomationLedger implements AutomationLedger {
         | 'turnId'
         | 'deadlineAt'
         | 'reason'
+        | 'mandate'
+        | 'revocation'
+        | 'personTakeoverAt'
       >
     >,
     now: number,
@@ -1014,32 +1165,241 @@ class SqliteAutomationLedger implements AutomationLedger {
         throw new AutomationPolicyUnavailableError(
           'Automation intent clock moved backwards',
         );
+      // #4511: the mandate and a revocation are written once; a later write
+      // may repeat them but never rewrite them.
+      for (const key of ['mandate', 'revocation', 'personTakeoverAt'] as const)
+        if (
+          update[key] !== undefined &&
+          current[key] !== undefined &&
+          JSON.stringify(update[key]) !== JSON.stringify(current[key])
+        )
+          throw new AutomationPolicyUnavailableError(
+            `Automation intent ${key} is immutable`,
+          );
+      // Validate before writing: a body that would not decode is never stored.
+      decodeAutomationActionIntent(JSON.stringify(next));
       if (
         update.state === 'refused' ||
         update.state === 'failed' ||
         update.state === 'indeterminate'
-      )
+      ) {
+        const effect = deliveryEffect(update.state, next.reason);
         this.db
           .prepare(
             'UPDATE automation_deliveries SET outcome = ?, reason = ?, updated_ms = ? WHERE dedupe_key = ?',
           )
-          .run(
-            update.state,
-            update.state === 'refused' ? 'policy_unavailable' : null,
-            now,
-            current.deliveryKey,
-          );
+          .run(effect.outcome, effect.reason, now, current.deliveryKey);
+      }
 
       this.db
         .prepare(
-          'UPDATE automation_action_intents SET state = ?, updated_ms = ?, body = ? WHERE intent_id = ?',
+          'UPDATE automation_action_intents SET state = ?, updated_ms = ?, task_id = ?, body = ? WHERE intent_id = ?',
         )
-        .run(next.state, now, JSON.stringify(next), intentId);
+        .run(
+          next.state,
+          now,
+          next.taskId ?? null,
+          JSON.stringify(next),
+          intentId,
+        );
       if (['completed', 'failed', 'refused'].includes(next.state))
         this.db
           .prepare(`UPDATE automation_episodes SET state='closed', updated_ms=?
           WHERE rule_id=? AND episode_id=? AND closes_on_settle=1`)
           .run(now, next.ruleId, next.episodeId);
+    });
+  }
+
+  amendIntent(
+    intentId: string,
+    amendment: Readonly<{
+      action: AutomationActionIntent['action'];
+      policyFingerprint: string;
+      changed: AutomationAmendment['changed'];
+    }>,
+    now: number,
+  ): AutomationActionIntent {
+    return this.transaction(() => {
+      const current = this.readIntent(intentId);
+      if (!current || current.action.kind !== amendment.action.kind)
+        throw new AutomationPolicyUnavailableError(
+          'Automation intent unavailable for amendment',
+        );
+      if (!Number.isSafeInteger(now) || now < current.updatedAt)
+        throw new AutomationPolicyUnavailableError(
+          'Automation intent clock moved backwards',
+        );
+      const amendments = [
+        ...(current.amendments ?? []),
+        {
+          at: iso(now),
+          policyFingerprint: amendment.policyFingerprint,
+          changed: amendment.changed,
+        },
+      ].slice(-64);
+      const next: AutomationActionIntent = decodeAutomationActionIntent(
+        JSON.stringify({
+          ...current,
+          action: amendment.action,
+          policyFingerprint: amendment.policyFingerprint,
+          amendments,
+          updatedAt: now,
+        }),
+      );
+      this.db
+        .prepare(
+          'UPDATE automation_action_intents SET updated_ms = ?, body = ? WHERE intent_id = ?',
+        )
+        .run(now, JSON.stringify(next), intentId);
+      return next;
+    });
+  }
+
+  intentForTask(taskId: string): AutomationActionIntent | undefined {
+    return this.read(() => {
+      const row = this.db
+        .prepare(
+          'SELECT intent_id, state, body FROM automation_action_intents WHERE task_id = ? ORDER BY retry DESC, created_ms DESC LIMIT 1',
+        )
+        .get(taskId) as
+        | { intent_id: string; state: string; body: string }
+        | undefined;
+      if (!row) return undefined;
+      const decoded = decodeAutomationActionIntent(row.body);
+      if (
+        decoded.intentId !== row.intent_id ||
+        decoded.state !== row.state ||
+        decoded.taskId !== taskId
+      )
+        throw new Error('Retained Automation intent binding mismatch');
+      return decoded;
+    });
+  }
+
+  recordSuppression(
+    intentId: string,
+    reason: AutomationSuppressionReason,
+    now: number,
+  ): void {
+    this.transaction(() => {
+      const intent = this.readIntent(intentId);
+      if (!intent || intent.state !== 'pending') return;
+      this.db
+        .prepare(
+          `UPDATE automation_deliveries
+              SET outcome = 'suppressed', reason = ?, updated_ms = ?
+            WHERE dedupe_key = ? AND outcome IN ('matched', 'suppressed')
+              AND (rule_id IS NULL OR rule_id = ?)
+              AND (outcome <> 'suppressed' OR reason IS NOT ?)`,
+        )
+        .run(reason, now, intent.deliveryKey, intent.ruleId, reason);
+    });
+  }
+
+  retryEpisode(input: {
+    ruleId: string;
+    episodeId: string;
+    now: number;
+    policy: RetryEpisodePolicy;
+  }): RetryEpisodeOutcome {
+    return this.transaction(() => {
+      this.reconcileDeadClaims(input.now);
+      const episode = this.db
+        .prepare(
+          "SELECT * FROM automation_episodes WHERE rule_id = ? AND episode_id = ? AND state <> 'closed'",
+        )
+        .get(input.ruleId, input.episodeId) as EpisodeRow | undefined;
+      if (!episode) return { kind: 'not-found' };
+      if (episode.state === 'indeterminate') return { kind: 'indeterminate' };
+      if (
+        episode.state !== 'exhausted' &&
+        episode.attempt_count < episode.max_attempts
+      )
+        return { kind: 'not-exhausted' };
+      const live = this.db
+        .prepare(
+          `SELECT 1 FROM automation_action_intents
+            WHERE rule_id = ? AND episode_id = ? AND state IN ${LIVE_INTENT_STATES_SQL}
+           UNION ALL
+           SELECT 1 FROM automation_action_claims WHERE episode_key = ?`,
+        )
+        .get(input.ruleId, input.episodeId, episode.episode_key);
+      if (live) return { kind: 'active' };
+      const row = this.db
+        .prepare(
+          'SELECT intent_id, state, body FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? ORDER BY retry DESC LIMIT 1',
+        )
+        .get(input.ruleId, input.episodeId) as
+        | { intent_id: string; state: string; body: string }
+        | undefined;
+      if (!row) return { kind: 'no-intent' };
+      const latest = decodeAutomationActionIntent(row.body);
+      if (latest.intentId !== row.intent_id || latest.state !== row.state)
+        throw new Error('Retained Automation intent binding mismatch');
+      const occurredAt = Date.parse(latest.event.occurredAt);
+      if (
+        !Number.isFinite(occurredAt) ||
+        occurredAt < input.now - AUTOMATION_EXECUTION_LIMITS.maxEventAgeMs
+      )
+        return { kind: 'stale' };
+      const policy = input.policy(latest);
+      if (!policy || policy.action.kind !== latest.action.kind)
+        return { kind: 'policy-unavailable' };
+      const retry = (latest.retry ?? 0) + 1;
+      const intent = decodeAutomationActionIntent(
+        JSON.stringify({
+          intentId: automationIntentId(
+            latest.ruleId,
+            latest.episodeKey,
+            latest.episodeId,
+            retry,
+          ),
+          sourceId: latest.sourceId,
+          ruleId: latest.ruleId,
+          episodeKey: latest.episodeKey,
+          episodeId: latest.episodeId,
+          deliveryKey: latest.deliveryKey,
+          policyFingerprint: policy.policyFingerprint,
+          authorityFingerprint: policy.authorityFingerprint,
+          retry,
+          event: latest.event,
+          action: policy.action,
+          state: 'pending',
+          createdAt: input.now,
+          updatedAt: input.now,
+        }),
+      );
+      // Exactly one more attempt: the ceiling is what has been used plus one.
+      this.db
+        .prepare(
+          `UPDATE automation_episodes
+              SET state = 'open', max_attempts = attempt_count + 1, updated_ms = ?
+            WHERE rule_id = ? AND episode_id = ?`,
+        )
+        .run(input.now, input.ruleId, input.episodeId);
+      this.db
+        .prepare(
+          'INSERT INTO automation_action_intents (intent_id, episode_key, source_id, rule_id, episode_id, delivery_key, state, created_ms, updated_ms, retry, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          intent.intentId,
+          intent.episodeKey,
+          intent.sourceId,
+          intent.ruleId,
+          intent.episodeId,
+          intent.deliveryKey,
+          intent.state,
+          input.now,
+          input.now,
+          retry,
+          JSON.stringify(intent),
+        );
+      this.db
+        .prepare(
+          "UPDATE automation_deliveries SET outcome = 'matched', reason = NULL, updated_ms = ? WHERE dedupe_key = ?",
+        )
+        .run(input.now, intent.deliveryKey);
+      return { kind: 'retried', intent };
     });
   }
 
@@ -1291,6 +1651,18 @@ class SqliteAutomationLedger implements AutomationLedger {
     );
   }
 
+  listOpenEpisodes(limit = 100): AutomationEpisodeRecord[] {
+    return this.read(() =>
+      (
+        this.db
+          .prepare(
+            "SELECT * FROM automation_episodes WHERE state <> 'closed' ORDER BY opened_ms DESC, rowid DESC LIMIT ?",
+          )
+          .all(Math.max(1, Math.min(1_000, Math.floor(limit)))) as EpisodeRow[]
+      ).map(episodeFromRow),
+    );
+  }
+
   claimAction(input: {
     episodeKey: string;
     deliveryKey: string;
@@ -1311,7 +1683,7 @@ class SqliteAutomationLedger implements AutomationLedger {
           )
           .get() as { count: number };
         if (claims.count + active.count >= input.maxConcurrentActions)
-          return { kind: 'busy' };
+          return { kind: 'busy', reason: 'concurrency-limit' };
         const perRule = this.db
           .prepare(
             "SELECT COUNT(*) AS count FROM automation_action_intents WHERE rule_id = (SELECT rule_id FROM automation_episodes WHERE episode_key = ? AND state <> 'closed') AND state IN ('queued', 'running', 'indeterminate')",
@@ -1326,7 +1698,7 @@ class SqliteAutomationLedger implements AutomationLedger {
           perRule.count + reserved.count >=
           AUTOMATION_EXECUTION_LIMITS.maxActivePerRule
         )
-          return { kind: 'busy' };
+          return { kind: 'busy', reason: 'rule-active-limit' };
       }
       if (input.maxStartsPerHour !== undefined) {
         const starts = this.db
@@ -1334,7 +1706,8 @@ class SqliteAutomationLedger implements AutomationLedger {
             "SELECT COUNT(*) AS count FROM automation_action_intents WHERE rule_id = (SELECT rule_id FROM automation_episodes WHERE episode_key = ? AND state <> 'closed') AND invoked_ms >= ?",
           )
           .get(input.episodeKey, input.now - 3600000) as { count: number };
-        if (starts.count >= input.maxStartsPerHour) return { kind: 'busy' };
+        if (starts.count >= input.maxStartsPerHour)
+          return { kind: 'busy', reason: 'rate-limited' };
       }
       const episode = this.unclosedEpisode(input.episodeKey);
       if (!episode) return { kind: 'not-found' };
@@ -1357,7 +1730,7 @@ class SqliteAutomationLedger implements AutomationLedger {
           )
           .get(input.episodeKey)
       ) {
-        return { kind: 'busy' };
+        return { kind: 'busy', reason: 'episode-active' };
       }
       const claimId = randomUUID();
       const attempt = episode.attempt_count + 1;
@@ -1434,7 +1807,7 @@ class SqliteAutomationLedger implements AutomationLedger {
             .run(claim.claim_id);
           const row = this.db
             .prepare(
-              'SELECT intent_id FROM automation_action_intents WHERE rule_id = ? AND episode_id = ?',
+              `SELECT intent_id FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? AND state IN ${LIVE_INTENT_STATES_SQL} ORDER BY retry DESC LIMIT 1`,
             )
             .get(claim.rule_id, claim.episode_id) as
             | { intent_id: string }
@@ -1554,7 +1927,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       this.finishInvokedClaim(claim, 'indeterminate', now);
       const intent = this.db
         .prepare(
-          'SELECT intent_id FROM automation_action_intents WHERE rule_id = ? AND episode_id = ?',
+          `SELECT intent_id FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? AND state IN ${LIVE_INTENT_STATES_SQL} ORDER BY retry DESC LIMIT 1`,
         )
         .get(claim.rule_id, claim.episode_id) as
         | { intent_id: string }

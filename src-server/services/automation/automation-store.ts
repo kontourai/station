@@ -166,6 +166,35 @@ function migrateLegacyRuleModes(parsed: unknown): unknown {
   };
 }
 
+/**
+ * #4513: `notify` is no longer an action kind. A grant listing it granted
+ * nothing that ever ran, so the stored grant drops it on read rather than
+ * making the whole configuration unreadable. A stored `notify` rule is still
+ * refused (fails closed): it named work Station never did.
+ */
+function dropRetiredNotifyGrants(parsed: unknown): unknown {
+  if (!isRecord(parsed) || !Array.isArray(parsed.sources)) return parsed;
+  return {
+    ...parsed,
+    sources: parsed.sources.map((source: unknown) => {
+      if (!isRecord(source) || !Array.isArray(source.grants)) return source;
+      return {
+        ...source,
+        grants: source.grants.map((grant: unknown) =>
+          isRecord(grant) && Array.isArray(grant.actions)
+            ? {
+                ...grant,
+                actions: grant.actions.filter(
+                  (action: unknown) => action !== 'notify',
+                ),
+              }
+            : grant,
+        ),
+      };
+    }),
+  };
+}
+
 const EMPTY_CONFIGURATION: AutomationConfiguration = Object.freeze({
   schemaVersion: AUTOMATION_SCHEMA_VERSION,
   sources: [],
@@ -179,6 +208,16 @@ export function projectAutomationSource(
   if (source.kind === 'github-poll') return structuredClone(source);
   const { secret: _secret, ...rest } = source;
   return { ...structuredClone(rest), hasSecret: true };
+}
+
+function assertFingerprint(
+  current: AutomationConfiguration,
+  expected: string,
+): void {
+  if (automationConfigurationFingerprint(current) !== expected)
+    throw new AutomationValidationError([
+      'Automation configuration changed; refresh before changing it.',
+    ]);
 }
 
 function isAbsent(error: unknown): boolean {
@@ -231,7 +270,7 @@ export class AutomationStore {
         cause: error,
       });
     }
-    const migrated = migrateLegacyRuleModes(parsed);
+    const migrated = dropRetiredNotifyGrants(migrateLegacyRuleModes(parsed));
     const problems = automationConfigurationProblems(migrated);
     if (problems.length > 0) {
       throw new AutomationPolicyUnavailableError(
@@ -349,13 +388,7 @@ export class AutomationStore {
   ): Promise<void> {
     const mode = requestedRuleMode(input);
     await this.mutate((current) => {
-      if (
-        automationConfigurationFingerprint(current) !==
-        input.expectedFingerprint
-      )
-        throw new AutomationValidationError([
-          'Automation configuration changed; refresh before enabling.',
-        ]);
+      assertFingerprint(current, input.expectedFingerprint);
       const records = input.kind === 'source' ? current.sources : current.rules;
       const record = records.find((record) => record.id === input.id);
       if (!record || ('revokedAt' in record && record.revokedAt !== undefined))
@@ -378,6 +411,105 @@ export class AutomationStore {
         rules: current.rules.map((rule) =>
           rule.id === input.id ? { ...rule, mode } : rule,
         ),
+      };
+    }, assertCurrent);
+  }
+
+  /**
+   * Replaces a rule's operator-editable fields at an expected configuration
+   * fingerprint (#4513). The id, source and mode are kept: a rule never moves
+   * to another source, and only enable/disable change its mode. The action
+   * kind may not change; `kinds` names the kinds this caller may edit.
+   */
+  async updateRule(
+    input: Readonly<{
+      id: string;
+      expectedFingerprint: string;
+      kinds: readonly AutomationRule['action']['kind'][];
+      rule: Omit<CreateAutomationRuleInput, 'sourceId'>;
+    }>,
+    assertCurrent?: () => Promise<void>,
+  ): Promise<AutomationRule> {
+    let updated: AutomationRule | undefined;
+    await this.mutate((current) => {
+      assertFingerprint(current, input.expectedFingerprint);
+      const existing = current.rules.find(({ id }) => id === input.id);
+      if (
+        !existing ||
+        !input.kinds.includes(existing.action.kind) ||
+        existing.action.kind !== input.rule.action.kind
+      )
+        throw new AutomationValidationError([
+          'Automation rule unavailable for this edit.',
+        ]);
+      updated = {
+        id: existing.id,
+        name: input.rule.name,
+        mode: existing.mode,
+        sourceId: existing.sourceId,
+        match: input.rule.match,
+        ...(input.rule.episode ? { episode: input.rule.episode } : {}),
+        action: input.rule.action,
+        rateLimit: input.rule.rateLimit,
+      };
+      return {
+        ...current,
+        rules: current.rules.map((rule) =>
+          rule.id === input.id ? updated! : rule,
+        ),
+      };
+    }, assertCurrent);
+    return structuredClone(updated!);
+  }
+
+  /**
+   * Deletes a rule (#4513). Narrowing, so no fingerprint is required; one
+   * given is still checked. A deleted rule's pending and running actions are
+   * refused or stopped by their consumers on the next tick.
+   */
+  async deleteRule(
+    input: Readonly<{
+      id: string;
+      expectedFingerprint?: string;
+      kinds: readonly AutomationRule['action']['kind'][];
+    }>,
+    assertCurrent?: () => Promise<void>,
+  ): Promise<void> {
+    await this.mutate((current) => {
+      if (input.expectedFingerprint !== undefined)
+        assertFingerprint(current, input.expectedFingerprint);
+      const existing = current.rules.find(({ id }) => id === input.id);
+      if (!existing || !input.kinds.includes(existing.action.kind))
+        throw new AutomationValidationError([
+          'Automation rule unavailable for this edit.',
+        ]);
+      return {
+        ...current,
+        rules: current.rules.filter(({ id }) => id !== input.id),
+      };
+    }, assertCurrent);
+  }
+
+  /**
+   * Deletes a source that no rule names (#4513); delete its rules first, so a
+   * source never disappears from under a rule an operator still sees.
+   */
+  async deleteSource(
+    input: Readonly<{ id: string; expectedFingerprint?: string }>,
+    assertCurrent?: () => Promise<void>,
+  ): Promise<void> {
+    await this.mutate((current) => {
+      if (input.expectedFingerprint !== undefined)
+        assertFingerprint(current, input.expectedFingerprint);
+      if (!current.sources.some(({ id }) => id === input.id))
+        throw new AutomationValidationError(['Automation source unavailable.']);
+      if (current.rules.some((rule) => rule.sourceId === input.id))
+        throw new AutomationValidationError([
+          'Delete the rules on this source first.',
+        ]);
+      return {
+        ...current,
+        sources: current.sources.filter(({ id }) => id !== input.id),
       };
     }, assertCurrent);
   }

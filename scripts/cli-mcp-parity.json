@@ -75,9 +75,57 @@
       "exempt": "person-only",
       "reason": "Person directory lookup (/api/users/search)."
     },
-    "automation deliveries": {
+    "automation delete": {
       "exempt": "person-only",
-      "reason": "Operator-only observation history; the Automation ledger has no Project or agent audience binding."
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation deliveries": {
+      "tools": ["list_automation_deliveries"]
+    },
+    "automation disable": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation enable": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation episodes": {
+      "tools": ["list_automation_episodes"]
+    },
+    "automation retry-episode": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation rule-create": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation rule-update": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation rules": {
+      "tools": ["list_automation_rules"]
+    },
+    "automation source-create": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation source-delete": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation source-disable": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation source-enable": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation sources": {
+      "tools": ["list_automation_sources"]
     },
     "branding get": {
       "exempt": "presentation",
@@ -1397,6 +1445,18 @@
     "list_agents": {
       "cli": ["agents list"],
       "note": "Different route: MCP GET /agents, CLI GET /api/agents."
+    },
+    "list_automation_deliveries": {
+      "cli": ["automation deliveries"]
+    },
+    "list_automation_episodes": {
+      "cli": ["automation episodes"]
+    },
+    "list_automation_rules": {
+      "cli": ["automation rules"]
+    },
+    "list_automation_sources": {
+      "cli": ["automation sources"]
     },
     "list_conversations": {
       "cli": ["agents conversations"]

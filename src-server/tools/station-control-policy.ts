@@ -549,6 +549,27 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [get('/api/projects/:projectSlug/reviews/:receiptId')],
   },
 
+  // ── operations: automations (#4513) ───────────────────────────────────
+  // Station-wide operator configuration and its ledger: operator-wide reads.
+  // No Automation mutation has a tool (the contract's `mcp` is null), so an
+  // agent can never create, widen, enable or retry its own triggers.
+  list_automation_sources: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/sources')],
+  },
+  list_automation_rules: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/rules')],
+  },
+  list_automation_deliveries: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/deliveries')],
+  },
+  list_automation_episodes: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/episodes')],
+  },
+
   // ── operations: scheduler ──────────────────────────────────────────────
   list_jobs: {
     ...READ,
