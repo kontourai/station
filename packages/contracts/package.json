@@ -205,6 +205,7 @@
     "./orchestration": "./src/orchestration.ts",
     "./scheduler": "./src/scheduler.ts",
     "./task-graph": "./src/task-graph.ts",
+    "./task-resume": "./src/task-resume.ts",
     "./tenancy": "./src/tenancy.ts",
     "./troubleshoot": "./src/troubleshoot.ts",
     "./time": "./src/time.ts",

@@ -16,6 +16,7 @@ export const TABLED_CAPABILITY_FLAGS: readonly string[] = Object.freeze([
   'sessionEventWindow',
   'sessionInventoryInputRead',
   'sessionPersonReads',
+  'taskResume',
   'troubleshootPrepare',
   'webPushNotifications',
 ]);

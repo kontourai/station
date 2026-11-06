@@ -81,6 +81,7 @@ import {
   TaskOutputsSection,
 } from './task-workspace/TaskOutputsSection';
 import { TaskRelationships } from './task-workspace/TaskRelationships';
+import { TaskResumeSection } from './task-workspace/TaskResumeSection';
 import {
   TaskRoomHeader,
   TaskRoomRail,
@@ -709,6 +710,7 @@ function TaskWorkspaceContent({
             />
           </Suspense>
         )}
+        <TaskResumeSection task={graph.task} />
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
           <TaskRoomResults task={graph.task} />

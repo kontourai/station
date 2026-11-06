@@ -128,6 +128,12 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // (src-server/routes/system/diagnostics.ts) and the station-control
   // troubleshoot tools. Served in every deployment mode.
   troubleshootPrepare: true,
+  // #4554: GET/POST /api/tasks/:taskId/resume
+  // (src-server/routes/orchestration/task-resume.ts). Whether the route
+  // answers is the `task-resume` Feature Preview's, which refuses with its
+  // own typed code, so an older host's 404 and an off preview stay
+  // distinguishable. Hosted deployments withdraw it: see servesTaskResume.
+  taskResume: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */
@@ -192,6 +198,13 @@ export function servesCoordinatorSession(
   return !deployment.hosted;
 }
 
+/** Ended-Task resume is personal-only: hosted mode never mounts the route. */
+export function servesTaskResume(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -207,6 +220,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   privateMemoryReview: servesPrivateMemory,
   scheduledConversationTarget: servesScheduledConversationTarget,
   coordinatorSession: servesCoordinatorSession,
+  taskResume: servesTaskResume,
 };
 
 /**

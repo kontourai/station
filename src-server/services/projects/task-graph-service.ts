@@ -1,5 +1,10 @@
 import crypto from 'node:crypto';
-import { existsSync, realpathSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  constants as fsConstants,
+  realpathSync,
+} from 'node:fs';
 import os from 'node:os';
 import { join, resolve } from 'node:path';
 import type { SessionStartBoundaryClaim } from '@kontourai/monument/session-boundary';
@@ -51,6 +56,17 @@ import type {
   TaskWorkChatMutationInput,
   TaskWorkChatMutationResult,
 } from '@kontourai/station-contracts/task-graph';
+import {
+  isTaskResumeSupported,
+  TASK_RESUME_ID_MAX_CHARS,
+  TASK_RESUME_MAX_PER_INCARNATION,
+  TASK_RESUME_REASON_MAX_CHARS,
+  TASK_RESUME_WINDOW_MS,
+  type TaskResumeRecord,
+  type TaskResumeRefusalCode,
+  type TaskResumeRequest,
+  type TaskResumeResult,
+} from '@kontourai/station-contracts/task-resume';
 import {
   canonicalGitHubWorkItemRef,
   workItemRefKey,
@@ -676,7 +692,24 @@ const TASK_RECORD_KEYS = [
   'workItemObservedAt',
   'workItemProvenance',
   'closeOnMerge',
+  'endedAt',
+  'resumes',
   'dispatchReservation',
+] as const;
+const TASK_RESUME_RECORD_KEYS = [
+  'resumeId',
+  'taskId',
+  'taskCreatedAt',
+  'fromStatus',
+  'endedAt',
+  'resumedAt',
+  'resumedBy',
+  'clientOrigin',
+  'reason',
+  'previousLeadOwner',
+  'previousSessionId',
+  'previousDispatchedAt',
+  'followUpsSeenThrough',
 ] as const;
 const DISPATCH_RESERVATION_KEYS = [
   'generation',
@@ -888,6 +921,146 @@ function validateClaimActor(
   }
 }
 
+/**
+ * #4554: the append-only resume records of one Task incarnation. Records are
+ * bounded and bound to the Task they sit on; a record that names another
+ * Task or incarnation is corruption, never a value to repair.
+ */
+function validateTaskResumes(
+  value: unknown,
+  task: Record<string, unknown>,
+  at: string,
+  problems: string[],
+): void {
+  if (!Array.isArray(value) || value.length === 0) {
+    problems.push(`${at}.resumes: must be a non-empty array when present`);
+    return;
+  }
+  if (value.length > TASK_RESUME_MAX_PER_INCARNATION)
+    problems.push(
+      `${at}.resumes: at most ${TASK_RESUME_MAX_PER_INCARNATION} records`,
+    );
+  const ids = new Set<string>();
+  for (const [index, record] of value.entries()) {
+    const where = `${at}.resumes[${index}]`;
+    if (
+      !validateExactObject(
+        record,
+        TASK_RESUME_RECORD_KEYS,
+        [
+          'resumeId',
+          'taskId',
+          'taskCreatedAt',
+          'fromStatus',
+          'endedAt',
+          'resumedAt',
+          'resumedBy',
+          'reason',
+        ],
+        where,
+        problems,
+      )
+    )
+      continue;
+    if (
+      typeof record.resumeId !== 'string' ||
+      !/^[A-Za-z0-9_-]+$/.test(record.resumeId) ||
+      record.resumeId.length > TASK_RESUME_ID_MAX_CHARS
+    )
+      problems.push(`${where}.resumeId: invalid`);
+    else if (ids.has(record.resumeId))
+      problems.push(`${where}.resumeId: duplicate`);
+    else ids.add(record.resumeId);
+    if (record.taskId !== task.id)
+      problems.push(`${where}.taskId: must be the Task's id`);
+    if (record.taskCreatedAt !== task.createdAt)
+      problems.push(`${where}.taskCreatedAt: must be the Task's incarnation`);
+    if (record.fromStatus !== 'done')
+      problems.push(`${where}.fromStatus: must be 'done'`);
+    validateCanonicalTimestamp(record.endedAt, `${where}.endedAt`, problems);
+    validateCanonicalTimestamp(
+      record.resumedAt,
+      `${where}.resumedAt`,
+      problems,
+    );
+    validateNonBlankString(record.resumedBy, `${where}.resumedBy`, problems);
+    validateClientOrigin(
+      record.clientOrigin,
+      `${where}.clientOrigin`,
+      problems,
+    );
+    if (
+      typeof record.reason !== 'string' ||
+      record.reason.trim().length === 0 ||
+      record.reason.length > TASK_RESUME_REASON_MAX_CHARS
+    )
+      problems.push(`${where}.reason: invalid`);
+    validateOptionalText(
+      record.previousLeadOwner,
+      `${where}.previousLeadOwner`,
+      problems,
+    );
+    validateOptionalText(
+      record.previousSessionId,
+      `${where}.previousSessionId`,
+      problems,
+    );
+    for (const key of ['previousDispatchedAt', 'followUpsSeenThrough'] as const)
+      if (record[key] !== undefined)
+        validateCanonicalTimestamp(record[key], `${where}.${key}`, problems);
+  }
+}
+
+/** Whether a document carries a field only #4554's format can hold. */
+function hasTaskResumeFormat(data: TaskGraphStoreData): boolean {
+  return data.tasks.some(
+    (task) => task.endedAt !== undefined || task.resumes !== undefined,
+  );
+}
+
+/**
+ * #4554: the copy of `task-graph.json` taken before the first write that
+ * adds `endedAt` or `resumes`. Older builds refuse a document with those
+ * fields (their decoder accepts an exact field list), so a downgrade
+ * restores this copy, losing Task changes made after it.
+ */
+export function taskGraphPreResumeSnapshotPath(storePath: string): string {
+  return `${storePath}.pre-task-resume`;
+}
+
+/** A refused resume. Nothing was written. */
+export class TaskResumeRefusedError extends Error {
+  constructor(
+    readonly code: TaskResumeRefusalCode,
+    readonly existing?: { id: string; projectId: string },
+  ) {
+    super(code);
+    this.name = 'TaskResumeRefusedError';
+  }
+}
+
+export interface TaskResumeInput {
+  taskId: string;
+  request: TaskResumeRequest;
+  /** The authenticated resumer. */
+  principalId: string;
+  clientOrigin?: ClientOrigin;
+  /**
+   * The resumer's current Task read and execution authority for this Task
+   * incarnation, evaluated synchronously under the store lock immediately
+   * before any write or replay disclosure. Anything but `true` refuses.
+   */
+  authorize(task: TaskRecord): boolean;
+  /**
+   * Whether any of these Sessions (or their conversations' current Sessions)
+   * has an open turn. Synchronous, evaluated under the store lock.
+   */
+  isTaskSessionTurnActive(sessionIds: readonly string[]): boolean;
+  /** The earlier lead Session's recorded owner, for the resume record. */
+  leadOwnerOf?(sessionId: string): string | undefined;
+  now?: () => number;
+}
+
 function validateTaskGraphStoreData(
   value: unknown,
   filePath: string,
@@ -1018,6 +1191,13 @@ function validateTaskGraphStoreData(
       );
     if (task.closeOnMerge !== undefined && task.closeOnMerge !== true)
       problems.push(`${at}.closeOnMerge: must be true when present`);
+    if (task.endedAt !== undefined) {
+      validateCanonicalTimestamp(task.endedAt, `${at}.endedAt`, problems);
+      if (task.status !== 'done' && task.status !== 'canceled')
+        problems.push(`${at}.endedAt: only an ended Task has an end time`);
+    }
+    if (task.resumes !== undefined)
+      validateTaskResumes(task.resumes, task, at, problems);
     if (task.workspaceBinding === undefined) {
       problems.push(`${at}.workspaceBinding: required`);
     } else if (
@@ -1923,11 +2103,25 @@ export class TaskGraphService {
       const data = this.reconcileExpiredDispatchReservations(this.loadStore());
       const next = transition(structuredClone(data));
       validateTaskGraphStoreData(next.data, this.storePath);
+      if (!hasTaskResumeFormat(data) && hasTaskResumeFormat(next.data))
+        this.retainPreResumeSnapshot();
       this.store.write(next.data);
       return next.result;
     } finally {
       await release();
     }
+  }
+
+  /**
+   * #4554 format migration: before the first write that adds `endedAt` or
+   * `resumes`, keep the document an older build can still read. The first
+   * snapshot is kept; a failure refuses the write rather than migrating
+   * without a way back. Runs under the store's mutation lock.
+   */
+  private retainPreResumeSnapshot(): void {
+    const snapshot = taskGraphPreResumeSnapshotPath(this.storePath);
+    if (!existsSync(this.storePath) || existsSync(snapshot)) return;
+    copyFileSync(this.storePath, snapshot, fsConstants.COPYFILE_EXCL);
   }
 
   /** Short read/publication fence. Lock order: TaskGraph, sharing DB, Room DB.
@@ -2753,10 +2947,16 @@ export class TaskGraphService {
           `Cannot transition task from ${task.status} to ${status}`,
         );
       }
+      const now = new Date().toISOString();
+      // #4554: the end time is written with the move into an ended status
+      // and never by a later write; an ended Task has no other transition.
+      const ending =
+        (status === 'done' || status === 'canceled') && task.status !== status;
       const nextTask: TaskRecord = {
         ...task,
         status,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
+        ...(ending ? { endedAt: now } : {}),
         ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
       };
       return {
@@ -2896,10 +3096,12 @@ export class TaskGraphService {
         )
       )
         return { data, result: false };
+      const now = new Date().toISOString();
       const nextTask: PersistedTaskRecord = {
         ...task,
         status: 'done',
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
+        endedAt: now,
       };
       return {
         data: {
@@ -2916,6 +3118,199 @@ export class TaskGraphService {
       void this.finalizeTaskWorktree(input.taskId);
     }
     return moved;
+  }
+
+  /**
+   * #4554: the Station operator in person moves a tracker-backed Task from
+   * `done` back to `ready` (owner-approved option B). Not a status
+   * transition: `TASK_STATUS_TRANSITIONS` keeps `done: []`, and only this
+   * method leaves `done`.
+   *
+   * Order, all inside the Task's worktree custody queue and one synchronous
+   * store mutation (nothing is awaited under the store lock):
+   * 1. the resumer's current authority (`authorize`), before anything about
+   *    the Task, including a stored receipt, is disclosed;
+   * 2. an authorized replay of the same `resumeId` by the same principal
+   *    answers the immutable receipt and the Task as it is now, before the
+   *    end-time compare a committed resume has already cleared;
+   * 3. the compare and set on incarnation, status and `endedAt`, the window,
+   *    the record bound, the dispatch reservation, the work item's other
+   *    open Tasks, open turns and the kept worktree's occupancy;
+   * 4. one write: `ready`, `endedAt`, `closeOnMerge` and the lead attachment
+   *    (`sessionId`, `dispatchedAt`) cleared, and the resume record appended.
+   *
+   * Clearing the attachment is what keeps every automatic wake (Task
+   * questions, tracker follow-ups) off the earlier lead: each wake and its
+   * inbox placement re-check resolves `TaskRecord.sessionId`. Resume starts
+   * no Session and sends nothing.
+   *
+   * The custody queue is process-local. Station runs one lifecycle writer
+   * per home; a second process would need shared custody before this
+   * ordering held across processes. The store write itself is serialized
+   * across processes by the store's file lock.
+   */
+  async resumeTask(input: TaskResumeInput): Promise<TaskResumeResult> {
+    const { taskId, request } = input;
+    const now = input.now ?? Date.now;
+    const result = await this.withTaskWorktreeCustody(taskId, () =>
+      this.mutateStore<TaskResumeResult>((data) => {
+        const task = data.tasks.find((item) => item.id === taskId);
+        // Unknown Task and refused authority answer alike.
+        if (!task)
+          throw new TaskResumeRefusedError('task_resume_not_permitted');
+        let authorized = false;
+        try {
+          authorized = input.authorize(task) === true;
+        } catch {
+          authorized = false;
+        }
+        if (!authorized)
+          throw new TaskResumeRefusedError('task_resume_not_permitted');
+
+        const prior = task.resumes?.find(
+          (record) => record.resumeId === request.resumeId,
+        );
+        if (prior) {
+          if (prior.resumedBy !== input.principalId)
+            throw new TaskResumeRefusedError('task_resume_not_permitted');
+          if (
+            prior.taskCreatedAt !== request.expectedCreatedAt ||
+            prior.endedAt !== request.expectedEndedAt ||
+            prior.reason !== request.reason ||
+            prior.followUpsSeenThrough !== request.followUpsSeenThrough
+          )
+            throw new TaskResumeRefusedError('task_resume_conflict');
+          return {
+            data,
+            result: { task, resume: prior, replayed: true },
+          };
+        }
+
+        if (task.createdAt !== request.expectedCreatedAt)
+          throw new TaskResumeRefusedError('task_resume_conflict');
+        if (!isTaskResumeSupported(task))
+          throw new TaskResumeRefusedError('task_resume_not_supported');
+        if (task.status === 'canceled')
+          throw new TaskResumeRefusedError('task_resume_canceled');
+        if (task.status !== 'done')
+          throw new TaskResumeRefusedError(
+            // The person saw it ended; someone resumed it since.
+            task.resumes?.some(
+              (record) => record.endedAt === request.expectedEndedAt,
+            )
+              ? 'task_resume_conflict'
+              : 'task_resume_not_ended',
+          );
+        if (task.endedAt === undefined)
+          throw new TaskResumeRefusedError('task_resume_end_unknown');
+        if (task.endedAt !== request.expectedEndedAt)
+          throw new TaskResumeRefusedError('task_resume_conflict');
+        const nowMs = now();
+        if (nowMs - Date.parse(task.endedAt) > TASK_RESUME_WINDOW_MS)
+          throw new TaskResumeRefusedError('task_resume_expired');
+        if ((task.resumes?.length ?? 0) >= TASK_RESUME_MAX_PER_INCARNATION)
+          throw new TaskResumeRefusedError('task_resume_limit');
+        if (task.dispatchReservation)
+          throw new TaskResumeRefusedError('task_resume_dispatch_reserved');
+        const holder = openTaskForWorkItem(
+          data.tasks.filter((item) => item.id !== taskId),
+          task.workItemRef!,
+          {
+            projectId: task.projectId,
+            boardChecked: true,
+            sameProject: (a, b) => this.sameProject(a, b),
+          },
+        );
+        if (holder)
+          throw new TaskResumeRefusedError('task_resume_work_item_taken', {
+            id: holder.id,
+            projectId: holder.projectId,
+          });
+        // Every Session this incarnation dispatched, and its lead. Distinct
+        // from the worktree check below: a Session may run elsewhere, and a
+        // kept worktree may host a Session no dispatch record names.
+        const sessionIds = [
+          ...new Set([
+            ...(task.sessionId ? [task.sessionId] : []),
+            ...data.dispatches
+              .filter(
+                (dispatch) =>
+                  dispatch.taskId === taskId &&
+                  dispatch.createdAt >= task.createdAt,
+              )
+              .map((dispatch) => dispatch.sessionId),
+          ]),
+        ];
+        let busy = true;
+        try {
+          const worktree = this.taskWorktrees.read(taskId, task.createdAt);
+          busy =
+            input.isTaskSessionTurnActive(sessionIds) ||
+            (worktree !== undefined &&
+              this.isWorkspaceBusy?.(worktree.worktree.path) === true);
+        } catch {
+          busy = true;
+        }
+        if (busy) throw new TaskResumeRefusedError('task_resume_turn_running');
+
+        const resumedAt = new Date(nowMs).toISOString();
+        let previousLeadOwner: string | undefined;
+        if (task.sessionId) {
+          try {
+            previousLeadOwner = input.leadOwnerOf?.(task.sessionId);
+          } catch {
+            previousLeadOwner = undefined;
+          }
+        }
+        const resume: TaskResumeRecord = {
+          resumeId: request.resumeId,
+          taskId,
+          taskCreatedAt: task.createdAt,
+          fromStatus: 'done',
+          endedAt: task.endedAt,
+          resumedAt,
+          resumedBy: input.principalId,
+          ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+          reason: request.reason,
+          ...(previousLeadOwner ? { previousLeadOwner } : {}),
+          ...(task.sessionId ? { previousSessionId: task.sessionId } : {}),
+          ...(task.dispatchedAt
+            ? { previousDispatchedAt: task.dispatchedAt }
+            : {}),
+          ...(request.followUpsSeenThrough
+            ? { followUpsSeenThrough: request.followUpsSeenThrough }
+            : {}),
+        };
+        const {
+          endedAt: _endedAt,
+          closeOnMerge: _closeOnMerge,
+          sessionId: _sessionId,
+          dispatchedAt: _dispatchedAt,
+          ...kept
+        } = task;
+        const resumed: PersistedTaskRecord = {
+          ...kept,
+          status: 'ready',
+          updatedAt: resumedAt,
+          ...(input.clientOrigin
+            ? { updatedClientOrigin: input.clientOrigin }
+            : {}),
+          resumes: [...(task.resumes ?? []), resume],
+        };
+        return {
+          data: {
+            ...data,
+            tasks: data.tasks.map((item) =>
+              item.id === taskId ? resumed : item,
+            ),
+          },
+          result: { task: resumed, resume, replayed: false },
+        };
+      }),
+    );
+    // A finalization deferred while the Task was ended has nothing to do now.
+    if (!result.replayed) this.deferredTaskWorktrees.delete(taskId);
+    return result;
   }
 
   async completeProposalAcceptance(
@@ -4988,6 +5383,19 @@ export class TaskGraphService {
       if (isTerminalTaskStatus(task.status))
         throw new Error(`Task is ${task.status}`);
       const recorded = this.taskWorktrees.read(taskId, task.createdAt);
+      // #4554: a resumed Task's first dispatch may find the kept worktree
+      // still occupied by an earlier Session's turn (one that started after
+      // the resume). It refuses rather than share the checkout; a later
+      // dispatch, once the turn ends, reuses it.
+      if (
+        recorded &&
+        task.resumes?.length &&
+        task.dispatchedAt === undefined &&
+        this.isWorkspaceBusy?.(recorded.worktree.path) === true
+      )
+        throw new Error(
+          "The Task's kept worktree has a running turn; dispatch it again once that turn ends",
+        );
       const provisioned = await this.worktreeProvisioning.provisionForTask({
         repoPath: agentStart.cwd,
         taskId,

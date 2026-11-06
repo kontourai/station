@@ -375,7 +375,10 @@ import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
+import {
+  servesCoordinatorSession,
+  servesTaskResume,
+} from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
   replacePluginEngineConnections,
@@ -552,6 +555,7 @@ import { createTaskLearningRoutes } from '../../routes/orchestration/task-learni
 import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
+import { createTaskResumeRoutes } from '../../routes/orchestration/task-resume.js';
 import { createTaskReviewRoutes } from '../../routes/orchestration/task-review.js';
 import { createTaskReviewStationControlRoutes } from '../../routes/orchestration/task-review-station-control.js';
 import { createTaskWriteBackRoutes } from '../../routes/orchestration/task-write-back.js';
@@ -838,6 +842,7 @@ import {
   createTaskLeadReader,
   TaskQuestionWake,
   type TaskQuestionWakePorts,
+  taskLeadPlacementCurrent,
 } from '../../services/orchestration/task-question-wake.js';
 import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
@@ -5829,6 +5834,92 @@ export function configureRuntimeRoutes(
         createPersonalTaskAnswerSupportModule(context),
     }),
   );
+  // #4554: resume an ended Task, behind the `task-resume` Feature Preview.
+  // Personal mode only: hosted mode neither binds the preview nor mounts the
+  // route, and `taskResume` is withdrawn from its handshake (one predicate).
+  if (
+    servesTaskResume({
+      hosted:
+        hostedTenantRegistry !== undefined || isHostedTenantExecutionRequired(),
+    })
+  ) {
+    const taskResumePreview = context.featurePreviews.bind({
+      // A literal, as docs:feature-previews:check reads it.
+      id: 'task-resume',
+      label: 'Resume ended Tasks',
+      description:
+        'Lets the Station operator, in person, move a done Task on a GitHub item back to ready within 14 days of its end, after reading follow-ups.',
+    });
+    const taskResumeEvents = context.orchestrationEventStore;
+    const taskResumeLeadConversation = (sessionId: string) =>
+      taskResumeEvents?.conversationForSession(sessionId)?.conversationId ??
+      sessionId;
+    context.app.route(
+      '/api/tasks',
+      createTaskResumeRoutes({
+        service: context.taskGraphService,
+        enabled: () =>
+          taskResumePreview.select({
+            enabled: () => true,
+            disabled: () => false,
+          }),
+        inPersonPrincipal: (request) => {
+          try {
+            if (
+              !isOperatorInPersonNotAgent(request) ||
+              !isRequestPrincipalCurrent(request)
+            )
+              return undefined;
+            return conversationReadAuthorityForRequest(request).userId;
+          } catch {
+            return undefined;
+          }
+        },
+        // Every check is the canonical owner's, read now: Task read access,
+        // the Project execution admission the lead wakes use, and the
+        // dispatch route's own scope for this request, so the person who
+        // resumes is one who can dispatch. Membership alone is not enough.
+        authorizeTask: (request, principalId, task) =>
+          isOperatorInPersonNotAgent(request) &&
+          isRequestPrincipalCurrent(request) &&
+          canonicalTaskSourceMayRead(request, task.id) &&
+          canUseTaskSource(context, task, principalId, true) &&
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'POST',
+              path: `/api/tasks/${encodeURIComponent(task.id)}/dispatch`,
+            },
+          ),
+        // Fail closed: an unknown answer counts as a running turn.
+        isTaskSessionTurnActive: (sessionIds) =>
+          sessionIds.some((sessionId) => {
+            const current =
+              context.orchestrationService.currentConversationSessionId(
+                taskResumeLeadConversation(sessionId),
+              );
+            return (
+              context.orchestrationService.hasActiveTurn(sessionId) ||
+              context.orchestrationService.hasActiveTurn(current)
+            );
+          }),
+        leadOwnerOf: (sessionId) =>
+          context.orchestrationService.sessionRecordedOwnerId(
+            context.orchestrationService.currentConversationSessionId(
+              taskResumeLeadConversation(sessionId),
+            ),
+          ),
+        followUps: (task) =>
+          context.taskFollowUps?.forRead()?.list({
+            taskId: task.id,
+            taskCreatedAt: task.createdAt,
+          }),
+        clientOrigin: (request) => resolveClientOriginForRequest(request),
+        logger: context.logger,
+      }),
+    );
+  }
   // The runtime composition seam owns the only durable Starter Work adapter.
   // The store is a narrow correlation ledger, never a second task authority.
   // Starter Work's TaskGraph adapter is personal-home authority. Hosted
@@ -5916,11 +6007,13 @@ export function configureRuntimeRoutes(
         canUseTaskSource(context, task, owner, true),
       placementCurrent: (task, owner, conversationId) =>
         canUseTaskSource(context, task, owner, true) &&
-        task.status !== 'done' &&
-        task.status !== 'canceled' &&
-        Boolean(task.sessionId) &&
-        (roomEventStore.conversationForSession(task.sessionId!)
-          ?.conversationId ?? task.sessionId) === conversationId,
+        taskLeadPlacementCurrent(
+          task,
+          conversationId,
+          (sessionId) =>
+            roomEventStore.conversationForSession(sessionId)?.conversationId ??
+            sessionId,
+        ),
       readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
       conversationOf: (sessionId) =>
         roomEventStore.conversationForSession(sessionId)?.conversationId ??

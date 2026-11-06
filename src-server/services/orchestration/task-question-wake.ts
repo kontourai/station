@@ -184,6 +184,26 @@ export type TaskQuestionWakeOutcome =
       readonly clientTurnId: string;
     };
 
+/**
+ * Whether a queued wake may still be placed into `conversationId`: the Task
+ * is live and that conversation is its current lead's. A Task with no lead
+ * attached, such as one just resumed (#4554), places nothing, so a wake
+ * queued for an earlier lead is refused at placement.
+ */
+export function taskLeadPlacementCurrent(
+  task: Pick<TaskRecord, 'status' | 'sessionId'>,
+  conversationId: string,
+  conversationOf: (sessionId: string) => string,
+): boolean {
+  return (
+    task.status !== 'done' &&
+    task.status !== 'canceled' &&
+    task.sessionId !== undefined &&
+    task.sessionId !== '' &&
+    conversationOf(task.sessionId) === conversationId
+  );
+}
+
 /** The inbox key: one per Task incarnation, record key, version and action. */
 export function taskQuestionWakeKey(
   incarnation: TaskMemoryIncarnation,
