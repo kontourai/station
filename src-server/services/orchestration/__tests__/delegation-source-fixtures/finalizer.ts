@@ -10,12 +10,20 @@ import {
   loadRun,
 } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
-import { createDelegationRoundsController } from '@kontourai/flow-agents/delegation-group-rounds';
+import {
+  createDelegationRoundsController,
+  type DelegationRoundsTransactionScope,
+} from '@kontourai/flow-agents/delegation-group-rounds';
 import { afterEach, type TestContext, test, vi } from 'vitest';
 import { RuntimePublicationParticipant } from '../../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../../runtime/bootstrap/station-runtime.js';
+import { HomeWriterOwner } from '../../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../../delegation-group-persistence.js';
 import { LocalSourceAdmissionOwner } from '../../delegation-group-source-admission.js';
+import {
+  type ReportRoundsScope,
+  withReportRoundsPublication,
+} from '../../report-rounds-publication.js';
 import { StationReportGroupCustody } from '../../station-report-group-custody.js';
 import { StationReportGroupPreparation } from '../../station-report-group-preparation.js';
 import { createReportFlow } from './flow.js';
@@ -30,8 +38,10 @@ export interface FinalizerFixture {
   groupId: string;
   current(): undefined;
   persistence: StationDelegationPersistence;
-  authority: ReturnType<typeof createDelegationAuthorityServiceV3>;
-  controller: ReturnType<typeof createDelegationRoundsController>;
+  controller: Pick<
+    ReturnType<typeof createDelegationRoundsController>,
+    'create' | 'get' | 'reappraise' | 'authorizeRetry' | 'cancel'
+  >;
   held: Awaited<
     ReturnType<ReturnType<typeof createDelegationRoundsController>['get']>
   >;
@@ -163,77 +173,120 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
       return undefined;
     };
     const persistence = h.custodyOwners.persistence;
-    const authority = createDelegationAuthorityServiceV3(
-      persistence.roundsAuthorityStore(current),
-      {
-        now: () => new Date(Date.now()).toISOString(),
-        authorize: async (_action, root, envelope) =>
-          h.owner.authorizes(handle, h.f.req, root, envelope),
-        confirmExecution: async (envelope) =>
-          h.owner.confirmsExecution(handle, h.f.req, envelope),
-        authenticateRenewal: async () => null,
-      },
-      { maxRenewals: 0 },
-    );
-    await authority.issue(prepared.root);
+    const createAuthority = (scope?: ReportRoundsScope) => {
+      const check = scope ? scope.current : current;
+      const inspect = <Value>(body: () => Value): Value =>
+        scope ? scope.check(body) : body();
+      return createDelegationAuthorityServiceV3(
+        persistence.roundsAuthorityStore(check, check, scope),
+        {
+          now: () => new Date(Date.now()).toISOString(),
+          authorize: async (_action, root, envelope) =>
+            inspect(() => h.owner.authorizes(handle, h.f.req, root, envelope)),
+          confirmExecution: async (envelope) =>
+            inspect(() => h.owner.confirmsExecution(handle, h.f.req, envelope)),
+          authenticateRenewal: async () => null,
+        },
+        { maxRenewals: 0 },
+      );
+    };
+    const writer = await HomeWriterOwner.forHome(h.f.home);
+    const withAuthority = <Value>(
+      work: (
+        authority: ReturnType<typeof createDelegationAuthorityServiceV3>,
+      ) => Promise<Value>,
+    ): Promise<Value> =>
+      withReportRoundsPublication(
+        { participant, home: h.f.home, signal },
+        (publication) =>
+          publication.withHome(
+            { owner: writer, current },
+            (scope) => work(createAuthority(scope)),
+          ),
+      );
+    await withAuthority((authority) => authority.issue(prepared.root));
     for (const envelope of prepared.envelopes)
-      await authority.derive(prepared.root.authority_id, envelope);
-    const dispatch = new FileAuthorizationLedger({
-      root: dispatchRoot,
-    });
+      await withAuthority((authority) =>
+        authority.derive(prepared.root.authority_id, envelope),
+      );
+    const dispatch = new FileAuthorizationLedger({ root: dispatchRoot });
     const refuse = (): never => {
       throw Error('unexpected execution');
     };
     const retentionFails = true;
-    const controller = createDelegationRoundsController({
-      store: persistence.roundsStore(current),
-      authorityService: authority,
-      dispatchLedger: dispatch,
-      cwd: h.f.repo,
-      host: {
-        authorize: async () => prepared.root.authenticated_principal_ref,
-        executionHost: refuse,
-        prepareRequest: async () => refuse(),
-        retainObservation: async () => refuse(),
-        confirmTerminal: async () => refuse(),
-        requestDescendantCancellation: async () => refuse(),
-        retainContinuation: async (spec, receipt) => {
-          if (retentionFails) throw Error('injected receipt retention outage');
-          return persistence.retainReportContinuation(
-            spec.groupId,
-            receipt,
-            current,
-          );
-        },
-        flow: {
-          executionHost: refuse,
-          confirmRetainedResult: async () => false,
-          retainEvaluation: async () => refuse(),
-          acquireContinuationPublication: async () => {
-            const parent = participant.acquire();
+    const withController = <Value>(
+      work: (
+        controller: ReturnType<typeof createDelegationRoundsController>,
+      ) => Promise<Value>,
+    ): Promise<Value> =>
+      withReportRoundsPublication(
+        { participant, home: h.f.home, signal },
+        async (publication) => {
+          const build = (
+            scope?: ReportRoundsScope,
+          ): Pick<
+            DelegationRoundsTransactionScope,
+            'store' | 'host' | 'authorityService'
+          > => {
+            const check = scope ? scope.current : current;
             return {
-              assertCurrent: () => {
-                parent.assertCurrent();
-                return undefined;
-              },
-              flowAdmission: {
-                acquire: async () => {
-                  const child = parent.borrow();
-                  return {
-                    assertCurrent: () => {
-                      child.assertCurrent();
-                      return undefined;
-                    },
-                    release: async () => child.release(),
-                  };
+              store: persistence.roundsStore(check, check, scope),
+              authorityService: createAuthority(scope),
+              host: {
+                authorize: async () =>
+                  prepared.root.authenticated_principal_ref,
+                executionHost: refuse,
+                prepareRequest: async () => refuse(),
+                retainObservation: async () => refuse(),
+                confirmTerminal: async () => refuse(),
+                requestDescendantCancellation: async () => refuse(),
+                retainContinuation: async (spec, receipt) => {
+                  if (retentionFails)
+                    throw Error('injected receipt retention outage');
+                  return persistence.retainReportContinuation(
+                    spec.groupId,
+                    receipt,
+                    current,
+                  );
+                },
+                flow: {
+                  executionHost: refuse,
+                  confirmRetainedResult: async () => false,
+                  retainEvaluation: async () => refuse(),
+                  acquireContinuationPublication: async () =>
+                    publication.acquireContinuationPublication({
+                      owner: writer,
+                      current,
+                      groupId,
+                    }),
                 },
               },
-              release: async () => parent.release(),
             };
-          },
+          };
+          return work(
+            createDelegationRoundsController({
+              ...build(),
+              dispatchLedger: dispatch,
+              cwd: h.f.repo,
+              transactionOwner: publication.transactionOwner({
+                owner: writer,
+                current,
+                groupId,
+                build,
+              }),
+            }),
+          );
         },
-      },
-    });
+      );
+    const controller: FinalizerFixture['controller'] = {
+      create: (command) => withController((owner) => owner.create(command)),
+      get: (id) => withController((owner) => owner.get(id)),
+      reappraise: (command) =>
+        withController((owner) => owner.reappraise(command)),
+      authorizeRetry: (command) =>
+        withController((owner) => owner.authorizeRetry(command)),
+      cancel: (command) => withController((owner) => owner.cancel(command)),
+    };
     const created = await controller.create({
       kind: 'create',
       groupId,
@@ -288,7 +341,9 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
     );
     const held = await controller.get(groupId);
     const flowAfterLoss = await loadRun(flow.runId, h.f.repo);
-    const authorityBefore = await authority.inspect(prepared.root.authority_id);
+    const authorityBefore = await withAuthority((authority) =>
+      authority.inspect(prepared.root.authority_id),
+    );
     return {
       h,
       reportRoot,
@@ -298,7 +353,6 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
       groupId,
       current,
       persistence,
-      authority,
       controller,
       held,
       flow,
