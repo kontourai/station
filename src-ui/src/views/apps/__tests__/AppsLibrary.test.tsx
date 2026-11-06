@@ -217,15 +217,11 @@ test('requires deletion confirmation and retains the Board when authority refuse
     await screen.findByRole('button', { name: 'Delete Daily brief' }),
   );
   expect(requests.some((entry) => entry.method === 'DELETE')).toBe(false);
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Delete Board' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Board' }));
   await screen.findByText('Access refused');
   expect(boards.some((board) => board.slug === 'daily')).toBe(true);
   denied = false;
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Delete Board' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Board' }));
   await screen.findByRole('dialog', { name: 'Apps' });
   await waitFor(() =>
     expect(
@@ -247,9 +243,7 @@ test('successful deletion closes its confirmation after newer navigation superse
     fireEvent.click(
       await screen.findByRole('button', { name: 'Delete Daily brief' }),
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Delete Board' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Board' }));
     await waitFor(() =>
       expect(
         requests.filter((entry) => entry.method === 'DELETE'),
@@ -305,9 +299,7 @@ test('route cancellation preserves metadata and discard closes the editor and re
   });
   act(() => navigationStore.navigate('/apps-review-target'));
   let decision = await screen.findByRole('dialog', { name: 'Unsaved Changes' });
-  fireEvent.click(
-    within(decision).getByRole('button', { name: 'Cancel' }),
-  );
+  fireEvent.click(within(decision).getByRole('button', { name: 'Cancel' }));
   expect(window.location.pathname).toBe('/apps-review-start');
   expect(
     screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Description' })
@@ -315,9 +307,7 @@ test('route cancellation preserves metadata and discard closes the editor and re
   ).toBe('Keep this draft');
   act(() => navigationStore.navigate('/apps-review-target'));
   decision = await screen.findByRole('dialog', { name: 'Unsaved Changes' });
-  fireEvent.click(
-    within(decision).getByRole('button', { name: 'Discard' }),
-  );
+  fireEvent.click(within(decision).getByRole('button', { name: 'Discard' }));
   await waitFor(() =>
     expect(window.location.pathname).toBe('/apps-review-target'),
   );
