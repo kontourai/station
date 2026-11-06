@@ -189,8 +189,11 @@ function flushPendingEntries() {
     try {
       publishDialogEntry(entry);
     } catch (error) {
-      entries.splice(entries.indexOf(entry), 1);
-      entry.close();
+      for (const pending of [...entries]) {
+        if (pending.published) continue;
+        entries.splice(entries.indexOf(pending), 1);
+        if (!pending.cleanupToken) pending.close();
+      }
       throw error;
     }
   }
