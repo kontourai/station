@@ -14,6 +14,10 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+vi.mock('../hooks/useActiveStationName', () => ({
+  useActiveStationName: () => 'Kontour Station',
+}));
+
 const queryClients: QueryClient[] = [];
 function render(ui: Parameters<typeof renderView>[0]) {
   const client = new QueryClient();

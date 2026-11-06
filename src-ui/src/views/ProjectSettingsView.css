@@ -129,6 +129,21 @@
   padding-bottom: calc(var(--k-space-5) + var(--dock-bottom-clearance));
 }
 
+/* Sources own their scrollport between the header and the shell's dock reserve. */
+.route-transition:has(> .project-settings--sources) {
+  min-height: 0;
+  overflow: hidden;
+}
+.project-settings--sources,
+.project-settings--sources .project-settings__layout {
+  overflow: hidden;
+}
+.project-settings--sources .project-settings__body {
+  margin-bottom: 0;
+  padding-bottom: var(--k-space-5);
+  scroll-padding-block: var(--k-space-4);
+}
+
 /* The body is a vertical flex scroller. Without an explicit non-shrinking
    basis, every section compresses until only its header remains visible. */
 .project-settings__body > .project-settings__panel {

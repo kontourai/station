@@ -374,7 +374,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="page page--full">
+    <div
+      className={`page page--full${activeSection === 'resources' ? ' project-settings--sources' : ''}`}
+    >
       {/* Header */}
       <DetailHeader
         title={form.name}

@@ -154,7 +154,11 @@
 
     "src-ui/src/components/chat/TranscriptTurnRail.css",
 
-    "src-ui/src/hooks/useCoarsePointer.ts"
+    "src-ui/src/hooks/useCoarsePointer.ts",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebar.css",
+
+    "src-ui/src/views/ProjectSettingsView.css"
   ],
 
   "checks": [

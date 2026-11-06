@@ -1529,7 +1529,44 @@ the normal workspace checks. Operator-assisted import uses host Git credentials.
 Provider OAuth, Project-scoped forge grants and collaboration onboarding are
 tracked separately in [the authorization epic](https://github.com/kontourai/station/issues/4068);
 importing a repository does not grant an Agent remote credentials.
-Project Settings → Sources combines repository repair with knowledge-store
+Project Settings → Sources lists repositories as links with their provider mark and
+`owner/repo`. A healthy checkout needs no header status badge. **Used for new chats**
+names the selected repository; it does not mean a chat has run or a Station is online.
+**Checkout and access details** lists the answering Station and its local folder.
+Missing or mismatched folders retain their repository identity and offer checkout
+repair. Paths whose identity could not be confirmed are labelled **Folder to check**;
+a failed refresh withholds old paths. **Advanced details** retains resource IDs,
+primary selection and resolver diagnostics. **Refresh sources** rechecks local
+records, without fetching Git remotes. Repo-free Projects retain documents and tools.
+
+These details show one Station’s registered checkout, not a fleet-wide inventory.
+The Station name comes from its connection and reported machine presentation;
+the viewing browser is not an execution host. Additional Peer checkout registration
+and aggregation remain outside this view. Selecting a repository for new chats
+retains the existing execution-root/primary fallback rules and affects new Sessions.
+
+**Source and Station access** separates the checkout from its authentication.
+Enable **Repository sign-in details** in **Settings → Advanced → Feature previews**
+to read the owning Station’s GitHub CLI health, active account and reported scopes.
+This operator-only observation runs `gh auth status --hostname github.com --json
+hosts --no-refresh`, bounded to five seconds and 8 KiB, with a ten-second cache.
+It returns no token, credential source path or inactive account. On hosts that do
+not report authentication details, sign-in stays **Not confirmed**. Missing account
+or scope fields remain **Not reported**; malformed or unsupported CLI output is
+unavailable, even if its JSON-mode process exited zero. Turning the preview off
+prevents new metadata probes and withholds waiting responses; an already launched
+read remains bounded by its original deadline.
+
+The account/scopes describe this Station’s `gh`, not a verified repository grant.
+Git may use another SSH key or credential helper. Other providers’ authentication
+is not reported here. Project/repository credential bindings are not managed in
+this view. **Sign-in help** names the owning machine and its supported `gh auth
+status` / `gh auth login --hostname github.com` commands; the browser cannot start
+remote sign-in. No connection credentials are copied to the browser or another
+Station. The metadata API and its legacy-compatible opt-in are described in the
+[API reference](../reference/api.md#integration-capability-status-and-task-write-back).
+
+Sources combines repository repair with knowledge-store
 registration, refresh and disconnect. A repository repair row offers the same
 acquisition and retained-checkout picker. **Use this checkout** fills the repair
 path; the separate bind action verifies the current declared resource before
