@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TurnStartedEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import {
   connectionRecoveryOutcomes,
   credentialProfileApplication,
@@ -448,14 +450,14 @@ describe('SessionRecoveryCoordinator', () => {
       );
       const now = new Date('2026-07-29T12:00:00.000Z');
       const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
+      const profileAdapter: ProviderAdapterShape = new GateTestAdapter();
+      profileAdapter.metadata.recovery = {
+        sameSession: true,
+        application: 'restart_resume',
+      };
       const coordinator = new SessionRecoveryCoordinator({
         eventStore: store,
-        adapterForProvider: () =>
-          ({
-            metadata: {
-              recovery: { sameSession: true, application: 'restart_resume' },
-            },
-          }) as any,
+        adapterForProvider: () => profileAdapter,
         sendTurn: vi.fn(async () => ({ turnId: 'ordinary-turn' })),
         restartResume,
         credentialRecoveryAdapter: {

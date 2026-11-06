@@ -21,7 +21,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import {
   applyEngineStartWaitFrame,
-  resetEngineStartWaitsForTests,
+  clearEngineStartWaits,
 } from '../hooks/orchestration/engineStartWaits';
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -690,7 +690,7 @@ describe('ChatDockBody engine-start capacity wait (#4568)', () => {
       renderDock(buildSession({ status: 'idle' }), null);
       expect(screen.queryByTestId('chat-dock-engine-start-wait')).toBeNull();
     } finally {
-      resetEngineStartWaitsForTests();
+      clearEngineStartWaits('http://localhost:3242');
     }
   });
 

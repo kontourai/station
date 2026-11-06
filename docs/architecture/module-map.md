@@ -4605,9 +4605,15 @@ admission and checks it again before the provider start. While a person's
 start for an existing Session is queued, its summary carries
 `engineStartWait`, published through the session-projection update the
 composer refreshes from. The wait clears on admission, cancellation, timeout
-or failure. A brand-new Session's start has no summary yet, so the composer
-shows no wait for it. A `/chat` request's own signal never cancels a send
-Station has accepted.
+or failure. A brand-new Session's first start publishes the same wait on the
+authorized `orchestration:engine-start-wait` stream, with a pending-start
+identity owned by its authenticated caller and tenant. It grants no Session
+read or successful-start claim. The identity remains cancellable through
+preparation after admission, then clears when the provider start settles.
+The stream rechecks read authority before writing; its unscoped event route
+never forwards these statuses. Reconnection and overflow snapshots replace
+transient status with current owned starts. A `/chat` request's own signal
+never cancels a send Station has accepted.
 Other Station runtimes have their own controllers; this is not the verification
 coordinator's host-wide scheduler.
 
@@ -4627,9 +4633,13 @@ or that a provider will start successfully.
 [Posture tests](../../src-server/services/infra/__tests__/resource-posture.test.ts)
 and runtime/scheduler composition tests exercise progress at a synthetic
 99-percent CPU reading and preserve the product/verification import boundary.
-[Existing-Session capacity tests](../../src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts)
-drive the respawn, Stop, timeout and credential-restart paths through the
-real service and read the published summary.
+[Capacity tests](../../src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts)
+drive first start, respawn, Stop, timeout and credential restart through the
+real service and its published projection. The late-Stop cases hold the
+production workspace reauthorization boundary after admission.
+[Stream route tests](../../src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts)
+exercise principal isolation, reconnect replay, fresh `/chat` production
+composition, accepted-request disconnect and the UI status consumer.
 Keep CPU classification observational; do not make high load a hidden product
 refusal, require an override token or import verification scheduling into the
 application.

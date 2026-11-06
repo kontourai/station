@@ -1167,13 +1167,15 @@ export interface EngineStartWaitObservation {
  * #4568: the orchestration stream's `orchestration:engine-start-wait` frame.
  * `wait` is the current observation, or `null` once the start was admitted,
  * cancelled, timed out or failed. Sent when it changes and, for every wait
- * still queued, when a stream opens, so a reconnect cannot keep a stale one.
- * A brand-new chat's first start has no Session summary yet; this frame is
- * how its composer learns of the wait.
+ * still pending, when a stream opens or replaces its snapshot. A first start
+ * has no Session summary yet; `pendingStart` identifies its cancellable
+ * preparation without asserting that a provider Session exists.
  */
 export interface OrchestrationEngineStartWaitFrame {
   threadId: string;
   wait: EngineStartWaitObservation | null;
+  /** An owned first start is still cancellable, including after capacity admission. */
+  pendingStart?: true;
 }
 
 export interface OrchestrationSessionSummary extends ProviderSession {

@@ -83,8 +83,6 @@ interface RuntimeResourcePostureProbeOptions {
   sample?: () => Promise<HostPressureSample>;
   now?: () => number;
   cacheMs?: number;
-  /** Bound on an interactive start's wait; a deterministic test seam. */
-  engineStartWaitMs?: number;
 }
 
 export type RuntimeEngineStartIntent =
@@ -192,8 +190,8 @@ export function deriveRuntimeResourcePosture(
 
 /**
  * #4568: a person's Stop cancelled their engine start, while it waited for
- * the start lease or before its provider start. Nothing ran: a typed refusal,
- * so a start boundary records "not started", and not a failure of the Session.
+ * the start lease or during preparation before its provider call. This is a
+ * pre-start refusal, not a failure of the retained Session.
  */
 export class EngineStartCancelledError extends ProviderRefusalError {
   readonly code = RESOURCE_ENGINE_START_CANCELLED_CODE;
@@ -223,8 +221,6 @@ export function createRuntimeResourcePostureController(
   const sample = options.sample ?? createRuntimeCpuSampler();
   const now = options.now ?? Date.now;
   const cacheMs = options.cacheMs ?? RUNTIME_RESOURCE_POSTURE_CACHE_MS;
-  const engineStartWaitMs =
-    options.engineStartWaitMs ?? ENGINE_START_WAIT_TIMEOUT_MS;
   let latest: RuntimeResourcePosture | undefined;
   let refreshedAt: number | undefined;
   let inFlight: Promise<RuntimeResourcePosture> | undefined;
@@ -312,7 +308,7 @@ export function createRuntimeResourcePostureController(
           const timer = setTimeout(() => {
             remove();
             reject(new ConcurrentEngineStartCapacityError());
-          }, engineStartWaitMs);
+          }, ENGINE_START_WAIT_TIMEOUT_MS);
           timer.unref?.();
           waiters.push(accept);
           signal?.addEventListener('abort', abort, { once: true });

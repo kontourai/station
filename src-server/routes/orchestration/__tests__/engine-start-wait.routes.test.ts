@@ -6,13 +6,33 @@
  * to a stream that opens while it waits, and cleared once it is admitted.
  */
 import { join } from 'node:path';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
+import type { OrchestrationEngineStartWaitFrame } from '@kontourai/station-contracts/orchestration';
+import type {
+  ProviderSession,
+  ProviderSessionStartInput,
+} from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, expect, test, vi } from 'vitest';
+import {
+  applyEngineStartWaitFrame,
+  clearEngineStartWaits,
+  readEngineStartWait,
+  readPendingEngineStart,
+} from '../../../../src-ui/src/hooks/orchestration/engineStartWaits.js';
 import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  type ExecutionTargetExecutionDependencies,
+  executeForegroundMessage,
+} from '../../../services/execution-target/execution-target-execution.js';
 import { createRuntimeResourcePostureController } from '../../../services/infra/resource-posture.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -136,16 +156,25 @@ test("a person's first-start wait reaches only its owner's streams, replays to a
     { userId: 'owner' },
     { resourceAdmissionIntent: 'interactive_user' },
   );
-  await owner.until(`event: ${WAIT}`);
+  await owner.until(`event: ${WAIT}`, 2);
   expect(framesOf(owner.text(), WAIT)).toEqual([
-    { threadId: 'fresh', wait: { since: expect.any(String) } },
+    { threadId: 'fresh', wait: null, pendingStart: true },
+    {
+      threadId: 'fresh',
+      wait: { since: expect.any(String) },
+      pendingStart: true,
+    },
   ]);
 
   // Opened mid-wait, the owner's next stream is sent the wait right away.
   const reopened = await openStream('owner', '/events');
   await reopened.until(`event: ${WAIT}`);
   expect(framesOf(reopened.text(), WAIT)).toEqual([
-    { threadId: 'fresh', wait: { since: expect.any(String) } },
+    {
+      threadId: 'fresh',
+      wait: { since: expect.any(String) },
+      pendingStart: true,
+    },
   ]);
   const strangerReopened = await openStream('stranger', '/events');
   // A thread-filtered stream sees only its own thread's wait.
@@ -157,9 +186,14 @@ test("a person's first-start wait reaches only its owner's streams, replays to a
     { userId: 'owner' },
     { resourceAdmissionIntent: 'interactive_user' },
   );
-  await filtered.until(`event: ${WAIT}`);
+  await filtered.until(`event: ${WAIT}`, 2);
   expect(framesOf(filtered.text(), WAIT)).toEqual([
-    { threadId: 'elsewhere', wait: { since: expect.any(String) } },
+    { threadId: 'elsewhere', wait: null, pendingStart: true },
+    {
+      threadId: 'elsewhere',
+      wait: { since: expect.any(String) },
+      pendingStart: true,
+    },
   ]);
 
   // The stranger's own start is the liveness marker for both stranger streams.
@@ -172,9 +206,14 @@ test("a person's first-start wait reaches only its owner's streams, replays to a
     { resourceAdmissionIntent: 'interactive_user' },
   );
   for (const stream of [stranger, strangerReopened]) {
-    await stream.until(`event: ${WAIT}`);
+    await stream.until(`event: ${WAIT}`, 2);
     expect(framesOf(stream.text(), WAIT)).toEqual([
-      { threadId: 'theirs', wait: { since: expect.any(String) } },
+      { threadId: 'theirs', wait: null, pendingStart: true },
+      {
+        threadId: 'theirs',
+        wait: { since: expect.any(String) },
+        pendingStart: true,
+      },
     ]);
   }
 
@@ -182,20 +221,38 @@ test("a person's first-start wait reaches only its owner's streams, replays to a
   expect((await background).status).toBe('accepted');
   expect((await fresh).status).toBe('accepted');
   expect((await elsewhere).status).toBe('accepted');
-  await owner.until(`event: ${WAIT}`, 4);
+  await owner.until(`event: ${WAIT}`, 8);
   expect(framesOf(owner.text(), WAIT, 'fresh')).toEqual([
-    { threadId: 'fresh', wait: { since: expect.any(String) } },
+    { threadId: 'fresh', wait: null, pendingStart: true },
+    {
+      threadId: 'fresh',
+      wait: { since: expect.any(String) },
+      pendingStart: true,
+    },
+    { threadId: 'fresh', wait: null, pendingStart: true },
     { threadId: 'fresh', wait: null },
   ]);
   expect((await strangerStart).status).toBe('accepted');
-  await stranger.until(`event: ${WAIT}`, 2);
+  await stranger.until(`event: ${WAIT}`, 4);
   expect(framesOf(stranger.text(), WAIT)).toEqual([
-    { threadId: 'theirs', wait: { since: expect.any(String) } },
+    { threadId: 'theirs', wait: null, pendingStart: true },
+    {
+      threadId: 'theirs',
+      wait: { since: expect.any(String) },
+      pendingStart: true,
+    },
+    { threadId: 'theirs', wait: null, pendingStart: true },
     { threadId: 'theirs', wait: null },
   ]);
-  await filtered.until(`event: ${WAIT}`, 2);
+  await filtered.until(`event: ${WAIT}`, 4);
   expect(framesOf(filtered.text(), WAIT)).toEqual([
-    { threadId: 'elsewhere', wait: { since: expect.any(String) } },
+    { threadId: 'elsewhere', wait: null, pendingStart: true },
+    {
+      threadId: 'elsewhere',
+      wait: { since: expect.any(String) },
+      pendingStart: true,
+    },
+    { threadId: 'elsewhere', wait: null, pendingStart: true },
     { threadId: 'elsewhere', wait: null },
   ]);
 
@@ -213,3 +270,225 @@ test("a person's first-start wait reaches only its owner's streams, replays to a
   }
   expect(bareText).not.toContain(WAIT);
 });
+
+class StatefulStartAdapter extends GateTestAdapter {
+  private readonly sessions = new Map<string, ProviderSession>();
+
+  override async startSession(input: ProviderSessionStartInput) {
+    const session = await super.startSession(input);
+    this.sessions.set(input.threadId, session);
+    return session;
+  }
+
+  override async hasSession(threadId?: string) {
+    return threadId !== undefined && this.sessions.has(threadId);
+  }
+
+  override async listSessions() {
+    return [...this.sessions.values()];
+  }
+}
+
+test.each(['Stop', 'admit after disconnect'] as const)(
+  'a fresh /chat publishes to the real consumer and preserves accepted-send semantics: %s',
+  async (finish) => {
+    const store = new EventStore(
+      join(temp('fresh-chat-wire-'), 'events.sqlite'),
+    );
+    const bus = new EventBus();
+    const adapter = new StatefulStartAdapter();
+    const held = deferred();
+    const entered = deferred();
+    const startAdapter = adapter.startSession.bind(adapter);
+    const starts = vi
+      .spyOn(adapter, 'startSession')
+      .mockImplementation(async (input) => {
+        if (input.threadId === 'background') {
+          entered.release();
+          await held.promise;
+        }
+        return startAdapter(input);
+      });
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus: bus,
+      eventStore: store,
+      resourcePosture: createRuntimeResourcePostureController(),
+      resolveSessionAgent: async (input) => ({
+        ...input,
+        agent: { slug: 'claude' },
+      }),
+      logger: { debug() {}, warn() {} },
+    });
+    const authority = sessionReadAuthorityFromRequest(
+      'owner',
+      undefined,
+      undefined,
+    );
+    const apiBase = `https://fresh-chat-${finish.replaceAll(' ', '-')}.test`;
+    cleanups.push(async () => {
+      held.release();
+      await service.shutdown();
+      store.close();
+      clearEngineStartWaits(apiBase);
+    });
+    service.initialize();
+    const deps: ExecutionTargetExecutionDependencies = {
+      resolveEnvironmentAccess: async () => ({
+        apiBase,
+        environmentId: 'wait-station',
+        environmentName: 'Wait Station',
+        kind: 'current',
+      }),
+      getAgent: async () => ({
+        slug: 'claude',
+        available: true,
+        execution: { agentConnectionId: engineConnectionId('claude') },
+      }),
+      getConnection: async () => ({
+        id: engineConnectionId('claude'),
+        name: 'Claude',
+        type: 'claude',
+        kind: 'agent',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: { provider: 'claude' },
+      }),
+      getProject: async () => undefined,
+      getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+      readInitialConversationContext: async () => undefined,
+      readSessionBinding: async () => null,
+      resolveConversationSession: async (_access, id, requested) =>
+        service.resolveConversationContinuation(id, authority, requested),
+      startSession: async (_access, input, context) => {
+        const result = await service.startSessionInternal(
+          { type: 'start-session', input },
+          { userId: 'owner' },
+          {
+            ...context,
+            conversationIdentity: {
+              conversationId: String(input.metadata?.conversationId),
+              environmentId: 'wait-station',
+            },
+          },
+        );
+        if (result.status !== 'accepted')
+          throw Object.assign(new Error(result.message), { code: result.code });
+        return undefined;
+      },
+      sendTurn: async (_access, input, context) => {
+        const result = await service.dispatchWithReceipt(
+          { type: 'sendTurn', input },
+          { userId: 'owner', ...context },
+          context,
+        );
+        if (!result.result || !('turnId' in result.result))
+          throw new Error('Missing turn receipt');
+        return { turnId: result.result.turnId };
+      },
+    };
+    const app = createOrchestrationRoutes(service, {
+      eventBus: bus,
+      getUserId: () => 'owner',
+      logger: { debug() {} },
+      executeForegroundMessage: (input) =>
+        executeForegroundMessage(input, deps),
+    });
+    const abortStream = new AbortController();
+    cleanups.push(() => abortStream.abort());
+    const stream = await app.request('/events', { signal: abortStream.signal });
+    const reader = stream.body!.getReader();
+    cleanups.push(() => reader.cancel());
+    const decoder = new TextDecoder();
+    let wire = '';
+    let buffer = '';
+    const consumeUntil = async (ready: () => boolean) => {
+      while (!ready()) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error('Stream ended before the projection');
+        const text = decoder.decode(chunk.value, { stream: true });
+        wire += text;
+        buffer += text;
+        let end = buffer.indexOf('\n\n');
+        while (end !== -1) {
+          const frame = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          for (const value of framesOf(`${frame}\n\n`, WAIT))
+            applyEngineStartWaitFrame(
+              apiBase,
+              value as OrchestrationEngineStartWaitFrame,
+            );
+          end = buffer.indexOf('\n\n');
+        }
+      }
+    };
+    await consumeUntil(() => wire.includes('orchestration:caughtUp'));
+    const background = service.startSessionInternal(
+      {
+        type: 'start-session',
+        input: { threadId: 'background', provider: 'claude' },
+      },
+      { userId: 'owner' },
+      { resourceAdmissionIntent: 'queued_background' },
+    );
+    await entered.promise;
+    const requestAbort = new AbortController();
+    const fresh = app.request('/chat', {
+      method: 'POST',
+      signal: requestAbort.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId: 'fresh',
+        clientTurnId: 'first',
+        message: 'hello',
+        target: { environment: { kind: 'current' }, agent: agentId('claude') },
+      }),
+    });
+    await Promise.race([
+      consumeUntil(() => readEngineStartWait(apiBase, ['fresh']) !== undefined),
+      Promise.resolve(fresh).then(async (response) => {
+        throw new Error(
+          `Chat settled before publishing its wait: ${response.status} ${await response.clone().text()}`,
+        );
+      }),
+    ]);
+    expect(readPendingEngineStart(apiBase, 'fresh')).toBe(true);
+    expect(store.readSessionByThread('fresh')).toBeUndefined();
+    expect(
+      starts.mock.calls.filter(([input]) => input.threadId === 'fresh'),
+    ).toHaveLength(0);
+    requestAbort.abort(new Error('transport disconnected after acceptance'));
+    // The transport's join signal never cancels a send Station accepted.
+    expect(service.readableEngineStartWaits(authority)).toContainEqual(
+      expect.objectContaining({ threadId: 'fresh', wait: expect.any(Object) }),
+    );
+    if (finish === 'Stop') {
+      const response = await app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'interruptTurn',
+          threadId: 'fresh',
+          clientTurnId: 'first',
+        }),
+      });
+      expect(response.status).toBe(200);
+      const cancelled = await fresh;
+      expect(cancelled.status).toBe(400);
+      expect(await cancelled.json()).toMatchObject({
+        success: false,
+        code: 'resource_engine_start_cancelled',
+      });
+    }
+    held.release();
+    expect((await background).status).toBe('accepted');
+    if (finish !== 'Stop') expect((await fresh).status).toBe(200);
+    await consumeUntil(() => !readPendingEngineStart(apiBase, 'fresh'));
+    expect(readEngineStartWait(apiBase, ['fresh'])).toBeUndefined();
+    expect(
+      starts.mock.calls.filter(([input]) => input.threadId === 'fresh'),
+    ).toHaveLength(finish === 'Stop' ? 0 : 1);
+  },
+);

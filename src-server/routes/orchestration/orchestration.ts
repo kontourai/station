@@ -7396,6 +7396,21 @@ export function createOrchestrationRoutes(
           if (frame.id !== undefined)
             deliveredSequence = Math.max(deliveredSequence, Number(frame.id));
         };
+        const writeEngineStartWaits = async () => {
+          for (const frame of orchestrationService.readableEngineStartWaits(
+            authority,
+          )) {
+            if (threadId !== undefined && threadId !== frame.threadId) continue;
+            await writeAuthorized({
+              event: SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED,
+              data: JSON.stringify(frame),
+              isAuthorized: () =>
+                orchestrationService
+                  .readableEngineStartWaits(authority)
+                  .some((current) => current.threadId === frame.threadId),
+            });
+          }
+        };
         let caughtUp = false;
         const pending: StreamFrame[] = [];
         let pendingBytes = 0;
@@ -7465,6 +7480,7 @@ export function createOrchestrationRoutes(
                       }),
                       id: String(deliveredSequence),
                     });
+                    await writeEngineStartWaits();
                   }
                 }
                 replaying = false;
@@ -7850,15 +7866,7 @@ export function createOrchestrationRoutes(
         // #4568: the waits this reader may see, as of now, so a reconnect
         // replaces whatever its client held. Live changes buffered meanwhile
         // drain after these and so still win.
-        for (const frame of orchestrationService.readableEngineStartWaits(
-          authority,
-        )) {
-          if (threadId !== undefined && threadId !== frame.threadId) continue;
-          await writeAuthorized({
-            event: SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED,
-            data: JSON.stringify(frame),
-          });
-        }
+        await writeEngineStartWaits();
         // The one queue owns both buffered and subsequent live writes. This
         // switch has no await, so a new frame cannot overtake the buffer.
         pendingFrameLimit = pending.length + 1024;

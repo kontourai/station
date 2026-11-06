@@ -575,6 +575,7 @@ export function ensureOrchestrationEventStream(
       return;
     }
     owners.delete(apiBase);
+    clearEngineStartWaits(apiBase);
     settleSemanticDeliveryBuffer(apiBase, true);
     requestedBases.delete(apiBase);
     streamConnections.delete(apiBase);
@@ -617,6 +618,7 @@ function connectOrchestrationEventStream(
     streamAuthorities.has(apiBase) &&
     streamAuthorities.get(apiBase) !== authorityKey
   ) {
+    clearEngineStartWaits(apiBase);
     settleSemanticDeliveryBuffer(apiBase, true);
     if (existing) {
       clearDeferredParkedRetry(existing);
@@ -787,6 +789,7 @@ function connectOrchestrationEventStream(
           setStreamConnectionState(apiBase, 'caught-up');
           recordReplayConnection(apiBase, 'caught-up');
         } else if (raw.event === 'orchestration:snapshot') {
+          clearEngineStartWaits(apiBase);
           // A replacement snapshot already contains every durable delta. Reveal
           // locally held text first, then let the snapshot become authoritative.
           settleSemanticDeliveryBuffer(apiBase);
@@ -929,6 +932,7 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
+        clearEngineStartWaits(apiBase);
         sharedOrchestrationStreamFailed(apiBase, error);
         // Do not leave the last partial answer invisible during retry/backoff.
         settleSemanticDeliveryBuffer(apiBase, false);

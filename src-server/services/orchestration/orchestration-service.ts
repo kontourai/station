@@ -2575,7 +2575,7 @@ export class OrchestrationService {
   >();
   /**
    * #4568: a person's engine start queued behind another engine start, by
-   * the thread it starts. Process memory, published on the session summary.
+   * the thread it starts. Published on the summary and authorized stream.
    */
   private readonly engineStartWaits = new Map<string, EngineStartWaitRecord>();
   /**
@@ -16302,6 +16302,9 @@ export class OrchestrationService {
         frame: {
           threadId,
           wait: cleared ? null : record.observation,
+          ...(this.engineStartCancels.get(threadId)?.owner
+            ? { pendingStart: true as const }
+            : {}),
         } satisfies OrchestrationEngineStartWaitFrame,
         canRead: record.canRead,
       },
@@ -16315,18 +16318,28 @@ export class OrchestrationService {
   readableEngineStartWaits(
     scope: SessionReadScope,
   ): OrchestrationEngineStartWaitFrame[] {
-    return [...this.engineStartWaits]
+    const waits: OrchestrationEngineStartWaitFrame[] = [
+      ...this.engineStartWaits,
+    ]
       .filter(([, record]) => record.canRead(scope))
       .map(([threadId, record]) => ({
         threadId,
         wait: record.observation,
+        ...(this.engineStartCancels.get(threadId)?.owner
+          ? { pendingStart: true as const }
+          : {}),
       }));
+    for (const [threadId, cancel] of this.engineStartCancels) {
+      if (
+        cancel.owner &&
+        !this.engineStartWaits.has(threadId) &&
+        this.sessionAuthz.canReadPendingStart(cancel.owner, scope)
+      )
+        waits.push({ threadId, wait: null, pendingStart: true });
+    }
+    return waits;
   }
 
-  /**
-   * #4568: register the Stop a person's start listens to until its provider
-   * start settles. Returns the signal the start must honour and the release.
-   */
   /**
    * #4568: a person's Stop reaches their own fresh start, which no Session
    * record answers for until it starts. Only `interruptTurn`, and only by the
@@ -16351,6 +16364,25 @@ export class OrchestrationService {
     );
   }
 
+  private publishPendingStartChange(
+    threadId: string,
+    owner: PendingStartOwner,
+    pending: boolean,
+  ): void {
+    this.options.eventBus.emit(
+      SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED,
+      {
+        frame: {
+          threadId,
+          wait: null,
+          ...(pending ? { pendingStart: true as const } : {}),
+        } satisfies OrchestrationEngineStartWaitFrame,
+        canRead: (scope: SessionReadScope) =>
+          this.sessionAuthz.canReadPendingStart(owner, scope),
+      },
+    );
+  }
+
   private registerEngineStartCancel(
     threadId: string,
     signal: AbortSignal | undefined,
@@ -16361,13 +16393,16 @@ export class OrchestrationService {
       ...(owner ? { owner } : {}),
     };
     this.engineStartCancels.set(threadId, cancel);
+    if (owner) this.publishPendingStartChange(threadId, owner, true);
     return {
       signal: signal
         ? AbortSignal.any([signal, cancel.controller.signal])
         : cancel.controller.signal,
       release: () => {
-        if (this.engineStartCancels.get(threadId) === cancel)
+        if (this.engineStartCancels.get(threadId) === cancel) {
           this.engineStartCancels.delete(threadId);
+          if (owner) this.publishPendingStartChange(threadId, owner, false);
+        }
       },
     };
   }

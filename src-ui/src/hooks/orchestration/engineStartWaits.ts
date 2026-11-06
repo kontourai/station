@@ -4,14 +4,9 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { useSyncExternalStore } from 'react';
 
-/**
- * #4568: the engine-start waits the orchestration stream reported, per
- * Station and thread. A brand-new chat's first start has no Session summary
- * to carry its wait, so this is how its composer learns of it. Station sends
- * every change and, on each stream open, every wait still queued, so a
- * reconnect starts from an empty set rather than keeping a stale one.
- */
-const waits = new Map<string, Map<string, EngineStartWaitObservation>>();
+/** Transient, authorized start status. Reconnects and replacement snapshots
+ * clear it before Station sends the starts that remain pending. */
+const waits = new Map<string, Map<string, OrchestrationEngineStartWaitFrame>>();
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -23,7 +18,7 @@ export function applyEngineStartWaitFrame(
   frame: OrchestrationEngineStartWaitFrame,
 ): void {
   const station = waits.get(apiBase) ?? new Map();
-  if (frame.wait) station.set(frame.threadId, frame.wait);
+  if (frame.wait || frame.pendingStart) station.set(frame.threadId, frame);
   else if (!station.delete(frame.threadId)) return;
   if (station.size) waits.set(apiBase, station);
   else waits.delete(apiBase);
@@ -48,7 +43,7 @@ export function readEngineStartWait(
   const station = waits.get(apiBase);
   if (!station) return undefined;
   for (const id of threadIds) {
-    const wait = id ? station.get(id) : undefined;
+    const wait = id ? station.get(id)?.wait : undefined;
     if (wait) return wait;
   }
   return undefined;
@@ -62,7 +57,10 @@ export function useEngineStartWait(
   return useSyncExternalStore(subscribe, read, read);
 }
 
-export function resetEngineStartWaitsForTests(): void {
-  waits.clear();
-  notify();
+/** The server-owned first-start identity that Stop can address without a Session. */
+export function readPendingEngineStart(
+  apiBase: string,
+  threadId: string,
+): boolean {
+  return waits.get(apiBase)?.get(threadId)?.pendingStart === true;
 }

@@ -13,7 +13,9 @@ import type { OrchestrationEngineStartWaitFrame } from '@kontourai/station-contr
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
+  parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
+  tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -53,11 +55,30 @@ const makeTempDir = trackTempDirs();
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
   while (cleanups.length) await cleanups.pop()?.();
+  vi.useRealTimers();
 });
 
 const PROJECT = { slug: 'demo', id: 'project-demo' };
 
-async function harness(options: { engineStartWaitMs?: number } = {}) {
+async function harness(options: { hosted?: true } = {}) {
+  const registry = parseHostedTenantRegistry({
+    schemaVersion: 1,
+    tenants: [
+      { id: 'alpha', authority: 'alpha.station.test' },
+      { id: 'bravo', authority: 'bravo.station.test' },
+    ],
+  });
+  const ownerContext = {
+    userId: 'owner',
+    ...(options.hosted
+      ? {
+          tenantExecutionContext: {
+            tenantId: tenantId('alpha'),
+            source: 'request' as const,
+          },
+        }
+      : {}),
+  };
   const tmp = makeTempDir('engine-start-recovery-');
   // A real directory: workspace reauthorization compares canonical paths.
   const projectRoot = realpathSync(makeTempDir('engine-start-project-'));
@@ -94,13 +115,23 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
   );
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
+    ...(options.hosted
+      ? {
+          requireTenantExecutionContext: () => true,
+          validateRecoveredTenantExecutionContext: (
+            value:
+              | import('@kontourai/station-contracts/tenancy').TenantExecutionContext
+              | undefined,
+          ) =>
+            value &&
+            registry.tenants.some((tenant) => tenant.id === value.tenantId)
+              ? value
+              : undefined,
+        }
+      : {}),
     eventBus,
     eventStore,
-    resourcePosture: createRuntimeResourcePostureController(
-      options.engineStartWaitMs !== undefined
-        ? { engineStartWaitMs: options.engineStartWaitMs }
-        : {},
-    ),
+    resourcePosture: createRuntimeResourcePostureController(),
     listProjects: () => [
       { slug: PROJECT.slug, id: PROJECT.id, workingDirectory: projectRoot },
     ],
@@ -192,7 +223,7 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
         type: 'start-session',
         input: { threadId: 'background', provider: 'claude' },
       },
-      { userId: 'owner' },
+      ownerContext,
       { resourceAdmissionIntent: 'queued_background' },
     );
     await backgroundEntered.promise;
@@ -232,7 +263,7 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
             : {}),
         },
       },
-      { userId },
+      { ...ownerContext, userId },
       { resourceAdmissionIntent: 'interactive_user' },
     );
 
@@ -243,6 +274,7 @@ async function harness(options: { engineStartWaitMs?: number } = {}) {
 
   return {
     adapter,
+    registry,
     eventStore,
     frames,
     service,
@@ -383,9 +415,10 @@ describe('a cold follow-up respawn (#4568)', () => {
   });
 
   test("a person's wait that times out is refused and its status clears", async () => {
-    const h = await harness({ engineStartWaitMs: 25 });
+    const h = await harness();
     await h.restoreDormant('parked');
     const lease = await h.holdStartLease();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const waiting = h.waitPublished('parked', true);
     const turn = h.service.dispatch(
       { type: 'sendTurn', input: { threadId: 'parked', input: 'continue' } },
@@ -394,6 +427,8 @@ describe('a cold follow-up respawn (#4568)', () => {
     const rejected = expect(turn).rejects.toMatchObject(capacityRefusal);
     await waiting;
     const cleared = h.waitPublished('parked', false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    vi.useRealTimers();
     await rejected;
     await cleared;
     expect((await h.summary('parked'))?.engineStartWait).toBeUndefined();
@@ -409,9 +444,7 @@ describe('a cold follow-up respawn (#4568)', () => {
       { type: 'sendTurn', input: { threadId: 'parked', input: 'continue' } },
       { clientOrigin: operator },
     );
-    const rejected = expect(turn).rejects.toMatchObject({
-      message: new EngineStartCancelledError().message,
-    });
+    const outcome = turn.catch((error: unknown) => error);
     await waiting;
     const hold = h.holdWorkspaceAuthorization();
     const admitted = h.waitPublished('parked', false);
@@ -420,9 +453,12 @@ describe('a cold follow-up respawn (#4568)', () => {
     await hold.reached;
     await h.service.dispatch({ type: 'interruptTurn', threadId: 'parked' });
     hold.release();
-    await rejected;
+    const result = await outcome;
     await settle();
     expect(h.startsFor('parked')).toBe(0);
+    expect(result).toMatchObject({
+      message: new EngineStartCancelledError().message,
+    });
   });
 });
 
@@ -507,7 +543,7 @@ describe('a credential-profile restart (#4568)', () => {
     const cancel = new AbortController();
     const waiting = h.waitPublished('live', true);
     const restarted = restart(h, cancel.signal, 'interactive');
-    const rejected = expect(restarted).rejects.toThrow('recovery cancelled');
+    const outcome = restarted.catch((error: unknown) => error);
     await waiting;
     const hold = h.holdWorkspaceAuthorization();
     const admitted = h.waitPublished('live', false);
@@ -516,9 +552,10 @@ describe('a credential-profile restart (#4568)', () => {
     await hold.reached;
     cancel.abort(new Error('recovery cancelled'));
     hold.release();
-    await rejected;
+    const result = await outcome;
     await settle();
     expect(h.startsFor('live')).toBe(1);
+    expect(result).toMatchObject({ message: 'recovery cancelled' });
   });
 
   test.each(['automation', undefined] as const)(
@@ -548,6 +585,7 @@ describe("a brand-new chat's first start (#4568)", () => {
     expect(published.frame).toEqual({
       threadId: 'fresh',
       wait: { since: expect.any(String) },
+      pendingStart: true,
     });
     expect(published.canRead(reader('owner'))).toBe(true);
     expect(published.canRead(reader('stranger'))).toBe(false);
@@ -601,13 +639,16 @@ describe("a brand-new chat's first start (#4568)", () => {
   });
 
   test('a wait that times out is refused and its wait clears', async () => {
-    const h = await harness({ engineStartWaitMs: 25 });
+    const h = await harness();
     h.service.initialize();
     const lease = await h.holdStartLease();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const waiting = h.waitPublished('fresh', true);
     const start = h.freshStart('fresh');
     await waiting;
     const cleared = h.waitPublished('fresh', false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    vi.useRealTimers();
     expect(await start).toMatchObject({
       status: 'rejected',
       code: 'resource_engine_start_capacity',
@@ -616,6 +657,77 @@ describe("a brand-new chat's first start (#4568)", () => {
     expect(h.startsFor('fresh')).toBe(0);
     expect(h.service.readableEngineStartWaits(reader('owner'))).toEqual([]);
     await lease.release();
+  });
+
+  test('a pending first start is isolated by both tenant and principal, including Stop', async () => {
+    const h = await harness({ hosted: true });
+    h.service.initialize();
+    const lease = await h.holdStartLease();
+    const waiting = h.waitPublished('fresh', true);
+    const start = h.freshStart('fresh');
+    await waiting;
+    const scope = (userId: string, tenant: string) =>
+      sessionReadAuthorityFromRequest(
+        userId,
+        { tenantId: tenantId(tenant) },
+        h.registry,
+      );
+    expect(
+      h.service.readableEngineStartWaits(scope('owner', 'alpha')),
+    ).toHaveLength(1);
+    expect(h.service.readableEngineStartWaits(scope('owner', 'bravo'))).toEqual(
+      [],
+    );
+    expect(
+      h.service.readableEngineStartWaits(scope('stranger', 'alpha')),
+    ).toEqual([]);
+    expect(h.service.readableEngineStartWaits(reader('owner'))).toEqual([]);
+    await expect(
+      h.service.dispatch(
+        { type: 'interruptTurn', threadId: 'fresh' },
+        {
+          userId: 'owner',
+          tenantExecutionContext: {
+            tenantId: tenantId('bravo'),
+            source: 'request',
+          },
+        },
+      ),
+    ).rejects.toThrow('Session not found');
+    await h.service.dispatch(
+      { type: 'interruptTurn', threadId: 'fresh' },
+      {
+        userId: 'owner',
+        tenantExecutionContext: {
+          tenantId: tenantId('alpha'),
+          source: 'request',
+        },
+      },
+    );
+    expect(await start).toMatchObject({
+      status: 'rejected',
+      code: 'resource_engine_start_cancelled',
+    });
+    await lease.release();
+    expect(h.startsFor('fresh')).toBe(0);
+  });
+
+  test('a provider-start failure leaves no capacity wait or pending-start identity', async () => {
+    const h = await harness();
+    h.service.initialize();
+    const lease = await h.holdStartLease();
+    const waiting = h.waitPublished('fresh', true);
+    const start = h.freshStart('fresh');
+    await waiting;
+    vi.mocked(h.adapter.startSession).mockRejectedValueOnce(
+      new Error('provider launch lost'),
+    );
+    const cleared = h.waitPublished('fresh', false);
+    await lease.release();
+    await cleared;
+    expect(await start).toMatchObject({ status: 'indeterminate' });
+    expect(h.startsFor('fresh')).toBe(1);
+    expect(h.service.readableEngineStartWaits(reader('owner'))).toEqual([]);
   });
 
   test("its owner's Stop after admission but before the provider start launches no engine", async () => {
@@ -630,16 +742,20 @@ describe("a brand-new chat's first start (#4568)", () => {
     await lease.release();
     await admitted;
     await hold.reached;
+    expect(h.service.readableEngineStartWaits(reader('owner'))).toEqual([
+      { threadId: 'fresh', wait: null, pendingStart: true },
+    ]);
     await h.service.dispatch(
       { type: 'interruptTurn', threadId: 'fresh' },
       { userId: 'owner' },
     );
     hold.release();
-    expect(await start).toMatchObject({
+    const result = await start;
+    await settle();
+    expect(h.startsFor('fresh')).toBe(0);
+    expect(result).toMatchObject({
       status: 'rejected',
       code: 'resource_engine_start_cancelled',
     });
-    await settle();
-    expect(h.startsFor('fresh')).toBe(0);
   });
 });

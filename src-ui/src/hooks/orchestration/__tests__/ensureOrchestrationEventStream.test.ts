@@ -37,10 +37,7 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   },
 }));
 
-import {
-  readEngineStartWait,
-  resetEngineStartWaitsForTests,
-} from '../engineStartWaits';
+import { readEngineStartWait } from '../engineStartWaits';
 import {
   ensureOrchestrationEventStream,
   registerOrchestrationStreamQueryClient,
@@ -473,13 +470,18 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       frame(null);
       expect(readEngineStartWait(apiBase, ['fresh'])).toBeUndefined();
       frame({ since: '2026-11-06T12:00:05.000Z' });
+      capturedOnMessage()({
+        event: 'orchestration:snapshot',
+        data: JSON.stringify({ sessions: [] }),
+      });
+      expect(readEngineStartWait(apiBase, ['fresh'])).toBeUndefined();
+      frame({ since: '2026-11-06T12:00:06.000Z' });
       // A reconnect: Station re-sends whatever still waits, so nothing stale
       // survives the reopen.
       open();
       expect(readEngineStartWait(apiBase, ['fresh'])).toBeUndefined();
     } finally {
       release();
-      resetEngineStartWaitsForTests();
     }
   });
 
