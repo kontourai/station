@@ -1,12 +1,11 @@
 # Resuming ended Tasks
 
-Status: proposal awaiting an owner decision in
-[#4554](https://github.com/kontourai/station/issues/4554). Nothing here is
-implemented or approved. The open questions are recorded in
-[the decision record](../decisions/ended-task-resume.md) (`needs-decision`).
-Until the owner decides, `done` and `canceled` Tasks stay ended, as
-[#4508 decision 4](../decisions/task-tracker-followups.md) says, and the
-current behavior is described in
+Status: approved for implementation, not yet shipped. The owner approved the
+revised option B below on 2026-11-06 in
+[the decision record](../decisions/ended-task-resume.md) for
+[#4554](https://github.com/kontourai/station/issues/4554). Until an
+implementation lands, `done` and `canceled` Tasks stay ended, and the current
+behavior is described in
 [Tracker follow-ups](tracker-backed-tasks.md#tracker-follow-ups).
 
 ## The question
@@ -395,7 +394,8 @@ attachment each fail a named test when removed.
 
 ## Acceptance for an implementation
 
-- The owner has approved the decision record, and it is `current`.
+- The owner has approved the decision record, and it is `current`
+  (2026-11-06).
 - With the preview off, nothing changes: no route answers, no flag is
   advertised, the UI shows no Resume.
 - Every refusal and approval in [Tests required](#tests-required) passes at
@@ -409,7 +409,7 @@ attachment each fail a named test when removed.
 
 1. **`endedAt`.** Write it on every move into an ended status and use it in
    the follow-up poller. This fixes the poller's edit-extends-following gap
-   whatever the owner decides.
+   on its own.
 2. **Resume.** The service mutation, resume record, route, preview,
    capability flag, close-on-merge clearing, custody, and the
    cleared lead attachment, with the boundary tests and storage migration.
