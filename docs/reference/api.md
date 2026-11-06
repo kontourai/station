@@ -3280,7 +3280,7 @@ absolute sync deadline must be within 30 minutes. All seats must have returned
 successfully. The current implementation accepts retained Claude Code sessions
 only, with an exact native identity and configuration-home/credential binding;
 other engines refuse during group-wide preflight, before any sync attempt is
-reserved. The qualified native runtime is Claude Code 2.1.308.
+reserved. The qualified native runtimes are Claude Code 2.1.308 and 2.1.318.
 Station stops the ordinary activation, resumes the same conversation with an
 empty builtin tool set and command-line wildcard denial, and sends through the
 canonical turn boundary. This restricts model-tool execution; it does not claim

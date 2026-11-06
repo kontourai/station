@@ -130,7 +130,11 @@ The expanded adapter control failed only for the newly qualified version before
 the change, with 429 controls passing. Afterward the adapter/confinement selection
 passes all 450 cases; server-test types and scoped read-only lint pass. A fresh
 independent review inspected the effect marker files and accepted this narrow
-version admission. Live-provider same-Session ACK acceptance is still pending.
+version admission. The fresh live-provider same-Session ACK attempt at
+`62405dad69df` was NOT_ADMITTED: both host-pressure samples measured 99% CPU
+busy. It started no runtime or model. Its immutable prepared driver and capacity
+receipt are retained at `/tmp/child-work-native-sync-2318-254d73r5`. Live-provider
+same-Session ACK acceptance remains pending; no automatic resend is scheduled.
 Private scripts and receipts are retained at
 `/tmp/child-work-claude-2318-zq_k0o90`.
 
