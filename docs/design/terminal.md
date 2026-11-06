@@ -305,7 +305,9 @@ On Windows the operation ends the shell's process tree with `taskkill /T /F`
 before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
-stop (#3994). After a successful `taskkill` both hosts wait for the exit.
+stop (#3994). After a successful `taskkill` both hosts wait for the exit;
+a session whose cleanup misses its six second deadline reports which of
+these steps was still pending.
 node-pty 1.1 releases a ConPTY (its pseudoconsole and output-reader thread)
 only in `kill()`, and that call first lists the console's processes through
 a helper that cannot attach once the shell has gone, then five seconds later
@@ -1242,9 +1244,21 @@ found. The floor
 therefore runs each terminal process suite in a Vitest invocation of its own,
 so a dead worker hides no other suite's results; the floor still fails, and
 nothing retries it. Since #4626 a failed invocation also keeps how each
-worker ended (exit code or signal), any Node fatal-error report and the
-Application log's crash entries, and the hosted job uploads them; Vitest
-itself reports only "Worker exited unexpectedly". The screen reader mode has not been used with real
+worker ended (exit code or signal, and whether Vitest had asked it to stop:
+Vitest ends every worker it is done with by SIGTERM), any Node fatal-error
+report and the Application log's crash entries, and the hosted job uploads
+them; Vitest itself reports only "Worker exited unexpectedly". On
+2026-11-05/06 that message appeared in six of nine failed hosted floor runs
+of other branches (including a merge-queue candidate for main), five of
+them in the retention suite's invocation about 14 to 18 seconds in, after
+"revocation refuses the next input" passed. Separately, "Terminal
+process-group cleanup did not settle" (a shell's cleanup missing its six
+second deadline) failed the retention suite on two other branches and the
+socket suite's credit-backpressure case on this one; the error now names
+the step still pending: the tree kill and its result, node-pty's exit event
+(on Windows it follows node-pty's flush of ConPTY output, re-armed by each
+chunk), the last output and whether output was paused. Neither cause is
+established. The screen reader mode has not been used with real
 assistive technology (VoiceOver, NVDA, TalkBack; the Windows machine above
 has no NVDA), and the manual screen reader pass listed above has not
 happened. The browser broker (DataChannel) route is unsupported by design,
