@@ -52,15 +52,33 @@ it('the production owner checkpoints active-turn WAL through a responsive worker
       writer.close();
     }
     expect(statSync(`${path}-wal`).size).toBeGreaterThan(4 * 1024 * 1024);
+    let maxSyncReadMs = 0;
+    let readFailures = 0;
+    const reads = setInterval(() => {
+      const started = performance.now();
+      try {
+        owner.read('conversation', 'turn');
+      } catch {
+        readFailures++;
+      } finally {
+        maxSyncReadMs = Math.max(maxSyncReadMs, performance.now() - started);
+      }
+    }, 2);
     histogram.enable();
     await setTimeout(5);
     const started = performance.now();
-    await lease.assertCurrent();
+    try {
+      await lease.assertCurrent();
+    } finally {
+      clearInterval(reads);
+    }
     const checkpointReadMs = performance.now() - started;
     await setTimeout(5);
     histogram.disable();
     const metrics = {
       checkpointReadMs,
+      maxSyncReadMs,
+      readFailures,
       eventLoopMaxMs: histogram.max / 1e6,
       walBytes: statSync(`${path}-wal`).size,
     };
@@ -72,6 +90,8 @@ it('the production owner checkpoints active-turn WAL through a responsive worker
     console.info('Station checkpoint worker', JSON.stringify(metrics));
     expect(statSync(`${path}-wal`).size).toBe(0);
     expect(histogram.max / 1e6).toBeLessThan(50);
+    expect(maxSyncReadMs).toBeLessThan(50);
+    expect(readFailures).toBe(0);
     await lease.run(async () => {});
     expect(owner.read('conversation', 'turn')?.turn.state).toBe('completed');
   } finally {
