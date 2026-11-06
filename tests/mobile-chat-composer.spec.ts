@@ -1603,7 +1603,7 @@ for (const [width, height] of [
       await sendHeld;
       await route
         .fulfill({
-          status: 409,
+          status: 400,
           contentType: 'application/json',
           body: JSON.stringify({
             success: false,
