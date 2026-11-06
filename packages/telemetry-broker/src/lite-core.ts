@@ -8,6 +8,7 @@
 // synchronous `node:crypto` HMAC used below.
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
+  isTelemetryPublisherId as isPublisherId,
   STATION_DAILY_FIELDS,
   type StationDailyPing,
   TELEMETRY_CHANNELS,
@@ -175,15 +176,7 @@ interface LiteSourceConfig {
   versionPolicy: 'catalog' | 'semver';
 }
 
-export function isPublisherId(value: unknown): value is TelemetryPublisherId {
-  return (
-    typeof value === 'string' &&
-    value.length <= 128 &&
-    (value === 'kontour' ||
-      value === 'operator' ||
-      /^publisher:\S{1,118}$/u.test(value))
-  );
-}
+export { isTelemetryPublisherId as isPublisherId } from '@kontourai/station-contracts/product-telemetry';
 
 function catalog(
   value: unknown,

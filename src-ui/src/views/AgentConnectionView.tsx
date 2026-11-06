@@ -32,7 +32,14 @@ import {
   useTestAgentConnectionMutation,
   useUpsertCredentialProfileMutation,
 } from '@kontourai/station-sdk';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { ACPConnectionDetailsField } from '../components/acp-connections/ACPConnectionDetailsField';
 import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
 import { Checkbox } from '../components/Checkbox';
@@ -41,6 +48,11 @@ import { DetailHeader } from '../components/DetailHeader';
 import { PublicRegistryUpdateNotice } from '../components/engine-install/PublicRegistry';
 import { EngineSignInPanel } from '../components/engine-sign-in/EngineSignInPanel';
 import { BrandIcon } from '../components/icons/BrandIcon';
+import {
+  ManagedEngineNotice,
+  managedEngineSubtitle,
+  managedEnvironmentLocked,
+} from '../components/ManagedEngineNotice';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { CONNECTIONS_ENGINES_PANE_ID } from '../components/split-pane-metrics';
@@ -58,6 +70,11 @@ import {
   useUnregisteredACPConnections,
 } from '../hooks/useACPConnections';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
+import {
+  managedEngineIdFor,
+  managedEngineState,
+  useManagedEngines,
+} from '../hooks/useManagedEngines';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { AgentSummary, NavigationView } from '../types';
 import {
@@ -313,6 +330,31 @@ export function AgentConnectionView({
     ? (acpBridgeConnections.find((entry) => entry.id === form.id) ?? null)
     : null;
   const selectedAcpConnectionId = selectedAcpConnection?.id ?? null;
+  // #4520: what the machine's managed policy says about each engine row.
+  const managedEngines = useManagedEngines();
+  const managedStateFor = useCallback(
+    (connection: AgentConnectionViewData) => {
+      const isAcp = acpBridgeConnections.some(
+        (entry) => entry.id === connection.id,
+      );
+      return managedEngineState(
+        managedEngines,
+        managedEngineIdFor(connectionEngineId(connection), isAcp),
+        {
+          registryAgent:
+            isAcp &&
+            acpRegistryEntries.some(
+              (entry) =>
+                entry.id === connection.id &&
+                entry.installed === true &&
+                entry.source === 'registry',
+            ),
+        },
+      );
+    },
+    [managedEngines, acpBridgeConnections, acpRegistryEntries],
+  );
+  const selectedManagedState = form ? managedStateFor(form) : null;
 
   // #1054 stopped excluding Station here: the Station engine is a row this
   // view legitimately shows, and its test asserts so. This branch renames the
@@ -364,7 +406,7 @@ export function AgentConnectionView({
           // either repeated the row's own name ("Claude Code · Claude Code")
           // or printed a slug for a type the map had missed ("muse").
           // The row is already named; the subtitle says what is true of it.
-          subtitle: `${enginePresentation(connection).readiness} · ${runtimeCatalogSourceSentence(connection.runtimeCatalog?.source ?? 'none')}`,
+          subtitle: `${managedEngineSubtitle(managedStateFor(connection))}${enginePresentation(connection).readiness} · ${runtimeCatalogSourceSentence(connection.runtimeCatalog?.source ?? 'none')}`,
           icon: (
             <BrandIcon
               name={connection.name}
@@ -396,7 +438,7 @@ export function AgentConnectionView({
           ),
         })),
     ],
-    [addedEngines, notConnected, search],
+    [addedEngines, notConnected, search, managedStateFor],
   );
   const selectedNotConnected =
     repair && repair.engine.connection.id === selectedRuntimeId
@@ -619,8 +661,10 @@ export function AgentConnectionView({
                */}
             </div>
 
+            <ManagedEngineNotice state={selectedManagedState} />
             {(form.type === 'claude' || form.type === 'codex') && (
               <EngineProxySettings
+                managedLocked={managedEnvironmentLocked(selectedManagedState)}
                 connection={form}
                 onChange={(config) => setField('config', config)}
                 onManageModels={() =>
@@ -648,15 +692,18 @@ export function AgentConnectionView({
                 }
               />
             )}
-            {providerPresentation?.readiness !== 'Ready' && (
-              <ConnectionReadinessNotice
-                readiness={providerPresentation?.readiness ?? ''}
-                detail={providerPresentation?.detail ?? ''}
-                kind="agent"
-                prerequisites={form.prerequisites}
-                devicePresentation={devicePresentation}
-              />
-            )}
+            {/* #4520: a policy-disallowed engine is explained by the managed
+                notice; "turn this on" would offer a fix the policy refuses. */}
+            {providerPresentation?.readiness !== 'Ready' &&
+              !selectedManagedState?.disallowed && (
+                <ConnectionReadinessNotice
+                  readiness={providerPresentation?.readiness ?? ''}
+                  detail={providerPresentation?.detail ?? ''}
+                  kind="agent"
+                  prerequisites={form.prerequisites}
+                  devicePresentation={devicePresentation}
+                />
+              )}
 
             <div className="editor-field">
               <label className="editor-label" htmlFor="agent-default-model">

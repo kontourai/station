@@ -33,6 +33,18 @@ const refusal = (remoteStatus: 401 | 403 | 409, overrides = {}) =>
 
 describe('Station authority failure translation', () => {
   it.each([
+    'This Station cannot be forgotten here.',
+    "This app's own Station cannot be forgotten.",
+  ])('retains exact local Station-profile refusal copy: %s', (copy) => {
+    const failure = describeStationFailure(new Error(copy));
+    expect(failure.body).toBe(copy);
+    expect(failure.retryable).toBe(false);
+    expect(failure.delivery).toBe('uncertain');
+    expect(
+      describeStationFailure(new Error(`${copy} raw_machine_code`)).body,
+    ).not.toContain('raw_machine_code');
+  });
+  it.each([
     ['raw-egress-unavailable', 'direct Station connection'],
     ['credential-unavailable', 'Reconnect to Station'],
     ['unsupported-host', 'Update the host'],

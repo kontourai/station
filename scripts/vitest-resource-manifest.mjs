@@ -304,6 +304,18 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/routes/plugins/__tests__/plugin-special-files-lifecycle.test.ts',
   // #2998: builds disposable git origins and clones; the update route runs git pull.
   'src-server/routes/plugins/__tests__/plugin-install-trust-legacy-update.test.ts',
+  // #4521: builds throwaway git origins and runs real git (init, commit,
+  // remote) to prove a refused registry origin is never fetched on update.
+  'src-server/services/plugins/__tests__/plugin-update-check-git-provenance.test.ts',
+  // #4523: converts real configuration profiles with /usr/bin/plutil
+  // (single-shot spawns, no wall-clock assertion).
+  'packages/shared/src/__tests__/managed-policy-macos.test.ts',
+  // #4524: validates the generated ADMX/ADML against Microsoft's schema with
+  // xmllint (single-shot spawns, no wall-clock assertion).
+  'packages/shared/src/__tests__/managed-policy-templates.test.ts',
+  // #4515: runs the real `station start` CLI with an invalid managed policy
+  // on free ports and probes the server and UI ports while it runs.
+  'packages/cli/src/__tests__/start-managed-policy-invalid.process.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
@@ -327,6 +339,15 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // #4521: boots the source Station with every capability switch off and
+  // drives its routes over HTTP; private homes, ephemeral ports.
+  'src-server/__tests__/managed-capability-switches.process.test.ts',
+  // #4519: boots the source Station under a local-only managed policy with a
+  // stand-in Tailscale CLI in a private temp dir; private homes.
+  'src-server/__tests__/managed-remote-clients.process.test.ts',
+  // #4519: runs the real `vite dev` CLI on this repo's config with a
+  // private policy file and ephemeral loopback ports.
+  'scripts/__tests__/vite-managed-host.process.test.ts',
   // #4518: boots the source Station with an injected approval ceiling and
   // drives its routes over HTTP; private homes, ephemeral port.
   'src-server/__tests__/managed-approval-ceiling.process.test.ts',
@@ -335,6 +356,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4517: runs offline `station config set` and `station registry` as CLI
   // children on private homes with an injected managed policy.
   'packages/cli/src/__tests__/managed-settings-offline.test.ts',
+  // #4522: runs `station upgrade` as a CLI child in a private directory.
+  'packages/cli/src/__tests__/upgrade-managed-policy.process.test.ts',
   // #4516: runs `mkfifo` once to create a FIFO fixture in a private temp dir.
   'packages/shared/src/__tests__/managed-policy.test.ts',
   'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',
@@ -502,6 +525,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Spawns the CLI entry point as bounded children against a per-test
   // loopback HTTP fixture to assert exit status and request shape.
   'packages/cli/src/__tests__/telemetry-producers-command.test.ts',
+  // #4521: runs `station telemetry` as a CLI child against a local server.
+  'packages/cli/src/__tests__/telemetry-managed-command.test.ts',
   'packages/cli/src/__tests__/telemetry-command.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is

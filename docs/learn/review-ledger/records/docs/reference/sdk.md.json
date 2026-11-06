@@ -864,7 +864,9 @@
 
     "packages/sdk/src/query-domains/managedPolicy.ts",
 
-    "packages/contracts/src/peer-chat.ts"
+    "packages/contracts/src/peer-chat.ts",
+
+    "packages/sdk/src/__tests__/managed-policy-query.test.ts"
   ],
 
   "checks": [

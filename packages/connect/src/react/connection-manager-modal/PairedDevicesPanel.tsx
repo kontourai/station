@@ -1,6 +1,12 @@
 import type { PairedDevice } from '@kontourai/station-contracts';
 import type { PairingScope } from '@kontourai/station-contracts/environment-security';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { deviceRevokeError } from '../../core/deviceActivity';
 import {
   FullAccessRevocationNotice,
@@ -47,6 +53,7 @@ export function PairedDevicesPanel({
   hostAppName,
   onPairDevice,
   onBack,
+  pairingRefusal,
 }: {
   apiBase: string;
   getCredential: () => string | undefined;
@@ -57,6 +64,8 @@ export function PairedDevicesPanel({
   hostAppName?: string;
   onPairDevice: () => void;
   onBack: () => void;
+  /** #4519: why this Station cannot pair other devices; disables pairing. */
+  pairingRefusal?: ReactNode;
 }) {
   const [devices, setDevices] = useState<PairedDevice[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -527,10 +536,24 @@ export function PairedDevicesPanel({
         />
       )}
 
+      {pairingRefusal != null && (
+        <div
+          className="station-connect-panel__intro"
+          id="paired-devices-pairing-refusal"
+        >
+          {pairingRefusal}
+        </div>
+      )}
       <div className="station-connect-footer">
         <button
           type="button"
           onClick={onPairDevice}
+          disabled={pairingRefusal != null}
+          aria-describedby={
+            pairingRefusal != null
+              ? 'paired-devices-pairing-refusal'
+              : undefined
+          }
           className="station-connect-btn station-connect-btn--primary"
         >
           Approve another device

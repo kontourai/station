@@ -131,7 +131,8 @@ the manifest URL when the install came from a public manifest. The
 authenticated GitHub-release path records no URL and keeps writing schema 3,
 which released installers and CLIs read. A packaged `station upgrade` re-runs the installed version's
 `install.sh` with that URL, so it needs no environment variable. An explicit
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins.
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins, unless a
+[managed policy](managed-policy.md#update-control) names a mirror.
 
 A service installed from an archive's active version (`station service
 install` run through the launcher) runs `<install root>/current`, and its

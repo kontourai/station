@@ -95,6 +95,7 @@ export async function generateConversationTitle({
       );
 
       const agent = await ctx.framework.createTempAgent({
+        purpose: 'utility',
         name: 'chat-title-generator',
         instructions: TITLE_INSTRUCTIONS,
         model,

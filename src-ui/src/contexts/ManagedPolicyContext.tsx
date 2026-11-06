@@ -2,9 +2,9 @@ import { isKnownFullAccessAcpModeId } from '@kontourai/station-contracts/acp';
 import {
   approvalModeExceedsCeiling,
   clampApprovalModeToCeiling,
-  type ManagedPolicySummary,
   managedApprovalCeiling,
-} from '@kontourai/station-contracts/managed-policy-status';
+} from '@kontourai/station-contracts/managed-policy-controls';
+import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy-status';
 import {
   type ApprovalMode,
   type ConcreteApprovalMode,

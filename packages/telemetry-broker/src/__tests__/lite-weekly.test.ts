@@ -1579,3 +1579,80 @@ test("published channel cells are the publisher's provisioned channels", async (
   // structural-zero channel cells are released.
   expect(channels).toEqual(['stable']);
 });
+
+test.each([
+  'publisher:@qa/plugin-legacy',
+  'publisher:Writer',
+  'publisher:constructor',
+])(
+  'legacy source %s requires revocation and re-provisioning',
+  async (publisher) => {
+    // Model an existing database created before publisher validation tightened.
+    await db.query(
+      'UPDATE station_telemetry.lite_sources SET publisher=$1 WHERE id=$2',
+      [publisher, 'kontour'],
+    );
+    await db.query(
+      'UPDATE station_telemetry.publisher_keys SET publisher=$1 WHERE publisher=$2',
+      [publisher, 'publisher:example'],
+    );
+    const client = { day: today, hash: 'a'.repeat(64) };
+    await expect(lite.ingest('kontour', dailyPing(), client)).resolves.toEqual({
+      accepted: true,
+    });
+    await expect(
+      lite.ingest(
+        'kontour',
+        {
+          publisher,
+          action: 'tier-lowered',
+          reason: 'privacy',
+        },
+        client,
+      ),
+    ).rejects.toThrow('invalid_daily_ping');
+    await expect(
+      lite.setPublisherKey(publisher, 'b'.repeat(64)),
+    ).rejects.toThrow('invalid_source');
+    expect(
+      (await db.query('SELECT publisher FROM station_telemetry.publisher_keys'))
+        .rows,
+    ).toEqual([{ publisher }]);
+
+    await lite.revokePublisherKey(publisher);
+    // Publisher read-key revocation alone does not stop a public source ingesting.
+    await expect(lite.ingest('kontour', dailyPing(), client)).resolves.toEqual({
+      accepted: true,
+    });
+    expect(await lite.revokeSource('kontour')).toBe(true);
+    await expect(lite.ingest('kontour', dailyPing(), client)).rejects.toThrow(
+      'source_unauthorized',
+    );
+    await lite.createSource({
+      id: 'replacement',
+      publisher: 'publisher:writer',
+      channels: ['stable'],
+      registryIds: ['public.plugin'],
+      releaseVersions: ['1.2.3'],
+    });
+    await lite.setPublisherKey(
+      'publisher:writer',
+      createHash('sha256').update(publisherKey).digest('hex'),
+    );
+    expect(lite.hasCredential('publisher:writer', publisherKey)).toBe(true);
+    await expect(
+      lite.ingest('replacement', dailyPing(), client),
+    ).resolves.toEqual({ accepted: true });
+    await expect(
+      lite.ingest(
+        'replacement',
+        {
+          publisher: 'publisher:writer',
+          action: 'tier-lowered',
+          reason: 'privacy',
+        },
+        client,
+      ),
+    ).resolves.toEqual({ accepted: true });
+  },
+);

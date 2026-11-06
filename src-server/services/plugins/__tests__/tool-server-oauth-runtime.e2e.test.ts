@@ -108,6 +108,8 @@ function runtimeContext(
       // This fixture has no operator-installed account provider. The broad
       // service proxy would otherwise invent one for this optional field.
       deploymentAuthentication: undefined,
+      // No managed policy is installed (the loader's real "none" value).
+      managedPolicy: null,
       orchestrationEventStore: store,
       taskGraphService: new TaskGraphService(loader.getProjectHomeDir()),
       eventBus: new EventBus(),

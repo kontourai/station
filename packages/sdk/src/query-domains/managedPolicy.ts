@@ -1,7 +1,4 @@
-import {
-  type ManagedPolicyStatus,
-  parseManagedPolicyStatus,
-} from '@kontourai/station-contracts/managed-policy-status';
+import type { ManagedPolicyStatus } from '@kontourai/station-contracts/managed-policy-status';
 import { apiErrorMessage } from '../api-core';
 import { type ApiRequestScope, authenticatedFetch } from '../client/http';
 import {
@@ -34,6 +31,9 @@ export async function fetchManagedPolicyStatus(
   };
   if (!response.ok || !result.success)
     throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+  const { parseManagedPolicyStatus } = await import(
+    '@kontourai/station-contracts/managed-policy-status'
+  );
   const status = parseManagedPolicyStatus(result.data);
   if (!status) throw new Error('The managed policy status was not readable.');
   return status;

@@ -92,7 +92,8 @@ In **Connections → Engines**, Claude Code and Codex offer **Connect through**.
 **Your account** or an enabled OpenAI-compatible connection already saved under **Models**.
 The saved model connection owns the address and key; the engine stores only its connection
 reference. Choosing a route explicitly replaces custom connection environment/config-home
-overrides. Station never edits the user's global CLI configuration.
+overrides. Station never edits the user's global CLI configuration. A managed policy that
+locks the engine's environment (#4520) makes the route and those overrides inert.
 
 Save the connection to discover its models, choose a **Default model**, and use **Check
 connection**. The check sends one short, potentially billable message. It can retry an old

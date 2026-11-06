@@ -2252,7 +2252,11 @@ Project-effective settings. Invalid/missing Project selections return 400/404.
 With a [managed policy](../guides/managed-policy.md#settings) installed, `data`
 holds the managed values in effect, and `provenance` reports `{source:
 'managed', locked, organization, supportUrl}` for each value the policy
-supplied; it never carries the value.
+supplied; it never carries the value. Under the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
+`defaultApprovalMode` is the default as it applies, lowered to the ceiling
+(the `PUT` response reports it the same way); a saved default above it stays
+saved until a mode at or below the ceiling is written.
 
 ### Update App Configuration
 
@@ -2451,11 +2455,16 @@ returns the current process's product queue, exact-receipt acknowledgements,
 loss/failure counters and OTel callback/probe state. It carries presence flags
 and counters rather than addresses, keys, installation IDs or receipt IDs.
 Unsupported versions and unavailable state must not be replaced with healthy
-defaults or cached success.
+defaults or cached success. Under a managed policy with `limits.telemetry:
+false`, `product.managedDenial` and `otel.managedDenial` carry the policy
+sentence, so a client can disable both connection checks; older servers omit
+them.
 
 `POST /api/usage-telemetry/connection-checks/product` and
 `POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.
-Product checks use a separate content-free source/schema probe;
+Under a managed policy with `limits.telemetry: false` both answer `403` with
+code `managed-policy-capability-disabled` and contact nothing; `PUT /config/app`
+refuses a raised sharing tier the same way. Product checks use a separate content-free source/schema probe;
 OTel checks send empty metrics and trace requests. Neither creates product
 disclosure consent or establishes downstream delivery/query acceptance. The [usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
 owns the protocol, saved authority and failure limits.
@@ -3706,7 +3715,11 @@ listed, as `expired`, until it is revoked.
 
 These [routes](../../src-server/routes/agents/invoke.ts) execute against Station's
 active managed Agent map. An external-engine Agent being listed in the catalog
-does not make it callable through this map; use orchestration for its lifecycle.
+does not make it callable through this map; use orchestration for its lifecycle. On a
+machine whose [managed policy](../guides/managed-policy.md#engines) does not
+allow `station-agent`, `/agents/:slug/invoke`, `/agents/:slug/invoke/stream`
+and `/invoke` answer `403` with `code: "managed-policy-engine-refused"` before
+a run is recorded.
 The [request schemas](../../src-server/routes/schemas/schema-definitions/runtime.ts)
 distinguish `input` on named invoke from `prompt` on global/legacy stream invoke.
 
@@ -3970,10 +3983,22 @@ With one:
 }
 ```
 
-`source.kind` is `file`, or `test-override` for an isolated test instance.
-`limits` holds `maxApprovalMode` (`ask`, `auto` or `never`) when the policy
-sets the [approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
-and is `{}` otherwise. The summary never contains a setting value. There is no error state: a server that
+`source.kind` is `file`, or `test-override` for an isolated test instance. The
+summary never contains a setting value. `limits` holds `maxApprovalMode`
+(`ask`, `auto` or `never`) when the policy sets the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling). A policy with `limits.updates` reports
+`"limits": {"updates": {"mode": "auto" | "off", "mirror": <boolean>,
+"allowNightly": <boolean>}}`; `mirror` says a feed is set, and the feed URL
+itself is never returned. The
+[capability switches](../guides/managed-policy.md#capability-switches) appear
+as set (`"telemetry": false`, `"webhookAutomations": false`, and
+`"registries"` with its `allowedUrls` and switches). A policy that sets
+`limits.engines` (#4520) adds `summary.engines`, which names the allowed
+engines (`null` for all), whether ACP registry agents may run, and each pinned
+engine's `locked`, pinned `fields` and `environmentNames`, never a launch
+value; `summary.limits` then omits `engines`. Routes refuse an engine the
+policy does not allow with `403` and code `managed-policy-engine-refused`.
+There is no error state: a server that
 cannot load its policy does not start. Older servers answer 404, which
 `station policy show` reports as a server too old to report a policy, and
 which the UI reads as no policy.
@@ -4000,6 +4025,21 @@ full-access `mode` on a request's options. A mode carried on a request's
 options as a default (`approvalMode`, `never` included) is lowered to the
 ceiling, not refused. A turn on a chat whose recorded pick is above the ceiling is refused with the
 same `code` and message as a turn refusal (`permission_denied`).
+
+`summary.limits` carries `clients` when the policy sets it, for example
+`{ "clients": ["desktop", "local-browser"] }`. Without `remote` in that list
+(#4519), pairing offers and access requests answer `403` with
+`{ "error": "managed-policy-remote-clients" }` (a pairing code finds no
+offer to match); relay setup
+approvals and invitations answer `403` with that `code` and the policy's
+sentence as `message`; turning on `lanDiscoveryEnabled` through
+`PUT /config/app` answers `403` with that `code`; and credentials of devices
+paired earlier answer as unknown. `GET /api/pairing/devices` still lists
+those devices, each with `suspended: { "by": "managed-policy",
+"organization": "<organization>" }` beside an unchanged `revocation`, and
+the Discord integration status reports `unavailable` with the policy's
+sentence. See
+[Network exposure](../guides/managed-policy.md#network-exposure).
 
 ## Branding
 
@@ -4617,7 +4657,11 @@ records compensation and retained-state limits.
 checks git/registry update sources. Results use the installed manifest name as
 `name`, even when a registry entry ID differs. A caught top-level check failure
 currently returns 200 with `{updates: []}`; that legacy result cannot prove
-there were no available updates.
+there were no available updates. Under a [managed policy](../guides/managed-policy.md#capability-switches)
+`limits.registries.allowedUrls`, a plugin installed from a registry the policy
+refuses is not checked (its git origin is not fetched); it is listed in
+`managedByPolicy` as `{name, message}` with the policy sentence, not as an
+error. Older servers omit the field.
 
 ### Update Plugin
 
@@ -4768,7 +4812,10 @@ caught separately; it is not a universal runtime-activation receipt.
 ### Uninstall Agent from Registry
 
 `DELETE /api/registry/agents/:id` likewise resolves a plugin-backed entry through
-plugin removal, or calls the Agent registry provider. Plugin lifecycle pending
+plugin removal, or calls the Agent registry provider. Removal is never refused
+by a managed `limits.registries`: the lookup applies no signature admission,
+and when the policy refuses the registry, that registry is not contacted and
+the recorded registry install decides. Plugin lifecycle pending
 results retain their activation semantics; a plain provider result is not the
 same receipt.
 
@@ -5418,6 +5465,19 @@ install's progress from its runtime files, or `{state: "unavailable"}` when the
 server is not launcher-supervised. Unknown/ineligible provenance returns 409.
 See the [update owner](../../src-server/routes/system/system-update-routes.ts)
 for exact result branches.
+
+The machine's [managed policy](../guides/managed-policy.md#update-control) can
+refuse these routes (#4522). When its `limits.updates` turns updates off, makes
+this server's nightly ring unavailable, or names a mirror a desktop bundle or
+source checkout cannot update from, `GET /api/system/core-update` contacts
+nothing and returns `updateAvailable: false` with
+`managedPolicyCode: "managed-policy-updates-refused"` and the policy's sentence
+in `message` and `selfUpdateUnavailableReason`. `POST /api/system/core-update`
+and `PUT /api/system/core-update/apply-when-idle` answer 403 with
+`code: "managed-policy-updates-refused"`, and the server's own update
+coordinator neither checks nor downloads. With a mirror, an archive's check
+reads the mirror's copy of its ring's signed manifest instead of the one its
+install recorded.
 
 The server's own update routes (#3851):
 - `GET /api/system/core-update/state` returns its update state

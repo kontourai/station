@@ -91,6 +91,7 @@ export function ConnectionManagerModalContent({
   returnFocusTarget,
   onPairingSucceeded,
   onApprovalPending,
+  pairingRefusal,
 }: ConnectionManagerModalContentProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -948,6 +949,7 @@ export function ConnectionManagerModalContent({
               setHostPairingReturnPanel('list');
               setPanel('pair-host');
             }}
+            pairingRefusal={pairingRefusal}
             onViewDevices={() => setPanel('devices')}
             discoveryAvailable={providerCount > 0}
             hasLocalStation={hasLocalStation}
@@ -1070,11 +1072,36 @@ export function ConnectionManagerModalContent({
               setHostPairingReturnPanel('devices');
               setPanel('pair-host');
             }}
+            pairingRefusal={pairingRefusal}
             onBack={() => setPanel('list')}
           />
         )}
 
-        {panel === 'pair-host' && (
+        {/* #4519: a Station that cannot pair other devices says why here,
+            instead of a pairing code its server would refuse. */}
+        {panel === 'pair-host' && pairingRefusal != null && (
+          <div className="station-connect-panel" data-testid="pairing-refusal">
+            <div className="station-connect-panel__intro">{pairingRefusal}</div>
+            <div className="station-connect-footer">
+              <button
+                type="button"
+                onClick={() => setPanel('devices')}
+                className="station-connect-btn station-connect-btn--primary"
+              >
+                Paired devices
+              </button>
+              <button
+                type="button"
+                onClick={() => setPanel(hostPairingReturnPanel)}
+                className="station-connect-btn station-connect-btn--secondary"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {panel === 'pair-host' && pairingRefusal == null && (
           <HostDevicePairingPanel
             quickPair
             initialClientChannel={pairingClientChannel}

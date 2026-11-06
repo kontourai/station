@@ -125,6 +125,9 @@ export function MarketplaceSources({
                   </p>
                 )}
                 {source.error && <p role="status">{source.error}</p>}
+                {source.managedDenial && (
+                  <p role="status">{source.managedDenial}</p>
+                )}
               </div>
               <div>
                 <ActionRow
@@ -143,7 +146,11 @@ export function MarketplaceSources({
                     source.origin !== 'plugin' ? (
                       <Button
                         variant="secondary"
-                        disabled={mutation.isPending}
+                        // #4521: a source the managed policy refuses stays off.
+                        disabled={
+                          mutation.isPending ||
+                          source.managedDenial !== undefined
+                        }
                         onClick={() =>
                           act(source, source.enabled ? 'disable' : 'enable')
                         }

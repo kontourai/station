@@ -80,6 +80,8 @@ export function describeStationFailure(
   const localCopy = [
     'Attachments must complete supervised staging before Send.',
     'Choose the file again before sending this attachment.',
+    'This Station cannot be forgotten here.',
+    "This app's own Station cannot be forgotten.",
   ].find((copy) => copy === message);
   // TerminalSessionError carries terminal transport codes, not model errors.
   // Use fixed recovery copy; even a typed error's message may be diagnostic.

@@ -10,6 +10,7 @@ import {
   UI_PROXY_BACKEND_PREFIXES,
   UI_PROXY_EXCLUDED_PREFIXES,
 } from './packages/cli/src/commands/ui-proxy-prefixes';
+import { managedPolicyHost } from './scripts/vite-managed-host';
 import { offlineShell } from './scripts/vite-offline-shell';
 import { thirdPartyLicenses } from './scripts/vite-third-party-licenses';
 import { sharedShikiGrammars, uiAssetDelivery } from './scripts/vite-ui-assets';
@@ -331,6 +332,9 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     plugins: [
+      // #4519: refuses a non-loopback dev/preview host under the managed
+      // policy, whatever layer (CLI `--host` included) set it.
+      managedPolicyHost(),
       sharedShikiGrammars(),
       ...(mode === 'native'
         ? []

@@ -266,3 +266,73 @@ test('missing Station authority sends no status or connection request', () => {
   ).toBeTruthy();
   expect(fetch).not.toHaveBeenCalled();
 });
+
+test('#4521: under the managed limit the product check is disabled and sends nothing', async () => {
+  const denial =
+    "Acme's policy manages usage sharing: it is turned off. Contact your administrator for help.";
+  const status = delivery();
+  status.product.phase = 'disabled';
+  status.product.managedDenial = denial;
+  status.otel.phase = 'unconfigured';
+  status.otel.endpointConfigured = false;
+  status.otel.managedDenial = denial;
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockImplementation(async () => reply(status));
+  vi.stubGlobal('fetch', fetch);
+  mount();
+  await waitFor(() => expect(screen.getAllByText(denial)).toHaveLength(2));
+  expect(screen.getAllByText('Off: managed policy.')).toHaveLength(2);
+  const [productCheck, otelCheck] = screen.getAllByRole('button', {
+    name: 'Check connection',
+  }) as HTMLButtonElement[];
+  expect(productCheck?.disabled).toBe(true);
+  expect(otelCheck?.disabled).toBe(true);
+  // Neither a click nor Enter on the focused button sends the check.
+  fireEvent.click(productCheck!);
+  productCheck!.focus();
+  fireEvent.keyDown(productCheck!, { key: 'Enter' });
+  fireEvent.keyUp(productCheck!, { key: 'Enter' });
+  await act(async () => {});
+  expect(fetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+    false,
+  );
+});
+
+// An older host reports no product `managedDenial`, so the check stays
+// enabled; its 403 still shows the policy sentence, not a generic error.
+test('#4521: a managed policy explains OTel and a refused connection check in its own words', async () => {
+  const denial =
+    "Acme's policy manages usage sharing: it is turned off. Contact your administrator for help.";
+  const status = delivery();
+  status.otel.phase = 'unconfigured';
+  status.otel.endpointConfigured = false;
+  status.otel.managedDenial = denial;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof globalThis.fetch>().mockImplementation(async (_url, init) =>
+      init?.method === 'POST'
+        ? Response.json(
+            {
+              success: false,
+              code: 'managed-policy-capability-disabled',
+              error: denial,
+              retryable: false,
+            },
+            { status: 403 },
+          )
+        : reply(status),
+    ),
+  );
+  mount();
+  await screen.findByText(denial);
+  const [productCheck, otelCheck] = screen.getAllByRole('button', {
+    name: 'Check connection',
+  }) as HTMLButtonElement[];
+  expect(otelCheck?.disabled).toBe(true);
+  fireEvent.click(productCheck!);
+  await waitFor(() => expect(screen.getAllByText(denial)).toHaveLength(2));
+  expect(
+    screen.queryByText('An operator must check this connection.'),
+  ).toBeNull();
+});

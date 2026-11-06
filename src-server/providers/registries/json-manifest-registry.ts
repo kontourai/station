@@ -27,6 +27,10 @@ import {
 import type { PluginRegistryCatalogSnapshot } from '@kontourai/station-contracts/catalog';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import {
+  managedCapabilityDenial,
+  registryLocationAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import {
   copyPluginTree,
@@ -51,6 +55,7 @@ import type {
   IPluginRegistryProvider,
 } from '../provider-interfaces.js';
 import { readBoundedJson } from './catalog-http.js';
+import { fetchRegistryResource, managedRegistryHop } from './registry-fetch.js';
 import {
   type RegistryInstallAliases,
   readRegistryInstallAliases,
@@ -353,7 +358,27 @@ export class JsonManifestRegistryProvider
      */
     private readonly manifestFetchTimeoutMs: number = MANIFEST_FETCH_TIMEOUT_MS,
     private readonly logger?: Pick<Logger, 'warn'>,
+    /**
+     * #4521: whether this is the starter manifest that ships with Station,
+     * which `limits.registries.allowedUrls` never refuses.
+     */
+    readonly origin: { bundled?: boolean } = {},
   ) {}
+
+  /**
+   * #4521: the managed sentence when `limits.registries.allowedUrls` refuses
+   * this manifest's own location, or undefined. Every face (agents, plugins,
+   * tool servers) reads through {@link fetchManifest}, which checks this
+   * before any byte is read.
+   */
+  private managedLocationDenial(): string | undefined {
+    return registryLocationAllowedByManagedPolicy(
+      this.getRegistryKey(),
+      this.origin.bundled === true,
+    )
+      ? undefined
+      : managedCapabilityDenial('this marketplace');
+  }
 
   get displayName(): string {
     try {
@@ -380,6 +405,8 @@ export class JsonManifestRegistryProvider
    * until `json()` resolves.
    */
   private async fetchManifest(fresh = false): Promise<Manifest> {
+    const denial = this.managedLocationDenial();
+    if (denial !== undefined) throw new Error(denial);
     const now = Date.now();
     if (!fresh && this.manifestCache && now < this.cacheExpiry) {
       return this.manifestCache;
@@ -397,10 +424,14 @@ export class JsonManifestRegistryProvider
         );
       manifest = JSON.parse(bounded.raw) as Manifest;
     } else {
-      const response = await fetch(this.manifestUrl, {
-        signal: AbortSignal.timeout(this.manifestFetchTimeoutMs),
-        ...(fresh ? { cache: 'no-store' as const } : {}),
-      });
+      const response = await fetchRegistryResource(
+        this.manifestUrl,
+        {
+          signal: AbortSignal.timeout(this.manifestFetchTimeoutMs),
+          ...(fresh ? { cache: 'no-store' as const } : {}),
+        },
+        managedRegistryHop,
+      );
       if (!response.ok) {
         throw new Error(
           `Failed to fetch manifest: ${response.status} ${response.statusText}`,
@@ -920,8 +951,15 @@ export class JsonManifestRegistryProvider
    */
   agentRegistry(): IAgentRegistryProvider {
     return {
-      listAvailable: () => this.listAvailableOfKind(AGENT_MANIFEST_KIND),
-      listInstalled: () => this.listInstalledOfKind(AGENT_MANIFEST_KIND),
+      // #4521: a refused manifest lists no agents; removal stays local.
+      listAvailable: async () =>
+        this.managedLocationDenial() === undefined
+          ? this.listAvailableOfKind(AGENT_MANIFEST_KIND)
+          : [],
+      listInstalled: async () =>
+        this.managedLocationDenial() === undefined
+          ? this.listInstalledOfKind(AGENT_MANIFEST_KIND)
+          : [],
       install: (id: string) => this.install(id),
       uninstall: (id: string) => this.uninstall(id),
     };
@@ -979,7 +1017,9 @@ export class JsonManifestRegistryProvider
             `Integration source protocol ${base.protocol} cannot be read`,
           );
         }
-        const response = await fetch(new URL('integration.json', base));
+        const response = await fetchRegistryResource(
+          new URL('integration.json', base),
+        );
         if (!response.ok) return null;
         raw = await response.text();
       }
