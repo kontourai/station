@@ -98,7 +98,20 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
 
   test('asynchronous startup retains the first output and exit for the caller', async () => {
     const before = workerThreads();
-    const proc = await new NodePtyAdapter().spawn({
+    let socket: import('node:net').Socket | undefined;
+    const adapter = new NodePtyAdapter(async () => {
+      const backend = await import('node-pty');
+      return {
+        ...backend,
+        spawn: (...args: Parameters<typeof backend.spawn>) => {
+          const raw = backend.spawn(...args);
+          socket = (raw as typeof raw & { _socket: import('node:net').Socket })
+            ._socket;
+          return raw;
+        },
+      };
+    });
+    const proc = await adapter.spawn({
       shell: process.env.COMSPEC ?? 'cmd.exe',
       args: ['/d', '/q', '/c', 'echo STATION_STARTUP_4629 & exit /b 7'],
       cwd: tmpdir(),
@@ -106,19 +119,28 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
       rows: 24,
       env: process.env,
     });
-    expect(proc.pid).toBeGreaterThan(0);
-    const output: string[] = [];
-    proc.onData((data) => output.push(data));
-    const exit = await new Promise<{ exitCode: number }>((resolve) =>
-      proc.onExit(resolve),
-    );
-    await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
-    expect(output.join('')).toContain('STATION_STARTUP_4629');
-    expect(exit.exitCode).toBe(7);
-    const replay = await new Promise<{ exitCode: number }>((resolve) =>
-      proc.onExit(resolve),
-    );
-    expect(replay.exitCode).toBe(7);
+    try {
+      expect(proc.pid).toBeGreaterThan(0);
+      // Require real pending output before attaching the consumer; otherwise
+      // a fast subscription never exercises the startup handoff gap.
+      await expect
+        .poll(() => socket?.readableLength ?? 0, { timeout: 2_000 })
+        .toBeGreaterThan(0);
+      const output: string[] = [];
+      proc.onData((data) => output.push(data));
+      const exit = await new Promise<{ exitCode: number }>((resolve) =>
+        proc.onExit(resolve),
+      );
+      expect(output.join('')).toContain('STATION_STARTUP_4629');
+      expect(exit.exitCode).toBe(7);
+      const replay = await new Promise<{ exitCode: number }>((resolve) =>
+        proc.onExit(resolve),
+      );
+      expect(replay.exitCode).toBe(7);
+    } finally {
+      await proc.terminate?.();
+      await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
+    }
   });
 
   test('asynchronous startup rejects an unavailable directory and releases its worker', async () => {
