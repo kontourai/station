@@ -132,6 +132,12 @@ function drivenPty() {
 }
 
 describe('termination report (#4626)', () => {
+  // Its fake taskkill call must not reach a later test's execFile history,
+  // even when an assertion here fails.
+  afterEach(() => {
+    vi.mocked(execFile).mockReset();
+  });
+
   test('says whether the exit event and output have arrived', async () => {
     const { adapter, output, exit } = drivenPty();
     const proc = await adapter.spawn(SPAWN_INPUT);
