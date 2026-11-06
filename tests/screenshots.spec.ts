@@ -2688,6 +2688,112 @@ function taskCapabilityScreens(): Screen[] {
   );
 }
 
+function appsLibraryScreens(details = false): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      let cleanups: (() => Promise<void>)[] = [];
+      return {
+        name: `apps-${details ? 'details' : 'library'}-${theme}-${viewport.width === 390 ? 'mobile' : 'desktop'}`,
+        title: `Apps ${details ? 'details' : 'library'} — ${theme}, ${viewport.width}px`,
+        path: '/',
+        viewport,
+        beforeGoto: async (page) => {
+          cleanups = [
+            await withRoute(page, '**/api/feature-previews', (route) => {
+              if (route.request().method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              return route.fulfill({
+                json: {
+                  success: true,
+                  data: [{ id: 'apps-library', enabled: true }],
+                },
+              });
+            }),
+            await withRoute(page, '**/api/me/layouts', (route) => {
+              if (route.request().method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              return route.fulfill({
+                json: {
+                  success: true,
+                  data: [
+                    {
+                      id: 'morning',
+                      slug: 'morning',
+                      type: 'custom',
+                      name: 'Morning brief',
+                      icon: '☀️',
+                      description: 'Decisions, active Tasks and recent work.',
+                    },
+                    {
+                      id: 'review',
+                      slug: 'review',
+                      type: 'custom',
+                      name: 'Review desk',
+                      icon: '🌿',
+                      description:
+                        'Release notes and the work that needs a closer look.',
+                    },
+                    {
+                      id: 'tools',
+                      slug: 'tools',
+                      type: 'custom',
+                      name: 'Tool desk',
+                      plugin: 'acme-tools',
+                      description:
+                        'A personal workspace with installed plugin panes.',
+                    },
+                  ],
+                },
+              });
+            }),
+          ];
+        },
+        afterGoto: async (page) => {
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
+          if (viewport.width === 390)
+            await page
+              .getByRole('button', { name: 'Toggle menu', exact: true })
+              .click();
+          await page
+            .getByRole('button', { name: 'Browse apps', exact: true })
+            .click();
+          const library = page.getByRole('dialog', {
+            name: 'Apps',
+            exact: true,
+          });
+          await expect(
+            library.getByRole('button', {
+              name: 'Morning brief Personal Board Decisions, active Tasks and recent work.',
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            library.getByRole('region', { name: 'Plugin layouts' }),
+          ).toBeVisible();
+          if (details) {
+            await library
+              .getByRole('button', { name: 'Edit Morning brief details' })
+              .click();
+            await expect(
+              page
+                .getByRole('dialog', { name: 'Edit app details' })
+                .getByRole('textbox', { name: 'Description', exact: true }),
+            ).toHaveValue('Decisions, active Tasks and recent work.');
+          }
+        },
+        cleanup: async () => {
+          for (const cleanup of cleanups) await cleanup();
+          cleanups = [];
+        },
+      };
+    }),
+  );
+}
+
 function projectRepositorySourceScreens(): Screen[] {
   return (['dark', 'light'] as const).flatMap((theme) =>
     [false, true].flatMap((accessDetails) =>
@@ -3014,6 +3120,8 @@ function projectRepositorySourceScreens(): Screen[] {
 }
 
 const SCREENS: Screen[] = [
+  ...appsLibraryScreens(),
+  ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),
   ...telemetryConsentScreens(),
   ...[DESKTOP, MOBILE].map((viewport): Screen => {

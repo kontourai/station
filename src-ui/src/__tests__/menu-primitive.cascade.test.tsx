@@ -202,6 +202,17 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({
+    data: [
+      {
+        id: 'apps-library',
+        label: 'Apps library',
+        description:
+          'Browse, search and personalize your Boards in an app launcher.',
+        enabled: false,
+      },
+    ],
+  }),
   // The phone overflow's Live work row reads the session inventory.
   useOrchestrationSessionsQuery: () => ({ data: [], isError: false }),
   useProjectLayoutsQuery: () => ({

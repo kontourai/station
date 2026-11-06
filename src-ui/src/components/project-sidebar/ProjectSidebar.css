@@ -404,20 +404,14 @@
    its hit area reaches the 44px floor the rest of this file uses, and the row
    button reserves both the width and the height so a project name never runs
    underneath it and adjacent handles never overlap. */
-@media (pointer: coarse) {
-  /* The section `+` keeps its 18px glyph but gets the 44px hit floor this
-     block already holds the reorder handle to (#2150, same class as
-     #2113/#2124). Grown via a pseudo-element so the label's line does not
-     move. Lives in this block, not its own: the mobile-css ratchet counts
-     at-rules per file, and a fourth would have been a ceiling raise for a
-     rule that belongs here anyway. */
-  .sidebar__section-add {
-    position: relative;
+@media (pointer: coarse), (max-width: 768px) {
+  .sidebar__home-button {
+    min-height: 44px;
   }
-  .sidebar__section-add::before {
-    content: "";
-    position: absolute;
-    inset: -13px;
+
+  .sidebar__section-add {
+    width: 44px;
+    height: 44px;
   }
 
   .sidebar .sidebar__project-disclosure {

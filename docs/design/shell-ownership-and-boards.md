@@ -178,6 +178,14 @@ personal Board list and its create action. Escape returns focus to that
 button; selecting a Board dismisses the popup. Palette creation with the
 rail collapsed opens the new Board without focusing an invisible rename.
 
+The default-off **Apps library** preview adds **Browse apps** to this section,
+including the collapsed popup and phone drawer. It presents the same personal
+Layout inventory as searchable launch tiles, grouped by recorded plugin source,
+and edits metadata through the existing SDK mutations. Named creation opens the
+Board editor. Layout hosting, plugin admission and owner authority stay in their
+existing boundaries. See [the user journey](../user/personal-boards.md#browse-apps).
+Persistent reordering and instance-shared Boards remain in #2997.
+
 The expanded footer places Schedule and Customize on the left, with an
 icon-only Updates control immediately before the account control on the right.
 The account control shows the signed-in person's initials and opens My access,
