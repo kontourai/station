@@ -75,6 +75,10 @@ test('a review that read the store before another decision landed does not erase
   await propose(first, 'a');
 
   between = async () => {
+    const before = await review.recall(owner, root, () => {}, '');
+    expect(
+      before.entries.find((entry) => entry.claimId === first.id)?.review.label,
+    ).toBe('unreviewed');
     await propose(second, 'b');
     await review.decide(
       owner,
