@@ -8,7 +8,7 @@ import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
-import { MessageGlyph, RefreshGlyph } from '../icons/Glyph';
+import { MessageGlyph, RefreshGlyph, SearchGlyph } from '../icons/Glyph';
 import { NewChatAction } from '../NewChatAction';
 import { Empty, ErrorState, FilteredEmpty } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
@@ -163,20 +163,22 @@ function ChatDockInboxPanelImpl({
   return (
     <aside
       ref={panelRef}
+      data-coarse-pointer={coarsePointer || undefined}
       className={`chat-dock-inbox${exiting ? ' chat-dock-inbox--exiting' : ''}`}
       aria-label="Inbox chats"
       tabIndex={-1}
     >
       <div className="chat-dock-inbox__toolbar">
-        <Button
-          variant="ghost"
-          aria-label="Find conversations"
-          title="Find conversations"
-          onClick={onOpenHistory}
-        >
-          <MessageGlyph />
-        </Button>
-        <span className="chat-dock-inbox__toolbar-title">Inbox</span>
+        <label className="chat-dock-inbox__search">
+          <SearchGlyph />
+          <input
+            type="search"
+            aria-label="Search inbox"
+            placeholder="Search inbox"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
         {onNewChat && <NewChatAction iconOnly onClick={onNewChat} />}
         <ActionOverflowMenu
           label="Inbox actions"
@@ -202,14 +204,6 @@ function ChatDockInboxPanelImpl({
         />
       </div>
       <InboxScopeFilter scope={scope} />
-      <input
-        type="search"
-        className="chat-dock-inbox__search"
-        aria-label="Search chats and tasks"
-        placeholder="Search…"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
       <div className="chat-dock-inbox__scroll">
         {sync?.failed && (
           <ErrorState
@@ -256,7 +250,13 @@ function ChatDockInboxPanelImpl({
             projectIconBySlug={projectIconBySlug}
             workFacts={workFacts}
             chrome={coarsePointer ? 'touch' : 'hover'}
-            collapsible={{ sections, onToggle: toggleSection }}
+            collapsible={{
+              sections,
+              onToggle: toggleSection,
+              order: sections.order,
+              onReorder: (order) =>
+                setDeviceSetting('inboxSections', { ...sections, order }),
+            }}
             {...controller.rowActions}
           />
         )}

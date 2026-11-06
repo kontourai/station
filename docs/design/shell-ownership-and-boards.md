@@ -167,7 +167,7 @@ account control moved to the footer
 ([pane workspace plan](../plans/pane-workspace.md)); the phone's `⋯` menu keeps
 a Profile row while the drawer is closed.
 
-**Personal Boards** follows Projects and remains visible when empty; its
+**Apps** follows Projects and remains visible when empty; its
 `+` creates the first Board and focuses its name. Confirming that first name
 gives the Board an address from it (`/boards/<name-slug>`, a Board created
 there and the `untitled-board` placeholder removed) and opens it; a rename
@@ -219,7 +219,7 @@ backups retain their stored section values for compatibility.
   [`ConversationReader`](../../src-ui/src/components/conversation/ConversationReader.tsx),
   [`MutableSessionDetail`](../../src-ui/src/components/session-detail/MutableSessionDetail.tsx),
   and [`useSessionTranscriptEvents`](../../src-ui/src/hooks/orchestration/useSessionTranscriptEvents.ts).
-- **Personal Boards** is the project-less section following Projects. The
+- **Apps** is the project-less section following Projects. The
   `+` creates a personal Board, including when none exist. Instance-shared
   Boards remain unbuilt; no shared group is shown without a backing list.
 - **Projects** keep their model. Their live-work count reads the shared

@@ -282,7 +282,13 @@
 
     "tests/station-connection-chat.spec.ts",
 
-    "tests/conversation-surfaces.spec.ts"
+    "tests/conversation-surfaces.spec.ts",
+
+    "scripts/windows-portable-floor.mjs",
+
+    "scripts/lib/windows-worker-diagnostics.mjs",
+
+    "scripts/__tests__/windows-portable-floor.test.ts"
   ],
 
   "checks": [

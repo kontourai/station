@@ -44,6 +44,9 @@ const sdkMocks = vi.hoisted(() => ({
   peersError: false,
   peersLoading: false,
   modelConnections: [] as Array<Record<string, unknown>>,
+  modelConnectionsError: null as Error | null,
+  modelConnectionsRefetch: vi.fn(),
+  hostName: 'Kontour' as string | undefined,
   iconCandidates: [] as ProjectIconCandidate[],
   iconCandidatesQuery: vi.fn(),
   // `undefined` is the unread config — the picker must not claim a resolved
@@ -90,6 +93,13 @@ vi.mock('../contexts/NavigationContext', () => ({
 // not mount.
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => navigationMocks.showSurface,
+}));
+
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () =>
+    sdkMocks.hostName
+      ? { hostName: sdkMocks.hostName, deviceClass: 'desktop' }
+      : undefined,
 }));
 
 vi.mock('../hooks/useCloseShortcut', () => ({
@@ -254,6 +264,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   })),
   useModelConnectionsQuery: vi.fn(() => ({
     data: sdkMocks.modelConnections,
+    isError: Boolean(sdkMocks.modelConnectionsError),
+    error: sdkMocks.modelConnectionsError,
+    refetch: sdkMocks.modelConnectionsRefetch,
   })),
   // The New chats section names what `last-used` would pick right now.
   useProjectChatDefaultsQuery: (...args: unknown[]) => {
@@ -377,7 +390,13 @@ const CATALOGLESS_MODEL_CONNECTION = {
   config: {},
 };
 
-function renderProjectSettings() {
+function renderProjectSettings(section?: string) {
+  if (section)
+    window.history.replaceState(
+      {},
+      '',
+      `/projects/demo/settings?section=${section}`,
+    );
   return render(<ProjectSettingsView slug="demo" />);
 }
 
@@ -423,6 +442,9 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.peerCredentials = [];
     sdkMocks.peersError = false;
     sdkMocks.peersLoading = false;
+    sdkMocks.hostName = 'Kontour';
+    sdkMocks.modelConnectionsError = null;
+    sdkMocks.modelConnectionsRefetch.mockClear();
     sdkMocks.modelConnections = [
       READY_MODEL_CONNECTION,
       SECOND_MODEL_CONNECTION,
@@ -461,6 +483,9 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         screen.getByLabelText('Execution environment') as HTMLSelectElement,
       ),
     ).toBe('inherit');
+    fireEvent.change(screen.getByLabelText('Project settings section'), {
+      target: { value: 'thread-execution' },
+    });
     expect(
       screen.getByRole('option', {
         name: 'Use the Station default (currently: the current checkout)',
@@ -498,14 +523,29 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     );
   });
 
-  test('a whitespace-only name cannot be saved', () => {
-    renderProjectSettings();
+  test('a whitespace-only name explains the disabled Save across topics and offers repair', () => {
+    renderProjectSettings('basic-info');
     fireEvent.change(screen.getByLabelText('Name *'), {
       target: { value: '   ' },
     });
     expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
       'disabled',
       true,
+    );
+    fireEvent.change(screen.getByLabelText('Project settings section'), {
+      target: { value: 'model' },
+    });
+    expect(screen.queryByRole('textbox', { name: 'Name *' })).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Enter a project name.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Fix Basic info' }));
+    const name = screen.getByRole('textbox', { name: 'Name *' });
+    expect(inputValue(name)).toBe('   ');
+    fireEvent.change(name, { target: { value: 'Repaired name' } });
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      false,
     );
   });
 
@@ -514,7 +554,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ...projectFixture,
       defaultEnvironment: { kind: 'saved', id: 'deleted-environment' as any },
     };
-    renderProjectSettings();
+    renderProjectSettings('thread-execution');
 
     expect(
       (screen.getByLabelText('Default environment') as HTMLSelectElement).value,
@@ -530,7 +570,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       defaultEnvironment: { kind: 'saved', id: 'env-unchecked' as any },
     };
     sdkMocks.environmentsError = true;
-    renderProjectSettings();
+    renderProjectSettings('thread-execution');
 
     expect(screen.getByRole('alert').textContent).toContain(
       'Saved environments are unavailable',
@@ -547,7 +587,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       defaultEnvironment: { kind: 'saved', id: environmentId('env-media') },
     };
     sdkMocks.environmentsLoading = true;
-    const { rerender } = renderProjectSettings();
+    const { rerender } = renderProjectSettings('thread-execution');
     expect(screen.getByLabelText('Default environment')).toHaveProperty(
       'value',
       'env-media',
@@ -586,7 +626,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         updatedAt: 1,
       },
     ];
-    renderProjectSettings();
+    renderProjectSettings('thread-execution');
 
     // No NEW paired-Station selection is offered: the foreground thread
     // path has no portable admission (#480 scope correction).
@@ -613,7 +653,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       { profile: { id: 'media', name: 'Media', environmentId: 'env-media' } },
     ];
     sdkMocks.peersLoading = true;
-    const { rerender } = renderProjectSettings();
+    const { rerender } = renderProjectSettings('thread-execution');
     expect(screen.getByLabelText('Default environment')).toHaveProperty(
       'value',
       'env-peer-b',
@@ -652,7 +692,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       { profile: { id: 'media', name: 'Media', environmentId: 'env-media' } },
     ];
     sdkMocks.peersError = true;
-    renderProjectSettings();
+    renderProjectSettings('thread-execution');
 
     expect(screen.getByLabelText('Default environment')).toHaveProperty(
       'value',
@@ -667,7 +707,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ...projectFixture,
       defaultEnvironment: { kind: 'saved', id: 'deleted-environment' as any },
     };
-    renderProjectSettings();
+    renderProjectSettings('thread-execution');
 
     fireEvent.change(screen.getByLabelText('Default environment'), {
       target: { value: 'current' },
@@ -691,6 +731,13 @@ describe('ProjectSettingsView (#250 shell port)', () => {
   // had a connection picker, nothing in the UI wrote the first field, so the
   // model it persisted resolved to nothing.
   describe('AI model section', () => {
+    beforeEach(() =>
+      window.history.replaceState(
+        {},
+        '',
+        '/projects/demo/settings?section=model',
+      ),
+    );
     test('disables the model field until a model connection is chosen', () => {
       renderProjectSettings();
 
@@ -862,31 +909,93 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     });
   });
 
-  test('keeps the active section tab fully visible in the horizontal mobile rail', async () => {
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
+  test('section picker shows one topic and keeps hidden project drafts mounted', () => {
+    renderProjectSettings('basic-info');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name *' }), {
+      target: { value: 'Unsaved project name' },
     });
-    window.history.replaceState(
-      {},
-      '',
-      '/projects/demo/settings?section=layouts',
+    fireEvent.change(screen.getByLabelText('Project settings section'), {
+      target: { value: 'layouts' },
+    });
+
+    expect(new URLSearchParams(window.location.search).get('section')).toBe(
+      'layouts',
     );
-
-    renderProjectSettings();
-
     expect(
       screen
         .getByRole('link', { name: 'Layouts' })
         .getAttribute('aria-current'),
     ).toBe('location');
-    await waitFor(() =>
-      expect(scrollIntoView).toHaveBeenCalledWith({
-        block: 'nearest',
-        inline: 'start',
-      }),
+    expect(screen.queryByRole('textbox', { name: 'Name *' })).toBeNull();
+    expect(
+      screen.queryByRole('textbox', { name: 'Working Directory' }),
+    ).toBeNull();
+    fireEvent.change(screen.getByLabelText('Project settings section'), {
+      target: { value: 'basic-info' },
+    });
+    expect(inputValue(screen.getByRole('textbox', { name: 'Name *' }))).toBe(
+      'Unsaved project name',
     );
+    expect(screen.getByText('unsaved')).toBeTruthy();
+  });
+
+  test('attributes the working folder to its Station while keeping the raw path intact', () => {
+    renderProjectSettings();
+    const path = screen.getByText('/Users/me/dev/demo').closest('code');
+    expect(path?.textContent).toBe('/Users/me/dev/demo');
+    expect(path?.parentElement?.textContent).toBe('Kontour/Users/me/dev/demo');
+    expect(path?.parentElement?.getAttribute('title')).toBe(
+      'Kontour: /Users/me/dev/demo',
+    );
+  });
+
+  test('keeps a saved unavailable model connection visible and preserved during unrelated edits', async () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      defaultProviderId: 'retired-provider',
+      defaultModel: 'retained-model',
+    };
+    renderProjectSettings('model');
+    expect(inputValue(screen.getByLabelText('Model connection'))).toBe(
+      'retired-provider',
+    );
+    expect(
+      screen.getByRole('option', {
+        name: 'retired-provider — saved connection unavailable',
+      }),
+    ).toBeTruthy();
+    expect(screen.getByLabelText('Default AI Model')).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.change(screen.getByLabelText('Name *'), {
+      target: { value: 'Renamed' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          defaultProviderId: 'retired-provider',
+          defaultModel: 'retained-model',
+        }),
+      ),
+    );
+  });
+
+  test('model inventory failure offers retry without clearing the saved selection', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      defaultProviderId: 'retained-provider',
+    };
+    sdkMocks.modelConnectionsError = new Error('Model catalog unavailable');
+    renderProjectSettings('model');
+    expect(screen.getByText('Could not load model connections')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(sdkMocks.modelConnectionsRefetch).toHaveBeenCalledOnce();
+    expect(inputValue(screen.getByLabelText('Model connection'))).toBe(
+      'retained-provider',
+    );
+    expect(sdkMocks.updateProject).not.toHaveBeenCalled();
   });
 
   test('renders loading through canonical Skeleton inside the page root', () => {
@@ -993,6 +1102,13 @@ describe('ProjectSettingsView (#250 shell port)', () => {
    * knowledge.
    */
   describe('New chats', () => {
+    beforeEach(() =>
+      window.history.replaceState(
+        {},
+        '',
+        '/projects/demo/settings?section=new-chat',
+      ),
+    );
     const history: ProjectChatDefaultsView = {
       version: 'station.project-chat-defaults/v1',
       projectSlug: 'demo',
@@ -1149,7 +1265,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
 
   test('the inherit option names the mode the Station default resolves to', () => {
     sdkMocks.stationConfig = { defaultWorkspaceIsolation: 'worktree' };
-    renderProjectSettings();
+    renderProjectSettings('thread-execution');
     expect(
       screen.getByRole('option', {
         name: 'Use the Station default (currently: a fresh git worktree)',
@@ -1159,7 +1275,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
 
   test('the inherit option claims no resolved mode before the config is read', () => {
     sdkMocks.stationConfig = undefined;
-    renderProjectSettings();
+    renderProjectSettings('thread-execution');
     expect(
       screen.getByRole('option', { name: 'Follow the Station default' }),
     ).toBeTruthy();
@@ -1267,7 +1383,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
 
   test('keeps a failed deletion in context and renders the rejection', async () => {
     sdkMocks.deleteFailure = new Error('Station connection was interrupted');
-    renderProjectSettings();
+    renderProjectSettings('danger');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
@@ -1282,7 +1398,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
   });
 
   test('a deleted project lands on the Home surface by name, not on whatever occupies main (#1523)', async () => {
-    renderProjectSettings();
+    renderProjectSettings('danger');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
@@ -1297,7 +1413,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
   });
 
   test('explains that deleting a Project retains Tasks and chats without a live workspace', () => {
-    renderProjectSettings();
+    renderProjectSettings('danger');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
 
@@ -1483,7 +1599,11 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
   };
 
   beforeEach(() => {
-    window.history.replaceState({}, '', '/projects/demo/settings');
+    window.history.replaceState(
+      {},
+      '',
+      '/projects/demo/settings?section=basic-info',
+    );
     sdkMocks.project = projectFixture;
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;

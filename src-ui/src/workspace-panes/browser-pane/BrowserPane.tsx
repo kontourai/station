@@ -680,9 +680,7 @@ function BrowserNewSession({
       {canDrive ? (
         <div className="browser-pane__start">
           <h2 className="browser-pane__start-kicker">Browser</h2>
-          <h3 className="browser-pane__start-title">
-            Enter a URL or pick a local server
-          </h3>
+          <h3 className="browser-pane__start-title">Open a page</h3>
           <form
             className="browser-pane__nav"
             aria-label="Open a page"
@@ -710,10 +708,12 @@ function BrowserNewSession({
             <Button
               type="submit"
               variant="primary"
-              className="browser-pane__control"
+              className="browser-pane__control browser-pane__open"
               pending={open.isPending}
+              aria-label="Open address"
+              title="Open address"
             >
-              Open
+              <ArrowRightGlyph />
             </Button>
           </form>
           {targets.isPending ? (
@@ -761,9 +761,7 @@ function BrowserNewSession({
           )}
         </div>
       ) : (
-        <p className="browser-pane__hint">
-          View only: open a session from the operator's device to watch it here.
-        </p>
+        <p className="browser-pane__hint">Choose a session to watch.</p>
       )}
       {open.isError ? (
         <BrowserOpenFailureNotice error={open.error} typed={address} />

@@ -21,6 +21,12 @@ workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts)
 journal, and the core reads it through the workload protocol (see Shell host
 below); otherwise the service owns both.
 
+The adapter admits a Windows launch only after node-pty publishes a positive
+PID on its pinned output-pipe readiness signal. This works without application
+output. Early exit, pipe failure, or the five-second startup bound rejects the
+launch before PID tracking; cancellation closes its owned native allocation and
+pipes. The dependency's worker callback fences late readiness after cancellation.
+
 A personal-operator HTTP control seam at
 `/api/projects/:slug/terminal-sessions` exercises the production service without
 shipping another emulator. It supports project bindings and `thread:<id>`
@@ -296,24 +302,19 @@ still refuses signals; a missing binding never becomes successful cleanup.
 The backend is pinned to node-pty `1.2.0-beta.18`, whose Windows native handle
 registry is synchronized across spawn and exit threads. This pin is a published
 prerelease. Managed Linux installs retain the approved source-build path;
-upstream Linux prebuilds are not selected by directory presence. Its Windows
-connection is asynchronous:
-the adapter waits for the output pipe and a valid PID before publishing the
-process or tracking its workload. A startup exit is refused; the backend already
-owns cleanup when no PID was published. Readiness waits for pipe wiring rather
-than first output. The existing cleanup deadline is unchanged. It then ends
-the shell's process tree with
-`taskkill /T /F` before the ConPTY closes, as the supervisor's workload host does: closing a
+upstream Linux prebuilds are not selected by directory presence. On Windows the operation ends the shell's process tree with `taskkill /T /F`
+before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
 stop (#3994). After a successful `taskkill` both hosts wait for the exit.
-The pinned node-pty releases its output-reader worker in `kill()`, and that
-call first lists the console's processes through
-a helper that cannot attach once the shell has gone, then five seconds later
-can signal the old shell PID, which Windows may have reused.
-On a started shell's exit, the adapter calls `kill()` with that listing
-answered empty. Before the exit, `kill()` is only
-the fallback for a tree `taskkill` could not end, which is reported.
+After an admitted shell exits, the adapter releases it at most once and closes
+its owned pipes, including for a silent or paused process. Its console process
+listing is answered empty: after exit the listing helper cannot attach, and its
+delayed fallback could signal a reused shell PID (#3994). A PID-zero startup
+failure already released by the producer does not receive a second native kill;
+positive-PID failure cleanup retains one release owner. Before exit, public
+`kill()` remains only the reported fallback for a tree `taskkill` that could not
+end the shell.
 `taskkill` follows
 parent links, so a descendant whose parent already exited is not found
 (from its documented behavior; not exercised here).
@@ -1188,20 +1189,19 @@ Code chat in a Project was not offered the tool. Desktop copy to the system
 clipboard was not read back. On Windows, Stop does not reach a command's
 descendant whose parent already exited, and the journal does not record
 resizes, so ConPTY output replayed at another size can repaint over lines
-already scrolled. On Windows a forked Vitest worker
-running a terminal process suite has exited without an error, a report or a
-log line, at most once in three runs and under a different suite each time
-(the retention suite in run 41973735929, the socket suite about 37 seconds
-in, in run 42017221712). On the Windows machine above it happened once in
-four full floor runs, in the retention suite in an invocation of its own
-after five other terminal suites, and not in six runs of that suite alone.
-A hosted run and three local floor runs that recorded every test, PTY spawn,
-kill and exit and `taskkill` all passed (42020043935), and the cause is not
-found. The floor
-([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
-therefore runs each terminal process suite in a Vitest invocation of its own,
-so a dead worker hides no other suite's results; the floor still fails, and
-nothing retries it. The screen reader mode has not been used with real
+already scrolled. Earlier Windows floors lost a forked worker without an
+assertion or diagnostic. Issue #4626 now records the captured access violation
+(`0xc0000005`) and a controlled reproduction in node-pty 1.1's unsynchronized
+native handle-table removal. The exact 1.2.0-beta.18 dependency includes the
+upstream locking and cancellation fixes; the Windows adapter suite checks
+positive-PID admission, an isolated concurrent exit/resize child, paused silent
+exit cleanup, and late vendor readiness after cancellation. Qualification of a
+specific run remains tied to its recorded source and installed binary.
+
+The floor ([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
+continues to run every isolated terminal suite, fails any crash, and never
+retries it. Coordinator PID/code/signal records remain in the Windows artifact.
+The screen reader mode has not been used with real
 assistive technology (VoiceOver, NVDA, TalkBack; the Windows machine above
 has no NVDA), and the manual screen reader pass listed above has not
 happened. The browser broker (DataChannel) route is unsupported by design,

@@ -652,6 +652,28 @@ describe('HIGH-3 — the `missing` repair is branched on the RECORD', () => {
     expect(screen.getByText('~/code/elsewhere')).toBeTruthy();
   });
 
+  it('embedded working-directory repair selects its Workspace topic through the page navigation owner', () => {
+    queryState = {
+      data: backing([{ ...MISSING, record: 'working-directory' }]),
+    };
+    const onNavigate = vi.fn();
+    render(
+      <ResourcesSection
+        slug="acme"
+        workspaceHref="/projects/acme/edit?section=workspace"
+        onNavigateToWorkspace={onNavigate}
+      />,
+    );
+    const link = screen.getByRole('link', { name: 'Go to Workspace' });
+    expect(link.getAttribute('href')).toBe(
+      '/projects/acme/edit?section=workspace',
+    );
+    fireEvent.click(link, { metaKey: true });
+    expect(onNavigate).not.toHaveBeenCalled();
+    fireEvent.click(link);
+    expect(onNavigate).toHaveBeenCalledOnce();
+  });
+
   it('a `binding` record keeps the bind form, pre-filled', () => {
     const { container } = renderResource(MISSING);
 

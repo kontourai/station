@@ -12,6 +12,7 @@ interface Dismissal {
   updatedAt: number;
   dismissedAt: number;
   attention?: string;
+  thirdParty?: boolean;
 }
 
 export type InboxDismissals = Record<string, Dismissal>;
@@ -67,7 +68,10 @@ export function readInboxDismissals(
         Number.isFinite(entry.updatedAt) &&
         typeof entry.dismissedAt === 'number' &&
         Number.isFinite(entry.dismissedAt) &&
-        (entry.attention === undefined || typeof entry.attention === 'string')
+        (entry.attention === undefined ||
+          typeof entry.attention === 'string') &&
+        (entry.thirdParty === undefined ||
+          typeof entry.thirdParty === 'boolean')
       ) {
         entries.push([
           key,
@@ -76,6 +80,7 @@ export function readInboxDismissals(
             updatedAt: entry.updatedAt,
             dismissedAt: entry.dismissedAt,
             attention: entry.attention,
+            thirdParty: entry.thirdParty,
           },
         ]);
       }
@@ -113,6 +118,7 @@ export function dismissInboxItem(
         updatedAt: item.updatedAt,
         dismissedAt: Date.now(),
         attention: facts?.attention,
+        thirdParty: item.controlMode === 'read-only-attached' || undefined,
       },
     },
     namespace,
@@ -149,6 +155,7 @@ export function isInboxDismissed(
 ) {
   if (!hasInboxDismissal(item, entries)) return false;
   const entry = entries[keyFor(item)];
+  if (entry.thirdParty) return item.controlMode === 'read-only-attached';
   if (
     entry.lifecycle !== item.lifecycleLabel ||
     (facts !== undefined && entry.attention !== facts.attention)

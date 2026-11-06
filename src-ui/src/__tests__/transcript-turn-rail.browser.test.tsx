@@ -248,22 +248,35 @@ test('Previous and Next turn step from the turn in view and keep focus', async (
   }
 });
 
-test('a phone keeps turn browsing in the conversation menu and return-to-latest stays touch-sized', async () => {
+test('phone turn steps stay clear of message text and keep touch-sized controls', async () => {
   const { browser, page, errors } = await turnRailBrowserFixture(PHONE);
   try {
     await page.waitForSelector('.chat-messages');
     await settledScrollTop(page);
     expect(
       await page
-        .locator('.transcript-turn-rail-host')
-        .evaluate((host) => getComputedStyle(host).display),
+        .locator('.transcript-turn-rail')
+        .evaluate((rail) => getComputedStyle(rail).display),
     ).toBe('none');
     expect(
       await page.getByRole('button', { name: 'Previous turn' }).count(),
-    ).toBe(0);
+    ).toBe(1);
     expect(await page.getByRole('button', { name: 'Next turn' }).count()).toBe(
-      0,
+      1,
     );
+    const textEdge = await page
+      .locator('.message')
+      .evaluateAll((messages) =>
+        Math.max(
+          ...messages.map((message) => message.getBoundingClientRect().right),
+        ),
+      );
+    for (const name of ['Previous turn', 'Next turn']) {
+      const step = await page.getByRole('button', { name }).boundingBox();
+      expect(step!.width).toBeGreaterThanOrEqual(44);
+      expect(step!.height).toBeGreaterThanOrEqual(44);
+      expect(textEdge).toBeLessThanOrEqual(step!.x);
+    }
     await page.getByRole('button', { name: 'Browse turns' }).click();
     const browserDialog = page.getByRole('dialog', { name: 'Browse turns' });
     await browserDialog.waitFor();
@@ -283,7 +296,7 @@ test('a phone keeps turn browsing in the conversation menu and return-to-latest 
   }
 });
 
-test('#3862: a desktop column with the rail shows no turn step at the latest message', async () => {
+test('turn steps flank the desktop rail at the latest message', async () => {
   const { browser, page, errors } = await turnRailBrowserFixture(DESKTOP);
   try {
     await page.waitForSelector('.transcript-turn-rail__tick');
@@ -291,7 +304,16 @@ test('#3862: a desktop column with the rail shows no turn step at the latest mes
     await frames(page);
     expect(
       await page.getByRole('button', { name: 'Previous turn' }).count(),
-    ).toBe(0);
+    ).toBe(1);
+    const previous = (await page
+      .getByRole('button', { name: 'Previous turn' })
+      .boundingBox())!;
+    const next = (await page
+      .getByRole('button', { name: 'Next turn' })
+      .boundingBox())!;
+    const rail = (await page.locator('.transcript-turn-rail').boundingBox())!;
+    expect(previous.y + previous.height).toBeLessThanOrEqual(rail.y + 1);
+    expect(next.y).toBeGreaterThanOrEqual(rail.y + rail.height - 1);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
@@ -418,7 +440,7 @@ test.each([
       if (width < 560) {
         expect(
           await page.getByRole('button', { name: 'Previous turn' }).count(),
-        ).toBe(0);
+        ).toBe(1);
         await page.getByRole('button', { name: 'Browse turns' }).click();
         const dialog = page.getByRole('dialog', { name: 'Browse turns' });
         await dialog.waitFor();

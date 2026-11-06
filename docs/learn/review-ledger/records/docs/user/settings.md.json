@@ -78,7 +78,25 @@
 
     "src-ui/src/connections/StationConnectionsContext.tsx",
 
-    "src-ui/src/components/conversation/LegacyConversationRecovery.tsx"
+    "src-ui/src/components/conversation/LegacyConversationRecovery.tsx",
+
+    "src-ui/src/views/ProjectSettingsView.tsx",
+
+    "src-ui/src/views/ProjectSettingsView.css",
+
+    "src-ui/src/components/SectionNavigation.tsx",
+
+    "src-ui/src/hooks/useSectionNavigation.ts",
+
+    "src-ui/src/components/StationPath.tsx",
+
+    "src-ui/src/components/StationPath.css",
+
+    "src-ui/src/views/project-settings/ProjectSourcesSection.tsx",
+
+    "src-ui/src/views/project-settings/ResourcesSection.tsx",
+
+    "src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx"
   ],
 
   "checks": [

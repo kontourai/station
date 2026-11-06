@@ -596,11 +596,11 @@ describe('BrowserPane honest states', () => {
       },
       { kind: 'new' },
     );
-    expect(await screen.findByText(/view only/i)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(await screen.findByText('Choose a session to watch.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open address' })).toBeNull();
     expect(
       screen.queryByRole('heading', {
-        name: 'Enter a URL or pick a local server',
+        name: 'Open a page',
       }),
     ).toBeNull();
   });
@@ -1328,7 +1328,7 @@ describe('Browser empty state', () => {
     );
     expect(
       await screen.findByRole('heading', {
-        name: 'Enter a URL or pick a local server',
+        name: 'Open a page',
       }),
     ).toBeTruthy();
     // No empty session list beside it: one instruction, one place to act.
@@ -1688,7 +1688,7 @@ describe('BrowserPane wave 2 fix round', () => {
     );
     const address = await screen.findByLabelText('Address');
     fireEvent.change(address, { target: { value: 'example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open address' }));
     await waitFor(() => expect(onAttach).toHaveBeenCalledWith(OTHER));
     expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
       projectSlug: 'alpha',
@@ -1721,7 +1721,7 @@ describe('BrowserPane wave 2 fix round', () => {
       );
       const address = await screen.findByLabelText('Address');
       fireEvent.change(address, { target: { value: 'https://google.com' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Open address' }));
       const alert = await screen.findByRole('alert');
       expect(alert.textContent).toBe(text);
       expect(
@@ -2019,7 +2019,7 @@ describe('BrowserPane on a phone-width pane (Duo audit)', () => {
   async function openFromAddress() {
     const address = await screen.findByLabelText('Address');
     fireEvent.change(address, { target: { value: 'example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open address' }));
     await screen.findByTestId('live-canvas');
   }
 

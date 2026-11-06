@@ -174,8 +174,14 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
     isPending: false,
   }),
-  useProjectsQuery: () => hooks.projects,
-  useProjectLayoutsQuery: () => hooks.layouts,
+  useProjectsQuery: () => ({
+    ...hooks.projects,
+    isPending: hooks.projects.isPending ?? hooks.projects.isLoading,
+  }),
+  useProjectLayoutsQuery: () => ({
+    ...hooks.layouts,
+    isPending: hooks.layouts.isPending ?? hooks.layouts.isLoading,
+  }),
   useProjectLayoutQuery: () => hooks.layout,
   useCoreUpdateStatusQuery: () => coreUpdateStatus,
   useQueryClient: () => ({ invalidateQueries }),
@@ -414,12 +420,14 @@ vi.mock('../app-shell/ActivityRegionShell', () => ({
     <div data-testid="activity-region-shell">{regionId}</div>
   ),
 }));
-vi.mock('../components/header/Header', () => ({ Header: () => null }));
+vi.mock('../components/header/Header', () => ({
+  Header: () => <header>Workspace toolbar</header>,
+}));
 vi.mock('../components/notifications/ConnectionBannerSource', () => ({
   ConnectionBannerSource: () => null,
 }));
 vi.mock('../components/project-sidebar/ProjectSidebar', () => ({
-  ProjectSidebar: () => null,
+  ProjectSidebar: () => <nav aria-label="Projects" />,
 }));
 vi.mock('../components/ShortcutsCheatsheet', () => ({
   ShortcutsCheatsheet: () => null,
@@ -722,6 +730,89 @@ describe('App home route resolution', () => {
       notices.find((notice) => notice.id === 'launch-update')!.onAction,
     ).toBeUndefined();
     expect(request!.pending).toBe(false);
+  });
+
+  test.each(['projects', 'layouts'] as const)(
+    'keeps Home pending while the %s cache is restoring without a fetch',
+    async (query) => {
+      hooks.projects = {
+        data: [{ slug: 'dev' }],
+        isLoading: false,
+        isPending: false,
+      };
+      hooks.layouts = {
+        data: [{ slug: 'code' }],
+        isLoading: false,
+        isPending: false,
+      };
+      hooks[query] = {
+        data: undefined,
+        isLoading: false,
+        isPending: true,
+        fetchStatus: 'idle',
+      };
+      const { rerender } = render(<App />);
+      await act(async () => undefined);
+      expect(
+        screen.getByRole('status', { name: /loading your workspace/i }),
+      ).toBeTruthy();
+      expect(screen.queryByTestId('app-view-content')).toBeNull();
+      hooks[query] =
+        query === 'projects'
+          ? { data: [{ slug: 'dev' }], isPending: false }
+          : { data: [{ slug: 'code' }], isPending: false };
+      await act(async () => rerender(<App />));
+      expect(screen.getByTestId('app-view-content').textContent).toBe(
+        '{"type":"home"}',
+      );
+    },
+  );
+
+  test('a native pane pop-out renders its route without the main workspace chrome', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {
+        metadata: {
+          currentWindow: {
+            label:
+              'workspace-pane-pop-out-8b094e38-b8b0-4148-a44e-a660159e740a',
+          },
+        },
+      },
+    });
+    window.history.replaceState(
+      {},
+      '',
+      '/projects/dev/panes/files/workspace-files',
+    );
+    try {
+      render(<App />);
+      await act(async () => undefined);
+      expect(screen.queryByRole('navigation', { name: 'Projects' })).toBeNull();
+      expect(screen.queryByText('Workspace toolbar')).toBeNull();
+      expect(screen.getByRole('main')).toBeTruthy();
+      expect(screen.getByTestId('app-view-content')).toBeTruthy();
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+      await act(async () => {
+        window.history.pushState({}, '', '/?surface=activity&session=result');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      expect(screen.getByRole('navigation', { name: 'Projects' })).toBeTruthy();
+      expect(screen.getByText('Workspace toolbar')).toBeTruthy();
+      expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
+      await act(async () => {
+        window.history.replaceState(
+          {},
+          '',
+          '/projects/dev/panes/files/workspace-files',
+        );
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      expect(screen.queryByRole('navigation', { name: 'Projects' })).toBeNull();
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+    } finally {
+      Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
+    }
   });
 
   test('renders pending root route without exposing stale restore state, then settles on Home without redirecting', async () => {

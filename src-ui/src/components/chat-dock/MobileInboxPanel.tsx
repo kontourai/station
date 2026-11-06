@@ -115,7 +115,7 @@ export function MobileInboxPanel({
     scope,
     query,
     setQuery,
-    groups: visibleGroups,
+    groups,
     hasVisibleItems,
     openChatIds: openMembership,
   } = controller;
@@ -251,7 +251,7 @@ export function MobileInboxPanel({
         <InboxGroupList
           key={controller.stateKey}
           swipeActions={swipeActions}
-          groups={visibleGroups}
+          groups={groups}
           idPrefix="mobile-task-switcher"
           activeChatSessionId={activeChatSessionId}
           openChatIds={openMembership}
@@ -264,6 +264,9 @@ export function MobileInboxPanel({
           showGroupCounts
           collapsible={{
             sections: inboxSections,
+            order: inboxSections.order,
+            onReorder: (order) =>
+              setDeviceSetting('inboxSections', { ...inboxSections, order }),
             onToggle: (id) =>
               setDeviceSetting('inboxSections', {
                 ...inboxSections,

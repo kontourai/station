@@ -312,7 +312,17 @@
 
     "src-server/services/remote-stations/remote-station-forwarder.ts",
 
-    "packages/contracts/src/peer-chat.ts"
+    "packages/contracts/src/peer-chat.ts",
+
+    "src-ui/src/components/chat-dock/useInboxGroups.ts",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.tsx",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.css",
+
+    "src-ui/src/hooks/useIsMobile.ts",
+
+    "src-ui/src/hooks/useCoarsePointer.ts"
   ],
 
   "checks": [

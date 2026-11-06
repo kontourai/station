@@ -164,7 +164,7 @@ describe('MobileInboxPanel answerability basis', () => {
     ).toBeTruthy();
     expect(within(row).getAllByText('Running')).toHaveLength(1);
     expect(within(row).queryByText('Active')).toBeNull();
-    expect(screen.getByRole('button', { name: /^Running/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Working/ })).toBeTruthy();
   });
 });
 
@@ -212,11 +212,11 @@ describe('MobileInboxPanel lane-move focus', () => {
           tasks={[{ ...running, lifecycleLabel: 'Ready' }, other]}
         />,
       );
-      expect(screen.getByRole('button', { name: /^Running/ })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^Working/ })).toBeTruthy();
       act(() => {
         vi.advanceTimersByTime(LIFECYCLE_HOLD_MS);
       });
-      expect(screen.queryByRole('button', { name: /^Running/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Working/ })).toBeNull();
       expect(document.activeElement).toBe(screen.getByRole('button', { name }));
     } finally {
       vi.useRealTimers();

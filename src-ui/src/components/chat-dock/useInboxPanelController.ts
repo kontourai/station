@@ -66,21 +66,7 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
   }, [items, workFacts, now, namespace]);
   const [query, setQuery] = useState('');
   const scope = useInboxScope(items, now, workFacts);
-  const matchingItems = useMemo(() => {
-    const term = query.trim().toLocaleLowerCase();
-    return term
-      ? scope.items.filter((item) =>
-          [
-            item.title,
-            item.projectLabel,
-            item.agentLabel,
-            item.environmentLabel,
-            workFacts?.get(item.id)?.station?.label,
-          ].some((value) => value?.toLocaleLowerCase().includes(term)),
-        )
-      : scope.items;
-  }, [query, scope.items, workFacts]);
-  const groups = useInboxGroups(matchingItems, now, workFacts);
+  const groups = useInboxGroups(scope.items, now, workFacts, query);
   const openChatIds = useMemo(
     () =>
       new Set(
