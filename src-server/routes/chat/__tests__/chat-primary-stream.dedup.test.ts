@@ -518,91 +518,94 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     },
   );
 
-  test('native foreground rechecks runtime after waiting for a memory brief', async () => {
-    const spec = { name: 'Assistant', prompt: 'Answer the user.' };
-    const streamText = vi.fn(async () => ({
-      fullStream: finishedStream(),
-      text: Promise.resolve(''),
-      usage: Promise.resolve(undefined),
-      finishReason: Promise.resolve('stop'),
-    }));
-    const agent = buildAgent(streamText);
-    const ctx = buildCtx({ memoryAdapter, dedupStore });
-    ctx.agentSpecs.set('assistant', spec);
-    ctx.activeAgents = new Map([['assistant', agent]]);
-    let entered!: () => void;
-    let release!: () => void;
-    const waiting = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const resume = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const nativeForeground = createNativeForegroundRelay(
-      {
-        agentId: agentId('assistant'),
-        agentSpec: spec,
-        project: {
-          id: 'project',
-          slug: 'project',
-          name: 'Project',
-          createdAt: '2026-10-25T00:00:00.000Z',
-          updatedAt: '2026-10-25T00:00:00.000Z',
-        },
-        workspaceIsolationMode: 'shared',
-        message: 'hello',
-        invoke: async (_phase, _actual, effect) => effect(),
-      },
-      { threadId: 'foreground-thread', userId: 'owner' },
-    );
-    const app = new Hono();
-    app.post('/chat', (c) =>
-      streamPrimaryAgentChat({
-        c,
-        ctx,
-        slug: 'assistant',
-        plugin: '',
-        input: 'hello',
-        restOptions: {},
-        injectContext: null,
-        ragContext: null,
-        agent,
-        configurationLease: captureRuntimeConfigurationLease(ctx)!,
-        dedupStore,
-        nativeForeground,
-        nativeRuntimeAgent: agent,
-        memoryBrief: {
-          delivered() {},
-          abandoned() {},
-          invokeIfCurrent: async <T>(invoke: () => Promise<T>) => {
-            entered();
-            await resume;
-            return { current: true as const, result: await invoke() };
+  test.each([true, false])(
+    'native foreground checks runtime after waiting for a memory brief (current: %s)',
+    async (current) => {
+      const spec = { name: 'Assistant', prompt: 'Answer the user.' };
+      const streamText = vi.fn(async () => ({
+        fullStream: finishedStream(),
+        text: Promise.resolve(''),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+      }));
+      const agent = buildAgent(streamText);
+      const ctx = buildCtx({ memoryAdapter, dedupStore });
+      ctx.agentSpecs.set('assistant', spec);
+      ctx.activeAgents = new Map([['assistant', agent]]);
+      let entered!: () => void;
+      let release!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const resume = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const nativeForeground = createNativeForegroundRelay(
+        {
+          agentId: agentId('assistant'),
+          agentSpec: spec,
+          project: {
+            id: 'project',
+            slug: 'project',
+            name: 'Project',
+            createdAt: '2026-10-25T00:00:00.000Z',
+            updatedAt: '2026-10-25T00:00:00.000Z',
           },
+          workspaceIsolationMode: 'shared',
+          message: 'hello',
+          invoke: async (_phase, _actual, effect) => effect(),
         },
-      }),
-    );
-    const responsePromise = app.request('/chat', { method: 'POST' });
-    await waiting;
-    let acknowledged = false;
-    const invocation = nativeForeground
-      .waitForInvocation(new AbortController().signal)
-      .then(
-        () => {
-          acknowledged = true;
-        },
-        () => {},
+        { threadId: 'foreground-thread', userId: 'owner' },
       );
-    await Promise.resolve();
-    expect(acknowledged).toBe(false);
-    ctx.activeAgents.delete('assistant');
-    release();
-    const response = await responsePromise;
-    await response.text();
-    await invocation;
-    expect(acknowledged).toBe(false);
-    expect(streamText).not.toHaveBeenCalled();
-  });
+      const app = new Hono();
+      app.post('/chat', (c) =>
+        streamPrimaryAgentChat({
+          c,
+          ctx,
+          slug: 'assistant',
+          plugin: '',
+          input: 'hello',
+          restOptions: {},
+          injectContext: null,
+          ragContext: null,
+          agent,
+          configurationLease: captureRuntimeConfigurationLease(ctx)!,
+          dedupStore,
+          nativeForeground,
+          nativeRuntimeAgent: agent,
+          memoryBrief: {
+            delivered() {},
+            abandoned() {},
+            invokeIfCurrent: async <T>(invoke: () => Promise<T>) => {
+              entered();
+              await resume;
+              return { current: true as const, result: await invoke() };
+            },
+          },
+        }),
+      );
+      const responsePromise = app.request('/chat', { method: 'POST' });
+      await waiting;
+      let acknowledged = false;
+      const invocation = nativeForeground
+        .waitForInvocation(new AbortController().signal)
+        .then(
+          () => {
+            acknowledged = true;
+          },
+          () => {},
+        );
+      await Promise.resolve();
+      expect(acknowledged).toBe(false);
+      if (!current) ctx.activeAgents.delete('assistant');
+      release();
+      const response = await responsePromise;
+      await response.text();
+      await invocation;
+      expect(acknowledged).toBe(current);
+      expect(streamText).toHaveBeenCalledTimes(current ? 1 : 0);
+    },
+  );
 
   // #3581: the durable invocation point precedes the agent call.
   test('records invocation before the agent call, and runs nothing when that record fails', async () => {

@@ -36,12 +36,41 @@ const MAX_RECORDS = 100_000;
 
 function isState(value: unknown): value is MemoryReviewState {
   const state = value as Partial<MemoryReviewState> | null;
+  const bindings = state?.bindings;
   return (
     !!state &&
     state.version === 1 &&
     Array.isArray(state.decisions) &&
-    Array.isArray(state.events)
+    Array.isArray(state.events) &&
+    (bindings === undefined ||
+      (bindings !== null &&
+        typeof bindings === 'object' &&
+        !Array.isArray(bindings) &&
+        Object.keys(bindings).length <= MAX_RECORDS &&
+        Object.entries(bindings).every(
+          ([key, id]) =>
+            /^memory-change\.[a-f0-9]{32}$/.test(key) &&
+            typeof id === 'string' &&
+            id.length > 0 &&
+            id.length <= 200,
+        )))
   );
+}
+
+export function bindReviewItems(
+  state: MemoryReviewState,
+  live: Record<string, string>,
+): Record<string, string> {
+  const names = new Set([
+    ...state.decisions.map((decision) => decision.spec.reviewItemName),
+    ...state.events.flatMap((event) =>
+      event.spec.reviewItemName ? [event.spec.reviewItemName] : [],
+    ),
+  ]);
+  const bindings = { ...state.bindings };
+  for (const name of names)
+    if (!bindings[name] && live[name]) bindings[name] = live[name];
+  return bindings;
 }
 
 const MAX_READ_BYTES = 64 * 1024 * 1024;
@@ -95,7 +124,7 @@ export class MemoryReviewStore {
     await this.mutate(
       () => {},
       (state) => ({
-        state: { ...state, bindings: { ...live, ...state.bindings } },
+        state: { ...state, bindings: bindReviewItems(state, live) },
         result: undefined,
       }),
     );
@@ -150,6 +179,8 @@ export class MemoryReviewStore {
     try {
       assertCurrent();
       const { state, result } = await change(this.read());
+      if (!isState(state))
+        throw new Error('Memory review records are invalid.');
       if (
         state.decisions.length > MAX_RECORDS ||
         state.events.length > MAX_RECORDS

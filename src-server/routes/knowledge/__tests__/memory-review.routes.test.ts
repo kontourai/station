@@ -1155,3 +1155,81 @@ test('erasing one of two identical proposals does not transfer its decision to t
     index.close();
   }
 });
+
+test('malformed proposal bindings fail closed without rewriting review records', async () => {
+  const h = await setup();
+  await h.seed(mysql());
+  const item = (await h.json(await h.get('/memory/recall'))).entries[0];
+  expect(
+    (
+      await h.post(`/memory/queue/${item.itemId}/decision`, {
+        outcome: 'accept',
+      })
+    ).status,
+  ).toBe(201);
+  const path = join(
+    h.home,
+    'knowledge',
+    'memory-review',
+    memoryOwnerHash(OWNER),
+    'review.json',
+  );
+  const state = JSON.parse(readFileSync(path, 'utf8'));
+  state.bindings[item.itemId] = 17;
+  const corrupt = JSON.stringify(state);
+  writeFileSync(path, corrupt);
+  expect((await h.get('/memory/recall')).status).toBe(503);
+  expect(readFileSync(path, 'utf8')).toBe(corrupt);
+});
+
+test('a later review write binds legacy decisions before an outside erasure', async () => {
+  const h = await setup();
+  const first = await h.seed(mysql());
+  await h.seed(mysql());
+  await h.seed(region());
+  const entries = (await h.json(await h.get('/memory/recall'))).entries;
+  const mysqlItem = entries.find(
+    (entry: { value: string }) => entry.value === 'MySQL',
+  );
+  const regionItem = entries.find(
+    (entry: { value: string }) => entry.value === 'eu-west-1',
+  );
+  expect(
+    (
+      await h.post(`/memory/queue/${mysqlItem.itemId}/decision`, {
+        outcome: 'correct',
+        correctedValue: 'private old decision',
+      })
+    ).status,
+  ).toBe(201);
+  const path = join(
+    h.home,
+    'knowledge',
+    'memory-review',
+    memoryOwnerHash(OWNER),
+    'review.json',
+  );
+  const state = JSON.parse(readFileSync(path, 'utf8'));
+  delete state.bindings;
+  writeFileSync(path, JSON.stringify(state));
+  expect(
+    (await h.post(`/memory/queue/${regionItem.itemId}/open`, {})).status,
+  ).toBe(200);
+  await h.manager.withErasure(
+    owner,
+    h.root,
+    () => {},
+    async (adapter) => {
+      const preview = await adapter.previewPurgeProposal(first);
+      await adapter.purgeProposal(
+        first,
+        { agent: OWNER, rationale: 'outside erase' },
+        { expectedRevision: preview.revision },
+      );
+    },
+  );
+  const after = await h.json(await h.get('/memory/recall?q=mysql'));
+  expect(after.entries).toHaveLength(1);
+  expect(after.entries[0].review.label).toBe('unreviewed');
+  expect(JSON.stringify(after)).not.toContain('private old decision');
+});

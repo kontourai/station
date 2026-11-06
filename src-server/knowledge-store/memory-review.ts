@@ -39,6 +39,7 @@ import {
   MEMORY_CLAIM_CATEGORY,
 } from './memory-envelope.js';
 import {
+  bindReviewItems,
   type MemoryReviewState,
   MemoryReviewStore,
 } from './memory-review-store.js';
@@ -483,7 +484,10 @@ export class MemoryReviewService {
           const live = new Set(Object.keys(bindings));
           const next = this.pruned(state, bindings);
           if (!live.has(itemId)) return { state: next, result: false };
-          next.bindings = { ...next.bindings, [itemId]: bindings[itemId] };
+          next.bindings = {
+            ...bindReviewItems(next, bindings),
+            [itemId]: bindings[itemId],
+          };
           next.events.push(
             this.event(next, authority.userId, reviewerKind, {
               eventType: 'item-selected',
@@ -562,7 +566,10 @@ export class MemoryReviewService {
           const live = new Set(Object.keys(bindings));
           const next = this.pruned(state, bindings);
           if (!live.has(itemId)) return { state: next, result: null };
-          next.bindings = { ...next.bindings, [itemId]: bindings[itemId] };
+          next.bindings = {
+            ...bindReviewItems(next, bindings),
+            [itemId]: bindings[itemId],
+          };
           const existing = next.decisions.find(
             (candidate) => candidate.metadata.name === name,
           );
