@@ -117,25 +117,22 @@ describe('#2310 Drafts through the rendered dock inbox', () => {
     deviceSettingsStore.reloadFromStorage();
   });
 
-  it('AC1: server Draft summary renders under Drafts, not a live group; history row stays live, as Idle', () => {
+  it('keeps never-prompted and idle conversations together in Open with distinct status', () => {
     renderInbox(panelItems([SERVER_DRAFT, HISTORY]));
-    const active = screen.getByRole('region', { name: 'Idle' });
-    const drafts = screen.getByRole('region', { name: 'Drafts' });
-    expect(within(drafts).getByText('Draft')).not.toBeNull();
-    expect(drafts.textContent).toContain('grok-build');
-    expect(active.textContent).not.toContain('grok-build');
-    expect(active.textContent).toContain('claude-code');
+    const open = screen.getByRole('region', { name: 'Open' });
+    expect(within(open).getByText('Draft')).toBeTruthy();
+    expect(open.textContent).toContain('grok-build');
+    expect(open.textContent).toContain('claude-code');
+    expect(screen.queryByRole('region', { name: 'Drafts' })).toBeNull();
   });
 
-  it('AC2 (render half): refreshed summary moves the row out of Drafts', () => {
+  it('removes the Draft status after the first turn while keeping the conversation Open', () => {
     const view = renderInbox(panelItems([SERVER_DRAFT, HISTORY]));
-    expect(
-      screen.getByRole('region', { name: 'Drafts' }).textContent,
-    ).toContain('grok-build');
+    expect(screen.getByText('Draft')).toBeTruthy();
     view.rerender(
       <ChatDockInboxPanel
         items={panelItems([AFTER_FIRST_TURN_DONE, HISTORY])}
-        activeChatSessionId={undefined as never}
+        activeChatSessionId={null}
         openChatSessionIds={[]}
         onFocusChat={vi.fn()}
         onOpenConversation={vi.fn()}
@@ -145,8 +142,10 @@ describe('#2310 Drafts through the rendered dock inbox', () => {
         now={NOW}
       />,
     );
-    expect(screen.queryByRole('region', { name: 'Drafts' })).toBeNull();
-    expect(screen.getByRole('region', { name: 'Idle' }).textContent).toContain(
+    expect(
+      screen.queryByText('Draft', { selector: '.inbox-row__word' }),
+    ).toBeNull();
+    expect(screen.getByRole('region', { name: 'Open' }).textContent).toContain(
       'grok-build',
     );
   });
@@ -173,7 +172,11 @@ describe('#2310 Drafts through the rendered dock inbox', () => {
         } as Partial<ChatUIState>,
       }),
     );
-    const drafts = screen.queryByRole('region', { name: 'Drafts' });
-    expect(drafts?.textContent ?? '').not.toContain('grok-build');
+    expect(
+      screen.queryByText('Draft', { selector: '.inbox-row__word' }),
+    ).toBeNull();
+    expect(screen.getByRole('region', { name: 'Open' }).textContent).toContain(
+      'grok-build',
+    );
   });
 });

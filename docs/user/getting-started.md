@@ -705,25 +705,32 @@ preview** enabled in Settings → Advanced → Developer tools, swipe left to
 reveal the clock and × controls. The clock opens Snooze duration choices; ×
 dismisses the conversation. Dismissal leaves running work and history intact.
 Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
-or expand **Dismissed** and choose **Restore to inbox**.
+or search the inbox, find matching **Dismissed** results, and choose
+**Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+Hidden **Third-party** sessions stay hidden through external updates until you
+restore them or bring them into Station.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
 when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
 not settle a conversation automatically. Settlement syncs across your devices
-and is separate from dismissal or deletion. Each inbox group can collapse.
+and is separate from dismissal or deletion. **Working** holds running and
+monitoring chats; **Needs attention** takes priority whenever input is owed.
+Drafts appear as a pencil on the chat row in its current status. Collapse a
+shelf to move it below expanded work. Shelf menus let you move sections up or
+down, with that order saved on this device. **Settled** is last by default.
 
 The workspace map lists Projects and their named Layouts, followed by your
-**Personal Boards**. Its **+** creates a Board and lets you name it, even
+**Apps**. Its **+** creates a Board and lets you name it, even
 when the list is empty. Select a project to see its configured views as child rows.
 Use Up/Down inside the view list, or the header's Layout picker, to change
 views. The header's sidebar button collapses the desktop map to a project
 rail; clicking a project icon opens its views without navigating first.
-The dashboard icon below projects opens your Personal Boards and their add
+The dashboard icon below projects opens **Apps**, including your personal Boards and their add
 button. Escape closes either popup and returns focus to its icon.
 The footer puts live work beside your initials, which open a summary of your
 access with **My access**, **Profile**, **Ask Station for help** and **Open

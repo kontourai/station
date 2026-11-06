@@ -25,7 +25,7 @@ export interface ResolveHomeSurfaceInput {
    * authentication rejection and a version mismatch are not network states.
    */
   connectionFailureReason: ConnectionFailureReason | null;
-  /** `useProjectsQuery`'s `isLoading` — whether the projects list has ever loaded. */
+  /** `useProjectsQuery`'s `isPending` — no project-list answer yet, including cache restoration. */
   projectsLoading: boolean;
   /** `useProjectsQuery`'s `isError` — a fetch failure, not an empty list. */
   projectsError: boolean;
@@ -37,7 +37,7 @@ export interface ResolveHomeSurfaceInput {
   lastProjectLayout: string | null;
   /** `projects[0]?.slug ?? ''` — empty string means "no projects" once `projectsLoading` is false. */
   firstProjectSlug: string;
-  /** `useProjectLayoutsQuery(firstProjectSlug)`'s `isLoading`. */
+  /** `useProjectLayoutsQuery(firstProjectSlug)`'s `isPending` when enabled. */
   firstProjectLayoutsLoading: boolean;
   /** `useProjectLayoutsQuery(firstProjectSlug)`'s `isError`. */
   firstProjectLayoutsError: boolean;

@@ -11,6 +11,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
@@ -23,12 +24,14 @@ interface Props {
 
 export function NewProjectRepositorySource(props: Props) {
   const scope = useHostRequestAuthorityScope();
+  const stationName = useActiveStationName() ?? 'the connected Station';
   if (!scope) return null;
   return (
     <RepositorySourceControls
       key={JSON.stringify([scope.apiBase, scope.authorityKey])}
       {...props}
       scope={scope}
+      stationName={stationName}
     />
   );
 }
@@ -45,8 +48,10 @@ function RepositorySourceControls({
   scope,
   onUseCheckout,
   onBusyChange,
+  stationName,
 }: Props & {
   scope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
+  stationName: string;
 }) {
   const storageKey = JSON.stringify([
     'repository-acquisition',
@@ -230,8 +235,12 @@ function RepositorySourceControls({
     <details className="new-project-modal__options">
       <summary>Start from a Git repository</summary>
       <p className="editor-hint">
-        Station creates a working copy on this host using its Git credentials.
-        Repository setup commands require a separate step.
+        Create a working copy via {stationName} using that Station's Git
+        credentials.
+      </p>
+      <p className="editor-hint">
+        Repository setup is separate. Attaching a repository does not grant an
+        Agent remote access.
       </p>
       {!requestId ? (
         <>

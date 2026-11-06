@@ -4,10 +4,15 @@
    from the host's top edge over the scroller's right gutter, inside its
    scrollbar, for the scroller's visible height (written by the component). */
 .transcript-turn-rail-host {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
   position: relative;
   flex: none;
   height: 0;
   --transcript-turn-rail-inset-top: var(--k-space-3);
+  --transcript-turn-step-size: 28px;
   --transcript-turn-rail-inset-bottom: var(--k-space-4);
 }
 
@@ -17,7 +22,11 @@
   --transcript-turn-rail-inset-top: 44px;
 }
 
-.transcript-turn-rail-host[data-unavailable] {
+.transcript-turn-rail-host[data-too-short] {
+  display: none;
+}
+
+.transcript-turn-rail-host[data-unavailable] .transcript-turn-rail {
   display: none;
 }
 
@@ -26,14 +35,20 @@
 .transcript-turn-rail {
   position: absolute;
   right: calc(var(--transcript-turn-rail-scrollbar, 0px) + 2px);
-  bottom: calc(100% + var(--transcript-turn-rail-inset-bottom));
+  bottom: calc(
+    100% +
+    var(--transcript-turn-rail-inset-bottom) +
+    var(--transcript-turn-step-size)
+  );
   width: 16px;
   height: max(
     0px,
     calc(
       var(--transcript-turn-rail-height, 0px) -
       var(--transcript-turn-rail-inset-top) -
-      var(--transcript-turn-rail-inset-bottom)
+      var(--transcript-turn-rail-inset-bottom) -
+      2 *
+      var(--transcript-turn-step-size)
     )
   );
   z-index: 1;
@@ -175,73 +190,70 @@
   color: var(--k-text-muted);
 }
 
-/* Previous/next turn beside the transcript's return-to-latest control. In
-   the composer's activity row they share that control's row; elsewhere the
-   group floats where the control alone would. */
-/* A fieldset (a group of buttons, not a menu) without its default chrome. */
-.transcript-turn-actions {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-inline-size: 0;
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--k-space-1);
-}
-
-.transcript-turn-actions[data-floating] {
+/* Step controls flank the map and remain available when its ticks do not fit. */
+.transcript-turn-rail-host .transcript-turn-rail__step {
   position: absolute;
-  bottom: calc(var(--dock-slot-size, 49px) + var(--safe-bottom, 0px) + 24px);
-  right: 20px;
-  z-index: 10;
-}
-
-.transcript-turn-actions[data-floating] .chat-scroll-to-bottom {
-  position: static;
-}
-
-/* Two classes: the composer's `.chat-input button` reset is (0,1,1). No
-   minimum size here: the 44px touch floors come from the shared phone rule
-   for `-actions` rows (index.css) and the composer's narrow activity row
-   (chat.css), the same floors its Scroll to bottom control gets. */
-.transcript-turn-actions .transcript-turn-actions__step {
+  right: calc(var(--transcript-turn-rail-scrollbar, 0px) + 2px);
+  z-index: 2;
   display: inline-flex;
-  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--transcript-turn-step-size);
+  height: var(--transcript-turn-step-size);
   padding: 0;
-  border: 1px solid var(--k-line-strong);
+  border: 1px solid var(--k-line);
   border-radius: var(--k-radius-md);
   background: var(--k-panel);
   color: var(--k-text);
-  font-size: var(--k-text-md);
   cursor: pointer;
 }
 
-.transcript-turn-actions
-  .transcript-turn-actions__step:hover:not([aria-disabled]) {
+.transcript-turn-rail__step--previous {
+  bottom: calc(
+    100% +
+    var(--transcript-turn-rail-height, 0px) -
+    var(--transcript-turn-rail-inset-top) -
+    var(--transcript-turn-step-size)
+  );
+}
+
+.transcript-turn-rail__step--next {
+  bottom: calc(100% + var(--transcript-turn-rail-inset-bottom));
+}
+
+.transcript-turn-rail-host .transcript-turn-rail__step[aria-disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.transcript-turn-rail-host
+  .transcript-turn-rail__step:hover:not([aria-disabled]) {
   background: var(--k-panel-raised);
 }
 
-.transcript-turn-actions .transcript-turn-actions__step[aria-disabled] {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.transcript-turn-actions .transcript-turn-actions__step:focus-visible {
+.transcript-turn-rail__step:focus-visible {
   outline: var(--k-focus-ring-width, 2px) solid var(--k-focus-ring);
   outline-offset: 2px;
 }
 
-/* A dock too short for the transcript hides its return-to-latest control
-   (chat.css); the turn steps go with it. */
-.chat-dock__body[data-composer-priority]
-  .chat-input__activity
-  .transcript-turn-actions {
-  display: none;
+.transcript-turn-rail-host:not([data-touch-controls])
+  .transcript-turn-rail__step {
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.chat-messages:hover ~ .transcript-turn-rail-host .transcript-turn-rail__step,
+.transcript-turn-rail-host:hover .transcript-turn-rail__step,
+.transcript-turn-rail-host:focus-within .transcript-turn-rail__step {
+  opacity: 1;
+}
+
+.chat-messages[data-touch-turn-controls] {
+  padding-right: calc(var(--chat-message-gutter) + 44px);
+}
+
+.transcript-turn-rail-host[data-touch-controls] {
+  --transcript-turn-step-size: 44px;
 }
 
 /* Turn markers form a map beside the independent native scrollbar. */

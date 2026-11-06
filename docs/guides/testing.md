@@ -986,7 +986,15 @@ runs each terminal process suite in a Vitest invocation of its own after the
 other files, so a forked worker that dies (an open,
 intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
 other suite's results; every invocation runs, and any failure fails the floor
-without a retry. A ConPTY cannot change
+without a retry. Its coordinator records fork PIDs, numeric and hexadecimal
+exit codes, and signals in `.kontourai/verification-output/windows-workers-*.jsonl`;
+the Windows verification artifact retains those records even when the floor
+fails. The observer does not consume worker exceptions or change verdicts.
+The adapter suite also runs in the floor: its owned children cover concurrent
+native exits/resizes, paused silent-reader retirement, and vendor cancellation.
+Issue #4626 records the captured access violation, handle-table reproduction,
+and dependency repair; retained source/binary receipts establish each run's
+qualification. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or

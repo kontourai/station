@@ -795,13 +795,10 @@
     color: var(--text-primary);
   }
 
-  /* The established selected-row pair in this tree (`index.css` agent
-     selector, `chat.css` model row): a 14% accent TINT, not an accent fill,
-     with the accent itself as the foreground. */
   .section-nav--rail > .page__tab--active {
     border-color: transparent;
     background: var(--bg-selected);
-    color: var(--accent-primary);
+    color: var(--k-text);
     font-weight: 600;
   }
 

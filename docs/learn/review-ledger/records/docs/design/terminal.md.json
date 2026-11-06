@@ -64,7 +64,13 @@
 
     "src-server/services/terminal/pty-workload-host.ts",
 
-    "src-server/adapters/__tests__/node-pty-adapter.test.ts"
+    "src-server/adapters/__tests__/node-pty-adapter.test.ts",
+
+    "src-server/adapters/__tests__/fixtures/node-pty-concurrent-exit.mjs",
+
+    "src-server/adapters/__tests__/fixtures/node-pty-quiet-exit.mjs",
+
+    "src-server/adapters/__tests__/fixtures/node-pty-cancel-ready.mjs"
   ],
 
   "checks": [

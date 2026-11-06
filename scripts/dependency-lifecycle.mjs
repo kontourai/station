@@ -389,6 +389,7 @@ function lifecycleEnvironment(packageRoot, hook, entry) {
   const sourceBuild =
     process.platform === 'linux' &&
     entry.name === 'node-pty' &&
+    entry.artifact.proof === 'node-pty-smoke' &&
     (
       entry.artifact.platforms?.[`linux/${process.arch}`] ?? [
         entry.artifact.path,
