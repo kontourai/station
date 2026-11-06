@@ -990,7 +990,11 @@ without a retry. Its coordinator records fork PIDs, numeric and hexadecimal
 exit codes, and signals in `.kontourai/verification-output/windows-workers-*.jsonl`;
 the Windows verification artifact retains those records even when the floor
 fails. The observer does not consume worker exceptions or change verdicts.
-The intermittent crash remains unresolved under #4626. A ConPTY cannot change
+The adapter suite also runs in the floor: its owned children cover concurrent
+native exits/resizes, paused silent-reader retirement, and vendor cancellation.
+Issue #4626 records the captured access violation, handle-table reproduction,
+and dependency repair; retained source/binary receipts establish each run's
+qualification. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or

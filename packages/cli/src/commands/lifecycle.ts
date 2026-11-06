@@ -40,7 +40,12 @@ import {
   relative,
   resolve,
 } from 'node:path';
-import { MANAGED_POLICY_INVALID_MARKER } from '@kontourai/station-contracts/managed-policy';
+import {
+  MANAGED_POLICY_INVALID_MARKER,
+  type ManagedPolicyUpdatesLimit,
+  managedRemoteClientsDenial,
+  managedUpdatesRefusal,
+} from '@kontourai/station-contracts/managed-policy';
 import {
   canonicalTenantAuthority,
   type HostedTenantRegistry,
@@ -142,6 +147,14 @@ import {
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
 import {
+  assertManagedInheritedStationHost,
+  installedRemoteClientsLimit,
+} from './managed-remote-clients.js';
+import {
+  installedManagedUpdates,
+  managedInstallerEnv,
+} from './managed-update-installer.js';
+import {
   captureStableProcessFingerprint,
   createAppShortcut,
   createPathLink,
@@ -186,6 +199,13 @@ export {
   PREBUILT_ARCHIVE_MARKER_FILENAME,
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
+
+import {
+  type LoadedManagedPolicy,
+  loadInstalledManagedPolicy,
+  ManagedPolicyInvalidError,
+} from '@kontourai/station-shared/managed-policy';
+import { loadInstalledManagedPolicyChecked } from './app-config-schema.js';
 
 const SERVER_ENTRY_FILENAME = 'command-station.js';
 
@@ -4776,9 +4796,36 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   }
   // Watch mode serves the UI from Vite, which Station documents as
   // loopback-only (development.md), so it defaults to and requires loopback.
+  // #4515: a managed policy Station cannot enforce refuses the start here,
+  // before a server or UI host is spawned, with the loader `station policy
+  // check` uses (settings schema included). Leaving it to the server left
+  // the UI host listening, on every interface by default, for the whole
+  // refused start.
+  let installedPolicy: LoadedManagedPolicy | null;
+  try {
+    installedPolicy = loadInstalledManagedPolicyChecked();
+  } catch (error) {
+    if (!(error instanceof ManagedPolicyInvalidError)) throw error;
+    // The marker line, as the server prints it: the desktop sidecar and the
+    // failed-start report key on a line that starts with it.
+    console.error(error.message);
+    process.exitCode = 1;
+    return;
+  }
+  // #4519: under a managed policy without `remote` clients, the server
+  // refuses a non-loopback host, so default to loopback and say why here.
+  const remoteLimit = installedRemoteClientsLimit(() => installedPolicy);
   const host = normalizeLifecycleHost(
-    opts.host ?? (watch ? '127.0.0.1' : undefined),
+    opts.host ?? (watch || remoteLimit ? '127.0.0.1' : undefined),
   );
+  if (remoteLimit && !isLoopbackHost(host)) {
+    throw new Error(
+      `${managedRemoteClientsDenial(remoteLimit)} Station listens only on this computer; --host=${host} is not supported.`,
+    );
+  }
+  // The child's STATION_HOST is this launcher's host, so an inherited one
+  // would be dropped without a word; under the limit it is refused.
+  assertManagedInheritedStationHost(remoteLimit);
   if (watch && !isLoopbackHost(host)) {
     throw new Error(
       `--watch serves the Vite dev server, which is loopback-only; --host=${host} is not supported.`,
@@ -5159,6 +5206,15 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
   } catch {
     // The server records the log receipt asynchronously after HTTP readiness.
+  }
+  // #4521: under a managed policy that turns telemetry off there is no
+  // sharing to announce. A policy that cannot be read stops the server, so
+  // the notice would not apply either.
+  try {
+    if (loadInstalledManagedPolicy()?.summary.limits.telemetry === false)
+      telemetryNoticesToShow = [];
+  } catch {
+    telemetryNoticesToShow = [];
   }
   // The supervisor, when this start runs one, is the process spawned here:
   // it forks the core server and owns the instance from now on.
@@ -6151,6 +6207,7 @@ function assertSafePackagedDirectory(path: string, description: string): void {
  */
 function delegatePackagedUpgradeIfPresent(
   beforeInstall: (stationHome: string, installRoot: string) => void,
+  managedUpdates: ManagedPolicyUpdatesLimit | null = null,
 ): string | null {
   if (existsSync(join(CWD, '.git'))) return null;
   const releasesRoot = resolve(CWD, '..');
@@ -6204,6 +6261,14 @@ function delegatePackagedUpgradeIfPresent(
   ) {
     throw new Error('packaged current link does not resolve to this release');
   }
+  // #4522: the managed policy decides where this ring may update from (or
+  // that it may not), before the service check and the installer run.
+  const managedEnv = managedInstallerEnv({
+    updates: managedUpdates,
+    ring: state.releaseChannel,
+    platform: process.platform,
+    requestedManifestUrl: process.env.STATION_INSTALL_PUBLIC_MANIFEST_URL,
+  });
   // install.sh on Linux and macOS, install.ps1 on Windows (#2675 W2).
   const installer = packagedInstallerCommand(CWD);
   readSafePackagedFile(installer.file, 'packaged release installer');
@@ -6228,6 +6293,8 @@ function delegatePackagedUpgradeIfPresent(
       ...(manifestUrl
         ? { STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl }
         : {}),
+      // Last, so a mirror replaces the recorded manifest.
+      ...managedEnv,
     },
     stdio: 'inherit',
     windowsHide: true,
@@ -6457,6 +6524,15 @@ export function renderPrebuiltArchiveUpgradeRefusal(
 }
 
 export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
+  // #4522: first, before any refusal that would suggest another way to
+  // update. An installed policy Station cannot read refuses the upgrade the
+  // way it refuses server startup.
+  const managedUpdates = installedManagedUpdates();
+  // `off` refuses every install kind; a disallowed nightly is checked
+  // against the packaged ring below, the only install with one.
+  const managedOff = managedUpdatesRefusal(managedUpdates, null);
+  if (managedOff)
+    throw new Error(`station upgrade: ${managedOff}. Nothing was changed.`);
   if (
     LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive' &&
     !isInstallerOwnedArchiveVersion(LIFECYCLE_CODE_ROOT.root)
@@ -6483,11 +6559,18 @@ export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
           ? { archiveInstallRoot: installRoot }
           : {}),
       }),
+    managedUpdates,
   );
   if (packagedStationHome !== null) {
     reportSchedulingPolicyUpgradeGuidance(packagedStationHome);
     return;
   }
+  // #4522: a source checkout pulls from its git remote, which the mirror
+  // does not serve.
+  if (managedUpdates?.feedUrl !== undefined)
+    throw new Error(
+      "station upgrade: This machine's managed policy takes updates only from the organization's mirror, which a source checkout cannot update from. Nothing was changed.",
+    );
   // Source checkout: only services installed from THIS checkout are raced by
   // its rebuild (`service install` records the checkout as `repoPath`).
   assertNoSupervisingService(

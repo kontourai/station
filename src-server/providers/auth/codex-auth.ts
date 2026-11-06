@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import type { CliAuthState } from './cli-auth.js';
 
 type CodexCredentials = {
@@ -34,6 +35,8 @@ export function defaultCodexGlobalConfigDir(
 export async function detectCodexAuthState(
   configDir: string,
 ): Promise<CliAuthState> {
+  // #4515: a disallowed engine's credentials are not read.
+  if (!engineAllowedByManagedPolicy('codex')) return 'unknown';
   try {
     const parsed = JSON.parse(
       await readFile(join(configDir, 'auth.json'), 'utf8'),

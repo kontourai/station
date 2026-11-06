@@ -27,6 +27,9 @@ Claude Code and Codex engine connections can set
 Model connection. The UI exposes this as **Connect through**. The engine uses the
 current saved address/key at launch, without copying credentials or changing the
 global CLI configuration. See [proxy setup](../guides/connections.md#route-an-engine-through-a-model-proxy).
+A [managed policy](../guides/managed-policy.md#pinned-launch-fields) that locks
+the engine's environment stops `proxyConnectionId`, `env` and `configHome` from
+being applied.
 
 ## app.json
 
@@ -78,7 +81,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `defaultApprovalMode` | `"connection-default"` \| `"ask"` \| `"auto"` \| `"never"` | `"connection-default"` | Approval posture applied when a session starts, below the chat's own pick, its Agent's default, its Project's new-chat approval mode ([Project new-chat defaults](api.md#project-new-chat-defaults)), and the signed-in person's per-engine default for new interactive chats; never applied to a session already running. Raising it to `"never"` (full access) needs the operator in person or an authenticated caller, such as a paired device, whose scope carries `approval:full-access` (for a device tied to a person, only while that person's Station group is Admin); an Agent can never set it. Under a [managed approval ceiling](../guides/managed-policy.md#approval-mode-ceiling), changing it to a mode above the ceiling is refused (403 `managed-policy-approval-ceiling`) for everyone, and a value already above it is lowered to the ceiling where it applies. A refused write is 403 `approval-full-access-not-granted`; when a paired device asked, the refusal names that device and the operator's grant command (`station environment access scope <device> --add approval:full-access`). When the device's person is in the Member group, the refusal names that group and People as the first step, and carries the grant command only if the device's own grant also lacks the scope. See [Device access and remote work](../guides/machine-relationships.md#what-a-paired-device-may-do-and-full-access). |
 | `runtime` | `"voltagent"` \| `"strands"` | `"voltagent"` | Agent framework runtime. Use `--features=strands-runtime` to opt in to Strands. |
 | `gitRemote` | string | — | Not currently used. The update path reads the git remote from the Station checkout itself, never from config. |
-| `serverUpdateDownloadPolicy` | `"never"` \| `"after-24h"` \| `"immediately"` | `"after-24h"` | For a Station service run by the fixed launcher (an archive install): when the server downloads an available update by itself, once a check (on boot, or when a newer client connects) finds it. Downloading verifies and stages the release and keeps the server running; only Restart, or Update when idle, applies it. Other install kinds ignore it. |
+| `serverUpdateDownloadPolicy` | `"never"` \| `"after-24h"` \| `"immediately"` | `"after-24h"` | For a Station service run by the fixed launcher (an archive install): when the server downloads an available update by itself, once a check (on boot, or when a newer client connects) finds it. Downloading verifies and stages the release and keeps the server running; only Restart, or Update when idle, applies it. Other install kinds ignore it. A [managed policy](../guides/managed-policy.md#update-control) that turns updates off, or makes this nightly ring unavailable, stops these checks and downloads whatever this says. |
 | `logLevel` | `"trace"` \| `"debug"` \| `"info"` \| `"warn"` \| `"error"` | `"info"` | Server log level. Overridden by `STATION_LOG_LEVEL` when set, unless a [managed policy](../guides/managed-policy.md#settings) locks it: a lock outranks the variable — see [Logging](#logging) below. |
 | `defaultEmbeddingProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultEmbeddingModel` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
@@ -109,9 +112,17 @@ This status is not persisted configuration or authenticated identity. Publicatio
 uses the actual bound API port and eligible private IPv4 interface; IPv6-only,
 IPv6 wildcard and public-only listeners do not establish a publishable address.
 See [LAN discovery](../guides/connections.md#make-this-host-discoverable-on-the-lan)
-for failure and withdrawal semantics.
+for failure and withdrawal semantics. Under a
+[managed policy](../guides/managed-policy.md#network-exposure) without `remote`
+clients, discovery stays off whatever this value says, its status gives the
+policy's sentence, and turning it on is refused with
+`managed-policy-remote-clients`.
 
 ### telemetry destinations
+
+Publisher keys include legacy `publisher:<id>` and signed plugin
+`publisher:<24 lowercase hex digest>/<registry item id>`. Config loading, the
+config route and CLI use the same bounded [publisher ID grammar](usage-telemetry.md#plugin-publishers).
 
 These settings belong to the Station instance. They keep disclosed product
 observations separate from operator metrics/traces and from personal usage
@@ -128,7 +139,10 @@ accounting. No destination is configured by default.
 | `otelTelemetryEndpoint` | HTTP(S) URL | unset | OTLP HTTP base address, preceding the environment collector. Saving fences the previous process's exports; restart activates the new collector. |
 | `otelTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact OTel grant for the collector. Saving requires restart activation and never borrows a product key. |
 
-`DO_NOT_TRACK` except empty/`0` forces every product publisher Off, including saved
+A [managed policy](../guides/managed-policy.md#capability-switches) with
+`limits.telemetry: false` forces every publisher Off and disables OTel export,
+ahead of saved choices, environment and DNT. `DO_NOT_TRACK` except empty/`0`
+forces every product publisher Off, including saved
 choices. Legacy `STATION_PRODUCT_TELEMETRY_ENABLED` and `STATION_TELEMETRY_ENABLED`
 remain fallbacks (`false` means Off). Distribution/operator policy inputs only
 lower defaults; user choice wins otherwise. `STATION_AUTHOR_TELEMETRY_ENDPOINT`

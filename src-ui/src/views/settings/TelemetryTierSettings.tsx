@@ -71,6 +71,35 @@ export function TelemetryTierSettings({
     tier: TelemetryTier;
     trigger: HTMLSelectElement;
   }>();
+  // #4521: the machine's managed policy turned telemetry off. No choice can
+  // take effect and the server refuses a raise, so none is offered.
+  const managedDenial = Object.values(publishers ?? {}).find(
+    (state) => state?.reason === 'managed',
+  )?.managedDenial;
+  if (managedDenial !== undefined)
+    return (
+      <div
+        {...settingsRow('usage-telemetry')}
+        tabIndex={-1}
+        className="telemetry-sharing"
+      >
+        <section ref={noticeRef} aria-label="Usage sharing choices">
+          <PageCallout
+            calloutId="usage-sharing-managed"
+            ariaLabel="Usage sharing is managed"
+            title="Usage sharing is off"
+          >
+            {managedDenial}
+          </PageCallout>
+        </section>
+        {advancedContent && (
+          <details className="telemetry-advanced">
+            <summary>Advanced</summary>
+            <section>{advancedContent}</section>
+          </details>
+        )}
+      </div>
+    );
   let host: string | undefined = disclosure?.additionalHost;
   try {
     if (!host && config.productTelemetryEndpoint)
@@ -327,6 +356,8 @@ function effectiveSummary(
   if (!status) return 'Effective state loads from this Station.';
   if (status.reason === 'DNT')
     return 'Effective: Off — DO_NOT_TRACK is active. Saved choices are not changed.';
+  if (status.reason === 'managed')
+    return 'Effective: Off — turned off by a managed policy.';
   if (publisher === 'kontour' && status.fullAvailable === false)
     return 'This build has no Station usage destination, so nothing is sent to Kontour.';
   if (status.reason === 'disclosure')

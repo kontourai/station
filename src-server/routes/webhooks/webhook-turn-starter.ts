@@ -1,4 +1,8 @@
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import {
+  managedCapabilityDenial,
+  webhookAutomationsAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
@@ -24,8 +28,11 @@ export function createWebhookTurnStarter(deps: {
   /** #2377 slice C2b: a webhook bound to a saved Environment forwards here. */
   remoteStations?: RemoteStationForwarder;
 }): TurnStarter {
-  return (input) =>
-    executeExecutionTargetMessage(
+  return async (input) => {
+    // #4521: the route refuses first; this holds for any other caller.
+    if (!webhookAutomationsAllowedByManagedPolicy())
+      throw new Error(managedCapabilityDenial('webhook automations'));
+    return executeExecutionTargetMessage(
       {
         ...input,
         userId: LOCAL_OPERATOR_PRINCIPAL_ID,
@@ -38,4 +45,5 @@ export function createWebhookTurnStarter(deps: {
       undefined,
       deps.remoteStations,
     );
+  };
 }

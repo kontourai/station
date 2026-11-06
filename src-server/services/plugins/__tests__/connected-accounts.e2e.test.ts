@@ -197,6 +197,8 @@ function runtimeContext(
         ),
       logger,
       deploymentAuthentication: undefined,
+      // No managed policy is installed (the loader's real "none" value).
+      managedPolicy: null,
       eventBus: new EventBus(),
       environmentSecurityService,
       activeAgents: new Map(),

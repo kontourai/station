@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { hasAppConfigStationDecision } from '@kontourai/station-contracts/config';
 import { managedPolicyDenial } from '@kontourai/station-contracts/managed-policy';
+import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import {
   type LoadedManagedPolicy,
   ManagedPolicyInvalidError,
@@ -70,18 +71,42 @@ export function effectiveAppConfigOffline<T extends Record<string, unknown>>(
   stored: T,
   load: () => LoadedManagedPolicy | null = loadInstalledManagedPolicyChecked,
 ): T {
-  const settings = loadPolicyOffline(
+  return appConfigOffline(stored, load).config;
+}
+
+/**
+ * {@link effectiveAppConfigOffline}, with the provenance of each value the
+ * policy supplied, in the server's shape (`settings-registry-server.ts`
+ * `managedProvenance`): so `config get --offline` says "managed by" exactly
+ * as the live `config get` does.
+ */
+export function appConfigOffline<T extends Record<string, unknown>>(
+  stored: T,
+  load: () => LoadedManagedPolicy | null = loadInstalledManagedPolicyChecked,
+): { config: T; provenance: Record<string, SettingProvenanceEntry> } {
+  const loaded = loadPolicyOffline(
     load,
     'Station settings cannot be read offline until it is fixed.',
-  )?.document.settings;
-  if (!settings) return stored;
+  );
+  const settings = loaded?.document.settings;
+  if (!loaded || !settings) return { config: stored, provenance: {} };
   const effective: Record<string, unknown> = { ...stored };
+  const provenance: Record<string, SettingProvenanceEntry> = {};
   // The server's own predicate: an explicit `null` is a decision and a
   // loader-written seed is not (#4517 round 2).
   for (const [key, entry] of Object.entries(settings))
-    if (entry.locked || !hasAppConfigStationDecision(stored, key))
+    if (entry.locked || !hasAppConfigStationDecision(stored, key)) {
       effective[key] = structuredClone(entry.value);
-  return effective as T;
+      provenance[key] = {
+        source: 'managed',
+        locked: entry.locked,
+        organization: loaded.summary.organization,
+        ...(loaded.summary.supportUrl
+          ? { supportUrl: loaded.summary.supportUrl }
+          : {}),
+      };
+    }
+  return { config: effective as T, provenance };
 }
 
 /** The installed policy's lock on `key`, if it has one. */

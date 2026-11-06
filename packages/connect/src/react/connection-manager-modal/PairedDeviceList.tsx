@@ -86,9 +86,18 @@ function DeviceRow({
           {!device.connectedClients && activity.recentlyActive && (
             <span className="station-connect-chip">Active recently</span>
           )}
-          {device.revokedAt === null && !device.connectedClients && (
-            <span className="station-connect-chip">Has access</span>
+          {/* #4519: suspended by a managed policy is not access, and not
+              revocation either: the device keeps its Revoke action. */}
+          {device.revokedAt === null && device.suspended && (
+            <span className="station-connect-chip">
+              Suspended by {device.suspended.organization}’s policy
+            </span>
           )}
+          {device.revokedAt === null &&
+            !device.suspended &&
+            !device.connectedClients && (
+              <span className="station-connect-chip">Has access</span>
+            )}
         </div>
         <div className="station-connect-row__meta">
           {describeDeviceScope(device.scope)} · {activity.pairedLabel}

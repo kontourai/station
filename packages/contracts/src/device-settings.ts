@@ -1293,7 +1293,6 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
  */
 export const PREFERENCE_DEVICE_KEYS = [
   'theme',
-  'showReleaseNotesAfterUpdate',
   'accentColor',
   'colorTheme',
   'colorThemeFlavor',

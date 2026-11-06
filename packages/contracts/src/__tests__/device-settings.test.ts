@@ -149,7 +149,6 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(keys).toEqual(
       [
         'theme',
-        'showReleaseNotesAfterUpdate',
         'accentColor',
         'featureSettings',
         'sttProvider',

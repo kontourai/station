@@ -8,4 +8,4 @@
  * list would trigger a real bundle build on every test run. This module has
  * no side effects and is safe to import from anywhere.
  */
-export const CLI_EXTERNALS = ['esbuild', '@napi-rs/keyring'];
+export const CLI_EXTERNALS = ['esbuild', '@napi-rs/keyring', 'koffi'];

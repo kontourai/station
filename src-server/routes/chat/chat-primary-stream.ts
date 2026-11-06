@@ -103,6 +103,12 @@ type ChatOperationContext = Record<string, unknown> & {
 };
 
 interface StreamPrimaryAgentChatArgs {
+  /**
+   * The private-memory brief reserved for this turn. The stream reports
+   * `delivered` when the agent is invoked with it and `abandoned` whenever the
+   * turn ends without reaching the agent (a refusal, a replayed turn, an error).
+   */
+  memoryBrief?: { delivered(): void; abandoned(): void };
   c: Context;
   ctx: RuntimeContext;
   slug: string;
@@ -187,6 +193,7 @@ export function logDebugChatImages(
 }
 
 export function streamPrimaryAgentChat({
+  memoryBrief,
   c,
   ctx,
   slug,
@@ -238,6 +245,7 @@ export function streamPrimaryAgentChat({
       ? dedupStore?.claim(requestedClientTurnId, inputDigest)
       : undefined;
   } catch (error) {
+    memoryBrief?.abandoned();
     releaseRelayScopes({
       nativeForeground,
       nativeWorkspace,
@@ -247,6 +255,7 @@ export function streamPrimaryAgentChat({
   }
   if (initialClaim && !initialClaim.claimed && 'outcome' in initialClaim) {
     if (initialClaim.outcome === 'conflict') {
+      memoryBrief?.abandoned();
       releaseRelayScopes({
         nativeForeground,
         nativeWorkspace,
@@ -262,6 +271,7 @@ export function streamPrimaryAgentChat({
       );
     }
     chatTurnDedup.add(1, { outcome: initialClaim.outcome });
+    memoryBrief?.abandoned();
     releaseRelayScopes({
       nativeForeground,
       nativeWorkspace,
@@ -622,6 +632,7 @@ export function streamPrimaryAgentChat({
         if (clientTurnId && ownsClientTurnClaim)
           dedupStore?.beginInvocation(clientTurnId);
         agentInvoked = true;
+        memoryBrief?.delivered();
         return agent.streamText(input as string, streamOptions);
       };
       result = nativeForeground
@@ -836,6 +847,9 @@ export function streamPrimaryAgentChat({
       await StreamOrchestrator.writeSSEDone(streamWriter);
     } finally {
       stopKeepalive();
+      // A turn that ended without invoking the agent (a replayed turn, a refusal, an
+      // error) did not deliver its brief; a delivered one is unaffected.
+      if (!agentInvoked) memoryBrief?.abandoned();
       releaseDurableForeground(streamWriter, releaseApprovalRequester);
       // archive#1224 (offline): the dedup short-circuit above
       // already wrote its own terminal SSE frames and `return`ed — none of

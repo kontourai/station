@@ -1,10 +1,26 @@
-import { ChildProcess, execFile } from 'node:child_process';
+import { ChildProcess, execFile, spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from '../../../scripts/lib/owned-process.mjs';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { NodePtyAdapter } from '../node-pty-adapter.js';
 
 const census = vi.hoisted(() => ({ read: vi.fn() }));
+const workloads = vi.hoisted(() => ({ prepare: vi.fn() }));
+vi.mock('@kontourai/station-shared/child-workload', async (original) => ({
+  ...(await original<
+    typeof import('@kontourai/station-shared/child-workload')
+  >()),
+  prepareChildWorkload: workloads.prepare,
+}));
 vi.mock('node:child_process', async (original) => {
   const { promisify } = await import('node:util');
   const actual = await original<typeof import('node:child_process')>();
@@ -89,7 +105,330 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
   });
 });
 
+describe('pending native PTY startup admission', () => {
+  afterEach(() => {
+    workloads.prepare.mockReset();
+    vi.useRealTimers();
+  });
+
+  async function pendingBackend() {
+    const socket = new EventEmitter();
+    const data = new EventEmitter();
+    const exits = new Set<
+      (event: { exitCode: number; signal?: number }) => void
+    >();
+    const pty = {
+      pid: 0,
+      cols: 80,
+      rows: 24,
+      process: 'cmd.exe',
+      handleFlowControl: false,
+      _socket: socket,
+      _agent: { kill: vi.fn() },
+      onData: (callback: (value: string) => void) => {
+        data.on('data', callback);
+        return { dispose: () => data.off('data', callback) };
+      },
+      onExit: (
+        callback: (event: { exitCode: number; signal?: number }) => void,
+      ) => {
+        exits.add(callback);
+        return { dispose: () => exits.delete(callback) };
+      },
+      write: vi.fn(),
+      resize: vi.fn(),
+      clear: vi.fn(),
+      kill: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+    } satisfies import('node-pty').IPty & {
+      _socket: EventEmitter;
+      _agent: { kill(): void };
+    };
+    const launch = {
+      command: SPAWN_INPUT.shell,
+      args: [],
+      env: SPAWN_INPUT.env,
+      started: vi.fn(),
+      close: vi.fn(async () => {}),
+    };
+    workloads.prepare.mockReturnValue(launch);
+    const native = await vi.importActual<typeof import('node-pty')>('node-pty');
+    const spawn = vi.fn(() => pty);
+    const adapter = new NodePtyAdapter(async () => ({ ...native, spawn }));
+    return {
+      pty,
+      socket,
+      launch,
+      spawn,
+      adapter,
+      data: (value: string) => data.emit('data', value),
+      exit: () => {
+        for (const callback of exits) callback({ exitCode: 1 });
+      },
+    };
+  }
+
+  test('does not publish or track PID zero, and admits a quiet ready process', async () => {
+    const backend = await pendingBackend();
+    let admitted = false;
+    const pending = backend.adapter.spawn(SPAWN_INPUT).then((proc) => {
+      admitted = true;
+      return proc;
+    });
+    await vi.waitFor(() => expect(backend.spawn).toHaveBeenCalledOnce());
+    expect(admitted).toBe(false);
+    expect(backend.launch.started).not.toHaveBeenCalled();
+    backend.pty.pid = 9321;
+    backend.socket.emit('ready_datapipe');
+    const proc = await pending;
+    expect(proc.pid).toBe(9321);
+    expect(backend.launch.started).toHaveBeenCalledExactlyOnceWith(9321);
+    const output = vi.fn();
+    proc.onData(output);
+    backend.data('after admission');
+    expect(output).toHaveBeenCalledExactlyOnceWith('after admission');
+    backend.exit();
+    await vi.waitFor(() => expect(backend.launch.close).toHaveBeenCalledOnce());
+  });
+
+  test('releases a quiet Windows backend after its admitted process exits', async () => {
+    const backend = await pendingBackend();
+    const pending = backend.adapter.spawn(SPAWN_INPUT);
+    await vi.waitFor(() => expect(backend.spawn).toHaveBeenCalledOnce());
+    backend.pty.pid = 9321;
+    backend.socket.emit('ready_datapipe');
+    const proc = await pending;
+    expect(proc.pid).toBe(9321);
+    backend.exit();
+    await vi.waitFor(() => expect(backend.launch.close).toHaveBeenCalledOnce());
+    expect(backend.pty._agent.kill).toHaveBeenCalledOnce();
+    expect(backend.pty.kill).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    'error',
+    'error during ready',
+    'close',
+    'exit',
+    'exit during ready',
+    'invalid PID',
+  ] as const)(
+    'refuses a pre-admission %s and closes its owned launch',
+    async (failure) => {
+      const backend = await pendingBackend();
+      if (failure === 'error during ready') {
+        backend.socket.once('ready_datapipe', () => {
+          backend.pty.pid = 9321;
+          // node-pty's ready handler installs this pipe-error ownership check.
+          backend.socket.on('error', () => {
+            if (backend.socket.listenerCount('error') < 2) {
+              throw new Error('unowned terminal pipe error');
+            }
+          });
+        });
+      }
+      const rejected = backend.adapter.spawn(SPAWN_INPUT).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await vi.waitFor(() => expect(backend.spawn).toHaveBeenCalledOnce());
+      const reason = new Error('named pipe refused');
+      if (failure === 'error') backend.socket.emit('error', reason);
+      else if (failure === 'error during ready') {
+        backend.socket.emit('ready_datapipe');
+        backend.socket.emit('error', reason);
+      } else if (failure === 'close') backend.socket.emit('close');
+      else if (failure === 'exit') backend.exit();
+      else if (failure === 'exit during ready') {
+        backend.pty.pid = 9321;
+        backend.socket.emit('ready_datapipe');
+        backend.exit();
+      } else backend.socket.emit('ready_datapipe');
+      const error = await rejected;
+      expect(error).toBeInstanceOf(Error);
+      if (failure === 'error' || failure === 'error during ready') {
+        expect(error).toBe(reason);
+      }
+      expect(isPtyUnavailableError(error)).toBe(false);
+      expect(backend.launch.started).not.toHaveBeenCalled();
+      expect(backend.launch.close).toHaveBeenCalledOnce();
+      const killedByAdapter =
+        failure === 'exit' || failure === 'exit during ready' ? 0 : 1;
+      expect(backend.pty._agent.kill).toHaveBeenCalledTimes(killedByAdapter);
+      expect(backend.pty.kill).not.toHaveBeenCalled();
+      backend.pty.pid = 9321;
+      backend.socket.emit('ready_datapipe');
+      await Promise.resolve();
+      expect(backend.launch.started).not.toHaveBeenCalled();
+      expect(backend.pty._agent.kill).toHaveBeenCalledTimes(killedByAdapter);
+      expect(backend.socket.listenerCount('ready_datapipe')).toBe(0);
+      if (failure !== 'close') {
+        expect(() =>
+          backend.socket.emit('error', new Error('pipe closing')),
+        ).not.toThrow();
+        backend.socket.emit('close');
+      }
+      expect(backend.socket.listenerCount('error')).toBe(
+        failure === 'error during ready' ? 1 : 0,
+      );
+    },
+  );
+
+  test('bounds a missing readiness signal and ignores a later completion', async () => {
+    const backend = await pendingBackend();
+    vi.useFakeTimers();
+    const rejected = backend.adapter.spawn(SPAWN_INPUT).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(backend.launch.close).not.toHaveBeenCalled();
+    expect(backend.launch.started).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await rejected).toMatchObject({
+      message: 'PTY startup readiness timed out',
+    });
+    expect(backend.pty._agent.kill).toHaveBeenCalledOnce();
+    expect(backend.launch.close).toHaveBeenCalledOnce();
+    backend.pty.pid = 9321;
+    backend.socket.emit('ready_datapipe');
+    await vi.runAllTimersAsync();
+    expect(backend.launch.started).not.toHaveBeenCalled();
+    expect(backend.socket.listenerCount('ready_datapipe')).toBe(0);
+  });
+});
+
 describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
+  const makeTempDir = trackTempDirs();
+
+  async function runNativeFixture(fixture: URL, schema: string, label: string) {
+    const execution = executeOwnedCommand(
+      process.execPath,
+      [
+        '--import',
+        import.meta.resolve('tsx'),
+        fileURLToPath(fixture),
+        makeTempDir('node-pty-native-lifecycle-'),
+      ],
+      spawn,
+      label,
+      {
+        cwd: fileURLToPath(new URL('../../../', import.meta.url)),
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const capture = captureOwnedProcessOutput(execution, {
+      maxBytes: 64 * 1024,
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let result: Awaited<typeof execution.completion> | undefined;
+    let failure: unknown;
+    let containment: Awaited<ReturnType<typeof terminateSuiteExecution>>;
+    try {
+      result = await Promise.race([
+        execution.completion,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Native PTY child did not retire')),
+            20_000,
+          );
+        }),
+      ]);
+    } catch (error) {
+      failure = error;
+    } finally {
+      clearTimeout(timer);
+      containment = await terminateSuiteExecution(execution, {
+        waitForSuiteSettlement,
+        terminationGraceMs: 1_000,
+        terminationForceMs: 2_000,
+        processLabel: label,
+      });
+    }
+    const output = capture.finish();
+    const diagnostic = JSON.stringify({
+      result,
+      failure: failure instanceof Error ? failure.message : failure,
+      containment,
+      stdout: output.stdout.text,
+      stderr: output.stderr.text,
+    });
+    expect(failure, diagnostic).toBeUndefined();
+    expect(result, diagnostic).toMatchObject({ status: 0, signal: null });
+    expect(result?.error, diagnostic).toBeUndefined();
+    expect(output.truncated, diagnostic).toBe(false);
+    expect(output.invalidUtf8, diagnostic).toBe(false);
+    expect(containment, diagnostic).toEqual({
+      settled: true,
+      escalated: false,
+      errors: [],
+    });
+    expect(execution.isAlive(), diagnostic).toBe(false);
+    const receipts = output.stdout.text
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith(`{"schema":"${schema}"`));
+    expect(receipts, diagnostic).toHaveLength(1);
+    const receipt = JSON.parse(receipts[0]);
+    expect(receipt, diagnostic).toMatchObject({ status: 'PASS' });
+    return { receipt, diagnostic };
+  }
+
+  test('concurrent native exits and resizes survive through process retirement (#4626)', async () => {
+    const { receipt, diagnostic } = await runNativeFixture(
+      new URL('./fixtures/node-pty-concurrent-exit.mjs', import.meta.url),
+      'station-pty-concurrent-exit/1',
+      'native PTY concurrent exit regression',
+    );
+    expect(receipt, diagnostic).toMatchObject({
+      started: 30,
+      ready: 30,
+      exited: 30,
+    });
+    expect(receipt.resizes, diagnostic).toBeGreaterThan(0);
+  }, 30_000);
+
+  test('a paused silent native child exits and releases its output reader', async () => {
+    const { receipt, diagnostic } = await runNativeFixture(
+      new URL('./fixtures/node-pty-quiet-exit.mjs', import.meta.url),
+      'station-pty-quiet-exit/1',
+      'native PTY quiet exit regression',
+    );
+    expect(Number.isInteger(receipt.pid), diagnostic).toBe(true);
+    expect(receipt.pid, diagnostic).toBeGreaterThan(0);
+    expect(receipt, diagnostic).toMatchObject({ outputBytes: 0, exitCode: 0 });
+    expect([null, 0], diagnostic).toContain(receipt.signal);
+    expect(receipt.readerPortsAfter, diagnostic).toBeLessThanOrEqual(
+      receipt.readerPortsBefore,
+    );
+  }, 30_000);
+
+  test('cancelled vendor allocation ignores late worker readiness and errors', async () => {
+    const { receipt, diagnostic } = await runNativeFixture(
+      new URL('./fixtures/node-pty-cancel-ready.mjs', import.meta.url),
+      'station-pty-cancel-ready/1',
+      'vendor readiness cancellation',
+    );
+    expect(receipt, diagnostic).toMatchObject({
+      status: 'PASS',
+      cancelled: {
+        mode: 'cancel',
+        connections: 0,
+        errors: 0,
+        pid: 0,
+        disposals: 1,
+      },
+      timedOut: {
+        mode: 'timeout',
+        connections: 0,
+        errors: 1,
+        pid: 0,
+        disposals: 1,
+      },
+    });
+  }, 30_000);
+
   /** node-pty runs each ConPTY's output reader on a worker thread. */
   const workerThreads = () =>
     process.getActiveResourcesInfo().filter((name) => name === 'MessagePort')

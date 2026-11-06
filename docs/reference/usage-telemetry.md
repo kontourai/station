@@ -59,7 +59,9 @@ sharing question itself is visible. Advanced saves still persist preferences
 when that question is offscreen, but record no built-in notice. A visible plugin
 row cannot supply that evidence. Hidden or covered questions cannot supply it either.
 DNT still refuses notice writes. CLI/headless starts are unchanged: printing
-the notice counts as showing it. A status fetch alone never records presentation. A current
+the notice counts as showing it. Under a managed policy with `limits.telemetry:
+false`, neither `station start` nor a headless server prints the notice or
+records it as shown. A status fetch alone never records presentation. A current
 notice prevents another prompt on remount; a changed notice revision prompts
 again. Off remains available in Settings. Resetting Station settings preserves
 sharing choices.
@@ -120,7 +122,10 @@ translated into tier changes under the same authorization rules.
 
 Telemetry has per-publisher `off`, `lite`, and `full` tiers. Kontour/operator default to Lite; third-party plugin publishers default Off and require explicit opt-in;
 Off permits no product traffic to that publisher, and Full requires explicit choice
-and the current disclosure receipt. `DO_NOT_TRACK` with any value except empty or
+and the current disclosure receipt. A [managed policy](../guides/managed-policy.md#capability-switches)
+with `limits.telemetry: false` forces Off for every publisher with reason
+`managed`, ahead of every other input, and stops OpenTelemetry export as well.
+`DO_NOT_TRACK` with any value except empty or
 `0` forces Off for every publisher. Saved `telemetryTier` choices precede
 `STATION_TELEMETRY_TIER`, then the legacy product-enabled aliases.
 Distribution/operator policies can lower the default, never raise it to Full;
@@ -183,7 +188,7 @@ before sending. A Lite inventory change requires a new notice, while a Full
 inventory change requires a new acknowledgement.
 
 Use `station telemetry status` to read effective tiers and reasons (`DNT`,
-`policy`, `default`, `user`, `disclosure`, `environment`) from a running Station. Use
+`managed`, `policy`, `default`, `user`, `disclosure`, `environment`) from a running Station. Use
 `station telemetry set operator off` or `station telemetry set kontour anonymous`
 to save a single publisher choice. For `kontour` and `operator` only, `anonymous`
 is an input alias for `lite`; `lite` remains accepted and is the stored value.
@@ -386,6 +391,9 @@ observation or commit receipt. It does not create an installation identifier or
 acknowledge disclosure. Other address shapes report unsupported instead of
 guessing a credential-bearing request path. Revoked keys and incompatible
 storage fail. Probe readiness is distinct from an acknowledged usage event.
+Under a managed policy with `limits.telemetry: false` both checks are refused,
+and the delivery status carries the policy sentence as `managedDenial` on the
+product and OTel rows, so Settings disables both **Check connection** buttons.
 
 Status reads require `orchestration:read`; connection checks require
 `access:manage`, including paired callers. Status responses contain presence
@@ -693,7 +701,15 @@ in `publicTelemetryRegistries`; absent classification refuses the declaration.
 Distribution manifests remain design-only and will share the declaration schema
 and tier resolver.
 
-Publishers appear in the existing status map as `publisher:<24 hex registry-key digest>/<verified registry item id>`. `station telemetry set publisher:<digest>/writer off` stores an independent choice;
+Publishers appear in the existing status map as `publisher:<24 lowercase hex registry-key digest>/<verified registry item id>`.
+The item follows the telemetry declaration grammar: a lowercase ASCII letter or
+digit, then lowercase letters, digits, `.`, `_`, `:`, or `-`, with a maximum of
+128 characters. Uppercase items and trailing newlines are refused.
+Reserved item keys `constructor` and `prototype` are refused; the digest segment
+must be exactly 24 lowercase hex characters. Extra `/` segments are refused.
+Legacy `publisher:<id>` remains accepted with lowercase letters and the same
+128-character item bound. `station telemetry set publisher:<digest>/writer lite`
+stores and reloads an independent choice; use `off` to disable that publisher;
 `station telemetry outbox --publisher publisher:<digest>/writer` filters the shared ledger.
 The status API keeps its top-level built-in inventory fields. Each plugin publisher
 adds `destination`, `endpointConfigured`, `liteInventoryRevision`, `liteInventory`,

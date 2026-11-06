@@ -91,6 +91,7 @@ import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.j
 import {
   isRegistryAcquisitionRefusal,
   registryAcquisitionRefusalDetails,
+  registryAcquisitionRefusalStatus,
 } from '../../services/plugins/registry-acquisition.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { pluginUpdates } from '../../telemetry/metrics.js';
@@ -452,8 +453,7 @@ export function registerPluginLifecycleRoutes(
       // so the boot-time background check can run it in-process; the route
       // stays the operator-gated HTTP seam over the same scan.
       try {
-        const { updates } = await checkPluginUpdates({ pluginsDir, logger });
-        return c.json({ updates });
+        return c.json(await checkPluginUpdates({ pluginsDir, logger }));
       } catch (error: unknown) {
         logger.error('Failed to check for updates', {
           error: errorMessage(error),
@@ -1145,7 +1145,7 @@ export function registerPluginLifecycleRoutes(
             success: false,
             ...registryAcquisitionRefusalDetails(error),
           },
-          409,
+          registryAcquisitionRefusalStatus(error),
         );
       if (
         isContextSafetyError(error) ||

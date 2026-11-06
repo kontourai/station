@@ -73,6 +73,8 @@ vi.mock('../../../contexts/AgentsContext', () => ({
 // /agents/materialize-engine` (archive#3627) — so the batch is observed here
 // as the mutation it really performs, not as an agent-draft create.
 vi.mock('@kontourai/station-sdk', () => ({
+  // #4519: the connected Station has no managed policy.
+  useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   useMaterializeEngineAgentMutation: () => ({
     mutateAsync: materializeEngineAgent,
   }),

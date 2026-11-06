@@ -22,9 +22,12 @@ describe('registerManifestRegistryProvider', () => {
       const provider = new JsonManifestRegistryProvider(
         join(process.cwd(), 'examples', 'registry', 'manifest.json'),
         process.cwd(),
+        undefined,
+        undefined,
+        { bundled: origin === 'bundled' },
       );
 
-      registerManifestRegistryProvider(provider, origin);
+      registerManifestRegistryProvider(provider);
 
       // The agent surface gets the manifest's AGENT view, not the provider:
       // the bundled catalog declares no agent kind, so browsing Agents is

@@ -656,6 +656,13 @@ function assertRealRuntimePrune(release: string) {
     existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents/dist')),
   ).toBe(true);
   expect(existsSync(join(flowAgents, 'dist'))).toBe(false);
+  // The package's own TypeScript input and test harness are not shipped either, while
+  // the repository's installed copy has them.
+  expect(
+    existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents/src')),
+  ).toBe(true);
+  expect(existsSync(join(flowAgents, 'src'))).toBe(false);
+  expect(existsSync(join(flowAgents, 'evals'))).toBe(false);
   for (const required of [
     'build/src/index.js',
     'build/src/cli/assignment-provider.js',
@@ -944,11 +951,51 @@ describe('server build package portability', () => {
       'rxjs-node-runtime-only',
       'otlp-transformer-node-runtime-only',
       'node-pty-foreign-prebuilds',
+      'koffi-build-sources',
+      'koffi-off-windows',
       'flow-agents-harness-bundles',
+      'flow-agents-development-sources',
     ]);
     expect(RUNTIME_DEPENDENCY_EXCLUSIONS.map((rule) => rule.id)).toEqual([
       'flow-agents-bundle-builder-esbuild',
     ]);
+  });
+
+  it('keeps a loadable koffi for Windows staging and only its licenses elsewhere (#4524)', () => {
+    const root = makeTempDir('station-runtime-koffi-');
+    const stage = (platform: NodeJS.Platform) => {
+      const output = join(root, platform);
+      stageDesktopServerRuntime({
+        projectRoot: repoRoot,
+        outputRoot: output,
+        packages: ['koffi'],
+        platform,
+        arch: process.arch,
+      });
+      return join(output, 'node_modules');
+    };
+
+    // Use the installed host binary with the Windows retention rules. This
+    // reaches koffi's real loader without pretending to run Win32 APIs here.
+    const windows = stage('win32');
+    const requireStaged = createRequire(join(windows, '../probe.cjs'));
+    const koffi = requireStaged('koffi');
+    expect(koffi.sizeof('uint32_t')).toBe(4);
+    for (const dir of ['vendor', 'doc'])
+      expect(existsSync(join(windows, 'koffi', dir))).toBe(false);
+
+    for (const platform of ['linux', 'darwin'] as const) {
+      const staged = stage(platform);
+      expect(readdirSync(join(staged, 'koffi')).sort()).toEqual([
+        'LICENSE.txt',
+        'package.json',
+      ]);
+      for (const native of readdirSync(join(staged, '@koromix'))) {
+        expect(readdirSync(join(staged, '@koromix', native))).toEqual([
+          'package.json',
+        ]);
+      }
+    }
   });
 
   it('ships compiled SDK entrypoints without their development sources and keeps Node Cedar assets', async () => {
@@ -1066,6 +1113,9 @@ describe('server build package portability', () => {
         'context/settings/backlog-provider-settings.json': '{}',
         'dist/codex/build/src/index.js': 'bundle',
         'dist/catalog.json': '{}',
+        'src/index.ts': 'export {};',
+        'evals/run.sh': '#!/bin/sh',
+        'evals/cases/example.json': '{}',
         LICENSE: 'MIT',
       },
     );
@@ -1096,6 +1146,9 @@ describe('server build package portability', () => {
     });
     const staged = join(output, 'node_modules/@kontourai/flow-agents');
     expect(existsSync(join(staged, 'dist'))).toBe(false);
+    // The package's own TypeScript input and test harness are not shipped...
+    expect(existsSync(join(staged, 'src'))).toBe(false);
+    expect(existsSync(join(staged, 'evals'))).toBe(false);
     for (const kept of [
       'build/src/index.js',
       'build/src/cli/assignment-provider.js',
