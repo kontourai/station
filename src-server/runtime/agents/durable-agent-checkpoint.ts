@@ -21,7 +21,7 @@ export function durableAgentCheckpoint(database: DatabaseSync) {
     );
     jobs.add(worker);
     await new Promise<void>((resolve, reject) => {
-      let failure: Error | undefined;
+      let failure: unknown;
       let acknowledged = false;
       worker.once('message', (value: unknown) => {
         acknowledged = value === null;
