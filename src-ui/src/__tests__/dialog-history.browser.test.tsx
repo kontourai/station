@@ -14,7 +14,14 @@ history.replaceState({}, '', '/earlier');
 history.pushState({}, '', '/inventory');
 const handoff = window.handoff = {backs: 0, pops: 0, replacementAt: 1,
   synthetic: false, afterOpen: null, stackedReader: false, openedAtPops: null,
-  replacementMarker: null};
+  rejectPublication: false};
+const nativePush = history.pushState.bind(history);
+history.pushState = (state, title, url) => {
+  if (handoff.rejectPublication && handoff.pops > 0 && state?.__stationDialog) {
+    throw new DOMException('Queued history publication rejected', 'SecurityError');
+  }
+  nativePush(state, title, url);
+};
 const nativeBack = history.back.bind(history);
 history.back = () => {
   handoff.backs += 1;
@@ -22,7 +29,6 @@ history.back = () => {
   if (handoff.backs === handoff.replacementAt) {
     flushSync(() => handoff.openReader());
     handoff.openedAtPops = handoff.pops;
-    handoff.replacementMarker = history.state?.__stationDialog ?? null;
     if (handoff.afterOpen === 'unmount') flushSync(() => handoff.closeReader());
     if (handoff.afterOpen === 'remove-host') flushSync(() => handoff.removeHost());
     if (handoff.afterOpen === 'navigate') {
@@ -77,20 +83,19 @@ interface Handoff {
   synthetic: boolean;
   afterOpen: 'unmount' | 'remove-host' | 'navigate' | null;
   stackedReader: boolean;
+  rejectPublication: boolean;
   openedAtPops: number | null;
-  replacementMarker: string | null;
 }
 
 async function readHandoff(page: Page) {
   return page.evaluate(() => {
-    const { backs, pops, openedAtPops, replacementMarker } = (
+    const { backs, pops, openedAtPops } = (
       window as unknown as { handoff: Handoff }
     ).handoff;
     return {
       backs,
       pops,
       openedAtPops,
-      replacementMarker,
       marker: history.state?.__stationDialog ?? null,
       pathname: location.pathname,
     };
@@ -138,7 +143,6 @@ test.each([
           (window as unknown as { handoff: Handoff }).handoff.pops >= count,
         pops,
       );
-      await page.getByRole('dialog', { name: 'Chat inventory' }).waitFor();
       const landed = await readHandoff(page);
       expect(landed.openedAtPops).toBe(pops - 1);
       expect(landed.backs).toBe(pops);
@@ -146,6 +150,7 @@ test.each([
       expect(landed.pathname).toBe('/inventory');
       expect(landed.marker).toBeTruthy();
       expect(await page.locator('#closes').textContent()).toBe('0');
+      await page.getByRole('dialog', { name: 'Chat inventory' }).waitFor();
 
       await page.evaluate(() => history.back());
       await page
@@ -233,6 +238,34 @@ test('live replacements publish in order after cleanup and Back closes each once
     await page.evaluate(() => history.back());
     await page.waitForURL('http://station.test/earlier');
     expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('a rejected queued History write closes its unpublished reader and propagates the error', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(fixture);
+  try {
+    await page.evaluate(() => {
+      (window as unknown as { handoff: Handoff }).handoff.rejectPublication =
+        true;
+    });
+    await page.getByRole('button', { name: 'Actions', exact: true }).click();
+    await page.getByRole('button', { name: 'Show inventory' }).click();
+    await page.waitForFunction(
+      () => (window as unknown as { handoff: Handoff }).handoff.pops === 1,
+    );
+    expect(errors).toEqual(['Queued history publication rejected']);
+    await page.getByRole('dialog').waitFor({ state: 'detached' });
+    expect(await page.locator('#closes').textContent()).toBe('1');
+    expect(await readHandoff(page)).toMatchObject({
+      backs: 1,
+      pops: 1,
+      marker: null,
+      pathname: '/inventory',
+    });
+    await page.evaluate(() => history.back());
+    await page.waitForURL('http://station.test/earlier');
   } finally {
     await browser.close();
   }

@@ -186,7 +186,13 @@ function flushPendingEntries() {
   cancelInvalidPendingEntries();
   for (const entry of entries) {
     if (entry.published || entry.cleanupToken) continue;
-    publishDialogEntry(entry);
+    try {
+      publishDialogEntry(entry);
+    } catch (error) {
+      entries.splice(entries.indexOf(entry), 1);
+      entry.close();
+      throw error;
+    }
   }
 }
 
