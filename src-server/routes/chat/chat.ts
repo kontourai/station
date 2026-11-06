@@ -85,6 +85,7 @@ import {
 } from './chat-primary-stream.js';
 import {
   type ChatMessage,
+  memoryBriefSessionFor,
   prepareChatRequest,
 } from './chat-request-preparation.js';
 import { ChatTurnDedupStore } from './chat-turn-dedup.js';
@@ -216,6 +217,13 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
       );
     }
 
+    // The memory brief reserved for this turn, if any: it is settled by the stream
+    // (delivered when the agent is invoked) or, if the turn never reaches the stream,
+    // abandoned below so the conversation can be briefed on a retry.
+    let memoryBriefDelivery:
+      | { delivered(): void; abandoned(): void }
+      | undefined;
+    let briefHandedToStream = false;
     try {
       if (trustedRelay && relayHandoff && !turnCorrelation)
         throw new NativeMemoryContinuityUnavailableError();
@@ -283,15 +291,30 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         injectContext,
         ragContext: preparedRagContext,
         contextInjection,
+        memoryBriefDelivery: preparedBriefDelivery,
       } = await prepareChatRequest({
         ctx,
         slug,
+        request: c.req.raw,
+        // Who the session belongs to, as Station's own relay recorded it. A direct
+        // caller names no owner: the memory brief then follows the request's own
+        // person. A relayed turn with no recorded owner gets no brief.
+        memoryBriefSession: memoryBriefSessionFor({
+          trustedToken: trustedRelay,
+          proxyCaller: c.req.header(INTERNAL_PROXY_CALLER_HEADER),
+          thread: relayThread,
+          userId: rawOptions.userId,
+          conversationId: rawOptions.conversationId,
+        }),
         input,
         options: optionsForPreparation,
         projectSlug,
         capturedProject: nativeForeground?.project,
         capturedWorkspaceRoot: nativeWorkspace?.workspaceRoot,
       });
+      // Adopt the brief before any guard below can refuse the turn, so the `finally`
+      // gives it back whatever refuses.
+      memoryBriefDelivery = preparedBriefDelivery;
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       if (
         nativeMemory &&
@@ -390,7 +413,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
 
       agent = await projectToolContext(ctx, slug, projectSlug, agent);
 
-      return streamPrimaryAgentChat({
+      const streamed = streamPrimaryAgentChat({
         c,
         ctx,
         slug,
@@ -405,6 +428,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         modelOverride,
         agent,
         configurationLease,
+        ...(memoryBriefDelivery ? { memoryBrief: memoryBriefDelivery } : {}),
         projectSlug,
         // archive#1224 (offline): claims live in the runtime's orchestration
         // store, so a replay of the same clientTurnId (retry, or a flushed
@@ -426,6 +450,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
           ? { nativeForeground, nativeRuntimeAgent: runtimeAgent.agent }
           : {}),
       });
+      // The stream owns the brief from here: it reports delivered or abandoned.
+      briefHandedToStream = true;
+      return streamed;
     } catch (error: unknown) {
       nativeWorkspace?.close();
       nativeForeground?.refuse();
@@ -461,6 +488,8 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
             ? 401
             : 500;
       return c.json({ success: false, error: errMsg }, status);
+    } finally {
+      if (!briefHandedToStream) memoryBriefDelivery?.abandoned();
     }
   });
 

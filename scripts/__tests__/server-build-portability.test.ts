@@ -656,6 +656,13 @@ function assertRealRuntimePrune(release: string) {
     existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents/dist')),
   ).toBe(true);
   expect(existsSync(join(flowAgents, 'dist'))).toBe(false);
+  // The package's own TypeScript input and test harness are not shipped either, while
+  // the repository's installed copy has them.
+  expect(
+    existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents/src')),
+  ).toBe(true);
+  expect(existsSync(join(flowAgents, 'src'))).toBe(false);
+  expect(existsSync(join(flowAgents, 'evals'))).toBe(false);
   for (const required of [
     'build/src/index.js',
     'build/src/cli/assignment-provider.js',
@@ -947,6 +954,7 @@ describe('server build package portability', () => {
       'koffi-build-sources',
       'koffi-off-windows',
       'flow-agents-harness-bundles',
+      'flow-agents-development-sources',
     ]);
     expect(RUNTIME_DEPENDENCY_EXCLUSIONS.map((rule) => rule.id)).toEqual([
       'flow-agents-bundle-builder-esbuild',
@@ -1105,6 +1113,9 @@ describe('server build package portability', () => {
         'context/settings/backlog-provider-settings.json': '{}',
         'dist/codex/build/src/index.js': 'bundle',
         'dist/catalog.json': '{}',
+        'src/index.ts': 'export {};',
+        'evals/run.sh': '#!/bin/sh',
+        'evals/cases/example.json': '{}',
         LICENSE: 'MIT',
       },
     );
@@ -1135,6 +1146,9 @@ describe('server build package portability', () => {
     });
     const staged = join(output, 'node_modules/@kontourai/flow-agents');
     expect(existsSync(join(staged, 'dist'))).toBe(false);
+    // The package's own TypeScript input and test harness are not shipped...
+    expect(existsSync(join(staged, 'src'))).toBe(false);
+    expect(existsSync(join(staged, 'evals'))).toBe(false);
     for (const kept of [
       'build/src/index.js',
       'build/src/cli/assignment-provider.js',

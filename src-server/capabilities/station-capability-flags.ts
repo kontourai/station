@@ -31,6 +31,9 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
+  // Private memory review, recall and briefing: src-server/routes/knowledge/
+  // memory-routes.ts. Hosted deployments withdraw it: see servesPrivateMemory.
+  privateMemoryReview: true,
   // Station routes: GET /api/system/routes reports the addresses this Station
   // is reached on (src-server/services/connections/station-routes.ts). Hosted
   // deployments withdraw it: see servesConnectionRoutes.
@@ -173,6 +176,11 @@ export function servesConnectionRoutes(
   return !deployment.hosted;
 }
 
+/** Private memory is a personal-host feature; hosted never binds its preview. */
+function servesPrivateMemory(deployment: StationCapabilityDeployment): boolean {
+  return !deployment.hosted;
+}
+
 /** Scheduler storage is not tenant-bound, so hosted routes refuse these targets. */
 function servesScheduledConversationTarget(
   deployment: StationCapabilityDeployment,
@@ -202,6 +210,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,
+  privateMemoryReview: servesPrivateMemory,
   scheduledConversationTarget: servesScheduledConversationTarget,
   coordinatorSession: servesCoordinatorSession,
 };
