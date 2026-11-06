@@ -56,6 +56,15 @@ both folders go through the same preparation, so the chat gets one private
 folder. With **Chats without a project** set to **Home folder**, the chat is
 still unbound and a confined Codex session uses the private folder here.
 
+On Windows, newly prepared scratch and managed engine folders use
+`~/.station-workspaces/<hash of Station home>/` in place of `<Station home>`.
+PowerShell reads ancestor attributes to establish its location; private Station
+data denies those reads, making relative commands start at `C:\` even when the
+process cwd is correct. Workspace placement preserves the data home's ACL and
+the engine's filesystem profile. Existing conversations keep their recorded
+folders. These Windows workspace files are external to Station home archives
+and resets; back them up and retire them separately, as with Project folders.
+
 The user home is too broad a writable sandbox root: Windows sandbox setup can
 recursively change ACLs throughout it, delaying commands and granting sandbox
 accounts access to unrelated launchers.
