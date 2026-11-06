@@ -6295,11 +6295,15 @@ exception for every iframe, image, or link request. See the
 
 ### CORS
 
-The running Station uses the exact browser origins assembled by
-[resolveStationBrowserOrigins](../../src-server/security/station-browser-origins.ts):
-configured additions, its bound-port loopback origins, native shell origins, and
-specific bound-host origins. The CLI adds its UI listener origins. Other origins
-are refused before route dispatch. This is not the permissive helper used when
+The running Station uses one browser-origin policy,
+[stationOriginPolicy](../../src-server/security/station-browser-origins.ts).
+It admits the exact configured origins first: configured additions, its
+bound-port loopback origins, native shell origins, and specific bound-host
+origins (the CLI adds its UI listener origins). It then admits this Station's
+own Tailscale Serve origin, which the local daemon attests and which is trusted
+for at most 1 second per read. The HTTP gates, the pairing check, the
+credential-free voice WebSocket and the sign-in origin picker all read this
+policy. Other origins are refused before route dispatch. This is not the permissive helper used when
 HTTP security is absent, and it does not allow every localhost port. Origin
 admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).

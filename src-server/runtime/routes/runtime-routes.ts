@@ -668,7 +668,11 @@ import {
   resolveInboundDeviceKindForRequest,
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
-import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
+import {
+  createStationOriginPolicy,
+  type StationOriginPolicy,
+  stationOriginPolicy,
+} from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
 import {
@@ -1843,7 +1847,13 @@ export function configureRuntimeRoutes(
   let deviceHostRegistry: DeviceHostRegistry | undefined;
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
   let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
-  const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
+  // The one browser-origin policy: configured origins, then this Station's
+  // own Tailscale Serve origin (attested by the daemon, not the request).
+  const originPolicy = stationOriginPolicy({
+    port: context.port,
+    host: context.host,
+  });
+  const allowedOrigins = originPolicy.configured;
   // #4519: the managed policy allows no remote clients.
   const localClientsOnly =
     context.managedPolicy != null &&
@@ -1926,7 +1936,7 @@ export function configureRuntimeRoutes(
     resolveCredentialOwnerStanding: (credential: string) =>
       context.environmentSecurityService.credentialHasOwnerStanding(credential),
     classifyPairedDeviceActivity: classifyRuntimePairedDeviceActivity,
-    allowedOrigins,
+    originPolicy,
     audit: (record: RuntimeSecurityAuditRecord) =>
       record.reason === 'route_scope_unmapped'
         ? context.logger.error('Route missing pairing-scope table entry', {
@@ -3131,7 +3141,7 @@ export function configureRuntimeRoutes(
     {
       operatorCli: () =>
         operatorCliCommand(context.buildProvenanceSnapshot?.channel),
-      allowedOrigins,
+      originPolicy,
       localGrant: {
         secretPath: join(
           context.configLoader.getProjectHomeDir(),
@@ -8143,7 +8153,7 @@ export function configureRuntimeRoutes(
               .split(',')
               .map((origin) => origin.trim())
               .filter(Boolean),
-            browserOrigins: resolveConfiguredRuntimeOrigins(context),
+            originPolicy,
             apiPort: context.port,
             uiPort,
             host: context.host,
@@ -13051,7 +13061,10 @@ export function configureDevicePairingPublicRoutes(
      * that tells a person what to run there. `station` when omitted.
      */
     operatorCli?: () => string;
+    /** Shorthand for a configured-only origin policy; ignored with `originPolicy`. */
     allowedOrigins?: readonly string[];
+    /** The runtime gate's own origin policy (`stationOriginPolicy`). */
+    originPolicy?: Pick<StationOriginPolicy, 'admits'>;
     /**
      * Same-user local self-authorization (station#1715). Present in every
      * production boot; omitted only by tests/harnesses that do not exercise
@@ -13107,10 +13120,6 @@ export function configureDevicePairingPublicRoutes(
   if (options.uiBootstrapToken)
     uiBootstrapTokens.set('launcher', options.uiBootstrapToken);
   const startupIdentity = options.startupIdentity?.();
-  // This id is server-owned and stable for this launcher's lifetime. A
-  // browser cannot choose a replacement domain merely by replaying a link,
-  // while a preserved HttpOnly session remains the cross-restart identity.
-  const uiBootstrapClientInstanceId = randomUUID();
   const failureLimiter =
     options.failureLimiter ?? new PairingFailureLimiter({ now: options.now });
   const attemptBudget = new BoundedAttemptBudget();
@@ -13466,7 +13475,7 @@ export function configureDevicePairingPublicRoutes(
       !body ||
       typeof body.token !== 'string' ||
       body.token.length === 0 ||
-      !isTrustedBrowserPairingOrigin(c.req.raw, options.allowedOrigins ?? [])
+      !(await isTrustedBrowserPairingOrigin(c.req.raw, options))
     ) {
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
     }
@@ -13518,6 +13527,13 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
     }
 
+    // Each redemption pairs a NEW browser, so it gets its own server-chosen
+    // instance id. `exchange` revokes every active device sharing the id
+    // (`same-client-replacement`), so one id per server lifetime made each
+    // link silently sign out every browser an earlier link signed in: a
+    // phone and a desktop could not both stay signed in. A browser that
+    // already holds a session took the branch above and keeps its device.
+    const uiBootstrapClientInstanceId = randomUUID();
     let bootstrapOfferId: string | undefined;
     try {
       const offer = pairing.createOffer({
@@ -13611,9 +13627,7 @@ export function configureDevicePairingPublicRoutes(
     }
     const ingressIdentity = identifyIngress(c);
     const requestSource = ingressIdentity ? 'tailnet' : 'same-origin';
-    if (
-      !isTrustedBrowserPairingOrigin(c.req.raw, options.allowedOrigins ?? [])
-    ) {
+    if (!(await isTrustedBrowserPairingOrigin(c.req.raw, options))) {
       devicePairingRequests.add(1, {
         source: requestSource,
         outcome: 'denied',
@@ -13959,7 +13973,7 @@ export function configureDevicePairingPublicRoutes(
     }
     if (
       browserCookieDelivery &&
-      !isTrustedBrowserPairingOrigin(c.req.raw, options.allowedOrigins ?? [])
+      !(await isTrustedBrowserPairingOrigin(c.req.raw, options))
     ) {
       deviceSessionExchanges.add(1, {
         outcome: 'denied',
@@ -14093,10 +14107,16 @@ export function configureDevicePairingPublicRoutes(
  * `Origin` to any of these — the browser controls that header — so seeing one
  * is itself evidence the caller is the packaged app rather than a site.
  */
-function isTrustedBrowserPairingOrigin(
+async function isTrustedBrowserPairingOrigin(
   request: Request,
-  allowedOrigins: readonly string[],
-): boolean {
+  options: {
+    allowedOrigins?: readonly string[];
+    originPolicy?: Pick<StationOriginPolicy, 'admits'>;
+  },
+): Promise<boolean> {
+  const policy =
+    options.originPolicy ??
+    createStationOriginPolicy({ configured: options.allowedOrigins ?? [] });
   const origin = request.headers.get('origin');
   if (!origin) return false;
   // A native shell reaching a REMOTE Station is inherently cross-site and its
@@ -14124,7 +14144,10 @@ function isTrustedBrowserPairingOrigin(
   } catch {
     requestOrigin = null;
   }
-  if (!allowedOrigins.includes(origin) && origin !== requestOrigin) {
+  // Behind `tailscale serve` TLS terminates in the daemon, so the request URL
+  // is plain HTTP and can never equal the HTTPS origin a caller addressed; the
+  // origin policy's owned-Serve-origin answer is the equivalent proof.
+  if (origin !== requestOrigin && !(await policy.admits(origin))) {
     return false;
   }
   const fetchSite = request.headers.get('sec-fetch-site');
@@ -15994,13 +16017,4 @@ export function isAttachmentStageGrantUploadRequest(request: Request): boolean {
       pathname,
     )
   );
-}
-
-function resolveConfiguredRuntimeOrigins(
-  context: Pick<ConfigureRuntimeRoutesContext, 'host' | 'port'>,
-): string[] {
-  return resolveStationBrowserOrigins({
-    port: context.port,
-    host: context.host,
-  });
 }

@@ -65,6 +65,7 @@ patchedDependencies:
   http-cache-semantics@4.3.0: 88d463d98aef02aa04f4263556dea7fe3fb8cf07121e1ea7a8e424e8bbeb7c15
   js-yaml@3.15.2: aaa638645f3fd548080d82130060918173c4ead501413be8c5a20478a13b1992
   node-forge@1.4.0: c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e
+  node-pty@1.2.0-beta.18: 8610a0b6c1765be945696c2b3b826d08938cf65b18890fc7b4662d07e88228b1
 
 importers:
 
@@ -200,8 +201,8 @@ importers:
         specifier: ^1.19.0
         version: 1.20.1(react@19.3.1)
       '@kontourai/veritas':
-        specifier: 1.12.1
-        version: 1.12.1(@kontourai/survey@8.4.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.7)
+        specifier: 1.12.2
+        version: 1.12.2(@kontourai/survey@8.4.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.7)
       '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0(patch_hash=2501897259233d420cf716d5490c38a87df5ff9f02de1d06587e74fc08bb0835)
@@ -365,8 +366,8 @@ importers:
         specifier: ^6.3.0
         version: 6.3.0
       node-pty:
-        specifier: 1.2.0-beta.17
-        version: 1.2.0-beta.17
+        specifier: 1.2.0-beta.18
+        version: 1.2.0-beta.18(patch_hash=8610a0b6c1765be945696c2b3b826d08938cf65b18890fc7b4662d07e88228b1)
       pdfjs-dist:
         specifier: ^6.5.438
         version: 6.5.438
@@ -2525,11 +2526,6 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/surface@2.18.0':
-    resolution: {integrity: sha512-lXWUchghnOOnXEkSbOUZbos6IpJPQfth1TPEh7mMMfrNDZ/TSQwgKlVsP2f+fJ90SPG93uSIizlS0kTmz9C51w==}
-    engines: {node: '>=22'}
-    hasBin: true
-
   '@kontourai/surface@4.4.1':
     resolution: {integrity: sha512-XuOmO3ZIoyxQCyofcjfj32sNsJ5YlzEiBqheYnnEq/XaB1oPeWRLjnLzFnWz5QUE2vJXg8yTxuCiF5nriYfT3A==}
     engines: {node: '>=22'}
@@ -2604,8 +2600,8 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
-  '@kontourai/veritas@1.12.1':
-    resolution: {integrity: sha512-113uoYsKhwDZdMEzGM/L7eCCkCeDLMSvrrdMlwxGtp3hHI+eTfC8czYiH16w7i1pOMk2XquU4LajziqM0ddPIw==}
+  '@kontourai/veritas@1.12.2':
+    resolution: {integrity: sha512-YSI4xCCib8bK8QQaX9uUHEDyBtMzKFGaF7pSzAxJaWd2V0rLaeKRSaw47b06+ju73c5Mb4Uy7ZN/hJMBXr1fVg==}
     engines: {node: '>=22'}
     hasBin: true
     peerDependencies:
@@ -6362,6 +6358,10 @@ packages:
     resolution: {integrity: sha512-4YKLShbDKG+k52lJvH9shup7UYAX7pW+EA8c/4dx3RQFqCmORHl9gjJrM9vUljuTml/haTJgWYPd1G1MWmrm8Q==}
     hasBin: true
 
+  hachure@0.18.0:
+    resolution: {integrity: sha512-DnSAPYqUxPEehNLPBoFoRNGeCNo8JdeB/Yy6DOFBPJg5zo+WcxZSx5RiR/Y6BQCSPkOqS7H5DYwTcx5H9lBTmw==}
+    hasBin: true
+
   hachure@0.5.1:
     resolution: {integrity: sha512-Vpj8iBgELlbGOUX8a6sgn6dnuJW4HwgLj4I+2ALQ2eu0Kz3E5Y4G8iv/QLGf+JSeBq23qYF0UUR9MmGYA8Yrxw==}
 
@@ -7427,8 +7427,8 @@ packages:
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
 
-  node-pty@1.2.0-beta.17:
-    resolution: {integrity: sha512-GapdTQQjXyS9ICBgsnBG27Ltfkh3hzTbFcC8r1MxRLsTVyA/3/8z1Vu+DJSNWhtKjwfTjoSPyCN6hQ/fwxlh9A==}
+  node-pty@1.2.0-beta.18:
+    resolution: {integrity: sha512-3Rej3788OnasAwoSmTZhlCeUraJ9CQldtL5b571b9+3Nv47+PaxA5VPIGOOs+16OYQePTrC1Lrs8a9/df5WPRg==}
 
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
@@ -10798,14 +10798,6 @@ snapshots:
       - kerberos
       - supports-color
 
-  '@kontourai/surface@2.18.0(supports-color@7.2.0)':
-    optionalDependencies:
-      '@sigstore/sign': 5.0.0(supports-color@7.2.0)
-      '@sigstore/verify': 4.1.2
-    transitivePeerDependencies:
-      - kerberos
-      - supports-color
-
   '@kontourai/surface@4.4.1(supports-color@7.2.0)':
     optionalDependencies:
       '@sigstore/bundle': 5.0.0
@@ -10888,15 +10880,15 @@ snapshots:
     dependencies:
       react: 19.3.1
 
-  '@kontourai/veritas@1.12.1(@kontourai/survey@8.4.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.7)':
+  '@kontourai/veritas@1.12.2(@kontourai/survey@8.4.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.7)':
     dependencies:
       '@kontourai/plumb': 0.2.0
-      '@kontourai/surface': 2.18.0(supports-color@7.2.0)
+      '@kontourai/surface': 6.2.1(supports-color@7.2.0)
       '@modelcontextprotocol/sdk': 1.32.2(supports-color@7.2.0)(zod@4.6.7)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       cross-spawn: 7.0.6
-      hachure: 0.15.0
+      hachure: 0.18.0
       picomatch: 4.0.7
     optionalDependencies:
       '@kontourai/survey': 8.4.0(supports-color@7.2.0)(typescript@7.0.2)
@@ -14980,6 +14972,8 @@ snapshots:
 
   hachure@0.15.0: {}
 
+  hachure@0.18.0: {}
+
   hachure@0.5.1: {}
 
   has-flag@4.0.0: {}
@@ -16377,7 +16371,7 @@ snapshots:
 
   node-int64@0.4.0: {}
 
-  node-pty@1.2.0-beta.17:
+  node-pty@1.2.0-beta.18(patch_hash=8610a0b6c1765be945696c2b3b826d08938cf65b18890fc7b4662d07e88228b1):
     dependencies:
       node-addon-api: 7.1.1
 

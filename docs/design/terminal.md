@@ -294,22 +294,34 @@ The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
 unknown or changed tty identity refuses all census signals; the adapter kills
 its owned shell handle and reports the cleanup failure instead of guessing
 at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
-On Windows the operation ends the shell's process tree with `taskkill /T /F`
+Before any census signal, a new POSIX child may still be attaching its
+controlling tty. The adapter retains the native fork's device name and waits
+within the existing census/deadline bounds for that exact binding. A different
+concrete device, an unknown binding after admission, or an ownership change
+still refuses signals; a missing binding never becomes successful cleanup.
+The backend is pinned to node-pty `1.2.0-beta.18`, whose Windows native handle
+registry is synchronized across spawn and exit threads. This pin is a published
+prerelease. Managed Linux installs retain the approved source-build path;
+upstream Linux prebuilds are not selected by directory presence. On Windows the operation ends the shell's process tree with `taskkill /T /F`
 before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
 stop (#3994). After a successful `taskkill` both hosts wait for the exit.
-node-pty's public Windows `kill()` waits for first output. On every exit,
-natural or not, the adapter therefore releases the native agent directly and
-closes its owned pipes, including for a silent or paused process. Its console
-process listing is answered empty: after exit the listing helper cannot attach,
-and its delayed fallback could signal a reused shell PID (#3994). Startup
-failures already released by the producer do not receive a second native kill.
-Before exit, the public `kill()` remains only the reported fallback for a tree
-`taskkill` that could not end the shell.
+After an admitted shell exits, the adapter releases it at most once and closes
+its owned pipes, including for a silent or paused process. Its console process
+listing is answered empty: after exit the listing helper cannot attach, and its
+delayed fallback could signal a reused shell PID (#3994). A PID-zero startup
+failure already released by the producer does not receive a second native kill;
+positive-PID failure cleanup retains one release owner. Before exit, public
+`kill()` remains only the reported fallback for a tree `taskkill` that could not
+end the shell.
 `taskkill` follows
 parent links, so a descendant whose parent already exited is not found
 (from its documented behavior; not exercised here).
+Station pins published `node-pty@1.2.0-beta.18` because its native Windows prebuilds include the [PTY-handle locking repair](https://github.com/microsoft/node-pty/pull/922). The 1.1.0 backend concurrently erased and read its global handle vector without synchronization; patching only JavaScript cannot repair that native race. This does not identify a hosted worker crash without its native dump.
+
+The [managed Windows lifecycle patch](../../patches/node-pty-1.2.0-beta.18.patch) observes socket close independently of pipe readiness and cancels pending startup or releases the native console without waiting for first output. Since the new backend starts asynchronously, the adapter waits for a positive PID before workload tracking, pauses reads until its first data subscriber, and retains an observed exit for a late subscriber. Startup failures reject and release the owned worker. The [adapter tests](../../src-server/adapters/__tests__/node-pty-adapter.test.ts) exercise initial output/exit, invalid-directory refusal, and real first-output notification held across termination. The process-group cleanup deadline remains unchanged.
+
 The real PTY tests qualify macOS cleanup of the tested descendants and, on
 ConPTY, of an attached, a `windowsHide` and a detached descendant. Other POSIX
 hosts and already-daemonized workloads are not newly qualified;
@@ -1180,7 +1192,7 @@ resizes, so ConPTY output replayed at another size can repaint over lines
 already scrolled. Earlier Windows floors lost a forked worker without an
 assertion or diagnostic. Issue #4626 now records the captured access violation
 (`0xc0000005`) and a controlled reproduction in node-pty 1.1's unsynchronized
-native handle-table removal. The exact 1.2.0-beta.17 dependency includes the
+native handle-table removal. The exact 1.2.0-beta.18 dependency includes the
 upstream locking and cancellation fixes; the Windows adapter suite checks
 positive-PID admission, an isolated concurrent exit/resize child, paused silent
 exit cleanup, and late vendor readiness after cancellation. Qualification of a

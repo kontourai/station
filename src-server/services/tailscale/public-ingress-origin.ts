@@ -132,6 +132,113 @@ function loopbackProxyPort(handler: unknown): number | undefined {
   return Number.isInteger(port) && port > 0 && port < 65_536 ? port : undefined;
 }
 
+interface ServeOriginCandidate {
+  readonly origin: string;
+  /**
+   * True only when the daemon would serve nothing but this Station at the
+   * origin: every handler proxies to one of `localPorts`, Funnel is off for
+   * the authority, no raw TCP forward replaces the web listener, and no
+   * foreground `serve` session overrides it.
+   */
+  readonly ownedByStation: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Every `host:port` a foreground session configures or exposes through Funnel. */
+function foregroundOrFunnelAuthorities(
+  config: Record<string, unknown>,
+): Set<string> {
+  const authorities = new Set<string>();
+  const funnel = config.AllowFunnel;
+  if (isRecord(funnel)) {
+    for (const [authority, allowed] of Object.entries(funnel)) {
+      if (allowed === true) authorities.add(authority.toLowerCase());
+    }
+  }
+  const foreground = config.Foreground;
+  if (isRecord(foreground)) {
+    for (const session of Object.values(foreground)) {
+      if (!isRecord(session)) continue;
+      if (isRecord(session.Web)) {
+        for (const authority of Object.keys(session.Web)) {
+          authorities.add(authority.toLowerCase());
+        }
+      }
+      for (const authority of foregroundOrFunnelAuthorities(session)) {
+        authorities.add(authority);
+      }
+    }
+  }
+  return authorities;
+}
+
+/** Root-handler candidates on this node's MagicDNS authority, in canonical order. */
+function serveOriginCandidates(
+  serveJson: string,
+  magicDnsHost: string,
+  localPorts: readonly number[],
+): readonly ServeOriginCandidate[] | undefined {
+  let serve: unknown;
+  try {
+    serve = JSON.parse(serveJson);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(serve)) return undefined;
+  const web = serve.Web;
+  if (!isRecord(web)) return undefined;
+  const wanted = new Set(localPorts);
+  const unowned = foregroundOrFunnelAuthorities(serve);
+  const tcp = isRecord(serve.TCP) ? serve.TCP : {};
+  const candidates: ServeOriginCandidate[] = [];
+  for (const [authority, listener] of Object.entries(web)) {
+    // Keys are `host:port`; IPv6 literals never appear here because a serve
+    // listener is published on the node's own MagicDNS authority.
+    const separator = authority.lastIndexOf(':');
+    if (separator <= 0) continue;
+    const host = authority.slice(0, separator).toLowerCase();
+    const servePort = Number(authority.slice(separator + 1));
+    if (host !== magicDnsHost) continue;
+    if (!Number.isInteger(servePort) || servePort <= 0 || servePort > 65_535) {
+      continue;
+    }
+    if (!isRecord(listener)) continue;
+    const handlers = listener.Handlers;
+    if (!isRecord(handlers)) continue;
+    const port = loopbackProxyPort(handlers['/']);
+    if (port === undefined || !wanted.has(port)) continue;
+    const tcpListener = tcp[String(servePort)];
+    const ownedByStation =
+      !unowned.has(`${host}:${servePort}`) &&
+      !(isRecord(tcpListener) && 'TCPForward' in tcpListener) &&
+      Object.values(handlers).every((handler) => {
+        const target = loopbackProxyPort(handler);
+        return target !== undefined && wanted.has(target);
+      });
+    candidates.push({
+      origin:
+        servePort === 443 ? `https://${host}` : `https://${host}:${servePort}`,
+      ownedByStation,
+    });
+  }
+  if (candidates.length === 0) return undefined;
+  // Deterministic when several listeners reach the same Station: prefer the
+  // default HTTPS port, then the lowest, so the endpoint a device is handed
+  // does not depend on object key order.
+  candidates.sort(({ origin: left }, { origin: right }) => {
+    const leftPort = Number(new URL(left).port || '443');
+    const rightPort = Number(new URL(right).port || '443');
+    if (leftPort === rightPort) return left.localeCompare(right);
+    if (leftPort === 443) return -1;
+    if (rightPort === 443) return 1;
+    return leftPort - rightPort;
+  });
+  return candidates;
+}
+
 /**
  * The daemon-validated public HTTPS origins that serve one of `localPorts`,
  * ordered deterministically, or `undefined`.
@@ -147,59 +254,25 @@ export function parseServePublicOrigins(
   magicDnsHost: string,
   localPorts: readonly number[],
 ): readonly string[] | undefined {
-  let serve: unknown;
-  try {
-    serve = JSON.parse(serveJson);
-  } catch {
-    return undefined;
-  }
-  if (!serve || typeof serve !== 'object' || Array.isArray(serve)) {
-    return undefined;
-  }
-  const web = (serve as { Web?: unknown }).Web;
-  if (!web || typeof web !== 'object' || Array.isArray(web)) return undefined;
-  const wanted = new Set(localPorts);
-  const candidates: string[] = [];
-  for (const [authority, listener] of Object.entries(
-    web as Record<string, unknown>,
-  )) {
-    // Keys are `host:port`; IPv6 literals never appear here because a serve
-    // listener is published on the node's own MagicDNS authority.
-    const separator = authority.lastIndexOf(':');
-    if (separator <= 0) continue;
-    const host = authority.slice(0, separator).toLowerCase();
-    const servePort = Number(authority.slice(separator + 1));
-    if (host !== magicDnsHost) continue;
-    if (!Number.isInteger(servePort) || servePort <= 0 || servePort > 65_535) {
-      continue;
-    }
-    if (!listener || typeof listener !== 'object' || Array.isArray(listener)) {
-      continue;
-    }
-    const handlers = (listener as { Handlers?: unknown }).Handlers;
-    if (!handlers || typeof handlers !== 'object' || Array.isArray(handlers)) {
-      continue;
-    }
-    const root = (handlers as Record<string, unknown>)['/'];
-    const port = loopbackProxyPort(root);
-    if (port === undefined || !wanted.has(port)) continue;
-    candidates.push(
-      servePort === 443 ? `https://${host}` : `https://${host}:${servePort}`,
-    );
-  }
-  if (candidates.length === 0) return undefined;
-  // Deterministic when several listeners reach the same Station: prefer the
-  // default HTTPS port, then the lowest, so the endpoint a device is handed
-  // does not depend on object key order.
-  candidates.sort((left, right) => {
-    const leftPort = Number(new URL(left).port || '443');
-    const rightPort = Number(new URL(right).port || '443');
-    if (leftPort === rightPort) return left.localeCompare(right);
-    if (leftPort === 443) return -1;
-    if (rightPort === 443) return 1;
-    return leftPort - rightPort;
-  });
-  return candidates;
+  return serveOriginCandidates(serveJson, magicDnsHost, localPorts)?.map(
+    (candidate) => candidate.origin,
+  );
+}
+
+/**
+ * The subset of {@link parseServePublicOrigins} this Station may treat as its
+ * own browser origin: a page or caller presenting it can only have come from
+ * this Station, because the daemon serves nothing else there and does not
+ * expose it through Funnel. Returns `[]` when none qualifies.
+ */
+export function parseServeOwnedOrigins(
+  serveJson: string,
+  magicDnsHost: string,
+  localPorts: readonly number[],
+): readonly string[] {
+  return (serveOriginCandidates(serveJson, magicDnsHost, localPorts) ?? [])
+    .filter((candidate) => candidate.ownedByStation)
+    .map((candidate) => candidate.origin);
 }
 
 interface PublicIngressOriginResolver {
@@ -218,11 +291,25 @@ interface PublicIngressOriginResolver {
    * when Tailscale is absent or offline. Never throws.
    */
   magicDnsHost(): Promise<string | undefined>;
+  /**
+   * True when `origin` is exactly one of this Station's owned Serve origins
+   * ({@link parseServeOwnedOrigins}). Anything that is not a canonical
+   * `https://*.ts.net` origin is refused without consulting the daemon, so a
+   * stream of foreign Origins cannot make this spawn processes. Never throws.
+   *
+   * This is a security admission, so it never reads the 30-second suggestion
+   * cache: it reads the daemon through its own single-flight lookup whose
+   * answer is trusted for at most `admissionTtlMs` (1 s) counted from when
+   * the lookup started. A reply that arrives after that bound, a lookup that
+   * fails, or one that outlasts `admissionTimeoutMs` refuses (fail closed).
+   */
+  isOwnedOrigin(origin: string): Promise<boolean>;
 }
 
 interface IngressLookup {
   readonly host?: string;
   readonly origins?: readonly string[];
+  readonly ownedOrigins?: readonly string[];
 }
 
 /**
@@ -239,10 +326,24 @@ export function createPublicIngressOriginResolver(input: {
   readonly localPorts: readonly number[];
   readonly cli: TailscaleCli;
   readonly ttlMs?: number;
+  /** Longest an ownership answer is trusted for admission. */
+  readonly admissionTtlMs?: number;
+  /** Bound on one admission lookup; a slower daemon refuses. */
+  readonly admissionTimeoutMs?: number;
+  /** Monotonic milliseconds (default `performance.now`); a test seam. */
   readonly now?: () => number;
 }): PublicIngressOriginResolver {
   const ttlMs = input.ttlMs ?? 30_000;
-  const now = input.now ?? Date.now;
+  const admissionTtlMs = input.admissionTtlMs ?? 1_000;
+  const admissionTimeoutMs = input.admissionTimeoutMs ?? 3_000;
+  // Monotonic: ages for a trust decision must not move with the wall clock
+  // (a clock set back would make old evidence look fresh).
+  const now = input.now ?? (() => performance.now());
+  /** Within `bound` of `since`; a negative age (time went back) is not. */
+  const within = (since: number, bound: number) => {
+    const age = now() - since;
+    return age >= 0 && age < bound;
+  };
   let cachedAt = Number.NEGATIVE_INFINITY;
   let cached: IngressLookup = {};
   let inFlight: Promise<IngressLookup> | undefined;
@@ -258,6 +359,11 @@ export function createPublicIngressOriginResolver(input: {
       return {
         host,
         origins: parseServePublicOrigins(serve.stdout, host, input.localPorts),
+        ownedOrigins: parseServeOwnedOrigins(
+          serve.stdout,
+          host,
+          input.localPorts,
+        ),
       };
     } catch {
       return {};
@@ -265,7 +371,7 @@ export function createPublicIngressOriginResolver(input: {
   };
 
   const read = async (): Promise<IngressLookup> => {
-    if (now() - cachedAt < ttlMs) return cached;
+    if (within(cachedAt, ttlMs)) return cached;
     // Collapse concurrent misses so a burst of requests spawns one lookup.
     inFlight ??= lookup().finally(() => {
       inFlight = undefined;
@@ -276,12 +382,68 @@ export function createPublicIngressOriginResolver(input: {
     return resolved;
   };
 
+  // Admission's own cache. One short-lived answer coalesces a burst of
+  // requests (the UI sends Origin on every POST) into one daemon read, so
+  // reconfiguring Serve or turning Funnel on stops admitting within about a
+  // second instead of the suggestion cache's 30.
+  let admittedAt = Number.NEGATIVE_INFINITY;
+  let admitted: readonly string[] = [];
+  let admissionInFlight: Promise<readonly string[]> | undefined;
+  const ownedForAdmission = async (): Promise<readonly string[]> => {
+    if (within(admittedAt, admissionTtlMs)) return admitted;
+    admissionInFlight ??= (async () => {
+      // Trust is bounded from when the evidence was asked for, not when it
+      // arrived: a slow daemon reply describes the configuration as it was
+      // at the start, so it can only shorten the window, never extend it.
+      const startedAt = now();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<IngressLookup>((resolveDeadline) => {
+        timer = setTimeout(() => resolveDeadline({}), admissionTimeoutMs);
+        timer.unref?.();
+      });
+      let owned: readonly string[] = [];
+      try {
+        const fresh = await Promise.race([lookup(), deadline]);
+        // A fresh read also refreshes endpoint suggestions.
+        cached = fresh;
+        cachedAt = now();
+        owned = fresh.ownedOrigins ?? [];
+      } finally {
+        clearTimeout(timer);
+      }
+      admittedAt = startedAt;
+      // Evidence already older than the bound admits nothing (fail closed);
+      // the next admission reads the daemon again.
+      admitted = within(startedAt, admissionTtlMs) ? owned : [];
+      return admitted;
+    })().finally(() => {
+      admissionInFlight = undefined;
+    });
+    return admissionInFlight;
+  };
+
   return {
     async resolve() {
       return (await read()).origins;
     },
     async magicDnsHost() {
       return (await read()).host;
+    },
+    async isOwnedOrigin(origin) {
+      let parsed: URL;
+      try {
+        parsed = new URL(origin);
+      } catch {
+        return false;
+      }
+      if (
+        parsed.protocol !== 'https:' ||
+        parsed.origin !== origin ||
+        !parsed.hostname.endsWith('.ts.net')
+      ) {
+        return false;
+      }
+      return (await ownedForAdmission()).includes(origin);
     },
   };
 }

@@ -1,6 +1,7 @@
 import { ChildProcess, execFile, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -164,46 +165,108 @@ describe('pending native PTY startup admission', () => {
       adapter,
       data: (value: string) => data.emit('data', value),
       exit: () => {
-        for (const callback of exits) callback({ exitCode: 1 });
+        for (const callback of [...exits]) callback({ exitCode: 1 });
+        exits.clear();
       },
     };
   }
 
-  test('does not publish or track PID zero, and admits a quiet ready process', async () => {
+  test('does not publish PID zero and terminates its quiet ready Windows process', async () => {
     const backend = await pendingBackend();
-    let admitted = false;
-    const pending = backend.adapter.spawn(SPAWN_INPUT).then((proc) => {
-      admitted = true;
-      return proc;
-    });
-    await vi.waitFor(() => expect(backend.spawn).toHaveBeenCalledOnce());
-    expect(admitted).toBe(false);
-    expect(backend.launch.started).not.toHaveBeenCalled();
-    backend.pty.pid = 9321;
-    backend.socket.emit('ready_datapipe');
-    const proc = await pending;
-    expect(proc.pid).toBe(9321);
-    expect(backend.launch.started).toHaveBeenCalledExactlyOnceWith(9321);
-    const output = vi.fn();
-    proc.onData(output);
-    backend.data('after admission');
-    expect(output).toHaveBeenCalledExactlyOnceWith('after admission');
-    backend.exit();
-    await vi.waitFor(() => expect(backend.launch.close).toHaveBeenCalledOnce());
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    const taskkill = vi
+      .mocked(execFile)
+      .mockImplementation((_file, _args, _options, callback) => {
+        callback!(null, '', '');
+        backend.exit();
+        return new ChildProcess();
+      });
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      let admitted = false;
+      const pending = backend.adapter.spawn(SPAWN_INPUT).then((proc) => {
+        admitted = true;
+        return proc;
+      });
+      await vi.waitFor(() => expect(backend.spawn).toHaveBeenCalledOnce());
+      expect(admitted).toBe(false);
+      expect(backend.pty.pause).toHaveBeenCalledOnce();
+      expect(backend.pty.resume).not.toHaveBeenCalled();
+      expect(backend.launch.started).not.toHaveBeenCalled();
+      backend.pty.pid = 9321;
+      backend.socket.emit('ready_datapipe');
+      const proc = await pending;
+      expect(proc.pid).toBe(9321);
+      expect(backend.launch.started).toHaveBeenCalledExactlyOnceWith(9321);
+      expect(backend.pty.resume).not.toHaveBeenCalled();
+      const output = vi.fn();
+      proc.onData(output);
+      expect(backend.pty.resume).toHaveBeenCalledOnce();
+      backend.data('after admission');
+      expect(output).toHaveBeenCalledExactlyOnceWith('after admission');
+      await proc.terminate!();
+      expect(taskkill).toHaveBeenCalledExactlyOnceWith(
+        'taskkill',
+        ['/T', '/F', '/PID', '9321'],
+        { timeout: 5_000, windowsHide: true },
+        expect.any(Function),
+      );
+      await vi.waitFor(() =>
+        expect(backend.launch.close).toHaveBeenCalledOnce(),
+      );
+    } finally {
+      backend.socket.emit('ready_datapipe');
+      backend.exit();
+      Object.defineProperty(process, 'platform', platform);
+      vi.mocked(execFile).mockReset();
+    }
   });
 
-  test('releases a quiet Windows backend after its admitted process exits', async () => {
+  test.each([
+    'after admission',
+    'during workload tracking',
+    'failed workload tracking',
+  ] as const)('releases a quiet backend exactly once: %s', async (ending) => {
     const backend = await pendingBackend();
+    const trackingError = new Error('workload tracking refused');
+    if (ending !== 'after admission') {
+      backend.launch.started.mockImplementation(() => {
+        backend.exit();
+        if (ending === 'failed workload tracking') throw trackingError;
+      });
+    }
     const pending = backend.adapter.spawn(SPAWN_INPUT);
+    const rejected =
+      ending === 'failed workload tracking'
+        ? expect(pending).rejects.toBe(trackingError)
+        : undefined;
     await vi.waitFor(() => expect(backend.spawn).toHaveBeenCalledOnce());
     backend.pty.pid = 9321;
     backend.socket.emit('ready_datapipe');
-    const proc = await pending;
-    expect(proc.pid).toBe(9321);
-    backend.exit();
+    if (rejected) await rejected;
+    else {
+      const proc = await pending;
+      expect(proc.pid).toBe(9321);
+      if (ending === 'after admission') {
+        proc.onData(() => {});
+        backend.exit();
+      }
+      const cancelled = vi.fn();
+      proc.onExit(cancelled)();
+      const replay = vi.fn();
+      proc.onExit(replay);
+      await Promise.resolve();
+      expect(cancelled).not.toHaveBeenCalled();
+      expect(replay).toHaveBeenCalledExactlyOnceWith({
+        exitCode: 1,
+        signal: null,
+        outputIncomplete:
+          ending === 'during workload tracking' && process.platform === 'win32',
+      });
+    }
     await vi.waitFor(() => expect(backend.launch.close).toHaveBeenCalledOnce());
-    expect(backend.pty._agent.kill).toHaveBeenCalledOnce();
-    expect(backend.pty.kill).not.toHaveBeenCalled();
+    expect(backend.pty.kill).toHaveBeenCalledOnce();
+    expect(backend.pty._agent.kill).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -253,15 +316,14 @@ describe('pending native PTY startup admission', () => {
       expect(isPtyUnavailableError(error)).toBe(false);
       expect(backend.launch.started).not.toHaveBeenCalled();
       expect(backend.launch.close).toHaveBeenCalledOnce();
-      const killedByAdapter =
-        failure === 'exit' || failure === 'exit during ready' ? 0 : 1;
-      expect(backend.pty._agent.kill).toHaveBeenCalledTimes(killedByAdapter);
-      expect(backend.pty.kill).not.toHaveBeenCalled();
+      const killedByAdapter = failure === 'exit' ? 0 : 1;
+      expect(backend.pty.kill).toHaveBeenCalledTimes(killedByAdapter);
+      expect(backend.pty._agent.kill).not.toHaveBeenCalled();
       backend.pty.pid = 9321;
       backend.socket.emit('ready_datapipe');
       await Promise.resolve();
       expect(backend.launch.started).not.toHaveBeenCalled();
-      expect(backend.pty._agent.kill).toHaveBeenCalledTimes(killedByAdapter);
+      expect(backend.pty.kill).toHaveBeenCalledTimes(killedByAdapter);
       expect(backend.socket.listenerCount('ready_datapipe')).toBe(0);
       if (failure !== 'close') {
         expect(() =>
@@ -289,7 +351,8 @@ describe('pending native PTY startup admission', () => {
     expect(await rejected).toMatchObject({
       message: 'PTY startup readiness timed out',
     });
-    expect(backend.pty._agent.kill).toHaveBeenCalledOnce();
+    expect(backend.pty.kill).toHaveBeenCalledOnce();
+    expect(backend.pty._agent.kill).not.toHaveBeenCalled();
     expect(backend.launch.close).toHaveBeenCalledOnce();
     backend.pty.pid = 9321;
     backend.socket.emit('ready_datapipe');
@@ -434,35 +497,206 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY release', () => {
     process.getActiveResourcesInfo().filter((name) => name === 'MessagePort')
       .length;
 
-  test.each(['taskkill close', 'natural exit'] as const)(
+  test('asynchronous startup retains the first output and exit for the caller', async () => {
+    const before = workerThreads();
+    let socket: import('node:net').Socket | undefined;
+    const adapter = new NodePtyAdapter(async () => {
+      const backend = await import('node-pty');
+      return {
+        ...backend,
+        spawn: (...args: Parameters<typeof backend.spawn>) => {
+          const raw = backend.spawn(...args);
+          socket = (raw as typeof raw & { _socket: import('node:net').Socket })
+            ._socket;
+          return raw;
+        },
+      };
+    });
+    const proc = await adapter.spawn({
+      shell: process.env.COMSPEC ?? 'cmd.exe',
+      args: ['/d', '/q', '/c', 'echo STATION_STARTUP_4629 & exit /b 7'],
+      cwd: tmpdir(),
+      cols: 80,
+      rows: 24,
+      env: process.env,
+    });
+    try {
+      expect(proc.pid).toBeGreaterThan(0);
+      // Require real pending output before attaching the consumer; otherwise
+      // a fast subscription never exercises the startup handoff gap.
+      await expect
+        .poll(() => socket?.readableLength ?? 0, { timeout: 2_000 })
+        .toBeGreaterThan(0);
+      const output: string[] = [];
+      proc.onData((data) => output.push(data));
+      const exit = await new Promise<{ exitCode: number }>((resolve) =>
+        proc.onExit(resolve),
+      );
+      expect(output.join('')).toContain('STATION_STARTUP_4629');
+      expect(exit.exitCode).toBe(7);
+      const replay = await new Promise<{ exitCode: number }>((resolve) =>
+        proc.onExit(resolve),
+      );
+      expect(replay.exitCode).toBe(7);
+    } finally {
+      await proc.terminate?.();
+      await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
+    }
+  });
+
+  test('asynchronous startup rejects an unavailable directory and releases its worker', async () => {
+    const before = workerThreads();
+    await expect(
+      new NodePtyAdapter().spawn({
+        shell: process.env.COMSPEC ?? 'cmd.exe',
+        args: ['/d', '/q'],
+        cwd: join(tmpdir(), 'station-missing-directory-4629'),
+        cols: 80,
+        rows: 24,
+        env: process.env,
+      }),
+    ).rejects.toThrow('PTY exited before startup completed');
+    await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
+  });
+
+  test.each([
+    'taskkill close',
+    'natural exit',
+    'close before first output',
+  ] as const)(
     'a %s releases the ConPTY and never signals the old shell pid later',
     async (ending) => {
       const before = workerThreads();
       const signalled: number[] = [];
+      const transportErrors: unknown[] = [];
+      let releaseReady = () => {};
+      let readyObserved = Promise.resolve();
+      type ConptyTarget = import('node-pty').IPty & {
+        on(event: 'error', listener: (error: Error) => void): void;
+        _socket: import('node:net').Socket;
+        _agent: {
+          exitCode?: number;
+          kill(): void;
+          _getConsoleProcessList(): Promise<number[]>;
+          _conoutSocketWorker: {
+            _isDisposed: boolean;
+            _worker: import('node:worker_threads').Worker;
+            _onReady: { fire(): void };
+          };
+        };
+      };
+      let held: ConptyTarget | undefined;
+      const load =
+        ending === 'close before first output'
+          ? async () => {
+              const backend = await import('node-pty');
+              return {
+                ...backend,
+                spawn: (...args: Parameters<typeof backend.spawn>) => {
+                  const raw = backend.spawn(...args) as ConptyTarget;
+                  held = raw;
+                  // Hold the real socket's first output notification across
+                  // cleanup, so kill cannot rely on its readiness callback.
+                  const worker = raw._agent._conoutSocketWorker;
+                  const gate = new Promise<void>((resolve) => {
+                    releaseReady = resolve;
+                  });
+                  readyObserved = new Promise<void>((resolve) => {
+                    const emit = raw._socket.emit.bind(raw._socket);
+                    raw._socket.emit = (
+                      event: string | symbol,
+                      ...args: unknown[]
+                    ) => {
+                      if (event !== 'data') return emit(event, ...args);
+                      resolve();
+                      void gate.then(() => {
+                        try {
+                          emit(event, ...args);
+                        } catch (error) {
+                          transportErrors.push(error);
+                        }
+                      });
+                      return true;
+                    };
+                  });
+                  raw.on('error', (error) => transportErrors.push(error));
+                  worker._worker.on('error', (error) =>
+                    transportErrors.push(error),
+                  );
+                  return raw;
+                },
+              };
+            }
+          : undefined;
       const signal = process.kill.bind(process);
       const kill = vi.spyOn(process, 'kill').mockImplementation((pid, name) => {
         signalled.push(Number(pid));
         return signal(pid, name);
       });
       try {
-        const proc = await new NodePtyAdapter().spawn({
+        const proc = await new NodePtyAdapter(load).spawn({
           shell: process.env.COMSPEC ?? 'cmd.exe',
+          args: ['/d', '/q'],
           cwd: tmpdir(),
           cols: 80,
           rows: 24,
           env: process.env,
         });
-        const exited = new Promise((resolve) => proc.onExit(resolve));
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
-        if (ending === 'taskkill close') await proc.terminate!();
-        else proc.write('exit\r');
+        expect(proc.pid).toBeGreaterThan(0);
+        proc.onData(() => {});
+        let exits = 0;
+        const exited = new Promise<void>((resolve) =>
+          proc.onExit(() => {
+            exits++;
+            resolve();
+          }),
+        );
+        if (ending === 'close before first output') await readyObserved;
+        else await new Promise((resolve) => setTimeout(resolve, 1_000));
+        if (ending === 'natural exit') proc.write('exit\r');
+        else {
+          let deadline: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              proc.terminate!(),
+              new Promise<never>((_resolve, reject) => {
+                deadline = setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        'ConPTY exit was not delivered before first output',
+                      ),
+                    ),
+                  6_000,
+                );
+              }),
+            ]);
+          } finally {
+            clearTimeout(deadline);
+          }
+        }
+        releaseReady();
         await exited;
         // node-pty's console-list fallback signals five seconds after kill();
         // its output reader thread is released a second after the release.
         await new Promise((resolve) => setTimeout(resolve, 6_500));
         expect(signalled).not.toContain(proc.pid);
         expect(workerThreads()).toBe(before);
+        expect(exits).toBe(1);
+        expect(transportErrors).toEqual([]);
       } finally {
+        releaseReady();
+        // Failed fault-injection runs still release the owned console by its
+        // native handle, only after native exit is known; never an old PID.
+        if (
+          held &&
+          held._agent.exitCode !== undefined &&
+          !held._agent._conoutSocketWorker._isDisposed
+        ) {
+          held._agent._getConsoleProcessList = () => Promise.resolve([]);
+          held._agent.kill();
+          await expect.poll(workerThreads, { timeout: 6_000 }).toBe(before);
+        }
         kill.mockRestore();
       }
     },
@@ -480,7 +714,7 @@ describe.skipIf(process.platform === 'win32')(
       census.read.mockReset();
     });
 
-    async function backend() {
+    async function backend(nativeTty?: string) {
       vi.useFakeTimers();
       const exits: ((event: { exitCode: number; signal?: number }) => void)[] =
         [];
@@ -504,6 +738,7 @@ describe.skipIf(process.platform === 'win32')(
         pause: vi.fn(),
         resume: vi.fn(),
       } satisfies import('node-pty').IPty;
+      if (nativeTty !== undefined) Object.assign(pty, { _pty: nativeTty });
       const native =
         await vi.importActual<typeof import('node-pty')>('node-pty');
       const adapter = new NodePtyAdapter(async () => ({
@@ -534,6 +769,19 @@ describe.skipIf(process.platform === 'win32')(
         expect(signal).not.toHaveBeenCalled();
       },
     );
+
+    test('the native tty binding admits cleanup only after the child attaches to it', async () => {
+      const { proc, pty } = await backend('/dev/ttys3994');
+      census.read
+        .mockResolvedValueOnce({ stdout: '4242 1 4242 ??\n' })
+        .mockResolvedValue({ stdout: '4242 1 4242 ttys3994\n' });
+      const signal = vi.spyOn(process, 'kill').mockReturnValue(true);
+      const stopped = expect(proc.terminate!()).resolves.toBeUndefined();
+      await vi.advanceTimersByTimeAsync(10);
+      await stopped;
+      expect(signal).toHaveBeenCalledWith(-4242, 'SIGKILL');
+      expect(pty.kill).not.toHaveBeenCalled();
+    });
 
     test('paused observation retries cap backoff at one second', async () => {
       const { proc, pty } = await backend();

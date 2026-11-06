@@ -1242,7 +1242,10 @@ describe('ChatInputArea', () => {
     });
 
     const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
-    expect(modelButton.textContent).toContain('Model & effort');
+    // The phone-width pill keeps a short word; the name keeps the full one.
+    expect(
+      modelButton.querySelector('.chat-input__model-name')?.textContent,
+    ).toBe('Model');
     expect(modelButton.getAttribute('aria-label')).toContain('Model & effort');
     expect(screen.queryByText('Model not reported')).toBeNull();
     expect(screen.queryByText('unknown')).toBeNull();

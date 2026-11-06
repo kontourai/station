@@ -138,6 +138,12 @@ export interface UseLiveSurfaceOptions {
   agentActionsEnabled?: boolean;
   /** Ask for H.264 access units; the caller can decode them (#4418). */
   acceptH264?: boolean;
+  /**
+   * Ask for a foldable's `fold` state and display-tagged frames
+   * (`?fold=1`). A host that does not offer them, or a viewer that does not
+   * ask, gets the records an earlier client can read.
+   */
+  acceptFold?: boolean;
   /** Test seam; defaults to the page-wide frame-stream admission. */
   streamAdmission?: LiveSurfaceStreamAdmission;
 }
@@ -165,6 +171,19 @@ export interface UseLiveSurfaceResult {
   /** Stop asking for H.264 for this target and reconnect for images. */
   declineH264: () => void;
   sendInput: (events: LiveSurfaceInput[]) => void;
+  /**
+   * Input the host refused before dispatching any of it (`host-busy`), kept
+   * at the control epoch it was meant for and sendable with `retryInput`.
+   * Input whose delivery is unknown (`input-failed`) is never kept: sending
+   * it again could apply it twice.
+   */
+  retryableInput: boolean;
+  /**
+   * Send the kept input again, ahead of anything newer. Does nothing when
+   * control has changed hands since (the input was meant for that epoch).
+   * The caller decides whether this viewer may send input right now.
+   */
+  retryInput: () => void;
   claimControl: () => Promise<void>;
   /**
    * Give control up explicitly (a hand-back): the server records the
@@ -192,6 +211,12 @@ const HOST_BUSY_NOTICE_MS = 5_000;
  * the pane reopening, from asking again and falling behind again.
  */
 export const liveSurfaceH264Declines = new Set<string>();
+
+/**
+ * Targets whose host refused `?fold=1` (a host older than the key): asked
+ * again without it, for the rest of the page's session.
+ */
+export const liveSurfaceFoldDeclines = new Set<string>();
 
 const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
   500, 1_000, 2_000, 4_000, 8_000, 10_000,
@@ -226,6 +251,7 @@ function streamUrl(
   projectSlug: string | undefined,
   agentActionsEnabled: boolean,
   h264: boolean,
+  fold = false,
 ): string {
   const query = new URLSearchParams();
   for (const key of ['maxFps', 'quality', 'maxWidth', 'maxHeight'] as const) {
@@ -235,6 +261,7 @@ function streamUrl(
   if (projectSlug) query.set('projectSlug', projectSlug);
   if (agentActionsEnabled) query.set('agentActions', '1');
   if (h264) query.set('codec', 'h264');
+  if (fold) query.set('fold', '1');
   const suffix = query.size > 0 ? `?${query}` : '';
   return `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/frames${suffix}`;
 }
@@ -292,6 +319,7 @@ export function useLiveSurface(
     projectSlug,
     agentActionsEnabled = false,
     acceptH264 = false,
+    acceptFold = false,
     streamAdmission = liveSurfaceStreamAdmission,
   } = options;
   const onFrameRef = useRef(options.onFrame);
@@ -341,16 +369,41 @@ export function useLiveSurface(
    * downgrade the hub already applied leaves the running stream alone, and
    * only the next connection asks for images.
    */
+  // The decline sets are page-wide, but the reconnect they trigger is this
+  // hook's own: every hook that was refused must reconnect, including one
+  // whose target another viewer already recorded as declined.
   const declineH264For = useCallback((key: string, reconnect = true) => {
-    if (liveSurfaceH264Declines.has(key)) return;
     liveSurfaceH264Declines.add(key);
     if (reconnect) setDeclineVersion((version) => version + 1);
+  }, []);
+  const declineFoldFor = useCallback((key: string) => {
+    liveSurfaceFoldDeclines.add(key);
+    setDeclineVersion((version) => version + 1);
   }, []);
   const epochRef = useRef(0);
   const targetGenerationRef = useRef(0);
 
+  /**
+   * Input the host refused before dispatching any of it, kept for
+   * `retryInput` with the control epoch it was sent at. `open` names the
+   * presses in it not yet released: until they are, the rest of that
+   * gesture (its moves and its release) joins it instead of going out alone,
+   * so a later no-op release never stands in for the press it belongs to.
+   */
+  const undeliveredRef = useRef<{
+    events: LiveSurfaceInput[];
+    epoch: number;
+    open: Set<string>;
+  } | null>(null);
+  const [retryableInput, setRetryableInput] = useState(false);
   const observeEpoch = useCallback((epoch: number) => {
     epochRef.current = Math.max(epochRef.current, epoch);
+    // Control changed hands: kept input was meant for the old epoch.
+    const kept = undeliveredRef.current;
+    if (kept && kept.epoch !== epochRef.current) {
+      undeliveredRef.current = null;
+      setRetryableInput(false);
+    }
   }, []);
   const adoptLease = useCallback(
     (next: LiveSurfaceControlLease) => {
@@ -381,7 +434,8 @@ export function useLiveSurface(
     let stopped = false;
     /** Each connection asks again whether H.264 is still wanted. */
     const askH264 = () => acceptH264 && !liveSurfaceH264Declines.has(targetKey);
-    const urlFor = (h264: boolean) =>
+    const askFold = () => acceptFold && !liveSurfaceFoldDeclines.has(targetKey);
+    const urlFor = (h264: boolean, fold: boolean) =>
       streamUrl(
         apiBase,
         surfaceId,
@@ -389,6 +443,7 @@ export function useLiveSurface(
         projectSlug,
         agentActionsEnabled,
         h264,
+        fold,
       );
 
     const scheduleReconnect = () => {
@@ -408,7 +463,8 @@ export function useLiveSurface(
     let releaseSlot: (() => void) | null = null;
     const connect = async () => {
       const h264 = askH264();
-      const url = urlFor(h264);
+      const fold = askFold();
+      const url = urlFor(h264, fold);
       const release = await admissionRef.current.admit(
         url,
         abort.signal,
@@ -424,14 +480,14 @@ export function useLiveSurface(
       setStatus((current) => (current === 'queued' ? 'connecting' : current));
       releaseSlot = release;
       try {
-        await stream(url, h264);
+        await stream(url, h264, fold);
       } finally {
         release();
         if (releaseSlot === release) releaseSlot = null;
       }
     };
 
-    const stream = async (url: string, h264: boolean) => {
+    const stream = async (url: string, h264: boolean, fold: boolean) => {
       let response: Response;
       try {
         response = await transportRef.current(url, {
@@ -444,7 +500,7 @@ export function useLiveSurface(
         return;
       }
       if (stopped || generation !== targetGenerationRef.current) return;
-      if (response.status === 400 && h264) {
+      if (response.status === 400 && (h264 || fold)) {
         // A refusal of the codec itself declines H.264 for this target: the
         // host names the refused key (`field: 'codec'`). A host older than
         // `?codec=` refuses it as an unknown key but names nothing, so an
@@ -456,12 +512,20 @@ export function useLiveSurface(
           return null;
         })) as { code?: unknown; field?: unknown } | null;
         if (stopped || generation !== targetGenerationRef.current) return;
-        if (
-          envelope?.code === 'invalid-request' &&
-          (envelope.field === 'codec' || envelope.field === undefined)
-        )
-          declineH264For(targetKey);
-        else scheduleReconnect();
+        // `?fold=1` the same way: a host older than it names `unknown` (or,
+        // older still, nothing); either way ask again without it.
+        const refused =
+          envelope?.code === 'invalid-request' ? envelope.field : null;
+        const declineCodec =
+          h264 && (refused === 'codec' || refused === undefined);
+        const declineFold =
+          fold &&
+          (refused === 'fold' ||
+            refused === 'unknown' ||
+            refused === undefined);
+        if (declineFold) declineFoldFor(targetKey);
+        if (declineCodec) declineH264For(targetKey);
+        if (!declineFold && !declineCodec) scheduleReconnect();
         return;
       }
       if (response.status === 404) {
@@ -514,6 +578,7 @@ export function useLiveSurface(
                 videoMode,
                 videoDegradedReason,
                 orientation,
+                fold,
                 hostId,
               } = record.state;
               setProducerStatus((previous) =>
@@ -521,6 +586,8 @@ export function useLiveSurface(
                 previous.videoMode === videoMode &&
                 previous.videoDegradedReason === videoDegradedReason &&
                 previous.orientation === orientation &&
+                // A heartbeat re-sends the same fold as a new object.
+                JSON.stringify(previous.fold) === JSON.stringify(fold) &&
                 previous.hostId === hostId
                   ? previous
                   : {
@@ -528,6 +595,7 @@ export function useLiveSurface(
                       ...(videoMode ? { videoMode } : {}),
                       ...(videoDegradedReason ? { videoDegradedReason } : {}),
                       ...(orientation ? { orientation } : {}),
+                      ...(fold ? { fold } : {}),
                       ...(hostId ? { hostId } : {}),
                     },
               );
@@ -583,9 +651,11 @@ export function useLiveSurface(
     visible,
     retryToken,
     acceptH264,
+    acceptFold,
     declineVersion,
     targetKey,
     declineH264For,
+    declineFoldFor,
     adoptLease,
     observeEpoch,
   ]);
@@ -602,11 +672,32 @@ export function useLiveSurface(
   /** Pressed when control changed hands; the server released them already. */
   const orphanedRef = useRef(new Set<string>());
   const inFlightRef = useRef(false);
+  const keepUndelivered = useCallback(
+    (events: LiveSurfaceInput[], epoch = 0) => {
+      if (events.length === 0) {
+        undeliveredRef.current = null;
+        setRetryableInput(false);
+        return;
+      }
+      const open = new Set<string>();
+      for (const event of events) {
+        const id = pressId(event);
+        if (!id) continue;
+        if (isRelease(event)) open.delete(id);
+        else open.add(id);
+      }
+      undeliveredRef.current = { events, epoch, open };
+      setRetryableInput(true);
+    },
+    [],
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: these values define the target whose queued work must be retired.
   useLayoutEffect(() => {
     targetGenerationRef.current += 1;
     queueRef.current = [];
     inFlightRef.current = false;
+    undeliveredRef.current = null;
+    setRetryableInput(false);
     pressedRef.current.clear();
     orphanedRef.current.clear();
     epochRef.current = 0;
@@ -632,7 +723,13 @@ export function useLiveSurface(
     if (busyNoticeTimerRef.current) clearTimeout(busyNoticeTimerRef.current);
     busyNoticeTimerRef.current = setTimeout(() => {
       busyNoticeTimerRef.current = null;
-      setInputNotice((current) => (current === 'host-busy' ? null : current));
+      setInputNotice((current) => {
+        if (current !== 'host-busy') return current;
+        // The offer to send it again goes with the notice that made it.
+        undeliveredRef.current = null;
+        setRetryableInput(false);
+        return null;
+      });
     }, HOST_BUSY_NOTICE_MS);
   }, []);
   const inputUrl = `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/input${contextQuery(projectSlug)}`;
@@ -666,6 +763,7 @@ export function useLiveSurface(
     }
     inFlightRef.current = true;
     const generation = targetGenerationRef.current;
+    const batchEpoch = epochRef.current;
     try {
       const response = await transportRef.current(inputUrlRef.current, {
         method: 'POST',
@@ -677,7 +775,10 @@ export function useLiveSurface(
       } | null;
       if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
-        // Not sent, and not replayed later onto a view that may have moved on.
+        // Refused before any of it was dispatched, so sending it again
+        // cannot apply anything twice. Not replayed on its own onto a view
+        // that may have moved on: kept only for the person to send again.
+        keepUndelivered([...batch, ...queueRef.current], batchEpoch);
         queueRef.current = [];
         showHostBusy();
         return;
@@ -688,25 +789,38 @@ export function useLiveSurface(
         : null;
       if (nextLease) adoptLease(nextLease);
       if (result?.ok) {
-        setInputNotice(null);
+        // A later success is not the kept input arriving: only Retry or the
+        // person moving on retires that (see `sendInput`).
+        setInputNotice((current) =>
+          current === 'host-busy' && undeliveredRef.current ? current : null,
+        );
       } else if (
         result &&
         !result.ok &&
         (result.code === 'stale-epoch' || result.code === 'stale-fence')
       ) {
         queueRef.current = [];
+        keepUndelivered([]);
         for (const id of pressedRef.current) orphanedRef.current.add(id);
         pressedRef.current.clear();
         setInputNotice('control-changed');
       } else if (result && !result.ok && result.code === 'page-dialog-open') {
         queueRef.current = [];
+        keepUndelivered([]);
         setInputNotice('page-dialog');
       } else {
+        // Indeterminate: the event that failed may have taken effect before
+        // its error or timeout (`accepted` counts only completed ones), and
+        // what follows it would land after a gap. Nothing is kept to send
+        // again; the person checks the page.
+        keepUndelivered([]);
         queueRef.current = [];
         setInputNotice('input-failed');
       }
     } catch {
       if (generation !== targetGenerationRef.current) return;
+      // The response was lost: the batch may have been applied.
+      keepUndelivered([]);
       queueRef.current = [];
       setInputNotice('input-failed');
     } finally {
@@ -714,12 +828,38 @@ export function useLiveSurface(
         inFlightRef.current = false;
     }
     if (queueRef.current.length > 0) void flush();
-  }, [adoptLease, showHostBusy]);
+  }, [adoptLease, showHostBusy, keepUndelivered]);
 
   const sendInput = useCallback(
     (events: LiveSurfaceInput[]) => {
       for (const event of normalizeEvents(events)) {
         const id = pressId(event);
+        const kept = undeliveredRef.current;
+        if (kept) {
+          const continuesGesture =
+            kept.open.size > 0 &&
+            kept.events.length < LIVE_SURFACE_INPUT_MAX_EVENTS &&
+            ((event.kind === 'pointer' && event.type === 'move') ||
+              (id !== null && isRelease(event) && kept.open.has(id)));
+          if (continuesGesture) {
+            // The moves and release of a press that is kept join it, so
+            // Retry sends the whole gesture and its release never goes out
+            // alone (a no-op success that would stand in for the press).
+            kept.events.push(event);
+            if (id) {
+              kept.open.delete(id);
+              pressedRef.current.delete(id);
+            }
+            continue;
+          }
+          // New input (a new press, a key, text): the person moved on, so
+          // the kept input is retired rather than sent after it.
+          undeliveredRef.current = null;
+          setRetryableInput(false);
+          setInputNotice((current) =>
+            current === 'host-busy' ? null : current,
+          );
+        }
         if (id && isRelease(event) && orphanedRef.current.delete(id)) continue;
         if (id && !isRelease(event)) {
           // A fresh press (including a held key's auto-repeat) is new input:
@@ -748,6 +888,22 @@ export function useLiveSurface(
     },
     [flush],
   );
+
+  const retryInput = useCallback(() => {
+    const kept = undeliveredRef.current;
+    keepUndelivered([]);
+    if (!kept) return;
+    setInputNotice(null);
+    // Meant for an epoch that has since ended: control changed hands.
+    if (kept.epoch !== epochRef.current) return;
+    const events = kept.events;
+    // Ahead of anything typed since: it was meant to arrive first.
+    queueRef.current = [...events, ...queueRef.current];
+    if (!flushScheduledRef.current) {
+      flushScheduledRef.current = true;
+      queueMicrotask(() => void flush());
+    }
+  }, [flush, keepUndelivered]);
 
   const claimControl = useCallback(async () => {
     const generation = targetGenerationRef.current;
@@ -854,6 +1010,8 @@ export function useLiveSurface(
     activeCodec,
     declineH264,
     sendInput,
+    retryableInput,
+    retryInput,
     claimControl,
     releaseControl,
     keepControlAlive,

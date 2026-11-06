@@ -2,24 +2,18 @@ import './RequestedAccess.css';
 import {
   DEVICE_REQUESTABLE_EXTRA_SCOPES,
   PAIRING_SCOPE_DESCRIPTIONS,
-  PAIRING_SCOPE_PRESETS,
   PAIRING_SCOPES,
   type PairingScope,
   parsePairingScope,
 } from '@kontourai/station-contracts/environment-security';
 import { useState } from 'react';
 
+import { FULL_DEVICE_ACCESS_SCOPE } from '../core/deviceActivity';
+
+export { FULL_DEVICE_ACCESS_SCOPE };
+
 const REQUESTABLE_EXTRAS: readonly PairingScope[] =
   DEVICE_REQUESTABLE_EXTRA_SCOPES;
-
-/**
- * Everything a paired device can be given: Standard plus the elevated
- * permissions a device may ask for. The Station app and browser ask for this;
- * scoping a device down is the exception, done when approving.
- */
-export const FULL_DEVICE_ACCESS_SCOPE = PAIRING_SCOPES.filter((token) =>
-  [...PAIRING_SCOPE_PRESETS.standard, ...REQUESTABLE_EXTRAS].includes(token),
-).join(' ');
 
 /** The tokens of a requested scope, in the vocabulary's order. */
 export function requestedScopeTokens(scope: string): PairingScope[] {
