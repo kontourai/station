@@ -143,7 +143,7 @@ export function ConnectStationDialog({
             !profile.isTauri &&
               apiBase !== window.location.origin &&
               compatibility.verdict === 'unknown'
-              ? 'This browser could not verify the Station. Browser origin restrictions, HTTPS-to-HTTP blocking, or connectivity may prevent reading its response.'
+              ? 'This browser could not verify the Station. Check its address, connection and browser HTTPS settings.'
               : compatibility.reason,
           );
         }
