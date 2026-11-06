@@ -457,6 +457,7 @@ export function HeaderActions({
         <ConnectionStatusDot status={connState} size={7} />
         {stationConditions.length > 0 && (
           <span
+            className="app-toolbar__conn-notice"
             role="img"
             aria-label={`${stationConditions.length} Station notices`}
           >

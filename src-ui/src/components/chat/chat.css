@@ -3194,6 +3194,20 @@
     /* Beside its dot, not centred in the reserved slot. */
     text-align: start;
   }
+  /* The notice mark overlays the dot instead of taking inline width, so a
+     Station with notices keeps the same chip width as one without. */
+  .app-toolbar__conn {
+    position: relative;
+  }
+  .app-toolbar__conn .app-toolbar__conn-notice {
+    position: absolute;
+    top: 6px;
+    inset-inline-start: calc(var(--k-space-2) + 6px);
+    font-size: var(--k-text-xs);
+    font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
+  }
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
     display: none;

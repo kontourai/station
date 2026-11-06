@@ -135,6 +135,19 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
  * ceiling. A fixture pinned at zero cannot see that at all.
  */
 let attentionPendingCount = 0;
+/** Station notices: each one adds the chip's "!" mark. */
+let stationConditionCount = 0;
+
+vi.mock(
+  '../components/notifications/StationConditions',
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    useStationConditions: () =>
+      Array.from({ length: stationConditionCount }, (_, index) => ({
+        id: `condition-${index}`,
+      })),
+  }),
+);
 
 vi.mock('@kontourai/station-sdk', () => ({
   useAttentionQuery: () => ({
@@ -310,9 +323,15 @@ describe.skipIf(!chromiumAvailable)(
       ];
       const clusterWidths: number[] = [];
       const chipWidths: number[] = [];
-      for (const state of states) {
+      // Every state again with a Station notice: its "!" mark must not
+      // widen the chip either.
+      const cases = [0, 1].flatMap((notices) =>
+        states.map((state) => ({ state, notices })),
+      );
+      for (const { state, notices } of cases) {
         const page = await browser.newPage({ viewport });
         try {
+          stationConditionCount = notices;
           await page.setContent(
             buildFixtureHtml(await renderMarkupForState(state)),
           );
@@ -344,6 +363,10 @@ describe.skipIf(!chromiumAvailable)(
               // this test is about, and a hidden span has no boxes.
               labelBoxes: label?.getClientRects().length ?? 0,
               compactLabelBoxes: compactLabel?.getClientRects().length ?? 0,
+              noticeBoxes:
+                chip
+                  .querySelector('.app-toolbar__conn-notice')
+                  ?.getClientRects().length ?? 0,
               accessibleName: chip.getAttribute('aria-label'),
             };
           });
@@ -351,6 +374,10 @@ describe.skipIf(!chromiumAvailable)(
             measured.labelBoxes,
             `the ${state} state lays out desktop remedy text on a phone`,
           ).toBe(0);
+          expect(
+            measured.noticeBoxes,
+            `the ${state} chip with ${notices} notice(s) shows its notice mark`,
+          ).toBe(notices);
           expect(
             measured.chipWidth,
             `the ${state} chip must meet the 44px touch floor on a phone`,
@@ -366,17 +393,18 @@ describe.skipIf(!chromiumAvailable)(
           clusterWidths.push(Math.round(measured.content * 100) / 100);
           chipWidths.push(Math.round(measured.chipWidth * 100) / 100);
         } finally {
+          stationConditionCount = 0;
           await page.close();
         }
       }
       expect(
         clusterWidths,
         'The phone action cluster changed width as the connection chip flipped state — the chip must not reflow the toolbar.',
-      ).toEqual(states.map(() => clusterWidths[0]));
+      ).toEqual(cases.map(() => clusterWidths[0]));
       expect(
         chipWidths,
-        'The phone connection chip changed width as it flipped state.',
-      ).toEqual(states.map(() => chipWidths[0]));
+        'The phone connection chip changed width as it flipped state or gained a notice.',
+      ).toEqual(cases.map(() => chipWidths[0]));
     });
 
     test('the trailing control holds its position across every label-bearing state on a desktop-width toolbar', async () => {
