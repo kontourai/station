@@ -240,6 +240,10 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
  */
 const NOT_EXECUTED: ReadonlyArray<readonly [string, string]> = [
   [
+    'conversation-boundary-gate.mjs',
+    'conversation-boundary-gate.test.ts proves scanner acceptance and rejection in process; it does not execute the CLI entry point as a child process',
+  ],
+  [
     'agent-runtime-import-boundary-gate.mjs',
     'agent-runtime-import-boundary-gate.test.ts proves scanner acceptance and Station-coupling refusal in-process; it does not execute the CLI entry point as a child process',
   ],

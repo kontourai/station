@@ -31,6 +31,7 @@ vi.mock('../eventHandlers', () => ({
     settleSemanticDeliveryBuffer(...args),
 }));
 
+import { CLIENT_DOCUMENT_SESSION_ID } from '../../clientDocumentSession';
 import {
   ensureOrchestrationEventStream,
   resyncOrchestrationEventStream,
@@ -508,6 +509,40 @@ test.each([
         expect(generalData).toEqual([
           { event: 'data:changed', data: '{"version":1}' },
         ]);
+      const primaryBeforeResync = requestsTo(apiBase).filter(([input]) =>
+        String(input instanceof Request ? input.url : input).startsWith(
+          `${apiBase}/api/orchestration/events`,
+        ),
+      );
+      expect(primaryBeforeResync.length).toBeGreaterThan(0);
+      resyncOrchestrationEventStream(apiBase);
+      await settle();
+      const requests = requestsTo(apiBase);
+      const primaryAfterResync = requests.filter(([input]) =>
+        String(input instanceof Request ? input.url : input).startsWith(
+          `${apiBase}/api/orchestration/events`,
+        ),
+      );
+      expect(primaryAfterResync).toHaveLength(primaryBeforeResync.length + 1);
+      const resumed = primaryAfterResync.at(-1);
+      const resumedHeaders = new Headers(
+        resumed?.[1]?.headers ??
+          (resumed?.[0] instanceof Request ? resumed[0].headers : undefined),
+      );
+      expect(resumedHeaders.get('Last-Event-ID')).toBe('5');
+      expect(CLIENT_DOCUMENT_SESSION_ID).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+      for (const [input, init] of requests) {
+        const headers = new Headers(
+          init?.headers ?? (input instanceof Request ? input.headers : undefined),
+        );
+        expect(headers.get('X-Station-Client-Session')).toBe(
+          CLIENT_DOCUMENT_SESSION_ID,
+        );
+        // Observed transport credentials do not prove server refusal or scope.
+        expect(headers.get('Authorization')).toBe('Bearer test-credential');
+      }
     } finally {
       releaseLate?.();
       release();
