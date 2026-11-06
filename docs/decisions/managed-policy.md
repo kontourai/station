@@ -731,15 +731,18 @@ file index, which Node reports there as device and inode). It opens the path a
 second time the same way to stand in for the `lstat` identity, as libuv's own
 `lstat` does. Both handles must name the same file, neither may be a reparse
 point or a directory, and an identity Windows cannot report refuses the
-policy. Only the macOS and Linux behavior is executed in tests; the Windows
-path is compile-checked only. The desktop shell does not yet apply the
-Windows owner and ACL rule the server applies to the policy file (#4524;
-[#4599](https://github.com/kontourai/station/issues/4599)), so on Windows it
-does not trust the file at all: an installed policy file turns its updates
-off, unread, the same way device management does (below). `C:\Program Files`
-is writable only by administrators by default, but a policy folder whose ACL
-was loosened would otherwise let another user set the desktop's update
-source.
+policy. The shell reads the Windows owner and DACL from that open file handle,
+then opens every directory up to the drive with read-control and read-attributes
+access, without following reparse points. It requires Administrators, SYSTEM
+or TrustedInstaller ownership, and applies the server's role-specific write
+masks to effective allow ACEs, including object and callback entries. Inherit-only
+entries are checked when their child is inspected; deny entries do not grant
+access. Missing or unreadable descriptors refuse updates. This permits a mirror
+from a trusted policy file while refusing an administrator-owned file beneath a
+folder whose ACL was loosened. Registry/profile delivery remains conservative.
+Windows execution evidence is separate from the source wiring and must qualify
+these checks; full desktop updater and signed-artifact qualification remain
+separate from descriptor and file-reader tests.
 
 **Device management turns desktop updates off.** The shell reads only the
 policy file; it does not parse a macOS configuration profile (#4523) or the
