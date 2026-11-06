@@ -86,7 +86,8 @@ and exact peer/SSH transport and general continuation/projection remain open.
 Native settings and pure Flow validation do not supply a pre-model reservation
 or complete effect-enforcement guarantee. Native budget, tool/resource and
 credential-scope primitives need real owner integration before claiming complete
-two-engine portable admission. Native no-tools context sync, remaining topology,
+two-engine portable admission. The basic same-Session native Claude ACK path is verified below; native
+wrong-ACK/retry coverage, broader context-sync capability, remaining topology,
 finalizer/recovery, final documentation/readiness and combined delivery
 qualification remain open. Both production guards stay false.
 
@@ -152,6 +153,50 @@ source review found no lifetime or authority blocker, but the unchanged
 `/tmp/child-work-finalizer-scoped-fixture-candidate.patch`; the committed fixture
 was restored byte-exactly. No performance or full-caller success is claimed.
 Whole-epic delivery remains NOT_READY.
+
+### Durable native Task retention and basic live ACK checkpoint
+
+A fresh admitted run at `7706bf7063a8` completed both initial native Claude
+outputs, but both sync attempts became unknown before another canonical turn.
+Canonical runtime errors report `SESSION_START_INDETERMINATE` with the exact
+native conversation missing. The real delegation caller omitted
+`persistSession`, which Claude maps to no native transcript. The earlier
+controlled service probe explicitly enabled persistence and missed this seam.
+No unknown attempt was resent or reconstructed.
+
+At `b7ad8de9f315`, durable delegated Task creation requests transcript persistence,
+matching durable foreground conversations. Explicit ephemeral foreground
+launches retain their separate policy. Both sync preflight and its after-await
+admission reject recorded `persistSession: false`; legacy unknown values retain
+their previous behavior. The HTTP fixture now retains native cursors only when
+the actual initial provider input requests persistence, and refuses unsupported
+resumes. The missing caller flag failed one regression with 145 controls passing;
+the missing preflight failed one with five controls passing. Removing each owner
+change from the clean committed source caught that exact regression, and each
+source was restored byte-exactly. The final three-file selection passes all 165
+cases; server-test types and scoped read-only lint pass. Independent source review
+finds no blocking defect in this repair.
+
+The fresh live group at that exact revision supports the **basic same-Session
+native ACK path**. Both initial outputs match, both members acknowledge on their
+first sync attempt, and both native UUIDs and configuration bindings remain
+unchanged. Independent read-only review joined raw group records, canonical
+SQLite events and the two exact native transcript files. Terminal event IDs,
+turn IDs, ACK bytes and content hashes match; both actual sync dispatches carry
+the restriction, with zero reported tool calls or runtime errors. Same-operation
+replay adds no work: four canonical start and four turn records remain unchanged.
+The driver, admission script, lockfile and source fences hold. Runtime shutdown
+was awaited, without an independent OS descendant census. Private artifacts are
+retained at `/tmp/child-work-native-sync-retained-micm8hxi`.
+
+The original driver still records **FAIL**: it expected a deliberate native
+wrong ACK followed by one retry, but the model acknowledged immediately. That
+control is **NOT_REACHED**; its expected three sends versus the actual two also
+makes its coupled dispatch/replay checks false. The raw driver and result are
+unchanged. The narrower successful ACK observation does not promote that retry
+scenario, portable authority, billing, universal effect suppression or the full
+epic. Finalizer, topology, broader lineage and combined delivery remain open;
+both production qualification guards stay false.
 
 ### Historical delivery checkpoint at `5a212193a67d`
 

@@ -268,7 +268,9 @@ it cannot reduce the selected Agent profile to fit the engine. See
 Session-group context sync is separate from ordinary Agent grants and the
 matrix's general pre-tool policy cells. The current path accepts retained
 Claude Code 2.1.308 and 2.1.318 conversations only; other runtimes refuse
-before a sync attempt is reserved. The group performs that preflight for every member.
+before a sync attempt is reserved. Known nonpersistent Sessions also refuse.
+Durable Task creation requests native transcript retention; the group performs
+preflight for every member.
 
 The [session owner](../../src-server/services/orchestration/orchestration-service.ts)
 holds an exclusive activation generation through confirmed teardown, exact
