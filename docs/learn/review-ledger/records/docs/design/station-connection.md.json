@@ -98,7 +98,13 @@
 
     "src-ui/src/__tests__/useChatDockActions.test.tsx",
 
-    "src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"
+    "src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx",
+
+    "src-ui/src/utils/StationUiError.ts",
+
+    "src-ui/src/connections/__tests__/station-state-partitions.test.ts",
+
+    "src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts"
   ],
 
   "checks": [
