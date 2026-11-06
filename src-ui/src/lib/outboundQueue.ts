@@ -372,11 +372,13 @@ export interface OutboundDispatchModule {
     clientTurnId: string,
     direction: OutboundQueueMoveDirection,
     station?: OutboundStationIdentity,
+    conversationId?: string,
   ): Promise<OutboundDispatchTurn>;
   merge(
     clientTurnId: string,
     nextClientTurnId: string,
     station?: OutboundStationIdentity,
+    conversationId?: string,
   ): Promise<OutboundDispatchTurn>;
   unmerge(
     clientTurnId: string,

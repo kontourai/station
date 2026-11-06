@@ -89,7 +89,10 @@ export function OutboundQueuedMessages({
     activeChatsStore.subscribe,
     () => activeChatsStore.getSnapshot()[sessionId]?.conversationId,
   );
-  const queueScope = () => {
+  const queueScope = (): readonly [
+    station?: ReturnType<typeof outboundStationIdentity>,
+    conversationId?: string,
+  ] => {
     if (!station) return [] as const;
     if (!station.isCurrent())
       throw new Error('Reconnect to this chat’s Station.');

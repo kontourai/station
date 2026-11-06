@@ -82,7 +82,7 @@ function bound(children: React.ReactNode) {
       value={{
         apiBase: peer.targetApiBase,
         station: peer,
-        requestScope: peer.requestScope,
+        requestScope: { ...peer.requestScope, isCurrent: peer.isCurrent },
       }}
     >
       {children}
