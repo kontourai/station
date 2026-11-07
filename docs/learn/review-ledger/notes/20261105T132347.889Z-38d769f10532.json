@@ -1,0 +1,13 @@
+{
+  "revision": "33371275f1c2ceb5732cadda057a73654edaee92",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Viewed paired-device sign-in and access-change image. The runtime delta changes private-memory recovery and search, not this paired-device flow; no new capture was made.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Viewed paired-device sign-in and access-change image. The runtime delta changes private-memory recovery and search, not this paired-device flow; no new capture was made.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Viewed paired-device sign-in and access-change image. The runtime delta changes private-memory recovery and search, not this paired-device flow; no new capture was made.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Viewed paired-device sign-in and access-change image. The runtime delta changes private-memory recovery and search, not this paired-device flow; no new capture was made.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

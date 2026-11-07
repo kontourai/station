@@ -25,7 +25,14 @@ describe('streamPrimaryAgentChat memory brief settlement', () => {
     dedupStore = new ChatTurnDedupStore(join(dir, 'chat-turn-dedup.json'));
   });
 
-  const brief = () => ({ delivered: vi.fn(), abandoned: vi.fn() });
+  const brief = () => ({
+    delivered: vi.fn(),
+    abandoned: vi.fn(),
+    invokeIfCurrent: async <T>(invoke: () => Promise<T>) => ({
+      current: true as const,
+      result: await invoke(),
+    }),
+  });
   const agentFor = (
     streamText: Mock<ChatHarnessAgent['streamText']>,
   ): ChatHarnessAgent => ({

@@ -1,0 +1,13 @@
+{
+  "revision": "2c28902d1473ab0eaea791abc9a495f10d33dd9e",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed chat lifecycle against the brief delivery guard: the selected agent is still invoked under existing configuration checks, and stale private memory can refuse a turn before invocation.","inputs":["docs/guides/agent-configuration.md","src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed private memory and chat route descriptions against the merged preview, erasure and brief invocation paths; this follow-up adds no request shape or setting.","inputs":["docs/reference/api.md","src-server/routes/chat/chat-primary-stream.ts","src-server/routes/chat/chat-request-preparation.ts","src-server/routes/chat/chat.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed chat invocation changes against configuration keys and defaults; the brief delivery guard adds no configuration key or changed default.","inputs":["docs/reference/config.md","src-server/routes/chat/chat.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed chat invocation changes against environment variables; the brief delivery guard adds no environment variable or changed default.","inputs":["docs/reference/env-vars.md","src-server/routes/chat/chat-primary-stream.ts"]}
+  ]
+}

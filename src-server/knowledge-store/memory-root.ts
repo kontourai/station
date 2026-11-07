@@ -1,15 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstatSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   assertAdapterBoundTo,
   type KitRecord as CorpusRecord,
   type CreateInput,
+  type KitCreateProposal,
   KitDefaultStoreAdapter,
   type ProposeEvidence,
 } from '@kontourai/corpus-store';
+import type { KnowledgeIndexProvider } from '@kontourai/station-contracts/knowledge-index';
 import type {
   KitRecord,
+  KitRecordType,
   KnowledgeStoreAdapter,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
@@ -30,6 +33,7 @@ import {
   assertKnowledgeWriteAuthority,
   withKnowledgeWriteAuthority,
 } from './knowledge-write-authority.js';
+import { MemoryErasureIntentStore } from './memory-erasure-intent.js';
 
 export const MEMORY_ADAPTER_ID = 'corpus-private-memory';
 
@@ -144,10 +148,15 @@ export class MemoryRootManager {
     return authority.userId;
   }
 
-  private corpus(path: string): KitDefaultStoreAdapter {
-    if (!this.enabled()) throw new Error('Private memory is unavailable.');
+  private corpus(
+    path: string,
+    mode: 'read' | 'erase' | 'recovery' = 'read',
+  ): KitDefaultStoreAdapter {
+    if (!this.enabled() && mode !== 'recovery')
+      throw new Error('Private memory is unavailable.');
     assertExistingPathInside(this.home, path, 'Private memory root');
-    const existing = this.adapters.get(path);
+    const cacheKey = JSON.stringify([path, mode]);
+    const existing = this.adapters.get(cacheKey);
     if (existing) {
       assertAdapterBoundTo(existing, path);
       return existing;
@@ -162,7 +171,10 @@ export class MemoryRootManager {
       ),
       lock: acquireFileMutationLockAsync,
       coordinationIdentity: () => {
-        if (!this.enabled() || resolve(resolveHomeDir()) !== home)
+        if (
+          (!this.enabled() && mode !== 'recovery') ||
+          resolve(resolveHomeDir()) !== home
+        )
           throw new Error(
             'Station home changed or private memory is unavailable.',
           );
@@ -173,7 +185,7 @@ export class MemoryRootManager {
         return () => {
           const current = lstatSync(home);
           if (
-            !this.enabled() ||
+            (!this.enabled() && mode !== 'recovery') ||
             resolve(resolveHomeDir()) !== home ||
             !current.isDirectory() ||
             current.isSymbolicLink() ||
@@ -185,9 +197,10 @@ export class MemoryRootManager {
           assertKnowledgeWriteAuthority(path);
         };
       },
+      allowPurge: mode === 'erase',
     });
     assertAdapterBoundTo(adapter, path);
-    this.adapters.set(path, adapter);
+    this.adapters.set(cacheKey, adapter);
     return adapter;
   }
 
@@ -300,6 +313,7 @@ export class MemoryRootManager {
     root: KnowledgeStoreRoot,
     assertCurrent: () => void,
     operation: (adapter: KitDefaultStoreAdapter) => Promise<T>,
+    mode: 'read' | 'erase' = 'read',
   ): Promise<T> {
     const owner = this.requireOwner(authority);
     const hash = createHash('sha256').update(owner).digest('hex');
@@ -315,7 +329,129 @@ export class MemoryRootManager {
           this.requireOwner(authority);
           assertCurrent();
         },
-        () => operation(this.corpus(root.storeRoot)),
+        () => operation(this.corpus(root.storeRoot, mode)),
+      );
+    });
+  }
+
+  withErasure<T>(
+    authority: SessionReadAuthority,
+    root: KnowledgeStoreRoot,
+    assertCurrent: () => void,
+    operation: (
+      adapter: { reviewableProposals(): Promise<KitCreateProposal[]> } & Pick<
+        KitDefaultStoreAdapter,
+        | 'rootBinding'
+        | 'get'
+        | 'getProposal'
+        | 'listProposals'
+        | 'previewPurge'
+        | 'previewPurgeProposal'
+        | 'purge'
+        | 'purgeProposal'
+      >,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.withOwner(
+      authority,
+      root,
+      assertCurrent,
+      (adapter) =>
+        operation({
+          rootBinding: () => adapter.rootBinding(),
+          get: (id) => adapter.get(id),
+          getProposal: (id) => adapter.getProposal(id),
+          listProposals: () => adapter.listProposals(),
+          reviewableProposals: () => this.reviewableProposals(adapter),
+          previewPurge: (ids) => adapter.previewPurge(ids),
+          previewPurgeProposal: (id) => adapter.previewPurgeProposal(id),
+          purge: (ids, evidence, options) =>
+            adapter.purge(ids, evidence, options),
+          purgeProposal: (id, evidence, options) =>
+            adapter.purgeProposal(id, evidence, options),
+        }),
+      'erase',
+    );
+  }
+
+  private async withRecovery<T>(
+    root: KnowledgeStoreRoot,
+    operation: (adapter: KitDefaultStoreAdapter) => Promise<T>,
+  ): Promise<T> {
+    if (!this.isMemoryRoot(root) || !this.persistence.withKnowledgeStoreRoot)
+      throw new Error('Private memory recovery is unavailable.');
+    return this.persistence.withKnowledgeStoreRoot(root, () =>
+      withKnowledgeWriteAuthority(
+        root.storeRoot,
+        () => {
+          if (!this.isMemoryRoot(root))
+            throw new Error('Private memory root changed.');
+        },
+        () => operation(this.corpus(root.storeRoot, 'recovery')),
+      ),
+    );
+  }
+
+  async recoveryTargetErased(
+    root: KnowledgeStoreRoot,
+    kind: 'record' | 'proposal',
+    id: string,
+  ): Promise<boolean> {
+    return this.withRecovery(root, async (adapter) => {
+      if (kind === 'proposal')
+        return Boolean((await adapter.getProposal(id))?.erasure);
+      return (await adapter.get(id))?.status === 'purged';
+    });
+  }
+
+  async withRecoveryStatus<T>(
+    root: KnowledgeStoreRoot,
+    kind: 'record' | 'proposal',
+    id: string,
+    expectedBinding: string,
+    operation: (erased: boolean, proposals: KitCreateProposal[]) => Promise<T>,
+  ): Promise<T> {
+    return this.withRecovery(root, async (adapter) => {
+      if (adapter.rootBinding() !== expectedBinding)
+        throw new Error('Private memory binding changed before recovery.');
+      const erased =
+        kind === 'proposal'
+          ? Boolean((await adapter.getProposal(id))?.erasure)
+          : (await adapter.get(id))?.status === 'purged';
+      return operation(
+        erased,
+        erased ? await this.reviewableProposals(adapter) : [],
+      );
+    });
+  }
+
+  async withRecoveryTombstones<T>(
+    root: KnowledgeStoreRoot,
+    operation: (
+      ids: string[],
+      binding: string,
+      proposals: KitCreateProposal[],
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.withRecovery(root, async (adapter) => {
+      const types: KitRecordType[] = [
+        'raw',
+        'compiled',
+        'concept',
+        'snapshot',
+        'person',
+      ];
+      const ids: string[] = [];
+      for (const type of types) {
+        for (const record of await adapter.listByType(type, {
+          includeHistory: true,
+        }))
+          if (record.status === 'purged') ids.push(record.id);
+      }
+      return operation(
+        ids,
+        adapter.rootBinding(),
+        await this.reviewableProposals(adapter),
       );
     });
   }
@@ -330,6 +466,97 @@ export class MemoryRootManager {
     );
   }
 
+  private async reviewableProposals(
+    adapter: KitDefaultStoreAdapter,
+  ): Promise<KitCreateProposal[]> {
+    const proposals = await adapter.listProposals();
+    const checked = new Map<string, boolean>();
+    const readable: KitCreateProposal[] = [];
+    for (const proposal of proposals) {
+      const sources = new Set([
+        ...(proposal.candidate.provenance?.source_ids ?? []),
+        ...(proposal.candidate.links ?? [])
+          .filter((link) => link.kind === 'source')
+          .map((link) => link.target_id),
+      ]);
+      let permitted = true;
+      for (const id of sources) {
+        if (!checked.has(id)) {
+          const record = await adapter.get(id);
+          checked.set(id, Boolean(record && record.status !== 'purged'));
+        }
+        if (!checked.get(id)) permitted = false;
+      }
+      if (permitted) readable.push(proposal);
+    }
+    return readable;
+  }
+
+  async withProposals<T>(
+    authority: SessionReadAuthority,
+    root: KnowledgeStoreRoot,
+    assertCurrent: () => void,
+    operation: (proposals: KitCreateProposal[]) => Promise<T>,
+  ): Promise<T> {
+    return this.withOwner(authority, root, assertCurrent, async (adapter) => {
+      if (
+        existsSync(join(this.home, 'data', 'memory-erasure', 'intents.sqlite'))
+      ) {
+        const journal = new MemoryErasureIntentStore(this.home);
+        try {
+          const open = journal.open();
+          if (
+            open.kind !== 'entries' ||
+            open.entries.some(
+              (entry) => journal.decode(entry).rootId === root.id,
+            )
+          )
+            throw new Error('Memory erasure cleanup is pending.');
+        } finally {
+          await journal.close();
+        }
+      }
+      return operation(await this.reviewableProposals(adapter));
+    });
+  }
+
+  /** Fence Station-mediated writes while the index snapshots and publishes. */
+  rebuildFence(
+    authority: SessionReadAuthority,
+    root: KnowledgeStoreRoot,
+    assertCurrent: () => void,
+  ): NonNullable<
+    Parameters<KnowledgeIndexProvider['rebuildRoot']>[1]['withRootRevision']
+  > {
+    let captured = false;
+    let anchor: string | undefined;
+    let revision: string | undefined;
+    return (operation, phase) =>
+      this.withOwner(authority, root, assertCurrent, async (adapter) => {
+        const readAdapter = reader(adapter, () => this.corpus(root.storeRoot));
+        if (phase === 'snapshot') {
+          if (captured)
+            throw new Error('Memory snapshot was already captured.');
+          const records = await operation(readAdapter);
+          if (!Array.isArray(records))
+            throw new Error('Memory snapshot is invalid.');
+          anchor = records[0]?.id;
+          if (anchor)
+            revision = (await adapter.previewPurge([anchor])).revision;
+          captured = true;
+          return records;
+        }
+        if (!captured || (phase !== 'pre-embed' && phase !== 'publish'))
+          throw new Error('Memory snapshot is unavailable.');
+        if (
+          anchor &&
+          (await adapter.previewPurge([anchor])).revision !== revision
+        )
+          throw new Error('Memory changed during index rebuild.');
+        return operation(readAdapter);
+      });
+  }
+
   async previewErasureTarget(
     authority: SessionReadAuthority,
     root: KnowledgeStoreRoot,
@@ -341,12 +568,26 @@ export class MemoryRootManager {
       if (kind === 'proposal') {
         const proposal = await adapter.getProposal(id);
         if (!proposal || proposal.erasure) return null;
-        return { kind, id: proposal.id, title: proposal.candidate.title };
+        const before = await adapter.previewPurgeProposal(proposal.id);
+        const current = await adapter.getProposal(proposal.id);
+        const impact = await adapter.previewPurgeProposal(proposal.id);
+        if (!current || current.erasure || before.revision !== impact.revision)
+          throw new Error('Private memory changed during preview.');
+        return { kind, id: current.id, title: current.candidate.title, impact };
       }
       const record = await adapter.get(id);
       if (!record || record.status === 'purged' || record.id !== id)
         return null;
-      return { kind, id: record.id, title: record.title };
+      const before = await adapter.previewPurge([record.id]);
+      const current = await adapter.get(record.id);
+      const impact = await adapter.previewPurge([record.id]);
+      if (
+        !current ||
+        current.status === 'purged' ||
+        before.revision !== impact.revision
+      )
+        throw new Error('Private memory changed during preview.');
+      return { kind, id: current.id, title: current.title, impact };
     });
   }
 

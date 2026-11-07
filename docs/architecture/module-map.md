@@ -3273,8 +3273,14 @@ proposals use the explicit memory route. The registry and adapter reject paths
 that alias another author-private root, with authorization and path identity
 rechecked at response delivery. Corpus receives Station's coordination lock and
 home-identity check; ordinary access does not enable purge. Pending proposals
-are not records and do not enter the index. This does not provide distillation
-or erasure. [Memory tests](../../src-server/knowledge-store/__tests__/memory-root.test.ts)
+are not records and do not enter the index. The operator-only erasure route
+uses Corpus's revision-bound preview and purge, and records content-free intents
+in Monument before the effect. Cleanup is replayed on startup and reconciles
+tombstones after purge. A Station root lease fences Station-mediated rebuilds;
+an outside writer can race publication until [corpus#74](https://github.com/kontourai/corpus/issues/74).
+Search and private Neo4j graph responses recheck records at delivery. This does not
+provide distillation.
+[Memory tests](../../src-server/knowledge-store/__tests__/memory-root.test.ts)
 and [route tests](../../src-server/routes/knowledge/__tests__/memory.routes.test.ts)
 exercise local fixtures; they do not qualify a live model provider.
 
@@ -3335,6 +3341,11 @@ access, re-reads each record, returns an excerpt only while the record's current
 still contains it, refills withheld hits from further down the ranking (up to 1,000), and
 reports readable stale roots and withheld records beside the results. It does not check
 lifecycle state, so a retired record with an unchanged body is still returned.
+
+Erasure cleanup enables SQLite `secure_delete`, removes the affected rows,
+vacuums legacy free pages and truncates the WAL before settling its intent.
+A blocked checkpoint leaves cleanup pending for replay. This does not erase
+filesystem snapshots or the separate Corpus in-flight journal.
 
 **Follow the code.** [Index
 implementation](../../src-server/knowledge-index/sqlite-vec-index-provider.ts), [HTTP

@@ -1264,6 +1264,56 @@ describe('knowledge-index routes', () => {
   });
 
   describe('POST /index/search currency (#2727, #2728) and refill', () => {
+    test('drops an excerpt changed after search assembly before delivery', async () => {
+      const root = await createRoot('Personal knowledge');
+      const id = await addRecord(root.id, 'Old title', 'Old private excerpt');
+      const app = appWith(embedder);
+      await rebuild(app, root.id);
+      const pending = await app.request('/index/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'Old private excerpt' }),
+      });
+      expect(pending.status).toBe(200);
+      await (await store.adapterFor(root.id)).update(
+        id,
+        { body: 'Replacement text' },
+        { agent: 'test' },
+      );
+      const delivered = await readJson<SearchBody>(pending);
+      expect(delivered.data).toEqual([]);
+      expect(delivered.index.staleRecords).toBe(1);
+    });
+
+    test('withholds a response if a record changes during the final delivery guard', async () => {
+      const root = await createRoot('Personal knowledge');
+      const id = await addRecord(root.id, 'Old title', 'Old private excerpt');
+      await rebuild(appWith(embedder), root.id);
+      let checks = 0;
+      const app = createKnowledgeIndexRoutes({
+        store,
+        indexProvider,
+        dataDir,
+        getEmbedder: () => embedder,
+        guardReadResponse: (_request, _roots, response, validate) =>
+          guardProjectResponse(response, async () => {
+            if (++checks === 2)
+              await (await store.adapterFor(root.id)).update(
+                id,
+                { body: 'Replacement text' },
+                { agent: 'test' },
+              );
+            return validate ? validate() : true;
+          }),
+      });
+      const pending = await app.request('/index/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'Old private excerpt' }),
+      });
+      expect(pending.status).toBe(200);
+      await expect(pending.text()).rejects.toThrow('authorization ended');
+    });
     test('withholds a selected search result if root authority ends before body delivery', async () => {
       const root = await createRoot('Private');
       const id = await addRecord(root.id, 'Private title', 'Private text');

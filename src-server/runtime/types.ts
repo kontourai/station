@@ -710,6 +710,9 @@ export interface RuntimeContext {
     delivered: () => void;
     /** The turn ended without reaching the agent; the conversation may be briefed again. */
     abandoned: () => void;
+    invokeIfCurrent<T>(
+      invoke: () => Promise<T>,
+    ): Promise<{ current: true; result: T } | { current: false }>;
   } | null>;
   feedbackService: FeedbackService;
   usageAggregator?: import('../analytics/usage-aggregator.js').UsageAggregator;

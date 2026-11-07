@@ -1,16 +1,24 @@
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { SqliteVecIndexProvider } from '../../../knowledge-index/sqlite-vec-index-provider.js';
 import {
   candidate,
   claim,
   OWNER,
 } from '../../../knowledge-store/__tests__/memory-claim-fixtures.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { MemoryErasureCoordinator } from '../../../knowledge-store/memory-erasure-coordinator.js';
 import { MemoryReviewService } from '../../../knowledge-store/memory-review.js';
-import { MemoryRootManager } from '../../../knowledge-store/memory-root.js';
+import { MemoryReviewStore } from '../../../knowledge-store/memory-review-store.js';
+import {
+  MemoryRootManager,
+  memoryOwnerHash,
+} from '../../../knowledge-store/memory-root.js';
 import { createMemoryRoutes } from '../memory-routes.js';
 
 const makeTempDir = trackTempDirs();
@@ -115,7 +123,20 @@ async function setup() {
     app.request(path, { method: 'POST', headers, body: JSON.stringify(body) });
   const json = async <T = any>(response: Response): Promise<T> =>
     ((await response.json()) as { data: T }).data;
-  return { app, manager, store, root, state, guard, seed, get, post, as, json };
+  return {
+    app,
+    home,
+    manager,
+    store,
+    root,
+    state,
+    guard,
+    seed,
+    get,
+    post,
+    as,
+    json,
+  };
 }
 
 const postgres = () =>
@@ -766,4 +787,457 @@ test('a decision response the delivery guard refuses is not delivered', async ()
     outcome: 'hold',
   });
   expect(response.status).toBe(403);
+});
+
+test('a decision begun before erasure is refused when it reaches the root lease', async () => {
+  const h = await setup();
+  await h.seed(postgres());
+  const proposalId = await h.seed(mysql());
+  const [item] = (await h.json(await h.get('/memory/queue'))).items;
+  let arrived!: () => void;
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  const resume = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = h.manager.withProposals.bind(h.manager);
+  let reads = 0;
+  const spy = vi
+    .spyOn(h.manager, 'withProposals')
+    .mockImplementation(async (...args) => {
+      if (++reads === 2) {
+        arrived();
+        await resume;
+      }
+      return original(...args);
+    });
+  const pending = h.post(`/memory/queue/${item.itemId}/decision`, {
+    outcome: 'correct',
+    correctedValue: 'erased correction',
+  });
+  await blocked;
+  await h.manager.withErasure(
+    owner,
+    h.root,
+    () => {},
+    async (adapter) => {
+      const preview = await adapter.previewPurgeProposal(proposalId);
+      await adapter.purgeProposal(
+        proposalId,
+        { agent: OWNER, rationale: 'erase' },
+        { expectedRevision: preview.revision },
+      );
+    },
+  );
+  release();
+  expect((await pending).status).toBe(404);
+  spy.mockRestore();
+  const recall = await h.json(await h.get('/memory/recall'));
+  expect(JSON.stringify(recall)).not.toContain('erased correction');
+});
+
+test('erasure removes review decisions and keeps a re-proposed claim unreviewed', async () => {
+  const h = await setup();
+  const memory = mysql();
+  const proposalId = await h.seed(memory);
+  const recall = await h.json(await h.get('/memory/recall'));
+  const item = recall.entries[0];
+  const decided = await h.post(`/memory/queue/${item.itemId}/decision`, {
+    outcome: 'correct',
+    correctedValue: 'unique-erased-correction',
+    rationale: 'unique-erased-rationale',
+  });
+  expect(decided.status).toBe(201);
+  const index = new SqliteVecIndexProvider({
+    dbPath: join(h.home, 'index.db'),
+  });
+  try {
+    const coordinator = new MemoryErasureCoordinator(
+      h.home,
+      h.store,
+      h.manager,
+      index,
+    );
+    // Inspect the first cleanup without a later reconciliation masking its backup.
+    const reconcile = vi
+      .spyOn(coordinator, 'reconcileRoot')
+      .mockResolvedValue();
+    const preview = await h.manager.previewErasureTarget(
+      owner,
+      h.root,
+      () => {},
+      'proposal',
+      proposalId,
+    );
+    expect(preview?.kind).toBe('proposal');
+    await coordinator.erase(
+      owner,
+      h.root,
+      () => {},
+      'proposal',
+      proposalId,
+      preview!.impact.revision,
+      'purge-review-test',
+    );
+    reconcile.mockRestore();
+    for (const route of [
+      '/memory/queue',
+      '/memory/recall',
+      '/memory/brief',
+      '/memory/measurement',
+    ]) {
+      const response = await h.get(route);
+      expect(response.status).toBe(200);
+      expect(await response.text()).not.toContain('unique-erased-correction');
+    }
+    const reviewPath = join(
+      h.home,
+      'knowledge',
+      'memory-review',
+      memoryOwnerHash(OWNER),
+      'review.json',
+    );
+    expect(existsSync(`${reviewPath}.previous`)).toBe(true);
+    for (const path of [reviewPath, `${reviewPath}.previous`]) {
+      if (existsSync(path)) {
+        const bytes = readFileSync(path, 'utf8');
+        expect(bytes).not.toContain('unique-erased-correction');
+        expect(bytes).not.toContain('unique-erased-rationale');
+      }
+    }
+    // A missing primary falls back to the retained copy, which must be pruned too.
+    rmSync(reviewPath);
+    await h.seed(memory);
+    const after = await h.json(await h.get('/memory/recall'));
+    expect(after.entries[0].review.label).toBe('unreviewed');
+    expect(after.entries[0].value).toBe('MySQL');
+  } finally {
+    index.close();
+  }
+});
+
+test('a claim with an erased source is excluded even when another source survives', async () => {
+  const h = await setup();
+  const createSource = async (key: string) => {
+    const proposal = await h.manager.propose(
+      owner,
+      h.root,
+      () => {},
+      {
+        type: 'raw',
+        title: key,
+        body: key,
+        category: 'source',
+        provenance: { agent: 'source' },
+      },
+      { agent: 'source', proposal: 'evidence' },
+      'agent:source',
+      key,
+    );
+    return h.manager.applyCreate(owner, h.root, () => {}, proposal);
+  };
+  const erasedSource = await createSource('source-a');
+  const survivingSource = await createSource('source-b');
+  const memory = mysql();
+  const envelope = candidate(memory);
+  await h.manager.propose(
+    owner,
+    h.root,
+    () => {},
+    {
+      ...envelope,
+      provenance: {
+        ...envelope.provenance,
+        source_ids: [erasedSource, survivingSource],
+      },
+    },
+    { agent: 'dream', proposal: 'evidence' },
+    'agent:dream',
+    'supported-claim',
+  );
+  expect((await h.json(await h.get('/memory/recall'))).entries).toHaveLength(1);
+  const index = new SqliteVecIndexProvider({
+    dbPath: join(h.home, 'index.db'),
+  });
+  try {
+    const coordinator = new MemoryErasureCoordinator(
+      h.home,
+      h.store,
+      h.manager,
+      index,
+    );
+    const preview = await h.manager.previewErasureTarget(
+      owner,
+      h.root,
+      () => {},
+      'record',
+      erasedSource,
+    );
+    expect(preview?.kind).toBe('record');
+    await coordinator.erase(
+      owner,
+      h.root,
+      () => {},
+      'record',
+      erasedSource,
+      preview!.impact.revision,
+      'purge-source-test',
+    );
+    for (const route of [
+      '/memory/queue',
+      '/memory/recall',
+      '/memory/brief',
+      '/memory/measurement',
+    ]) {
+      const response = await h.get(route);
+      expect(response.status).toBe(200);
+      expect(await response.text()).not.toContain(
+        'Actually the widget service moved to MySQL.',
+      );
+    }
+    expect((await h.json(await h.get('/memory/recall'))).entries).toHaveLength(
+      0,
+    );
+  } finally {
+    index.close();
+  }
+});
+
+test.each(['restart recovery', 'same request retry'] as const)(
+  'interrupted review cleanup blocks reads until %s removes the decision',
+  async (recovery) => {
+    const h = await setup();
+    const proposalId = await h.seed(mysql());
+    const item = (await h.json(await h.get('/memory/recall'))).entries[0];
+    expect(
+      (
+        await h.post(`/memory/queue/${item.itemId}/decision`, {
+          outcome: 'correct',
+          correctedValue: 'interrupted-erased-correction',
+        })
+      ).status,
+    ).toBe(201);
+    const index = new SqliteVecIndexProvider({
+      dbPath: join(h.home, 'index.db'),
+    });
+    const spy = vi
+      .spyOn(MemoryReviewStore.prototype, 'pruneItems')
+      .mockRejectedValueOnce(new Error('cleanup interrupted'));
+    try {
+      const coordinator = new MemoryErasureCoordinator(
+        h.home,
+        h.store,
+        h.manager,
+        index,
+      );
+      const preview = await h.manager.previewErasureTarget(
+        owner,
+        h.root,
+        () => {},
+        'proposal',
+        proposalId,
+      );
+      await expect(
+        coordinator.erase(
+          owner,
+          h.root,
+          () => {},
+          'proposal',
+          proposalId,
+          preview!.impact.revision,
+          'interrupted-review-test',
+        ),
+      ).rejects.toThrow('cleanup interrupted');
+      expect((await h.get('/memory/recall')).status).toBe(503);
+      spy.mockRestore();
+      if (recovery === 'restart recovery') await coordinator.recoverAll();
+      else {
+        const interrupted = vi
+          .spyOn(coordinator, 'reconcileRoot')
+          .mockRejectedValueOnce(new Error('after settlement'));
+        await expect(
+          coordinator.erase(
+            owner,
+            h.root,
+            () => {},
+            'proposal',
+            proposalId,
+            preview!.impact.revision,
+            'interrupted-review-test',
+          ),
+        ).rejects.toThrow('after settlement');
+        interrupted.mockRestore();
+      }
+      const reviewPath = join(
+        h.home,
+        'knowledge',
+        'memory-review',
+        memoryOwnerHash(OWNER),
+        'review.json',
+      );
+      for (const path of [reviewPath, `${reviewPath}.previous`]) {
+        if (existsSync(path))
+          expect(readFileSync(path, 'utf8')).not.toContain(
+            'interrupted-erased-correction',
+          );
+      }
+      await h.seed(mysql());
+      const after = await h.json(await h.get('/memory/recall'));
+      expect(after.entries[0].review.label).toBe('unreviewed');
+      expect(JSON.stringify(after)).not.toContain(
+        'interrupted-erased-correction',
+      );
+    } finally {
+      spy.mockRestore();
+      index.close();
+    }
+  },
+);
+
+test('erasing one of two identical proposals does not transfer its decision to the other', async () => {
+  const h = await setup();
+  const proposalId = await h.seed(mysql());
+  await h.seed(mysql());
+  const item = (await h.json(await h.get('/memory/recall'))).entries[0];
+  expect(
+    (
+      await h.post(`/memory/queue/${item.itemId}/decision`, {
+        outcome: 'correct',
+        correctedValue: 'private correction',
+      })
+    ).status,
+  ).toBe(201);
+  // A decision created before proposal bindings were introduced must be migrated
+  // before erasure, not inherited by the duplicate afterward.
+  const reviewPath = join(
+    h.home,
+    'knowledge',
+    'memory-review',
+    memoryOwnerHash(OWNER),
+    'review.json',
+  );
+  const legacy = JSON.parse(readFileSync(reviewPath, 'utf8'));
+  delete legacy.bindings;
+  writeFileSync(reviewPath, JSON.stringify(legacy));
+  const index = new SqliteVecIndexProvider({
+    dbPath: join(h.home, 'index.db'),
+  });
+  try {
+    const coordinator = new MemoryErasureCoordinator(
+      h.home,
+      h.store,
+      h.manager,
+      index,
+    );
+    const preview = await h.manager.previewErasureTarget(
+      owner,
+      h.root,
+      () => {},
+      'proposal',
+      proposalId,
+    );
+    await coordinator.erase(
+      owner,
+      h.root,
+      () => {},
+      'proposal',
+      proposalId,
+      preview!.impact.revision,
+      'duplicate-review-test',
+    );
+    const recall = await h.json(await h.get('/memory/recall'));
+    expect(recall.entries).toHaveLength(1);
+    expect(recall.entries[0].review.label).toBe('unreviewed');
+    expect(JSON.stringify(recall)).not.toContain('private correction');
+    const journal = join(h.home, 'data', 'memory-erasure', 'intents.sqlite');
+    expect(readFileSync(journal).includes(Buffer.from(item.itemId))).toBe(
+      false,
+    );
+    if (existsSync(`${journal}-wal`))
+      expect(
+        readFileSync(`${journal}-wal`).includes(Buffer.from(item.itemId)),
+      ).toBe(false);
+  } finally {
+    index.close();
+  }
+});
+
+test('malformed proposal bindings fail closed without rewriting review records', async () => {
+  const h = await setup();
+  await h.seed(mysql());
+  const item = (await h.json(await h.get('/memory/recall'))).entries[0];
+  expect(
+    (
+      await h.post(`/memory/queue/${item.itemId}/decision`, {
+        outcome: 'accept',
+      })
+    ).status,
+  ).toBe(201);
+  const path = join(
+    h.home,
+    'knowledge',
+    'memory-review',
+    memoryOwnerHash(OWNER),
+    'review.json',
+  );
+  const state = JSON.parse(readFileSync(path, 'utf8'));
+  state.bindings[item.itemId] = 17;
+  const corrupt = JSON.stringify(state);
+  writeFileSync(path, corrupt);
+  expect((await h.get('/memory/recall')).status).toBe(503);
+  expect(readFileSync(path, 'utf8')).toBe(corrupt);
+});
+
+test('a later review write binds legacy decisions before an outside erasure', async () => {
+  const h = await setup();
+  const first = await h.seed(mysql());
+  await h.seed(mysql());
+  await h.seed(region());
+  const entries = (await h.json(await h.get('/memory/recall'))).entries;
+  const mysqlItem = entries.find(
+    (entry: { value: string }) => entry.value === 'MySQL',
+  );
+  const regionItem = entries.find(
+    (entry: { value: string }) => entry.value === 'eu-west-1',
+  );
+  expect(
+    (
+      await h.post(`/memory/queue/${mysqlItem.itemId}/decision`, {
+        outcome: 'correct',
+        correctedValue: 'private old decision',
+      })
+    ).status,
+  ).toBe(201);
+  const path = join(
+    h.home,
+    'knowledge',
+    'memory-review',
+    memoryOwnerHash(OWNER),
+    'review.json',
+  );
+  const state = JSON.parse(readFileSync(path, 'utf8'));
+  delete state.bindings;
+  writeFileSync(path, JSON.stringify(state));
+  expect(
+    (await h.post(`/memory/queue/${regionItem.itemId}/open`, {})).status,
+  ).toBe(200);
+  await h.manager.withErasure(
+    owner,
+    h.root,
+    () => {},
+    async (adapter) => {
+      const preview = await adapter.previewPurgeProposal(first);
+      await adapter.purgeProposal(
+        first,
+        { agent: OWNER, rationale: 'outside erase' },
+        { expectedRevision: preview.revision },
+      );
+    },
+  );
+  const after = await h.json(await h.get('/memory/recall?q=mysql'));
+  expect(after.entries).toHaveLength(1);
+  expect(after.entries[0].review.label).toBe('unreviewed');
+  expect(JSON.stringify(after)).not.toContain('private old decision');
 });

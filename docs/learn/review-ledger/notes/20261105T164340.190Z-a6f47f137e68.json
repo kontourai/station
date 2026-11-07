@@ -1,0 +1,13 @@
+{
+  "revision": "b872f7072fac6495808645c1bbfecbe7ecf9553b",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Compared the one-path SQLite registry addition with the historical home-schema and backup discussion. Schema and distribution rules are unchanged; the archive already checks .sqlite files by extension.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Checked backup and rollback scope against the SQLite registry addition. The memory intent journal is under state; the media-tools exclusion and reacquisition behavior are unchanged.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed home backup and restore claims against the SQLite registry and archive: .sqlite stores are already checkpointed by extension, and the journal now has an explicit registry path.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Compared configuration and Station-home scope with the registry-only addition for the memory erasure intent database. No configuration key or default changed.","inputs":["docs/reference/config.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

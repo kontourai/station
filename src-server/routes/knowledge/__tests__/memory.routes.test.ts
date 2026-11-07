@@ -1,8 +1,11 @@
+import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { SqliteVecIndexProvider } from '../../../knowledge-index/sqlite-vec-index-provider.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { MemoryErasureCoordinator } from '../../../knowledge-store/memory-erasure-coordinator.js';
 import { MemoryReviewService } from '../../../knowledge-store/memory-review.js';
 import { MemoryRootManager } from '../../../knowledge-store/memory-root.js';
 import { createMemoryRoutes } from '../memory-routes.js';
@@ -19,6 +22,122 @@ const other = sessionReadAuthorityFromRequest(
   undefined,
 );
 afterEach(() => vi.unstubAllEnvs());
+
+test('erasure route requires owner confirmation and returns the actual proposal receipt', async () => {
+  const home = makeTempDir('station-memory-erase-route-');
+  vi.stubEnv('STATION_HOME', home);
+  const persistence = new FileStorageAdapter(home);
+  const store = new KnowledgeStoreProvider(persistence);
+  let enabled = true;
+  const manager = new MemoryRootManager(
+    store,
+    persistence,
+    home,
+    () => enabled,
+  );
+  const index = new SqliteVecIndexProvider({ dbPath: join(home, 'index.db') });
+  const erasure = new MemoryErasureCoordinator(home, store, manager, index);
+  const app = createMemoryRoutes({
+    manager,
+    erasure,
+    review: new MemoryReviewService({ manager, home }),
+    reviewerKind: () => 'human',
+    enabled: () => enabled,
+    authority: (request, action) => {
+      const user = request.headers.get('x-test-user');
+      if (
+        user !== 'owner' ||
+        (action === 'create' && request.headers.get('x-test-agent') === 'yes')
+      )
+        return undefined;
+      return {
+        scope: owner,
+        assertCurrent: () => {
+          if (!enabled) throw new Error('disabled');
+        },
+      };
+    },
+    mayReadRoot: async () => true,
+    guardReadResponse: async (_request, _roots, response) => response,
+  });
+  try {
+    const root = await manager.ensureRoot(owner, () => {});
+    const id = await manager.propose(
+      owner,
+      root,
+      () => {},
+      {
+        type: 'raw',
+        title: 'Private',
+        body: 'private body',
+        category: 'memory',
+        provenance: { agent: 'source' },
+      },
+      { agent: 'source', proposal: 'evidence' },
+      'agent:source',
+      'proposal',
+    );
+    const preview = await manager.previewErasureTarget(
+      owner,
+      root,
+      () => {},
+      'proposal',
+      id,
+    );
+    if (!preview) throw new Error('Expected preview');
+    const payload = {
+      kind: 'proposal',
+      id,
+      revision: preview.impact.revision,
+      purgeId: '70b9f66a-7b4f-49e2-97ae-839964b0ad37',
+    };
+    const request = (user: string, agent = false) =>
+      app.request('/memory/erase', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-test-user': user,
+          ...(agent ? { 'x-test-agent': 'yes' } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+    expect((await request('other')).status).toBe(403);
+    expect((await request('owner', true)).status).toBe(403);
+    enabled = false;
+    expect((await request('owner')).status).toBe(404);
+    enabled = true;
+    vi.spyOn(erasure, 'erase').mockRejectedValueOnce(
+      new Error('cleanup pending'),
+    );
+    const uncertain = await request('owner');
+    expect(uncertain.status).toBe(503);
+    expect(await uncertain.json()).toMatchObject({
+      code: 'ERASURE_UNAVAILABLE',
+      error: 'Erasure could not be confirmed. Retry with the same purgeId.',
+    });
+    const response = await request('owner');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        receipt: {
+          kind: 'proposal',
+          result: { proposalId: id, alreadyErased: false },
+        },
+      },
+    });
+    expect(
+      (await manager.listProposals(owner, root, () => {}))[0].erasure,
+    ).toBeDefined();
+    const retry = await request('owner');
+    expect(await retry.json()).toMatchObject({
+      success: true,
+      data: { receipt: { kind: 'proposal', result: { proposalId: id } } },
+    });
+  } finally {
+    index.close();
+  }
+});
 
 test('memory routes require the preview and owner, and expose proposals only explicitly', async () => {
   const home = makeTempDir('station-memory-routes-');
@@ -117,7 +236,17 @@ test('memory routes require the preview and owner, and expose proposals only exp
   );
   expect(await preview.json()).toEqual({
     success: true,
-    data: { kind: 'proposal', id, title: 'Proposed' },
+    data: {
+      kind: 'proposal',
+      id,
+      title: 'Proposed',
+      impact: expect.objectContaining({
+        proposalId: id,
+        state: 'pending',
+        alreadyErased: false,
+        revision: expect.any(String),
+      }),
+    },
   });
   allowRead = false;
   expect(

@@ -132,6 +132,18 @@ async function readableGraph(
   };
 }
 
+async function guardPrivateGraphResponse(
+  store: KnowledgeStoreProvider,
+  rootId: string,
+  graph: ReadGraphResult,
+  response: Response,
+): Promise<Response> {
+  return guardProjectResponse(response, async () => {
+    const current = await readableGraph(store, rootId, 'author-private', graph);
+    return current.nodes.length === graph.nodes.length;
+  });
+}
+
 /**
  * Breadth-first shortest path over an already reader-filtered graph, with
  * links followed in either direction like the Cypher query. Computed here so
@@ -327,7 +339,10 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
           database: config.database,
         }),
       );
-      return c.json({ success: true, data: graph });
+      const response = c.json({ success: true, data: graph });
+      return kind === 'author-private'
+        ? guardPrivateGraphResponse(deps.store, rootId, graph, response)
+        : response;
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }
@@ -372,24 +387,33 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
           404,
         );
       }
-      const path =
-        kind !== 'shared'
-          ? shortestReadablePath(
-              await readableGraph(
-                deps.store,
-                rootId,
-                kind,
-                await readGraph(driverResult.driver, rootId, {
-                  database: config.database,
-                }),
-              ),
-              fromId,
-              toId,
-            )
-          : await shortestPath(driverResult.driver, rootId, fromId, toId, {
-              database: config.database,
-            });
-      return c.json({ success: true, data: path });
+      if (kind === 'shared') {
+        const path = await shortestPath(
+          driverResult.driver,
+          rootId,
+          fromId,
+          toId,
+          {
+            database: config.database,
+          },
+        );
+        return c.json({ success: true, data: path });
+      }
+      const graph = await readableGraph(
+        deps.store,
+        rootId,
+        kind,
+        await readGraph(driverResult.driver, rootId, {
+          database: config.database,
+        }),
+      );
+      const response = c.json({
+        success: true,
+        data: shortestReadablePath(graph, fromId, toId),
+      });
+      return kind === 'author-private'
+        ? guardPrivateGraphResponse(deps.store, rootId, graph, response)
+        : response;
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }

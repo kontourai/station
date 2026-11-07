@@ -141,16 +141,34 @@ the Corpus adapter binding when opening a root and before cached reads, but does
 not pin that identity across a Station restart. Replacing the store directory can
 therefore cause a reopened registration to adopt a different store. Durable host
 binding is tracked in [corpus#61](https://github.com/kontourai/corpus/issues/61).
-Proposals submitted through this route are attributed to the operator; Corpus
-refuses that same person as an approver. Corpus permits the proposer to reject a
-proposal, but rejection retains its content. Proposal content remains in the
-store until erased through a separately authorized flow.
-With the preview enabled, **My knowledge store** lists proposals for lookup and
+Proposals submitted through this preview are attributed to the operator; Corpus
+refuses that same person as an approver.
+Corpus permits the proposer to reject a proposal, but rejection retains its
+content. With the preview enabled, **My knowledge store** lists proposals for lookup and
 can look up a record or proposal by ID. The preview identifies the target; affected claims are
 unavailable until a producer-authored Surface bundle exists ([surface#360](https://github.com/kontourai/surface/issues/360)).
-Corpus provides a cascade preview, but Station does not show it yet.
-Erasure remains unavailable until index cleanup and recovery are fenced
-([#4593](https://github.com/kontourai/station/issues/4593)).
+The lookup shows Corpus's preview of affected records and proposals. Records
+that survive or link to erased records may still contain the erased content.
+The host operator can confirm permanent erasure after reviewing these effects.
+Station returns a receipt after cleanup. If a request's outcome is unknown,
+retry in the same confirmation dialog. If it still fails, restart Station.
+If the original store was replaced while cleanup was pending, recovery refuses
+and private memory remains unavailable.
+If a disconnected root is recreated while Station is running, pending cleanup
+waits for the next Station restart or erasure ([#4614](https://github.com/kontourai/station/issues/4614)).
+
+If another tool writes to this store outside Station during a purge, a copy of
+the erased text can remain in the search index file until the next cleanup pass.
+It is never shown in results. The separate atomic publication contract is tracked
+in [corpus#74](https://github.com/kontourai/corpus/issues/74). An interrupted
+Corpus erasure can leave its before-images in a transaction journal until recovery
+([corpus#73](https://github.com/kontourai/corpus/issues/73)). Backups and filesystem
+snapshots have their own retention. Erasure does not remove titles, categories,
+or link labels previously copied to a Neo4j graph; remove those copies separately.
+Briefs created outside Station before erasure may also retain the erased content.
+Station checks a prepared brief again before sending it to an agent. If memory
+changed, the turn is stopped and can be retried.
+Record and file-graph responses started before erasure may still finish afterward.
 
 ### Review, recall and brief
 
@@ -241,6 +259,7 @@ review is timed from opening the item to submitting the decision, only from the
 reviewer's own events, and is `null` rather than estimated when it was not
 observed. `lineages` has one row per change with whether it was routed, its
 rules, its standing outcome, who decided and how long it took.
+Erased claims and their review decisions leave these figures, so past totals can change.
 
 This is what the [evals lane](https://github.com/kontourai/evals/blob/main/docs/measurement.md)
 needs for *defect escapes per human-review-minute*: review minutes per lineage

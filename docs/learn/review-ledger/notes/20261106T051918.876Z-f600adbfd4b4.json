@@ -1,0 +1,7 @@
+{
+  "revision": "2c28902d1473ab0eaea791abc9a495f10d33dd9e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed private memory erasure, review-store cleanup and chat brief invocation against the merged root lease, coordinator, brief provider and focused tests; this describes local behavior, not live provider proof.","inputs":["docs/architecture/module-map.md","src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts","src-server/routes/chat/chat-primary-stream.ts","src-server/routes/chat/chat.ts"]}
+  ]
+}

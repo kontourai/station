@@ -298,6 +298,9 @@ not records or search inputs. Project membership and delegation do not grant
 access. The owner or an approved personal-account device may read under the
 existing private-root rule; an unknown identity is refused. Disabling the
 preview retains the store and withholds it from Knowledge reads.
+Only the host operator, not an agent or delegation peer, can confirm erasure.
+The confirmation carries Corpus's preview revision; a changed store refuses
+the purge before writing. Search rechecks records before response delivery.
 
 Review, recall and the session brief read under the same rule and delivery-time
 recheck.

@@ -1,0 +1,7 @@
+{
+  "revision": "19b33de5e281629f31cc05e3fa3e546dfa5244d3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the native foreground brief positive and refusal test against the chat invocation and memory lease; the architecture describes the guarded call and does not claim live provider evidence.","inputs":["docs/architecture/module-map.md","src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts"]}
+  ]
+}

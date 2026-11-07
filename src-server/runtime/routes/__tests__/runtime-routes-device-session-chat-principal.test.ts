@@ -47,7 +47,7 @@ import { ConsentChannelService } from '../../../services/consent/consent-channel
  * service, which is the same shape `/chat` stamps onto its dispatched turn.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -3988,6 +3988,64 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(direct.status).toBe(404);
     });
 
+    test('memory recovery failure leaves other knowledge available', async () => {
+      const { MemoryErasureCoordinator } = await import(
+        '../../../knowledge-store/memory-erasure-coordinator.js'
+      );
+      const recovery = vi
+        .spyOn(MemoryErasureCoordinator.prototype, 'recoverAll')
+        .mockRejectedValueOnce(new Error('root changed'));
+      try {
+        const { app, featurePreviews, roomHomeDir } = await principalSetup({
+          knowledge: true,
+        });
+        await featurePreviews.setEnabled('private-memory', true);
+        const hash = createHash('sha256')
+          .update(LOCAL_OPERATOR_PRINCIPAL_ID)
+          .digest('hex');
+        const rootId = `root:memory:${hash}`;
+        await new FileStorageAdapter(roomHomeDir).saveKnowledgeStoreRoot({
+          id: rootId,
+          scope: { kind: 'personal' },
+          readPolicy: {
+            kind: 'author-private',
+            ownerId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          },
+          registrationId: randomUUID(),
+          adapterId: 'corpus-private-memory',
+          storeRoot: join(roomHomeDir, 'knowledge', 'memory', hash),
+          displayName: 'Private memory',
+          createdAt: new Date().toISOString(),
+        });
+        const headers = { Authorization: `Bearer ${OPERATOR_SECRET}` };
+        const roots = await app.request(
+          '/api/knowledge/roots',
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(roots.status).toBe(200);
+        expect(
+          ((await roots.json()) as { data: Array<{ id: string }> }).data.some(
+            (root) => root.id === rootId,
+          ),
+        ).toBe(false);
+        const records = await app.request(
+          `/api/knowledge/roots/${rootId}/records?type=raw`,
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(records.status).toBe(503);
+        const memory = await app.request(
+          '/api/knowledge/memory/root',
+          { method: 'POST', headers },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(memory.status).toBe(503);
+      } finally {
+        recovery.mockRestore();
+      }
+    });
+
     test('private memory preview keeps pending proposals out of search', async () => {
       const embedded: string[][] = [];
       const {
@@ -4148,6 +4206,40 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           ),
         ).toBe(false);
       }
+      const previewResponse = await request(
+        `/api/knowledge/memory/erasure-preview?kind=proposal&id=${id}`,
+        { headers },
+      );
+      expect(previewResponse.status).toBe(200);
+      const revision = (
+        (await previewResponse.json()) as {
+          data: { impact: { revision: string } };
+        }
+      ).data.impact.revision;
+      const erasureBody = JSON.stringify({
+        kind: 'proposal',
+        id,
+        revision,
+        purgeId: '23b89919-bbc4-400f-9a54-6632980bc817',
+      });
+      for (const auth of [pairedHeaders, peerHeaders]) {
+        const refused = await request('/api/knowledge/memory/erase', {
+          method: 'POST',
+          headers: auth,
+          body: erasureBody,
+        });
+        expect(refused.status).toBe(403);
+      }
+      const erased = await request('/api/knowledge/memory/erase', {
+        method: 'POST',
+        headers,
+        body: erasureBody,
+      });
+      expect(erased.status, await erased.clone().text()).toBe(200);
+      expect(await erased.json()).toMatchObject({
+        success: true,
+        data: { receipt: { kind: 'proposal', result: { proposalId: id } } },
+      });
       await featurePreviews.setEnabled('private-memory', false);
       const disabledRecord = await request(
         `/api/knowledge/roots/${root.id}/records?type=raw`,

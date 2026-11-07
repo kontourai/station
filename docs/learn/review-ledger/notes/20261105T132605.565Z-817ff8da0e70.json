@@ -1,0 +1,19 @@
+{
+  "revision": "7823e80f759cdfad84d147b0a21f248679853a1f",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Reviewed the reading-status caveat and canonical-store versus derived-index decision against the erasure and cleanup delta. The historical decision remains a historical record; the guide owns present retention limits.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/knowledge-foundation.md","note":"Reviewed the derived-index and Neo4j projection claims against the current private-memory cleanup and delivery guards. Corpus remains canonical and stale derived hits are rechecked; this does not validate the historical design in full.","inputs":["docs/design/knowledge-foundation.md","packages/contracts/src/knowledge-index.ts","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/routes/knowledge/knowledge-index-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed private-memory intent, revision, lease, recovery, SQLite retention and graph delivery claims against the changed coordinator, index and route owners. Outside writers, Neo4j copies and external briefs remain separately bounded.","inputs":["docs/architecture/module-map.md","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/routes/knowledge/knowledge-index-routes.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed private-memory confirmation, same-request retry, Corpus effects, recovery and retained-copy disclosures against the changed routes, coordinator, index and graph delivery guard.","inputs":["docs/guides/knowledge.md","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/routes/knowledge/knowledge-index-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed private-memory preview and erase parameters, stale response, retry key, receipt and access restrictions against memory-routes and coordinator.","inputs":["docs/reference/api.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed private-memory operator-only purge, stale revision refusal and delivery rechecks against the runtime authority and graph/index route changes.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the private-memory feature preview row against the runtime registration: it is off by default, personal-host only, retained while disabled, and review is not yet available.","inputs":["docs/user/settings.md"]}
+  ]
+}

@@ -390,6 +390,7 @@ import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/co
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import { createMemoryBriefProvider } from '../../knowledge-store/memory-brief-provider.js';
+import { MemoryErasureCoordinator } from '../../knowledge-store/memory-erasure-coordinator.js';
 import { MemoryReviewService } from '../../knowledge-store/memory-review.js';
 import {
   MEMORY_ADAPTER_ID,
@@ -10924,7 +10925,7 @@ export function configureRuntimeRoutes(
         id: 'private-memory',
         label: 'Private memory',
         description:
-          'Private memory you can check and search. New chats start with what you confirmed. No erasure yet.',
+          'Check, search and erase private memories. New Station chats start with what you confirmed.',
       })
     : undefined;
   const memoryEnabled = () =>
@@ -10938,6 +10939,7 @@ export function configureRuntimeRoutes(
     context.configLoader.getProjectHomeDir(),
     memoryEnabled,
   );
+  let memoryRecovery: Promise<boolean> | undefined;
   const memoryReview = new MemoryReviewService({
     manager: memoryRootManager,
     home: context.configLoader.getProjectHomeDir(),
@@ -10963,6 +10965,18 @@ export function configureRuntimeRoutes(
   ) => {
     if (!memoryEnabled() && isMemoryRootId(c.req.param('rootId')))
       return c.json(MEMORY_PREVIEW_DISABLED, 404);
+    if (
+      isMemoryRootId(c.req.param('rootId')) &&
+      memoryRecovery &&
+      !(await memoryRecovery)
+    )
+      return c.json(
+        {
+          success: false,
+          error: 'Memory recovery is unavailable. Restart Station to retry.',
+        },
+        503,
+      );
     await next();
   };
   context.app.use('/api/knowledge/roots/:rootId', memoryRootPreviewGuard);
@@ -11029,7 +11043,9 @@ export function configureRuntimeRoutes(
     if (!root) return false;
     if (
       root.adapterId === MEMORY_ADAPTER_ID &&
-      (!memoryEnabled() || !memoryRootManager.isMemoryRoot(root))
+      (!memoryEnabled() ||
+        !memoryRootManager.isMemoryRoot(root) ||
+        (memoryRecovery && !(await memoryRecovery)))
     )
       return false;
     try {
@@ -11089,6 +11105,7 @@ export function configureRuntimeRoutes(
       Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>
     >[],
     response: Response,
+    validateDelivery?: () => Promise<boolean>,
   ) =>
     guardProjectResponse(response, async () => {
       const currentRoots = await context.knowledgeStoreProvider.listRoots();
@@ -11102,12 +11119,43 @@ export function configureRuntimeRoutes(
         )
           return false;
       }
-      return true;
+      return validateDelivery ? validateDelivery() : true;
     });
+  const knowledgeIndexRegistry = new KnowledgeIndexAdapterRegistry();
+  const knowledgeIndexProvider = knowledgeIndexRegistry.get('sqlite-vec');
+  if (!knowledgeIndexProvider) {
+    throw new Error(
+      "KnowledgeIndexAdapterRegistry did not pre-register the built-in 'sqlite-vec' provider",
+    );
+  }
+  const memoryErasure = isPersonalHost
+    ? new MemoryErasureCoordinator(
+        context.configLoader.getProjectHomeDir(),
+        context.knowledgeStoreProvider,
+        memoryRootManager,
+        knowledgeIndexProvider,
+      )
+    : undefined;
+  memoryRecovery = memoryErasure?.recoverAll().then(
+    () => true,
+    () => false,
+  );
+  context.app.use('/api/knowledge/memory/*', async (c, next) => {
+    if (memoryRecovery && !(await memoryRecovery))
+      return c.json(
+        {
+          success: false,
+          error: 'Memory recovery is unavailable. Restart Station to retry.',
+        },
+        503,
+      );
+    await next();
+  });
   context.app.route(
     '/api/knowledge',
     createMemoryRoutes({
       manager: memoryRootManager,
+      erasure: memoryErasure,
       enabled: memoryEnabled,
       authority: (request, action) => {
         const scope = currentRequestReadAuthority();
@@ -11170,13 +11218,6 @@ export function configureRuntimeRoutes(
   // only, mounted alongside the cross-project knowledge routes above at the same
   // `/api/knowledge` base (distinct sub-paths, no collision:
   // `/index/rebuild`, `/migrate` vs. `/status`, `/search`).
-  const knowledgeIndexRegistry = new KnowledgeIndexAdapterRegistry();
-  const knowledgeIndexProvider = knowledgeIndexRegistry.get('sqlite-vec');
-  if (!knowledgeIndexProvider) {
-    throw new Error(
-      "KnowledgeIndexAdapterRegistry did not pre-register the built-in 'sqlite-vec' provider",
-    );
-  }
   context.app.route(
     '/api/knowledge',
     createKnowledgeIndexRoutes({
@@ -11186,6 +11227,26 @@ export function configureRuntimeRoutes(
       mayBuildSessionBackedRoot,
       mayBuildPrivateRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'edit'),
+      memoryRebuildFence: (request, root) => {
+        const authority = knowledgeReadAuthorities.get(request);
+        if (!authority || !isOperatorAtHostNotAgent(request)) return undefined;
+        return memoryRootManager.rebuildFence(authority, root, () => {
+          if (
+            !isOperatorAtHostNotAgent(request) ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+            )
+          )
+            throw new Error('Private memory authority ended.');
+        });
+      },
+      runAsReader: (request, operation) => {
+        const authority = knowledgeReadAuthorities.get(request);
+        return authority
+          ? runWithRequestReadAuthority(authority, operation)
+          : runWithoutRequestReadAuthority(operation);
+      },
       // #2377 slice B: a station-control agent's hits follow its session
       // owner's access to each root. Every other caller is unchanged.
       mayReadHitRoot: (request, root) =>

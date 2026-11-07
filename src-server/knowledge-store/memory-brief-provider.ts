@@ -6,7 +6,7 @@ import type { MemoryRootManager } from './memory-root.js';
 
 export interface MemoryBriefProviderDeps {
   manager: Pick<MemoryRootManager, 'findRoot'>;
-  review: Pick<MemoryReviewService, 'brief'>;
+  review: Pick<MemoryReviewService, 'brief' | 'withBriefSnapshot'>;
   enabled: () => boolean;
   /** The person asking, derived from the request, or none. */
   authority: (request: Request) => SessionReadAuthority | undefined;
@@ -34,6 +34,9 @@ export interface MemoryBriefProviderDeps {
 export interface MemoryBriefDelivery {
   delivered(): void;
   abandoned(): void;
+  invokeIfCurrent<T>(
+    invoke: () => Promise<T>,
+  ): Promise<{ current: true; result: T } | { current: false }>;
 }
 
 export interface MemoryBrief extends MemoryBriefDelivery {
@@ -122,12 +125,29 @@ export function createMemoryBriefProvider(
     let handedOff = false;
     try {
       const assertCurrent = () => {
-        if (!deps.enabled() || request.signal.aborted)
+        if (
+          !deps.enabled() ||
+          request.signal.aborted ||
+          !deps.isRequestCurrent(request)
+        )
           throw new Error('Private memory authority ended.');
       };
       const root = await deps.manager.findRoot(scope, assertCurrent);
       if (!root || !(await deps.mayReadRoot(request, root))) return null;
+      const before = await deps.review.withBriefSnapshot(
+        scope,
+        root,
+        assertCurrent,
+        async (digest) => digest,
+      );
       const brief = await deps.review.brief(scope, root, assertCurrent);
+      const after = await deps.review.withBriefSnapshot(
+        scope,
+        root,
+        assertCurrent,
+        async (digest) => digest,
+      );
+      if (before !== after) return null;
       const guarded = await deps.guardReadResponse(
         request,
         [root],
@@ -142,12 +162,26 @@ export function createMemoryBriefProvider(
           entries: 0,
           delivered: () => {},
           abandoned: () => {},
+          invokeIfCurrent: async (invoke) => ({
+            current: true,
+            result: await invoke(),
+          }),
         };
       }
       handedOff = true;
       return {
         text: brief.text,
         entries: brief.entries.length,
+        invokeIfCurrent: (invoke) =>
+          deps.review.withBriefSnapshot(
+            scope,
+            root,
+            assertCurrent,
+            async (digest) =>
+              digest === after
+                ? { current: true as const, result: await invoke() }
+                : { current: false as const },
+          ),
         delivered: () => {
           if (key) finish(key, owner);
           if (onAbort) request.signal.removeEventListener('abort', onAbort);
