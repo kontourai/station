@@ -118,7 +118,9 @@
 
     "src-ui/src/platform/native/share-image.ts",
 
-    "src-ui/src/components/chat/ShareIntakeController.tsx"
+    "src-ui/src/components/chat/ShareIntakeController.tsx",
+
+    "src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/ImageIntake.kt"
   ],
 
   "checks": [
