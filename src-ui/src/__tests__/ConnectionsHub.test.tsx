@@ -355,9 +355,14 @@ describe('the /connections resolver', () => {
     expect(railAttentionSection()).toBeUndefined();
   });
 
-  test('a public-registry ACP agent the policy refuses marks Engines, though its status is ready', () => {
+  test('engines the policy refuses carry no mark, even when their status is an error', () => {
     state.engines = [
       engine('opencode', 'OpenCode', { type: 'acp', config: {} }),
+      // Not allowed by the policy below; its error status alone would mark.
+      engine('claude', 'Claude Code', {
+        status: 'error',
+        config: { engineId: 'claude' },
+      }),
     ];
     state.acpConnections = [{ id: 'opencode', name: 'OpenCode' }];
     state.acpRegistry = [
@@ -375,9 +380,9 @@ describe('the /connections resolver', () => {
         <div />
       </ConnectionsSectionFrame>,
     );
-    expect(railAttentionSection()).toBe('Engines');
+    expect(railAttentionSection()).toBeUndefined();
     render(<ConnectionsHub />);
-    expect(navigate).toHaveBeenCalledWith('/connections/engines');
+    expect(navigate).toHaveBeenCalledWith('/connections/models');
   });
 
   test('a read that never answers does not hold the redirect past the wait', () => {

@@ -554,8 +554,10 @@ export function AgentConnectionView({
           >
             {/* Retry check is the repair for a failed check. A Ready engine
                 is checked with Check connection below, so it gets one
-                check action, not two. */}
-            {selectedAcpConnectionId && health?.verdict !== 'ready' && (
+                check action, not two; a policy refusal has no repair. */}
+            {selectedAcpConnectionId &&
+              health?.verdict !== 'ready' &&
+              !selectedManagedState?.disallowed && (
               <button
                 type="button"
                 className="editor-btn"

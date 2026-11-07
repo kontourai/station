@@ -211,7 +211,9 @@ export function deriveConnectionHealth(
       verdict: 'off',
       label: 'Not allowed',
       tone: connectionVerdictTone('off'),
-      needsAttention: true,
+      // Not dispatchable, but nothing the reader can fix: a refused engine
+      // marking the rail forever would only send them to a dead end.
+      needsAttention: false,
       reason: 'Your organization does not allow this engine.',
     };
   const presentation = resolveProviderPresentation(input);

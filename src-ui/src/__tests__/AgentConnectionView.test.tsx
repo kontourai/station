@@ -2510,6 +2510,37 @@ describe('AgentConnectionView', () => {
     );
     expect(detailStatus(container).tile).toBe('Not allowed');
   });
+
+  // Retry check repairs a failed check; it cannot lift a policy refusal.
+  test('a policy-refused engine that is otherwise ready offers no Retry check', async () => {
+    managedPolicy.summary = {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: {},
+      engines: { allowed: ['claude'], acpRegistryAgents: true, pinned: [] },
+    };
+    acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
+    const opencode = {
+      id: 'opencode',
+      kind: 'agent',
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: { engineId: 'acp' },
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    agentConnections = [...DEFAULT_AGENT_CONNECTIONS, opencode];
+    connectionQueryData = opencode;
+    const { container } = await render(
+      <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
+    );
+    expect(detailStatus(container).tile).toBe('Not allowed');
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
+  });
 });
 
 test('guided proxy setup saves a reference and checks only saved settings', async () => {

@@ -57,12 +57,12 @@ settings from a check that actually reached the provider:
 
 The engine page's Status, its **Ready** step and its readiness notice show the
 same state as its row. A section tab carries an attention mark when an engine
-cannot run agents (including one the managed policy refuses), a model connection
+cannot run agents for a reason you can fix, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
-failed; or Knowledge has no vector store. Saved-but-untested model connections, Knowledge without an embedding
-model, and computers that are not connected are resting states and carry no
-mark. Opening `/connections` shows a loading state until these lists load, or
+failed; or Knowledge has no vector store. Engines the managed policy refuses,
+saved-but-untested model connections, Knowledge without an embedding model, and
+computers that are not connected carry no mark. Opening `/connections` shows a loading state until these lists load, or
 for up to 1.5 seconds, then opens the first section that needs
 attention, or Models when none does. The rows, the engine page, the marks and
 that redirect share one [readiness

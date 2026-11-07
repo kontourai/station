@@ -76,8 +76,9 @@ describe('deriveConnectionHealth', () => {
       { policyDisallowed: true },
     );
     expect(disallowed).toMatchObject({ verdict: 'off', label: 'Not allowed' });
-    // Nothing the reader can turn on.
+    // Nothing the reader can turn on, so nothing to send them to.
     expect(disallowed.action).toBeUndefined();
+    expect(disallowed.needsAttention).toBe(false);
 
     const disabled = deriveConnectionHealth(
       engineHealthInput(engine({ enabled: false, prerequisites: [signIn] })),
@@ -198,12 +199,9 @@ describe('deriveConnectionHealth', () => {
     expect(health.action).toEqual({ label: 'Set up', id: 'set-up' });
   });
 
-  test('an engine needs attention whenever it is not dispatchable', () => {
+  test('an engine needs attention whenever it is not dispatchable for a reason the reader can fix', () => {
     for (const health of [
       deriveConnectionHealth(engineHealthInput(engine({ status: 'degraded' }))),
-      deriveConnectionHealth(engineHealthInput(engine()), {
-        policyDisallowed: true,
-      }),
       deriveConnectionHealth(
         engineHealthInput(engine({ readinessEvidence: failedSmoke })),
       ),
