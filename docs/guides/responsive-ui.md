@@ -237,6 +237,10 @@ Use `.tap-target` for compact interactive controls; the local floor is 44 by
 44 CSS pixels. Preserve visible keyboard focus. These CSS rules do not prove
 actual hit area after transforms, overlays or clipping.
 
+The sidebar's narrow drawer keeps Home, add and Board-menu controls at the same
+floor, even with a fine pointer. Board navigation and its menu use separate
+flex slots so their targets do not overlap.
+
 Record discovered modal-like surfaces in
 [responsive-surfaces.json](../ui/responsive-surfaces.json) and action surfaces in
 [responsive-action-surfaces.txt](../ui/responsive-action-surfaces.txt). New
@@ -330,8 +334,9 @@ cannot add a scroll row below a dock that fills the viewport.
 ### Phone app toolbar
 
 On a phone the Station chip shows its dot and the connected Station's name in
-a fixed-width slot in every state, so a state change or a Station notice never
-moves the controls beside it. That name takes priority over the app wordmark:
+every state. Its width fits short names and caps long names with an ellipsis.
+State changes and overlaid Station notices preserve that width, keeping nearby
+controls still. That name takes priority over the app wordmark:
 the wordmark wraps away whole wherever the row cannot hold it, and the logo
 stays. [`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts)
 measures the row at every phone width it supports.

@@ -141,6 +141,11 @@ function client() {
 }
 
 test('a real preference control saves account scope and preserves device storage; failure keeps the saved value', async () => {
+  fixture.get.mockResolvedValueOnce({
+    schemaVersion: 1,
+    values: { theme: 'dark' },
+    revision: 'initial',
+  });
   const qc = client();
   const view = render(tree(qc));
   await screen.findByRole('button', { name: 'Choose light' });
@@ -154,6 +159,7 @@ test('a real preference control saves account scope and preserves device storage
     expect(screen.getByLabelText('Current theme').textContent).toBe('light'),
   );
   expect(fixture.patch.mock.calls[0]?.[1]).toEqual({ theme: 'light' });
+  expect(fixture.patch.mock.calls[0]?.[2]).not.toHaveProperty('headers');
   expect(localStorage.getItem('station-device-settings-v1')).toBe(local);
   fixture.patch.mockRejectedValueOnce(new Error('Offline'));
   fireEvent.change(screen.getByLabelText('New Codex chats approval mode'), {

@@ -106,6 +106,10 @@
 
     "src-ui/src/hooks/ServerEventsMount.tsx",
 
+    "scripts/unsaved-guard-gate.mjs",
+
+    "src-ui/src/components/modals/ConfirmModal.tsx",
+
     "src-ui/src/components/StatusSummary.tsx",
 
     "src-ui/src/components/StatusSummary.css",
@@ -116,9 +120,7 @@
 
     "src-ui/src/components/ActionRow.tsx",
 
-    "src-ui/src/components/ActionRow.css",
-
-    "src-ui/src/components/modals/ConfirmModal.tsx"
+    "src-ui/src/components/ActionRow.css"
   ],
 
   "checks": [

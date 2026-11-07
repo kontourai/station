@@ -8,6 +8,50 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "apps-details-dark-mobile": [
+      "src-ui/src/views/apps/AppDetailsDialog.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx"
+    ],
+    "apps-details-dark-desktop": [
+      "src-ui/src/views/apps/AppDetailsDialog.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx"
+    ],
+    "apps-details-light-mobile": [
+      "src-ui/src/views/apps/AppDetailsDialog.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx"
+    ],
+    "apps-details-light-desktop": [
+      "src-ui/src/views/apps/AppDetailsDialog.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx"
+    ],
+    "apps-library-dark-mobile": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css"
+    ],
+    "apps-library-dark-desktop": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css"
+    ],
+    "apps-library-light-mobile": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css"
+    ],
+    "apps-library-light-desktop": [
+      "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+      "src-ui/src/views/apps/AppsLibrary.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/views/apps/AppsLibrary.css"
+    ],
     "task-capabilities-dark-desktop": [
       "src-ui/src/views/TaskWorkspaceView.tsx"
     ],

@@ -1309,17 +1309,20 @@ export class TerminalSessions<Principal> {
     // ending it, so the next generation reattaches. The supervisor ends it
     // when the supervisor itself stops.
     const stops = await Promise.allSettled(
-      [...this.live].map(async ([id, session]) => {
-        if (!isHostedShellProcess(session.process)) {
-          await this.stop(id);
-          // Its host is stopping, not the person: it may reopen on restart.
-          const record = this.records.get(id);
-          if (record && record.status === 'exited') record.hostStopped = true;
-          return;
-        }
-        session.process.detach();
-        this.live.delete(id);
-      }),
+      [...new Set([...this.live.keys(), ...this.stopping.keys()])].map(
+        async (id) => {
+          const session = this.live.get(id);
+          if (!session || !isHostedShellProcess(session.process)) {
+            await this.stop(id);
+            // Its host is stopping, not the person: it may reopen on restart.
+            const record = this.records.get(id);
+            if (record && record.status === 'exited') record.hostStopped = true;
+            return;
+          }
+          session.process.detach();
+          this.live.delete(id);
+        },
+      ),
     );
     const flushes = await Promise.allSettled(
       [...this.journals.values()].map(async (journal) =>
