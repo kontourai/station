@@ -183,15 +183,20 @@ export function useSubmitSharedTaskRoomAgentRequestMutation(
       input: import('@kontourai/station-contracts/task-room-work').SharedAgentRequest,
     ) => {
       const captured = current(scope);
+      const intent = structuredClone(input);
       const result = await submitSharedTaskRoomAgentRequest(
         captured.apiBase,
         task,
-        input,
+        intent,
         { requestScope: captured, isCurrent: captured.isCurrent },
       );
       return captured.isCurrent()
         ? result
-        : { kind: 'unconfirmed' as const, operationId: input.operationId };
+        : {
+            kind: 'unconfirmed' as const,
+            operationId: intent.operationId,
+            intent,
+          };
     },
   });
 }

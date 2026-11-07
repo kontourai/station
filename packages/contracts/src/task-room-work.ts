@@ -165,13 +165,14 @@ export interface SharedWorkRecord extends SharedTaskIdentity {
   modelId: string;
   inputDigest: string;
   context: SharedContextSnapshot;
+  thread: SharedThreadRef;
   target: SharedAgentRequest['target'];
   state: SharedWorkState;
 }
 export type SharedWorkOutcome =
   | { kind: 'not-sent'; reason: string }
   | { kind: 'accepted'; record: SharedWorkRecord; replayed: boolean }
-  | { kind: 'unconfirmed'; operationId: string };
+  | { kind: 'unconfirmed'; operationId: string; intent: SharedAgentRequest };
 
 function sharedObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);

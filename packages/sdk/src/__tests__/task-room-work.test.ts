@@ -498,6 +498,11 @@ test('shared acknowledgement binds intent and loss remains unconfirmed', async (
         results: [],
       },
       target: input.target,
+      thread: {
+        ...scope,
+        conversationId: 'conversation',
+        originSessionId: 'session',
+      },
       state: 'waiting',
     },
   };
@@ -580,7 +585,7 @@ test('shared acknowledgement binds intent and loss remains unconfirmed', async (
         isCurrent: () => true,
       },
     ),
-  ).toEqual({ kind: 'unconfirmed', operationId: 'op' });
+  ).toEqual({ kind: 'unconfirmed', operationId: 'op', intent: input });
 });
 
 test('shared discovery cancellation stays visible to the caller', async () => {
@@ -655,6 +660,10 @@ test('cancellation after shared POST remains unconfirmed', async () => {
       signal: controller.signal,
     },
   );
-  expect(result).toEqual({ kind: 'unconfirmed', operationId: 'op' });
+  expect(result).toMatchObject({
+    kind: 'unconfirmed',
+    operationId: 'op',
+    intent: { operationId: 'op' },
+  });
   expect(fetcher).toHaveBeenCalledTimes(2);
 });

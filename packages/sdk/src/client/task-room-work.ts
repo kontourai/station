@@ -2,6 +2,7 @@ import { isTaskRoomAttachments } from '@kontourai/station-contracts/project-task
 import {
   isSharedAgentRequest,
   isSharedResultRef,
+  isSharedThreadRef,
   type SharedAgentRequest,
   type SharedContextSnapshot,
   type SharedResultRef,
@@ -438,6 +439,7 @@ function sharedRecord(
       'modelId',
       'inputDigest',
       'context',
+      'thread',
       'target',
       'state',
     ]) &&
@@ -451,6 +453,10 @@ function sharedRecord(
     value.agentId === input.agentId &&
     value.modelId === input.modelId &&
     value.inputDigest === inputDigest &&
+    isSharedThreadRef(value.thread) &&
+    sameTask(value.thread, scope) &&
+    (input.target.kind === 'new-thread' ||
+      same(value.thread, input.target.thread)) &&
     same(value.target, input.target) &&
     sharedSnapshot(value.context, scope, input) &&
     typeof value.state === 'string' &&
@@ -625,7 +631,7 @@ export async function submitSharedTaskRoomAgentRequest(
   } catch {
     // Once dispatch begins, failure or cancellation does not prove non-acceptance.
   }
-  return { kind: 'unconfirmed', operationId: intent.operationId };
+  return { kind: 'unconfirmed', operationId: intent.operationId, intent };
 }
 export async function fetchSharedTaskRoomRequests(
   apiBase: string,
@@ -704,7 +710,11 @@ export async function withdrawSharedTaskRoomRequest(
   } catch {
     // A dispatched withdrawal can settle even if its response is lost.
   }
-  return { kind: 'unconfirmed', operationId: input.operationId };
+  return {
+    kind: 'unconfirmed',
+    operationId: input.operationId,
+    intent: structuredClone(input),
+  };
 }
 export async function fetchSharedTaskRoomResult(
   apiBase: string,
