@@ -72,6 +72,71 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 /**
+ * The New chat step's project list: the start composer's own context options
+ * (No project first), read only once this step is open.
+ */
+function ShareTargetProjectList({
+  search,
+  onSelect,
+}: {
+  search: string;
+  onSelect: (option: NewChatModalContextOption) => void;
+}) {
+  const projectsQuery = useScopedProjectsQuery();
+  const options = useMemo(
+    () =>
+      filterContextOptions(
+        buildContextOptions(projectsQuery.data ?? []),
+        search.trim(),
+      ),
+    [projectsQuery.data, search],
+  );
+  if (projectsQuery.isError && !projectsQuery.data)
+    return (
+      <ErrorState
+        variant="compact"
+        title="Couldn’t load projects"
+        action={
+          <Button onClick={() => void projectsQuery.refetch()}>Retry</Button>
+        }
+      />
+    );
+  if (projectsQuery.isLoading)
+    return <SkeletonList count={4} label="Loading projects" />;
+  if (options.length === 0)
+    return <Empty variant="compact" label="No matching projects" />;
+  return (
+    <ul className="share-target-picker__items">
+      {options.map((option) => (
+        <li key={option.value}>
+          <button
+            type="button"
+            className="share-target-picker__item"
+            disabled={Boolean(option.unavailable)}
+            title={option.unavailable}
+            onClick={() => onSelect(option)}
+          >
+            <span className="share-target-picker__item-title">
+              <LayoutIcon
+                layout={{ name: option.label, icon: option.icon }}
+                fallback={contextGlyph(option.glyph)}
+                size={20}
+              />
+              {option.label}
+            </span>
+            {option.unavailable && (
+              <span className="share-target-picker__item-meta">
+                Can't start here
+              </span>
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
  * Android-Messages-style "Share to…" picker, opened by `ShareIntakeController`
  * when images are shared into the Android app (`share-intake`). It lists
  * recent conversations across the available agents and, on selection, drops
@@ -98,11 +163,6 @@ export function ShareTargetPickerModal({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [mode, setMode] = useState<'conversation' | 'new-chat'>('conversation');
   const dialogRef = useRef<HTMLDivElement>(null);
-  const projectsQuery = useScopedProjectsQuery();
-  const projectOptions = useMemo(
-    () => buildContextOptions(projectsQuery.data ?? []),
-    [projectsQuery.data],
-  );
 
   // Escape closes the dialog. Without it the only dismissal paths were a
   // pointer click on the backdrop and the Close button, so a keyboard user had
@@ -154,11 +214,6 @@ export function ShareTargetPickerModal({
         .includes(term),
     );
   }, [conversations, search]);
-
-  const filteredProjects = useMemo(
-    () => filterContextOptions(projectOptions, search.trim()),
-    [projectOptions, search],
-  );
 
   if (!isOpen) return null;
 
@@ -294,49 +349,10 @@ export function ShareTargetPickerModal({
           )}
           <div className="share-target-picker__list">
             {mode === 'new-chat' ? (
-              projectsQuery.isError && !projectsQuery.data ? (
-                <ErrorState
-                  variant="compact"
-                  title="Couldn’t load projects"
-                  action={
-                    <Button onClick={() => void projectsQuery.refetch()}>
-                      Retry
-                    </Button>
-                  }
-                />
-              ) : projectsQuery.isLoading ? (
-                <SkeletonList count={4} label="Loading projects" />
-              ) : filteredProjects.length === 0 ? (
-                <Empty variant="compact" label="No matching projects" />
-              ) : (
-                <ul className="share-target-picker__items">
-                  {filteredProjects.map((option) => (
-                    <li key={option.value}>
-                      <button
-                        type="button"
-                        className="share-target-picker__item"
-                        disabled={Boolean(option.unavailable)}
-                        title={option.unavailable}
-                        onClick={() => handleStartNewChat(option)}
-                      >
-                        <span className="share-target-picker__item-title">
-                          <LayoutIcon
-                            layout={{ name: option.label, icon: option.icon }}
-                            fallback={contextGlyph(option.glyph)}
-                            size={20}
-                          />
-                          {option.label}
-                        </span>
-                        {option.unavailable && (
-                          <span className="share-target-picker__item-meta">
-                            Can't start here
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )
+              <ShareTargetProjectList
+                search={search}
+                onSelect={handleStartNewChat}
+              />
             ) : isLoading ? (
               <SkeletonList count={5} label="Loading conversations" />
             ) : filtered.length === 0 ? (

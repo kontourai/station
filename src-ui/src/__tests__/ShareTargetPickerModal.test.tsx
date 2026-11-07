@@ -191,6 +191,8 @@ describe('ShareTargetPickerModal', () => {
       const { onClose, onShareToConversation } = renderPicker({
         sharedFiles: files,
       });
+      // Projects are read only once the New chat step opens.
+      expect(projectsQuery).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: /New chat/ }));
       expect(
         screen.getByText(

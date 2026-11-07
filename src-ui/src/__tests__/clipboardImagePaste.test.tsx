@@ -12,6 +12,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
 import { StartComposer } from '../components/chat-start/StartComposer';
@@ -41,12 +42,15 @@ vi.mock('../components/chat/SlashCommandSelector', () => ({
 }));
 vi.mock('../components/voice/VoiceOrb', () => ({ VoiceOrb: () => null }));
 
-const PNG_BYTES = new Uint8Array([
+const PNG_BYTES: Uint8Array<ArrayBuffer> = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
 const PNG_DATA_URL = `data:image/png;base64,${btoa(String.fromCharCode(...PNG_BYTES))}`;
 
-function clipboardItem(type: string, bytes: Uint8Array = PNG_BYTES) {
+function clipboardItem(
+  type: string,
+  bytes: Uint8Array<ArrayBuffer> = PNG_BYTES,
+) {
   return {
     types: [type],
     getType: vi.fn(async () => new Blob([bytes], { type })),
@@ -210,7 +214,7 @@ function renderChatInput(overrides: Record<string, unknown> = {}) {
     onSend: vi.fn(async () => {}),
     onCancel: vi.fn(),
     onClearInput: vi.fn(),
-    selectAttachmentFiles: vi.fn(async () => {}),
+    selectAttachmentFiles: vi.fn(async (_files: File[]) => {}),
     onAttachUnavailable: vi.fn(),
     attachmentError: null,
     onRemoveAttachment: vi.fn(),
@@ -230,7 +234,11 @@ function renderChatInput(overrides: Record<string, unknown> = {}) {
     closeAll: vi.fn(),
     ...overrides,
   };
-  render(<ChatInputArea {...(props as never)} />);
+  render(
+    <ChatInputArea
+      {...(props as unknown as ComponentProps<typeof ChatInputArea>)}
+    />,
+  );
   return props;
 }
 

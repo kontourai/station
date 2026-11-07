@@ -111,7 +111,7 @@
 }
 
 .share-target-picker__new-chat {
-  border: var(--k-border-thin) dashed var(--border-primary);
+  border: var(--k-border-thin) dashed var(--k-line-strong);
 }
 
 .share-target-picker__back {
