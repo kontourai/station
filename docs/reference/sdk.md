@@ -4616,7 +4616,7 @@ content, while retaining the observed HTTP status (usually 200).
   permission grant. Servers predating that projection may omit it.
   Unscoped Task lists refresh on remount after a mutation or event invalidates
   them, so returning to a Project shows changed Task status. Untouched cached
-  lists keep the cache-first mount policy. Scoped destination pickers retain
+  lists keep the cache-first mount policy. By default, scoped destination pickers retain
   their fresh authorization read on every mount.
 
 ### Tracker-backed Tasks and Task memory (#4003)
