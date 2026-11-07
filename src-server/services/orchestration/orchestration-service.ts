@@ -9502,6 +9502,40 @@ export class OrchestrationService {
             try {
               throwIfAborted(turnInput.signal);
               this.assertAdapterCurrent(adapter);
+              // A posture the live engine cannot take but a fresh start of
+              // this session can (Claude's full access, granted only at
+              // spawn): park the idle engine so the turn below restarts it in
+              // place, from its resume cursor, at the recorded posture. A
+              // session parking refuses (open request, running child work)
+              // keeps its engine, and the adapter reports the refusal.
+              if (
+                adapter.turnNeedsEngineRelaunch?.(
+                  turnInput.threadId,
+                  turnInput.modelOptions,
+                ) &&
+                this.isParkableIdleSession(turnInput.threadId, Date.now(), 0)
+              ) {
+                try {
+                  await this.parkIdleSession(
+                    turnInput.threadId,
+                    adapter,
+                    Date.now(),
+                    0,
+                  );
+                } catch (error) {
+                  // A turn or transition holds the session: the send goes on
+                  // to the live engine, which refuses or reports as before.
+                  if (!(error instanceof SessionLifecycleClaimRefusedError))
+                    throw error;
+                  this.options.logger.warn(
+                    'Engine was not relaunched for full access',
+                    {
+                      threadId: turnInput.threadId,
+                      error: errorMessage(error),
+                    },
+                  );
+                }
+              }
               const startTurn = async () => {
                 // An adapter whose session is visible before its engine start
                 // finishes (an ACP reattach) is waited on HERE, before the

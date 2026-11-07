@@ -8675,6 +8675,72 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('full access on a session spawned without the bypass grant asks for an engine relaunch; a granted one does not', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    vi.stubEnv('IS_SANDBOX', '1');
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    const adapter = new ClaudeAdapter();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-no-grant',
+      confinement: 'host',
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-granted',
+      confinement: 'host',
+      modelOptions: { approvalMode: 'ask' },
+    });
+
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-no-grant', {
+        approvalMode: 'never',
+      }),
+    ).toBe(true);
+    // Only full access needs the spawn-time grant.
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-no-grant', {
+        approvalMode: 'auto',
+      }),
+    ).toBe(false);
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-granted', {
+        approvalMode: 'never',
+      }),
+    ).toBe(false);
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-unknown', {
+        approvalMode: 'never',
+      }),
+    ).toBe(false);
+  });
+
+  test('no relaunch is asked for as root outside a sandbox, where a fresh start with the grant would fail', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-root-no-grant',
+      confinement: 'host',
+    });
+    const realGetuid = process.getuid;
+    process.getuid = () => 0;
+    vi.stubEnv('IS_SANDBOX', undefined);
+    vi.stubEnv('CLAUDE_CODE_BUBBLEWRAP', undefined);
+    try {
+      expect(
+        adapter.turnNeedsEngineRelaunch('thread-root-no-grant', {
+          approvalMode: 'never',
+        }),
+      ).toBe(false);
+    } finally {
+      process.getuid = realGetuid;
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('a host start below full access is not granted bypass as root outside a sandbox, where the engine would refuse it', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     // Defined where the platform has none (Windows), so the guard sees root.

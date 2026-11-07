@@ -231,9 +231,11 @@ writes too. Codex's web search and MCP tools are not commands and are not
 covered by this. Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session. A Claude chat started in a
 chosen mode by someone who may grant full access can switch to full access on
-its next turn. A chat left on Claude's own settings, one that started before
-this was available, or one on a Station running as root outside a sandbox
-needs a restart.
+its next turn. A chat left on Claude's own settings, or one that started before
+this was available, gets full access on its next turn too: Station relaunches
+Claude Code first and resumes the same conversation. A chat that is waiting on
+you or still running background work, or one on a Station running as root
+outside a sandbox, needs a restart.
 
 ## Read recent conversations offline
 
