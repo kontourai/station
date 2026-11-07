@@ -65,6 +65,18 @@ export interface UsageReceipt {
   model?: string;
   /** Opaque engine/profile attribution; absent means the account is unknown. */
   accountKey?: string;
+  /**
+   * The engine connection last recorded in this process run. Absent means it
+   * recorded none (including every pre-attribution session); it is never
+   * inferred from `provider`.
+   */
+  connectionId?: string;
+  /**
+   * The model connection of the accepted Station-resolved launch plan in
+   * effect at this usage, within the same process. Absent when the engine
+   * chose its own model or nothing was recorded.
+   */
+  modelConnectionId?: string;
   threadId?: string;
   turnId?: string;
   conversationId?: string;
@@ -151,11 +163,26 @@ export interface UsageProviderCoverage {
   reason?: string;
 }
 
+/** Row groupings a usage rollup supports. */
+export type UsageRollupGroupBy =
+  | 'provider'
+  | 'model'
+  | 'station'
+  | 'conversation'
+  | 'task'
+  | 'day'
+  | 'connection'
+  | 'modelConnection';
+
 export interface UsageRollupRow {
   key: string;
   stationId: string;
   provider: string;
   model?: string;
+  /** Set only on `groupBy: 'connection'` rows with recorded attribution. */
+  connectionId?: string;
+  /** Set only on `groupBy: 'modelConnection'` rows with recorded attribution. */
+  modelConnectionId?: string;
   conversationId?: string;
   taskId?: string;
   day?: string;

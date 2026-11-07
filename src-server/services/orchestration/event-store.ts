@@ -811,6 +811,130 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
                   ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json
 `;
 
+/** The `session.started` that opened this usage event's process epoch, or 0. */
+const USAGE_RECEIPT_EPOCH = `COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch
+                    WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started'
+                      AND epoch.sequence <= e.sequence), 0)`;
+
+/**
+ * A launch plan `extractModelLaunchPlan` (orchestration-session-state.ts)
+ * recognizes: an accepted Station-resolved plan or a declared engine choice.
+ */
+const ACCEPTED_LAUNCH_PLAN = `json_type(attribution.payload, '$.metadata.modelLaunchPlan') = 'object'
+                    AND ((json_extract(attribution.payload, '$.metadata.modelLaunchPlan.kind') = 'station-resolved'
+                          AND json_type(attribution.payload, '$.metadata.modelLaunchPlan.modelConnectionId') = 'text'
+                          AND json_type(attribution.payload, '$.metadata.modelLaunchPlan.modelId') = 'text'
+                          AND json_extract(attribution.payload, '$.metadata.modelLaunchPlan.evidence') = 'catalog-accepted')
+                      OR (json_extract(attribution.payload, '$.metadata.modelLaunchPlan.kind') = 'engine-selected'
+                          AND json_extract(attribution.payload, '$.metadata.modelLaunchPlan.evidence') IN ('adapter-declared', 'capability-absent')))`;
+
+/**
+ * Connection attribution, joined only by the windowed rollup: export pages
+ * and the conversation usage tree never carry it, so they never pay for it.
+ *
+ * Both facts belong to the usage event's process epoch. The engine
+ * connection is the latest one recorded since the epoch's `session.started`
+ * (a reconfiguration may restate it); the model connection is the launch
+ * plan in effect at that event, so a mid-thread model switch attributes
+ * later usage to the new plan and an engine-selected plan to none. Every
+ * lookup is an equality on `(thread_id, method)` over the history index,
+ * never a scan of the thread's whole history: the planner otherwise prefers
+ * the `(thread_id, sequence)` index and walks every event of the epoch.
+ */
+const USAGE_RECEIPT_CONNECTION_COLUMNS = `,
+                COALESCE(
+                  (SELECT json_extract(attribution.payload, '$.metadata.connectionId')
+                     FROM orchestration_events attribution INDEXED BY idx_events_history_projection
+                    WHERE attribution.thread_id = e.thread_id
+                      AND attribution.method = 'session.configured'
+                      AND attribution.sequence > ${USAGE_RECEIPT_EPOCH}
+                      AND attribution.sequence <= e.sequence
+                      AND json_valid(attribution.payload)
+                      AND json_type(attribution.payload, '$.metadata.connectionId') = 'text'
+                    ORDER BY attribution.sequence DESC LIMIT 1),
+                  (SELECT json_extract(started.payload, '$.metadata.connectionId')
+                     FROM orchestration_events started INDEXED BY idx_events_history_projection
+                    WHERE started.thread_id = e.thread_id
+                      AND started.method = 'session.started'
+                      AND started.sequence = ${USAGE_RECEIPT_EPOCH}
+                      AND json_valid(started.payload)
+                      AND json_type(started.payload, '$.metadata.connectionId') = 'text')
+                ) AS connection_id,
+                (SELECT CASE WHEN json_extract(attribution.payload, '$.metadata.modelLaunchPlan.kind') = 'station-resolved'
+                             THEN json_extract(attribution.payload, '$.metadata.modelLaunchPlan.modelConnectionId') END
+                   FROM orchestration_events attribution INDEXED BY idx_events_history_projection
+                  WHERE attribution.thread_id = e.thread_id
+                    AND attribution.method = 'session.configured'
+                    AND attribution.sequence > ${USAGE_RECEIPT_EPOCH}
+                    AND attribution.sequence <= e.sequence
+                    AND json_valid(attribution.payload)
+                    AND ${ACCEPTED_LAUNCH_PLAN}
+                  ORDER BY attribution.sequence DESC LIMIT 1) AS model_connection_id
+`;
+
+function connectionFilterValues(filter: UsageReceiptFilter): string[] {
+  return [
+    ...(filter.connectionId !== undefined ? [filter.connectionId] : []),
+    ...(filter.modelConnectionId !== undefined
+      ? [filter.modelConnectionId]
+      : []),
+  ];
+}
+
+/**
+ * The windowed rollup's receipt selection. A connection filter first selects
+ * the threads that ever recorded that connection (an indexed lookup of their
+ * configuration events), so usage events of every other thread are never
+ * projected; the exact per-event attribution then decides membership.
+ * Exported so a test can pin that query plan.
+ */
+export function usageReceiptEventsSql(
+  ownerCount: number,
+  filter: UsageReceiptFilter,
+): string {
+  const owners = usageOwnerPlaceholders(
+    Array.from({ length: ownerCount }, () => ''),
+  );
+  const candidateThreads = [
+    ...(filter.connectionId !== undefined
+      ? [
+          `e.thread_id IN (SELECT candidate.thread_id FROM orchestration_events candidate
+              WHERE candidate.method IN ('session.started', 'session.configured')
+                AND json_valid(candidate.payload)
+                AND json_extract(candidate.payload, '$.metadata.connectionId') = ?)`,
+        ]
+      : []),
+    ...(filter.modelConnectionId !== undefined
+      ? [
+          `e.thread_id IN (SELECT candidate.thread_id FROM orchestration_events candidate
+              WHERE candidate.method = 'session.configured'
+                AND json_valid(candidate.payload)
+                AND json_extract(candidate.payload, '$.metadata.modelLaunchPlan.modelConnectionId') = ?)`,
+        ]
+      : []),
+  ];
+  const exact = [
+    ...(filter.connectionId !== undefined ? ['connection_id = ?'] : []),
+    ...(filter.modelConnectionId !== undefined
+      ? ['model_connection_id = ?']
+      : []),
+  ];
+  return `SELECT * FROM (${USAGE_RECEIPT_EVENT_SELECT}${USAGE_RECEIPT_CONNECTION_COLUMNS}
+           FROM orchestration_events e
+           INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
+           LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
+          WHERE e.method = 'token-usage.updated'
+            AND e.observed_at >= ? AND e.observed_at <= ?
+            AND h.owner_user_id IN (${owners})
+            AND (? IS NULL OR h.tenant_id = ?)
+            AND (? IS NULL OR e.provider = ?)
+            AND (? IS NULL OR e.observed_at > ? OR (e.observed_at = ? AND e.id > ?))
+            ${candidateThreads.map((clause) => `AND ${clause}`).join('\n            ')})
+          ${exact.length ? `WHERE ${exact.join(' AND ')}` : ''}
+          ORDER BY observed_at ASC, id ASC
+          LIMIT ?`;
+}
+
 /** How much of a turn's prompt the digest read keeps (the first line is clipped from it). */
 export const TURN_DIGEST_PROMPT_PREFIX_CHARS = 1024;
 /** The most Sessions one conversation lineage the digest reads may name. */
@@ -866,6 +990,16 @@ export interface SessionNamingParent {
   stationDerived: boolean;
 }
 
+/**
+ * Narrowing applied inside the bounded receipt selection, so a busy engine or
+ * connection cannot fill the window's limit and crowd a quiet one out.
+ */
+export interface UsageReceiptFilter {
+  provider?: string;
+  connectionId?: string;
+  modelConnectionId?: string;
+}
+
 /** One `token-usage.updated` row with the receipt facts joined onto it. */
 export interface UsageReceiptEventRow {
   event: PersistedRuntimeEvent;
@@ -879,6 +1013,8 @@ export interface UsageReceiptEventRow {
    */
   costSegment?: string;
   accountKey?: string;
+  connectionId?: string;
+  modelConnectionId?: string;
 }
 
 /**
@@ -8135,32 +8271,27 @@ export class EventStore {
     to: string;
     after?: { observedAt: string; eventId: string };
     limit: number;
+    filter?: UsageReceiptFilter;
   }): UsageReceiptEventRow[] {
-    const owners = usageOwnerPlaceholders(options.ownerUserIds);
+    const filter = options.filter ?? {};
     const rows = this.db
-      .prepare(
-        `${USAGE_RECEIPT_EVENT_SELECT}
-           FROM orchestration_events e
-           INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
-           LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
-          WHERE e.method = 'token-usage.updated'
-            AND e.observed_at >= ? AND e.observed_at <= ?
-            AND h.owner_user_id IN (${owners})
-            AND (? IS NULL OR h.tenant_id = ?)
-            AND (? IS NULL OR e.observed_at > ? OR (e.observed_at = ? AND e.id > ?))
-          ORDER BY e.observed_at ASC, e.id ASC
-          LIMIT ?`,
-      )
+      .prepare(usageReceiptEventsSql(options.ownerUserIds.length, filter))
       .all(
         `${options.from}T00:00:00.000Z`,
         `${options.to}T23:59:59.999Z`,
         ...options.ownerUserIds,
         options.tenantId ?? null,
         options.tenantId ?? null,
+        filter.provider ?? null,
+        filter.provider ?? null,
         options.after?.observedAt ?? null,
         options.after?.observedAt ?? null,
         options.after?.observedAt ?? null,
         options.after?.eventId ?? null,
+        // Candidate-thread placeholders, then the exact attribution ones,
+        // in the order `usageReceiptEventsSql` writes them.
+        ...connectionFilterValues(filter),
+        ...connectionFilterValues(filter),
         options.limit + 1,
       ) as any[];
     const costSegments = this.cumulativeCostSegmentsFor(
@@ -8189,6 +8320,12 @@ export class EventStore {
       ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
       ...(typeof row.model === 'string' ? { model: row.model } : {}),
       ...(typeof accountKey === 'string' ? { accountKey } : {}),
+      ...(typeof row.connection_id === 'string' && row.connection_id
+        ? { connectionId: row.connection_id }
+        : {}),
+      ...(typeof row.model_connection_id === 'string' && row.model_connection_id
+        ? { modelConnectionId: row.model_connection_id }
+        : {}),
       ...(costSegment !== undefined ? { costSegment } : {}),
     };
   }
