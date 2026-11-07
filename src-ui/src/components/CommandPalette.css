@@ -137,3 +137,54 @@
   color: var(--text-secondary);
   font-size: var(--k-text-sm);
 }
+
+/* #4694: the palette's own keys. A touch-only device has none of them. */
+.command-palette__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2) var(--k-space-4);
+  margin: 0;
+  padding: var(--k-space-2) 14px;
+  border-top: 1px solid var(--k-line);
+  list-style: none;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.command-palette__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.command-palette__legend kbd {
+  min-width: 1.5em;
+  padding: 0 var(--k-space-1);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  text-align: center;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .command-palette__legend {
+    display: none;
+  }
+}
+
+/* #4694: the header entry makes the palette reachable on a phone. Let the
+   Workspace search button take its own line there instead of squeezing the
+   search field. */
+@media (max-width: 480px) {
+  .command-palette__input-row {
+    flex-wrap: wrap;
+  }
+  .command-palette__input-row > button:first-child {
+    flex: 1 0 100%;
+  }
+  .command-palette__input {
+    min-width: 0;
+  }
+}
