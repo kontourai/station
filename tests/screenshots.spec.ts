@@ -3489,6 +3489,29 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
   },
   {
+    // #4692: Display (density and motion), Mode, Theme and Accent.
+    name: 'appearance',
+    title: 'Appearance',
+    path: '/appearance',
+    viewport: DESKTOP,
+    afterGoto: async (page) => {
+      await expect(
+        page.getByRole('radiogroup', { name: 'Density' }),
+      ).toBeVisible();
+    },
+  },
+  {
+    name: 'mobile-appearance',
+    title: 'Mobile — Appearance',
+    path: '/appearance',
+    viewport: MOBILE,
+    afterGoto: async (page) => {
+      await expect(
+        page.getByRole('radiogroup', { name: 'Density' }),
+      ).toBeVisible();
+    },
+  },
+  {
     name: 'settings-info-tip',
     title: 'Settings — Approval guardian explanation',
     path: '/settings?view=permissions',
