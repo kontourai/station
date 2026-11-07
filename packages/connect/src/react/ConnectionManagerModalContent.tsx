@@ -13,6 +13,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -228,17 +229,28 @@ export function ConnectionManagerModalContent({
     return cancelCandidates;
   }, [panel, refreshCandidates, cancelCandidates]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // The trigger and every ancestor, captured while all of them are still
     // attached — see `@kontourai/station-shared/return-focus`.
     previousFocusRef.current = captureReturnFocus(returnFocusTarget);
     const overlay = overlayRef.current;
+    const dialog = dialogRef.current;
+    if (dialog) {
+      for (const candidate of dialog.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+        if (candidate.getClientRects().length === 0) continue;
+        candidate.focus();
+        if (dialog.contains(document.activeElement)) break;
+      }
+      if (!dialog.contains(document.activeElement)) dialog.focus();
+    }
     const inertedBackground: Array<{
       element: HTMLElement;
       inert: boolean;
       ariaHidden: string | null;
     }> = [];
-    let activeBranch: HTMLElement | null = overlay;
+    let activeBranch: HTMLElement | null = dialog?.contains(document.activeElement)
+      ? overlay
+      : null;
     while (activeBranch?.parentElement) {
       const parent: HTMLElement = activeBranch.parentElement;
       for (const sibling of Array.from(parent.children)) {
@@ -257,9 +269,6 @@ export function ConnectionManagerModalContent({
       if (parent === document.body) break;
     }
 
-    const focusTimer = window.setTimeout(() => {
-      dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
-    });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -283,7 +292,6 @@ export function ConnectionManagerModalContent({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeyDown);
       for (const { element, inert, ariaHidden } of inertedBackground) {
         element.inert = inert;
@@ -780,6 +788,7 @@ export function ConnectionManagerModalContent({
         ref={dialogRef}
         className="station-connect-modal-panel"
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby="station-connect-modal-title"
       >

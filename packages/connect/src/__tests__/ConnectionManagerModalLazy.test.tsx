@@ -53,6 +53,43 @@ afterEach(() => {
 // closed, and the real body — not the loading placeholder — is what appears once
 // the modal opens.
 describe('ConnectionManagerModal lazy body', () => {
+  it('moves focus into the dialog before inerting and hiding the focused background', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ requests: [] })));
+    await import('../react/ConnectionManagerModalContent');
+    const background = document.createElement('div');
+    const trigger = document.createElement('button');
+    background.append(trigger);
+    document.body.append(background);
+    trigger.focus();
+    const focusAtIsolation: Array<Element | null> = [];
+    let inert = false;
+    Object.defineProperty(background, 'inert', {
+      configurable: true,
+      get: () => inert,
+      set: (value: boolean) => {
+        if (value) focusAtIsolation.push(document.activeElement);
+        inert = value;
+      },
+    });
+    const setAttribute = background.setAttribute.bind(background);
+    vi.spyOn(background, 'setAttribute').mockImplementation((name, value) => {
+      if (name === 'aria-hidden' && value === 'true') {
+        focusAtIsolation.push(document.activeElement);
+      }
+      setAttribute(name, value);
+    });
+
+    const view = renderModal(true);
+    const dialog = await screen.findByRole('dialog');
+    expect(focusAtIsolation).toHaveLength(2);
+    for (const focused of focusAtIsolation) {
+      expect(focused).not.toBe(trigger);
+      expect(dialog.contains(focused)).toBe(true);
+    }
+    view.unmount();
+    background.remove();
+  });
+
   it('renders nothing at all while closed', () => {
     const { container } = renderModal(
       false,
