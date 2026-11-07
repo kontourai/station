@@ -87,8 +87,8 @@ allowance stays detail on the engine page for viewers with `access:manage`.
 - Receipts gain an optional `connectionId` beside `provider`, filled from the
   session's recorded connection. Proxy-routed engines also record
   `modelConnectionId`. Old receipts stay unattributed.
-- `/usage-rollup` accepts any known provider kind, an optional `connectionId`
-  filter, and `groupBy: 'connection'`. Unknown kinds still return 400. A
+- `/usage-rollup` accepts any provider kind with declared usage semantics,
+  optional `connectionId` and `modelConnectionId` filters, and grouping by either. Unknown kinds still return 400. A
   connection filter applies to this Station's receipts only, including the
   aggregate window, because connection ids are local.
 - New fields stay off usage exports, peer transfers and telemetry until those
@@ -178,5 +178,8 @@ Each slice updates the Connections guide and module map for what it ships.
 
 - Provider allowance endpoints change shape. Unknown readings stay unknown.
 - Receipts written before slice 2 have no `connectionId`; connection views disclose the gap.
-- ACP adapters report context occupancy and omit cost deliberately; their usage stays partial.
+- ACP adapters report context occupancy only and omit cost deliberately, so they
+  produce no usage receipts. Their usage panel states that, never zero.
+- Claude Code and Codex record `connectionId` only when dispatch passes it, so
+  their engine pages keep filtering by provider kind.
 - **Check all** starts configured tool servers; the bound keeps it from flooding a host.
