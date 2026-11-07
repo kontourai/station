@@ -210,7 +210,7 @@ describe('CommandPaletteEntry (#4694)', () => {
   test('the pill opens the palette and Escape returns focus to it', async () => {
     const frame = stubFrame();
     await renderShell();
-    const pill = screen.getByRole('button', { name: 'Search or jump to…' });
+    const pill = screen.getByRole('button', { name: /^Search or jump to…/ });
     expect(pill.textContent).toContain('⌘K');
     expect(screen.queryByRole('dialog')).toBeNull();
 
@@ -230,7 +230,7 @@ describe('CommandPaletteEntry (#4694)', () => {
   test('on a phone it is a glyph-only control with the same name', async () => {
     isMobileMock = true;
     await renderShell();
-    const pill = screen.getByRole('button', { name: 'Search or jump to…' });
+    const pill = screen.getByRole('button', { name: /^Search or jump to…/ });
     expect(pill.textContent).toBe('');
     fireEvent.click(pill);
     expect(
@@ -247,7 +247,9 @@ describe('CommandPalette empty query (#4694)', () => {
   test('shows Suggestions, Recent and Places, navigable in drawn order', async () => {
     commandFrecencyStorage.record('project:alpha');
     await renderShell();
-    fireEvent.click(screen.getByRole('button', { name: 'Search or jump to…' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Search or jump to…/ }),
+    );
 
     const labels = sectionLabels();
     expect(labels.slice(0, 3)).toEqual(['Suggestions', 'Recent', 'Places']);
@@ -289,7 +291,9 @@ describe('CommandPalette empty query (#4694)', () => {
 
   test('a typed query replaces the guided sections', async () => {
     await renderShell();
-    fireEvent.click(screen.getByRole('button', { name: 'Search or jump to…' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Search or jump to…/ }),
+    );
     fireEvent.change(screen.getByRole('combobox'), {
       target: { value: 'alpha' },
     });
@@ -299,7 +303,9 @@ describe('CommandPalette empty query (#4694)', () => {
 
   test('shows the palette key legend', async () => {
     await renderShell();
-    fireEvent.click(screen.getByRole('button', { name: 'Search or jump to…' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Search or jump to…/ }),
+    );
     const legend = screen.getByRole('list', { name: 'Palette keys' });
     expect(legend.textContent).toContain('Move');
     expect(legend.textContent).toContain('Open');

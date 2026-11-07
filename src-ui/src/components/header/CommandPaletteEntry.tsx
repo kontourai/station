@@ -13,7 +13,7 @@ const LABEL = 'Search or jump to…';
  * The button passes itself as the trigger: a tapped button is not focused on
  * every touch platform, and the palette returns focus to whatever opened it.
  * On a phone it is a glyph-only control so the toolbar row keeps its width;
- * its accessible name is the same either way.
+ * both are named "Search or jump to…".
  */
 export function CommandPaletteEntry() {
   const isMobile = useIsMobile();
@@ -30,7 +30,9 @@ export function CommandPaletteEntry() {
           ? 'app-toolbar__icon-btn app-toolbar__palette-entry app-toolbar__palette-entry--compact'
           : 'app-toolbar__palette-entry'
       }
-      aria-label={LABEL}
+      // The phone glyph needs a name; the pill's visible text is its name,
+      // shortcut included, so it is not overridden.
+      aria-label={isMobile ? LABEL : undefined}
       aria-haspopup="dialog"
       title={isMobile || !chord ? LABEL : `${LABEL} (${chord})`}
       onClick={(event) =>
