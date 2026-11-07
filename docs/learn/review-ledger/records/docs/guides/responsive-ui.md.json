@@ -164,7 +164,9 @@
 
     "src-ui/src/__tests__/ProjectSidebarBoards.coarseGeometry.test.tsx",
 
-    "src-ui/src/views/ProjectSettingsView.css"
+    "src-ui/src/views/ProjectSettingsView.css",
+
+    "src-ui/src/__tests__/HeaderActions.connection-reflow.test.tsx"
   ],
 
   "checks": [
