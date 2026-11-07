@@ -322,7 +322,9 @@
 
     "src-ui/src/hooks/useIsMobile.ts",
 
-    "src-ui/src/hooks/useCoarsePointer.ts"
+    "src-ui/src/hooks/useCoarsePointer.ts",
+
+    "src-ui/src/hooks/useClipboardImagePaste.ts"
   ],
 
   "checks": [
