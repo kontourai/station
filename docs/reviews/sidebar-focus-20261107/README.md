@@ -3,8 +3,9 @@
 Retention: through 2027-02-05; follow the repository evidence-archive process afterward.
 
 This packet records #4662's bounded current sidebar and adjacent navigation audit.
-The separate Stations-manager opening finding remains in #4665. This is not
-multiplayer execution or an exhaustive whole-product usability qualification.
+The historical Stations-manager finding is followed by the separately pinned
+[manager repair evidence](manager-audit-addendum.md). This is not multiplayer
+execution or an exhaustive whole-product usability qualification.
 
 ## Source and capture identity
 
@@ -112,3 +113,28 @@ native window; it was left to the tool's automatic cleanup contract.
 Physical devices, native shells, actual providers, independently authenticated
 collaborators, shared-result access/revocation, packaged UI, Gallery comparison
 and release qualification remain unverified by this packet.
+
+
+## Stations manager follow-up
+
+The [separate follow-up](manager-audit-addendum.md) records the repaired manager
+at `cfc2b1c8fc1b2fd855caf4f7228726f74f21815b`, with product blobs matching
+candidate `ee32e85d364e31f151c4f24436a280dbb81f1935`. Earlier observations above
+retain their original source revisions. The follow-up closes the reproduced
+opening, nested Escape, header return and row-editor focus findings; it does
+not repeat the full adjacent Task, touch, native, provider or two-person matrix.
+
+| Manager dialog at actual CSS viewport | Dark | Light |
+| --- | --- | --- |
+| 1440 by 900 | [Dialog](manager-dark-1440x900.png) | [Dialog](manager-light-1440x900.png) |
+| 390 by 844 | [Dialog](manager-dark-390x844.png) | [Dialog](manager-light-390x844.png) |
+
+![Station editor, visible portion at 390px](row-editor-dark-390x844.png)
+
+[Exact crop coordinates, image hashes, dimensions and matching source blobs](manager-capture-manifest.json)
+separate screen pixels from CSS geometry. No image was resized or repainted.
+A fresh independent artifact review opened all five images, including both light
+files, verified the raw-to-crop pixels and hashes, and found no publication leak.
+Screenshots show rendered states; the original auditor owns the separate native
+interaction/focus observations. The owned temporary runtime and browser surfaces
+were retired through their original custodian, with retained settlement receipts.
