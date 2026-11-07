@@ -175,6 +175,49 @@ export function manifestWithMediaPermissions(source) {
   return next;
 }
 
+const IMAGE_SHARE_MARKER =
+  '<!-- STATION IMAGE SHARE TARGET. AUTO-GENERATED. DO NOT REMOVE. -->';
+const IMAGE_SHARE_BLOCK = `${IMAGE_SHARE_MARKER}
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            ${IMAGE_SHARE_MARKER}`;
+
+/**
+ * Restore the image share target on the generated MainActivity after Tauri
+ * regenerates AndroidManifest.xml. The station-media-intake plugin adopts the
+ * delivered intent; it cannot declare the filter itself, because the
+ * activity's package follows each channel's identifier.
+ */
+export function manifestWithImageShareTarget(source) {
+  const activities = [
+    ...source.matchAll(
+      /<activity\b[^>]*android:name="(?:\.?|[a-zA-Z0-9_.]+\.)MainActivity"[^>]*>[\s\S]*?<\/activity>/g,
+    ),
+  ];
+  if (activities.length !== 1)
+    throw new Error('Expected one generated Android MainActivity.');
+  const activity = activities[0][0];
+  const pieces = activity.split(IMAGE_SHARE_MARKER);
+  if (pieces.length !== 1 && pieces.length !== 3)
+    throw new Error('Malformed generated image share target markers.');
+  if (pieces.length === 3 && activity.includes(IMAGE_SHARE_BLOCK))
+    return source;
+  const clean = pieces.length === 3 ? pieces[0] + pieces[2] : activity;
+  if (/android\.intent\.action\.SEND(?:_MULTIPLE)?"/.test(clean))
+    throw new Error(
+      'Unmanaged share intent filter on MainActivity; refusing to duplicate it.',
+    );
+  const next = clean.replace(
+    /\s*<\/activity>$/,
+    `\n            ${IMAGE_SHARE_BLOCK}\n        </activity>`,
+  );
+  return source.replace(activity, next);
+}
+
 function manifestWithBackupExclusions(source) {
   return source.replace(/<application\b[^>]*>/, (application) => {
     for (const [attribute, value] of [
@@ -202,8 +245,8 @@ export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
   const appRoot = join(root, GENERATED_ANDROID);
   const manifestPath = join(appRoot, 'src', 'main', 'AndroidManifest.xml');
   const manifest = readFileSync(manifestPath, 'utf8');
-  const patchedManifest = manifestWithBackupExclusions(
-    manifestWithMediaPermissions(manifest),
+  const patchedManifest = manifestWithImageShareTarget(
+    manifestWithBackupExclusions(manifestWithMediaPermissions(manifest)),
   );
   if (patchedManifest !== manifest)
     writeFileSync(manifestPath, patchedManifest);

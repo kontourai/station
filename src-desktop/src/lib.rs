@@ -232,6 +232,45 @@ fn remote_push_capability(
     }
 }
 
+/// The image share target is the media-intake plugin's Android receiver
+/// (`ACTION_SEND`/`ACTION_SEND_MULTIPLE` with `image/*`). iOS needs a Share
+/// Extension that is not built yet, and desktop has no share target.
+fn share_intake_capability(android: bool) -> NativeCapabilityStatus {
+    if android {
+        NativeCapabilityStatus {
+            id: "share-intake",
+            state: "enabled",
+            reason: "Images shared from another Android app open Station's conversation picker.",
+        }
+    } else {
+        NativeCapabilityStatus {
+            id: "share-intake",
+            state: "disabled",
+            reason: "Only the Android app receives shared images; iOS needs a Share Extension that is not built yet.",
+        }
+    }
+}
+
+/// Mobile WebViews cannot paste an image-only clipboard into a text field, so
+/// the media-intake plugin reads the system clipboard instead. Desktop
+/// WebViews paste images natively.
+fn clipboard_image_capability(mobile: bool) -> NativeCapabilityStatus {
+    if mobile {
+        NativeCapabilityStatus {
+            id: "clipboard-image",
+            state: "enabled",
+            reason:
+                "The mobile native host reads images from the system clipboard when asked to paste.",
+        }
+    } else {
+        NativeCapabilityStatus {
+            id: "clipboard-image",
+            state: "unsupported",
+            reason: "Desktop pastes images through the WebView; the native clipboard read is mobile-only.",
+        }
+    }
+}
+
 fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport {
     let mut capabilities = vec![
         NativeCapabilityStatus {
@@ -244,12 +283,8 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
             state: "enabled",
             reason: "Tauri core can deliver typed host events to the platform adapter.",
         },
-        NativeCapabilityStatus {
-            id: "share-intake",
-            state: "disabled",
-            reason:
-                "Station has not selected and reviewed a native share-target or deep-link receiver.",
-        },
+        share_intake_capability(cfg!(target_os = "android")),
+        clipboard_image_capability(cfg!(mobile)),
     ];
 
     #[cfg(mobile)]
@@ -14374,6 +14409,8 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_discovery::init());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_station_media_intake::init());
     // iOS-only, with its own capability file (ios-fold.json) for the same
     // ACL reason as the plugins above.
     #[cfg(target_os = "ios")]
@@ -24416,7 +24453,14 @@ mod tests {
 
         assert!(states.contains(&("capability-report", "enabled")));
         assert!(states.contains(&("host-event-bridge", "enabled")));
+        #[cfg(target_os = "android")]
+        assert!(states.contains(&("share-intake", "enabled")));
+        #[cfg(not(target_os = "android"))]
         assert!(states.contains(&("share-intake", "disabled")));
+        #[cfg(mobile)]
+        assert!(states.contains(&("clipboard-image", "enabled")));
+        #[cfg(not(mobile))]
+        assert!(states.contains(&("clipboard-image", "unsupported")));
         assert!(states.contains(&("pairing-deep-link", "enabled")));
         #[cfg(mobile)]
         assert!(states.contains(&("local-browser-preview", "unsupported")));
@@ -24436,6 +24480,22 @@ mod tests {
         assert!(states.contains(&("haptics", "unsupported")));
         #[cfg(not(target_os = "android"))]
         assert!(states.contains(&("remote-push", "unsupported")));
+    }
+
+    #[test]
+    fn share_intake_is_enabled_only_on_android_and_clipboard_images_only_on_mobile() {
+        assert_eq!(share_intake_capability(true).state, "enabled");
+        assert_eq!(share_intake_capability(false).state, "disabled");
+        assert_eq!(clipboard_image_capability(true).state, "enabled");
+        assert_eq!(clipboard_image_capability(false).state, "unsupported");
+        for status in [
+            share_intake_capability(true),
+            share_intake_capability(false),
+            clipboard_image_capability(true),
+            clipboard_image_capability(false),
+        ] {
+            assert!(!status.reason.is_empty());
+        }
     }
 
     #[test]

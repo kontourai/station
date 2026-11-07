@@ -12,8 +12,25 @@ import {
   activityWithTauriOnCreate,
   androidNamespace,
   applyAndroidNativeBootstrap,
+  manifestWithImageShareTarget,
   manifestWithMediaPermissions,
 } from '../apply-android-native-bootstrap.mjs';
+
+// The shape `tauri android init` writes: one launcher MainActivity.
+const GENERATED_MANIFEST = `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application>
+        <activity
+            android:launchMode="singleTask"
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>`;
 
 function fixture(namespace: string, activity: string) {
   const root = mkdtempSync(join(tmpdir(), 'station-android-bootstrap-'));
@@ -35,7 +52,7 @@ function fixture(namespace: string, activity: string) {
   );
   writeFileSync(
     join(app, 'src', 'main', 'AndroidManifest.xml'),
-    '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET" /><application /></manifest>',
+    GENERATED_MANIFEST,
   );
   writeFileSync(activityPath, activity);
   return { root, activityPath };
@@ -105,6 +122,9 @@ describe('Android native bootstrap', () => {
       expect(manifest).toContain('android.permission.MODIFY_AUDIO_SETTINGS');
       expect(manifest).toContain(
         'android:name="android.hardware.microphone" android:required="false"',
+      );
+      expect(manifest).toContain(
+        '<action android:name="android.intent.action.SEND_MULTIPLE" />',
       );
       applyAndroidNativeBootstrap({ root });
       expect(readFileSync(manifestPath, 'utf8')).toBe(manifest);
@@ -203,4 +223,42 @@ it('keeps generated Android extraction rules aligned with the reviewed seed', ()
       'utf8',
     ),
   );
+});
+
+describe('image share target', () => {
+  const sendFilter = (manifest: string) =>
+    /<activity\b[^>]*android:name="\.MainActivity"[\s\S]*?<intent-filter>\s*<action android:name="android\.intent\.action\.SEND" \/>\s*<action android:name="android\.intent\.action\.SEND_MULTIPLE" \/>\s*<category android:name="android\.intent\.category\.DEFAULT" \/>\s*<data android:mimeType="image\/\*" \/>\s*<\/intent-filter>[\s\S]*?<\/activity>/.test(
+      manifest,
+    );
+
+  it('adds one image SEND/SEND_MULTIPLE filter inside MainActivity, once', () => {
+    expect(sendFilter(GENERATED_MANIFEST)).toBe(false);
+    const once = manifestWithImageShareTarget(GENERATED_MANIFEST);
+    expect(sendFilter(once)).toBe(true);
+    expect(manifestWithImageShareTarget(once)).toBe(once);
+    expect(once.match(/action\.SEND"/g)).toHaveLength(1);
+  });
+
+  it('keeps the checked-in manifest as the bootstrap writes it', () => {
+    const source = readFileSync(
+      'src-desktop/gen/android/app/src/main/AndroidManifest.xml',
+      'utf8',
+    );
+    expect(sendFilter(source)).toBe(true);
+    expect(manifestWithImageShareTarget(source)).toBe(source);
+  });
+
+  it('refuses an unmanaged share filter instead of adding a second one', () => {
+    const unmanaged = GENERATED_MANIFEST.replace(
+      '</activity>',
+      '<intent-filter><action android:name="android.intent.action.SEND" /></intent-filter></activity>',
+    );
+    expect(() => manifestWithImageShareTarget(unmanaged)).toThrow(/Unmanaged/);
+  });
+
+  it('refuses a manifest without exactly one MainActivity', () => {
+    expect(() =>
+      manifestWithImageShareTarget('<manifest><application /></manifest>'),
+    ).toThrow(/one generated Android MainActivity/);
+  });
 });
