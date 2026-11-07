@@ -859,8 +859,8 @@ delegation. Capability discovery is not admission. An unavailable or unknown
 capability prevents submission; existing hosts do not mount the shared routes.
 A caller captures the host authority and Task incarnation, and retains the
 original operation and intent for lookup or retry. An accepted acknowledgement
-must match that intent and the SHA-256 digest of its recursively key-sorted JSON encoding. Failure after dispatch
-is unconfirmed; it does not prove the request was not accepted. `placed` is
+must match that intent and the SHA-256 digest of its recursively key-sorted
+JSON encoding. Failure after dispatch is unconfirmed; it does not prove the request was not accepted. `placed` is
 ledger-proved placement or start, not model consumption or result success.
 Withdrawal sends a closed JSON command with the captured actor, Project, Task
 incarnation, operation and original input digest in the DELETE body. A future
@@ -868,8 +868,8 @@ receiver must compare URL and body identities and compare those preconditions
 to the durable original before mutation; MP-X/B owns that enforcement. They do
 not grant authority. A lost withdrawal response remains unconfirmed. Published
 result reads capture the reference and Task scope before dispatch, require the
-sequence and both digests, and verify the returned Markdown content digest. No shared provider execution is enabled by
-this SDK surface.
+sequence and both digests, and verify the returned Markdown content digest. No
+shared provider execution is enabled by this SDK surface.
 
 ### Task room agent requests
 

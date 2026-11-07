@@ -25,7 +25,10 @@ contracts do not establish provider, invited-user, or UI behavior. The future
 shared withdrawal receiver (MP-X/B) must compare the URL and closed command body
 identities and match the expected actor, Task incarnation and input digest to
 the durable original before changing state. These preconditions confer no
-authority, and their runtime enforcement is not implemented. See the
+authority, and their runtime enforcement is not implemented. The private
+model-only provider path and its configuration handshake remain planned and
+unverified; this contract does not establish a public Ollama engine binding.
+See the
 [SDK reference](../reference/sdk.md#shared-task-agent-request-negotiation).
 
 ## Owners and transport
