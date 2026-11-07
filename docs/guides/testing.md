@@ -794,6 +794,7 @@ npm run verify:local              # coordinated static + desktop Rust + mobile c
 npm run verify:static             # lint, ratchets, and typecheck
 npm run verify                    # broad diagnostic escalation when explicitly required
 npm run test:focused -- <file...> # exact-file focused runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
+npm run test:focused -- <file> --test-name="suite case name" # one exact fully qualified case
 npm run test:coverage             # with coverage report
 npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's NotificationContainer touch-target check)
 npm run install:playwright:ci     # CI runners: Chromium into the ambient PLAYWRIGHT_BROWSERS_PATH, bounded retry, no root (station#1648)
@@ -1955,8 +1956,19 @@ these controls through the managed dependency workflow.
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
-A raw Vitest worker override is not accepted by `test:focused`, whose interface
-accepts exact paths rather than options. Use the owning runner's resource policy;
+A raw Vitest worker override is not accepted by `test:focused`. It accepts exact
+in-worktree file paths and optional repeatable `--test-name="suite case name"`
+selectors. Names include every enclosing suite title separated by spaces and
+are literal, not regular expressions. Duplicate, empty or whitespace-padded
+names are rejected. With selectors, every requested name must pass exactly once
+in the selected files; an unmatched, skipped or partially matched selection is
+nonpass even if Vitest exits zero. The wrapper checks Vitest's JSON result and
+prints the verified names. Unfiltered runs retain their existing behavior.
+
+Name selection still loads the whole selected module and its setup and imports;
+it does not waive dependency, native or fixture prerequisites. The active
+worktree root, dependency provenance, one-worker limit and timeout policy are
+unchanged. No other Vitest options are forwarded. Use the owning runner's resource policy;
 do not bypass the manifest or increase an authoritative lane's concurrency.
 
 The opt-in load-reliability lane below remains host-local evidence only. It
