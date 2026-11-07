@@ -3118,6 +3118,35 @@ describe('OrchestrationService', () => {
       } as CanonicalRuntimeEvent);
       await new Promise((resolve) => setTimeout(resolve, 50));
 
+      // The engine still runs a task it never reported an end for (a
+      // backgrounded agent woken by its own command, which Station's
+      // child-work record missed): its word keeps it, whatever that record
+      // says.
+      await startResumable('engine-open-work-conversation');
+      await runTurn('engine-open-work-conversation', 'turn-e');
+      (
+        claude as FakeAdapter & {
+          hasOpenEngineWork?: (threadId: string) => boolean;
+        }
+      ).hasOpenEngineWork = (threadId) =>
+        threadId === 'engine-open-work-conversation';
+
+      // A subagent still reporting progress under a finished turn does not
+      // move the session row; that progress is still recent activity.
+      await startResumable('progress-conversation');
+      await runTurn('progress-conversation', 'turn-p');
+      claude.events.push({
+        eventId: 'progress-conversation-progress',
+        provider: 'claude',
+        threadId: 'progress-conversation',
+        itemId: 'toolu-subagent',
+        method: 'tool.progress',
+        toolCallId: 'toolu-subagent',
+        message: 'Committing the fix',
+        createdAt: new Date(Date.now() + 100_000).toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       await startResumable('parked-conversation');
       await runTurn('parked-conversation', 'turn-one');
 

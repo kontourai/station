@@ -435,6 +435,7 @@ import {
   InterruptedTurnRecovery,
   type RecoveredInterruptedTurn,
 } from './interrupted-turn-recovery.js';
+import { interruptedWorkRecoveryNote } from './interrupted-work-recovery.js';
 import { memoryExhaustionRecoveryNote } from './memory-exhaustion-recovery.js';
 import {
   listLaunchableAdapterModels,
@@ -2594,6 +2595,14 @@ export class OrchestrationService {
    * the stopped one.
    */
   private readonly parkedThreads = new Set<string>();
+  /**
+   * When each live engine last reported anything (by event time). An idle
+   * park measures idleness from the later of this and the session's own
+   * `updatedAt`: a backgrounded subagent's progress does not move the
+   * session row, and parking off the row alone stopped an engine whose
+   * subagent was still committing work.
+   */
+  private readonly lastEngineActivityAt = new Map<string, number>();
   private idleSweepTimer: ReturnType<typeof setInterval> | undefined;
   /**
    * archive#1745: whether this process's startup attachment pass has FINISHED
@@ -9204,9 +9213,24 @@ export class OrchestrationService {
             adapter.metadata.workloadScope === 'engine-process'
               ? this.options.workloadEngineLimits?.(submittedInput.threadId)
               : undefined;
-          const recoveryNote = genuineFirstTurn
-            ? this.predecessorMemoryExhaustionNote(submittedInput.threadId)
+          // After a memory kill, its own note. Otherwise, on the first turn
+          // after any engine ended with work still running (the
+          // predecessor's for a successor, this Session's own after an
+          // in-place restart), what that work was: the new engine's
+          // conversation still shows it started, and its completion notice
+          // can never arrive.
+          const predecessorId = genuineFirstTurn
+            ? this.options.eventStore?.conversationForSession(
+                submittedInput.threadId,
+              )?.predecessorSessionId
             : undefined;
+          const recoveryNote =
+            (genuineFirstTurn
+              ? this.predecessorMemoryExhaustionNote(submittedInput.threadId)
+              : undefined) ??
+            this.interruptedWorkNote(
+              genuineFirstTurn ? predecessorId : submittedInput.threadId,
+            );
           const stationContext = [
             workloadLimits
               ? workloadBudgetEngineContext(workloadLimits)
@@ -13341,6 +13365,9 @@ export class OrchestrationService {
           this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
           if (normalized.method === 'session.exited') {
             this.sessionAdapters.delete(normalized.threadId);
+            this.lastEngineActivityAt.delete(normalized.threadId);
+          } else {
+            this.noteEngineActivity(normalized);
           }
           this.flowPolicy.applyPostHocToolPolicies(adapter, normalized);
           this.flowPolicy.spoolCommandEvidence(normalized);
@@ -13970,6 +13997,7 @@ export class OrchestrationService {
     }
     this.stationControlPullRequests?.retireSession(threadId);
     this.sessionAdapters.delete(threadId);
+    this.lastEngineActivityAt.delete(threadId);
     this.threadProviders.delete(threadId);
     this.sessionReadModel.delete(threadId);
     this.sessionConnectionIds.delete(threadId);
@@ -15841,6 +15869,15 @@ export class OrchestrationService {
     return parked;
   }
 
+  /** Records an adapter event's time as its engine's latest activity. */
+  private noteEngineActivity(event: CanonicalRuntimeEvent): void {
+    const at = Date.parse(event.createdAt);
+    if (!Number.isFinite(at)) return;
+    const previous = this.lastEngineActivityAt.get(event.threadId);
+    if (previous === undefined || at > previous)
+      this.lastEngineActivityAt.set(event.threadId, at);
+  }
+
   private isParkableIdleSession(
     threadId: string,
     now: number,
@@ -15861,7 +15898,10 @@ export class OrchestrationService {
     const session = this.sessionReadModel.get(threadId);
     if (!session || session.status === 'closed' || session.status === 'dead')
       return false;
-    const lastActivity = Date.parse(session.updatedAt);
+    const lastActivity = Math.max(
+      Date.parse(session.updatedAt),
+      this.lastEngineActivityAt.get(threadId) ?? Number.NEGATIVE_INFINITY,
+    );
     if (!Number.isFinite(lastActivity) || now - lastActivity < parkAfterMs)
       return false;
     // Only an engine that can pick the conversation back up is parked: the
@@ -15883,6 +15923,10 @@ export class OrchestrationService {
     // tasks — dies with its process: such a session is not idle.
     const children = this.childWork.read(threadId, session.provider);
     if (children?.observability === 'reported' && children.running.length > 0)
+      return false;
+    // The engine's own word, independent of that record: a task it started
+    // and never ended is still running inside it.
+    if (this.sessionAdapters.get(threadId)?.hasOpenEngineWork?.(threadId))
       return false;
     // At rest only — a session waiting on the user (an open request) keeps
     // its engine, which is what holds that request.
@@ -15951,6 +15995,7 @@ export class OrchestrationService {
         this.clientOriginTurns.clearThread(threadId);
         this.approvalPosture.forgetThread(threadId);
         this.acceptedTurnConfinement.delete(threadId);
+        this.lastEngineActivityAt.delete(threadId);
         this.options.logger.debug('Parked idle session engine', { threadId });
         return true;
       },
@@ -16148,6 +16193,59 @@ export class OrchestrationService {
       );
     } catch (error) {
       this.options.logger.warn('Could not read the predecessor failure', {
+        threadId,
+        error,
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * The interrupted-work note for `threadId`'s latest turn window: calls an
+   * ended engine settled `unresolved` since the thread's latest
+   * `turn.started` (see `interrupted-work-recovery.ts`). Index-bounded reads;
+   * any read failure composes nothing rather than failing the turn.
+   */
+  private interruptedWorkNote(
+    threadId: string | undefined,
+  ): string | undefined {
+    const store = this.options.eventStore;
+    if (!store || !threadId) return undefined;
+    try {
+      const turnStarted = store.latestEventByMethod(
+        threadId,
+        'turn.started',
+        true,
+        false,
+      );
+      const completions = store.listEventsByMethodsAfterSequence(
+        threadId,
+        ['tool.completed'],
+        turnStarted?.sequence ?? 0,
+        1_000,
+      );
+      if (
+        !completions.some(
+          (event) =>
+            (event.payload as { status?: unknown }).status === 'unresolved',
+        )
+      )
+        return undefined;
+      const callIds = [
+        ...new Set(
+          completions.flatMap((event) => {
+            const callId = (event.payload as { toolCallId?: unknown })
+              .toolCallId;
+            return typeof callId === 'string' ? [callId] : [];
+          }),
+        ),
+      ];
+      return interruptedWorkRecoveryNote(
+        completions,
+        store.boundToolStartedEvents(threadId, callIds),
+      );
+    } catch (error) {
+      this.options.logger.warn('Could not read the interrupted work', {
         threadId,
         error,
       });
