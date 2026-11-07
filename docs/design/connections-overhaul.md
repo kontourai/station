@@ -36,7 +36,7 @@ Screenshots were not committed; they contain a real account's allowance.
 | Claude Code showed **Status: Ready** beside **7-day limit: 0% left**. | Only the account overview reads allowance ([engine account overview](../../src-ui/src/views/EngineAccountOverview.tsx)). Whether the provider also reported an exhausted verdict was not captured. |
 | Claude Code listed 64 models, including other vendors', while **Connect through** read **Your account**. | The server passes its own environment to engine children ([child-process environment](../../src-server/utils/child-process-environment.ts)). An inherited `ANTHROPIC_BASE_URL` with gateway model discovery made the CLI list that endpoint's catalog. The page does not disclose ambient routing. |
 | Cursor, Kiro CLI and OpenCode were detected but appeared only deep inside **Add engine**. | The Engines list shows connected engines and added-but-unconnected entries, not detected apps. |
-| The Knowledge tab showed no attention dot with no embedding model. | [Section signals](../../src-ui/src/views/connections-hub/connection-section-signals.ts) check only the vector database. |
+| Nothing told the user that semantic search was off with no embedding model. | [Section signals](../../src-ui/src/views/connections-hub/connection-section-signals.ts) check only the vector database, and the Knowledge page shows the gap as an empty card. |
 | `/connections` opened an empty Models tab. | [The resolver](../../src-ui/src/views/ConnectionsHub.tsx) navigates on first render, before its queries resolve, then falls back to Models. |
 | Engine usage appears only for Claude Code and Codex. | `/api/analytics/usage-rollup` allow-lists `provider` to `claude` and `codex` ([analytics routes](../../src-server/routes/operations/analytics.ts)). Receipts carry no connection id. ACP adapters record context occupancy and deliberately omit cost. |
 | Engine detail repeats status three times and ends in a long **Advanced** section. | [Engine detail](../../src-ui/src/views/AgentConnectionView.tsx) renders read-only facts as inputs, the catalog as chips and every option in one disclosure. |
@@ -72,7 +72,11 @@ One client selector, `deriveConnectionHealth` in
 `src-ui/src/views/connections-hub/connection-health.ts`, feeds rail dots, the
 resolver, list rows and detail headers. It returns one of the recorded labels
 from `resolveProviderPresentation`, plus whether the connection needs attention.
-Anything dispatch would refuse needs attention, including `degraded`.
+Anything dispatch would refuse needs attention, including `degraded` and
+managed-policy refusals, which read **Not allowed** and offer no fix. Resting
+states do not need attention: a model connection that is **Saved — not
+verified** or **Reachable — no model catalog**, and Knowledge without an
+embedding model. Their own pages state them.
 
 Allowance is not read for status in the first slices. Status later reflects
 allowance through **recorded evidence**: a fresh, provider-reported quota refusal
