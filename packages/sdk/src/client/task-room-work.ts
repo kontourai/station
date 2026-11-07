@@ -484,6 +484,119 @@ function sharedRecord(
     ].includes(value.state)
   );
 }
+type AvailableSharedCapability = Extract<
+  SharedWorkCapability,
+  { kind: 'available' }
+>;
+type UnavailableReason = Extract<
+  SharedWorkCapability,
+  { kind: 'unavailable' }
+>['reason'];
+
+function isUnavailableReason(value: unknown): value is UnavailableReason {
+  return (
+    value === 'unsupported' ||
+    value === 'access' ||
+    value === 'host' ||
+    value === 'agent' ||
+    value === 'model' ||
+    value === 'compute' ||
+    value === 'confinement'
+  );
+}
+function isSharedCapabilityAgent(
+  value: unknown,
+): value is AvailableSharedCapability['agents'][number] {
+  return (
+    keys(value, ['agentId', 'definitionFingerprint', 'modelIds']) &&
+    sharedText(value.agentId, 160) &&
+    typeof value.definitionFingerprint === 'string' &&
+    /^sha256:[0-9a-f]{64}$/.test(value.definitionFingerprint) &&
+    Array.isArray(value.modelIds) &&
+    value.modelIds.length > 0 &&
+    value.modelIds.length <= 160 &&
+    value.modelIds.every((id) => sharedText(id, 512)) &&
+    new Set(value.modelIds).size === value.modelIds.length
+  );
+}
+function isAvailableSharedCapability(
+  value: unknown,
+): value is AvailableSharedCapability {
+  return (
+    keys(value, [
+      'version',
+      'kind',
+      'contextVersion',
+      'resultVersion',
+      'mode',
+      'nextTurn',
+      'agents',
+      'context',
+    ]) &&
+    value.version === TASK_ROOM_SHARED_WORK_VERSION &&
+    value.kind === 'available' &&
+    value.contextVersion === TASK_ROOM_SHARED_CONTEXT_VERSION &&
+    value.resultVersion === TASK_ROOM_SHARED_RESULT_VERSION &&
+    value.mode === 'model-only' &&
+    value.nextTurn === 'durable' &&
+    Array.isArray(value.agents) &&
+    value.agents.length <= 160 &&
+    value.agents.every(isSharedCapabilityAgent) &&
+    (value.context === null || sharedBrief(value.context))
+  );
+}
+function decodeSharedCapability(value: unknown): SharedWorkCapability {
+  if (
+    keys(value, ['version', 'kind', 'reason']) &&
+    value.version === TASK_ROOM_SHARED_WORK_VERSION &&
+    value.kind === 'unavailable' &&
+    isUnavailableReason(value.reason)
+  )
+    return {
+      version: TASK_ROOM_SHARED_WORK_VERSION,
+      kind: 'unavailable',
+      reason: value.reason,
+    };
+  if (isAvailableSharedCapability(value))
+    return {
+      version: TASK_ROOM_SHARED_WORK_VERSION,
+      kind: 'available',
+      contextVersion: TASK_ROOM_SHARED_CONTEXT_VERSION,
+      resultVersion: TASK_ROOM_SHARED_RESULT_VERSION,
+      mode: 'model-only',
+      nextTurn: 'durable',
+      agents: value.agents,
+      context: value.context,
+    };
+  return unavailable();
+}
+function sharedIntentMatchesTask(
+  input: SharedAgentRequest,
+  scope: SharedTaskIdentity,
+): boolean {
+  return (
+    isSharedAgentRequest(input) &&
+    input.taskCreatedAt === scope.taskCreatedAt &&
+    !input.context.results.some((ref) => !sameTask(ref, scope)) &&
+    (input.target.kind !== 'thread' || sameTask(input.target.thread, scope))
+  );
+}
+async function acceptedSharedAcknowledgement(
+  value: unknown,
+  task: SharedTaskIdentity,
+  intent: SharedAgentRequest,
+  inputDigest: string,
+): Promise<Extract<SharedWorkOutcome, { kind: 'accepted' }> | undefined> {
+  if (
+    keys(value, ['kind', 'record', 'replayed']) &&
+    value.kind === 'accepted' &&
+    typeof value.replayed === 'boolean' &&
+    sharedRecord(value.record, task, intent, inputDigest) &&
+    (await snapshotContentMatches(value.record.context, task))
+  )
+    return { kind: 'accepted', record: value.record, replayed: value.replayed };
+  return undefined;
+}
 export async function fetchSharedTaskRoomCapabilities(
   apiBase: string,
   taskId: string,
@@ -511,80 +624,7 @@ export async function fetchSharedTaskRoomCapabilities(
   }
   if (!options.isCurrent())
     throw new TaskRoomWorkProtocolError('Task request connection changed.');
-  if (!object(value) || value.version !== TASK_ROOM_SHARED_WORK_VERSION)
-    return unavailable();
-  if (
-    keys(value, ['version', 'kind', 'reason']) &&
-    value.kind === 'unavailable' &&
-    typeof value.reason === 'string' &&
-    [
-      'unsupported',
-      'access',
-      'host',
-      'agent',
-      'model',
-      'compute',
-      'confinement',
-    ].includes(value.reason)
-  ) {
-    switch (value.reason) {
-      case 'unsupported':
-      case 'access':
-      case 'host':
-      case 'agent':
-      case 'model':
-      case 'compute':
-      case 'confinement':
-        return {
-          version: TASK_ROOM_SHARED_WORK_VERSION,
-          kind: 'unavailable',
-          reason: value.reason,
-        };
-    }
-  }
-  if (
-    !keys(value, [
-      'version',
-      'kind',
-      'contextVersion',
-      'resultVersion',
-      'mode',
-      'nextTurn',
-      'agents',
-      'context',
-    ]) ||
-    value.kind !== 'available' ||
-    value.contextVersion !== TASK_ROOM_SHARED_CONTEXT_VERSION ||
-    value.resultVersion !== TASK_ROOM_SHARED_RESULT_VERSION ||
-    value.mode !== 'model-only' ||
-    value.nextTurn !== 'durable' ||
-    !Array.isArray(value.agents) ||
-    value.agents.length > 160 ||
-    !value.agents.every(
-      (agent) =>
-        keys(agent, ['agentId', 'definitionFingerprint', 'modelIds']) &&
-        sharedText(agent.agentId, 160) &&
-        typeof agent.definitionFingerprint === 'string' &&
-        /^sha256:[0-9a-f]{64}$/.test(agent.definitionFingerprint) &&
-        Array.isArray(agent.modelIds) &&
-        agent.modelIds.length > 0 &&
-        agent.modelIds.length <= 160 &&
-        agent.modelIds.every((id) => sharedText(id, 512)) &&
-        new Set(agent.modelIds).size === agent.modelIds.length,
-    ) ||
-    (value.context !== null && !sharedBrief(value.context))
-  )
-    return unavailable();
-  return {
-    version: TASK_ROOM_SHARED_WORK_VERSION,
-    kind: 'available',
-    contextVersion: TASK_ROOM_SHARED_CONTEXT_VERSION,
-    resultVersion: TASK_ROOM_SHARED_RESULT_VERSION,
-    mode: 'model-only',
-    nextTurn: 'durable',
-    agents: value.agents,
-    context: value.context,
-  };
+  return decodeSharedCapability(value);
 }
 export async function submitSharedTaskRoomAgentRequest(
   apiBase: string,
@@ -594,12 +634,7 @@ export async function submitSharedTaskRoomAgentRequest(
 ): Promise<SharedWorkOutcome> {
   if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
     return { kind: 'not-sent', reason: 'authority' };
-  if (
-    !isSharedAgentRequest(input) ||
-    input.taskCreatedAt !== scope.taskCreatedAt ||
-    input.context.results.some((ref) => !sameTask(ref, scope)) ||
-    (input.target.kind === 'thread' && !sameTask(input.target.thread, scope))
-  )
+  if (!sharedIntentMatchesTask(input, scope))
     return { kind: 'not-sent', reason: 'input' };
   const intent = structuredClone(input);
   const task = { ...scope };
@@ -628,20 +663,15 @@ export async function submitSharedTaskRoomAgentRequest(
       intent,
     );
     const value = await data(response);
-    if (
-      options.isCurrent() &&
-      keys(value, ['kind', 'record', 'replayed']) &&
-      value.kind === 'accepted' &&
-      typeof value.replayed === 'boolean' &&
-      sharedRecord(value.record, task, intent, inputDigest) &&
-      (await snapshotContentMatches(value.record.context, task)) &&
-      options.isCurrent()
-    )
-      return {
-        kind: 'accepted',
-        record: value.record,
-        replayed: value.replayed,
-      };
+    if (options.isCurrent()) {
+      const accepted = await acceptedSharedAcknowledgement(
+        value,
+        task,
+        intent,
+        inputDigest,
+      );
+      if (accepted && options.isCurrent()) return accepted;
+    }
   } catch {
     // Once dispatch begins, failure or cancellation does not prove non-acceptance.
   }
@@ -696,12 +726,7 @@ export async function withdrawSharedTaskRoomRequest(
 ): Promise<SharedWorkOutcome> {
   if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
     return { kind: 'not-sent', reason: 'authority' };
-  if (
-    !isSharedAgentRequest(input) ||
-    input.taskCreatedAt !== scope.taskCreatedAt ||
-    input.context.results.some((ref) => !sameTask(ref, scope)) ||
-    (input.target.kind === 'thread' && !sameTask(input.target.thread, scope))
-  )
+  if (!sharedIntentMatchesTask(input, scope))
     return { kind: 'not-sent', reason: 'input' };
   if (options?.signal?.aborted) throw options.signal.reason;
   const intent = structuredClone(input);
@@ -728,19 +753,13 @@ export async function withdrawSharedTaskRoomRequest(
         command,
       ),
     );
-    if (
-      keys(value, ['kind', 'record', 'replayed']) &&
-      value.kind === 'accepted' &&
-      typeof value.replayed === 'boolean' &&
-      sharedRecord(value.record, task, intent, inputDigest) &&
-      (await snapshotContentMatches(value.record.context, task)) &&
-      options.isCurrent()
-    )
-      return {
-        kind: 'accepted',
-        record: value.record,
-        replayed: value.replayed,
-      };
+    const accepted = await acceptedSharedAcknowledgement(
+      value,
+      task,
+      intent,
+      inputDigest,
+    );
+    if (accepted && options.isCurrent()) return accepted;
   } catch {
     // A dispatched withdrawal can settle even if its response is lost.
   }

@@ -44,8 +44,11 @@ currently ignores `input.agent` and reads `modelOptions.systemPrompt`. It must
 exclude tools, Skills, hooks and private memory. Native adapter history retains
 full output even when publication truncates it, so shared refinement must use
 canonical published shared history and context, with an unpublished-tail
-canary regression. Neither constraint is established by the MP0 contract or
-SDK tests.
+canary regression. The submitted explicit context remains frozen with the
+request. The proposed B/X placement step separately captures implicit published
+thread history once and records its inference digest; acceptance does not
+freeze the full thread history. Neither constraint is established by the MP0
+contract or SDK tests.
 
 See the
 [SDK reference](../reference/sdk.md#shared-task-agent-request-negotiation).
