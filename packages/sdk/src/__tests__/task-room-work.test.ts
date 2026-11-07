@@ -464,7 +464,11 @@ test('shared acknowledgement binds intent and loss remains unconfirmed', async (
     modelId: 'model',
     context: {
       version: TASK_ROOM_SHARED_CONTEXT_VERSION,
-      brief: { documentRevision: 'rev', digest: 'a'.repeat(64) },
+      brief: {
+        documentRevision: 'rev',
+        digest:
+          'c8b4a62b09c7062ccdeedbddf83faf3e3ca772feaa15182d4671c07b65491384',
+      },
       results: [],
     },
     prompt: 'Hello',
@@ -472,7 +476,7 @@ test('shared acknowledgement binds intent and loss remains unconfirmed', async (
   };
   const brief = {
     version: TASK_ROOM_CONTEXT_VERSION,
-    digest: 'a'.repeat(64),
+    digest: 'c8b4a62b09c7062ccdeedbddf83faf3e3ca772feaa15182d4671c07b65491384',
     title: 'Title',
     description: '',
     documentRevision: 'rev',
@@ -490,7 +494,7 @@ test('shared acknowledgement binds intent and loss remains unconfirmed', async (
       agentId: 'agent',
       modelId: 'model',
       inputDigest:
-        '9abed33a631e3318fa62e61c14fa6eb35a859f0eb980a1e3623e2c6ca459e4f2',
+        'd9afb2994f4923e063ee3512ac137ff71bb225e7525f7ec50b3f16e304395c8d',
       context: {
         version: TASK_ROOM_SHARED_CONTEXT_VERSION,
         digest: 'b'.repeat(64),
@@ -546,6 +550,29 @@ test('shared acknowledgement binds intent and loss remains unconfirmed', async (
   reply = {
     ...accepted,
     record: { ...accepted.record, inputDigest: 'c'.repeat(64) },
+  };
+  expect(
+    (
+      await submitSharedTaskRoomAgentRequest(
+        'http://station.test',
+        scope,
+        input,
+        {
+          requestScope: { apiBase: 'http://station.test', authorityKey: 'a' },
+          isCurrent: () => true,
+        },
+      )
+    ).kind,
+  ).toBe('unconfirmed');
+  reply = {
+    ...accepted,
+    record: {
+      ...accepted.record,
+      context: {
+        ...accepted.record.context,
+        brief: { ...brief, text: 'Different brief' },
+      },
+    },
   };
   expect(
     (
@@ -714,25 +741,23 @@ test('shared lookup refuses a malformed record rather than reporting an empty re
 test('personal v1 context keeps accepting additive snapshot fields', async () => {
   vi.stubGlobal(
     'fetch',
-    vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        response({
-          version: TASK_ROOM_WORK_VERSION,
-          kind: 'available',
-          records: [],
-          contextVersion: TASK_ROOM_CONTEXT_VERSION,
-          context: {
-            version: TASK_ROOM_CONTEXT_VERSION,
-            digest: 'a'.repeat(64),
-            title: 'Title',
-            description: '',
-            documentRevision: 'rev',
-            text: 'Brief',
-            futureField: 'ignored',
-          },
-        }),
-      ),
+    vi.fn<typeof fetch>().mockResolvedValue(
+      response({
+        version: TASK_ROOM_WORK_VERSION,
+        kind: 'available',
+        records: [],
+        contextVersion: TASK_ROOM_CONTEXT_VERSION,
+        context: {
+          version: TASK_ROOM_CONTEXT_VERSION,
+          digest: 'a'.repeat(64),
+          title: 'Title',
+          description: '',
+          documentRevision: 'rev',
+          text: 'Brief',
+          futureField: 'ignored',
+        },
+      }),
+    ),
   );
   const result = await fetchTaskRoomAgentRequests(
     'http://station.test',

@@ -410,7 +410,20 @@ async function publishedDigest(markdown: string): Promise<string> {
 }
 async function snapshotContentMatches(
   snapshot: SharedContextSnapshot,
+  scope: SharedTaskIdentity,
 ): Promise<boolean> {
+  const brief = snapshot.brief;
+  const source = JSON.stringify([
+    TASK_ROOM_CONTEXT_VERSION,
+    scope.projectId,
+    scope.taskId,
+    scope.taskCreatedAt,
+    brief.title,
+    brief.description,
+    brief.documentRevision,
+    brief.text,
+  ]);
+  if ((await publishedDigest(source)) !== brief.digest) return false;
   for (const result of snapshot.results) {
     if (
       (await publishedDigest(result.markdown)) !==
@@ -620,7 +633,7 @@ export async function submitSharedTaskRoomAgentRequest(
       value.kind === 'accepted' &&
       typeof value.replayed === 'boolean' &&
       sharedRecord(value.record, task, intent, inputDigest) &&
-      (await snapshotContentMatches(value.record.context)) &&
+      (await snapshotContentMatches(value.record.context, task)) &&
       options.isCurrent()
     )
       return {
@@ -665,7 +678,7 @@ export async function fetchSharedTaskRoomRequests(
     if (record.operationId !== intent.operationId) continue;
     if (
       !sharedRecord(record, task, intent, inputDigest) ||
-      !(await snapshotContentMatches(record.context))
+      !(await snapshotContentMatches(record.context, task))
     )
       throw new TaskRoomWorkProtocolError('Invalid shared request record.');
     matches.push(record);
@@ -705,7 +718,7 @@ export async function withdrawSharedTaskRoomRequest(
       value.kind === 'accepted' &&
       typeof value.replayed === 'boolean' &&
       sharedRecord(value.record, task, intent, inputDigest) &&
-      (await snapshotContentMatches(value.record.context)) &&
+      (await snapshotContentMatches(value.record.context, task)) &&
       options.isCurrent()
     )
       return {
