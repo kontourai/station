@@ -1,5 +1,38 @@
 [
   {
+    "timestampUtc": "2026-11-07T19:50:40Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261107.42407135779",
+    "sha": "9a16e4c1346422704b47721bc6b9ffa8467953d8",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42407135779",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261107.42407135779 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "d2d1a8bbd9fd9451e16b1509aee9423301d3ec93",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4703](https://github.com/kontourai/station/pull/4703) fix(tasks): refresh changed Project Task lists on return"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4705](https://github.com/kontourai/station/pull/4705) docs: show the product in the README and Pages hero"
+        ],
+        "other": [
+          "[#4700](https://github.com/kontourai/station/pull/4700) perf(verification): stop semantic scans after manifest refusal"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-11-07T15:23:23Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.20261107.42384996541",
