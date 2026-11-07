@@ -55,6 +55,30 @@ const git = (...args: string[]) =>
     windowsHide: true,
   }).trim();
 
+function createGitFixture() {
+  const root = makeTempDir('cli-mcp-parity-git-');
+  git('init', '--quiet', root);
+  // Keep global hooks and signing out of the disposable fixture.
+  const fixtureGit = (...args: string[]) =>
+    git(
+      '-c',
+      `core.hooksPath=${join(root, 'no-hooks')}`,
+      '-c',
+      'user.name=Parity',
+      '-c',
+      'user.email=parity@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      '-C',
+      root,
+      ...args,
+    );
+  return {
+    git: fixtureGit,
+    env: { ...gitEnv, GIT_DIR: join(root, '.git') },
+  };
+}
+
 /** A tool whose entry names a CLI counterpart, to reclassify in fixtures. */
 function counterpartTool(manifest: Manifest) {
   const name = Object.keys(manifest.tools).find(
@@ -108,51 +132,33 @@ describe('cli-mcp parity entry point', () => {
   it('fails without a merge base instead of comparing against the tip', () => {
     // HEAD and origin/main both exist but share no history, as in an
     // unrelated or too-shallow fetch: the tip is there to fall back to.
-    const unrelated = makeTempDir('cli-mcp-parity-git-');
-    git('init', '--quiet', unrelated);
-    // Plumbing with hooks pointed at an empty path, so no global hook
-    // (commit, index or reference-transaction) runs in the fixture.
-    const fixtureGit = (...args: string[]) =>
-      git(
-        '-c',
-        `core.hooksPath=${join(unrelated, 'no-hooks')}`,
-        '-c',
-        'user.name=Parity',
-        '-c',
-        'user.email=parity@example.invalid',
-        '-c',
-        'commit.gpgsign=false',
-        '-C',
-        unrelated,
-        ...args,
-      );
+    const fixture = createGitFixture();
     // Two parentless commits: HEAD and origin/main are unrelated roots.
-    const tree = fixtureGit('write-tree');
-    const head = fixtureGit('commit-tree', tree, '-m', 'head');
-    const orphan = fixtureGit('commit-tree', tree, '-m', 'unrelated');
-    fixtureGit('update-ref', 'HEAD', head);
-    fixtureGit('update-ref', 'refs/remotes/origin/main', orphan);
-    const { status, output } = runGate(null, [], {
-      ...gitEnv,
-      GIT_DIR: join(unrelated, '.git'),
-    });
+    const tree = fixture.git('write-tree');
+    const head = fixture.git('commit-tree', tree, '-m', 'head');
+    const orphan = fixture.git('commit-tree', tree, '-m', 'unrelated');
+    fixture.git('update-ref', 'HEAD', head);
+    fixture.git('update-ref', 'refs/remotes/origin/main', orphan);
+    const { status, output } = runGate(null, [], fixture.env);
     expect(output).toContain('cannot find the merge base with origin/main');
     expect(status).toBe(1);
   });
 
   it('does not ratchet against a base that predates the manifest', () => {
-    const introduced = git(
-      'log',
-      '--diff-filter=A',
-      '--format=%H',
-      '--',
-      MANIFEST_PATH,
-    )
-      .split('\n')
-      .at(-1);
+    const fixture = createGitFixture();
+    const base = fixture.git(
+      'commit-tree',
+      fixture.git('write-tree'),
+      '-m',
+      'before manifest',
+    );
     const manifest = realManifest();
     manifest.tools[counterpartTool(manifest)] = { missing: 4282 };
-    const { status, output } = runGate(manifest, [`--base=${introduced}^`]);
+    const { status, output } = runGate(
+      manifest,
+      [`--base=${base}`],
+      fixture.env,
+    );
     expect(output).toContain(
       'has no manifest yet, so nothing to ratchet against',
     );
