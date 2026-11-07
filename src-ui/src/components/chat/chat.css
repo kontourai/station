@@ -3232,12 +3232,8 @@
        `.chat-dock__mobile-conn`). */
     padding: 4px 6px;
   }
-  /* Every state shows the dot and a short Station name: a bare dot told a
-     phone user nothing about which Station it was. The state lives in the
-     dot, the accessible name and the chooser. The name sits in a fixed-width
-     slot, so a state change never moves the controls after it (#4474); it
-     truncates before the row would grow, and holding the chip reveals it
-     whole. */
+  /* Keep the Station name visible in every state, capped so long names
+     truncate before the row grows. Holding the chip reveals its full name. */
   .app-toolbar__conn,
   .app-toolbar__conn.app-toolbar__conn--compact {
     box-sizing: border-box;
@@ -3251,9 +3247,8 @@
   .app-toolbar__conn .app-toolbar__conn-label,
   .app-toolbar__conn:not(.app-toolbar__conn--compact) .app-toolbar__conn-label {
     display: inline-block;
-    width: min(28vw, 120px);
+    width: auto;
     max-width: min(28vw, 120px);
-    /* Beside its dot, not centred in the reserved slot. */
     text-align: start;
   }
   /* The notice mark overlays the dot instead of taking inline width, so a
