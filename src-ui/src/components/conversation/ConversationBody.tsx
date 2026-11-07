@@ -22,6 +22,7 @@ import {
   TURN_INTERRUPTED_CONTINUE_PROMPT,
   turnInterruptedContinueClientTurnId,
 } from '@kontourai/station-shared/runtime-event-projection';
+import { StatusBadge } from '@kontourai/ui/react';
 import React, {
   useCallback,
   useEffect,
@@ -42,6 +43,7 @@ import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContext';
 import { useWorkObservation } from '../../contexts/work-observation';
+import { useEngineStartWait } from '../../hooks/orchestration/engineStartWaits';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
@@ -1147,6 +1149,20 @@ function LiveConversationBody({
   const turnProgressSilence = activeSession.conversationActivity
     ? activeSession.conversationActivity.progressSilence
     : activeOrchestrationSession?.turnProgress?.progressSilence;
+
+  // #4568: Station's record that this chat's engine start is queued behind
+  // another engine start: the Session's summary, or, for a brand-new chat
+  // whose first start has no Session yet, the stream's wait frame for the id
+  // it was sent under. Only while a send is in flight, so a stale read after
+  // the send settled claims nothing; the composer's Stop cancels it.
+  const streamedEngineStartWait = useEngineStartWait(apiBase, [
+    activeSession.currentSessionId,
+    activeSession.conversationId,
+    activeSession.id,
+  ]);
+  const engineStartWait = isTurnInFlight(activeSession)
+    ? (activeOrchestrationSession?.engineStartWait ?? streamedEngineStartWait)
+    : undefined;
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -2749,6 +2765,21 @@ function LiveConversationBody({
         `isTurnInFlight` gates it so a stale projection read after the turn
         settled cannot claim a live stall.
       */}
+      {engineStartWait && (
+        <div
+          role="status"
+          data-testid="chat-dock-engine-start-wait"
+          style={{
+            display: 'flex',
+            margin: '0 var(--k-space-3) var(--k-space-2)',
+          }}
+        >
+          <StatusBadge
+            status="Waiting for another engine to start"
+            tone="caution"
+          />
+        </div>
+      )}
       {turnProgressSilence &&
         turnInFlight &&
         activeSession.activityHint?.kind !== 'retrying' && (

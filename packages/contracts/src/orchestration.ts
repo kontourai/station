@@ -1157,6 +1157,27 @@ export interface OwnedSessionActivity {
   }>;
 }
 
+/** #4568: a person's engine start waiting for the one engine-start slot. */
+export interface EngineStartWaitObservation {
+  /** When this start was queued behind another engine start. */
+  since: string;
+}
+
+/**
+ * #4568: the orchestration stream's `orchestration:engine-start-wait` frame.
+ * `wait` is the current observation, or `null` once the start was admitted,
+ * cancelled, timed out or failed. Sent when it changes and, for every wait
+ * still pending, when a stream opens or replaces its snapshot. A first start
+ * has no Session summary yet; `pendingStart` identifies its cancellable
+ * preparation without asserting that a provider Session exists.
+ */
+export interface OrchestrationEngineStartWaitFrame {
+  threadId: string;
+  wait: EngineStartWaitObservation | null;
+  /** An owned first start is still cancellable, including after capacity admission. */
+  pendingStart?: true;
+}
+
 export interface OrchestrationSessionSummary extends ProviderSession {
   /** Aggregate owned execution activity; the parent's own event fold is retained. */
   ownedWork?: OwnedSessionActivity & {
@@ -1224,6 +1245,13 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   lastTurnAbortReason?: string;
   /** Present only while this process is watching this session's active turn. */
   turnProgress?: TurnProgressObservation;
+  /**
+   * #4568: present only while a person's engine start for this Session (a cold
+   * follow-up's respawn, or a credential-profile restart of a person's turn)
+   * is queued behind another engine start. Process memory, never persisted;
+   * removed when the start is admitted, cancelled, times out or fails.
+   */
+  engineStartWait?: EngineStartWaitObservation;
   /**
    * #2309: the activity of the conversation this session belongs to (every
    * execution child, not just this one). Absent on servers without the

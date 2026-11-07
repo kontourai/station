@@ -1,3 +1,4 @@
+import type { OrchestrationEngineStartWaitFrame } from '@kontourai/station-contracts/orchestration';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -13,6 +14,10 @@ import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { workObservation } from '../../contexts/work-observation';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
+import {
+  applyEngineStartWaitFrame,
+  clearEngineStartWaits,
+} from './engineStartWaits';
 import {
   handleOrchestrationEvent,
   settleSemanticDeliveryBuffer,
@@ -570,6 +575,7 @@ export function ensureOrchestrationEventStream(
       return;
     }
     owners.delete(apiBase);
+    clearEngineStartWaits(apiBase);
     settleSemanticDeliveryBuffer(apiBase, true);
     requestedBases.delete(apiBase);
     streamConnections.delete(apiBase);
@@ -612,6 +618,7 @@ function connectOrchestrationEventStream(
     streamAuthorities.has(apiBase) &&
     streamAuthorities.get(apiBase) !== authorityKey
   ) {
+    clearEngineStartWaits(apiBase);
     settleSemanticDeliveryBuffer(apiBase, true);
     if (existing) {
       clearDeferredParkedRetry(existing);
@@ -714,6 +721,8 @@ function connectOrchestrationEventStream(
           streamModes.set(apiBase, false);
           if (generalOwners.has(apiBase)) startLegacyGeneral(apiBase);
         }
+        // #4568: Station re-sends every wait still queued after it opens.
+        clearEngineStartWaits(apiBase);
         sharedOrchestrationStreamOpened(apiBase, response);
       },
       onMessage: (raw) => {
@@ -780,6 +789,7 @@ function connectOrchestrationEventStream(
           setStreamConnectionState(apiBase, 'caught-up');
           recordReplayConnection(apiBase, 'caught-up');
         } else if (raw.event === 'orchestration:snapshot') {
+          clearEngineStartWaits(apiBase);
           // A replacement snapshot already contains every durable delta. Reveal
           // locally held text first, then let the snapshot become authoritative.
           settleSemanticDeliveryBuffer(apiBase);
@@ -844,6 +854,14 @@ function connectOrchestrationEventStream(
           }
           hasReceivedSnapshot = true;
           basesWithSnapshot.add(apiBase);
+        } else if (
+          raw.event === SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED
+        ) {
+          const frame = JSON.parse(
+            raw.data,
+          ) as OrchestrationEngineStartWaitFrame;
+          if (typeof frame?.threadId === 'string')
+            applyEngineStartWaitFrame(apiBase, frame);
         } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {
           const payload = JSON.parse(raw.data) as {
             conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;
@@ -914,6 +932,7 @@ function connectOrchestrationEventStream(
           owned.connection.signal.aborted
         )
           return;
+        clearEngineStartWaits(apiBase);
         sharedOrchestrationStreamFailed(apiBase, error);
         // Do not leave the last partial answer invisible during retry/backoff.
         settleSemanticDeliveryBuffer(apiBase, false);

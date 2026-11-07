@@ -15,7 +15,9 @@ import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
+  type TurnDispatchOrigin,
   type TurnStartedEvent,
+  turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { dispatchableChatAttachments } from '../../providers/sessions/chat-attachments.js';
@@ -1192,6 +1194,7 @@ export class SessionRecoveryCoordinator {
     modelOptions?: Record<string, string | number | boolean>;
     recoveryCorrelationId: string;
     signal: AbortSignal;
+    dispatchOrigin: TurnDispatchOrigin;
   } {
     const dispatchable = dispatchableChatAttachments(source.attachments);
     return {
@@ -1204,6 +1207,9 @@ export class SessionRecoveryCoordinator {
       ...this.sourceModelConfiguration(source),
       recoveryCorrelationId,
       signal,
+      // #4568: the source turn's recorded origin, so a credential-profile
+      // restart of a person's turn is admitted as theirs and no other is.
+      dispatchOrigin: turnDispatchOrigin(source),
     };
   }
 

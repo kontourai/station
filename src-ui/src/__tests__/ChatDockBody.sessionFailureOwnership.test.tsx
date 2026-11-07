@@ -19,6 +19,10 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import {
+  applyEngineStartWaitFrame,
+  clearEngineStartWaits,
+} from '../hooks/orchestration/engineStartWaits';
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -632,6 +636,70 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
     const session = buildSession({ status: 'sending' });
     renderDock(session, summary);
     expect(screen.queryByTestId('chat-dock-turn-stall-notice')).toBeNull();
+  });
+});
+
+// #4568: a person's engine start queued behind another engine start. The
+// server publishes the wait on the Session's summary only while it lasts.
+describe('ChatDockBody engine-start capacity wait (#4568)', () => {
+  function waitingSummary(
+    engineStartWait?: OrchestrationSessionSummary['engineStartWait'],
+  ): OrchestrationSessionSummary {
+    return {
+      threadId: 'failure-ownership-session',
+      provider: 'claude',
+      lifecycleState: 'idle',
+      status: 'ready',
+      controlMode: 'station-owned',
+      ...(engineStartWait ? { engineStartWait } : {}),
+      answerability: { answerable: true },
+      isLoaded: true,
+      isPersisted: true,
+      eventCount: 4,
+      createdAt: '2026-11-06T11:00:00.000Z',
+      updatedAt: '2026-11-06T12:00:00.000Z',
+    };
+  }
+
+  test('shows the wait while the send is in flight and clears it when Station does', () => {
+    const view = renderDock(
+      buildSession({ status: 'sending' }),
+      waitingSummary({ since: '2026-11-06T12:00:00.000Z' }),
+    );
+    expect(
+      screen.getByTestId('chat-dock-engine-start-wait').textContent,
+    ).toContain('Waiting for another engine to start');
+
+    view.unmount();
+    renderDock(buildSession({ status: 'sending' }), waitingSummary());
+    expect(screen.queryByTestId('chat-dock-engine-start-wait')).toBeNull();
+  });
+
+  test("a brand-new chat's first start, with no Session summary yet, shows the wait the stream reported", () => {
+    applyEngineStartWaitFrame('http://localhost:3242', {
+      threadId: 'failure-ownership-session',
+      wait: { since: '2026-11-06T12:00:00.000Z' },
+    });
+    try {
+      const view = renderDock(buildSession({ status: 'sending' }), null);
+      expect(
+        screen.getByTestId('chat-dock-engine-start-wait').textContent,
+      ).toContain('Waiting for another engine to start');
+      view.unmount();
+      // Once the send settled, the reported wait claims nothing.
+      renderDock(buildSession({ status: 'idle' }), null);
+      expect(screen.queryByTestId('chat-dock-engine-start-wait')).toBeNull();
+    } finally {
+      clearEngineStartWaits('http://localhost:3242');
+    }
+  });
+
+  test('a stale wait on the summary is not shown once the send has settled', () => {
+    renderDock(
+      buildSession({ status: 'idle' }),
+      waitingSummary({ since: '2026-11-06T12:00:00.000Z' }),
+    );
+    expect(screen.queryByTestId('chat-dock-engine-start-wait')).toBeNull();
   });
 });
 

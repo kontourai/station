@@ -430,6 +430,11 @@ export interface ExecutionTargetExecutionDependencies
       submissionDigest?: string | null;
       mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
       dispatchOrigin?: TurnDispatchOrigin;
+      /**
+       * #4568: an automatic send's respawn of a cold Session keeps background
+       * admission even when it carries a person's recorded origin.
+       */
+      resourceAdmissionIntent?: 'queued_background';
     },
   ) => Promise<{ turnId: string }>;
   /**
@@ -1626,10 +1631,14 @@ export async function executeForegroundMessage(
       input.mcpPromptOrigin ||
       submissionDigest ||
       context?.inboxPlacement ||
-      context?.dispatchOrigin
+      context?.dispatchOrigin ||
+      input.automaticBackground
       ? {
           ...(context?.dispatchOrigin
             ? { dispatchOrigin: context.dispatchOrigin }
+            : {}),
+          ...(input.automaticBackground
+            ? { resourceAdmissionIntent: 'queued_background' as const }
             : {}),
           ...(context?.inboxPlacement && submissionDigest === undefined
             ? { submissionDigest: null }

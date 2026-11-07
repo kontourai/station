@@ -15,6 +15,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  applyEngineStartWaitFrame,
+  clearEngineStartWaits,
+} from '../hooks/orchestration/engineStartWaits';
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
@@ -176,6 +180,46 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
       'info',
     );
   });
+
+  test.each([null, { since: '2026-11-06T12:00:00.000Z' }])(
+    '#4568: Stop targets an owned first start without a Session, before and after admission (%j)',
+    async (wait) => {
+      interruptOrchestrationTurnMock.mockResolvedValueOnce({
+        outcome: 'pending-turn-start',
+        threadId: 'fresh-chat',
+      });
+      activeChatsStore.updateChat(SESSION_ID, {
+        conversationId: 'fresh-chat',
+        currentSessionId: undefined,
+        status: 'sending',
+        sendAwaitingTurnStart: true,
+      });
+      applyEngineStartWaitFrame('http://station.test', {
+        threadId: 'fresh-chat',
+        wait,
+        pendingStart: true,
+      });
+      try {
+        const hook = renderHook(
+          () =>
+            useChatInput({
+              apiBase: 'http://station.test',
+              sessionId: SESSION_ID,
+              agentSlug: 'dev-agent',
+              availableModels: [],
+            }),
+          { wrapper },
+        );
+        await act(() => hook.result.current.handleCancel());
+        expect(interruptOrchestrationTurnMock).toHaveBeenCalledWith(
+          expect.objectContaining({ threadId: 'fresh-chat' }),
+        );
+        expect(showToastMock).not.toHaveBeenCalled();
+      } finally {
+        clearEngineStartWaits('http://station.test');
+      }
+    },
+  );
 
   // #887 review prescription — the discriminating drift case: the store is
   // keyed by the TAB id while `currentSessionId` has advanced to a different

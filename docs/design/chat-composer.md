@@ -1040,6 +1040,20 @@ establishes a retry. New text, reasoning, tool progress and terminal events clea
 transient waiting/retry status; raw logs and engine error payloads are not chat
 activity labels.
 
+A person's first start, cold follow-up or credential-profile restart may
+wait behind another engine start for up to 60 seconds (#4568). The dock shows
+**Waiting for another engine to start** while the send is in flight. Existing
+Sessions carry `engineStartWait` on their summaries. For a first start with
+no Session yet, the authorized orchestration stream carries the wait and its
+server-owned pending-start identity. That identity permits Stop without
+inventing a Session record, including after admission while preparation is
+still pending. Stop before the provider call prevents the engine from starting.
+The badge clears on admission, cancellation, timeout or failure. Reconnection
+and replacement snapshots replace transient status with the current owned
+starts. A timeout returns the usual "Another engine is already starting"
+refusal. An automatic send keeps the immediate refusal and shows no wait.
+Disconnecting a `/chat` request does not cancel a send Station has accepted.
+
 ### Return on this device
 
 **Chat settings → Return in chat** is saved in the existing device-settings

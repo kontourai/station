@@ -322,7 +322,15 @@
 
     "src-ui/src/hooks/useIsMobile.ts",
 
-    "src-ui/src/hooks/useCoarsePointer.ts"
+    "src-ui/src/hooks/useCoarsePointer.ts",
+
+    "src-ui/src/hooks/orchestration/engineStartWaits.ts",
+
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts",
+
+    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts"
   ],
 
   "checks": [
