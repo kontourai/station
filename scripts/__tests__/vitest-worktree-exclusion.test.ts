@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parseCLI, resolveConfig } from 'vitest/node';
 import packageJson from '../../package.json';
 import config from '../../vitest.config';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   buildFocusedVitestInvocation,
   focusedVitestVerdict,
@@ -15,6 +16,17 @@ import { buildVitestArgs } from '../run-prepush-tier.mjs';
 const ELIGIBLE_FOCUSED_TEST = 'scripts/__tests__/vitest-run-root.test.ts';
 const EXCLUDED_WORKTREE_TEST =
   'scripts/__tests__/fixtures/station-worktrees/sentinel/scripts/__tests__/station-dogfood-reconcile.test.ts';
+const NAMED_FOCUSED_TEST =
+  'vitest run root is a unique sibling per call, so concurrent runs cannot share one';
+
+function runFocusedCli(args: string[]) {
+  const root = path.resolve(import.meta.dirname, '../..');
+  return spawnSyncBounded(
+    process.execPath,
+    [path.join(root, 'scripts', 'run-focused-tests.mjs'), ...args],
+    { cwd: root, encoding: 'utf8', timeout: 30_000, windowsHide: true },
+  );
+}
 
 describe('Vitest worktree exclusion', () => {
   it('keeps repository-local Station worktrees out of test discovery', () => {
@@ -138,6 +150,137 @@ describe('Vitest worktree exclusion', () => {
       /Test Files\s+1 passed \(1\)/,
     );
   }, 35_000);
+
+  it.each([
+    {
+      names: [NAMED_FOCUSED_TEST],
+      summary: /Tests\s+1 passed \| 1 skipped \(2\)/,
+    },
+    {
+      names: [
+        NAMED_FOCUSED_TEST,
+        'vitest run root lives under the Station temp root so the day-old sweep reclaims it',
+      ],
+      summary: /Tests\s+2 passed \(2\)/,
+    },
+  ])(
+    'runs only the requested fully qualified names through the CLI: $names',
+    ({ names, summary }) => {
+      const result = runFocusedCli([
+        ELIGIBLE_FOCUSED_TEST,
+        ...names.map((name) => `--test-name=${name}`),
+      ]);
+
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+      expect(plainFocusedVitestOutput(result.stdout)).toMatch(summary);
+      expect(result.stdout).toContain(
+        `selected named cases passed: ${JSON.stringify(names)}`,
+      );
+    },
+    35_000,
+  );
+
+  it.each([
+    {
+      label: 'unmatched, all-skipped',
+      names: ['vitest run root missing case'],
+      summary: /Tests\s+2 skipped \(2\)/,
+    },
+    {
+      label: 'partially matched',
+      names: [NAMED_FOCUSED_TEST, 'vitest run root missing case'],
+      summary: /Tests\s+1 passed \| 1 skipped \(2\)/,
+    },
+  ])(
+    'rejects an $label named selection after the real child',
+    ({ names, summary }) => {
+      const result = runFocusedCli([
+        ELIGIBLE_FOCUSED_TEST,
+        ...names.map((name) => `--test-name=${name}`),
+      ]);
+
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(2);
+      expect(plainFocusedVitestOutput(result.stdout)).toMatch(summary);
+      expect(result.stderr).toContain(
+        'selected tests did not all pass exactly once',
+      );
+      expect(result.stdout).not.toContain('selected named cases passed:');
+    },
+    35_000,
+  );
+
+  it.each([
+    ['--test-name='],
+    ['--test-name= leading space'],
+    ['--test-name=embedded\nnewline'],
+    ['--test-name=duplicate', '--test-name=duplicate'],
+    ['--test-name', NAMED_FOCUSED_TEST],
+    ['--config=foreign.config.ts'],
+    ['--maxWorkers=2'],
+    [`${ELIGIBLE_FOCUSED_TEST}:1`],
+    [process.execPath],
+  ])('rejects malformed selectors and unrelated arguments: %j', (...args) => {
+    const result = runFocusedCli([ELIGIBLE_FOCUSED_TEST, ...args]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(2);
+    expect(result.stdout).not.toMatch(/RUN\s+v/);
+  });
+
+  it('treats a selected name literally, including regular-expression characters', async () => {
+    const root = path.resolve(import.meta.dirname, '../..');
+    const name = 'suite [case].* (v2)+ $done?';
+    const invocation = buildFocusedVitestInvocation(
+      [ELIGIBLE_FOCUSED_TEST, `--test-name=${name}`],
+      root,
+    );
+    const cli = parseCLI(['vitest', ...invocation.args.slice(1)]);
+    const { vitestConfig } = await resolveConfig(cli.options, { root });
+    const pattern = vitestConfig.testNamePattern;
+
+    expect(pattern?.test(name)).toBe(true);
+    expect(pattern?.test(`prefix ${name}`)).toBe(false);
+    expect(pattern?.test(`${name} suffix`)).toBe(false);
+    expect(pattern?.test('suite cXYZ v22 done')).toBe(false);
+  });
+
+  it('refuses a missing selected-test report despite a successful child exit', () => {
+    const root = path.resolve(import.meta.dirname, '../..');
+    const invocation = buildFocusedVitestInvocation(
+      [ELIGIBLE_FOCUSED_TEST, `--test-name=${NAMED_FOCUSED_TEST}`],
+      root,
+    );
+
+    expect(
+      focusedVitestVerdict({
+        inspection: { runRoot: root, expectedRoot: root, zeroTests: false },
+        invocation,
+        exitCode: 0,
+      }),
+    ).toMatchObject({ exitCode: 2 });
+  });
+
+  it('refuses a signal termination with no exit code', () => {
+    const root = path.resolve(import.meta.dirname, '../..');
+    const invocation = buildFocusedVitestInvocation(
+      [ELIGIBLE_FOCUSED_TEST],
+      root,
+    );
+
+    expect(
+      focusedVitestVerdict({
+        inspection: { runRoot: root, expectedRoot: root, zeroTests: false },
+        invocation,
+        exitCode: null,
+        signal: 'SIGTERM',
+      }),
+    ).toMatchObject({
+      exitCode: 2,
+      diagnostic: expect.stringContaining('SIGTERM'),
+    });
+  });
 
   it.each([
     ['missing', null],
