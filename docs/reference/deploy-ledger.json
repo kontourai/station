@@ -1,5 +1,41 @@
 [
   {
+    "timestampUtc": "2026-11-07T20:33:40Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261107.2",
+    "sha": "9a16e4c1346422704b47721bc6b9ffa8467953d8",
+    "artifactBuiltAt": "2026-11-07T19:49:57.029Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42407135779",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42407135779)"
+    ],
+    "changelog": {
+      "previousSha": "eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4703](https://github.com/kontourai/station/pull/4703) fix(tasks): refresh changed Project Task lists on return",
+          "[#4667](https://github.com/kontourai/station/pull/4667) fix: unblock remote appearance saves and fit mobile Station names",
+          "[#4637](https://github.com/kontourai/station/pull/4637) fix(windows): keep chat workspaces outside private Station data"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4705](https://github.com/kontourai/station/pull/4705) docs: show the product in the README and Pages hero"
+        ],
+        "other": [
+          "[#4700](https://github.com/kontourai/station/pull/4700) perf(verification): stop semantic scans after manifest refusal",
+          "[#4669](https://github.com/kontourai/station/pull/4669) test: qualify gate CLI and authenticated recovery callers"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-11-07T19:50:40Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.20261107.42407135779",
