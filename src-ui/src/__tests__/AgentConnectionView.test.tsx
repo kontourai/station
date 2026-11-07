@@ -1804,7 +1804,7 @@ describe('AgentConnectionView', () => {
     expect(screen.getByText('Save changes before refreshing.')).toBeTruthy();
 
     saveFailure = new Error('The settings could not be saved.');
-    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
     expect(save).toHaveBeenCalledTimes(1);
     expect(nameInput.value).toBe('My Muse');
     expect(refresh.disabled).toBe(true);
@@ -1812,7 +1812,7 @@ describe('AgentConnectionView', () => {
 
     saveFailure = null;
     saveResult = { ...museMissingBinaryConnection(), name: 'My Muse' };
-    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
     expect(save).toHaveBeenCalledTimes(2);
     expect(refresh.disabled).toBe(false);
     expect(screen.queryByText('Save changes before refreshing.')).toBeNull();
