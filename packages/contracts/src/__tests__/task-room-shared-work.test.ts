@@ -89,3 +89,28 @@ test('withdrawal command is closed and binds actor, Task incarnation and intent 
   ])
     expect(isSharedWithdrawalCommand(value)).toBe(false);
 });
+
+test('shared refusal requires a closed versioned pre-acceptance identity', async () => {
+  const { isSharedWorkRefusalReply } = await import('../task-room-work.js');
+  const value = {
+    version: TASK_ROOM_SHARED_WORK_VERSION,
+    kind: 'not-sent',
+    reason: 'access',
+    expectedActorId: 'actor',
+    projectId: 'project',
+    taskId: 'task',
+    taskCreatedAt: thread.taskCreatedAt,
+    operationId: 'op',
+    inputDigest: 'a'.repeat(64),
+  };
+  expect(isSharedWorkRefusalReply(value)).toBe(true);
+  for (const bad of [
+    { ...value, credential: 'secret' },
+    { ...value, reason: 'future' },
+    { ...value, version: 'future' },
+    { ...value, kind: 'refused' },
+    { ...value, inputDigest: 'A'.repeat(64) },
+    { ...value, taskCreatedAt: 'bad' },
+  ])
+    expect(isSharedWorkRefusalReply(bad)).toBe(false);
+});

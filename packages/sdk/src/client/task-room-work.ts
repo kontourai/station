@@ -4,6 +4,7 @@ import {
   isSharedResultRef,
   isSharedThreadRef,
   isSharedWithdrawalCommand,
+  isSharedWorkRefusalReply,
   type SharedAgentRequest,
   type SharedContextSnapshot,
   type SharedResultRef,
@@ -323,6 +324,20 @@ export interface SharedWorkRequestOptions extends ClientRequestOptions {
   requestScope: ApiRequestScope;
   isCurrent: () => boolean;
 }
+function captureSharedOptions(
+  options: SharedWorkRequestOptions,
+): SharedWorkRequestOptions {
+  return {
+    ...options,
+    headers: options.headers ? { ...options.headers } : undefined,
+    requestScope: {
+      apiBase: options.requestScope.apiBase,
+      authorityKey: options.requestScope.authorityKey,
+    },
+    isCurrent: options.isCurrent,
+    signal: options.signal,
+  };
+}
 const unavailable = (): SharedWorkCapability => ({
   version: TASK_ROOM_SHARED_WORK_VERSION,
   kind: 'unavailable',
@@ -581,12 +596,24 @@ function sharedIntentMatchesTask(
     (input.target.kind !== 'thread' || sameTask(input.target.thread, scope))
   );
 }
-async function acceptedSharedAcknowledgement(
+async function sharedAcknowledgement(
   value: unknown,
   task: SharedTaskIdentity,
   intent: SharedAgentRequest,
   inputDigest: string,
-): Promise<Extract<SharedWorkOutcome, { kind: 'accepted' }> | undefined> {
+): Promise<
+  Extract<SharedWorkOutcome, { kind: 'accepted' | 'not-sent' }> | undefined
+> {
+  if (
+    isSharedWorkRefusalReply(value) &&
+    value.expectedActorId === intent.expectedActorId &&
+    value.projectId === task.projectId &&
+    value.taskId === task.taskId &&
+    value.taskCreatedAt === task.taskCreatedAt &&
+    value.operationId === intent.operationId &&
+    value.inputDigest === inputDigest
+  )
+    return { kind: 'not-sent', reason: value.reason };
   if (
     keys(value, ['kind', 'record', 'replayed']) &&
     value.kind === 'accepted' &&
@@ -600,8 +627,9 @@ async function acceptedSharedAcknowledgement(
 export async function fetchSharedTaskRoomCapabilities(
   apiBase: string,
   taskId: string,
-  options: SharedWorkRequestOptions,
+  callerOptions: SharedWorkRequestOptions,
 ): Promise<SharedWorkCapability> {
+  const options = captureSharedOptions(callerOptions);
   if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
     throw new TaskRoomWorkProtocolError('Task request connection changed.');
   let response: Response;
@@ -630,8 +658,9 @@ export async function submitSharedTaskRoomAgentRequest(
   apiBase: string,
   scope: SharedTaskIdentity,
   input: SharedAgentRequest,
-  options: SharedWorkRequestOptions,
+  callerOptions: SharedWorkRequestOptions,
 ): Promise<SharedWorkOutcome> {
+  const options = captureSharedOptions(callerOptions);
   if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
     return { kind: 'not-sent', reason: 'authority' };
   if (!sharedIntentMatchesTask(input, scope))
@@ -664,13 +693,13 @@ export async function submitSharedTaskRoomAgentRequest(
     );
     const value = await data(response);
     if (options.isCurrent()) {
-      const accepted = await acceptedSharedAcknowledgement(
+      const acknowledgement = await sharedAcknowledgement(
         value,
         task,
         intent,
         inputDigest,
       );
-      if (accepted && options.isCurrent()) return accepted;
+      if (acknowledgement && options.isCurrent()) return acknowledgement;
     }
   } catch {
     // Once dispatch begins, failure or cancellation does not prove non-acceptance.
@@ -681,8 +710,9 @@ export async function fetchSharedTaskRoomRequests(
   apiBase: string,
   scope: SharedTaskIdentity,
   input: SharedAgentRequest,
-  options: SharedWorkRequestOptions,
+  callerOptions: SharedWorkRequestOptions,
 ): Promise<readonly SharedWorkRecord[]> {
+  const options = captureSharedOptions(callerOptions);
   if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
     throw new TaskRoomWorkProtocolError('Task request connection changed.');
   if (
@@ -722,8 +752,9 @@ export async function withdrawSharedTaskRoomRequest(
   apiBase: string,
   scope: SharedTaskIdentity,
   input: SharedAgentRequest,
-  options: SharedWorkRequestOptions,
+  callerOptions: SharedWorkRequestOptions,
 ): Promise<SharedWorkOutcome> {
+  const options = captureSharedOptions(callerOptions);
   if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
     return { kind: 'not-sent', reason: 'authority' };
   if (!sharedIntentMatchesTask(input, scope))
@@ -753,13 +784,13 @@ export async function withdrawSharedTaskRoomRequest(
         command,
       ),
     );
-    const accepted = await acceptedSharedAcknowledgement(
+    const acknowledgement = await sharedAcknowledgement(
       value,
       task,
       intent,
       inputDigest,
     );
-    if (accepted && options.isCurrent()) return accepted;
+    if (acknowledgement && options.isCurrent()) return acknowledgement;
   } catch {
     // A dispatched withdrawal can settle even if its response is lost.
   }
@@ -773,8 +804,9 @@ export async function fetchSharedTaskRoomResult(
   apiBase: string,
   scope: SharedTaskIdentity,
   reference: SharedResultRef,
-  options: SharedWorkRequestOptions,
+  callerOptions: SharedWorkRequestOptions,
 ): Promise<string> {
+  const options = captureSharedOptions(callerOptions);
   if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
     throw new TaskRoomWorkProtocolError('Task request connection changed.');
   if (!isSharedResultRef(reference) || !sameTask(reference, scope))

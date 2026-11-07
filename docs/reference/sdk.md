@@ -866,7 +866,13 @@ Withdrawal sends a closed JSON command with the captured actor, Project, Task
 incarnation, operation and original input digest in the DELETE body. A future
 receiver must compare URL and body identities and compare those preconditions
 to the durable original before mutation; MP-X/B owns that enforcement. They do
-not grant authority. A lost withdrawal response remains unconfirmed. Published
+not grant authority. A matching versioned refusal inside a successful RPC data
+envelope reports `not-sent` only under the captured current authority. A generic
+HTTP error, malformed or mismatched reply, lost response, or authority drift
+remains unconfirmed. A withdrawal refusal means the withdrawal was not accepted;
+it does not establish that the original work stopped. A durable record in
+`refused` state remains an accepted record. Shared operations capture the host
+scope, currentness callback and live signal at entry. Published
 result reads capture the reference and Task scope before dispatch, require the
 sequence and both digests, and verify the returned Markdown content digest. No
 shared provider execution is enabled by this SDK surface.

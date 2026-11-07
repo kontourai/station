@@ -25,7 +25,12 @@ contracts do not establish provider, invited-user, or UI behavior. The future
 shared withdrawal receiver (MP-X/B) must compare the URL and closed command body
 identities and match the expected actor, Task incarnation and input digest to
 the durable original before changing state. These preconditions confer no
-authority, and their runtime enforcement is not implemented.
+authority, and their runtime enforcement is not implemented. The future MP-X/B
+receiver may return a closed, versioned `SharedWorkRefusalReply` in the normal
+successful RPC data envelope only before durable acceptance or mutation. Its
+actor, Project, Task incarnation, operation and input digest must match the
+original intent. Generic HTTP errors and mismatched replies do not attest that
+nothing happened; a refused withdrawal does not prove the original work stopped.
 
 The proposed MP-A/X private model-only path is **not implemented or qualified**.
 It would require `execution.sharedTurns` in `model-only` mode with the exact

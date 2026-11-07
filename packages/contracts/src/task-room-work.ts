@@ -129,6 +129,17 @@ export interface SharedWithdrawalCommand extends SharedTaskIdentity {
   operationId: string;
   inputDigest: string;
 }
+/** Receiver attestation that no acceptance or withdrawal mutation occurred. */
+export interface SharedWorkRefusalReply extends SharedWithdrawalCommand {
+  kind: 'not-sent';
+  reason:
+    | 'access'
+    | 'input'
+    | 'context'
+    | 'capacity'
+    | 'conflict'
+    | 'unavailable';
+}
 export type SharedWorkCapability =
   | {
       version: typeof TASK_ROOM_SHARED_WORK_VERSION;
@@ -226,6 +237,37 @@ export function isSharedWithdrawalCommand(
       'inputDigest',
     ]) &&
     value.version === TASK_ROOM_SHARED_WORK_VERSION &&
+    sharedText(value.expectedActorId, 512) &&
+    sharedText(value.projectId, 160) &&
+    sharedText(value.taskId, 160) &&
+    timestamp(value.taskCreatedAt) &&
+    sharedText(value.operationId, 160) &&
+    digest(value.inputDigest)
+  );
+}
+export function isSharedWorkRefusalReply(
+  value: unknown,
+): value is SharedWorkRefusalReply {
+  return (
+    closed(value, [
+      'version',
+      'expectedActorId',
+      'projectId',
+      'taskId',
+      'taskCreatedAt',
+      'operationId',
+      'inputDigest',
+      'kind',
+      'reason',
+    ]) &&
+    value.version === TASK_ROOM_SHARED_WORK_VERSION &&
+    value.kind === 'not-sent' &&
+    (value.reason === 'access' ||
+      value.reason === 'input' ||
+      value.reason === 'context' ||
+      value.reason === 'capacity' ||
+      value.reason === 'conflict' ||
+      value.reason === 'unavailable') &&
     sharedText(value.expectedActorId, 512) &&
     sharedText(value.projectId, 160) &&
     sharedText(value.taskId, 160) &&

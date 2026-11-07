@@ -2498,7 +2498,10 @@ UTF-8 Markdown, including any published truncation notice. A reference does not
 grant the private full answer. Unknown request fields are rejected. The closed
 `SharedWithdrawalCommand` carries the work version, expected actor, Project and
 Task identity including incarnation, operation ID, and original canonical input
-digest. These are equality preconditions, not credentials or authority.
+digest. These are equality preconditions, not credentials or authority. A closed
+`SharedWorkRefusalReply` adds `kind: not-sent` and a bounded refusal reason to
+that identity. A future receiver may issue it only before durable acceptance or
+mutation; it is an attestation, not a credential.
 
 `AgentExecutionConfig.sharedTurns` is an operator-owned, versioned model-only
 declaration with a nonempty unique allowlist. It is separate from Agent audience
