@@ -194,6 +194,7 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
     const withAuthority = <Value>(
       work: (
         authority: ReturnType<typeof createDelegationAuthorityServiceV3>,
+        scope: ReportRoundsScope,
       ) => Promise<Value>,
     ): Promise<Value> =>
       withReportRoundsPublication(
@@ -201,14 +202,18 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
         (publication) =>
           publication.withHome(
             { owner: writer, current },
-            (scope) => work(createAuthority(scope)),
+            (scope) => work(createAuthority(scope), scope),
           ),
       );
-    await withAuthority((authority) => authority.issue(prepared.root));
-    for (const envelope of prepared.envelopes)
-      await withAuthority((authority) =>
-        authority.derive(prepared.root.authority_id, envelope),
-      );
+    await withAuthority(async (authority, scope) => {
+      await authority.issue(prepared.root);
+      scope.check(current);
+      for (const envelope of prepared.envelopes) {
+        scope.check(current);
+        await authority.derive(prepared.root.authority_id, envelope);
+        scope.check(current);
+      }
+    });
     const dispatch = new FileAuthorizationLedger({ root: dispatchRoot });
     const refuse = (): never => {
       throw Error('unexpected execution');
