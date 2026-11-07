@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, test, vi } from 'vitest';
 import { AnthropicSealedPreparation } from '../../../runtime/conversation/anthropic-sealed-preparation.js';
 import { boundedApiWireOptionsSha256 } from '../../../runtime/conversation/bounded-api-provider-contract.js';
@@ -180,6 +181,13 @@ test('real preparation derives public profile from actual request/source/credent
   });
   assert.equal(driver.observed[0].usage.costBasis, 'tariff-upper-bound');
   await sdkDisposalPromise(p.owner, p.prepared.sdkHandle);
+  const installed = JSON.parse(
+    readFileSync(
+      new URL(import.meta.resolve('@ai-sdk/anthropic/package.json')),
+      'utf8',
+    ),
+  );
+  assert.equal(facts.binding.sdkVersion, installed.version);
 });
 
 test('snapshot-anchored profile expiry refuses without extending validity at startup', async () => {
