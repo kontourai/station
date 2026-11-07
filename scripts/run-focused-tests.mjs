@@ -180,7 +180,8 @@ export function inspectFocusedVitestOutput(output, expectedRoot) {
  *   invocation: ReturnType<typeof buildFocusedVitestInvocation>,
  *   exitCode: number | null,
  *   signal?: NodeJS.Signals | null,
- *   selectionReport?: import('vitest/reporters').JsonTestResults | null,
+ *   selectionReport?: Pick<import('vitest/reporters').JsonTestResults,
+ *     'success' | 'numFailedTests' | 'numFailedTestSuites' | 'numPassedTests' | 'testResults'> | null,
  * }} options
  */
 export function focusedVitestVerdict({
@@ -209,18 +210,20 @@ export function focusedVitestVerdict({
     };
   }
   if (exitCode === 0 && invocation.testNames.length) {
-    const passed = selectionReport?.testResults?.flatMap((suite) =>
-      suite.assertionResults.filter((test) => test.status === 'passed'),
+    const assertions = selectionReport?.testResults?.flatMap(
+      (suite) => suite.assertionResults,
     );
+    const passed = assertions?.filter((test) => test.status === 'passed');
     if (
       selectionReport?.success !== true ||
       selectionReport.numFailedTests !== 0 ||
       selectionReport.numFailedTestSuites !== 0 ||
       selectionReport.numPassedTests !== invocation.testNames.length ||
       passed?.length !== invocation.testNames.length ||
-      invocation.testNames.some(
-        (name) => passed.filter((test) => test.fullName === name).length !== 1,
-      )
+      invocation.testNames.some((name) => {
+        const matching = assertions.filter((test) => test.fullName === name);
+        return matching.length !== 1 || matching[0].status !== 'passed';
+      })
     ) {
       return {
         exitCode: 2,

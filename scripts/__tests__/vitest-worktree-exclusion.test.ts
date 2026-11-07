@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseCLI, resolveConfig } from 'vitest/node';
+import type { JsonAssertionResult } from 'vitest/reporters';
 import packageJson from '../../package.json';
 import config from '../../vitest.config';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
@@ -258,6 +259,48 @@ describe('Vitest worktree exclusion', () => {
         inspection: { runRoot: root, expectedRoot: root, zeroTests: false },
         invocation,
         exitCode: 0,
+      }),
+    ).toMatchObject({ exitCode: 2 });
+  });
+
+  it('refuses a passed case with a skipped duplicate of its selected full name', () => {
+    const root = path.resolve(import.meta.dirname, '../..');
+    const invocation = buildFocusedVitestInvocation(
+      [ELIGIBLE_FOCUSED_TEST, `--test-name=${NAMED_FOCUSED_TEST}`],
+      root,
+    );
+    const passed: JsonAssertionResult = {
+      ancestorTitles: ['vitest run root'],
+      fullName: NAMED_FOCUSED_TEST,
+      title:
+        'is a unique sibling per call, so concurrent runs cannot share one',
+      status: 'passed',
+      failureMessages: [],
+      meta: {},
+      tags: [],
+    };
+
+    expect(
+      focusedVitestVerdict({
+        inspection: { runRoot: root, expectedRoot: root, zeroTests: false },
+        invocation,
+        exitCode: 0,
+        selectionReport: {
+          success: true,
+          numFailedTests: 0,
+          numFailedTestSuites: 0,
+          numPassedTests: 1,
+          testResults: [
+            {
+              name: path.join(root, ELIGIBLE_FOCUSED_TEST),
+              message: '',
+              status: 'passed',
+              startTime: 0,
+              endTime: 0,
+              assertionResults: [passed, { ...passed, status: 'pending' }],
+            },
+          ],
+        },
       }),
     ).toMatchObject({ exitCode: 2 });
   });
