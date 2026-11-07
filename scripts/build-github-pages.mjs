@@ -39,6 +39,21 @@ const EXPLICIT_PUBLIC_REFERENCE_SOURCES = new Set([
 const BARE_RELATIVE_HREF = /^[\w-][\w./-]*(?:#[\w-]*)?$/;
 const PUBLIC_SOURCE = /^(?:user|guides)\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 
+/**
+ * Product images on the Pages home come from the committed screenshot-gallery
+ * baseline (`tests/screenshots.baseline/`), so they change when the gallery
+ * baseline is regenerated instead of drifting as one-off captures. Each is
+ * published at `media/<name>.png`; a renamed or dropped screen fails the build.
+ */
+export const PAGES_GALLERY_SCREENS = Object.freeze([
+  'task-capabilities-light-desktop',
+]);
+const galleryBaselineRoot = path.join(
+  repoRoot,
+  'tests',
+  'screenshots.baseline',
+);
+
 export function isAllowedPublicDocSource(source) {
   const root = source.split('/', 1)[0];
   if (!RESTRICTED_PUBLIC_DOC_ROOTS.has(root)) return true;
@@ -61,6 +76,7 @@ async function main() {
   await rm(distRoot, { force: true, recursive: true });
   await mkdir(distRoot, { recursive: true });
   await copyPagesAssets();
+  await copyGalleryScreens();
   const publicDocs = await loadPublicDocs();
 
   const docs = [];
@@ -107,6 +123,16 @@ async function copyPagesAssets() {
     await copyFile(
       path.join(pagesRoot, entry.name),
       path.join(distRoot, entry.name),
+    );
+  }
+}
+
+async function copyGalleryScreens() {
+  await mkdir(path.join(distRoot, 'media'), { recursive: true });
+  for (const screen of PAGES_GALLERY_SCREENS) {
+    await copyFile(
+      path.join(galleryBaselineRoot, `${screen}.png`),
+      path.join(distRoot, 'media', `${screen}.png`),
     );
   }
 }

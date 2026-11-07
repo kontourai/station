@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadPublicDocs, renderMarkdown } from '../build-github-pages.mjs';
+import {
+  loadPublicDocs,
+  PAGES_GALLERY_SCREENS,
+  renderMarkdown,
+} from '../build-github-pages.mjs';
 
 const CANONICAL_REPOSITORY = 'https://github.com/kontourai/station';
 const PREDECESSOR_REPOSITORY =
@@ -256,6 +260,52 @@ describe('public product documentation source links', () => {
 
     expect(docsReadme).toContain('[architecture/module-map.md]');
     expect(architecture).toContain('[Module map](architecture/module-map.md)');
+  });
+
+  it('takes README and Pages product images from current gallery baseline screens', () => {
+    const baseline = JSON.parse(
+      readFileSync('tests/screenshots.baseline.json', 'utf8'),
+    ) as { screens: Array<{ name: string; volatile?: boolean }> };
+    // A full baseline regeneration drops screens it no longer captures and
+    // stores no image for a volatile one, so either would break these images.
+    const imaged = new Set(
+      baseline.screens
+        .filter((screen) => !screen.volatile)
+        .map((screen) => screen.name),
+    );
+
+    const readme = readFileSync('README.md', 'utf8');
+    const readmeScreens = [...readme.matchAll(/(?:src|srcset)="([^"]+)"/g)].map(
+      ([, source]) => {
+        const match = /^tests\/screenshots\.baseline\/([a-z0-9-]+)\.png$/.exec(
+          source,
+        );
+        expect(match, `README image ${source}`).not.toBeNull();
+        return match?.[1] ?? '';
+      },
+    );
+    expect(readmeScreens).toContain('task-capabilities-dark-desktop');
+    expect(readmeScreens).toContain('task-capabilities-light-desktop');
+
+    const index = readFileSync('docs/pages/index.html', 'utf8');
+    const pagesScreens = [
+      ...index.matchAll(
+        /(?:src="\.\/media\/|content="https:\/\/kontourai\.github\.io\/station\/media\/)([a-z0-9-]+)\.png"/g,
+      ),
+    ].map(([, name]) => name);
+    expect(index).toMatch(/<meta property="og:image" content="https:/);
+    expect(index).toMatch(/<meta name="twitter:image" content="https:/);
+    expect(pagesScreens.length).toBeGreaterThanOrEqual(3);
+    for (const name of pagesScreens)
+      expect(PAGES_GALLERY_SCREENS, `Pages image ${name}`).toContain(name);
+
+    for (const name of new Set([...readmeScreens, ...PAGES_GALLERY_SCREENS])) {
+      expect(imaged.has(name), `baseline screen ${name}`).toBe(true);
+      expect(
+        existsSync(`tests/screenshots.baseline/${name}.png`),
+        `baseline image ${name}`,
+      ).toBe(true);
+    }
   });
 
   it('links contributors to the repository and public documentation boundaries', () => {

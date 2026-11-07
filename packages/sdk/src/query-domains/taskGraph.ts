@@ -38,6 +38,7 @@ import {
   resolveApiBase,
   useApiMutation,
   useApiQuery,
+  useApiQueryRefetchingInvalidatedOnMount,
 } from '../query-core';
 import { taskQueries } from '../queryFactories';
 import { mapConversationMessages } from './chatRuntimeStream';
@@ -320,7 +321,7 @@ export function useTasksQuery(
   config?: TaskDestinationQueryConfig,
 ) {
   const scoped = isApiRequestScope(config?.requestScope);
-  const query = useApiQuery(
+  const query = useApiQueryRefetchingInvalidatedOnMount(
     taskQueries.list(projectId, config?.requestScope).queryKey,
     (signal) =>
       fetchTasks({
