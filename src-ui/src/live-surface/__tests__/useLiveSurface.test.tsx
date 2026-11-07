@@ -617,14 +617,18 @@ function sourceReply(sourceId: string) {
   return Response.json({ success: true, data: { sourceId } });
 }
 
-function inputReply(epoch: number, code?: 'page-dialog-open' | 'stale-epoch') {
+function inputReply(
+  epoch: number,
+  code?: 'page-dialog-open' | 'stale-epoch',
+  accepted = 1,
+) {
   return Response.json(
     {
       success: !code,
       data: {
         ok: !code,
         ...(code ? { code } : {}),
-        accepted: code ? 0 : 1,
+        accepted: code ? 0 : accepted,
         lease: {
           surfaceId: 'first',
           epoch,
@@ -723,7 +727,7 @@ test('late input response from retired transport cannot disturb replacement inpu
       bInputCount += 1;
       if (bInputCount === 1) return inputReply(2, 'page-dialog-open');
       if (bInputCount === 2) return pendingB.promise;
-      if (bInputCount === 3) return inputReply(3);
+      if (bInputCount === 3) return inputReply(3, undefined, body.events.length);
     }
     throw new Error('Unexpected B request');
   });
@@ -769,6 +773,15 @@ test('late input response from retired transport cannot disturb replacement inpu
   expect(result.current.inputNotice).toBe('page-dialog');
   expect(bInputCount).toBe(2);
   await act(async () => {
+    result.current.sendInput([
+      { kind: 'text', text: 'replacement after old response' },
+    ]);
+    await Promise.resolve();
+  });
+  expect(bInputCount).toBe(2);
+  expect(result.current.lease?.epoch).toBe(2);
+  expect(result.current.inputNotice).toBe('page-dialog');
+  await act(async () => {
     pendingB.resolve(inputReply(2));
     await pendingB.promise;
   });
@@ -807,7 +820,10 @@ test('late input response from retired transport cannot disturb replacement inpu
     },
     {
       sourceId: swapSourceB,
-      events: [{ kind: 'text', text: 'replacement queued' }],
+      events: [
+        { kind: 'text', text: 'replacement queued' },
+        { kind: 'text', text: 'replacement after old response' },
+      ],
     },
   ]);
   await waitFor(() => expect(result.current.lease?.epoch).toBe(3));
