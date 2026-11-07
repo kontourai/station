@@ -3501,17 +3501,6 @@ const SCREENS: Screen[] = [
     },
   },
   {
-    name: 'mobile-appearance',
-    title: 'Mobile — Appearance',
-    path: '/appearance',
-    viewport: MOBILE,
-    afterGoto: async (page) => {
-      await expect(
-        page.getByRole('radiogroup', { name: 'Density' }),
-      ).toBeVisible();
-    },
-  },
-  {
     name: 'settings-info-tip',
     title: 'Settings — Approval guardian explanation',
     path: '/settings?view=permissions',

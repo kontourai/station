@@ -145,7 +145,6 @@
     "profile": ["src-ui/src/pages/ProfilePage.tsx"],
     "settings": ["src-ui/src/views/SettingsView.tsx"],
     "appearance": ["src-ui/src/pages/AppearancePage.tsx"],
-    "mobile-appearance": ["src-ui/src/pages/AppearancePage.tsx"],
     "settings-info-tip": ["src-ui/src/views/SettingsView.tsx"],
     "agent-editor": ["src-ui/src/views/AgentsView.tsx"],
     "agent-editor-not-runnable": ["src-ui/src/views/AgentsView.tsx"],

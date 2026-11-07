@@ -221,27 +221,29 @@ function SegmentedChoice<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div
-      className="appearance-mode__options"
-      role="radiogroup"
-      aria-label={label}
-    >
-      {options.map((option) => (
-        <label
-          key={option.value}
-          className={`appearance-mode__option${value === option.value ? ' is-selected' : ''}`}
-        >
-          <input
-            type="radio"
-            className="appearance__radio"
-            name={name}
-            value={option.value}
-            checked={value === option.value}
-            onChange={() => onChange(option.value)}
-          />
-          {option.label}
-        </label>
-      ))}
+    <div className="appearance-mode">
+      <div
+        className="appearance-mode__options"
+        role="radiogroup"
+        aria-label={label}
+      >
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className={`appearance-mode__option${value === option.value ? ' is-selected' : ''}`}
+          >
+            <input
+              type="radio"
+              className="appearance__radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(option.value)}
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
