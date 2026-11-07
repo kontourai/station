@@ -116,7 +116,10 @@ test('Manage hands the manager a surviving header opener', async () => {
 });
 
 test('Pair phone opens the existing host invitation flow directly from the Station chooser', async () => {
-  const opened = vi.fn(() => document.activeElement);
+  const opened = vi.fn((event: Event) => ({
+    focus: document.activeElement,
+    detail: event instanceof CustomEvent ? event.detail : undefined,
+  }));
   window.addEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened);
   try {
     renderHeader();
@@ -127,9 +130,9 @@ test('Pair phone opens the existing host invitation flow directly from the Stati
     pair.focus();
     fireEvent.click(pair);
     expect(opened).toHaveBeenCalledTimes(1);
-    expect(opened.mock.results[0]?.value).toBe(trigger);
-    expect(opened.mock.calls[0]?.[0]?.detail).toEqual({
-      mode: 'pair-host',
+    expect(opened.mock.results[0]?.value).toEqual({
+      focus: trigger,
+      detail: { mode: 'pair-host' },
     });
     expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
   } finally {
