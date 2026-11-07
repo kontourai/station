@@ -72,11 +72,11 @@ One client selector, `deriveConnectionHealth` in
 `src-ui/src/views/connections-hub/connection-health.ts`, feeds rail dots, the
 resolver, list rows and detail headers. It returns one of the recorded labels
 from `resolveProviderPresentation`, plus whether the connection needs attention.
-Anything dispatch would refuse needs attention, including `degraded` and
-managed-policy refusals, which read **Not allowed** and offer no fix. Resting
-states do not need attention: a model connection that is **Saved — not
-verified** or **Reachable — no model catalog**, and Knowledge without an
-embedding model. Their own pages state them.
+Anything dispatch would refuse for a reason the reader can fix needs attention,
+including `degraded`. Managed-policy refusals read **Not allowed**, offer no fix
+and carry no mark. Resting states do not need attention either: a model
+connection that is **Saved — not verified** or **Reachable — no model catalog**,
+and Knowledge without an embedding model. Their own pages state them.
 
 Allowance is not read for status in the first slices. Status later reflects
 allowance through **recorded evidence**: a fresh, provider-reported quota refusal
