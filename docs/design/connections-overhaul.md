@@ -3,24 +3,27 @@
 > **Status: proposal, 2026-11-07; owner-directed.** Tracking issue
 > [#4710](https://github.com/kontourai/station/issues/4710). Nothing here is
 > implemented yet. The [Connections guide](../guides/connections.md) remains the
-> current user journey until each slice below lands and updates it. This record
-> builds on the readiness and explicit-Add rules in
-> [connections onboarding](connections-onboarding.md) and does not change them.
+> current user journey until each slice lands and updates it. This record keeps
+> the finite readiness labels and explicit-Add rules in
+> [connections onboarding](connections-onboarding.md). It changes one recorded
+> decision there, the `/connections` resolver, as stated under [Overview](#pages).
+> Usage attribution is a child of [#189](https://github.com/kontourai/station/issues/189).
 
 ## Outcome
 
 Every connection answers four questions, in this order:
 
-1. **Can I use it now?** One verdict, its reason, and at most one fix.
-2. **How much is left?** Provider-reported allowance, where the provider reports it.
+1. **Can I use it now?** One recorded readiness label, its reason, and at most one fix.
+2. **How much is left?** Provider-reported allowance, where the provider reports it
+   and the viewer may read it.
 3. **What is it doing and costing?** Station-observed usage over 7 or 30 days.
 4. **What depends on it?** Agents, scheduled jobs and projects that select it.
 
 Configuration is the fifth question and lives on its own tab.
 
-The pages that answer these questions share one **resource-hub kit**, so other
-list/detail pages (Agents, Skills, Plugins, Sessions) can adopt the same status,
-row, detail, usage and editor primitives instead of rebuilding them.
+Pages that answer these questions share a small **resource-hub kit**. Each
+primitive enters the kit when a real consumer needs it, so Agents, Skills,
+Plugins and Sessions can adopt proven pieces rather than a speculative library.
 
 ## Evidence
 
@@ -30,142 +33,150 @@ Screenshots were not committed; they contain a real account's allowance.
 
 | Observation | Cause |
 | --- | --- |
-| Claude Code showed **Status: Ready** beside **7-day limit: 0% left**. | No readiness path reads `EngineAccountUsage.exhausted` ([engine-accounts contract](../../packages/contracts/src/engine-accounts.ts)). |
-| Claude Code listed 64 models, including other vendors', while **Connect through** read **Your account**. | The server passes its own environment to engine children ([child-process environment](../../src-server/utils/child-process-environment.ts)). An inherited `ANTHROPIC_BASE_URL` with gateway discovery made the CLI list the gateway's catalog. The UI does not disclose ambient routing. |
-| Cursor, Kiro CLI and OpenCode were detected but appeared only deep inside **Add engine**. | The Engines list shows only connected engines and added-but-unconnected ACP entries. |
+| Claude Code showed **Status: Ready** beside **7-day limit: 0% left**. | Only the account overview reads allowance ([engine account overview](../../src-ui/src/views/EngineAccountOverview.tsx)). Whether the provider also reported an exhausted verdict was not captured. |
+| Claude Code listed 64 models, including other vendors', while **Connect through** read **Your account**. | The server passes its own environment to engine children ([child-process environment](../../src-server/utils/child-process-environment.ts)). An inherited `ANTHROPIC_BASE_URL` with gateway model discovery made the CLI list that endpoint's catalog. The page does not disclose ambient routing. |
+| Cursor, Kiro CLI and OpenCode were detected but appeared only deep inside **Add engine**. | The Engines list shows connected engines and added-but-unconnected entries, not detected apps. |
 | The Knowledge tab showed no attention dot with no embedding model. | [Section signals](../../src-ui/src/views/connections-hub/connection-section-signals.ts) check only the vector database. |
-| `/connections` opened an empty Models tab while all activity was on Engines. | The resolver falls back to Models when nothing needs attention. |
-| Engine usage appears only for Claude Code and Codex, behind credential-management access. | `/api/analytics/usage-rollup` allow-lists `provider` to `claude` and `codex` ([analytics routes](../../src-server/routes/operations/analytics.ts)). ACP engines record receipts as `provider: 'acp'` with context occupancy only; Station's engine records none. |
-| Engine detail repeats status three times and ends with a ~5,700px **Advanced** section. | [Engine detail](../../src-ui/src/views/AgentConnectionView.tsx) renders read-only facts as form fields, the full catalog as chips, and every option in one disclosure. |
+| `/connections` opened an empty Models tab. | [The resolver](../../src-ui/src/views/ConnectionsHub.tsx) navigates on first render, before its queries resolve, then falls back to Models. |
+| Engine usage appears only for Claude Code and Codex. | `/api/analytics/usage-rollup` allow-lists `provider` to `claude` and `codex` ([analytics routes](../../src-server/routes/operations/analytics.ts)). Receipts carry no connection id. ACP adapters record context occupancy and deliberately omit cost. |
+| Engine detail repeats status three times and ends in a long **Advanced** section. | [Engine detail](../../src-ui/src/views/AgentConnectionView.tsx) renders read-only facts as inputs, the catalog as chips and every option in one disclosure. |
 | Computers rows show the UI origin and **Authorized**, nothing about the machine. | [Computer rows](../../src-ui/src/views/connections-hub/computer-rows.ts) hold liveness only for SSH profiles. |
-| Tool servers read **Not checked yet**; their `usedBy` is never shown. | `usedBy` holds display names from home agents only ([agent tool map](../../src-server/domain/config-loader-agents.ts)). |
+| Tool server `usedBy` is never shown. | It holds display names from home agents only ([agent tool map](../../src-server/domain/config-loader-agents.ts)). |
 
 Readiness is derived in five places that disagree: the provider presentation
-resolver, the section-rail rule, the built-in engine picker, the server-side
-agent runnability and the first-run projection. The rail misses failed checks,
-degraded engines and unverified models that the resolver labels.
+resolver, the section rail, the built-in engine picker, server-side agent
+runnability and the first-run projection. The resolver labels a `degraded`
+engine **Limited**, while dispatch refuses anything that is not `ready`
+([enriched agents](../../src-server/routes/agents/enriched-agents.ts)).
 
-## The resource-hub kit
+## Constraints from review
 
-The kit lives in `src-ui/src/components/resource-hub/`. It composes existing
-owners (`SplitPaneLayout`, `DetailHeader`, `Tabs`, `ActionRow`, the state family,
-`StatusBadge`, `Metric`, `Progress`) rather than replacing them, and its CSS uses
-only `--k-*` tokens.
+- **Access.** `/usage-rollup` requires `access:manage` because it fans out to
+  paired Stations with stored credentials
+  ([route scopes](../../src-server/security/pairing-route-scopes.ts)); `localOnly`
+  cannot lower that. Account allowance also requires `access:manage` and calls the
+  provider live. Neither may become a background read for every viewer.
+- **Provider verdicts.** Station does not recompute allowance thresholds; the
+  provider's verdict wins ([credential usage](../../src-server/services/connections/credential-usage.ts)).
+  Claude reports per-model windows, so one exhausted window is not a whole-engine verdict.
+- **Allowance is per account.** Agents can pin accounts, opt-in recovery can switch
+  accounts, and proxy-routed engines do not spend the subscription.
+- **Receipt `provider` is the adapter kind.** Exports, cost scopes, peer parsing
+  and telemetry key on it. New attribution is added beside it.
+- **Copy.** Recorded labels stay: **Retry check** and **Check connection**, not
+  "Check again". "Needs you" and "Blocked" are Session and Task words.
 
-| Primitive | Responsibility | Replaces |
-| --- | --- | --- |
-| `ResourceStatus` | `{ verdict, label, tone: SemanticTone, reason?, action? }`. `verdict` is `ready`, `limited`, `blocked`, `setup` or `off`. One mapping to `StatusBadge` tones. | `ProviderTone`, `ComputerStateTone`, inline status dots and subtitle-text status. |
-| `resourceRow()` | Builds a `SplitPaneLayout` item: status badge, up to two facts (for example "43% left", "$3.10 this week"), and one trailing action. | Seven hand-written row builders. |
-| `useResourceFilter()` | Search filtering for rows. | A filter in every page. |
-| `ResourceDetail` | Header with the status verdict, its reason, and one primary fix; route-synced tabs; one scroll owner. | Progress rail, summary tiles and readiness notice copies. |
-| `ResourceTabs` | `/…/:id/:tab` tabs with manual activation; the list keeps its surface identity. | The dropped third segment in today's parser. |
-| `FactList` | Read-only facts as a `dl`. | Read-only values styled as inputs. |
-| `MetricTiles`, `Meter` | Tiles over `Metric`; allowance meter over `Progress` with text. | Four tile and two meter implementations. |
-| `DailyBars` | Daily bar chart that keeps unreported days distinct from zero, with a table alternative. | Five hand-rolled charts. |
-| `UsagePanel` | Period selector, tiles, daily chart and coverage for any `UsageRollup` filter. | Engine account `Activity`, `UsageRollupPanel`. |
-| `UsedByList` | Dependents with links. | Slug-prefix guesses and unused `usedBy`. |
-| `AttentionList` | One sentence and one action per item. | Readiness notices scattered per page. |
-| `useResourceEditor()` | Seed, dirty tracking, `useUnsavedGuard`, save and reset for a detail's settings. | Five seed/dirty/save implementations; closes the Tools guard gap. |
+## Readiness
 
-Route plumbing gains one helper that parses and serializes
-`/connections/<section>/<id>/<tab>` against an allow-list, so a new tab is not a
-six-file change. Unknown tabs are not-found.
+One client selector, `deriveConnectionHealth` in
+`src-ui/src/views/connections-hub/connection-health.ts`, feeds rail dots, the
+resolver, list rows and detail headers. It returns one of the recorded labels
+from `resolveProviderPresentation`, plus whether the connection needs attention.
+Anything dispatch would refuse needs attention, including `degraded`.
 
-## One readiness derivation
-
-`deriveConnectionHealth(connection, evidence)` in
-`src-ui/src/views/connections-hub/connection-health.ts` returns a
-`ResourceStatus` from contract fields only:
-
-1. Policy disallowed or disabled: `off`.
-2. A blocking prerequisite, sign-in, credential or API key: `setup`, with that fix.
-3. A fresh failed check or an unreachable endpoint: `blocked`, with **Check again**.
-4. A provider-reported exhausted allowance: `blocked`, reason "Allowance reached,
-   resets <time>", and **Use another account** or **Use <sibling engine>** when one
-   is ready. A window at or above 90% used is `limited`.
-5. Ambient or proxy routing: `ready` or `limited` with a **via <gateway>** fact.
-6. Otherwise the existing resolver label.
-
-The rail dots, the `/connections` resolver, list rows, detail headers and the
-overview read this one function. The server-side runnability and first-run
-projection remain authoritative for dispatch; the client derivation must not
-claim Ready where they refuse. Converging those server projections is outside
-this record.
+Allowance is not read for status in the first slices. Status later reflects
+allowance through **recorded evidence**: a fresh, provider-reported quota refusal
+from a real turn (`provider-plan-quota-exhausted`, Codex usage-limit details,
+the usage-limit banner's recovery state), scoped to the account that served it.
+That evidence becomes a server-side contract field next to `readinessEvidence`,
+so every viewer gets the same answer and dispatch and Connections agree. Live
+allowance stays detail on the engine page for viewers with `access:manage`.
 
 ## Usage for every connection
 
-- `/usage-rollup` accepts any engine id and an optional `connectionId`. An unknown
-  id returns an empty rollup with `coverage.state: 'unknown'`, not a 400.
-- Usage receipts gain an optional `connectionId` from the session's recorded
-  connection (`session.configured` metadata). Engines routed through a model
-  connection also record `modelConnectionId`, so the Models tab can show usage.
-- ACP receipts record the engine's connection id instead of `acp`. ACP engines
-  report context occupancy, not totals; their usage panel says so instead of
-  showing zero.
-- Totals for this Station are readable with the same access as the engine page.
-  Per-account breakdowns keep the credential-management requirement.
+- Receipts gain an optional `connectionId` beside `provider`, filled from the
+  session's recorded connection. Proxy-routed engines also record
+  `modelConnectionId`. Old receipts stay unattributed.
+- `/usage-rollup` accepts any known provider kind, an optional `connectionId`
+  filter, and `groupBy: 'connection'`. Unknown kinds still return 400. A
+  connection filter applies to this Station's receipts only, including the
+  aggregate window, because connection ids are local.
+- New fields stay off usage exports, peer transfers and telemetry until those
+  schemas are reviewed for consent.
+- Access is unchanged. A local-only totals route readable at lower access would
+  need its own threat-model entry; [`/station-usage`](../../src-server/routes/operations/analytics.ts)
+  is the precedent. Until then the Usage tab shows a clear access state.
+- Delegated child sessions are separate sessions and are not counted again in a parent.
+
+## The resource-hub kit
+
+The kit lives in `src-ui/src/components/resource-hub/`, composes existing owners
+(`SplitPaneLayout`, `DetailHeader`, `Tabs`, `ActionRow`, the state family,
+`StatusBadge`) and uses only `--k-*` tokens. It owns presentation, never verdicts:
+a feature supplies `{ label, tone, reason?, action? }`.
+
+| Primitive | Enters with | Replaces |
+| --- | --- | --- |
+| Status badge mapping | Slice 1 | Inline dots, `ProviderTone`/`ComputerStateTone` rendering, status in subtitle text |
+| `resourceRow()` | Slice 1 | Hand-written row builders that concatenate status into text |
+| Detail tab routing helper | Slice 1 | The silently dropped fourth path segment |
+| Detail scaffold, facts list | Slice 3 | Progress rail, summary tiles, read-only inputs |
+| Usage panel, daily bars, metric tiles | Slice 3 | Engine account activity, `UsageRollupPanel`, competing tile and chart copies |
+| Editor hook (seed, dirty, guard, save) | Slice 3 | Five seed/dirty/save implementations; the missing Tools guard |
+| Attention list | Slice 4 | — |
+| Used-by list | Slice 5, with its projection | Slug-prefix guesses |
 
 ## Pages
 
-**Overview (`/connections`).** Replaces the redirect. It shows:
-- **Needs you:** `AttentionList` from `deriveConnectionHealth` across sections.
-- **Allowance:** one meter per subscription engine, with reset countdowns.
-- **Last 7 days:** tokens and cost by engine and model connection.
-- **Section tiles:** health and count for each section.
+**Overview (`/connections`).** This reverses the recorded "resolver, not a
+destination" decision: the root becomes a page because the resolver cannot
+answer the four questions. It shows items needing attention, one sentence and one action
+each; section tiles with health and count; and, for viewers with
+`access:manage`, allowance meters and last-7-days usage by connection.
 
 **Engines.**
-- Rows show the verdict and facts such as allowance left, a reset countdown, or
-  weekly cost.
-- Detected, unconnected engines are rows with **Connect**. **Add engine** lists
-  only engines that are not installed.
+- Rows show the recorded label and facts such as last-week usage.
+- Detected, unconnected engines appear as **Found, not connected** rows. **Connect**
+  runs the existing Add result flow in place. **Add engine** keeps its one catalogue.
 - Detail tabs:
-  - **Overview:** verdict, allowance, 7-day usage, dependents, last check.
-  - **Usage:** `UsagePanel`, by model, allowance history.
-  - **Models:** searchable table and default model, labelled with the catalog source.
-  - **Accounts:** profiles and sign-in, with per-account allowance.
-  - **Settings:** name, routing, app home, skills; capabilities as `FactList`.
-    Reset sits under a danger zone.
+  - **Overview:** label and reason, dependents, last check, the route actually used.
+  - **Usage:** usage panel and allowance history.
+  - **Models:** searchable table with catalog source and default.
+  - **Accounts:** saved credential accounts, sign-in and per-account allowance.
+  - **Settings:** name, routing, app home, skills, with capabilities as facts and reset last.
+- Ambient routing shows the endpoint origin only, with userinfo and query removed.
+  When routing cannot be observed (settings files the probe does not load), it says
+  "route unknown" rather than "Your account".
 
-**Models.**
-- The empty state is the add catalog, shown once.
-- Detail tabs: Overview, Usage (via `modelConnectionId`), Models, Settings.
+**Models.** The empty state shows the add catalog once. Detail tabs are
+Overview, Usage (by `modelConnectionId`), Models and Settings.
 
 **Tools.**
 - Rows show tool count, last probe and the agents that use the server.
-- **Check all** probes every server.
-- The editor adopts `useResourceEditor`.
+- **Check all** probes with a concurrency bound and never starts OAuth.
 
-**Knowledge.** One verdict: semantic search on or off and why, with one fix.
-It also shows index statistics (documents, chunks, projects, last indexed).
-The storage path moves to Settings.
+**Knowledge.**
+- One label: semantic search on or off, and why, with one fix.
+- Index statistics from the existing status route.
 
-**Computers.** Rows show what each computer runs: its engines and active turns where the
-Station can observe them, and last seen for paired Stations. Broker and delegation
-become sub-pages.
+**Computers.**
+- Rows show what this Station can observe.
+- Cross-Station reads (a paired Station's engines or turns) wait for an access
+  decision like the usage rollup's.
 
 ## Slices
 
 | Slice | Content | Depends on |
 | --- | --- | --- |
-| 1. Kit | Resource-hub primitives, tab routing helper, `deriveConnectionHealth`, tests | — |
-| 2. Usage server | Rollup filter, receipt `connectionId`/`modelConnectionId`, ACP attribution | — |
-| 3. Engines | Status fixes, detected rows, tabbed detail, ambient-routing disclosure | 1, 2 |
-| 4. Overview | `/connections` page | 1, 2, 3 |
-| 5. Models, Tools, Knowledge, Computers | Rows, details and verdicts on the kit | 1, 2 |
+| 1. Honest status | `deriveConnectionHealth` with dispatch parity; rail, resolver race, Knowledge embedding; status badge and rows for Engines and Models; tab routing helper | — |
+| 2. Usage attribution (#189 child) | Receipt `connectionId`/`modelConnectionId`, rollup filter and grouping, local-only connection scope | — |
+| 3. Engines detail | Tabs, usage panel, editor hook, detected rows, routing disclosure | 1, 2 |
+| 4. Overview | `/connections` page and attention list | 1, 2, 3 |
+| 5. Models, Tools, Knowledge, Computers | Rows, details, used-by projection on the kit | 1, 2 |
+| 6. Allowance evidence | Server contract field from recorded quota refusals; status and dispatch agree | 1 |
 
 Each slice updates the Connections guide and module map for what it ships.
 
 ## Non-goals
 
-- Automatic routing or failover across accounts; [#189](https://github.com/kontourai/station/issues/189) owns that.
-- New provider quota sources beyond those already read.
+- Automatic routing or failover policy; [#189](https://github.com/kontourai/station/issues/189)
+  and the existing opt-in credential recovery own it.
+- Lowering access to usage or allowance reads without a threat-model entry.
 - Changing what dispatch accepts as runnable.
 
 ## Risks and limits
 
-- Allowance comes from provider endpoints that change shape. Unknown readings stay
-  unknown and never become Ready or zero.
-- Receipts written before slice 2 have no `connectionId`. Connection-scoped views
-  disclose that gap instead of attributing old usage.
-- ACP engines expose no token totals today; their usage remains partial until an
-  engine reports them.
+- Provider allowance endpoints change shape. Unknown readings stay unknown.
+- Receipts written before slice 2 have no `connectionId`; connection views disclose the gap.
+- ACP adapters report context occupancy and omit cost deliberately; their usage stays partial.
+- **Check all** starts configured tool servers; the bound keeps it from flooding a host.
