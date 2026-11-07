@@ -7,9 +7,11 @@ import {
   StationHomeActiveError,
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { vi } from 'vitest';
+import type { RuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
 import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import {
   closeFinalizer,
+  createFinalizerRuntime,
   finalizeFixture,
   observeNoFinalizerEffects,
   setupFinalizer,
@@ -96,7 +98,25 @@ test('original continuation failure stays first when physical Home cleanup fails
     await f.runtime.shutdown();
     assert.equal(close.mock.calls.length, 1);
     noEffects();
-    assert.equal((await f.controller.get(f.groupId)).revision, f.held.revision);
+    const reopened = createFinalizerRuntime(
+      { projectHomeDir: f.h.f.home },
+      signal,
+    );
+    try {
+      f.setParticipant(
+        Reflect.get(
+          reopened,
+          'runtimePublicationParticipant',
+        ) as RuntimePublicationParticipant,
+      );
+      assert.equal(
+        (await f.controller.get(f.groupId)).revision,
+        f.held.revision,
+      );
+      noEffects();
+    } finally {
+      await reopened.shutdown();
+    }
   } finally {
     failRemoval = false;
     noEffects.restore();
