@@ -33,11 +33,11 @@ const INPUT_SOURCES = [
 const SDK = [
   [
     'dist/index.mjs',
-    '1c9d2bb8011ceb9cc65fb84e5af6cdad7462644133841300230e481c43859931',
+    '248978f3623a1090a62797a3292c842dc4730b65d91bbb0fa7418782fb184cea',
   ],
   [
     'package.json',
-    '1c585b96ce1b665f67d01ab21d042e17437bda395e0fde36290a48f0bbb09d4c',
+    '619d989dbc8529a4f19a31a7d3371383c62860981be289d5af6e746dcb587dc6',
   ],
 ] as const;
 const SOURCES = [
