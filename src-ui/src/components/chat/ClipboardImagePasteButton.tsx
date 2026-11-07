@@ -1,5 +1,4 @@
 import { useClipboardImagePaste } from '../../hooks/useClipboardImagePaste';
-import { PasteGlyph } from '../icons/Glyph';
 
 /**
  * The icon form of Paste image, beside an icon Attach control (`className`
@@ -32,7 +31,22 @@ export function ClipboardImagePasteButton({
       aria-busy={pending || undefined}
       onClick={() => void paste()}
     >
-      <PasteGlyph />
+      {/* The paperclip's icon family, size and stroke, so the pair matches. */}
+      <svg
+        aria-hidden="true"
+        focusable="false"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+        <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+      </svg>
     </button>
   );
 }
