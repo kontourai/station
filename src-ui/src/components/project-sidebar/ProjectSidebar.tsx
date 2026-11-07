@@ -4,10 +4,18 @@ import {
 } from '@kontourai/station-sdk';
 import { formatArtifactBuildTimestamp } from '@kontourai/station-shared/build-provenance';
 import {
+  applyReturnFocus,
   captureReturnFocus,
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import { memo, useEffect, useMemo, useRef } from 'react';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { buildInfo } from '../../build-info';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -167,6 +175,30 @@ function ProjectSidebarImpl() {
   const navigationRef = useRef<HTMLElement>(null);
   const wasMobileOpen = useRef(false);
   const returnFocusRef = useRef<HTMLElement[]>([]);
+  const [navigationHidden, setNavigationHidden] = useState(false);
+
+  useLayoutEffect(() => {
+    const closed = isMobile && !mobileOpen;
+    if (closed && navigationRef.current?.contains(document.activeElement)) {
+      const triggers = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          'button[aria-controls="mobile-navigation"]',
+        ),
+      );
+      const main = document.querySelector<HTMLElement>('main');
+      const chain = wasMobileOpen.current
+        ? returnFocusRef.current
+        : [
+            ...triggers,
+            ...triggers.flatMap((trigger) =>
+              captureReturnFocus(trigger).slice(1),
+            ),
+            ...(main ? [main] : []),
+          ];
+      applyReturnFocus(chain, navigationRef.current);
+    }
+    setNavigationHidden(closed);
+  }, [isMobile, mobileOpen]);
 
   // The mobile drawer's return focus goes through the shared module
   // (archive#1245). Its own copy was `if (trigger?.isConnected) trigger.focus`
@@ -247,7 +279,8 @@ function ProjectSidebarImpl() {
           collapsed: effectiveCollapsed,
         })}
         aria-label={isMobile ? 'Mobile navigation' : 'Primary navigation'}
-        aria-hidden={isMobile && !mobileOpen ? true : undefined}
+        aria-hidden={navigationHidden ? true : undefined}
+        inert={navigationHidden}
         onKeyDown={handleNavigationKeyDown}
       >
         <ProjectSidebarHeader

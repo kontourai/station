@@ -28,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 // requires it. This harness mounts a fragment of that tree, and nothing
 // here asserts a surface reveal, so the command hook is supplied directly.
 const showSurfaceStub = vi.hoisted(() => vi.fn());
+const mobile = vi.hoisted(() => ({ value: true }));
 // This fragment has no active connection; scoped Project reads stay disabled.
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
@@ -70,7 +71,7 @@ vi.mock('../hooks/useBranding', () => ({
 }));
 vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
-  useIsMobile: () => true,
+  useIsMobile: () => mobile.value,
 }));
 
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
@@ -115,6 +116,7 @@ function toggleDrawer(trigger: HTMLElement) {
 let frame: ReturnType<typeof stubFrame>;
 
 beforeEach(() => {
+  mobile.value = true;
   frame = stubFrame();
 });
 
@@ -126,6 +128,42 @@ afterEach(() => {
 });
 
 describe('ProjectSidebar mobile drawer return focus (station#1245)', () => {
+  test('moves sidebar focus to the mobile trigger when entering closed mobile navigation', () => {
+    mobile.value = false;
+    const trigger = document.createElement('button');
+    trigger.setAttribute('aria-controls', 'mobile-navigation');
+    document.body.append(trigger);
+    const view = renderProjectSidebar();
+    const home = view.getByRole('button', { name: 'Home' });
+    home.focus();
+    expect(document.activeElement).toBe(home);
+
+    mobile.value = true;
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProjectSidebar />
+      </QueryClientProvider>,
+    );
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+
+  test('preserves focus outside the sidebar when entering closed mobile navigation', () => {
+    mobile.value = false;
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    const view = renderProjectSidebar();
+    outside.focus();
+    mobile.value = true;
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProjectSidebar />
+      </QueryClientProvider>,
+    );
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+  });
+
   test('restores focus to the hamburger that opened it', () => {
     const header = document.createElement('header');
     const trigger = document.createElement('button');
