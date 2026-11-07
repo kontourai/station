@@ -159,7 +159,8 @@ const PAGE_JS = String.raw`
   }
 
   function open() {
-    localStorage.removeItem('station-insights-operator-key');
+    // Storage may be disabled; legacy-key cleanup must not block session reads.
+    try { localStorage.removeItem('station-insights-operator-key'); } catch {}
     status.textContent = charts.childElementCount ? '' : 'Loading…';
     fetch('/insights/data', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (r) {

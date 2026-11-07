@@ -35,6 +35,7 @@ async function openPage(
   path: string,
   script: string,
   key?: string,
+  storageDenied = false,
 ) {
   const html = await (await call(env, path)).text();
   const js = await (await call(env, script)).text();
@@ -65,6 +66,12 @@ async function openPage(
       json: async () => JSON.parse(body),
     };
   }) as unknown as typeof window.fetch;
+  if (storageDenied)
+    Object.defineProperty(window, 'localStorage', {
+      get() {
+        throw new window.DOMException('Storage disabled', 'SecurityError');
+      },
+    });
   window.eval(js);
   // Settled once the status line is empty or final and nothing is in flight.
   const settled = () => {
@@ -168,6 +175,24 @@ test('insights uses the browser session and explains an expired sign-in without 
     'sign-in has expired',
   );
   expect(refused.document.querySelector('input[type="password"]')).toBeNull();
+});
+
+test('signed-in insights still load when browser storage is disabled', async () => {
+  const env = testEnv(fakeReceiver());
+  const page = await openPage(
+    env,
+    '/insights',
+    '/insights/insights.js',
+    OPERATOR_KEY,
+    true,
+  );
+  expect(page.requests).toEqual(['/insights/data']);
+  expect(page.document.querySelector('.tile.hero .value')?.textContent).toBe(
+    '0',
+  );
+  expect(page.document.getElementById('status')?.textContent).toContain(
+    'No usage reports',
+  );
 });
 
 test('the public page explains an uncertain release without filling the page with empty charts', async () => {
