@@ -502,7 +502,11 @@ show what **Start** will use:
   Station makes for the chat; the chip and list say which. A Codex chat in
   Codex's sandbox never runs in your home folder: it gets a private folder.
 - A chat **Without a project** runs in a private folder Station makes for
-  that chat inside its own data folder, not in your home folder. To run such
+  that chat, not in your whole home folder. On Windows, new chat folders live
+  under `~/.station-workspaces/<Station home hash>/`; other platforms keep
+  them inside Station's data folder. Windows workspace files need their own
+  backup and retention policy; a Station home archive does not include them.
+  To run such
   chats in your home folder instead, set **Settings › Agent runs › Chats
   without a project** to **Home folder** (a sandboxed Codex chat still gets
   a private folder). The setting applies to new chats; a chat that already

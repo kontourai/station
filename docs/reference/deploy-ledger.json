@@ -1,5 +1,120 @@
 [
   {
+    "timestampUtc": "2026-11-07T02:12:58Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261107",
+    "sha": "eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb",
+    "artifactBuiltAt": "2026-11-07T01:24:49.061Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42322904674",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42322904674)"
+    ],
+    "changelog": {
+      "previousSha": "73f13cfe8c862552709faeba9dc9e6fab763dab8",
+      "groups": {
+        "feat": [
+          "[#4621](https://github.com/kontourai/station/pull/4621) feat(apps): add a personal Board library and launcher",
+          "[#4630](https://github.com/kontourai/station/pull/4630) feat(chat): unify local and paired Station conversations",
+          "[#4619](https://github.com/kontourai/station/pull/4619) feat(projects): link repositories and show owning-Station access",
+          "[#4620](https://github.com/kontourai/station/pull/4620) feat(ui): group active chats and unify project settings"
+        ],
+        "fix": [
+          "[#4661](https://github.com/kontourai/station/pull/4661) fix(delegation): retain native transcripts for durable Tasks",
+          "[#4657](https://github.com/kontourai/station/pull/4657) fix(terminal): wait for pending stops during disposal",
+          "[#4640](https://github.com/kontourai/station/pull/4640) fix(agent-runtime): bound WAL with asynchronous host checkpoints",
+          "[#4627](https://github.com/kontourai/station/pull/4627) fix(updates): unify status summaries and actionable indicators",
+          "[#4629](https://github.com/kontourai/station/pull/4629) fix: restore interrupted conversations and make delivery recovery explicit"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4643](https://github.com/kontourai/station/pull/4643) docs(tasks): propose resuming ended Tasks after GitHub follow-ups (#4554)"
+        ],
+        "other": [
+          "[#4645](https://github.com/kontourai/station/pull/4645) test(lineage): start legacy child before timestamp migration",
+          "[#4642](https://github.com/kontourai/station/pull/4642) test(home): retain private chat scratch across backup and rollback"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-11-07T02:12:55Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261107",
+    "sha": "eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb",
+    "artifactBuiltAt": "2026-11-07T01:24:14.291Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42322904674",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42322904674)"
+    ],
+    "changelog": {
+      "previousSha": "73f13cfe8c862552709faeba9dc9e6fab763dab8",
+      "groups": {
+        "feat": [
+          "[#4621](https://github.com/kontourai/station/pull/4621) feat(apps): add a personal Board library and launcher",
+          "[#4630](https://github.com/kontourai/station/pull/4630) feat(chat): unify local and paired Station conversations",
+          "[#4619](https://github.com/kontourai/station/pull/4619) feat(projects): link repositories and show owning-Station access",
+          "[#4620](https://github.com/kontourai/station/pull/4620) feat(ui): group active chats and unify project settings"
+        ],
+        "fix": [
+          "[#4661](https://github.com/kontourai/station/pull/4661) fix(delegation): retain native transcripts for durable Tasks",
+          "[#4657](https://github.com/kontourai/station/pull/4657) fix(terminal): wait for pending stops during disposal",
+          "[#4640](https://github.com/kontourai/station/pull/4640) fix(agent-runtime): bound WAL with asynchronous host checkpoints",
+          "[#4627](https://github.com/kontourai/station/pull/4627) fix(updates): unify status summaries and actionable indicators",
+          "[#4629](https://github.com/kontourai/station/pull/4629) fix: restore interrupted conversations and make delivery recovery explicit"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4643](https://github.com/kontourai/station/pull/4643) docs(tasks): propose resuming ended Tasks after GitHub follow-ups (#4554)"
+        ],
+        "other": [
+          "[#4645](https://github.com/kontourai/station/pull/4645) test(lineage): start legacy child before timestamp migration",
+          "[#4642](https://github.com/kontourai/station/pull/4642) test(home): retain private chat scratch across backup and rollback"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-11-07T01:25:33Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261107.42322904674",
+    "sha": "eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42322904674",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261107.42322904674 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "83f8b7e88a1f443906d0f0ab762a5b550b203a3f",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4661](https://github.com/kontourai/station/pull/4661) fix(delegation): retain native transcripts for durable Tasks"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-11-06T21:17:20Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.20261106.42293637428",
