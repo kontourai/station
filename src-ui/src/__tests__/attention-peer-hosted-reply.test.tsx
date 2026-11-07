@@ -180,13 +180,19 @@ describe('Notifications inbox: a paired-Station item offers no local reply', () 
     );
   }
 
-  test('the local item keeps its inline reply (control)', () => {
+  test('a local item without a request reference opens its session to answer (control)', () => {
     renderPage();
     const local = row('attention-item', 'Local task needs input');
-    expect(within(local).getByLabelText('Answer this session')).toBeTruthy();
     expect(
-      within(local).getByRole('button', { name: 'Send answer' }),
+      within(local).getByText('Open the session to answer this request.'),
     ).toBeTruthy();
+    expect(
+      within(local)
+        .getByRole('link', { name: 'Open session' })
+        .getAttribute('href'),
+    ).toBe(localItem().openHref);
+    expect(within(local).queryByRole('textbox')).toBeNull();
+    expect(sendTurn).not.toHaveBeenCalled();
     expect(within(local).queryByTestId('attention-peer-elsewhere')).toBeNull();
   });
 

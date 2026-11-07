@@ -760,7 +760,7 @@ function parseWindowsProcessTable(
   return entries;
 }
 
-const listWindowsProcesses: WindowsProcessLister = () =>
+export const listWindowsProcesses: WindowsProcessLister = () =>
   new Promise((resolve) => {
     let command: string;
     try {
@@ -790,7 +790,7 @@ const listWindowsProcesses: WindowsProcessLister = () =>
     );
   });
 
-const killWindowsProcesses: WindowsProcessKiller = (pids) =>
+export const killWindowsProcesses: WindowsProcessKiller = (pids) =>
   runTaskkill(
     ['/f', ...pids.flatMap((pid) => ['/pid', String(pid)])],
     spawn,

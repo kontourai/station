@@ -153,8 +153,16 @@ const PROCESS_BOUNDARY_ACCEPT_RUNS = [
  */
 const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
   [
+    'check-durability-provider-branches.mjs',
+    'scripts/__tests__/durability-provider-branches.test.ts',
+  ],
+  [
     'component-style-hygiene.mjs',
     'scripts/__tests__/component-style-hygiene.process.test.ts',
+  ],
+  [
+    'conversation-boundary-gate.mjs',
+    'scripts/__tests__/conversation-boundary-gate.test.ts',
   ],
   ['run-biome.mjs', 'scripts/__tests__/run-biome.process.test.ts'],
   ['cli-doc-parity.mjs', 'scripts/__tests__/cli-doc-parity.test.ts'],

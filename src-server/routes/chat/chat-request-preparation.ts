@@ -41,8 +41,17 @@ interface PrepareChatRequestContext {
     // is re-assigned on every config reload, so this stays fresh without a
     // per-turn file read.
     | 'appConfig'
-  >;
+  > & {
+    /** Set when the Private memory preview is on; see `memoryBriefForNewSession`. */
+    memoryBrief?: RuntimeContext['memoryBrief'];
+  };
   slug: string;
+  /** The incoming request, used only to derive who is asking for the memory brief. */
+  request?: Request;
+  /** What the memory brief needs to know about the session; see `RuntimeContext.memoryBrief`. */
+  memoryBriefSession?: Parameters<
+    NonNullable<RuntimeContext['memoryBrief']>
+  >[1];
   input: string | ChatMessage[];
   options: Record<string, any>;
   projectSlug?: string;
@@ -68,10 +77,16 @@ export async function prepareChatRequest(
    * its own conversation-feedback block and emits the finished record.
    */
   contextInjection: TurnProvenanceContextInjection;
+  /**
+   * Set when a memory brief was added. The caller must report how the turn ended:
+   * `delivered` once the agent is invoked with it, `abandoned` otherwise.
+   */
+  memoryBriefDelivery?: { delivered(): void; abandoned(): void };
 }> {
   const options = { ...context.options };
   let resolvedProviderConn: ProviderConnectionConfig | null = null;
   const contextInjection: TurnProvenanceContextInjection = {};
+  let memoryBriefDelivery: { delivered(): void; abandoned(): void } | undefined;
 
   // Resolve provider-managed bindings even for an already-active Station
   // agent. The route passes the resolved connection and model into
@@ -238,6 +253,34 @@ export async function prepareChatRequest(
     }
   }
 
+  // The briefing from the person's private memory goes in once, on a new
+  // session's first turn. Fail-open: no memory, no preview or any error means
+  // no block, and the turn proceeds as it did before.
+  if (
+    context.ctx.memoryBrief &&
+    context.request &&
+    isFirstTurn(context.input)
+  ) {
+    try {
+      const brief = await context.ctx.memoryBrief(
+        context.request,
+        context.memoryBriefSession,
+      );
+      if (brief?.text) {
+        ragContext = ragContext ? `${ragContext}\n\n${brief.text}` : brief.text;
+        contextInjection.memoryBrief = {
+          entries: brief.entries,
+          approxTokens: approxInjectedTokens(brief.text),
+        };
+        memoryBriefDelivery = brief;
+      }
+    } catch (err: unknown) {
+      context.ctx.logger.debug('Memory brief skipped', {
+        error: errorMessage(err),
+      });
+    }
+  }
+
   // archive#2652 chapter 2: the first-run "About you" answers, composed like
   // every block above. Returns `ragContext` unchanged when the user skipped
   // the questions — see `injectUserProfileContext` for why no default User Profile
@@ -253,7 +296,49 @@ export async function prepareChatRequest(
     injectContext,
     ragContext,
     contextInjection,
+    ...(memoryBriefDelivery ? { memoryBriefDelivery } : {}),
   };
+}
+
+/**
+ * Who a turn's memory brief belongs to, and which conversation it is for.
+ * Station's own orchestration relay is trusted to name the session's owner (it
+ * records it when the session starts) and its thread. A relayed turn with no
+ * recorded owner gets no brief.
+ */
+export function memoryBriefSessionFor(input: {
+  /** The request carried Station's internal token. */
+  trustedToken: boolean;
+  /** The internal caller marker: `local` for Station's own relay, `remote` for the browser's proxy hop. */
+  proxyCaller: string | undefined;
+  /** The orchestration thread the relay says it is relaying for. */
+  thread: string | undefined;
+  userId: unknown;
+  conversationId: unknown;
+}): { relayOwner: string | null | undefined; conversationId?: string } {
+  // Only Station's own orchestration relay names its session: the internal token,
+  // a local caller, and the thread it relays for. The UI proxy carries the token
+  // too, but marks its caller `remote` and names no thread, so its body is just
+  // a body and the brief follows the request's own person.
+  const verifiedRelay =
+    input.trustedToken && input.proxyCaller === 'local' && !!input.thread;
+  const conversationId = verifiedRelay ? input.thread : input.conversationId;
+  return {
+    relayOwner: verifiedRelay
+      ? typeof input.userId === 'string' && input.userId
+        ? input.userId
+        : null
+      : undefined,
+    ...(typeof conversationId === 'string' ? { conversationId } : {}),
+  };
+}
+
+/** A new session's first turn: the input carries no earlier assistant reply. */
+function isFirstTurn(input: string | ChatMessage[]): boolean {
+  return (
+    typeof input === 'string' ||
+    !input.some((message) => message.role === 'assistant')
+  );
 }
 
 export function extractChatUserText(input: string | ChatMessage[]): string {

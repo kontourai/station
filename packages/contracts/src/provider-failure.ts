@@ -10,6 +10,13 @@ import {
 } from './execution-target.js';
 import { AUTH_RATE_LIMITED_ERROR_CODE } from './http.js';
 import {
+  MANAGED_POLICY_APPROVAL_CEILING_CODE,
+  MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
+  MANAGED_POLICY_ENGINE_REFUSED_CODE,
+  MANAGED_POLICY_REMOTE_CLIENTS_CODE,
+  MANAGED_POLICY_UPDATES_REFUSED_CODE,
+} from './managed-policy-codes.js';
+import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -155,6 +162,8 @@ export const PROVIDER_FAILURE_KINDS = {
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
+  // A second consumer violates Station's internal queue-ownership invariant.
+  async_event_queue_consumer_conflict: 'conflict',
   foreground_invocation_unavailable: 'conflict',
   delegation_attempt_capacity: 'busy',
   create_request_capacity: 'busy',
@@ -206,6 +215,12 @@ export const PROVIDER_FAILURE_KINDS = {
   [MUSE_APPROVAL_MODE_NOT_APPLIED_CODE]: 'warning',
   [ACP_APPROVAL_TAKEOVER_FAILED_CODE]: 'warning',
   [ACP_APPROVAL_GOVERNANCE_REFUSED_CODE]: 'permission_denied',
+  // #4519: remote access the machine's managed policy forbids.
+  [MANAGED_POLICY_REMOTE_CLIENTS_CODE]: 'permission_denied',
+  // #4522: an update check, download or install the managed policy forbids.
+  [MANAGED_POLICY_UPDATES_REFUSED_CODE]: 'permission_denied',
+  // #4518: a posture above the machine's managed approval ceiling.
+  [MANAGED_POLICY_APPROVAL_CEILING_CODE]: 'permission_denied',
   [MUSE_SERVE_HOST_EXITED_CODE]: 'engine_crashed',
   [MUSE_SERVE_STOP_UNCONFIRMED_CODE]: 'warning',
   [PROVIDER_TURN_IN_PROGRESS_CODE]: 'busy',
@@ -218,6 +233,13 @@ export const PROVIDER_FAILURE_KINDS = {
   client_turn_settled: 'conflict',
   [ATTACHMENT_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
   [SESSION_ENDED_REJECTION_CODE]: 'session_gone',
+  // #4521: a capability the machine's managed policy turned off.
+  [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
+  // #4517: a managed policy locks the setting a write would change.
+  managed_setting_locked: 'permission_denied',
+  // #4520: an engine the managed policy does not allow, or a launch that
+  // cannot honor a locked pin.
+  [MANAGED_POLICY_ENGINE_REFUSED_CODE]: 'permission_denied',
 } as const satisfies Readonly<
   Record<string, ProviderFailureKind> &
     Record<DelegationFileRefusalCode, ProviderFailureKind>

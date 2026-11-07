@@ -1,7 +1,8 @@
-import type {
-  PluginDailyPing,
-  PluginTelemetryBatch,
-  PluginTelemetryEvent,
+import {
+  PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN,
+  type PluginDailyPing,
+  type PluginTelemetryBatch,
+  type PluginTelemetryEvent,
 } from './plugin-telemetry.js';
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL = 2;
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY =
@@ -16,6 +17,16 @@ export type TelemetryPublisherId =
   | 'kontour'
   | 'operator'
   | `publisher:${string}`;
+export function isTelemetryPublisherId(
+  value: unknown,
+): value is TelemetryPublisherId {
+  if (value === 'kontour' || value === 'operator') return true;
+  if (typeof value !== 'string' || !value.startsWith('publisher:'))
+    return false;
+  const item = value.slice('publisher:'.length).replace(/^[a-f0-9]{24}\//, '');
+  return PLUGIN_TELEMETRY_PUBLISHER_ITEM_PATTERN.test(item);
+}
+
 export type TelemetryTierChoices = Partial<
   Record<TelemetryPublisherId, TelemetryTier>
 >;
@@ -46,12 +57,38 @@ export interface TelemetryChoiceCapabilities {
 
 export interface TelemetryTierResolution {
   tier: TelemetryTier;
-  reason: 'DNT' | 'policy' | 'default' | 'user' | 'disclosure' | 'environment';
+  /**
+   * `managed`: the machine's managed policy sets `limits.telemetry: false`
+   * (#4521), which outranks every other input, Do Not Track included.
+   */
+  reason:
+    | 'DNT'
+    | 'managed'
+    | 'policy'
+    | 'default'
+    | 'user'
+    | 'disclosure'
+    | 'environment';
+}
+
+/**
+ * Whether a resolution forbids every send, a tier-lowered reason included:
+ * Do Not Track, or a managed policy that turns telemetry off.
+ */
+export function telemetrySendingForbidden(
+  resolution: Pick<TelemetryTierResolution, 'reason'> | undefined,
+): boolean {
+  return resolution?.reason === 'DNT' || resolution?.reason === 'managed';
 }
 
 /** A publisher's effective resolution alongside its separately saved choice. */
 export interface TelemetryPublisherStatus extends TelemetryTierResolution {
   userChoice?: TelemetryTier;
+  /**
+   * With reason `managed`: the sentence clients show, naming the managing
+   * organization (#4521). Absent otherwise and on older servers.
+   */
+  managedDenial?: string;
   /** Absent on older servers; consumers must wait for explicit availability. */
   fullAvailable?: boolean;
   destination?: string;
@@ -69,7 +106,10 @@ export function resolveTelemetryTier(input: {
   operatorPolicy?: TelemetryTier;
   doNotTrack?: string;
   hasFullDisclosure: boolean;
+  /** #4521: the managed policy turned telemetry off; nothing outranks it. */
+  managedOff?: boolean;
 }): TelemetryTierResolution {
+  if (input.managedOff) return { tier: 'off', reason: 'managed' };
   if (
     input.doNotTrack !== undefined &&
     input.doNotTrack !== '' &&
@@ -121,6 +161,13 @@ export const TELEMETRY_SETUP_STEPS = [
   'project',
   'pairing',
   'finish',
+] as const;
+export const TELEMETRY_TOKEN_BUCKETS = [
+  '1-10k',
+  '10k-100k',
+  '100k-1M',
+  '1M-10M',
+  '10M+',
 ] as const;
 export const TELEMETRY_COUNT_BUCKETS = ['0', '1', '2-3', '4+'] as const;
 export const TELEMETRY_SETTING_CATEGORIES = [
@@ -211,6 +258,14 @@ export const STATION_DAILY_FIELDS = {
   home_replaced: { domain: 'boolean' },
   layouts_customized: { domain: 'boolean-or-unknown' },
   setup_abandoned_step: { domain: TELEMETRY_SETUP_STEPS },
+  engine_tokens_today: {
+    domain: 'engine-token-buckets',
+    meaning:
+      'Reported tokens from conversations run in Station; outside CLI use excluded. Declared disjoint cache components included; resumed cumulative jumps withheld; empty or unavailable omitted.',
+    buckets: TELEMETRY_TOKEN_BUCKETS,
+    arrayMax: 8,
+    optional: true,
+  },
   engine_connect_failures: { domain: 'engine-count-buckets', arrayMax: 8 },
   safe_mode_entered: { domain: 'count', max: 65535 },
   plugin_disabled_after_crash: { domain: 'count', max: 65535 },
@@ -229,14 +284,27 @@ type DailyDomain<D> = D extends readonly string[]
               engine: (typeof TELEMETRY_ENGINES)[number];
               bucket: (typeof TELEMETRY_COUNT_BUCKETS)[number];
             }
-          : string;
+          : D extends 'engine-token-buckets'
+            ? {
+                engine: (typeof TELEMETRY_ENGINES)[number];
+                bucket: (typeof TELEMETRY_TOKEN_BUCKETS)[number];
+              }
+            : string;
 type DailyField<F extends { domain: unknown }> = F extends { arrayMax: number }
   ? DailyDomain<F['domain']>[]
   : DailyDomain<F['domain']>;
 export type StationDailyPing = {
-  [K in keyof typeof STATION_DAILY_FIELDS]: DailyField<
-    (typeof STATION_DAILY_FIELDS)[K]
-  >;
+  [K in keyof typeof STATION_DAILY_FIELDS as (typeof STATION_DAILY_FIELDS)[K] extends {
+    optional: true;
+  }
+    ? never
+    : K]: DailyField<(typeof STATION_DAILY_FIELDS)[K]>;
+} & {
+  [K in keyof typeof STATION_DAILY_FIELDS as (typeof STATION_DAILY_FIELDS)[K] extends {
+    optional: true;
+  }
+    ? K
+    : never]?: DailyField<(typeof STATION_DAILY_FIELDS)[K]>;
 };
 export interface TelemetryLiteNoticeReceipt {
   publisher: TelemetryPublisherId;

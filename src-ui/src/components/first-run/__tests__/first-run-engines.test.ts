@@ -493,18 +493,21 @@ describe('per-engine outcomes', () => {
     );
   });
 
-  test('a failure carries the server message', () => {
+  test('a failure reports safe recovery copy instead of the server diagnostic', () => {
     const outcome = firstRunEnableFailureOutcome(item, new Error('name taken'));
-    expect(outcome).toMatchObject({ status: 'failed', message: 'name taken' });
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      message: 'Try again in a moment.',
+    });
     expect(firstRunEnableOutcomeMessage(outcome)).toBe(
-      'Codex: could not be set up. name taken',
+      'Codex: could not be set up. Try again in a moment.',
     );
   });
 
   test('a non-Error rejection is still reported', () => {
     expect(firstRunEnableFailureOutcome(item, 'offline')).toMatchObject({
       status: 'failed',
-      message: 'offline',
+      message: 'Try again in a moment.',
     });
   });
 });

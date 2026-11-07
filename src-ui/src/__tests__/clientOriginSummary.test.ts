@@ -19,9 +19,9 @@ describe('#4402: clientOriginSummary speaks plainly', () => {
   test('a reported surface is still named', () => {
     expect(
       clientOriginSummary(origin({ kind: 'device', deviceId: 'd1' }, 'mobile')),
-    ).toBe('Paired device · Mobile app');
+    ).toBe('Paired device · Mobile app (reported)');
     expect(clientOriginSummary(origin({ kind: 'unknown' }, 'cli'))).toBe(
-      'Unknown sender · CLI',
+      'Unknown sender · CLI (reported)',
     );
   });
 });

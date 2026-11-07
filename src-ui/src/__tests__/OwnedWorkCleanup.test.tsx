@@ -112,9 +112,9 @@ test('a refused release stays visible and keeps the session tracked', async () =
       name: 'Release and remove',
     }),
   );
-  await screen.findByText('A child with a known owner cannot be released.');
+  await screen.findByText('Try again in a moment.');
   expect(screen.getByRole('alertdialog').textContent).toContain(
-    'A child with a known owner cannot be released.',
+    'Try again in a moment.',
   );
   expect(removed).not.toHaveBeenCalled();
 });

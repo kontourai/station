@@ -221,7 +221,10 @@ test('a session-ending event invalidates the session read-model on the client th
   deliverFact('runtime.error');
 
   expect(sessionReadModelInvalidations(invalidate)).toBe(1);
-  expect(invalidate).toHaveBeenCalledWith(SESSIONS_KEY);
+  expect(invalidate).toHaveBeenCalledWith({
+    ...SESSIONS_KEY,
+    predicate: expect.any(Function),
+  });
 });
 
 test('an authority switch routes later invalidations to the new client and never to the retired one', async () => {

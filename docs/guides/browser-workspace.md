@@ -19,17 +19,19 @@ Limits, refusal codes, network rules and evidence live in the
 
 ## Open a page
 
-1. Open a **Browser** pane for the Project. An empty pane says **Enter a URL
-   or pick a local server**.
+1. Open a **Browser** pane for the Project.
 2. Type a URL, or plain words to search with DuckDuckGo, or pick a local
-   server. The operator shares local servers with a Project in **Settings →
-   Advanced → Browser & devices**.
+   server. Press Enter or the arrow button to open it. The operator shares
+   local servers with a Project in **Settings → Advanced → Browser & devices**;
+   until then the pane says where to share them. A page opened from a narrow
+   pane, such as a phone, opens at that pane's size; otherwise it opens at
+   1280 × 800.
 3. Use back, forward and reload beside the address bar. **New tab** opens
    another session; closing a tab closes its session, and **Reopen tab**
    starts a new session at the last address.
 
 Links that open a new window appear as new tabs. A phone-sized viewport
-(**⋯ → View → Viewport**) only resizes the page. To test a real app on a
+(**⋯ → View for everyone watching → Viewport**) only resizes the page. To test a real app on a
 simulator, use the [Device pane](mobile-device-workspace.md).
 
 ## Agent authority and human input
@@ -61,7 +63,7 @@ Everything except tabs, navigation, the address bar and the driver chip is in
 | Group | Items |
 | --- | --- |
 | Capture | **Screenshot** (Mod+Shift+S), **Annotate**, **Record** |
-| View | **Zoom**, **Appearance**, **Viewport**, **Rotate viewport** |
+| View for everyone watching | **Zoom**, **Appearance**, **Viewport** (**Match this pane** or a preset), **Rotate viewport** |
 | Inspect | **Console**, **Network** |
 | Session | **Float over chat**, **Reload without cache**, **Stop loading**, **Sessions**, **Browser settings…** |
 | (last, on its own) | **Close session** |
@@ -70,6 +72,16 @@ Some items need a Feature Preview in **Settings → Advanced → Feature
 previews**: **Annotate**, **Record** and **Network** need **Browser
 artifacts**; **Zoom**, **Appearance** and **Float over chat** need **Browser
 experience**. See [Browser shortcuts](keyboard-shortcuts.md#browser-shortcuts).
+On a touch screen the menu shows no keyboard shortcuts.
+
+Every **View** item changes the one shared page that every viewer and agent
+sees, and a pane says when someone else changed the page size. Your own pane
+always fits the page to itself and a pinch zooms only your view; see
+[the viewport decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md).
+
+The live page also has a corner **Full screen** button, and a pinch zooms your
+view without zooming the page. See
+[viewing a live surface](../reference/browser-and-devices.md#viewing-a-live-surface-zoom-full-screen-and-the-chat-floater).
 
 - **Screenshot** saves or copies a PNG of the visible page, or attaches it to
   the active chat.
@@ -120,3 +132,41 @@ Hiding or closing the pane does not stop the page; an Agent may keep working.
 Choose **⋯ → Close session** to stop it. If the browser or Station
 restarts, the session shows **needs reopen**; reopening starts a fresh browser
 for it.
+
+## Troubleshooting
+
+A browser that exits at launch, or starts but does not answer within 30
+seconds, is reported as "The browser could not start, or stopped
+unexpectedly." Station's log has the reason (`browser: Chromium could not
+start`). The sandbox case below has its own message and a **How to fix** link.
+
+### No usable sandbox on Linux
+
+The pane says the Station's Linux host blocks the browser sandbox. Chromium
+needs unprivileged user namespaces for its sandbox, and Ubuntu 23.10 and later
+refuse them through AppArmor (`kernel.apparmor_restrict_unprivileged_userns =
+1`). Chromium then exits at launch with `FATAL ... No usable sandbox!`, and
+Station's log records it as `browser: Chromium could not start`. Station does
+not run Chromium without its sandbox.
+
+Fix it on the Station machine, not the device you view from. Allow user
+namespaces for the browser Station downloads with an AppArmor profile at
+`/etc/apparmor.d/station-chromium`:
+
+```text
+abi <abi/5.0>,
+include <tunables/global>
+
+profile station-chromium @{HOME}/.station/{,instances/*/}browser/chromium/*/chrome-linux64/chrome flags=(unconfined) {
+  userns,
+  @{exec_path} mr,
+  include if exists <local/station-chromium>
+}
+```
+
+Load it with `sudo apparmor_parser -r /etc/apparmor.d/station-chromium`, then
+open the page again. The path globs match every Station instance and Chromium
+version, so the profile survives browser updates. `@{HOME}` is AppArmor's
+home-directory variable; if your Station home is not `.station` in a home
+directory, change the path to match. Prefer this over turning the restriction
+off for the whole machine.

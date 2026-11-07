@@ -60,6 +60,14 @@ function contextBlocks(record: TurnProvenanceContextInjection): ContextBlock[] {
       approxTokens,
     });
   }
+  if (record.memoryBrief) {
+    const { entries, approxTokens } = record.memoryBrief;
+    blocks.push({
+      kind: 'Private memory',
+      detail: `${entries} reviewed ${entries === 1 ? 'memory' : 'memories'}, as background`,
+      approxTokens,
+    });
+  }
   if (record.ambient) {
     blocks.push({
       kind: 'Ambient context',

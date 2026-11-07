@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { CaptureModal } from '../CaptureModal';
 
@@ -25,6 +31,14 @@ vi.mock('@kontourai/station-sdk', () => ({
         adapterId: 'kit-default-store',
         storeRoot: '/tmp/personal',
         displayName: 'Personal (default store)',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'root:other',
+        scope: { kind: 'personal' },
+        adapterId: 'kit-default-store',
+        storeRoot: '/tmp/other',
+        displayName: 'Other store',
         createdAt: '2026-01-01T00:00:00.000Z',
       },
     ],
@@ -56,7 +70,7 @@ function renderCaptureModal() {
 
 describe('CaptureModal', () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   test('Save transcript is disabled until a root and transcript are present', () => {
@@ -179,5 +193,239 @@ describe('CaptureModal', () => {
       ),
     );
     expect(screen.queryByTestId('mn-compiled-record')).toBeNull();
+  });
+
+  test.each(['transcript', 'root'] as const)(
+    'a late save cannot authorize compilation after changing the %s',
+    async (changed) => {
+      let completeSave!: (record: { id: string }) => void;
+      createKnowledgeRecordMock.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            completeSave = resolve;
+          }),
+      );
+      renderCaptureModal();
+      fireEvent.change(screen.getByLabelText('Knowledge root'), {
+        target: { value: 'root:personal' },
+      });
+      fireEvent.change(screen.getByLabelText('Transcript'), {
+        target: { value: 'Original transcript' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save transcript' }));
+      await waitFor(() =>
+        expect(createKnowledgeRecordMock).toHaveBeenCalledOnce(),
+      );
+
+      fireEvent.change(
+        screen.getByLabelText(
+          changed === 'root' ? 'Knowledge root' : 'Transcript',
+        ),
+        {
+          target: {
+            value: changed === 'root' ? 'root:other' : 'Edited transcript',
+          },
+        },
+      );
+      await act(async () => {
+        completeSave({ id: 'raw-original' });
+      });
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole('button', { name: 'Save transcript' })
+            .hasAttribute('disabled'),
+        ).toBe(false),
+      );
+
+      expect(
+        (screen.getByLabelText('Transcript') as HTMLTextAreaElement).value,
+      ).toBe(changed === 'root' ? 'Original transcript' : 'Edited transcript');
+      expect(
+        (screen.getByLabelText('Knowledge root') as HTMLSelectElement).value,
+      ).toBe(changed === 'root' ? 'root:other' : 'root:personal');
+      expect(
+        screen
+          .getByRole('button', { name: 'Compile' })
+          .hasAttribute('disabled'),
+      ).toBe(true);
+      expect(screen.queryByTestId('mn-raw-record')).toBeNull();
+      expect(screen.queryByText(/Saved raw transcript/)).toBeNull();
+    },
+  );
+
+  test('a completed compile keeps its submitted source without relabeling an edited draft', async () => {
+    let completeCompile!: (value: unknown) => void;
+    createKnowledgeRecordMock
+      .mockResolvedValueOnce({ id: 'raw-original' })
+      .mockResolvedValueOnce({ id: 'compiled-original' });
+    invokeAgentMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeCompile = resolve;
+        }),
+    );
+    renderCaptureModal();
+    fireEvent.change(screen.getByLabelText('Knowledge root'), {
+      target: { value: 'root:personal' },
+    });
+    fireEvent.change(screen.getByLabelText('Transcript'), {
+      target: { value: 'Original transcript' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save transcript' }));
+    await screen.findByTestId('mn-raw-record');
+    fireEvent.click(screen.getByRole('button', { name: 'Compile' }));
+    await waitFor(() => expect(invokeAgentMock).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByLabelText('Transcript'), {
+      target: { value: 'New draft' },
+    });
+    await act(async () => {
+      completeCompile({
+        success: true,
+        response: {
+          title: 'Note',
+          summary: 'Original summary',
+          actionItems: [],
+        },
+      });
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Compiling…' })).toBeNull(),
+    );
+
+    expect(createKnowledgeRecordMock).toHaveBeenLastCalledWith(
+      'http://localhost:3141',
+      'root:personal',
+      expect.objectContaining({
+        links: [{ target_id: 'raw-original', kind: 'source' }],
+      }),
+    );
+    expect(
+      (screen.getByLabelText('Transcript') as HTMLTextAreaElement).value,
+    ).toBe('New draft');
+    expect(screen.queryByTestId('mn-compiled-record')).toBeNull();
+    expect(screen.queryByText(/Compiled note compiled-original/)).toBeNull();
+  });
+
+  test('an unreadable upload reports failure and preserves the typed transcript', async () => {
+    renderCaptureModal();
+    fireEvent.change(screen.getByLabelText('Transcript'), {
+      target: { value: 'Keep this draft' },
+    });
+    const file = new File(['unreadable'], 'meeting.txt', {
+      type: 'text/plain',
+    });
+    Object.defineProperty(file, 'text', {
+      value: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('read refused'))
+        .mockResolvedValueOnce('Recovered transcript'),
+    });
+    fireEvent.change(screen.getByTestId('mn-transcript-upload'), {
+      target: { files: [file] },
+    });
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      expect.stringContaining('Could not read transcript'),
+    );
+    expect(
+      (screen.getByLabelText('Transcript') as HTMLTextAreaElement).value,
+    ).toBe('Keep this draft');
+    expect(
+      (screen.getByLabelText('Upload transcript') as HTMLInputElement).value,
+    ).toBe('');
+    fireEvent.change(screen.getByLabelText('Upload transcript'), {
+      target: { files: [file] },
+    });
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText('Transcript') as HTMLTextAreaElement).value,
+      ).toBe('Recovered transcript'),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('meeting.txt');
+    expect(screen.getByRole('status').textContent).toContain(
+      'Review the transcript before saving.',
+    );
+
+    let finishOlderRead!: (text: string) => void;
+    const olderFile = new File(['older'], 'older.txt', { type: 'text/plain' });
+    Object.defineProperty(olderFile, 'text', {
+      value: () =>
+        new Promise<string>((resolve) => {
+          finishOlderRead = resolve;
+        }),
+    });
+    fireEvent.change(screen.getByLabelText('Upload transcript'), {
+      target: { files: [olderFile] },
+    });
+    fireEvent.change(screen.getByLabelText('Transcript'), {
+      target: { value: 'Newer draft' },
+    });
+    const currentFile = new File(['current'], 'current.txt', {
+      type: 'text/plain',
+    });
+    Object.defineProperty(currentFile, 'text', {
+      value: () => Promise.resolve('Current uploaded draft'),
+    });
+    fireEvent.change(screen.getByLabelText('Upload transcript'), {
+      target: { files: [currentFile] },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('current.txt'),
+    );
+    await act(async () => finishOlderRead('Stale uploaded draft'));
+    expect(
+      (screen.getByLabelText('Transcript') as HTMLTextAreaElement).value,
+    ).toBe('Current uploaded draft');
+    expect(screen.getByRole('status').textContent).toContain('current.txt');
+    expect(screen.getByRole('status').textContent).not.toContain('older.txt');
+  });
+
+  test('a compiled note still displays its submitted source after the same draft is saved again', async () => {
+    let completeCompile!: (value: unknown) => void;
+    createKnowledgeRecordMock
+      .mockResolvedValueOnce({ id: 'raw-original' })
+      .mockResolvedValueOnce({ id: 'raw-second-save' })
+      .mockResolvedValueOnce({ id: 'compiled-original' });
+    invokeAgentMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeCompile = resolve;
+        }),
+    );
+    renderCaptureModal();
+    fireEvent.change(screen.getByLabelText('Knowledge root'), {
+      target: { value: 'root:personal' },
+    });
+    fireEvent.change(screen.getByLabelText('Transcript'), {
+      target: { value: 'Original transcript' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save transcript' }));
+    await screen.findByTestId('mn-raw-record');
+    fireEvent.click(screen.getByRole('button', { name: 'Compile' }));
+    await waitFor(() => expect(invokeAgentMock).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: 'Save transcript' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('mn-raw-record').textContent).toContain(
+        'raw-second-save',
+      ),
+    );
+    await act(async () => {
+      completeCompile({
+        success: true,
+        response: { title: 'Note', summary: 'Summary', actionItems: [] },
+      });
+    });
+    const compiled = await screen.findByTestId('mn-compiled-record');
+    expect(compiled.textContent).toContain('raw-original');
+    expect(compiled.textContent).not.toContain('raw-second-save');
+    expect(createKnowledgeRecordMock).toHaveBeenLastCalledWith(
+      'http://localhost:3141',
+      'root:personal',
+      expect.objectContaining({
+        links: [{ target_id: 'raw-original', kind: 'source' }],
+      }),
+    );
   });
 });

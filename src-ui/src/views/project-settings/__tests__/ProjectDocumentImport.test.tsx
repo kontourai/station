@@ -118,7 +118,8 @@ test('preview precedes upload and lost acknowledgement retains only a recovery p
   await screen.findByText(/SHA-256:/);
   expect(state.upload).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Import 1 documents' }));
-  await screen.findByText('Connection lost');
+  await screen.findByText('Try again in a moment.');
+  expect(screen.queryByText('Connection lost')).toBeNull();
   expect(state.upload).toHaveBeenCalledTimes(1);
   expect(state.upload.mock.calls[0]?.[0]).toMatchObject({
     expectedRoot: root,
@@ -207,7 +208,8 @@ test('stale tabs retain separate import pointers and setting aside cannot delete
     });
     await tab.findByText(/SHA-256:/);
     fireEvent.click(tab.getByRole('button', { name: 'Import 1 documents' }));
-    await tab.findByText('Lost response');
+    await tab.findByText('Try again in a moment.');
+    expect(tab.queryByText('Lost response')).toBeNull();
   }
   const ids = state.upload.mock.calls.map(([input]) => input.requestId);
   expect(new Set(ids).size).toBe(2);

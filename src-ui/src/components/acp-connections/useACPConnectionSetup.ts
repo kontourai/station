@@ -4,6 +4,7 @@ import type {
   ACPConnectionInfo,
   ACPConnectionRegistryEntry,
 } from '../../hooks/useACPConnections';
+import { describeStationFailure } from '../../utils/stationFailure';
 import type { ACPConnectionDraft } from './types';
 
 export type ACPConnectionSetupStage =
@@ -204,7 +205,7 @@ function addedConnectionFor(
 }
 
 function setupError(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+  return error ? describeStationFailure(error).body : fallback;
 }
 
 /**

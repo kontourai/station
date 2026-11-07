@@ -23,7 +23,13 @@
  */
 
 import { listJobs } from '@kontourai/station-sdk/client';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const schedulerHooks = vi.hoisted(() => ({
@@ -53,14 +59,24 @@ const runMutation = vi.hoisted(() => ({
   variables: undefined as string | undefined,
 }));
 const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
+const retryQueries = vi.hoisted(() => ({
+  jobs: vi.fn(),
+  status: vi.fn(),
+}));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => null,
 }));
 
 vi.mock('../hooks/useScheduler', () => ({
-  useSchedulerJobs: () => schedulerHooks.jobs,
-  useSchedulerStatus: () => schedulerHooks.status,
+  useSchedulerJobs: () => ({
+    ...schedulerHooks.jobs,
+    refetch: retryQueries.jobs,
+  }),
+  useSchedulerStatus: () => ({
+    ...schedulerHooks.status,
+    refetch: retryQueries.status,
+  }),
   useSchedulerStats: () => ({ data: undefined, isLoading: false }),
   useSchedulerProviders: () => ({ data: [] }),
   useRunsQuery: () => ({
@@ -167,6 +183,56 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     runMutation.isPending = false;
     runMutation.variables = undefined;
     toast.showToast.mockReset();
+    retryQueries.jobs.mockReset();
+    retryQueries.status.mockReset();
+  });
+
+  test('retries both failed scheduler reads and returns to the job list after recovery', async () => {
+    bothQueriesFail(await transportErrorFor());
+    let resolveJobs!: () => void;
+    const jobsPromise = new Promise<void>((resolve) => {
+      resolveJobs = resolve;
+    });
+    const jobsRequest = { promise: jobsPromise, resolve: resolveJobs };
+    let resolveStatus!: () => void;
+    const statusPromise = new Promise<void>((resolve) => {
+      resolveStatus = resolve;
+    });
+    const statusRequest = { promise: statusPromise, resolve: resolveStatus };
+    retryQueries.jobs.mockReturnValue(jobsRequest.promise);
+    retryQueries.status.mockReturnValue(statusRequest.promise);
+    const { rerender } = render(<ScheduleView />);
+
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    fireEvent.click(retry);
+    expect(retryQueries.jobs).toHaveBeenCalledTimes(1);
+    expect(retryQueries.status).toHaveBeenCalledTimes(1);
+
+    schedulerHooks.jobs = {
+      data: [],
+      isLoading: true,
+      isError: false,
+      error: null,
+    };
+    schedulerHooks.status = {
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+    };
+    rerender(<ScheduleView />);
+    expect(screen.getByText('Scheduler Unavailable')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBe(retry);
+    expect(retry.hasAttribute('disabled')).toBe(true);
+
+    await act(async () => jobsRequest.resolve());
+    expect(retry.hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('Scheduler Unavailable')).toBeTruthy();
+
+    seedTwoRunnableJobs();
+    await act(async () => statusRequest.resolve());
+    expect(screen.getByText('nightly-digest')).toBeTruthy();
+    expect(screen.queryByText('Scheduler Unavailable')).toBeNull();
   });
 
   test('an unreachable server is the only case that gets connection advice', async () => {
@@ -403,6 +469,28 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     expect(document.querySelector('.schedule__log--focused')).toBeNull();
   });
 
+  test.each([
+    'schedule:%E0%A4%A:station-starter-check:missing-run',
+    'schedule:built-in:%E0%A4%A:missing-run',
+    'schedule:built-in:station-starter-check:%E0%A4%A',
+  ])('keeps the page usable for a malformed run link: %s', (runId) => {
+    seedTwoRunnableJobs();
+    schedulerHooks.runs = [starterRun('other-run')];
+    window.history.replaceState(
+      {},
+      '',
+      `/automations?run=${encodeURIComponent(runId)}`,
+    );
+
+    render(<ScheduleView />);
+
+    expect(
+      screen.getByText(/That scheduled run isn’t available/i),
+    ).toBeTruthy();
+    expect(screen.getByText('nightly-digest')).toBeTruthy();
+    expect(document.querySelector('.schedule__log--focused')).toBeNull();
+  });
+
   test('labels an indeterminate Scheduler receipt without calling it failed', async () => {
     seedStarterJob();
     const base = starterRun('indeterminate-run');
@@ -431,10 +519,10 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
 
     fireEvent.click(runButton('nightly-digest'));
     expect(toast.showToast).toHaveBeenCalledWith(
-      "Failed to run 'nightly-digest': Scheduler invocation failed.",
+      "Failed to run 'nightly-digest': Try again in a moment.",
     );
     expect(screen.getByRole('alert').textContent).toBe(
-      "Failed to run 'nightly-digest': Scheduler invocation failed.",
+      "Failed to run 'nightly-digest': Try again in a moment.",
     );
   });
 

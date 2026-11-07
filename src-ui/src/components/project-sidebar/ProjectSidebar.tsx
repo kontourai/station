@@ -363,7 +363,7 @@ function ProjectSidebarImpl() {
               announcement and no visible change a screen reader can report.
               Keyboard-only — a pointer drag already shows what it did. */}
           <LazyBoundary
-            key={`${durableAuthorityNamespace ?? ''}:${isMobile}`}
+            key={durableAuthorityNamespace ?? ''}
             load={loadProjectSidebarBoards}
             pending={null}
             componentProps={{

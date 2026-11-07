@@ -1,3 +1,4 @@
+import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from '@kontourai/station-contracts/managed-policy-controls';
 import type {
   TelemetryConnectionProbeStatus,
   TelemetryRequestFailureCode,
@@ -134,18 +135,17 @@ function DeliveryForAuthority({
       ? failures[product.lastFailure.code]
       : 'The latest delivery attempt failed.',
   }[product.phase];
-  const productError = productCheck.isError
-    ? productCheck.error instanceof StationHttpError &&
-      productCheck.error.status === 403
-      ? 'An operator must check this connection.'
-      : 'Connection check is unavailable.'
-    : null;
-  const otelError = otelCheck.isError
-    ? otelCheck.error instanceof StationHttpError &&
-      otelCheck.error.status === 403
-      ? 'An operator must check this connection.'
-      : 'Connection check is unavailable.'
-    : null;
+  const checkError = (check: typeof productCheck) =>
+    !check.isError
+      ? null
+      : check.error instanceof StationHttpError &&
+          check.error.code === MANAGED_POLICY_CAPABILITY_DISABLED_CODE
+        ? check.error.message
+        : check.error instanceof StationHttpError && check.error.status === 403
+          ? 'An operator must check this connection.'
+          : 'Connection check is unavailable.';
+  const productError = checkError(productCheck);
+  const otelError = checkError(otelCheck);
   return (
     <>
       <PageRow
@@ -153,20 +153,31 @@ function DeliveryForAuthority({
         description="Delivery status for this process. Check connection sends no usage data."
         status={
           <span>
-            {product.sending ? 'Sending observations…' : productSummary}
+            {product.managedDenial
+              ? 'Off: managed policy.'
+              : product.sending
+                ? 'Sending observations…'
+                : productSummary}
           </span>
         }
         control={
           <Button
             size="sm"
             variant="ghost"
-            disabled={!product.endpointConfigured || productCheck.isPending}
+            disabled={
+              !!product.managedDenial ||
+              !product.endpointConfigured ||
+              productCheck.isPending
+            }
             onClick={() => productCheck.mutate()}
           >
             {productCheck.isPending ? 'Checking…' : 'Check connection'}
           </Button>
         }
       >
+        {product.managedDenial && (
+          <p className="settings__field-hint">{product.managedDenial}</p>
+        )}
         <p className="settings__field-hint">
           Queued: {product.queued}. Acknowledged: {product.counts.acknowledged}.
           Dropped on overflow: {product.counts.overflowDropped}. Discarded on
@@ -186,17 +197,19 @@ function DeliveryForAuthority({
         description="Metrics and traces sent to the operator’s collector."
         status={
           <span>
-            {otel.phase === 'restart-required'
-              ? 'Saved collector settings require a Station restart; exports from the previous configuration are fenced.'
-              : otel.phase === 'failed'
-                ? 'Exporter initialization failed.'
-                : !otel.endpointConfigured
-                  ? 'No collector is configured.'
-                  : otel.phase === 'stopped'
-                    ? 'Exporter stopped.'
-                    : otel.identity !== 'ready'
-                      ? 'Waiting for installation identity.'
-                      : 'Exporter initialized; downstream delivery unverified.'}
+            {otel.managedDenial
+              ? 'Off: managed policy.'
+              : otel.phase === 'restart-required'
+                ? 'Saved collector settings require a Station restart; exports from the previous configuration are fenced.'
+                : otel.phase === 'failed'
+                  ? 'Exporter initialization failed.'
+                  : !otel.endpointConfigured
+                    ? 'No collector is configured.'
+                    : otel.phase === 'stopped'
+                      ? 'Exporter stopped.'
+                      : otel.identity !== 'ready'
+                        ? 'Waiting for installation identity.'
+                        : 'Exporter initialized; downstream delivery unverified.'}
           </span>
         }
         control={
@@ -204,6 +217,7 @@ function DeliveryForAuthority({
             size="sm"
             variant="ghost"
             disabled={
+              !!otel.managedDenial ||
               !otel.endpointConfigured ||
               otel.phase === 'restart-required' ||
               otelCheck.isPending
@@ -214,6 +228,9 @@ function DeliveryForAuthority({
           </Button>
         }
       >
+        {otel.managedDenial && (
+          <p className="settings__field-hint">{otel.managedDenial}</p>
+        )}
         <p className="settings__field-hint">
           Metrics: {otel.metrics.accepted} accepted exports,{' '}
           {otel.metrics.failed} failed. Traces: {otel.traces.accepted} accepted

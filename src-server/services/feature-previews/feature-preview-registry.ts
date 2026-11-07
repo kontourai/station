@@ -95,9 +95,21 @@ export class FeaturePreviewRegistry {
         'Offer Continue on a chat turn a Station restart cut off. It sends the agent a short note to pick up where it stopped.',
     });
     this.rememberConsumer({
+      id: 'task-capabilities',
+      label: 'Task capabilities',
+      description:
+        'Inspect Project tool setup and follow Task work to its artifacts and receipts.',
+    });
+    this.rememberConsumer({
       id: 'task-collaboration',
       label: 'Task collaboration',
       description: 'Show member names and presence in shared Task rooms.',
+    });
+    this.rememberConsumer({
+      id: 'apps-library',
+      label: 'Apps library',
+      description:
+        'Browse, search and personalize your Boards in an app launcher.',
     });
     this.rememberConsumer({
       id: 'chat-apps',

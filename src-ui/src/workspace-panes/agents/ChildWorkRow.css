@@ -152,6 +152,7 @@
 
 .child-work-row__note,
 .child-work-row__usage {
+  display: block;
   margin: var(--space-1) 0 0;
   color: var(--text-tertiary);
   font-size: var(--k-text-sm);

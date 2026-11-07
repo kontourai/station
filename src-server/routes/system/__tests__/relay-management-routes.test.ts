@@ -34,6 +34,7 @@ afterEach(() => {
 });
 async function fixture(
   beforeActorRefresh?: (request: Request) => Promise<void> | void,
+  managedRemoteRefusal?: string,
 ) {
   const home = temp('relay-management-');
   const security = new EnvironmentSecurityService({ homeDir: home });
@@ -143,6 +144,7 @@ async function fixture(
         ),
       isManager: (request) =>
         hasRelayManagementAuthority(request, security, security.devicePairing),
+      managedRemoteRefusal: () => managedRemoteRefusal,
     }),
   );
   assertRuntimeHttpRouteCoverage(
@@ -372,4 +374,37 @@ test('a setup revoked during authoritative actor refresh never dispatches broker
     error: { code: 'setup_approval_changed' },
   });
   expect(f.issue).not.toHaveBeenCalled();
+});
+
+test('#4519: a managed policy without remote clients refuses setup approvals and invitations', async () => {
+  const refusal =
+    "Acme's policy manages remote access: only this computer can connect to Station. Contact your administrator for help.";
+  const f = await fixture(undefined, refusal);
+  const prepare = {
+    publicKey: generateKeyPairSync('ec', {
+      namedCurve: 'prime256v1',
+    }).publicKey.export({ format: 'jwk' }),
+  };
+  for (const [path, body] of [
+    ['/approvals', { prepare }],
+    ['/invitations', { prepare, lifetime: '24h' }],
+  ] as const) {
+    const response = await f.send(path, body);
+    expect(response.status, path).toBe(403);
+    expect(await response.json(), path).toEqual({
+      error: { code: 'managed-policy-remote-clients', message: refusal },
+    });
+  }
+  expect(f.prepare).not.toHaveBeenCalled();
+  expect(f.issue).not.toHaveBeenCalled();
+  // Reading and revoking stay available, so an operator can clean up.
+  expect((await f.send('')).status).toBe(200);
+  // Only the operator learns what the policy says.
+  const device = f.pair();
+  expect(
+    (await f.send('/invitations', { prepare }, device.credential)).status,
+  ).toBe(403);
+  expect(
+    await (await f.send('/invitations', { prepare }, device.credential)).json(),
+  ).toEqual({ error: { code: 'relay_management_required' } });
 });

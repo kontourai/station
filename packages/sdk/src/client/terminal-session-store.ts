@@ -92,8 +92,14 @@ export class TerminalSessionError extends Error {
 }
 
 export interface TerminalSessionListener {
-  /** Bytes in sequence order; earlier output for this view arrives first. */
-  output?(data: Uint8Array, sequence: number): void;
+  /**
+   * Bytes in sequence order; earlier output for this view arrives first. A
+   * listener that consumes output later (a renderer's worker) returns a
+   * promise that settles once it has: the host is not credited for that
+   * output until then, so output it still owes cannot pile up unbounded.
+   * Unsubscribing releases whatever it has not settled.
+   */
+  output?(data: Uint8Array, sequence: number): unknown;
   /** Earlier output is no longer retained: clear the view before more arrives. */
   reset?(): void;
   /** Any change to state, status, read-only or error. */
@@ -122,6 +128,16 @@ export interface TerminalSession {
   resize(cols: number, rows: number): void;
   /** The shell's working directory, or null when unknown. */
   cwd(): Promise<string | null>;
+  /**
+   * Runs the session's program again under the same id: a shell, an agent
+   * tab, or a package script resolved again by name. Its earlier output
+   * stays; the new run's follows `restartedAfterSeq` on this session.
+   * `subdirectory` (relative) moves it within its binding. Needs operate
+   * authority; an agent's command and a server-owned launch are refused.
+   */
+  restart(options?: {
+    subdirectory?: string;
+  }): Promise<{ restartedAfterSeq: number }>;
   /** Ends the shell. */
   close(): Promise<void>;
   /** Stops this view; the shell keeps running and can be attached again. */
@@ -137,7 +153,15 @@ export interface TerminalSessionRecord {
   launch?:
     | { kind: 'shell' }
     | { kind: 'agent'; connectionId: string; mode: string }
-    | { kind: 'server' };
+    | { kind: 'server' }
+    /** A package script, restartable by name. */
+    | { kind: 'script'; name: string }
+    /** An agent's command a person approved. */
+    | { kind: 'run'; command: string };
+  /** A program without a terminal (a script or an agent's command). */
+  kind?: 'command';
+  /** How an ended session's program exited. */
+  exitCode?: number | null;
   legacy?: { projectSlug: string; terminalId: string; imported: boolean };
   /** A shell's stable number in its binding ("Shell N"); absent from older hosts. */
   ordinal?: number;
@@ -192,8 +216,12 @@ const record = z
           mode: z.string(),
         }),
         z.object({ kind: z.literal('server') }),
+        z.object({ kind: z.literal('script'), name: z.string() }),
+        z.object({ kind: z.literal('run'), command: z.string() }),
       ])
       .optional(),
+    kind: z.literal('command').optional(),
+    exitCode: z.number().nullable().optional(),
     legacy: z
       .object({
         projectSlug: z.string(),
@@ -375,6 +403,8 @@ export class TerminalSessionStore {
             status: item.status,
             createdAt: item.createdAt,
             ...(item.launch && { launch: item.launch }),
+            ...(item.kind && { kind: item.kind }),
+            ...(item.exitCode !== undefined && { exitCode: item.exitCode }),
             ...(item.legacy && { legacy: item.legacy }),
           }) satisfies TerminalSessionRecord,
       )
@@ -683,7 +713,10 @@ export class TerminalSessionStore {
           pending.reject(errorFor(message.code, message.message));
         else if (message.type === 'list') pending.resolve(message.records);
         else if (message.type === 'cwd') pending.resolve(message.cwd);
-        else pending.resolve(undefined);
+        else
+          pending.resolve(
+            (message as { restartedAfterSeq?: unknown }).restartedAfterSeq,
+          );
         // A refused request (a resize of an ended shell) belongs to its
         // caller, not to the session's channel.
         return;
@@ -732,6 +765,14 @@ type Intent =
     }
   | { kind: 'attach'; terminalId: string };
 
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
+}
+
 class StoreSession implements TerminalSession {
   terminalId: string | undefined;
   state: TerminalSessionState = 'connecting';
@@ -752,6 +793,16 @@ class StoreSession implements TerminalSession {
   private bufferedBytes = 0;
   private readonly listeners = new Set<TerminalSessionListener>();
   private readyWaiters: (() => void)[] = [];
+  /**
+   * Received output not yet acknowledged, oldest first, each with the
+   * listeners still consuming it. Acknowledgements are cumulative, so one
+   * goes out once every older entry is consumed.
+   */
+  private unacknowledged: { seq: number; waiting: number }[] = [];
+  /** Releases for each listener's unsettled output, run on unsubscribe. */
+  private readonly holds = new Map<TerminalSessionListener, Set<() => void>>();
+  /** Bumped per channel: a release for an earlier channel acknowledges nothing. */
+  private ackGeneration = 0;
 
   constructor(
     private readonly store: TerminalSessionStore,
@@ -770,8 +821,15 @@ class StoreSession implements TerminalSession {
 
   subscribe(listener: TerminalSessionListener): () => void {
     this.listeners.add(listener);
+    // Retained output was acknowledged when it arrived; replaying it to a
+    // late subscriber is bounded by the retained buffer, not by credit.
     for (const chunk of this.buffer) listener.output?.(chunk.data, chunk.seq);
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+      const releases = this.holds.get(listener);
+      this.holds.delete(listener);
+      for (const release of releases ?? []) release();
+    };
   }
 
   write(data: string): boolean {
@@ -807,6 +865,22 @@ class StoreSession implements TerminalSession {
     return typeof cwd === 'string' ? cwd : null;
   }
 
+  async restart(
+    options: { subdirectory?: string } = {},
+  ): Promise<{ restartedAfterSeq: number }> {
+    await this.whenReady();
+    const restartedAfterSeq = await this.store.request({
+      type: 'restart',
+      channel: this.channel,
+      ...(options.subdirectory !== undefined && {
+        subdirectory: options.subdirectory,
+      }),
+    });
+    if (typeof restartedAfterSeq !== 'number')
+      throw new TerminalSessionError('protocol');
+    return { restartedAfterSeq };
+  }
+
   async close(): Promise<void> {
     await this.whenReady();
     await this.store.request({ type: 'close', channel: this.channel });
@@ -838,6 +912,7 @@ class StoreSession implements TerminalSession {
       return;
     }
     this.channel = channel;
+    this.forgetUnacknowledged();
     this.requestId = requestId;
     this.inputSeq = 0;
     this.sentSize = undefined;
@@ -895,6 +970,8 @@ class StoreSession implements TerminalSession {
       return;
     }
     this.applied = sequence;
+    const entry = { seq: sequence, waiting: 0 };
+    this.unacknowledged.push(entry);
     if (data.byteLength) {
       const copy = data.slice();
       this.buffer.push({ seq: sequence, data: copy });
@@ -904,9 +981,52 @@ class StoreSession implements TerminalSession {
         this.buffer.length > 1
       )
         this.bufferedBytes -= this.buffer.shift()!.data.byteLength;
-      for (const listener of this.listeners) listener.output?.(copy, sequence);
+      for (const listener of this.listeners) {
+        const consumed = listener.output?.(copy, sequence);
+        if (isThenable(consumed)) this.hold(listener, entry, consumed);
+      }
     }
-    this.ack(sequence);
+    this.acknowledgeConsumed();
+  }
+
+  /** Withholds credit for `entry` until `listener` has consumed it. */
+  private hold(
+    listener: TerminalSessionListener,
+    entry: { seq: number; waiting: number },
+    consumed: PromiseLike<unknown>,
+  ): void {
+    const generation = this.ackGeneration;
+    entry.waiting++;
+    let settled = false;
+    const release = () => {
+      if (settled) return;
+      settled = true;
+      this.holds.get(listener)?.delete(release);
+      if (generation !== this.ackGeneration) return;
+      entry.waiting--;
+      this.acknowledgeConsumed();
+    };
+    let releases = this.holds.get(listener);
+    if (!releases) {
+      releases = new Set();
+      this.holds.set(listener, releases);
+    }
+    releases.add(release);
+    consumed.then(release, release);
+  }
+
+  /** Acknowledges the newest output whose older output is all consumed. */
+  private acknowledgeConsumed(): void {
+    let through: number | undefined;
+    while (this.unacknowledged[0]?.waiting === 0)
+      through = this.unacknowledged.shift()!.seq;
+    if (through !== undefined) this.ack(through);
+  }
+
+  /** A new channel starts from what was received; held credit is moot. */
+  private forgetUnacknowledged(): void {
+    this.ackGeneration++;
+    this.unacknowledged = [];
   }
 
   progress(message: Extract<Control, { type: 'progress' }>): void {
@@ -929,6 +1049,7 @@ class StoreSession implements TerminalSession {
   }
 
   reset(message: Extract<Control, { type: 'reset' }>): void {
+    this.forgetUnacknowledged();
     this.buffer = [];
     this.bufferedBytes = 0;
     this.applied = message.fromSeq;
@@ -949,6 +1070,7 @@ class StoreSession implements TerminalSession {
   lost(): void {
     if (this.state === 'failed' || this.state === 'detached') return;
     this.channel = undefined;
+    this.forgetUnacknowledged();
     // Input queued but never sent is kept; input already sent is never
     // resent, whatever its outcome.
     this.state = 'reconnecting';
@@ -956,6 +1078,7 @@ class StoreSession implements TerminalSession {
   }
 
   fail(error: TerminalSessionError): void {
+    this.forgetUnacknowledged();
     if (this.state === 'failed' || this.state === 'detached') return;
     this.failure = error;
     this.state = 'failed';

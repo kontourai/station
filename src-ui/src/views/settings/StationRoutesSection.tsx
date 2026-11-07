@@ -21,6 +21,7 @@ import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 import './StationRoutesSection.css';
@@ -99,7 +100,13 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
       setAdding(false);
       health.recheck();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(
+        cause instanceof Error &&
+          cause.message ===
+            'Enter an address that starts with http:// or https://.'
+          ? 'Enter an address that starts with http:// or https://.'
+          : describeStationFailure(cause).body,
+      );
     }
   };
 

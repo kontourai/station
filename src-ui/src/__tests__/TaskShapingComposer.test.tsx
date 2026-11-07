@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { TaskShapingHost } from '../components/chat/TaskShapingComposer';
+import { conversationConnection } from '../components/conversation/__tests__/fixtures';
 import { toastStore } from '../contexts/ToastContext';
 import { useLaunchChat } from '../hooks/useActiveChatSessionLifecycle';
 import {
@@ -146,6 +147,30 @@ test('Turn into Task shapes the same conversation and preserves an unsent draft'
     input: 'Unsent thought',
     attachments: [],
   });
+});
+
+test('a host Task action ignores a paired chat with colliding execution ids', async () => {
+  host.chats = {
+    paired: {
+      stationBinding: conversationConnection('relay').binding,
+      agentSlug: 'station',
+      currentSessionId: 'same-execution',
+      conversationId: 'same-conversation',
+    },
+    local: {
+      agentSlug: 'station',
+      currentSessionId: 'same-execution',
+      conversationId: 'same-conversation',
+      input: '',
+      attachments: [],
+    },
+  };
+  host.send.mockResolvedValue(true);
+  render(<TaskShapingHost />);
+  act(() => requestTaskShaping({ source: { sessionId: 'same-execution' } }));
+  await waitFor(() => expect(host.send).toHaveBeenCalledOnce());
+  expect(host.send.mock.calls[0]?.[0]).toBe('local');
+  expect(host.update).not.toHaveBeenCalledWith('paired', expect.anything());
 });
 
 test('the chat launch owner sends shaping instructions as model context while retaining only the person’s idea as the visible prompt', async () => {

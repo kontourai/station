@@ -1,4 +1,13 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
+import type { StationConnection } from '../connections/station-connection';
+import {
+  chatBelongsToStation,
+  conversationStateKey,
+  outboundStationIdentity,
+  type StationStateScope,
+  stationStateKey,
+} from '../connections/station-state';
+import { migratePeerChatState } from '../lib/peer-chat';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import { newerConversationActivity } from '../utils/conversation-activity';
 import { migrateInboxDismissal } from '../utils/inbox-dismissal-store';
@@ -30,6 +39,7 @@ import {
   serializeActiveChats,
 } from './active-chats-state';
 
+import { backgroundTasksStore } from './background-tasks-store';
 import { conversationsStore } from './conversations-store';
 
 export type {
@@ -83,6 +93,10 @@ export class ActiveChatsStore {
     this.now = options.now ?? (() => Date.now());
     this.randomId = options.randomId ?? (() => Math.random().toString(36));
     this.loadFromStorage();
+    for (const [key, chat] of Object.entries(this.chats)) {
+      for (const id of [key, chat.conversationId, chat.currentSessionId])
+        if (id) backgroundTasksStore.retainChat(id, chat.stationBinding);
+    }
   }
 
   private loadFromStorage() {
@@ -196,6 +210,85 @@ export class ActiveChatsStore {
 
   getSnapshot = () => this.snapshot;
 
+  async migratePeerChat(
+    sessionId: string,
+    connection: StationConnection,
+    options: { confirmedRecovery: boolean },
+  ): Promise<void> {
+    if (options?.confirmedRecovery !== true)
+      throw new Error(
+        'Confirm the new Station connection before restoring this chat.',
+      );
+    const original = this.chats[sessionId];
+    if (!original?.peerChat || original.stationBinding) return;
+    const { outboundDispatch } = await import('../lib/outboundQueue');
+    const updates = await migratePeerChatState(sessionId, original, connection);
+    const latest = this.chats[sessionId];
+    if (
+      !latest ||
+      latest.stationBinding ||
+      latest.peerChat !== original.peerChat
+    )
+      return;
+    // Preserve edits made while importing. No asynchronous gap before the write.
+    if (updates.queuedMessageMetadata?.[0] && updates.queuedMessages?.[0]) {
+      const metadata = updates.queuedMessageMetadata[0];
+      const content = updates.queuedMessages[0];
+      const alreadyQueued = latest.queuedMessageMetadata?.some(
+        (entry) => entry.id === metadata.id,
+      );
+      updates.queuedMessages = alreadyQueued
+        ? latest.queuedMessages
+        : [content, ...latest.queuedMessages];
+      updates.queuedMessageMetadata = alreadyQueued
+        ? latest.queuedMessageMetadata
+        : [metadata, ...(latest.queuedMessageMetadata ?? [])];
+    }
+    this.chats[sessionId] = { ...latest, ...updates };
+    if (!this.saveToStorage()) {
+      this.chats[sessionId] = latest;
+      this.notify(false);
+      throw new Error(
+        'The paired chat migration could not be saved. Retry to continue.',
+      );
+    }
+    this.notify(false);
+    await outboundDispatch.activateLegacyImports(
+      sessionId,
+      outboundStationIdentity(connection),
+      this.chats[sessionId]?.conversationId,
+    );
+  }
+
+  /** Recover the crash after chat write, or persist a chat restored from its row. */
+  async recoverLegacyImports(connection: StationConnection): Promise<void> {
+    const { outboundDispatch, rowBelongsToStation } = await import(
+      '../lib/outboundQueue'
+    );
+    const station = outboundStationIdentity(connection);
+    const rows = await outboundDispatch.snapshot();
+    if (!connection.isCurrent()) return;
+    const chats = this.forStation(connection).getSnapshot();
+    const eligible = rows.filter(
+      (row) =>
+        row.legacyImport &&
+        rowBelongsToStation(row, station) &&
+        chats[row.sessionId]?.conversationId ===
+          (row.conversationId ?? row.sessionId),
+    );
+    if (!eligible.length) return;
+    if (!this.saveToStorage())
+      throw new Error(
+        'The restored chat could not be saved. Retry to continue.',
+      );
+    for (const row of eligible)
+      await outboundDispatch.activateLegacyImports(
+        row.sessionId,
+        station,
+        row.conversationId ?? row.sessionId,
+      );
+  }
+
   /** Capture a single-use seed capability for this exact composer draft. */
   captureComposerDraft(sessionId: string) {
     if (!this.chats[sessionId]) return null;
@@ -220,19 +313,87 @@ export class ActiveChatsStore {
    * the UI projection seam that lets a conversation tab consume those events
    * without rewriting their provenance.
    */
-  getChatForExecutionSession(sessionId: string): ChatUIState | undefined {
-    const key = this.getChatKeyForExecutionSession(sessionId);
+  getChatForExecutionSession(
+    sessionId: string,
+    station?: StationStateScope,
+  ): ChatUIState | undefined {
+    const key = this.getChatKeyForExecutionSession(sessionId, station);
     return key ? this.chats[key] : undefined;
   }
 
   /** Durable store key for an exact execution-session identity. */
-  getChatKeyForExecutionSession(sessionId: string): string | undefined {
-    if (this.chats[sessionId]) return sessionId;
+  getChatKeyForExecutionSession(
+    sessionId: string,
+    station?: StationStateScope,
+  ): string | undefined {
+    if (
+      this.chats[sessionId] &&
+      chatBelongsToStation(this.chats[sessionId], station)
+    )
+      return sessionId;
     return Object.entries(this.chats).find(
       ([, chat]) =>
-        chat.currentSessionId === sessionId ||
-        chat.conversationId === sessionId,
+        chatBelongsToStation(chat, station) &&
+        (chat.currentSessionId === sessionId ||
+          chat.conversationId === sessionId),
     )?.[0];
+  }
+
+  /** A stream carries its owner through delayed handlers and callbacks. */
+  forStation(station?: StationStateScope) {
+    const keyFor = (id: string) =>
+      this.getChatKeyForExecutionSession(id, station);
+    return {
+      station,
+      getSnapshot: () =>
+        Object.fromEntries(
+          Object.entries(this.getSnapshot()).filter(([, chat]) =>
+            chatBelongsToStation(chat, station),
+          ),
+        ),
+      getChatKeyForExecutionSession: keyFor,
+      getChatForExecutionSession: (id: string) =>
+        this.getChatForExecutionSession(id, station),
+      updateChat: (id: string, updates: Partial<ChatUIState>) => {
+        const key = keyFor(id);
+        if (key) this.updateChat(key, updates, station);
+      },
+      addEphemeralMessage: (
+        id: string,
+        message: Parameters<ActiveChatsStore['addEphemeralMessage']>[1],
+      ) => {
+        const key = keyFor(id);
+        if (key) this.addEphemeralMessage(key, message);
+      },
+      clearEphemeralMessages: (id: string) => {
+        const key = keyFor(id);
+        if (key) this.clearEphemeralMessages(key);
+      },
+      assignConversationId: (id: string, conversationId: string) => {
+        const key = keyFor(id);
+        if (key) this.assignConversationId(key, conversationId);
+      },
+      applyConversationActivity: (
+        activity: ConversationTurnActivity | undefined,
+      ) => this.applyConversationActivity(activity, station),
+    };
+  }
+
+  /** Host authority teardown retires every retained Station observation. */
+  clearAllConversationActivity() {
+    this.activityByConversation.clear();
+    for (const [key, chat] of Object.entries(this.chats)) {
+      this.chats[key] = {
+        ...chat,
+        conversationActivity: undefined,
+        orchestrationTurnOpen: undefined,
+        openTurnStartedAt: undefined,
+        sendAwaitingTurnStart: undefined,
+        sendAwaitingPriorTurnId: undefined,
+        stopSettledTurnId: undefined,
+      };
+    }
+    this.notify(false);
   }
 
   setBackendMessagesResolver(
@@ -251,15 +412,26 @@ export class ActiveChatsStore {
    * every chat on that conversation; an older copy is dropped. Notifies only
    * when a chat's record actually changed.
    */
-  applyConversationActivity(activity: ConversationTurnActivity | undefined) {
-    if (!activity) return;
-    const known = this.activityByConversation.get(activity.conversationId);
+  applyConversationActivity(
+    activity: ConversationTurnActivity | undefined,
+    station?: StationStateScope,
+  ) {
+    if (!activity || (station && !station.isCurrent())) return;
+    const activityKey = JSON.stringify([
+      stationStateKey(station?.binding),
+      activity.conversationId,
+    ]);
+    const known = this.activityByConversation.get(activityKey);
     const newest = newerConversationActivity(known, activity);
     if (!newest || newest === known) return;
-    this.activityByConversation.set(activity.conversationId, newest);
+    this.activityByConversation.set(activityKey, newest);
     let changed = false;
     for (const [key, chat] of Object.entries(this.chats)) {
-      if (chat.conversationId !== activity.conversationId) continue;
+      if (
+        !chatBelongsToStation(chat, station) ||
+        chat.conversationId !== activity.conversationId
+      )
+        continue;
       const { chat: next } = mergeChatUpdates(chat, {
         conversationActivity: newest,
       });
@@ -275,10 +447,15 @@ export class ActiveChatsStore {
    * tab's authority changes, another Station's sequences are not comparable,
    * and keep-newest would otherwise reject its lower ones for the tab's life.
    */
-  clearConversationActivity() {
-    this.activityByConversation.clear();
+  clearConversationActivity(station?: StationStateScope) {
+    const partition = stationStateKey(station?.binding);
+    for (const key of this.activityByConversation.keys()) {
+      if (JSON.parse(key)[0] === partition)
+        this.activityByConversation.delete(key);
+    }
     let changed = false;
     for (const [key, chat] of Object.entries(this.chats)) {
+      if (!chatBelongsToStation(chat, station)) continue;
       if (
         !chat.conversationActivity &&
         chat.openTurnStartedAt === undefined &&
@@ -306,15 +483,27 @@ export class ActiveChatsStore {
   /** The newest record this store holds for a conversation. */
   private getConversationActivity(
     conversationId: string | undefined,
+    binding?: ChatUIState['stationBinding'],
   ): ConversationTurnActivity | undefined {
     return conversationId
-      ? this.activityByConversation.get(conversationId)
+      ? this.activityByConversation.get(
+          JSON.stringify([stationStateKey(binding), conversationId]),
+        )
       : undefined;
   }
 
   /** A chat that names a conversation adopts the newest record already held. */
   private withKnownActivity(chat: ChatUIState): ChatUIState {
-    const known = this.getConversationActivity(chat.conversationId);
+    if (
+      chat.stationBindingInvalid ||
+      (!chat.stationBinding &&
+        (chat.peerChat !== undefined || chat.peerChatInvalid))
+    )
+      return chat;
+    const known = this.getConversationActivity(
+      chat.conversationId,
+      chat.stationBinding,
+    );
     if (!known || known === chat.conversationActivity) return chat;
     const { chat: next } = mergeChatUpdates(chat, {
       conversationActivity: known,
@@ -343,11 +532,26 @@ export class ActiveChatsStore {
       createDefaultChatState(metadata, this.now()),
     );
     this.draftRevisions.set(sessionId, {});
+    for (const id of [
+      sessionId,
+      metadata?.conversationId,
+      metadata?.currentSessionId,
+    ]) {
+      if (id) backgroundTasksStore.retainChat(id, metadata?.stationBinding);
+    }
     this.notify(true);
   }
 
-  updateChat(sessionId: string, updates: Partial<ChatUIState>) {
-    const targetSessionId = this.getChatKeyForExecutionSession(sessionId);
+  updateChat(
+    sessionId: string,
+    updates: Partial<ChatUIState>,
+    station?: StationStateScope,
+  ) {
+    const targetSessionId =
+      this.chats[sessionId] &&
+      (!station || chatBelongsToStation(this.chats[sessionId], station))
+        ? sessionId
+        : this.getChatKeyForExecutionSession(sessionId, station);
     const current = targetSessionId ? this.chats[targetSessionId] : undefined;
     if (!current) {
       return;
@@ -376,20 +580,50 @@ export class ActiveChatsStore {
     const next = this.withKnownActivity(chat);
     this.chats[targetSessionId!] = next;
     if (
+      next.conversationId !== current.conversationId ||
+      next.currentSessionId !== current.currentSessionId
+    ) {
+      for (const id of [next.conversationId, next.currentSessionId]) {
+        if (id) backgroundTasksStore.retainChat(id, next.stationBinding);
+      }
+      for (const id of [current.conversationId, current.currentSessionId]) {
+        if (
+          id &&
+          !Object.values(this.chats).some(
+            (candidate) =>
+              stationStateKey(candidate.stationBinding) ===
+                stationStateKey(current.stationBinding) &&
+              (candidate.conversationId === id ||
+                candidate.currentSessionId === id),
+          )
+        )
+          backgroundTasksStore.forgetChat(id, current.stationBinding);
+      }
+    }
+    if (
       chat.conversationActivity &&
       chat.conversationActivity !== current.conversationActivity
     ) {
       // A record that arrived through a direct update (an open-resolution
       // patch) is the newest this store has seen for that conversation too.
       const known = this.activityByConversation.get(
-        chat.conversationActivity.conversationId,
+        JSON.stringify([
+          stationStateKey(chat.stationBinding),
+          chat.conversationActivity.conversationId,
+        ]),
       );
       const newest = newerConversationActivity(
         known,
         chat.conversationActivity,
       );
       if (newest) {
-        this.activityByConversation.set(newest.conversationId, newest);
+        this.activityByConversation.set(
+          JSON.stringify([
+            stationStateKey(chat.stationBinding),
+            newest.conversationId,
+          ]),
+          newest,
+        );
       }
     }
     if (
@@ -428,7 +662,7 @@ export class ActiveChatsStore {
       { role: 'system', content },
       this.now,
       this.randomId,
-      this.getBackendMessages,
+      chatBelongsToStation(chat) ? this.getBackendMessages : () => [],
       chat.conversationId ?? sessionId,
     );
     if (next) this.chats[sessionId] = next;
@@ -442,10 +676,13 @@ export class ActiveChatsStore {
     // own storage-refusal notice.
     this.storageFailureReportedFor.delete(sessionId);
     if (
-      removed?.agentSlug &&
+      removed &&
+      chatBelongsToStation(removed) &&
+      removed.agentSlug &&
       removed.conversationId &&
       !Object.values(this.chats).some(
         (chat) =>
+          chatBelongsToStation(chat) &&
           chat.agentSlug === removed.agentSlug &&
           chat.conversationId === removed.conversationId,
       )
@@ -454,6 +691,24 @@ export class ActiveChatsStore {
         removed.agentSlug,
         removed.conversationId,
       );
+    for (const id of new Set([
+      sessionId,
+      removed?.conversationId,
+      removed?.currentSessionId,
+    ])) {
+      if (
+        id &&
+        !Object.entries(this.chats).some(
+          ([key, candidate]) =>
+            stationStateKey(candidate.stationBinding) ===
+              stationStateKey(removed?.stationBinding) &&
+            (key === id ||
+              candidate.conversationId === id ||
+              candidate.currentSessionId === id),
+        )
+      )
+        backgroundTasksStore.forgetChat(id, removed?.stationBinding);
+    }
     for (const listener of this.chatRemovedListeners) listener(sessionId);
     this.notify(true);
   }
@@ -521,6 +776,7 @@ export class ActiveChatsStore {
         confirm?: 'unconfirmed-discard';
       };
       sendFailure?: boolean;
+      deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
       queuedRetry?: boolean;
       childWorkKey?: string;
       backgroundTaskNotice?: BackgroundTaskNotice;
@@ -536,7 +792,7 @@ export class ActiveChatsStore {
       message,
       this.now,
       this.randomId,
-      this.getBackendMessages,
+      chatBelongsToStation(chat) ? this.getBackendMessages : () => [],
       backendConversationId,
     );
     if (!next) {
@@ -563,6 +819,7 @@ export class ActiveChatsStore {
     this.chats[sessionId] = this.withKnownActivity(
       assignConversationIdState(chat, conversationId),
     );
+    backgroundTasksStore.retainChat(conversationId, chat.stationBinding);
     // This is the transition from an ephemeral tab to a durable conversation.
     // Persist it synchronously so an immediate reload/navigation cannot lose
     // the session while the ordinary 300 ms coalescing timer is still pending.
@@ -574,8 +831,10 @@ export class ActiveChatsStore {
     // it to the new key at the exact moment of promotion, the one place
     // both ids are known together.
     try {
-      migrateSnoozeKey(sessionId, conversationId, this.now());
-      migrateInboxDismissal(sessionId, conversationId);
+      const oldKey = conversationStateKey(chat.stationBinding, sessionId);
+      const newKey = conversationStateKey(chat.stationBinding, conversationId);
+      migrateSnoozeKey(oldKey, newKey, this.now());
+      migrateInboxDismissal(oldKey, newKey);
     } catch {
       /* ignore — snooze migration is a convenience, never load-bearing for
        * chat state itself. */

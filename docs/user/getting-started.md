@@ -1,8 +1,9 @@
 # Getting Started
 
-Station is a local-first workspace for agent work. This guide covers the ways
-to run Station today, a verified macOS/Linux install when its release ring is
-published, first launch, connection setup, and routine lifecycle.
+Run Station on your computer and connect an agent such as Claude Code or Codex.
+This guide covers installation, your first chat and Project, connecting a phone,
+and keeping Station updated. To share a Project with someone, read the
+[sharing setup and current limits](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md).
 
 ## First chat with Codex
 
@@ -122,7 +123,10 @@ replies, continue chats, and review work. Start on your computer:
    **Pair phone**. Station opens straight to a pairing code on a reachable
    HTTPS address, and lists any other HTTPS addresses to switch to.
    **Settings → Pairing → Pair device** opens the same screen. Any of your own
-   paired devices with full access can do this, not only the computer.
+   paired devices with full access can do this, not only the computer. On a
+   phone the same choice reads **Connect another device**. If your
+   organization's policy allows only this computer to connect, these are
+   turned off and say so.
 3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
    invitation from the computer. **Enter a pairing code** is available if the
    camera cannot be used. Keep the computer running.
@@ -133,17 +137,18 @@ configured. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
 nearby** on the computer, then choose **Find nearby Stations** on the native phone
-app. Discovery is off by default and shows names and local addresses without
+app (on the welcome screen it is under **More connection options**). Discovery is off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
 versions before Android 14 offer QR and manual address entry instead. Browser
-clients do not browse the local network. **Other ways to connect** expands to **Open connection manager**, where you can
-enter an address when discovery is unavailable or finds nothing.
+clients do not browse the local network. Choose **Enter Station address** to
+type an address when discovery is unavailable or finds nothing.
 
 If an exchange loses its response or cannot save approved access, Station holds
-the attempt instead of sending the one-time proof again. Check paired devices on
-the computer and revoke any unintended access before retiring the held request
-and creating a fresh invitation.
+the attempt instead of sending the one-time proof again. Choose **Pair again** to
+send a fresh request; approving it replaces any access the held attempt left
+behind, so you don't need to revoke anything on the computer first. For a
+pairing code, create a new code on the computer.
 
 A new phone shows the connection welcome until you save a real Station.
 A saved Station that is offline or needs access keeps its connection recovery
@@ -497,7 +502,11 @@ show what **Start** will use:
   Station makes for the chat; the chip and list say which. A Codex chat in
   Codex's sandbox never runs in your home folder: it gets a private folder.
 - A chat **Without a project** runs in a private folder Station makes for
-  that chat inside its own data folder, not in your home folder. To run such
+  that chat, not in your whole home folder. On Windows, new chat folders live
+  under `~/.station-workspaces/<Station home hash>/`; other platforms keep
+  them inside Station's data folder. Windows workspace files need their own
+  backup and retention policy; a Station home archive does not include them.
+  To run such
   chats in your home folder instead, set **Settings › Agent runs › Chats
   without a project** to **Home folder** (a sandboxed Codex chat still gets
   a private folder). The setting applies to new chats; a chat that already
@@ -514,13 +523,15 @@ runs**. Choose the Station, then its **Engine & model**. With **Paired Station
 chats** enabled in Settings → Advanced → Feature previews, choose a Project
 from that Station’s own list, or **start without a project**. **Start** opens a
 chat tab that reads and replies to the conversation on the chosen Station.
-It keeps the destination visible, supports Stop and answers requests there.
-A failed or uncertain send keeps its text and delivery identity; **Check
-conversation** reads what arrived, and **Retry this message** reuses that
-message’s identity. **Edit in New Chat** opens a separate editable draft with
-those remote choices and keeps the original message. Check whether it arrived
-before sending changed work. You choose the receiver’s Project again before Start.
-This preview takes text only; attachment and visual-reply reads are unavailable.
+It looks like any chat, with **Via <Station>** in the header. Replies, files,
+Stop and approval answers use that Station. A refused message offers **Retry**
+and **Edit**. If delivery is uncertain, use **Check** before sending a
+changed copy. Station keeps the original pending message.
+
+Full access, choosing a folder, mentions, offline copies and local skill or
+workspace integrations are unavailable on a relayed chat. Turning the preview
+off keeps saved text and drafts visible. An older held chat offers **Reconnect
+chat**; confirm the Station before continuing.
 
 Choose the destination’s Project explicitly; Station does not match Projects
 between computers by name. Remote Tasks keep their separate execution consent.
@@ -665,7 +676,7 @@ while a draft is open returns you to it. To resume earlier work, choose it in
 the dock’s chat list.
 
 At the end of first-run setup, **Take the tour** and **Connect another device**
-are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
+are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step. If your organization's policy allows only this computer to connect, **Connect another device** is turned off and shows the policy's message, with a **Get help** link when the policy has one.
 
 On a phone, the dock starts at **Inbox** unless you open a specific
 conversation. A conversation opens full screen; **Restore chat size** in the
@@ -700,25 +711,32 @@ preview** enabled in Settings → Advanced → Developer tools, swipe left to
 reveal the clock and × controls. The clock opens Snooze duration choices; ×
 dismisses the conversation. Dismissal leaves running work and history intact.
 Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
-or expand **Dismissed** and choose **Restore to inbox**.
+or search the inbox, find matching **Dismissed** results, and choose
+**Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+Hidden **Third-party** sessions stay hidden through external updates until you
+restore them or bring them into Station.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
 when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
 not settle a conversation automatically. Settlement syncs across your devices
-and is separate from dismissal or deletion. Each inbox group can collapse.
+and is separate from dismissal or deletion. **Working** holds running and
+monitoring chats; **Needs attention** takes priority whenever input is owed.
+Drafts appear as a pencil on the chat row in its current status. Collapse a
+shelf to move it below expanded work. Shelf menus let you move sections up or
+down, with that order saved on this device. **Settled** is last by default.
 
 The workspace map lists Projects and their named Layouts, followed by your
-**Personal Boards**. Its **+** creates a Board and lets you name it, even
+**Apps**. Its **+** creates a Board and lets you name it, even
 when the list is empty. Select a project to see its configured views as child rows.
 Use Up/Down inside the view list, or the header's Layout picker, to change
 views. The header's sidebar button collapses the desktop map to a project
 rail; clicking a project icon opens its views without navigating first.
-The dashboard icon below projects opens your Personal Boards and their add
+The dashboard icon below projects opens **Apps**, including your personal Boards and their add
 button. Escape closes either popup and returns focus to its icon.
 The footer puts live work beside your initials, which open a summary of your
 access with **My access**, **Profile**, **Ask Station for help** and **Open
@@ -853,6 +871,20 @@ can use the screen. Explicit maximized conversation links still
 open chat at their requested size, and the prior chat size remains available
 when you return to the conversation.
 
+### Read child-work outcomes
+
+Child-work cards distinguish **Returned result**, **Provider summary**,
+**Child message**, and **Provider error**. Older text may show that its source
+was not recorded. A summary or transcript handle alone does not establish a
+returned result. An existing completion notice is corrected when a later
+structured tool return arrives from the same Station and child.
+
+Background-task **Recent activity** is a bounded cache. Older tool rows and
+closed-chat history can be omitted; counts marked **shown** describe retained
+rows. Closing a chat does not stop its child work. Use Activity to inspect the
+Session history available from that Station. Missing snapshot evidence keeps an
+outcome unresolved rather than declaring success.
+
 ### Send a follow-up while an engine works
 
 For a running Codex subagent that supports direct instructions, expand its
@@ -891,6 +923,12 @@ never sent twice. If Station accepts the reconnect send into its inbox, the loca
 settles that row. If a later delivery lookup finds it queued, the local row
 remains for inspection. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
+
+If Station cannot confirm delivery after three automatic checks, the row shows
+**May have reached the agent** and pauses those checks. **Check** asks what
+happened and shows the result without resending. If Station confirms it never
+received the message, **Retry** sends it with the same identity. **Copy message**
+is in **More delivery actions**; **Discard…** removes the saved row after confirmation.
 
 Once Station confirms a turn started, a late network error does not queue that
 message again.
@@ -1117,6 +1155,11 @@ Each conversation is filed under a Project by the folder it ran in:
 3. Otherwise, **No project**. Choose **No project** in Activity's **Project**
    filter to list these.
 
+Rows can show **Directory · …/parent/folder** when a working folder is recorded
+without a Project label. The label provides folder context and leaves Project
+membership unchanged; use **No project** in the Project filter for unassigned
+conversations.
+
 A conversation keeps its Project after its worktree is removed. If its Project
 is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
 of a worktree outside the Project folder also lands in **No project**: Station
@@ -1237,9 +1280,37 @@ automatically. See [Scheduler identity and recovery](https://github.com/kontoura
 
 ## When Something Goes Wrong
 
+An access refusal names the Station to reconnect to or says it did not accept the
+message. Your draft stays editable. **Check** is for an unanswered send;
+a refusal does not mean delivery is uncertain. Unknown technical errors use a
+short recovery message, with diagnostics in Details where available.
+
+The Activity reader and coding tabs use the same reply controls as the dock.
+Shared Task history keeps the records already loaded when an earlier page fails;
+use **Retry** to read that page again. Inbox search, snooze, dismissal and Undo
+work across its desktop and mobile layouts.
+
 Open the help menu and choose **Troubleshoot with an agent**, or search the
 command palette for **Troubleshoot an issue**. It is also under Settings →
 Diagnostics.
+
+Where Station shows an error, a **Troubleshoot** action starts the same
+conversation with that error already attached:
+
+- a view that stopped working (under **More actions** when Station refused
+  the view), and an error notification;
+- a pane that is temporarily unavailable, and a layout tab Station can't show;
+- an engine that isn't connected, and an agent that can't run;
+- a local Station that stopped or failed when **Restart Station** isn't
+  offered;
+- a reply that failed (**Troubleshoot this**);
+- a reply you rated thumbs-down, through **This looks like a Station bug**.
+  Your rating is saved as usual; the bug report isn't added to it.
+
+The assistant receives the page you were on (without anything after `?` or
+`#`), the error's code and first line with known credential shapes, links and
+file paths removed, and for a reply, the conversation and turn ids. It never
+receives a stack trace.
 
 1. Describe what went wrong in your own words and choose **Start
    troubleshooting**. You can paste or drop screenshots into the chat.
@@ -1263,8 +1334,25 @@ download the diagnostics bundle from Settings → Diagnostics and paste the part
 that matter. Logs can contain conversation content.
 
 If the Station Assistant has no engine, these entries open **Report a
-problem** instead. If the app itself won't open, run `station triage` in a
-terminal. The [design](https://github.com/kontourai/station/blob/main/docs/design/troubleshoot-in-app.md) covers the details.
+problem** instead. The [design](https://github.com/kontourai/station/blob/main/docs/design/troubleshoot-in-app.md) covers the details.
+
+### From a terminal
+
+If the app itself won't open, run `station triage` in a terminal. It collects
+bounded, redacted diagnostics into a private run folder, then starts Codex or
+Claude, whichever is installed, as a troubleshooting conversation that follows
+the same playbook. The agent keeps its usual approval prompts, so it asks
+before it runs a command. It works from the run folder, Station's log folder
+and commands such as `station doctor`, because Station may be down. It will not
+stop or restart anything unless you say yes. To file, it prepares the report
+with `station triage draft-report`, shows you the redacted text and waits for
+your yes, then posts it or gives you a prefilled link.
+
+Use `station triage --headless` for a read-only, one-shot diagnosis that saves
+`diagnosis.md` and `issue-draft.md` instead. That is also what happens when
+input or output is not a terminal. `station triage --context-only` collects the
+diagnostics without starting an agent. See the
+[CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#triage).
 
 ## Update, Stop, Or Uninstall
 

@@ -41,6 +41,10 @@ services:
 networks:
   product:
     internal: true
+  # The extended receiver also joins compose.yaml's product-ingress network,
+  # which carries its loopback operator port; extends does not import it.
+  product-ingress:
+    internal: false
   tunnel:
     internal: true
     ipam:

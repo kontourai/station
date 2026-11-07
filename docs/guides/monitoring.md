@@ -41,7 +41,8 @@ preconditions and verification limits. Existing v1 qualification is unchanged
 and does not establish managed suppression qualification.
 
 The companion receiver additionally accepts identifier-free `station_daily`
-Lite pings through public publisher/channel source IDs. Its owner view is exact:
+Lite pings through public source IDs, each mapped to a publisher and the
+channels it admits. Its owner view is exact:
 operator `sto_` endpoints return daily marginals and weekly sums, including daily
 distinct-network counts (weekly contributor-days; not cross-day unique people).
 The same Lite URL accepts strict fixed-enum feedback bound to the source's
@@ -66,7 +67,7 @@ for public route limits and the separate infrastructure logging review.
 
 Public dashboards and scoped publisher keys receive only **weekly noisy
 estimates** over ten profile/adoption fields. The fixed public domain includes
-all enum values and operator-configured public versions/registry IDs, even true
+all enum values and operator-configured public versions, registry IDs and channels, even true
 zero; no true-count k pre-filter remains. Sources default to catalog-only
 version admission. Optional `versionPolicy: "semver"` admits valid sender
 versions plus `custom`; operator exact views show all of them. Its public version
@@ -94,7 +95,10 @@ publication of a week that closes during the pass. Publisher-scoped HMAC cursors
 are verified before caching; public pages cache for at most 60 seconds and reset
 at UTC midnight. Failed credential refresh beyond 60 seconds returns
 503. This receiver implementation does not establish an installed Station sender
-or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
+or a deployment. The [Worker receiver](../../deploy/telemetry-worker/README.md)
+serves the same Lite contract and public routes from one Cloudflare Durable
+Object, with Workers rate limits instead of a tunnel, and adds a private owner
+dashboard. It is not deployed either. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
 before interpreting received pings as activity estimates.
 
 The repository includes an optional Docker profile for Collector → Prometheus
@@ -953,6 +957,16 @@ Paired people, the operator breakdown, peer receipts, milestones, diagnostics an
 history mount when their disclosure is opened and unmount when closed. Shared
 analytics queries, including milestone data, continue to follow their context
 ownership. Existing authorization rules still apply to the connected Station.
+Initial analytics loading or failure is local to the usage area. My access,
+Paired people and Diagnostics remain available, and an open Paired people
+disclosure stays open when usage recovers. Each child retains its own read and
+authorization rules.
+
+**Retry** keeps the current usage error and shows **Retrying…** while its read
+is pending. If it fails again, the same Retry action remains available. After
+successful keyboard recovery, focus returns to the named Station usage region
+when the previous action disappeared; it does not move away from another
+control or an open dialog. The open Paired people disclosure stays open.
 
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
 snapshot on an active read when the previous scan is at least a minute old.
@@ -1209,7 +1223,7 @@ in its Tempo data source. No manual import is needed.
 
 | Variable                    | Required | Default     | Description                                      |
 |-----------------------------|----------|-------------|--------------------------------------------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint when no saved collector address exists. Without either address, no OTel SDK initializes; local monitoring remains available. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint when no saved collector address exists. Without either address, or under a [managed policy](managed-policy.md#capability-switches) with `limits.telemetry: false`, no OTel SDK initializes; local monitoring remains available. |
 | `OTEL_SERVICE_NAME` | No | `station` | OTel service name. |
 | `STATION_OTEL_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
 | `STATION_TELEMETRY_API_KEY` | No | — | Legacy alias for the OTel key; a nonempty canonical key wins. |

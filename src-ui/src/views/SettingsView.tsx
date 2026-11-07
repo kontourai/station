@@ -8,6 +8,7 @@ import { SectionNavigation } from '../components/SectionNavigation';
 import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useTelemetryNotice } from '../hooks/useTelemetryNotice';
 import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
+import { describeStationFailure } from '../utils/stationFailure';
 import { AccountPreferencesSection } from './settings/AccountPreferencesSection';
 import { DeveloperFeatures } from './settings/DeveloperFeatures';
 import { SettingsScopeBadge } from './settings/SettingsScopeBadge';
@@ -1042,7 +1043,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     } catch (err: any) {
       // `updateAppConfig` throws the route's joined violation messages, so a
       // refusal names the keys instead of disappearing.
-      setError(err.message);
+      setError(describeStationFailure(err).body);
     }
   };
 
@@ -1214,6 +1215,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       onImport={importSettings}
                       onResetToDefaults={() => setShowResetModal(true)}
                       hasUnsavedChanges={hasChanges}
+                      provenance={stationProvenance}
                     />
                     <ExistingSetupImportStepper />
                     {/* #2182: who may sign in to this Station. It has no
@@ -1492,6 +1494,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     region={config.region || ''}
                     regionError={validationErrors.region}
                     regionProvenance={provenance?.region}
+                    provenance={provenance}
                     showRegion={showRegion}
                     onRegionChange={(value) =>
                       setConfig({ ...config, region: value })

@@ -63,6 +63,7 @@ import {
   setCredentialRecoveryAutomaticPolicy,
   upsertCredentialProfile,
 } from '../../providers/app-home/credential-profile-registry.js';
+import { assertEngineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import {
@@ -1893,6 +1894,9 @@ export class ConnectionService {
       if (current?.kind !== 'agent') {
         throw new Error(`Connection '${connection.id}' not found`);
       }
+      // #4520: no connection is set up for an engine the managed policy
+      // does not allow.
+      assertEngineAllowedByManagedPolicy(current.type);
       const binding = externalEngineRegistryBinding(
         current,
         this.getProviderAdapters(),

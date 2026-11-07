@@ -289,8 +289,9 @@ test('the agent indicator comes from the live view’s own lease, and Take contr
   expect(calls).not.toContain(`POST ${INPUT}`);
   fireEvent.click(dot);
   expect(
-    within(screen.getByRole('toolbar', { name: 'Floating browser' })).getByText(
-      'An agent is driving',
+    within(screen.getByRole('toolbar', { name: 'Floating browser' })).getByRole(
+      'img',
+      { name: 'An agent is driving' },
     ),
   ).toBeTruthy();
   const take = screen.getAllByRole('button', { name: 'Take control' });
@@ -321,4 +322,93 @@ test('the agent indicator comes from the live view’s own lease, and Take contr
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
   expect(calls).toContain(`POST ${INPUT}`);
+});
+
+/** The player's frame, as its inline placement says. */
+function playerFrame() {
+  const section = screen.getByRole('region', {
+    name: 'Floating browser: example.com',
+  });
+  return {
+    x: Number.parseFloat(section.style.left),
+    y: Number.parseFloat(section.style.top),
+  };
+}
+
+const finger = (pointerId: number, clientX: number, clientY: number) => ({
+  pointerId,
+  pointerType: 'touch',
+  button: 0,
+  clientX,
+  clientY,
+});
+
+test('on the REAL canvas a pinch zooms the picture and never moves the player; one finger while watching moves it', async () => {
+  // The chat's composer seam, as FloatOverChat.test.tsx lays it out, so the
+  // player has a measured chat to move in.
+  const box = (left: number, top: number, width: number, height: number) =>
+    ({
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+    function (this: HTMLElement) {
+      return this.classList.contains('float-over-chat__anchor')
+        ? box(0, 580, 900, 0)
+        : box(0, 0, 0, 0);
+    },
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <FloatOverChat
+        session={{
+          id: 'tab-1',
+          conversationId: 'conversation-1',
+          projectSlug: 'alpha',
+        }}
+        transport={transport() as never}
+      />
+    </QueryClientProvider>,
+    { container: chatArea() },
+  );
+  await screen.findByTestId('live-surface-canvas');
+  await push({ kind: 'agent', principal: 'agent:x', sessionId: 'agent-1' });
+  await pushFrame();
+  const canvas = screen.getByTestId('live-surface-canvas');
+  const zoom = screen.getByTestId('live-surface-zoom');
+  const start = playerFrame();
+
+  // One finger while only watching is the player's: it moves.
+  fireEvent.pointerDown(canvas, finger(3, 100, 100));
+  fireEvent.pointerMove(canvas, finger(3, 96, 100));
+  fireEvent.pointerMove(canvas, finger(3, 40, 160));
+  fireEvent.pointerUp(canvas, finger(3, 40, 160));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  const moved = playerFrame();
+  expect(moved).not.toEqual(start);
+
+  // Two fingers spread on the picture: the live view claims the gesture,
+  // zooms, and the player stays where it is.
+  fireEvent.pointerDown(canvas, finger(1, 160, 60));
+  fireEvent.pointerDown(canvas, finger(2, 210, 60));
+  fireEvent.pointerMove(canvas, finger(1, 120, 60));
+  fireEvent.pointerMove(canvas, finger(2, 250, 60));
+  expect(zoom.style.transform).toMatch(/scale\((?!1\))[\d.]+\)/);
+  fireEvent.pointerUp(canvas, finger(1, 120, 60));
+  fireEvent.pointerUp(canvas, finger(2, 250, 60));
+  expect(playerFrame()).toEqual(moved);
+  // Neither gesture was input to the page.
+  expect(calls).not.toContain(`POST ${INPUT}`);
 });

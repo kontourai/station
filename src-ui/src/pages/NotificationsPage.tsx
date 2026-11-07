@@ -29,6 +29,7 @@ import {
 } from '../utils/attention';
 import { errorText } from '../utils/errorText';
 import { notificationCategoryLabel } from '../utils/notificationLabels';
+import { StationUiError } from '../utils/StationUiError';
 import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
@@ -190,7 +191,7 @@ export function NotificationsPage() {
         (outcome) => outcome.status === 'rejected',
       );
       if (failures.length === 0) return;
-      throw new Error(
+      throw new StationUiError(
         `${failures.length} of ${outcomes.length} could not be dismissed: ${errorText(failures[0].reason)}`,
       );
     },
@@ -361,6 +362,8 @@ export function NotificationsPage() {
                 items={snoozedItems}
                 notifications={deferredNotifications}
                 onUnsnooze={snooze.unsnooze}
+                isUnsnoozing={snooze.unsnoozePending}
+                unsnoozingItemId={snooze.unsnoozingItemId}
               />
             )}
           </>
@@ -520,10 +523,14 @@ function SnoozedSection({
   items,
   notifications,
   onUnsnooze,
+  isUnsnoozing,
+  unsnoozingItemId,
 }: {
   items: AttentionItem[];
   notifications: Notification[];
   onUnsnooze: (item: AttentionItem) => void;
+  isUnsnoozing: boolean;
+  unsnoozingItemId?: string;
 }) {
   return (
     <section
@@ -555,6 +562,9 @@ function SnoozedSection({
               variant="secondary"
               size="sm"
               onClick={() => onUnsnooze(item)}
+              pending={item.id === unsnoozingItemId}
+              disabled={isUnsnoozing}
+              pendingLabel="Unsnoozing…"
             >
               Unsnooze
             </Button>

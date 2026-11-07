@@ -225,7 +225,10 @@ test('lost acknowledgement freezes intent and an explicit retry reuses the opera
     screen.getByRole('button', { name: 'Retry same agent request' }),
   );
   await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
-  await screen.findByText(/Retry preflight unavailable/);
+  await screen.findByText(
+    'Try again in a moment. The original request is still unconfirmed.',
+  );
+  expect(screen.queryByText(/Retry preflight unavailable/)).toBeNull();
   expect(textbox.matches(':disabled')).toBe(true);
   fireEvent.click(
     screen.getByRole('button', { name: 'Retry same agent request' }),

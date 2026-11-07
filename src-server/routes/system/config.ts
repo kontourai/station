@@ -1,10 +1,13 @@
+import { MANAGED_POLICY_REMOTE_CLIENTS_CODE } from '@kontourai/station-contracts/managed-policy';
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
+import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 /**
  * Config Routes - app configuration management
  */
 
+import { normalize } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -30,9 +33,16 @@ import {
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { mergeAppConfigUpdate } from '../../domain/config-loader-app.js';
+import {
+  installedManagedAppSettings,
+  ManagedSettingLockedError,
+  managedSettingRefusalBody,
+  overlayManagedAppSettings,
+  withoutLockedNoOps,
+} from '../../domain/managed-settings.js';
 import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import {
   buildAppConfigProvenance,
@@ -50,6 +60,14 @@ import {
   isOperatorInPersonNotAgent,
   mayGrantFullAccess,
 } from '../../security/coding-authority.js';
+import {
+  clampToManagedCeiling,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
+import {
+  managedCapabilityRefusalBody,
+  telemetryAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -69,10 +87,14 @@ import {
 import { defaultTerminalShell } from '../../services/terminal/terminal-shells.js';
 import { configOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
-import { fullAccessRefusal } from '../orchestration/approval-authority.js';
+import {
+  fullAccessRefusal,
+  managedApprovalCeilingRefusal,
+} from '../orchestration/approval-authority.js';
 
 /** Thrown inside the serialized config mutation; mapped to the 403 below. */
 const FULL_ACCESS_DEFAULT_NOT_GRANTED = 'FULL_ACCESS_DEFAULT_NOT_GRANTED';
+const DEFAULT_ABOVE_MANAGED_CEILING = 'DEFAULT_ABOVE_MANAGED_CEILING';
 
 import {
   COMMAND_NOT_GRANTED_CODE,
@@ -94,12 +116,41 @@ import {
   configurationMutationStatus,
 } from './configuration-activation.js';
 
+/** #4521: a telemetry raise refused because the managed policy turned it off. */
+const MANAGED_TELEMETRY_OFF = 'MANAGED_TELEMETRY_OFF';
+
 /**
  * Legacy-file projection only. New application authority is private SQLite.
  * Credential profiles go through the registry's own projection (#2966): an
  * invalid env overlay, possibly a pasted secret in a hand-edited app.json,
  * is returned only as its value-free `envInvalid` marker.
  */
+/**
+ * #4517: the one refusal for a write to a setting the managed policy locks.
+ * 403, because the caller is not allowed to make this change on this
+ * machine; `key` names the setting so a client can mark the right control.
+ */
+function managedSettingRefusal(c: Context, error: ManagedSettingLockedError) {
+  return c.json(managedSettingRefusalBody(error), 403);
+}
+
+/**
+ * #4518: the config as it applies, with this Station's default approval
+ * mode lowered to the managed ceiling. GET and the PUT response both report
+ * it; the stored value is not changed (a default saved before the policy
+ * stays saved and applies again without it).
+ */
+function withManagedApprovalCeiling<
+  T extends { defaultApprovalMode?: unknown },
+>(config: T): T {
+  return isApprovalMode(config.defaultApprovalMode)
+    ? {
+        ...config,
+        defaultApprovalMode: clampToManagedCeiling(config.defaultApprovalMode),
+      }
+    : config;
+}
+
 function projectPublicAppConfig(config: Record<string, any>) {
   if (!config.agentConnections) return config;
   return {
@@ -271,6 +322,11 @@ export function createConfigRoutes(
     reason?: TelemetryFeedbackReason,
   ) => Promise<void>,
   canSaveAuthorFull?: () => Promise<boolean>,
+  // #3994: why terminal history can't be kept private in a directory, or
+  // null. Production probes the location (Windows ACLs); absent, no probe.
+  terminalHistoryLocationProblem?: (
+    directory: string,
+  ) => Promise<string | null>,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -345,6 +401,8 @@ export function createConfigRoutes(
         operationId: result.receipt.operationId,
       });
     } catch (error) {
+      if (error instanceof ManagedSettingLockedError)
+        return managedSettingRefusal(c, error);
       logger.error('Failed to update log-level setting', { error });
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }
@@ -390,7 +448,13 @@ export function createConfigRoutes(
           );
         }
       }
-      const config = await configLoader.loadAppConfig();
+      // Provenance tells a stored decision from a managed one, so it reads
+      // the stored config; the body is what every reader sees (#4517).
+      const stored = await configLoader.loadStoredAppConfig();
+      const managed = installedManagedAppSettings();
+      const config = withManagedApprovalCeiling(
+        overlayManagedAppSettings(stored, managed),
+      );
       const frameOrigin = getMcpUiFrameOrigin?.();
       const pluginFrameOrigin = getPluginFrameOrigin?.();
       // #1582 D9: what a terminal would start here with nothing configured,
@@ -425,8 +489,9 @@ export function createConfigRoutes(
             ? { defaultTerminalShell: terminalShellDefault.shell }
             : {}),
         },
-        provenance: buildAppConfigProvenance(config, {
+        provenance: buildAppConfigProvenance(stored, {
           injected,
+          managed,
           ...(project
             ? { projectOverrides: readProjectOverrides(project) }
             : {}),
@@ -461,7 +526,19 @@ export function createConfigRoutes(
     };
     try {
       configOps.add(1, { op: 'update_app' });
-      const body = getBody(c);
+      // #4517: a locked setting is the managed policy's. A value equal to
+      // the locked one is dropped (the effective value already is that, and
+      // storing it would write a policy value into the user's file); any
+      // other value is refused before every other rule, so a locked key gets
+      // the same answer whichever setting it is.
+      const managedCheck = withoutLockedNoOps(
+        getBody(c) as Record<string, unknown>,
+      );
+      if (managedCheck.refused) {
+        logRefusal('managed_setting_locked');
+        return managedSettingRefusal(c, managedCheck.refused);
+      }
+      const body = managedCheck.updates;
       if (
         Object.hasOwn(body as object, 'telemetryFeedbackReason') &&
         requestMayBeAnAgent(c.req.raw)
@@ -811,6 +888,27 @@ export function createConfigRoutes(
             403,
           );
         }
+        const directory =
+          typeof merged.terminalHistoryDirectory === 'string'
+            ? merged.terminalHistoryDirectory.trim()
+            : '';
+        if (
+          directory &&
+          terminalHistoryLocationProblem &&
+          changesAny(body as object, current, ['terminalHistoryDirectory'])
+        ) {
+          const location = await terminalHistoryLocationProblem(
+            normalize(directory),
+          );
+          if (location)
+            return c.json(
+              {
+                success: false,
+                error: `terminalHistoryDirectory: ${location} No settings were saved.`,
+              },
+              400,
+            );
+        }
       }
 
       // `agentConnections` is a composite that replaces the stored value
@@ -918,6 +1016,10 @@ export function createConfigRoutes(
               if (rank[after] < rank[before]) lowerings.push(key);
               if (rank[after] > rank[before]) raisesTelemetry = true;
             }
+            // #4521: the managed policy turned telemetry off. A raise could
+            // never take effect, so it is refused rather than stored.
+            if (raisesTelemetry && !telemetryAllowedByManagedPolicy())
+              throw new Error(MANAGED_TELEMETRY_OFF);
             if (
               requestMayBeAnAgent(c.req.raw) ||
               (raisesTelemetry && !mayRaiseTelemetry)
@@ -939,6 +1041,14 @@ export function createConfigRoutes(
             authorizeContributionMutation?.(c.req.raw) !== true
           )
             throw new Error('LAN_DISCOVERY_OPERATOR_REQUIRED');
+          // #4519: checked after the operator gate, so only the operator
+          // learns what the policy says.
+          if (
+            accepted.lanDiscoveryEnabled === true &&
+            current.lanDiscoveryEnabled !== true &&
+            lanDiscoveryFor(configLoader).managedPolicyRefusal() !== undefined
+          )
+            throw new Error(MANAGED_POLICY_REMOTE_CLIENTS_CODE);
           // A semantic contribution change needs the BOUND-OPERATOR verdict,
           // whatever scope the presenting credential claims — an absent
           // presented scope is NOT an operator, it is an unscoped caller, so
@@ -959,6 +1069,17 @@ export function createConfigRoutes(
           // cannot land after the operator lowered it. Resending a `never`
           // that still stands (Settings round-trips the whole config) is
           // not a raise.
+          // #4518: a change of the Station default to a posture above the
+          // machine's managed ceiling is refused. Resending the value that
+          // stands is not a change: a default saved before the policy took
+          // effect stays saved, and is lowered to the ceiling where it
+          // applies (`ApprovalPosture`).
+          if (
+            managedCeilingRefuses(accepted.defaultApprovalMode) &&
+            accepted.defaultApprovalMode !== current.defaultApprovalMode
+          ) {
+            throw new Error(DEFAULT_ABOVE_MANAGED_CEILING);
+          }
           if (
             accepted.defaultApprovalMode === 'never' &&
             current.defaultApprovalMode !== 'never' &&
@@ -991,7 +1112,10 @@ export function createConfigRoutes(
         update,
       );
       const updated = mutation.value;
-      const publicUpdated = projectPublicAppConfig(updated);
+      // #4518: the response reports the values in effect, as GET does.
+      const publicUpdated = projectPublicAppConfig(
+        withManagedApprovalCeiling(updated),
+      );
       logger.info('App config updated', { config: publicUpdated });
       // archive#1194: this key is the onboarding engine picker's own
       // mutation surface — rebind immediately rather than waiting for some
@@ -1026,6 +1150,14 @@ export function createConfigRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (error instanceof Error && error.message === MANAGED_TELEMETRY_OFF) {
+        logRefusal('managed_telemetry_off');
+        return c.json(managedCapabilityRefusalBody('usage sharing'), 403);
+      }
+      if (error instanceof ManagedSettingLockedError) {
+        logRefusal('managed_setting_locked');
+        return managedSettingRefusal(c, error);
+      }
       if (
         error instanceof Error &&
         error.message === 'TELEMETRY_CHOICE_NOT_GRANTED'
@@ -1039,6 +1171,14 @@ export function createConfigRoutes(
           },
           403,
         );
+      }
+      if (
+        error instanceof Error &&
+        error.message === DEFAULT_ABOVE_MANAGED_CEILING
+      ) {
+        configOps.add(1, { op: 'update_app_default_above_managed_ceiling' });
+        logRefusal('default_above_managed_ceiling');
+        return managedApprovalCeilingRefusal(c);
       }
       if (
         error instanceof Error &&
@@ -1058,6 +1198,22 @@ export function createConfigRoutes(
             success: false,
             error:
               'Only this Station’s local operator can change Project execution offers.',
+          },
+          403,
+        );
+      }
+      const managedRefusal =
+        lanDiscoveryFor(configLoader).managedPolicyRefusal();
+      if (
+        error instanceof Error &&
+        error.message === MANAGED_POLICY_REMOTE_CLIENTS_CODE &&
+        managedRefusal !== undefined
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: managedRefusal,
+            code: MANAGED_POLICY_REMOTE_CLIENTS_CODE,
           },
           403,
         );
@@ -1114,6 +1270,8 @@ export function createConfigRoutes(
       eventBus?.emit(SERVER_EVENTS.CONFIG_CHANGED, { source: 'config' });
       return c.json({ success: true, data: firstRun });
     } catch (error: unknown) {
+      if (error instanceof ManagedSettingLockedError)
+        return managedSettingRefusal(c, error);
       logger.error('Failed to record the first-run decision', { error });
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }

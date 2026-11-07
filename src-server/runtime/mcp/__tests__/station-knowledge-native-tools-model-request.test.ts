@@ -64,6 +64,7 @@ test('an agent holding the native knowledge tools sends its turn with their sche
     }),
   });
   const agent = await new VoltAgentFramework().createTempAgent({
+    purpose: 'agent-run',
     agentId: 'station',
     name: 'station',
     instructions: 'Answer briefly.',

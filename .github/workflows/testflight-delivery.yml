@@ -715,7 +715,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT"
       - name: Upload a previously unobserved IPA to TestFlight
         if: steps.reconcile.outputs.upload == 'true'
-        uses: apple-actions/upload-testflight-build@acf1166e95edc302069b74b258a788004fe39a08 # v5.7.0
+        uses: apple-actions/upload-testflight-build@665328adbecbc3ad929d3da710696d928b8a7ba9 # v5.9.0
         with:
           app-path: ${{ steps.staged.outputs.ipa }}
           app-type: ios

@@ -142,7 +142,27 @@
 
     "src-server/services/notifications/agent-activity-publisher.ts",
 
-    "scripts/__tests__/nightly-build-identity.test.ts"
+    "scripts/__tests__/nightly-build-identity.test.ts",
+
+    "scripts/lib/nightly-build-identity.mjs",
+
+    "packages/shared/src/release-version-order.ts",
+
+    "packages/shared/src/__tests__/release-version-order.test.ts",
+
+    "packages/sdk/src/release-notes-query.ts",
+
+    "scripts/lib/desktop-release-notes.mjs",
+
+    "scripts/desktop-release-notes.mjs",
+
+    "scripts/assemble-nightly-desktop.mjs",
+
+    "src-ui/src/components/updates/ReleaseNotes.tsx",
+
+    "src-ui/src/components/updates/PostUpdateChangelog.tsx",
+
+    "src-ui/src/components/updates/usePostUpdateChangelog.ts"
   ],
 
   "checks": [

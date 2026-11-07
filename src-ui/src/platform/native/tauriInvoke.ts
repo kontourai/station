@@ -15,3 +15,20 @@ export async function listenTauri<T>(
   const { listen } = await import('@tauri-apps/api/event');
   return listen<T>(event, (message) => handler(message.payload));
 }
+
+/**
+ * Listen for a mobile plugin's own event (`Plugin.trigger` in Swift/Kotlin);
+ * resolves to its unregister function. Needs the plugin's
+ * `allow-register-listener` permission.
+ */
+export async function listenTauriPlugin(
+  plugin: string,
+  event: string,
+  handler: () => void,
+): Promise<() => void> {
+  const { addPluginListener } = await import('@tauri-apps/api/core');
+  const listener = await addPluginListener(plugin, event, () => handler());
+  return () => {
+    void listener.unregister().catch(() => {});
+  };
+}

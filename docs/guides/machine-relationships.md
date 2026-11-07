@@ -72,9 +72,15 @@ The source keeps a dock tab; the receiver owns the conversation, providers and
 credits. Replies, Stop and request answers go to that receiver. The bridge uses
 its saved credential server-side and refuses agent-originated onward hops.
 
-This path is text only and polls bounded history. It does not grant portable
-Project execution or change Task placement consent. Preview-off and SSH starts
-retain the existing Task launcher. See [starting work](../user/getting-started.md#start-your-first-chat)
+The dock uses the ordinary conversation body and live receiver events. Its header
+says **Via <Station>**. A separately paired direct route is preferred for new chats;
+existing relay chats retain their principal and pending delivery keys. Attachments
+use receiver staging and a separate upload grant; they grant no wider access.
+Full access, folder selection and local integrations are unavailable over relay.
+Turning the preview off retains readable text and drafts while stopping remote
+operations. Legacy chats require confirmed **Reconnect chat** before adoption.
+This does not grant portable Project execution or change Task placement consent.
+See [Station connections](../design/station-connection.md) and [starting work](../user/getting-started.md#start-your-first-chat)
 and the [bridge design](../design/chat-composer.md#paired-station-foreground-chats).
 
 ### What a paired device may do, and full access
@@ -135,7 +141,10 @@ operator channel. The CLI reports this policy refusal distinctly.
 chat, an Agent's default, or a Project's new-chat approval mode at approval mode
 `never`: the agent runs with no
 sandbox and no approval prompts, as the operator. A device without it that
-asks for full access is refused (`approval-full-access-not-granted`). The
+asks for full access is refused (`approval-full-access-not-granted`). On a
+machine whose [managed policy](managed-policy.md#approval-mode-ceiling) caps
+approval below full access, no device or operator has it, and the refusal is
+the policy's (`managed-policy-approval-ceiling`). The
 refusal names the device (its short id, and its name shown as plain text),
 the Station that refused, and the exact command above, and it separates what
 the caller asked for from what only the operator can grant. In a chat the

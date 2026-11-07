@@ -32,6 +32,10 @@ import {
   augmentedSpawnEnv,
   findCliBinaryAsync,
 } from '../../providers/auth/cli-auth.js';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEngineLaunch,
+} from '../../security/managed-engine-limits.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 import { createACPClientApp } from './acp-bridge-client.js';
@@ -51,6 +55,11 @@ export type AsyncProcessIdentityProbe = (
 ) => Promise<ExactProcessIdentityProbe>;
 
 export interface ACPProcessOptions {
+  /**
+   * #4520: the connection this process runs, when the caller has it, so a
+   * public-registry agent the managed policy stops is refused here too.
+   */
+  connection?: { publicRegistry?: unknown };
   command: string;
   args?: string[];
   cwd: string;
@@ -411,9 +420,22 @@ export class ACPProcess extends EventEmitter {
     if (this.destroyed) throw new Error('ACPProcess already destroyed');
     if (this.proc) throw new Error('ACPProcess already started');
 
-    const bin = await this.findCommand();
+    // #4520: every ACP launch (sessions, availability and startup probes,
+    // sign-in) starts here, so an engine the managed policy does not allow
+    // is refused before anything is looked up or spawned.
+    assertEngineAllowedByManagedPolicy('acp', this.opts.connection);
+
+    // #4520: a managed policy's pinned binary and arguments. A locked pin
+    // replaces the connection's own; this is every ACP launch (sessions,
+    // availability probes and sign-in all start an ACPProcess).
+    const pinned = managedEngineLaunch(
+      'acp',
+      { command: this.opts.command, args: this.opts.args || [], env: {} },
+      'user',
+    );
+    const bin = await this.findCommand(pinned.command);
     if (this.destroyed) throw new Error('ACPProcess already destroyed');
-    if (!bin) throw new ACPCommandNotFoundError(this.opts.command);
+    if (!bin) throw new ACPCommandNotFoundError(pinned.command);
 
     // archive#977: layer the login-shell-resolved PATH onto the spawned
     // process's own env too, not just Station's own binary lookup above --
@@ -431,7 +453,16 @@ export class ACPProcess extends EventEmitter {
     const baseEnv = this.opts.tmpDir
       ? { ...credentialedEnv, TMPDIR: this.opts.tmpDir }
       : credentialedEnv;
-    const env = this.opts.spawnEnv ? this.opts.spawnEnv(baseEnv) : baseEnv;
+    const launchedWithStationEnv = this.opts.spawnEnv
+      ? this.opts.spawnEnv(baseEnv)
+      : baseEnv;
+    // Pinned variables last: a locked one overrides every layer above, an
+    // unlocked one fills only what none of them set.
+    const env = managedEngineLaunch(
+      'acp',
+      { command: bin, args: [], env: launchedWithStationEnv },
+      'user',
+    ).env;
     // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide
     // registry. `detached: true` is preserved deliberately — a group kill reaps
@@ -440,7 +471,7 @@ export class ACPProcess extends EventEmitter {
     // THIS Station dies without ever running its own cleanup (SIGKILL, crash,
     // ENOSPC). The graceful destroy path below calls `release()` to drop the
     // record; the sweep is the fallback for the case where destroy never runs.
-    const { proc, release } = spawnOwnedChild(bin, this.opts.args || [], {
+    const { proc, release } = spawnOwnedChild(bin, [...pinned.args], {
       cwd: this.opts.cwd,
       env,
       stdio: ['pipe', 'pipe', this.opts.onStderr ? 'pipe' : 'inherit'],
@@ -957,10 +988,10 @@ export class ACPProcess extends EventEmitter {
   // service-launched Station's minimal PATH previously made this report a
   // false negative for an engine the user has installed and can run
   // interactively.
-  private async findCommand(): Promise<string | null> {
+  private async findCommand(command: string): Promise<string | null> {
     if (this.opts.resolveCommand) {
-      return this.opts.resolveCommand(this.opts.command);
+      return this.opts.resolveCommand(command);
     }
-    return findCliBinaryAsync(this.opts.command);
+    return findCliBinaryAsync(command);
   }
 }

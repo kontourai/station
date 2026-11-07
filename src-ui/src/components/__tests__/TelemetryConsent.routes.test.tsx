@@ -34,6 +34,8 @@ const bridge = vi.hoisted(() => ({
   config: {} as AppConfig,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // #4519: the connected Station has no managed policy.
+  useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   getJson: (...args: unknown[]) => bridge.scopedRead(...args),
   mutateJson: (url: string, method: string, _options: unknown, body: unknown) =>
     bridge.request(url, {
@@ -287,6 +289,14 @@ test.each(['off', 'lite', 'full'] as const)(
         name: /^Anonymous usage counts/,
       });
       expect(anonymous).toHaveProperty('checked', true);
+      expect(anonymous.getAttribute('aria-describedby')).toBeTruthy();
+      const description = document.getElementById(
+        anonymous.getAttribute('aria-describedby')!,
+      )?.textContent;
+      expect(description).toContain('Daily counts');
+      expect(description).toContain(
+        'coarse tokens per engine from conversations run in Station',
+      );
       fireEvent.click(
         screen.getByRole('radio', { name: SHARING_LABELS[tier] }),
       );

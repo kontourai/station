@@ -67,7 +67,7 @@ import {
   PAIRING_WS_SCOPES,
 } from '../../security/pairing-route-scopes.js';
 import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
-import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
+import { stationOriginPolicy } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
@@ -174,6 +174,7 @@ import {
   isHostedTenantExecutionRequired,
   loadHostedTenantRegistryFromEnvironment,
 } from './runtime-tenant-context.js';
+import { installManagedVoltAgentObservability } from './voltagent-observability.js';
 
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
@@ -327,6 +328,8 @@ export interface InitializeRuntimeDeps {
     framework: IAgentFramework;
     modelCatalog: BedrockModelCatalog;
   }) => void;
+  /** Transfers cleanup custody before initialization can subscribe or fail. */
+  onOrchestrationServiceCreated?: (service: OrchestrationService) => void;
   /** Publishes services captured by route registration before VoltAgent calls configureFullApp. */
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
@@ -848,6 +851,7 @@ export async function initializeRuntime(
     >,
     logger,
   });
+  deps.onOrchestrationServiceCreated?.(orchestrationService);
   if (
     deps.skillService.withSkillExperience &&
     deps.skillService.listSkillExperiences &&
@@ -967,8 +971,9 @@ export async function initializeRuntime(
       configLoader.getProjectHomeDir(),
       undefined,
       logger,
+      { bundled: registrySource.origin === 'bundled' },
     );
-    registerManifestRegistryProvider(registryProvider, registrySource.origin);
+    registerManifestRegistryProvider(registryProvider);
     logger.info('JSON manifest registry configured', {
       url: registrySource.source,
       origin: registrySource.origin,
@@ -1081,6 +1086,9 @@ export async function initializeRuntime(
   const registryPolicyApplication =
     await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
+  // #4521: before the first agent exists, which would otherwise build
+  // VoltAgent's remote-exporting default for itself.
+  const managedVoltAgentObservability = installManagedVoltAgentObservability();
   const agents = await initializeRuntimeAgents({
     configLoader: deps.configLoader as any,
     logger,
@@ -1250,6 +1258,9 @@ export async function initializeRuntime(
         agents,
         logger: logger as any,
         server: trackedServerFactory,
+        ...(managedVoltAgentObservability
+          ? { observability: managedVoltAgentObservability }
+          : {}),
       }),
   );
   onVoltAgentCreated(voltAgent);
@@ -1313,7 +1324,7 @@ export async function initializeRuntime(
         credential,
       ),
     limiter: new RuntimeAuthFailureLimiter(),
-    allowedBrowserOrigins: resolveStationBrowserOrigins({ port, host }),
+    browserOrigins: stationOriginPolicy({ port, host }),
     audit: (record) => logger.warn('Voice authentication denied', record),
   });
   // Defer Claude-transcript follow so the first event-loop turns can answer

@@ -4,6 +4,7 @@
 
 import {
   ConnectionStore,
+  type PendingPairingExchange,
   type SavedConnection,
 } from '@kontourai/station-connect';
 import { PAIRING_LINK_REMEDY } from '@kontourai/station-connect/pairing-deep-link';
@@ -22,6 +23,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { IDBFactory } from 'fake-indexeddb';
 import { type ReactNode, useEffect } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
@@ -243,6 +245,11 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
         url: activeConnectionUrl,
       },
       connections,
+      // Only the real reconciler reaches these (opt-in tests below).
+      setCredential: () => {},
+      markDeviceSession: () => {},
+      reconcileHandshake: () => null,
+      commitEndpointCandidate: () => null,
       captureSelectionIntent: () => 0,
       credentialAuthorityGeneration: () => 0,
       captureCredentialEvidence: () => null,
@@ -261,7 +268,9 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
       onRestartInjectedConnection,
       onPairingSucceeded,
       renderConnectionDetails,
+      onApprovalPending,
     }: {
+      onApprovalPending?: (pending: PendingPairingExchange) => void;
       isOpen: boolean;
       renderConnectionDetails?: (connection: SavedConnection) => ReactNode;
       initialPanel?: string;
@@ -287,6 +296,15 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
               onClick={() => onRestartInjectedConnection()}
             >
               restart
+            </button>
+          )}
+          {onApprovalPending && approvalHandoff.pending && (
+            <button
+              type="button"
+              data-testid="cm-approval-pending"
+              onClick={() => onApprovalPending(approvalHandoff.pending!)}
+            >
+              approval pending
             </button>
           )}
           {onPairingSucceeded && (
@@ -318,36 +336,73 @@ vi.mock('../contexts/NavigationContext', () => ({
 // outcome. `null` (the default) keeps every other test's reconciler inert.
 let pairingReconcilerOutcome: { title: string; message: string } | null = null;
 let pairingReconcilerSucceeded = false;
-vi.mock('../components/PendingPairingReconciler', async () => {
-  const { useEffect } = await import('react');
+// Opt-in: mount the REAL reconciler (and so the real pairing completion loop)
+// for the tests that prove the gate keeps an approval request polling.
+// The real module is imported by that test itself, so every other test keeps
+// the cheap fixture without paying for the real module's import graph.
+// The record a mocked manager hands to the shell, as the pairing panel does.
+const approvalHandoff = vi.hoisted(() => ({
+  pending: undefined as undefined | PendingPairingExchange,
+}));
+const realPairingReconciler = vi.hoisted(() => ({
+  component: undefined as
+    | undefined
+    | typeof import('../components/PendingPairingReconciler').PendingPairingReconciler,
+}));
+const compatibilityOverride = vi.hoisted(() => ({
+  check: undefined as undefined | (() => Promise<unknown>),
+}));
+vi.mock('../lib/compatibilityLoader', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../lib/compatibilityLoader')>();
   return {
-    PendingPairingReconciler: ({
-      enabled,
-      onTerminalFailure,
-      onCompleted,
-    }: {
-      enabled: boolean;
-      onTerminalFailure: (title: string, message: string) => void;
-      onCompleted: () => void;
-    }) => {
-      useEffect(() => {
-        if (!enabled) return;
-        if (pairingReconcilerSucceeded) {
-          onCompleted();
-          return;
-        }
-        if (!pairingReconcilerOutcome) return;
-        onTerminalFailure(
-          pairingReconcilerOutcome.title,
-          pairingReconcilerOutcome.message,
-        );
-      }, [enabled]);
-      return null;
-    },
+    ...actual,
+    checkHostCompatibility: (
+      ...args: Parameters<typeof actual.checkHostCompatibility>
+    ) =>
+      compatibilityOverride.check
+        ? compatibilityOverride.check()
+        : actual.checkHostCompatibility(...args),
+  };
+});
+vi.mock('../components/PendingPairingReconciler', async () => {
+  const { createElement, useEffect } = await import('react');
+  const FixtureReconciler = ({
+    onTerminalFailure,
+    onCompleted,
+  }: {
+    onTerminalFailure: (title: string, message: string) => void;
+    onCompleted: () => void;
+  }) => {
+    useEffect(() => {
+      if (pairingReconcilerSucceeded) {
+        onCompleted();
+        return;
+      }
+      if (!pairingReconcilerOutcome) return;
+      onTerminalFailure(
+        pairingReconcilerOutcome.title,
+        pairingReconcilerOutcome.message,
+      );
+      // Mount-only: one outcome per mounted request, like the real owner.
+    }, []);
+    return null;
+  };
+  return {
+    PendingPairingReconciler: (
+      props: Parameters<
+        typeof import('../components/PendingPairingReconciler').PendingPairingReconciler
+      >[0],
+    ) =>
+      realPairingReconciler.component
+        ? createElement(realPairingReconciler.component, props)
+        : createElement(FixtureReconciler, props),
   };
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // #4519: the connected Station has no managed policy.
+  useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
   authenticatedFetch: vi.fn(),
   getJson: vi.fn(),
   mutateJson: vi.fn(),
@@ -516,6 +571,9 @@ describe('OnboardingGate', () => {
     attemptLocalSelfProvisionOnceMock.mockResolvedValue(false);
     pairingReconcilerOutcome = null;
     pairingReconcilerSucceeded = false;
+    realPairingReconciler.component = undefined;
+    approvalHandoff.pending = undefined;
+    compatibilityOverride.check = undefined;
     primeNativeNotificationsMock.mockReset();
     bootstrapRecoveryError = undefined;
     toastMocks.showToast.mockReset();
@@ -1567,114 +1625,163 @@ describe('OnboardingGate', () => {
    * This drives the action's `onClick` directly, the way a reader clicking
    * "Try again" IN THE TOAST (not back on the original control) would.
    */
-  test('restart failures retain one actionable notice and a successful retry clears it', async () => {
-    const { toastStore: realToastStore } = await vi.importActual<
-      typeof import('../contexts/ToastContext')
-    >('../contexts/ToastContext');
-    toastMocks.upsertToast.mockImplementation((options: ToastOptions) =>
-      realToastStore.upsert(options),
-    );
-    toastMocks.dismissToast.mockImplementation((id: string) =>
-      realToastStore.dismiss(id),
-    );
-    realToastStore.dismissAll();
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    platformProfile = {
-      isTauri: true,
-      target: 'macos',
-      isMobile: false,
-      isDesktop: true,
-      supervisesBundledServer: true,
-    };
-    connections = [
-      {
-        id: 'remote',
-        name: 'Paired Station',
-        environmentId: 'env-1',
-        endpoints: [],
-        selectedEndpointId: '',
-      },
-    ];
-    currentStatus = chatReadyStatus();
-    bundledStatus = {
-      phase: 'failed',
-      attempt: 5,
-      maxAttempts: 5,
-      apiBase: null,
-      port: null,
-      lastExitCode: 1,
-      nextRetryInMs: null,
-      logPath: '/tmp/station-server.log',
-      ownership: 'sidecar',
-      canRunInBackground: true,
-      failClosed: false,
-      message: '',
-    };
-    restartBundledServerMock.mockResolvedValue(false);
-
-    try {
-      render(
-        <OnboardingGate>
-          <div>App shell</div>
-        </OnboardingGate>,
+  test.each([
+    'sequential retry',
+    'older overlapping success',
+    'older overlapping failure',
+  ] as const)(
+    'restart failures retain the current actionable notice: %s',
+    async (scenario) => {
+      const { toastStore: realToastStore } = await vi.importActual<
+        typeof import('../contexts/ToastContext')
+      >('../contexts/ToastContext');
+      toastMocks.upsertToast.mockImplementation((options: ToastOptions) =>
+        realToastStore.upsert(options),
       );
-      fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
-      fireEvent.click(screen.getByTestId('cm-restart-injected'));
-
-      await waitFor(() =>
-        expect(toastMocks.upsertToast).toHaveBeenCalledTimes(1),
+      toastMocks.dismissToast.mockImplementation((id: string) =>
+        realToastStore.dismiss(id),
       );
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
-
-      // The EFFECT, from the real store — not the mocked call's arguments.
-      const toastBefore = realToastStore
-        .getSnapshot()
-        .find((t) => t.message.match(/couldn.t restart/i));
-      expect(
-        toastBefore,
-        'restart-failure toast never reached the real store',
-      ).toBeTruthy();
-
-      // Run every timer the store scheduled. A `duration: 0` toast must
-      // still be present after this — the exact case broke.
-      act(() => {
-        vi.runAllTimers();
-      });
-      const toastAfter = realToastStore
-        .getSnapshot()
-        .find((t) => t.message.match(/couldn.t restart/i));
-      expect(
-        toastAfter,
-        'the restart-failure toast auto-dismissed despite duration: 0',
-      ).toBeTruthy();
-
-      expect(toastAfter?.actions).toHaveLength(1);
-      expect(toastAfter?.actions?.[0]?.label).toBe('Try again');
-      act(() => {
-        toastAfter?.actions?.[0]?.onClick();
-      });
-      await waitFor(() =>
-        expect(toastMocks.upsertToast).toHaveBeenCalledTimes(2),
-      );
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
-      expect(realToastStore.getSnapshot()).toHaveLength(1);
-      const repeated = realToastStore.getSnapshot()[0];
-      expect(repeated.id).toBe(toastBefore?.id);
-      expect(repeated.occurrences).toBe(2);
-      restartBundledServerMock.mockResolvedValue(true);
-      act(() => {
-        repeated.actions?.[0]?.onClick();
-      });
-      await waitFor(() =>
-        expect(toastMocks.dismissToast).toHaveBeenCalledWith(repeated.id),
-      );
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(3);
-      expect(realToastStore.getSnapshot()).toHaveLength(0);
-    } finally {
-      vi.useRealTimers();
       realToastStore.dismissAll();
-    }
-  });
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      platformProfile = {
+        isTauri: true,
+        target: 'macos',
+        isMobile: false,
+        isDesktop: true,
+        supervisesBundledServer: true,
+      };
+      connections = [
+        {
+          id: 'remote',
+          name: 'Paired Station',
+          environmentId: 'env-1',
+          endpoints: [],
+          selectedEndpointId: '',
+        },
+      ];
+      currentStatus = chatReadyStatus();
+      bundledStatus = {
+        phase: 'failed',
+        attempt: 5,
+        maxAttempts: 5,
+        apiBase: null,
+        port: null,
+        lastExitCode: 1,
+        nextRetryInMs: null,
+        logPath: '/tmp/station-server.log',
+        ownership: 'sidecar',
+        canRunInBackground: true,
+        failClosed: false,
+        message: '',
+      };
+      restartBundledServerMock.mockResolvedValue(false);
+
+      try {
+        render(
+          <OnboardingGate>
+            <div>App shell</div>
+          </OnboardingGate>,
+        );
+        fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
+        fireEvent.click(screen.getByTestId('cm-restart-injected'));
+
+        await waitFor(() =>
+          expect(toastMocks.upsertToast).toHaveBeenCalledTimes(1),
+        );
+        expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
+
+        // The EFFECT, from the real store — not the mocked call's arguments.
+        const toastBefore = realToastStore
+          .getSnapshot()
+          .find((t) => t.message.match(/couldn.t restart/i));
+        expect(
+          toastBefore,
+          'restart-failure toast never reached the real store',
+        ).toBeTruthy();
+
+        // Run every timer the store scheduled. A `duration: 0` toast must
+        // still be present after this — the exact case broke.
+        act(() => {
+          vi.runAllTimers();
+        });
+        const toastAfter = realToastStore
+          .getSnapshot()
+          .find((t) => t.message.match(/couldn.t restart/i));
+        expect(
+          toastAfter,
+          'the restart-failure toast auto-dismissed despite duration: 0',
+        ).toBeTruthy();
+
+        expect(toastAfter?.actions).toHaveLength(1);
+        expect(toastAfter?.actions?.[0]?.label).toBe('Try again');
+        if (scenario !== 'sequential retry') {
+          const latestSucceeds = scenario === 'older overlapping failure';
+          restartBundledServerMock.mockResolvedValue(latestSucceeds);
+          let finishOlder!: (ok: boolean) => void;
+          restartBundledServerMock.mockImplementationOnce(
+            () =>
+              new Promise<boolean>((resolve) => {
+                finishOlder = resolve;
+              }),
+          );
+          act(() => {
+            toastAfter?.actions?.[0]?.onClick();
+          });
+          expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
+          act(() => {
+            toastAfter?.actions?.[0]?.onClick();
+          });
+          if (latestSucceeds) {
+            await waitFor(() =>
+              expect(realToastStore.getSnapshot()).toHaveLength(0),
+            );
+          } else {
+            await waitFor(() =>
+              expect(toastMocks.upsertToast).toHaveBeenCalledTimes(2),
+            );
+          }
+          await act(async () => {
+            finishOlder(!latestSucceeds);
+          });
+          expect(realToastStore.getSnapshot()).toEqual(
+            latestSucceeds
+              ? []
+              : [
+                  expect.objectContaining({
+                    id: toastBefore?.id,
+                    occurrences: 2,
+                    actions: [expect.objectContaining({ label: 'Try again' })],
+                  }),
+                ],
+          );
+          return;
+        }
+        act(() => {
+          toastAfter?.actions?.[0]?.onClick();
+        });
+        await waitFor(() =>
+          expect(toastMocks.upsertToast).toHaveBeenCalledTimes(2),
+        );
+        expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
+        expect(realToastStore.getSnapshot()).toHaveLength(1);
+        const repeated = realToastStore.getSnapshot()[0];
+        expect(repeated.id).toBe(toastBefore?.id);
+        expect(repeated.occurrences).toBe(2);
+        restartBundledServerMock.mockResolvedValue(true);
+        act(() => {
+          repeated.actions?.[0]?.onClick();
+        });
+        await waitFor(() =>
+          expect(toastMocks.dismissToast).toHaveBeenCalledWith(repeated.id),
+        );
+        expect(restartBundledServerMock).toHaveBeenCalledTimes(3);
+        expect(realToastStore.getSnapshot()).toHaveLength(0);
+      } finally {
+        vi.useRealTimers();
+        realToastStore.dismissAll();
+      }
+    },
+  );
 
   test('withholds the modal Restart handler when the sidecar does not own the home', () => {
     // The negative the gate exists for, and the one nothing asserted: a
@@ -2427,6 +2534,149 @@ describe('OnboardingGate', () => {
       screen.getByRole('button', { name: 'Scan pairing QR code' }),
     );
     expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
+  });
+
+  describe('an approval request keeps polling while Stations is open', () => {
+    // Field report: a phone submitted a pairing code (approval required),
+    // reopened Stations to rename the saved Station, and the exchange stopped
+    // after three 409s. Approval landed, but nothing claimed it until the
+    // person happened to close the manager. This drives the REAL reconciler
+    // and completion loop through a fake clock and a fake exchange endpoint.
+    test('approval lands while the manager is open and connects without user action', async () => {
+      vi.useFakeTimers({
+        toFake: [
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'Date',
+        ],
+      });
+      vi.stubGlobal('indexedDB', new IDBFactory());
+      try {
+        realPairingReconciler.component = (
+          await vi.importActual<
+            typeof import('../components/PendingPairingReconciler')
+          >('../components/PendingPairingReconciler')
+        ).PendingPairingReconciler;
+        compatibilityOverride.check = async () => ({ blocking: false });
+        platformProfile = {
+          isTauri: false,
+          target: 'android',
+          isMobile: true,
+          isDesktop: false,
+          supervisesBundledServer: false,
+        };
+        activeConnectionUrl = 'http://localhost:3242';
+        activeConnectionId = 'saved-lan';
+        credentialState = 'required';
+        connections = [
+          {
+            id: 'saved-lan',
+            name: 'Tailnet Station',
+            url: 'http://localhost:3242',
+            endpoints: [{ id: 'endpoint-1', kind: 'lan-http' }],
+            selectedEndpointId: 'endpoint-1',
+            environmentId: null,
+            credentialState: 'required',
+          },
+        ];
+        currentStatus = null;
+        const requestedAt = Date.now();
+        // The record the manager persists and hands off after the code submit.
+        const submitted: PendingPairingExchange = {
+          endpoint: 'http://localhost:3242',
+          offerId: 'offer-1',
+          proof: 'ABCDE12345',
+          requestId: 'request-1',
+          requestedAt,
+          expiresAt: requestedAt + 5 * 60_000,
+          browserSession: false,
+          requestKind: 'code',
+          targetConnectionId: 'saved-lan',
+          targetConnectionLabel: 'Tailnet Station',
+        };
+        approvalHandoff.pending = submitted;
+        let approved = false;
+        let exchangeAttempts = 0;
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async (input: RequestInfo | URL) => {
+            const path = new URL(String(input)).pathname;
+            if (path !== '/.well-known/station/v1/pairing/exchange')
+              throw new Error(`Unexpected fetch: ${path}`);
+            exchangeAttempts += 1;
+            if (!approved)
+              return Response.json(
+                { error: 'request_not_confirmed' },
+                { status: 409 },
+              );
+            return Response.json({
+              environmentId: 'env-approved',
+              credential: 'approved-credential',
+              device: {
+                id: 'device-1',
+                name: 'Pixel',
+                scope: 'station:interactive',
+                createdAt: requestedAt,
+                revokedAt: null,
+              },
+            });
+          }),
+        );
+
+        render(
+          <OnboardingGate>
+            <div>App</div>
+          </OnboardingGate>,
+        );
+        // Code dialog: submit persists the record and hands it to the shell,
+        // and the manager stays open on its waiting view.
+        fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
+        await vi.waitFor(() => screen.getByTestId('cm-approval-pending'));
+        globalThis.localStorage.setItem(
+          'station-pairing-pending-exchange:v1:http://localhost:3242:code',
+          JSON.stringify(submitted),
+        );
+        fireEvent.click(screen.getByTestId('cm-approval-pending'));
+        await vi.waitFor(() => expect(exchangeAttempts).toBeGreaterThan(0), {
+          timeout: 10_000,
+        });
+
+        // The person stays in Stations (renaming the Station) the whole time.
+        expect(screen.getByTestId('connection-manager')).toBeTruthy();
+        const attemptsWhenOpened = exchangeAttempts;
+        // The claim journal (fake IndexedDB) settles on real I/O turns, so
+        // advance the fake clock in steps and let real I/O run between them.
+        for (let second = 0; second < 60; second += 1) {
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(1_000);
+            for (let turn = 0; turn < 5; turn += 1)
+              await new Promise((resolve) => setImmediate(resolve));
+          });
+        }
+        expect(screen.getByTestId('connection-manager')).toBeTruthy();
+        // Capped 5s backoff over a minute: well over a handful more attempts.
+        expect(exchangeAttempts - attemptsWhenOpened).toBeGreaterThanOrEqual(8);
+        approved = true;
+        await vi.waitFor(
+          () => expect(primeNativeNotificationsMock).toHaveBeenCalledOnce(),
+          { timeout: 10_000 },
+        );
+        expect(
+          globalThis.localStorage.getItem(
+            'station-pairing-pending-exchange:v1:http://localhost:3242:code',
+          ),
+        ).toBeNull();
+        // Connected: the manager that showed the wait closes into the app.
+        await vi.waitFor(() =>
+          expect(screen.queryByTestId('connection-manager')).toBeNull(),
+        );
+      } finally {
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('desktop bundled-server supervision', () => {

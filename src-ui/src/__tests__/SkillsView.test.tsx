@@ -5,6 +5,7 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 
 const selectionState = {
   selectedId: null as string | null,
@@ -29,6 +30,11 @@ const runSkillMock = vi.fn().mockResolvedValue(undefined);
 const uninstallSkillMock = vi.fn();
 const setDockStateMock = vi.fn();
 const setActiveChatMock = vi.fn();
+const requestAuthorityScope = {
+  apiBase: 'http://localhost',
+  authorityKey: 'skills-view-fixture',
+  isCurrent: () => true,
+} satisfies NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 
 vi.mock('@kontourai/station-sdk', () => ({
   useCreateLocalSkillMutation: () => ({
@@ -88,6 +94,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost' }),
+  useHostRequestAuthorityScope: () => requestAuthorityScope,
 }));
 
 vi.mock('../hooks/useActiveChatSessions', () => ({
@@ -211,7 +218,8 @@ describe('SkillsView', () => {
     expect(screen.queryByText('No installed skills yet')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Unable to load skills')).toBeTruthy();
-    expect(screen.getByText('skills read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('skills read failed')).toBeNull();
   });
 
   test('retries the skills read from the failure state', () => {
@@ -247,7 +255,10 @@ describe('SkillsView', () => {
       screen.getByText('release-check.md — imported as release-check'),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open release-check' }));
-    expect(selectionState.select).toHaveBeenCalledWith('release-check');
+    expect(navigateMock).toHaveBeenCalledWith(
+      '/skills/release-check',
+      undefined,
+    );
     expect(screen.queryByRole('dialog', { name: 'Import Skills' })).toBeNull();
   });
 
@@ -263,8 +274,9 @@ describe('SkillsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import 1' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'Import route unavailable',
+      'Try again in a moment.',
     );
+    expect(screen.queryByText('Import route unavailable')).toBeNull();
   });
 
   // #2708: the import fetcher's refusal carries `details`; the dialog shows
@@ -317,7 +329,7 @@ describe('SkillsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'New skill' }));
 
-    expect(selectionState.select).toHaveBeenCalledWith('new');
+    expect(navigateMock).toHaveBeenCalledWith('/skills/new', undefined);
   });
 
   test('starts with a skill overview and guards returning from unsaved authoring', () => {
@@ -912,7 +924,8 @@ describe('SkillsView', () => {
 
       expect(screen.getByRole('alert')).toBeTruthy();
       expect(screen.getByText('Unable to load skill')).toBeTruthy();
-      expect(screen.getByText('detail read failed')).toBeTruthy();
+      expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+      expect(screen.queryByText('detail read failed')).toBeNull();
       expect(
         (
           screen.getByRole('button', {

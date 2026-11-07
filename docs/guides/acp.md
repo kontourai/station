@@ -126,7 +126,7 @@ See `src-server/providers/adapters/acp-adapter.ts` and
 
 ### Connection Lifecycle (Connections Hub)
 
-Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, completing `initialize` and opening a session to read its modes and config options, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity.
+Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, completing `initialize` and opening a session to read its modes and config options, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity. Under a [managed policy](managed-policy.md#engines) that does not allow ACP engines, or that stops agents added from the public ACP registry, `ACPProcess.start()` refuses before anything is spawned, so the probe, a session and sign-in start nothing.
 
 The probe does not leave a new stored session behind on each run (#3411). Agents that persist sessions would otherwise collect one per probe, about 240 a day per connection. If the agent advertises `session/delete`, the probe deletes its session after reading it. Otherwise, if it advertises `session/resume` or `loadSession`, the background sweep reattaches to the session the probe created earlier.
 
@@ -451,7 +451,7 @@ A permission request belongs to the prompt that raised it. When `session/prompt`
 
 ### File System and Terminal Tools (Station → Runtime)
 
-The adapter reuses `createACPBridgeClient`'s file-system and terminal callback handlers unchanged, so the runtime can read/write files and spawn subprocesses on the Station host exactly as before this cutover.
+The adapter reuses `createACPBridgeClient`'s file-system and terminal callback handlers, so the runtime can read/write files on the Station host and ask it to run commands. A command (`terminal/create`) runs on the host only in a session whose server-derived confinement is `host`, one started by a caller who may grant full access (#2497). A session confined to its workspace is answered `-32600` with the reason and nothing starts, because Station has no sandbox for agent terminal commands. On a personal host the commands are terminal sessions the operator can watch ([terminal design](../design/terminal.md#session-kinds)).
 
 The client file-system methods (`fs/read_text_file`, `fs/write_text_file`) act in Station's own process (#3957). Station serves them only for absolute, normalized paths: a relative path would resolve against Station's working directory, so it is refused for every engine (on Windows, `/` counts as a separator). Station does not offer the methods to OpenCode, because OpenCode's own tools write every edit. OpenCode 1.18.18 still sends `fs/write_text_file` after each allowed edit, at the permission's path, which for `apply_patch` is worktree-relative. It does not wait for the answer, so Station refuses that call and reads or writes nothing for it. The edit is still applied by OpenCode's tool, and the refusal does not end the engine (checked against OpenCode 1.18.18). An engine that decides for itself keeps the methods for absolute paths anywhere, as before.
 

@@ -243,7 +243,7 @@ It has only `workflow_dispatch`, no schedule and no merge-blocking latency gate.
 
 ### Mutation safety and interpretation
 
-`test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, readiness-fixture premises, owned-delegation ordering and activity, and repeated adapter stops. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
+`test:mutation:smoke` runs curated source and fixture defects covering rendering, scope and engine identity, repeated reads, storage migration, indexed-event selection, API-base publication, readiness-fixture premises. The readiness cases prove that missing or mismatched decoys fail the fixture premise instead of passing while testing nothing. Select one with `--case=<id>`. The runner registry owns the case inventory; new cases must name the mutation and exact failing assertion. Budget three runs of the target file per case: baseline, injected, and restored.
 
 The runner requires a clean linked worktree, takes an exclusive lock, owns the test process tree, and retains baseline/injected/restored logs and recovery bytes under `.kontourai/test-mutations/`. An import error, missing test, wrong root, timeout, truncated output, or unrelated failure is not catch evidence. Restoration only replaces the exact injected bytes; intervening edits are preserved. After an abnormal interruption, inspect the record and run `npm run test:mutation:smoke -- --recover=<path/to/recovery.json>` on the same revision. Recovery refuses a live owner and verifies original bytes against git. Run the case again after recovery.
 
@@ -327,8 +327,8 @@ The sweep checks out only the workflow's trusted revision and installs no
 dependencies. Its owner is `scripts/pr-ci-supersession.mjs`.
 
 The sidebar names below describe the primary trigger or delivery family.
-`PR:` checks can also run on main pushes; `Main:` qualification runs every six
-hours or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
+`PR:` checks can also run on main pushes; `Main:` qualification runs after main
+pushes, every six hours, or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
 or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
 maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
 Schedules below are cron expressions in UTC; path filters and job admission
@@ -518,6 +518,30 @@ The mutation cases `ci-health-concurrency-threshold`, `ci-health-reentry-commits
 
 ## Running Tests
 
+### Conversation surface evidence
+
+`node scripts/conversation-boundary-gate.mjs` checks shared owner consumption,
+explicit authority, control/capability drift and raw failure sinks, including
+durable publishers and `String(error)`. The conversation baseline is empty.
+Exact manifest contracts distinguish host/domain composition and diagnostic
+Details from conversation policy; a changed fingerprint is reviewed again.
+`failureSurfaces` registers error publishers without misclassifying settings or
+other host views as conversation adapters.
+
+Run the gate's known-bad/control tests and the affected consumer tests. The
+browser route is `tests/conversation-surfaces.spec.ts`: local/direct/relay controls,
+owner/member/guest history, attached continuation and desktop/mobile Inbox.
+Typecheck browser fixtures with `npm run typecheck:e2e` and run
+`npm run test:fixtures:check` before the product and smoke-live lanes. Those runners
+require their supported POSIX host; Windows component fixtures do not qualify
+runtime authentication, process settlement or a native shell.
+
+For component captures use production components and CSS, typed domain/failed
+request fixtures and ordinary user actions. Capture 390/1440 pixels in light/dark,
+retain geometry and PNGs outside source, and open every image. State whether a
+capture shows a complete parent or its shared error region; neither substitutes
+for the actual failed-request or two-Station journey.
+
 ### Default implementation loop
 
 ```bash
@@ -679,8 +703,8 @@ by the `PR source admission` job (`scripts/pr-source-admission.mjs`) before the
 plan, shards and statics run, because it cannot merge and that work would be
 discarded. Only the job's explicit `admitted=false` output defers: mergeability
 still being computed, an API failure or the job failing to start admit the run.
-A deferred run fails `fast-checks` with the annotation naming the conflict. Merge
-or rebase `main` (a new head starts a new run), or, when `main` has since cleared
+A deferred run fails `fast-checks` with the annotation naming the conflict. Merge `main`
+(a new head starts a new run), or, when `main` has since cleared
 the conflict without a head change, use "Re-run failed jobs" on the run: the
 source-policy publisher reads each run's newest attempt, so the rerun supersedes
 the deferred verdict. Merge-queue, dispatch and push runs never evaluate it.
@@ -696,9 +720,9 @@ source proof remains pending; failed or cancelled source proof remains non-passi
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
 PR source computation has repository-wide FIFO ceilings: at most two statics
-jobs and two affected-test shard jobs run across all PRs. Both families split
-work into two buckets; one-shard PRs can use both shard buckets, and larger
-plans retain every shard. Waiting jobs consume no runner. Different-head
+jobs and three affected-test shard jobs run across all PRs. Statics use two
+buckets. Shards use two shared buckets plus a third for odd-numbered shards of
+PRs whose numbers end in 0, 1 or 2; larger plans retain every shard. Waiting jobs consume no runner. Different-head
 supersession still cancels obsolete source runs, including native FIFO
 `pending` waiters, after rechecking the live PR head and run attempt. A normal
 cancellation request is followed to its observed state. If the same obsolete
@@ -707,7 +731,7 @@ one force-cancel after revalidating the PR and run identities and confirming
 that no unfinished job has an assigned runner. Missing terminal confirmation
 fails the controller; cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
-diagnostic jobs use separate source-specific groups. These four PR computation
+diagnostic jobs use separate source-specific groups. These five PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
@@ -787,6 +811,11 @@ npm run test:e2e:product -- --spec=tests/foo.spec.ts          # focused spec wit
 npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # focused test name
 npm run test:connected-agents         # focused connected-agents server suite
 ```
+
+The bounded [CI browser installer](../../scripts/install-playwright-browsers.mjs)
+uses the installed Playwright package. Windows runs its advertised CLI binary
+with Node; other platforms use `npx --no`. Neither path fetches a new Playwright
+package. Browser downloads still use the ambient `PLAYWRIGHT_BROWSERS_PATH`.
 
 New or materially changed test files state their measured wall cost in the
 pull request (the `test:focused` duration line is the receipt). A file that
@@ -971,7 +1000,25 @@ supervisor's terminal workload tests run there too: the workload host with
 real ConPTY shells, and a journey whose shell keeps its pid and journal across
 a handoff of built supervisor and workload host bundles. The command-session
 suite runs there as well: output caps, exits and ACP engine terminals without a
-PTY (its PTY restart cases are POSIX-only). A ConPTY cannot change
+PTY (its PTY restart cases are POSIX-only). So do the terminal session,
+real-socket and retention suites, typing into cmd.exe on ConPTY, their cases
+built on POSIX job control POSIX-only; and the agent-run and script-runner
+suite with the launch builder's cases: package managers' batch shims run
+through cmd.exe, and an approved command reaches cmd with its quotes as shown
+(#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
+runs each terminal process suite in a Vitest invocation of its own after the
+other files, so a forked worker that dies (an open,
+intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
+other suite's results; every invocation runs, and any failure fails the floor
+without a retry. Its coordinator records fork PIDs, numeric and hexadecimal
+exit codes, and signals in `.kontourai/verification-output/windows-workers-*.jsonl`;
+the Windows verification artifact retains those records even when the floor
+fails. The observer does not consume worker exceptions or change verdicts.
+The adapter suite also runs in the floor: its owned children cover concurrent
+native exits/resizes, paused silent-reader retirement, and vendor cancellation.
+Issue #4626 records the captured access violation, handle-table reproduction,
+and dependency repair; retained source/binary receipts establish each run's
+qualification. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
@@ -995,7 +1042,10 @@ candidate changes an input that crate reads: `src-desktop/`, any Cargo
 manifest, lockfile or toolchain file, and the few outside files the crate
 pulls in (listed as `desktop-rust` in `scripts/classify-ci-change.mjs`). The
 classifier is taken from the base commit, and every failure to classify
-compiles. The job, and so the required check, runs either way. TypeScript is
+compiles. A relevant compile also checks the Desktop test build's `webdriver`
+feature, whose WebDriver plugin must use the same Windows crates as Tauri; a
+mismatch compiles elsewhere and fails only on Windows (#3994). The job, and so
+the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
 After a relevant compile, the same job runs the real Credential Manager
 recovery test. It creates uniquely named Station entries, verifies their raw
@@ -1346,8 +1396,8 @@ fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
 each PR head against its own baseline and checks combinations again on the
 merge-queue candidate. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
-the product assertions below fail the job. Gallery is not a required status
-check in the `main` ruleset, so a red Gallery job does not hold a PR on its own.
+the product assertions below fail the job. Read the live `main` ruleset: when Gallery is absent from required contexts,
+a red Gallery job does not hold a PR on its own.
 `Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
 intentional pixel changes alone do not open a main incident. Skipping the
 optional API image review does not hide the comparison report.
@@ -1700,7 +1750,10 @@ accept the arguments) quietly uses `tsc`. Each non-`tsc` compiler keeps its
 own build info file. If `tsc-ts` and `tsc` disagree, treat `tsc` as
 authoritative and report the difference upstream. A test fails when the
 installed `tsc-ts` and `typescript` report different versions, so update them
-together.
+together. The port stays at `tsc-ts` 0.0.10 while the reference compiler is
+7.0.2: the 0.1 series identifies as 7.1.0-beta and is held in Dependabot. Remove
+that hold only with a validated matching compiler pair; the version-parity and
+diagnostic tests remain enforced.
 
 #### Optional Bun diagnostics
 
@@ -2705,6 +2758,8 @@ when Gallery is absent from required contexts, its red result alone must not
 hold an otherwise eligible PR. A demonstrated product defect still needs an
 explicit owner disposition. PR-head checks, synthesized merge-candidate checks,
 and exact-SHA promotion receipts establish different things.
+
+For asset-load failures, inspect `gallery/diagnostics/asset-network-v2.json`. Scoped request summaries are independent of the capped, sampled detail; detail remains nonexhaustive. Inspect summary, dictionary, pending, metadata-error and incomplete fields separately. Emitted-file hashes establish file identity; recognized literal references are a projection, not a complete import graph. `capture.json` reports retention and the post-write identity/budget check (2 MiB JSON, 4 MiB diagnostic folder); `RETAINED` does not mean complete diagnostics or a successful capture. These checks require a single writer and stable directory. Compare the bounded start/end checkout receipts with the hosted checkout record; `workflowEventSha` identifies the workflow event. Disk-cache use and UI-process lifecycle remain unknown. Preserve the original capture failure and avoid inferring its cause from a later passing run.
 
 Use `scripts/gallery-review-evidence.mjs` to link repeated visual review without
 reusing a verdict or skipping capture. Run it in the exact candidate checkout

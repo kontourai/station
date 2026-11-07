@@ -40,6 +40,7 @@ import {
   environmentId,
   executionProfileAgentId,
 } from '@kontourai/station-contracts/execution-target';
+import { MANAGED_POLICY_ENGINE_REFUSED_CODE } from '@kontourai/station-contracts/managed-policy-engines';
 import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
@@ -90,6 +91,7 @@ import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { turnInterruptedContinueBoundaryId } from '@kontourai/station-shared/conversation-message';
 import {
   assertDelegationFileSizes,
   DelegationFileRefusal,
@@ -117,6 +119,7 @@ import {
   type FullAccessGrant,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
+import { managedEngineRefusalBody } from '../../security/managed-engine-limits.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   resolveClientOriginForRequest,
@@ -246,6 +249,9 @@ import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
+  managedApprovalCeilingFailure,
+  refuseAboveManagedCeiling,
+  refuseUngrantedCarriedFullAccess,
   refuseUngrantedFullAccess,
   refuseUngrantedPick,
   requestedApprovalMode,
@@ -403,6 +409,11 @@ const DELEGATION_REFUSAL_CODES = new Set([
 
 function delegationRefusal(c: Context, error: unknown): Response | undefined {
   const code = errorCode(error);
+  // #4515: an engine the managed policy does not allow, with the one body
+  // every managed engine refusal carries (the delegation route had no
+  // mapping for it and answered 400).
+  if (code === MANAGED_POLICY_ENGINE_REFUSED_CODE)
+    return c.json(managedEngineRefusalBody(error), 403);
   if (!code || !DELEGATION_REFUSAL_CODES.has(code)) return undefined;
   return c.json({ success: false, error: errorMessage(error), code }, 403);
 }
@@ -1091,7 +1102,7 @@ function requireForegroundBody(
 // #3568: only POST /chat (and its /background sibling, which never queues)
 // takes `whenBusy`. An older Station strips the unknown key and refuses a busy
 // send as it always did, so the client keeps holding the message.
-const foregroundMessageSchema = foregroundMessageObjectSchema
+export const foregroundMessageSchema = foregroundMessageObjectSchema
   .extend({ whenBusy: z.literal('queue').optional() })
   .superRefine(requireForegroundBody);
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
@@ -1130,6 +1141,33 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
     ),
   })
   .superRefine(requireForegroundBody);
+
+export const conversationInboxBodySchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('steer'),
+      key: z.string().min(1).max(128),
+      message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+      expectedHead: z.string().min(1).max(4096),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('follow-up'),
+      key: z.string().min(1).max(128),
+      message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+      expectedHead: z.string().min(1).max(4096).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('display'),
+      key: z.string().min(1).max(128),
+      message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+      expectedHead: z.string().min(1).max(4096).optional(),
+    })
+    .strict(),
+]);
 
 export const conversationHandoffSchema = foregroundMessageObjectSchema
   .extend({
@@ -2036,6 +2074,7 @@ export function createOrchestrationRoutes(
     resolveInboundDeviceKind?: (
       c: PrincipalResolutionContext,
     ) => 'device' | 'delegation' | undefined;
+    receiverEnvironmentId?: () => string;
     /**
      * #485 receiver request-claim slice: resolves the VERIFIED
      * delegation-kind device grant (kind `delegation` +
@@ -2349,6 +2388,27 @@ export function createOrchestrationRoutes(
       ownerKey: JSON.stringify([userId, tenant?.tenantId ?? null]),
     };
   };
+  const delegationConversationIsLocal = async (
+    c: PrincipalResolutionContext,
+    conversationId: string,
+  ) => {
+    if (deps.resolveInboundDeviceKind?.(c) !== 'delegation') return true;
+    const receiverId = deps.receiverEnvironmentId?.();
+    if (!receiverId || deps.hostedTenantRegistry) return false;
+    const detail = await orchestrationService.readCurrentConversationSession(
+      conversationId,
+      readAuthorityFor(c),
+    );
+    const started = detail
+      ? [...detail.events]
+          .reverse()
+          .find((event) => event.method === 'session.started')
+      : undefined;
+    return (
+      started?.metadata?.environmentId === receiverId &&
+      deps.isRequestPrincipalCurrent?.(c.req.raw) === true
+    );
+  };
   /**
    * One in-flight peer-delegation reconciliation per caller.
    *
@@ -2587,8 +2647,13 @@ export function createOrchestrationRoutes(
     return c.json(
       {
         success: false,
+        // #4512: a held Continue key means that interrupted turn is already
+        // being continued (by Station after a restart, or another member);
+        // resending under a new key would continue it twice.
         error:
-          "This message key belongs to someone else's queued message. Send under a new key.",
+          turnInterruptedContinueBoundaryId(clientTurnId) !== undefined
+            ? 'This interrupted turn is already being continued.'
+            : "This message key belongs to someone else's queued message. Send under a new key.",
         code: 'inbox_key_held',
       },
       409,
@@ -2760,10 +2825,15 @@ export function createOrchestrationRoutes(
       if (postureRefused) return postureRefused;
       // #2436: full access needs the operator in person or a granted device,
       // whether the send carries it as a pick or asks for it on the options.
-      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+      // #4518: a pick above the managed ceiling is refused; a posture carried
+      // on the options is a default, lowered where it applies.
+      const ceilingRefused = refuseAboveManagedCeiling(c, [
         body.setApprovalMode,
-        requestedApprovalMode(body.target.model?.options),
       ]);
+      if (ceilingRefused) return ceilingRefused;
+      const fullAccessRefused =
+        refuseUngrantedFullAccess(c, [body.setApprovalMode]) ??
+        refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
       if (fullAccessRefused) return fullAccessRefused;
       const directoryRefused = refuseUngrantedDirectoryWorkspace(
         c,
@@ -2831,6 +2901,14 @@ export function createOrchestrationRoutes(
         withCanonicalCwd(target, scoped.canonicalCwd),
         projectDefault,
       );
+      if (
+        deps.resolveInboundDeviceKind?.(c) === 'delegation' &&
+        resolvedTarget.environment.kind !== 'current'
+      )
+        return c.json(
+          { success: false, error: 'Receiver-local conversation required' },
+          403,
+        );
       if (body.skillExperience && resolvedTarget.environment.kind !== 'current')
         return c.json(
           {
@@ -3123,6 +3201,8 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      const ceilingFailure = managedApprovalCeilingFailure(c, error);
+      if (ceilingFailure) return ceilingFailure;
       if (error instanceof CreateRequestCapacityError)
         return c.json(
           {
@@ -3286,16 +3366,19 @@ export function createOrchestrationRoutes(
         },
         unreachableWorkspace
           ? 503
-          : // The caller's view of the Agent is stale: a conflict with the
-            // current binding, not malformed input.
-            errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
-              // Another attempt still holds the key: a conflict to retry,
-              // as the inbox's own in-flight refusal answers it.
-              errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
-              errorCode(error) === 'client_turn_input_conflict' ||
-              errorCode(error) === 'inbox_key_held'
-            ? 409
-            : 400,
+          : // #4520: the managed policy does not allow the engine.
+            errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE
+            ? 403
+            : // The caller's view of the Agent is stale: a conflict with the
+              // current binding, not malformed input.
+              errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
+                // Another attempt still holds the key: a conflict to retry,
+                // as the inbox's own in-flight refusal answers it.
+                errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+                errorCode(error) === 'client_turn_input_conflict' ||
+                errorCode(error) === 'inbox_key_held'
+              ? 409
+              : 400,
       );
     } finally {
       releaseDeliveryReceipt?.();
@@ -3346,10 +3429,15 @@ export function createOrchestrationRoutes(
           },
         ]);
         if (postureRefused) return postureRefused;
-        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        // #4518: as on `/chat`, a pick above the managed ceiling is refused.
+        const ceilingRefused = refuseAboveManagedCeiling(c, [
           (body as { setApprovalMode?: unknown }).setApprovalMode,
-          requestedApprovalMode(body.target.model?.options),
         ]);
+        if (ceilingRefused) return ceilingRefused;
+        const fullAccessRefused =
+          refuseUngrantedFullAccess(c, [
+            (body as { setApprovalMode?: unknown }).setApprovalMode,
+          ]) ?? refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
         if (fullAccessRefused) return fullAccessRefused;
         const directoryRefused = refuseUngrantedDirectoryWorkspace(
           c,
@@ -3437,7 +3525,8 @@ export function createOrchestrationRoutes(
                 }
               : {}),
           },
-          409,
+          // #4520: the managed policy does not allow the engine.
+          errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE ? 403 : 409,
         );
       }
     },
@@ -3581,28 +3670,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/conversations/:conversationId/inbox',
-    validate(
-      z.discriminatedUnion('kind', [
-        z.object({
-          kind: z.literal('steer'),
-          key: z.string().min(1).max(128),
-          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
-          expectedHead: z.string().min(1).max(4096),
-        }),
-        z.object({
-          kind: z.literal('follow-up'),
-          key: z.string().min(1).max(128),
-          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
-          expectedHead: z.string().min(1).max(4096).optional(),
-        }),
-        z.object({
-          kind: z.literal('display'),
-          key: z.string().min(1).max(128),
-          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
-          expectedHead: z.string().min(1).max(4096).optional(),
-        }),
-      ]),
-    ),
+    validate(conversationInboxBodySchema),
     async (c) => {
       const conversationId = param(c, 'conversationId');
       const inbox = deps.threadInbox;
@@ -3618,6 +3686,11 @@ export function createOrchestrationRoutes(
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       const body = getBody(c);
       const actor = resolveDispatchActor(deps, c);
+      if (!(await delegationConversationIsLocal(c, conversationId)))
+        return c.json(
+          { success: false, error: 'Receiver-local conversation required' },
+          403,
+        );
       const input = {
         conversationId,
         clientTurnId: body.key,
@@ -3932,6 +4005,18 @@ export function createOrchestrationRoutes(
             },
             400,
           );
+        if (
+          deps.resolveInboundDeviceKind?.(c) === 'delegation' &&
+          (body.environment?.kind !== 'current' ||
+            !(await delegationConversationIsLocal(
+              c,
+              param(c, 'conversationId'),
+            )))
+        )
+          return c.json(
+            { success: false, error: 'Receiver-local conversation required' },
+            403,
+          );
         // #2377 slice C3b: an agent continues without an approval posture.
         const postureRefused = refuseCarriedPosture(c, [
           {
@@ -3952,10 +4037,14 @@ export function createOrchestrationRoutes(
           },
         ]);
         if (postureRefused) return postureRefused;
-        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        // #4518: as on `/chat`, a pick above the managed ceiling is refused.
+        const ceilingRefused = refuseAboveManagedCeiling(c, [
           body.setApprovalMode,
-          requestedApprovalMode(body.model?.options),
         ]);
+        if (ceilingRefused) return ceilingRefused;
+        const fullAccessRefused =
+          refuseUngrantedFullAccess(c, [body.setApprovalMode]) ??
+          refuseUngrantedCarriedFullAccess(c, body.model?.options);
         if (fullAccessRefused) return fullAccessRefused;
         // #2377 slice C2a: a follow-up stays in the caller's scope.
         const scopeRefused = refuseOutOfScopeDispatch(
@@ -4029,6 +4118,8 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        const ceilingFailure = managedApprovalCeilingFailure(c, error);
+        if (ceilingFailure) return ceilingFailure;
         if (error instanceof ConversationTurnQueuedError)
           return queuedFollowUpResponse(
             c,
@@ -4090,13 +4181,16 @@ export function createOrchestrationRoutes(
                 }
               : {}),
           },
-          // Another attempt still holds the key: a conflict to retry, as
-          // the inbox's own in-flight refusal answers it.
-          errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
-            errorCode(error) === 'client_turn_input_conflict' ||
-            errorCode(error) === 'inbox_key_held'
-            ? 409
-            : 400,
+          // #4520: the managed policy does not allow the engine.
+          errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE
+            ? 403
+            : // Another attempt still holds the key: a conflict to retry, as
+              // the inbox's own in-flight refusal answers it.
+              errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+                errorCode(error) === 'client_turn_input_conflict' ||
+                errorCode(error) === 'inbox_key_held'
+              ? 409
+              : 400,
         );
       }
     },
@@ -4133,12 +4227,11 @@ export function createOrchestrationRoutes(
         },
       ]);
       if (postureRefused) return postureRefused;
-      const fullAccessRefused = refuseUngrantedFullAccess(c, [
-        requestedApprovalMode(
-          (body as { target?: { model?: { options?: unknown } } }).target?.model
-            ?.options,
-        ),
-      ]);
+      const fullAccessRefused = refuseUngrantedCarriedFullAccess(
+        c,
+        (body as { target?: { model?: { options?: unknown } } }).target?.model
+          ?.options,
+      );
       if (fullAccessRefused) return fullAccessRefused;
       const directoryRefused = refuseUngrantedDirectoryWorkspace(
         c,
@@ -4513,6 +4606,8 @@ export function createOrchestrationRoutes(
       );
       return c.json({ success: true, data });
     } catch (error) {
+      const ceilingFailure = managedApprovalCeilingFailure(c, error);
+      if (ceilingFailure) return ceilingFailure;
       if (
         error instanceof DelegationFileRefusal ||
         error instanceof AttachmentStageError
@@ -4928,11 +5023,10 @@ export function createOrchestrationRoutes(
           },
         ]);
         if (postureRefused) return postureRefused;
-        const fullAccessRefused = refuseUngrantedFullAccess(c, [
-          requestedApprovalMode(
-            (getBody(c) as { modelOptions?: unknown }).modelOptions,
-          ),
-        ]);
+        const fullAccessRefused = refuseUngrantedCarriedFullAccess(
+          c,
+          (getBody(c) as { modelOptions?: unknown }).modelOptions,
+        );
         if (fullAccessRefused) return fullAccessRefused;
         // #2377 slice C2a: a follow-up to a task stays in the caller's scope.
         const scopeRefused = refuseOutOfScopeDispatch(
@@ -5113,6 +5207,8 @@ export function createOrchestrationRoutes(
             setTimeout(roomAdmission.releasePublication, 0);
         }
       } catch (error) {
+        const ceilingFailure = managedApprovalCeilingFailure(c, error);
+        if (ceilingFailure) return ceilingFailure;
         // #484 phase A: a portable continuation refused for lack of a
         // current offer admission is a 403, like the create-path refusal.
         // Same wrapped-code mapping as the create path.
@@ -7087,15 +7183,18 @@ export function createOrchestrationRoutes(
                 }
               : {}),
           },
-          error instanceof AdoptionContinuationInProgressError ||
-            indeterminate ||
-            (error instanceof OrchestrationCommandDispatchError &&
-              (error.code === 'client_turn_input_conflict' ||
-                error.code === 'request_event_changed' ||
-                error.code === 'request_verification_unavailable' ||
-                error.code === 'request_content_not_loaded'))
-            ? 409
-            : 400,
+          error instanceof OrchestrationCommandDispatchError &&
+            error.code === MANAGED_POLICY_ENGINE_REFUSED_CODE
+            ? 403
+            : error instanceof AdoptionContinuationInProgressError ||
+                indeterminate ||
+                (error instanceof OrchestrationCommandDispatchError &&
+                  (error.code === 'client_turn_input_conflict' ||
+                    error.code === 'request_event_changed' ||
+                    error.code === 'request_verification_unavailable' ||
+                    error.code === 'request_content_not_loaded'))
+              ? 409
+              : 400,
         );
       }
     },
@@ -7190,6 +7289,7 @@ export function createOrchestrationRoutes(
       // of the process lifetime.
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
+      let receiverCurrencyTimer: ReturnType<typeof setInterval> | undefined;
       let stopActivityFlush: (() => void) | undefined;
       let clearPending: (() => void) | undefined;
       // General frames use a separate event name and no id, so Last-Event-ID
@@ -7228,6 +7328,8 @@ export function createOrchestrationRoutes(
             // as present (in the roster) and subscribed. All
             // three are idempotent; `finally` repeats them harmlessly.
             stopKeepAlive?.();
+            if (receiverCurrencyTimer !== undefined)
+              clearInterval(receiverCurrencyTimer);
             stopActivityFlush?.();
             clearPending?.();
             unsub?.();
@@ -7244,6 +7346,21 @@ export function createOrchestrationRoutes(
         // snapshot slower than the deadline would reconnect forever. Each
         // frame is a single write, so a ping cannot land inside another frame.
         stopKeepAlive = sseKeepalive(stream);
+        if (deps.resolveInboundDeviceKind?.(c) === 'delegation') {
+          receiverCurrencyTimer = setInterval(() => {
+            let current = false;
+            try {
+              current = deps.isRequestPrincipalCurrent?.(c.req.raw) === true;
+            } catch {
+              /* Unreadable authority ends the lease. */
+            }
+            if (!current) {
+              closeReason ??= 'authorization-expired';
+              stream.abort();
+            }
+          }, 250);
+          receiverCurrencyTimer.unref();
+        }
         // Ordering fence (R4): subscribe and buffer live events FIRST, before
         // any `await` below can yield to an event that was appended and
         // emitted concurrently. Nothing buffered here is written until after
@@ -7730,6 +7847,8 @@ export function createOrchestrationRoutes(
           stream.abort();
         }
         stopKeepAlive?.();
+        if (receiverCurrencyTimer !== undefined)
+          clearInterval(receiverCurrencyTimer);
         stopActivityFlush?.();
         clearPending?.();
         unsub?.();

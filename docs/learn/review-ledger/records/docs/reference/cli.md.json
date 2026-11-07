@@ -258,7 +258,9 @@
 
     "src-server/routes/operations/automations.ts",
 
-    "packages/sdk/src/client/delegations.ts"
+    "packages/sdk/src/client/delegations.ts",
+
+    "packages/cli/src/__tests__/telemetry-command.test.ts"
   ],
 
   "checks": [

@@ -12,6 +12,7 @@ import {
   downloadSessionTape,
   readSessionTapeFile,
 } from '../../hooks/orchestration/replay/tape-file';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 export interface ReplayCaptureSource {
   apiBase: string;
@@ -41,7 +42,7 @@ export function ReplayCaptureControls({
       setError(undefined);
       action();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(describeStationFailure(cause).body);
     }
   };
   return (
@@ -141,7 +142,7 @@ export function ReplayCaptureControls({
             });
             onOpen();
           } catch (cause) {
-            setError(cause instanceof Error ? cause.message : String(cause));
+            setError(describeStationFailure(cause).body);
           }
         }}
       />

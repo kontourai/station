@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. Implemented: the scoped session service, supervisor workloads (protocol 1.3) with the in-process fallback, command sessions for agent terminals, retention settings and restore after a restart, the same-origin gateway with operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` (with a screen reader mode setting, its keys listed in the shortcut list, and replay on reattach), the Coding cutover onto it, and the plugin terminal target. The legacy `port + 1` stack is removed. Proposed and not implemented: splits and groups, terminal layout shortcuts, a standalone terminal route, the script runner and agent terminal tools, and the browser broker (DataChannel) route, which is intentionally unsupported. See [Verification](#verification) for what is not verified.
+Status: In progress under #3994. Implemented: the scoped session service, supervisor workloads (protocol 1.3) with the in-process fallback, command sessions for agent terminals, retention settings and restore after a restart, the same-origin gateway with operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` (with a screen reader mode setting, its keys listed in the shortcut list, and replay on reattach), the Coding cutover onto it, and the plugin terminal target. The legacy `port + 1` stack is removed. Also implemented: the script runner, agent terminal tools with per-run approval, and Add to chat as a composer chip (see [Agent integration](#agent-integration)). Proposed and not implemented: splits and groups, terminal layout shortcuts, a standalone terminal route, and the browser broker (DataChannel) route, which is intentionally unsupported. See [Verification](#verification) for what is not verified.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -20,6 +20,12 @@ workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts)
 `workloads` (protocol 1.3), the supervisor's workload host owns the PTY and its
 journal, and the core reads it through the workload protocol (see Shell host
 below); otherwise the service owns both.
+
+The adapter admits a Windows launch only after node-pty publishes a positive
+PID on its pinned output-pipe readiness signal. This works without application
+output. Early exit, pipe failure, or the five-second startup bound rejects the
+launch before PID tracking; cancellation closes its owned native allocation and
+pipes. The dependency's worker callback fences late readiness after cancellation.
 
 A personal-operator HTTP control seam at
 `/api/projects/:slug/terminal-sessions` exercises the production service without
@@ -42,7 +48,9 @@ close endpoint still used the legacy service; Delivery 6 removed it.
 Session metadata and journal output survive disposal and a new service instance.
 In-process shells do not survive server exit, and restored sessions are ended
 and never execute their old input again. Supervisor workloads do survive (see
-Shell host). Opening with a legacy terminal id imports
+Shell host). Disposal waits for in-process stops already in progress before
+flushing journals and persisting; a failed or timed-out stop is reported.
+Opening with a legacy terminal id imports
 a provenance-bound history filename once and retains the mapping in the durable
 record. The legacy writer emits a receipt only for a fresh file or a previously
 verified receipt; it records the Project id captured when the shell opened,
@@ -82,7 +90,7 @@ Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
 queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
 a backend that ignores backpressure or an explicitly undersized queue can
 still exceed that hard bound. Such overload is latched and uses the same owned
-HUP-to-KILL escalation as close. This is distinct from an ordinary burst under
+termination path as close. This is distinct from an ordinary burst under
 default limits. The real PTY suite sends 8 MiB through disk and memory modes,
 checks continued shell life and retained bounds (memory mode need not pause), then recreates the disk-backed
 service and reads its journal after clean disposal. This provides
@@ -91,7 +99,8 @@ filesystem persistence across service recreation, not power-loss qualification.
 The retention settings, clear-history actions and doctor reporting have since
 shipped (see [Journal](#journal) and [Migration](#migration)). Restart and
 command sessions have their server side (see Session kinds and Sessions below);
-the UI offers Restart shell for an exited shell, and no command-session UI.
+the UI offers Restart shell for an exited shell and runs package scripts as
+command sessions with their own tabs; ACP command sessions have no UI.
 `terminal:observe` is
 governed by the Admin ceiling; no preset gains it. Its description names future
 remote-watch admission. The complete scope vocabulary uses 253 of the parser's
@@ -143,7 +152,8 @@ The [real-socket suite](../../src-server/services/terminal/__tests__/terminal-ga
 uses injected identities and current grants with real PTYs. Its observer and
 revocation evidence qualifies that gateway/service boundary, not live pairing.
 The listener integration suite proves the registered gateway mounts and stops
-on the API listener. Windows/ConPTY and remote/native routes remain unqualified.
+on the API listener. Remote and native routes remain unqualified; the suite
+also runs on ConPTY (see [Verification](#verification)).
 
 The gateway evidence stops at b1. The public SDK's output-only
 [`TerminalOutputSession`](../../packages/sdk/src/client/terminal-output-session.ts)
@@ -226,8 +236,9 @@ records the admission and its residual risks.
 The real-socket evidence is in the
 [admission suite](../../src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts)
 (platform-independent, real sockets and the SDK store, scripted PTY) and the
-POSIX [real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts).
-Physical iOS, Android and Desktop devices, Windows/ConPTY and a browser broker
+[real-PTY suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts),
+which runs on POSIX PTYs and on ConPTY (see [Verification](#verification)).
+Physical iOS, Android and Desktop devices and a browser broker
 (DataChannel) route are not qualified: the broker route has no socket path and
 stays refused at the client. The legacy listener, port discovery and
 `TerminalService` are removed (Delivery 6).
@@ -248,6 +259,21 @@ pool of 16 records, with output capped per command, apart from every other
 session. A pool only expires its own ended records, so a busy agent can never
 expire a person's shell history, and commands get no shell number and are
 never restored.
+
+Stopping a command, or its output cap, ends what it started, not only the
+command: [termination](../../src-server/services/terminal/command-process.ts)
+resolves once none of it remains, and fails otherwise. On POSIX the command
+leads its own process group, signaled SIGTERM then SIGKILL; after the leader
+exits, the group is checked continuously while termination runs and signaled
+only right after a check shows members, and once seen empty it is never
+signaled again, so a reused group id is not. On Windows the command itself is
+ended at once (Node still holds its handle, so its pid names no other process),
+without waiting on a process-table read; then each process proven to
+descend from the command (parent pid plus birth order, the owned-process
+sweep's rule) is ended by pid until the process table shows none; a
+descendant whose parent had already exited before the stop cannot be proven
+and is not reached. A command that exits by itself leaves background children
+it started running, as before.
 
 When a slot is needed, the oldest ended or failed record in the same pool,
 eligible for the caller's operate authority, expires: its journal and cache entry are discarded
@@ -270,8 +296,37 @@ The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
 unknown or changed tty identity refuses all census signals; the adapter kills
 its owned shell handle and reports the cleanup failure instead of guessing
 at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
-The real PTY tests qualify macOS cleanup of the tested descendants. Windows,
-other POSIX hosts and already-daemonized workloads are not newly qualified;
+Before any census signal, a new POSIX child may still be attaching its
+controlling tty. The adapter retains the native fork's device name and waits
+within the existing census/deadline bounds for that exact binding. A different
+concrete device, an unknown binding after admission, or an ownership change
+still refuses signals; a missing binding never becomes successful cleanup.
+The backend is pinned to node-pty `1.2.0-beta.18`, whose Windows native handle
+registry is synchronized across spawn and exit threads. This pin is a published
+prerelease. Managed Linux installs retain the approved source-build path;
+upstream Linux prebuilds are not selected by directory presence. On Windows the operation ends the shell's process tree with `taskkill /T /F`
+before the ConPTY closes, as the supervisor's workload host does: closing a
+ConPTY ends only processes attached to its console, so before this a
+descendant started detached from every console outlived close and a core
+stop (#3994). After a successful `taskkill` both hosts wait for the exit.
+After an admitted shell exits, the adapter releases it at most once and closes
+its owned pipes, including for a silent or paused process. Its console process
+listing is answered empty: after exit the listing helper cannot attach, and its
+delayed fallback could signal a reused shell PID (#3994). A PID-zero startup
+failure already released by the producer does not receive a second native kill;
+positive-PID failure cleanup retains one release owner. Before exit, public
+`kill()` remains only the reported fallback for a tree `taskkill` that could not
+end the shell.
+`taskkill` follows
+parent links, so a descendant whose parent already exited is not found
+(from its documented behavior; not exercised here).
+Station pins published `node-pty@1.2.0-beta.18` because its native Windows prebuilds include the [PTY-handle locking repair](https://github.com/microsoft/node-pty/pull/922). The 1.1.0 backend concurrently erased and read its global handle vector without synchronization; patching only JavaScript cannot repair that native race. This does not identify a hosted worker crash without its native dump.
+
+The [managed Windows lifecycle patch](../../patches/node-pty-1.2.0-beta.18.patch) observes socket close independently of pipe readiness and cancels pending startup or releases the native console without waiting for first output. Since the new backend starts asynchronously, the adapter waits for a positive PID before workload tracking, pauses reads until its first data subscriber, and retains an observed exit for a late subscriber. Startup failures reject and release the owned worker. The [adapter tests](../../src-server/adapters/__tests__/node-pty-adapter.test.ts) exercise initial output/exit, invalid-directory refusal, and real first-output notification held across termination. The process-group cleanup deadline remains unchanged.
+
+The real PTY tests qualify macOS cleanup of the tested descendants and, on
+ConPTY, of an attached, a `windowsHide` and a detached descendant. Other POSIX
+hosts and already-daemonized workloads are not newly qualified;
 supervisor workload custody remains the route to stronger survival/cleanup.
 A fully detached `setsid` job that has lost both ancestry and its controlling
 tty is outside this census. A real-PTY negative control observes that survivor
@@ -348,6 +403,13 @@ Settings › Appearance › Terminal screen reader mode (`terminalScreenReader`)
 off by default and restored by Restore device defaults. Shell-integration
 marks, images and ligatures remain deferred.
 
+Output reaches the worker under the socket's credit: the SDK store
+acknowledges output only after each view's worker reports it parsed, so a
+flooding program waits for the emulator instead of queueing in front of it.
+A view holds at most 4 MiB it has not seen parsed, and the worker at most
+4 MiB before it starts; past either bound the view resets and replays the
+session's retained output instead of rendering a stream with a gap.
+
 A view handed a different session while mounted (Reconnect terminal, a
 read-only change) resets its emulator to a fresh terminal (RIS plus
 scrollback) before the new attachment replays, since a fresh attachment
@@ -361,6 +423,37 @@ other Ctrl+Shift letter chords elsewhere are left to the page, so Station's
 command palette, Settings and shortcut list work from a focused terminal; the
 rest go to the program. The shortcuts sheet (`?` or ⌘/) lists the view's keys
 under "In a terminal" from the SDK's `terminalViewShortcuts`.
+
+Phone keyboards (#3994). Gboard on Android Chrome, recorded on an emulator,
+sends each letter as a keydown with keyCode 229 and then a
+`beforeinput insertText`, and its Send (Enter) and Backspace keys as keydowns
+whose `key` is set and whose `code` is empty. The view derives a missing code
+from the key, since the encoder knows keys only by code: Send had typed
+nothing, so a command never ran. The keyboard's own insertions and deletions
+are left in the hidden input, which is emptied when a line is sent, so the
+keyboard's view of the field stays true: cancelling them had left Gboard
+deleting from a field it believed held text, which fires no event, and
+Backspace was lost.
+
+Selection gestures carry only the options Ghostty accepts for their type: a
+press takes a time and a repeat window (500 ms and a cell's width), and a drag
+takes the grid geometry. Sending both to both made every pointer selection
+fail, which on a phone's long press stopped the terminal ("could not start").
+A double click selects a word, and so does the double press a long touch
+sends; the long press also opens the terminal menu on that selection.
+
+A hidden view (another tab, a put-away region, the page in the background)
+gives its WebGL context back. Shown again, it restores it through the
+`WEBGL_lose_context` handle taken while the context was live (a lost context
+answers `getExtension` with null, so the view had stayed blank) and uploads
+the whole glyph atlas into the new texture (otherwise only the cursor was
+drawn). A context the browser does not give back within 1.5 s, or one it takes
+from a shown view, is replaced by the Canvas 2D renderer. The
+[renderer suite](../../packages/sdk/src/__tests__/terminal-view/webgl2-renderer.test.ts),
+the [engine suite](../../packages/sdk/src/__tests__/terminal-view/terminal-engine.test.ts)
+and the Android keyboard cases in the
+[controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+fail when any of these is removed.
 
 A view refits on every change to its box through one `ResizeObserver`:
 renderer and emulator at once, the PTY with the latest size at most every
@@ -496,7 +589,7 @@ only additions to the host interface. Write, resize, signal and terminate
 stay on the process handle, and reads on its journal. The
 [supervisor design](process-supervisor.md) covers the protocol, kill-tree
 escalation and the evidence. Windows job objects per workload, Settings
-controls for the host, and the UI for command sessions are not implemented.
+controls for the host, and the UI for ACP command sessions are not implemented.
 
 The supervisor survives a core server restart or upgrade, not a machine
 reboot. After a reboot, Station restores instead.
@@ -511,10 +604,17 @@ output stays above the divider and nothing is re-run. A shell the supervisor
 still runs is reattached, never restored over (#4412); one that ended by
 itself while its host kept running (`attach` answers `'ended'`) stays ended.
 Only shells restore: agent and server-owned launches are programs, so they
-stay ended. A shell restores only while its Project exists and its directory
-still resolves to the same path. There is no group or split record (owner
-decision, 2026-10-31); tabs come back because the binding's session list
-does.
+stay ended. A shell restores only inside its binding as it resolves at that
+start (#492): the Project's directory, or a chat's directory read as the
+chat's recorded owner, since no request exists then. Its recorded directory
+must still exist, resolve to the same path and lie inside that root, so a
+Project or chat that moved from one directory to another never reopens a
+shell where it used to be. A shell that is not reopened stays ended with the
+reason recorded on it (`restoreRefused`) and written below its earlier
+output ("not restored after restart: its directory is no longer inside its
+Project or chat", or "its Project no longer exists"), and it is not tried
+again. There is no group or split record (owner decision, 2026-10-31); tabs
+come back because the binding's session list does.
 
 #### Session kinds
 
@@ -561,6 +661,26 @@ a session; reattaching the engine that started it is not implemented, so its
 ACP connection does not survive. Hosted hosts have no terminal sessions and
 keep plain child processes for agent terminals.
 
+**Implemented (#2497, agent command authority).** The engine chooses an ACP
+command's program, so it runs only under its session's execution authority,
+never as a server-owned launch. That authority is the session's
+server-derived confinement (#2493): the start's, then the one each turn
+carries, so a revoked full-access grant also covers the session's next
+command. Station has no confinement provider for agent terminal commands (an
+ACP engine has no process sandbox), so a command runs on this computer only
+in a `host` session, one started by a caller who may grant full access (the
+operator in person, or a device holding `approval:full-access`). A
+`workspace` session's `terminal/create` is answered with `-32600` and the
+reason, and nothing is recorded or started. Where Station's terminal tools
+are offered, the agent can ask through `terminal_run` instead, which the
+operator approves per run. On a personal host
+[`TerminalSessions.openAgentCommand`](../../src-server/services/terminal/terminal-sessions.ts)
+enforces this: the session must be host-confined, the scope must be its own
+`thread:<id>` binding, and the host's agent-command check (its Project still
+exists) must allow it, before the record is written and again at the spawn.
+A host without terminal sessions applies the same confinement rule before it
+starts a plain child process. Owner-run sessions keep working as before.
+
 ### Sessions
 
 Every session has a server-generated `terminalId` that is unique across the
@@ -597,9 +717,10 @@ the journal is sealed so the next run starts a new segment (a journal reopened
 by a supervisor workload starts one too), and the record carries
 `restart: {count, afterSeq, at}`. The new run drops the previous run's end
 time and `hostStopped` marker, so its own exit dates age expiry and decides
-whether it is restored after a host restart. Command sessions and server-owned
-launches are refused: no program is stored for them. The Coding terminal
-offers Restart shell when its shell has exited
+whether it is restored after a host restart. A package script is resolved
+again by name; other command sessions and server-owned launches are refused:
+no program is stored for them. The Coding terminal
+offers Restart shell when its shell has exited, and Restart for an ended script
 (`TerminalSession.restart()`); Reconnect stays for a lost connection, and a
 watch-only view offers neither.
 
@@ -630,6 +751,21 @@ operate); running terminals keep theirs and are counted. Each value outside
 its range, a relative location and a total below the per-terminal size are
 refused with the setting's name, not clamped; an agent cannot move the
 location. Defaults are starting points to tune once real usage is measured.
+
+Journals are private to the user Station runs as. On POSIX their directories
+are 0700 and files 0600. On Windows those modes set no ACL, and a journal
+would inherit its location's (on a non-system drive or a shared folder this
+commonly admits Authenticated Users or Users), so before anything is written
+the [journal privacy](../../src-server/services/terminal/terminal-journal-privacy.ts)
+establishes the protected current-user DACL Station uses for its other
+private files. A location Station owns (the default, or one it created) is
+protected once and its journals inherit that; an existing folder the person
+chose keeps its own ACL and each journal directory in it is protected
+instead, and so is a journal moved there. A location where this cannot be
+established (a drive without Windows permissions) is refused when it is
+chosen in Settings, and a terminal is refused rather than journaled there.
+The [privacy suite](../../src-server/services/terminal/__tests__/terminal-journal-privacy.process.test.ts)
+reads the real DACLs on Windows.
 
 ### Transport
 
@@ -833,8 +969,38 @@ is the sample plugin.
 
   Both are recorded in the thread's activity.
 
-  The script runner and both agent tools are not implemented. An agent's own
-  ACP terminal commands run as command sessions (see Session kinds).
+**Implemented (#3994).**
+
+- **Script runner.** The Coding terminal's New terminal list offers the
+  binding directory's `package.json` scripts. Choosing one runs it by name as a
+  command session (`launch: {kind: 'script', name}`, no PTY), through the
+  package manager its `packageManager` field or lockfile names. The script's
+  tab shows Running, Exit N (positive for 0) or Failed. Restart resolves the script again
+  by name under the same id, so the earlier run stays above the new one. An
+  ended run keeps its tab until it is closed or the script runs again. The
+  view starts a new line at each bare line feed, since a program without a
+  PTY writes no carriage returns; the journal keeps its bytes. Script runs are
+  retained with shells, not in the agent command pool. Running scripts from
+  chat code blocks and the end-marker busy check remain open.
+- **Agent tools.** `terminal_run` records a request and returns at once; the
+  person sees a card above the composer with the exact command and the
+  absolute directory, and approves (Run) or declines that one run; for a
+  minute after an approved run ends, a note says how it ended. Owner
+  decision: ask each time, with no remembered approval. An approved run starts
+  as a command session in the agent's `thread:<id>` binding as the approving
+  person, under their terminal authority, and is refused if its directory no
+  longer resolves to the one shown. `terminal_read` follows a run's state and
+  pages its output by sequence. An unanswered request expires after ten
+  minutes, at most three wait per chat and 64 across all chats (expired ones
+  are swept before another is admitted), at most 512 are retained, and
+  requests live in memory. Reading a
+  terminal the person shares with the thread is not implemented; an agent
+  reads only its own runs.
+- **Add to chat.** The terminal menu's Add to chat puts the selection in the
+  chat's composer as a terminal chip, after the credential scan. It names the
+  shell's directory when the host can read it; a supervisor workload's cannot
+  be read, so that chip names none. The chip is sent with the next message as
+  a literal fenced block. Line ranges are not recorded.
 
 ## Migration
 
@@ -843,7 +1009,7 @@ is the sample plugin.
 | `port + 1` WebSocket, `GET /api/system/terminal-port`, SDK `fetchTerminalPort` | Removed ([decision](../decisions/terminal-same-origin-only.md)) |
 | `DELETE /api/projects/:slug/terminals/:terminalId` | Kept, backed by the new session store; the server rejects an id whose session is not in `:slug` |
 | Project-scoped terminal ids | Mapped once to new instance-unique ids when their history and stored tabs are imported |
-| `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept |
+| `/api/orchestration/processes/terminals*` and `TerminalProcessSummary`/`Detail` | Re-pointed at the journal; contract shapes kept, except `cwd` is null for a caller who may only observe |
 | `POST /api/coding/exec` fallback | Kept for hosts without node-pty |
 | `PAIRING_SCOPE_TERMINAL_OPERATE` | Kept; `terminal:observe` added |
 | `terminalShell` setting, `TerminalCapability`, system-status `terminal` | Kept |
@@ -896,13 +1062,116 @@ verification.
   merges.
 - End to end: open, reload, restart the server, and confirm the same shell
   (same PID) and no lost output; repeat on the mobile webview and Windows.
+  On Windows this runs as
+  [`tests/live/terminal-restart-journey.mjs`](../../tests/live/terminal-restart-journey.mjs)
+  (`npm run test:live:terminal-restart -- --out <dir>`):
+  real Chromium against an isolated `station start` (own temp home and
+  ports), switching on terminal screen reader mode in Settings and reading
+  the rendered text from its mirror. See the Windows/ConPTY item for the run.
 - Retention and restore (#3994): the
   [retention suite](../../src-server/services/terminal/__tests__/terminal-retention.process.test.ts)
-  runs real POSIX PTYs for restore after a host restart (new PID, same
+  runs real PTYs for restore after a host restart (new PID, same
   directory, divider, no re-run), no restore over a reattached or
   self-ended shell, age expiry, location migration, history off, the total
   budget, usage and clearing, stable ordinals, and a two-client race on a
-  real loopback server that yields one shell. ConPTY is not qualified there.
+  real loopback server that yields one shell.
+- Windows/ConPTY (#3994): the session, real-socket and retention suites type
+  into cmd.exe on ConPTY through a
+  [shared shell fixture](../../src-server/services/terminal/__tests__/fixtures/real-shell.ts),
+  beside the supervisor-host, command-session and
+  [real-supervisor handoff](../../src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts)
+  suites that already did; the required Windows PR check runs all six
+  (`npm run test:windows:portable`), with the script-runner and agent-run
+  suite (below). Cases built on POSIX job control (fork, `setsid`, HUP, `ps`)
+  stay POSIX-only. ConPTY is a renderer, not a byte pipe, and the suites assert the
+  differences: the journal records ConPTY's rendering (cursor moves at
+  wrapped rows, a title reset after each program, a whole-screen repaint
+  after a resize), so a newline-free 8 MiB stream becomes about 105,000 rows
+  and the 5000-line retention keeps the newest of them; and cmd's `type`
+  never hands ConPTY a file's 8-bit C1 controls. ConPTY may also write a title update or a
+  cursor show between two characters of one printed word, so on Windows a
+  check of printed text reads the characters with their ECMA-48 control
+  functions removed, while checks of the link filters read the bytes.
+
+  Run on Windows 11 Pro 26200 (Ryzen 5 7600X, Node 24.18.0, node-pty 1.1.0,
+  cmd.exe, Chromium 156): the vitest command of `test:windows:portable` (its 13
+  files, `--maxWorkers=1 --no-file-parallelism`) passed 157 tests (31
+  POSIX-only skipped) at revision `76af54e`, on a saturated host. Fault injection,
+  each reverted with `git checkout` and rerun green: removing the Windows
+  tree kill, making ConPTY resize a no-op, skipping restore, starting a
+  resumed channel one record late, disabling the open-or-adopt reservation
+  and writing the old restore divider each failed the case that names the
+  behavior.
+  `node tests/live/terminal-restart-journey.mjs` passed at `8d1c4f9` (the
+  same code; only this document uncommitted): a reload and
+  `station restart` (a supervisor handoff) kept the shell's PID, a program
+  printing 40 numbered lines across both lost none and the journal's
+  sequence stayed contiguous; a full stop and start restored the same
+  terminal under a new PID in the same directory, with the earlier output
+  and the divider above it in the rendered terminal.
+
+  Fixed on the way (#3994): the in-process host's close and core stop left a
+  shell's descendants without a console running (see
+  [whole-store retention](#whole-store-retention-and-process-custody)); and a
+  restored shell's divider and earlier output were erased from the rendered
+  terminal by the new ConPTY's first frame, which clears the screen and
+  paints from its top-left. On Windows the divider is now followed by a
+  screenful of line feeds, so both move into scrollback first. And on a
+  loaded host, close followed `taskkill` with node-pty's `kill()` when the
+  exit event was late, which signalled the dead shell's pid five seconds on,
+  and a first fix that skipped `kill()` left every closed shell's ConPTY open
+  (see the same section). The adapter suite closes real ConPTY shells by
+  `taskkill` and by `exit`, and fails on a leaked output-reader thread or a
+  later signal to the old pid; the supervisor-host suite holds the exit back
+  past the old grace and fails if the host calls `kill()`.
+- Execution authority (#2497, #492): the
+  [authority suite](../../src-server/services/terminal/__tests__/terminal-execution-authority.test.ts)
+  runs on every platform with a fake shell host. It covers a shell kept ended,
+  with its recorded and journaled reason, when its binding moved, moved
+  beneath a subdirectory, or no longer resolves, and one reopened when the
+  binding still resolves where it was. It also covers an agent command
+  refused for a `workspace` or unstamped session, for another binding, for a
+  session re-confined before the spawn, and without the host's check. The
+  [adapter suite](../../src-server/providers/__tests__/acp-adapter-terminal-authority.test.ts)
+  drives `terminal/create` through the callbacks `AcpAdapter` builds for a
+  live session, with and without terminal sessions: a `host` session runs,
+  a `workspace` one gets `-32600`, and a turn that re-confines the session
+  refuses its next command.
+- Phone (#3994, 2026-11-04, revision `031fed73e8`): real Android Chrome
+  124.0.6367.219 with Gboard on the Android 35 x86_64 emulator (Medium Phone,
+  1080×2400), typed through taps on Gboard's keys and `adb shell input`,
+  against an isolated Station on Windows 11 (cmd.exe). Verified: tapping the
+  terminal raises the keyboard; typing, Backspace and Send run the command;
+  the key bar's ^C (interrupting `ping -t`), Esc, Tab completion, ↑ history
+  and sticky Ctrl with a Gboard letter; the cursor row and key bar stay inside
+  the visual viewport with the keyboard open or closed and in landscape; a
+  reload keeps the same shell; `exit` then Restart shell; a second shell's tab
+  and closing it; Home and back redraws the screen; a long press selects a
+  word, Add to chat puts it in the open chat's composer, and the sent message
+  reaches the model with the output as a fenced block. Before the fixes above,
+  Send and Backspace typed nothing, the screen stayed blank after Home and
+  back, and a long press stopped the terminal. The
+  [phone keyboard journey](../../tests/terminal-mobile-keyboard.spec.ts) (Pixel 7
+  emulation, a real shell on an isolated Station, `smoke-live` and the PR
+  smoke contract) passed on macOS and failed with all the fixes, the renderer
+  fix or the selection fix reverted.
+- Desktop (#3994, same revision): Chromium at 1440×900 on the same Station
+  typed and ran a command, selected by drag and double click without stopping
+  the terminal, and opened the menu with Copy and Add to chat enabled.
+- Windows host (#3994, 2026-11-04, Windows 11 26200): the Desktop app's
+  WebDriver debug build (`--features webdriver`, which compiles on Windows only
+  with `tauri-plugin-wdio-webdriver` 1.5.1) started its bundled Station, opened
+  the Coding terminal, and a command typed through WebView2's DevTools input
+  ran; the plugin's own keystrokes are synthetic DOM events, which produce no
+  `beforeinput`, so they cannot type into a terminal. On the isolated Station,
+  PowerShell 7.6, Windows PowerShell 5.1 and Git Bash each ran a command,
+  stopped a long one with Ctrl+C, reported the width the view sized them to
+  after a resize, and restarted after `exit`. The
+  [script-runner and agent-run suite](../../src-server/services/terminal/__tests__/terminal-runs.process.test.ts)
+  runs on Windows (and in `test:windows:portable`): package managers' batch
+  shims run through cmd.exe, an approved command reaches cmd with its quotes
+  as shown, and both fail when their fix is reverted.
+
 - Fault injection for each isolation check and for the query stripping.
 - Listener isolation (#3994): each store session notifies only its own
   subscribers and output never enters React state; the
@@ -911,12 +1180,43 @@ verification.
   fail when a channel's events reach another session or output re-renders a
   panel.
 
-**NOT_VERIFIED.** No journey has run on a physical phone, the Desktop app,
-the iOS shell or the Android shell; the screen reader mode has not been used
-with real assistive technology (VoiceOver, NVDA, TalkBack); Windows/ConPTY is
-not qualified. The manual screen reader pass listed above has not happened.
-The browser broker (DataChannel) route is unsupported by design, not
-untested.
+**NOT_VERIFIED.** No journey has run on a physical phone, the iOS shell, or
+the Desktop app on macOS or Linux. The Android shell was not exercised: the CI debug APK of
+`470f8b49` installed on the emulator but stopped at "Station couldn't finish
+starting: saved mobile Station metadata is missing after initialization;
+refusing to recreate it", also after its data was cleared. An agent's
+`terminal_run` was not approved from a phone: a Station-native agent's call
+was refused as unattended in a chat started from the composer, and a Claude
+Code chat in a Project was not offered the tool. Desktop copy to the system
+clipboard was not read back. On Windows, Stop does not reach a command's
+descendant whose parent already exited, and the journal does not record
+resizes, so ConPTY output replayed at another size can repaint over lines
+already scrolled. Earlier Windows floors lost a forked worker without an
+assertion or diagnostic. Issue #4626 now records the captured access violation
+(`0xc0000005`) and a controlled reproduction in node-pty 1.1's unsynchronized
+native handle-table removal. The exact 1.2.0-beta.18 dependency includes the
+upstream locking and cancellation fixes; the Windows adapter suite checks
+positive-PID admission, an isolated concurrent exit/resize child, paused silent
+exit cleanup, and late vendor readiness after cancellation. Qualification of a
+specific run remains tied to its recorded source and installed binary.
+
+The floor ([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
+continues to run every isolated terminal suite, fails any crash, and never
+retries it. Coordinator PID/code/signal records remain in the Windows artifact.
+The screen reader mode has not been used with real
+assistive technology (VoiceOver, NVDA, TalkBack; the Windows machine above
+has no NVDA), and the manual screen reader pass listed above has not
+happened. The browser broker (DataChannel) route is unsupported by design,
+not untested.
+
+Still open after the execution-authority work: a `workspace` session's
+agent command is refused, not run confined. A confined terminal for Project
+members and shared agents, with its receipt, remains #2497's. Hosted terminal,
+file and artifact authority across tenants, revocation and restart races
+remains #492's; restore is bound to the current binding, but terminal records
+still carry no tenant or principal ownership. Restore against a moved binding
+is proved with a fake host; real PTYs, on POSIX and on ConPTY, cover only a
+removed Project.
 
 ## Open questions
 

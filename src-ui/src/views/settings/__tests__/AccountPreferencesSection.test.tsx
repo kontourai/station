@@ -50,3 +50,34 @@ test('a saved Muse default stays reachable so it can be cleared', () => {
   render(<AccountPreferencesSection />);
   expect(screen.getByText('New Muse chats')).toBeTruthy();
 });
+
+test('#4518: under a managed ceiling of Auto, Full access is not offered unless already saved', async () => {
+  const { ManagedPolicyContext } = await import(
+    '../../../contexts/ManagedPolicyContext'
+  );
+  engineConnections.mockReturnValue([engine('codex'), engine('claude')]);
+  accountValues.mockReturnValue({ claude: 'never' });
+  render(
+    <ManagedPolicyContext.Provider
+      value={{
+        organization: 'Acme',
+        supportUrl: null,
+        lockedSettings: [],
+        limits: { maxApprovalMode: 'auto' },
+      }}
+    >
+      <AccountPreferencesSection />
+    </ManagedPolicyContext.Provider>,
+  );
+  const fullAccess = (label: string) =>
+    Array.from(
+      (screen.getByLabelText(label) as HTMLSelectElement).options,
+    ).find((option) => option.value === 'never')!;
+  expect(fullAccess('New Codex chats approval mode').disabled).toBe(true);
+  expect(fullAccess('New Codex chats approval mode').textContent).toMatch(
+    / \(Managed\)$/,
+  );
+  // Saved before the policy: still shown, so it can be seen and changed.
+  expect(fullAccess('New Claude chats approval mode').disabled).toBe(false);
+  expect(screen.getByText(/Acme's policy manages approval modes/)).toBeTruthy();
+});

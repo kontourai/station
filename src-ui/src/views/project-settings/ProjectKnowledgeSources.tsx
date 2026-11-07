@@ -75,6 +75,7 @@ export function ProjectKnowledgeSources({
       (root) =>
         root.scope.kind === 'project' &&
         root.scope.projectSlug === slug &&
+        root.readPolicy === undefined &&
         !root.projectId,
     ) ?? [];
   async function add(existing: boolean) {

@@ -1,5 +1,43 @@
 # Station API Documentation
 
+## Paired Station conversation tunnel
+
+On a personal host with **Paired Station chats** enabled,
+`GET /api/environments/peers/:id/chat-connection` returns `{success:true,data}`
+containing version 1, verified `environmentId`, `stationName`, `principalNamespace`,
+receiver `delegationLocalConversationV1` and the source `read`/`operate`/locality
+ceiling. It contains no credentials. Public capability `peerChatTunnelV1` advertises
+this source protocol; missing receiver support does not enable a polling fallback.
+
+`/api/environments/peers/:id/chat-api/<receiver path>` admits only the exact
+methods, bounded queries and bodies in the [policy](../../src-server/routes/environments/peer-chat-policy.ts).
+Families include chat/continue, commands/receipts, open/event-window/live events,
+inbox/delivery lookup, requests/content, checkpoints, usage, projected catalogs
+and attachment staging/media. The exact `GET /api/settings/managed-policy` reads
+the receiver's approval-policy summary; settings writes remain denied.
+Command discriminants are `interruptTurn`,
+`steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`, `stopSession`
+and `discardDraft`. Arbitrary session mutations and onward remote execution are
+denied. Foreground targets must explicitly select the current receiver; its
+continue/inbox locality guard also checks saved/default execution state.
+
+The source authenticates its current owner Device/operator, rechecks the preview
+and saved peer grant, verifies R's identity and forwards only its saved delegation
+credential. Peer enrollment and credential administration remain operator-only.
+SSE uses streaming byte forwarding, abort/backpressure and idle revocation checks;
+revocation closes the connection rather than emitting a synthetic auth event.
+Attachment uploads authenticate S normally and carry the separate receiver upload
+grant in the staging header; media responses retain bounded binary bytes.
+
+R's 401/403 refusal becomes source-authored HTTP **424** with a version-1
+[refusal observation](../../packages/contracts/src/peer-chat.ts): target environment,
+`failureAuthority:'target'`, `remoteStatus`, `disposition:'refused-before-dispatch'`
+and the original mutation key when applicable. Only a verified source envelope
+bound to that target/key proves definite non-delivery. Raw upstream errors remain
+relayed, without source authority; loss/unknown outcomes stay uncertain. Source
+401 still means reconnect to S. See the [threat model](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)
+and [connection design](../design/station-connection.md) for limits and evidence.
+
 ## Session Goals
 
 While the default-off **Session goals** Feature Preview is enabled,
@@ -199,6 +237,13 @@ A Project chooses how a person's new chat in it starts. `PUT /api/projects/:slug
   vocabulary, and an Agent that needs its own posture sets its own default,
   which wins.
 
+While the machine's [managed policy](../guides/managed-policy.md#settings)
+locks `defaultModel` or `defaultLLMProvider`, the Project's
+`defaultProviderId`, `defaultModel` and `defaultModelSelection` do not apply;
+while it locks `defaultApprovalMode`, `defaultApprovalMode` and
+`defaultApprovalModeSelection` do not. Reads omit those fields, and writes
+treat them as described under [Update App Configuration](#update-app-configuration).
+
 A chat whose first send carries an explicit **Default** pick
 (`connection-default`) records that pick, and it resolves to the Agent's
 default, then the Station's, without the Project layer; the composer shows the
@@ -232,7 +277,12 @@ The person's personal per-engine approval default is queued for a chat's
 first send as before (with its account namespace, so offline replay and
 account switches behave as they did). In a Project chat it travels on `/chat`
 as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint rather than a
-pick; outside a Project there is no Project layer and it goes as a carried pick. For a new conversation of a person's own chat the server
+pick; outside a Project there is no Project layer and it goes as a carried pick,
+except when the Station reports a managed
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling): then
+it goes as the hint everywhere, so the server lowers it as a default instead of
+refusing it as a pick. A recorded hint's `session.approval-mode-set` event is
+marked `source: "personal-default"`. For a new conversation of a person's own chat the server
 records it as the conversation's decision only when nothing above it decides,
 so the order is: explicit pick, Agent default, Project layer, personal
 default, Station default. A `never` hint that would apply is refused (403
@@ -493,6 +543,56 @@ grant; mutation routes enforce their own policy. Account-bound readers may query
 it and receive false for these operator capabilities. Missing or failed reads
 keep management controls unavailable until a successful refresh.
 
+## Private memory preview
+
+With the default-off `private-memory` Feature Preview enabled on a personal
+Station, `POST /api/knowledge/memory/root` lets the host operator register their
+author-private memory root. `POST /api/knowledge/memory/proposals` takes
+`{requestKey, candidate, evidence}` and stages a Corpus create proposal; the
+body is limited to 1 MiB. Matching retries return the same proposal ID, while
+a conflicting key returns 409 with `REQUEST_KEY_CONFLICT`. `GET
+/api/knowledge/memory/proposals` is the explicit owner-authorized proposal
+query. Pending proposals do not appear in ordinary record lists or search.
+
+`GET /api/knowledge/memory/erasure-preview?kind=record|proposal&id=<id>`
+returns the target's `{ kind, id, title }` without changing it. It does not
+calculate a cascade or expose erasure.
+
+Review, recall and briefing use the same authority, root-access check and
+delivery-time recheck, advertised by the `privateMemoryReview` handshake flag
+(withdrawn on hosted deployments):
+
+- `GET /api/knowledge/memory/queue` returns `{ items, recallableWithoutReview }`.
+  Each item has a `question`, plain-language `reasons`, the `proposed` claim, the
+  `current` claim it conflicts with or replaces (or `null`), each with its source
+  excerpt, a `status` of `pending` or `decided`, and the standing human
+  `decision`.
+- `POST /api/knowledge/memory/queue/:itemId/open` marks that the reviewer opened
+  the item; its review time starts here.
+- `POST /api/knowledge/memory/queue/:itemId/decision` takes
+  `{ outcome: accept|correct|reject|hold, correctedValue?, rationale?, requestKey? }`
+  (16 KiB). The body is strict: a reviewer or `reviewerKind` field is a 400. The
+  host records a Survey `ReviewDecision` with the reviewer it attested from the
+  request, and returns `{ itemId, outcome, reviewerKind, promoted, reviewSeconds }`.
+  `promoted` is true only when a human decision changed what recall and the brief
+  show; a decision by anyone else is kept as a note. Every field comes from the
+  record that was kept, so a retry with the same `requestKey` returns the first
+  decision whatever the retry asked for. `hold` leaves the item in the queue.
+- `GET /api/knowledge/memory/recall?q=&limit=` returns `{ entries, withheld, notes }`.
+  Entries carry the Kit's display `text`, `review.label`
+  (`confirmed`, `corrected`, `in-review`, `unreviewed`), `review.routing` (`not-evaluated`, `uncontested` or `routed`), the source
+  excerpt, and `replaces`, `replacedBy` and `conflictsWith`.
+- `GET /api/knowledge/memory/brief[?includeUnreviewed=1]` returns the
+  brief new chats get (`text` is `null` when nothing qualifies; at most 6,144 bytes).
+- `GET /api/knowledge/memory/measurement` returns `station.memory-measurement/1`:
+  figures for the whole root, `runs` with one entry per distillation run,
+  and `lineages` with one row per change, each naming its run.
+
+Unknown identity, hosted access, Project membership and delegation do not grant
+memory access. With the preview off, direct memory requests return the standard
+`feature_preview_disabled` 404. Erasure is not exposed by these routes. See
+[Private memory](../guides/knowledge.md#private-memory-preview).
+
 ## Project knowledge source identity
 
 New Project root registrations require `expectedProjectId`, compared with the
@@ -649,6 +749,24 @@ reports gateway state, and webhooks report configuration and active start
 grants; neither proves delivery. Slack is not implemented, and Linear and Jira
 are waiting on tracker support. Probe diagnostics do not expose credentials.
 
+`?include=github-authentication` additionally requests optional `authentication`
+on the GitHub connection: `{state, observedAt, account?, scopes?}`. `observedAt`
+is Unix milliseconds. The **Repository sign-in details** preview is off by default;
+an authorized request while off returns 404 with `code: feature_preview_disabled`,
+`previewId: repository-auth-details`, and its Settings path. Authority and preview
+choice are checked before the probe and response release. Default requests keep
+the earlier closed response shape, so older parsers receive no new fields.
+An older host may ignore the opt-in and omit metadata; omission is not a healthy
+account or a repository permission result.
+
+The metadata read runs the Station’s `gh auth status --hostname github.com --json
+hosts --no-refresh`, never `--show-token`. It selects one active account, refuses
+malformed/beyond-bound metadata, and projects only health, account and scopes.
+Process/output bounds are five seconds/8 KiB and results cache for ten seconds.
+JSON-mode exit zero alone is not sign-in proof. No credential refresh, login,
+repository read/write, scoped credential binding or Peer aggregation is performed.
+
+
 `GET /api/tasks/:taskId/write-back` requires the personal Task room's current
 person and Task scope and paired `orchestration:read` where applicable. It is
 mounted with the personal Task room runtime, not hosted Task execution.
@@ -675,6 +793,17 @@ carries the Goal sentence, and `proposalBrief` carries the accepted markdown for
 assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. A brief longer than a Task document can hold (about 5,400 characters of plain text, against the 12,000-character proposal limit) returns 413 `task-document-full` before creation. Proposal seeding retains a replaceable revision candidate and does not consume the Station-wide receipt ledger. A full ledger therefore does not prevent Task creation or brief seeding. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
 refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A transient seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
+
+## A Task's worktree
+
+`GET /api/tasks/:taskId` answers the opened Task. When its Project isolates
+Sessions in worktrees and the Task has one, the response adds
+`taskWorktree: {path, branch, kept?}`, and `workspaceBinding.worktreePath`
+and `branch` name that worktree; `workspaceBinding.workingDirectory` stays the
+Project checkout. `kept: {reason, at, detail?}` says why a finished Task's
+worktree was not removed (`policy`, `uncommitted`, `unpushed`,
+`session-running` or `failed`). See [Task dispatch](../design/task-dispatcher.md#workspace-isolation)
+(#4507).
 
 ## Start a Task from a tracker item
 
@@ -2168,6 +2297,14 @@ public app-config projection with applicable runtime-derived fields; it is not
 a raw file dump. `?project=<slug>` adds Project provenance, while the values
 remain this Station's config. It does not automatically return fully composed
 Project-effective settings. Invalid/missing Project selections return 400/404.
+With a [managed policy](../guides/managed-policy.md#settings) installed, `data`
+holds the managed values in effect, and `provenance` reports `{source:
+'managed', locked, organization, supportUrl}` for each value the policy
+supplied; it never carries the value. Under the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling),
+`defaultApprovalMode` is the default as it applies, lowered to the ceiling
+(the `PUT` response reports it the same way); a saved default above it stays
+saved until a mode at or below the ceiling is written.
 
 ### Update App Configuration
 
@@ -2186,6 +2323,15 @@ Ordinary success is 200; persisted changes awaiting activation can return 202.
 A field being present in `AppConfig` does not mean this generic endpoint may
 write it: first-run decisions and revisioned log-level changes have separate
 routes, and contribution/full-access choices have additional checks.
+A change to a setting the managed policy locks is refused before any other
+check with 403, `code: 'managed_setting_locked'`, the setting's `key` and the
+policy's denial sentence; nothing in the request is saved. Sending exactly the
+locked value is dropped as a no-op. `PUT /config/app/log-level` and
+`POST /config/first-run` refuse with the same body. Project create
+(`POST /api/projects`) and update (`PUT /api/projects/:slug`) refuse a value for a
+project field a lock outranks with the same 403 body; resending `null`, `''`
+or the stored value is dropped instead, and a successful response omits those
+fields, as `GET /api/projects/:slug` does.
 See [config reference](config.md) for effective defaults and consumer limits.
 
 Raising telemetry tiers (including legacy enabled writes), or changing destinations
@@ -2357,11 +2503,16 @@ returns the current process's product queue, exact-receipt acknowledgements,
 loss/failure counters and OTel callback/probe state. It carries presence flags
 and counters rather than addresses, keys, installation IDs or receipt IDs.
 Unsupported versions and unavailable state must not be replaced with healthy
-defaults or cached success.
+defaults or cached success. Under a managed policy with `limits.telemetry:
+false`, `product.managedDenial` and `otel.managedDenial` carry the policy
+sentence, so a client can disable both connection checks; older servers omit
+them.
 
 `POST /api/usage-telemetry/connection-checks/product` and
 `POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.
-Product checks use a separate content-free source/schema probe;
+Under a managed policy with `limits.telemetry: false` both answer `403` with
+code `managed-policy-capability-disabled` and contact nothing; `PUT /config/app`
+refuses a raised sharing tier the same way. Product checks use a separate content-free source/schema probe;
 OTel checks send empty metrics and trace requests. Neither creates product
 disclosure consent or establishes downstream delivery/query acceptance. The [usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
 owns the protocol, saved authority and failure limits.
@@ -2690,7 +2841,8 @@ returns HTTP `409` (`client_turn_input_conflict` for foreground,
 `create_request_conflict` for delegation).
 
 A live owner holds its request lock. After its owner dies, a reservation with
-no starting mark is reclaimable immediately under the same key and input, even
+no starting mark is reclaimable immediately under the same key, including changed
+input, even
 when it targets an existing Session. The absence of this request's mark proves
 it did not invoke. Admission also frees abandoned unmarked reservations under
 other keys, without consulting Session existence. Station durably marks `starting` immediately before session
@@ -2705,19 +2857,29 @@ only if `hasSessionStartRecord` proves no durable start exists. A confirmed type
 rejection recorded through the request's rejection capability clears the mark.
 The original typed refusal is preserved.
 
-Completed receipts expire seven wall-clock days after completion; reusing one of
+Completed receipts expire after seven days of elapsed host uptime from completion; reusing one of
 those keys later is a new request. An expired starting claim is reclaimable only
 when `hasSessionStartRecord` finds no durable start. For the key being retried,
 Station retains its reserved Session identity and input proof for that reclaim.
 Otherwise it becomes a compact tombstone and keeps refusing the key with the
 original Session reference. A live or unverifiable owner prevents expiry while
-its request is running. Forward clock jumps can shorten elapsed retention.
+its request is running. The ledger persists remaining duration and the last uptime
+observation under its mutation lock. Forward and backward wall-clock jumps do
+not change the window. An uptime reset preserves the remaining duration without
+credit for the unobserved interval; repeated reboots can conservatively extend
+protection. Legacy timestamped claims start a full window on first observation;
+unfinished claims without a start time remain indeterminate. This clock is
+host-local, like the process-owner locks; it does not establish cross-host custody.
+The clock protection requires a current writer; older writers retain their
+wall-clock behavior. Without a durable Session start record, expiry can allow the
+same key to repeat an earlier effect whose record was lost.
 
 Tombstones are pruned only when a new admission would exceed the 1,024-record or
 4 MiB budget, oldest first. Live claims and completed receipts within their
 window are never pruned to admit a new request. If eligible tombstones cannot
 free enough capacity, HTTP 429 `create_request_capacity` refuses before effects.
-Each pending request reserves 3 KiB. An invalid or oversized returned receipt
+Each pending request reserves 3 KiB for its receipt plus bounded ledger
+bookkeeping, including retention observations. An invalid or oversized returned receipt
 remains indeterminate rather than overflowing storage.
 
 A pruned tombstone no longer protects its key. Retain the original Session
@@ -3601,7 +3763,11 @@ listed, as `expired`, until it is revoked.
 
 These [routes](../../src-server/routes/agents/invoke.ts) execute against Station's
 active managed Agent map. An external-engine Agent being listed in the catalog
-does not make it callable through this map; use orchestration for its lifecycle.
+does not make it callable through this map; use orchestration for its lifecycle. On a
+machine whose [managed policy](../guides/managed-policy.md#engines) does not
+allow `station-agent`, `/agents/:slug/invoke`, `/agents/:slug/invoke/stream`
+and `/invoke` answer `403` with `code: "managed-policy-engine-refused"` before
+a run is recorded.
 The [request schemas](../../src-server/routes/schemas/schema-definitions/runtime.ts)
 distinguish `input` on named invoke from `prompt` on global/legacy stream invoke.
 
@@ -3831,6 +3997,97 @@ An empty query returns `[]`. A caught provider failure also returns `[]` with
 `GET /api/users/:alias` returns the directory provider's result. A thrown lookup
 failure returns 404 with `{alias, name: alias, error}`; its message is the
 formatted failure, not necessarily the literal `User not found`.
+
+## Managed policy
+
+### Get the loaded managed policy
+
+`GET /api/settings/managed-policy`
+([route](../../src-server/routes/system/managed-policy-routes.ts)) reports the
+[managed policy](../guides/managed-policy.md) this server loaded at startup.
+It needs the same credential as `GET /api/settings/registry` and is fixed for
+the process lifetime. Without a policy:
+
+```json
+{ "success": true, "data": { "state": "none" } }
+```
+
+With one:
+
+```json
+{
+  "success": true,
+  "data": {
+    "state": "loaded",
+    "source": { "kind": "file", "location": "/etc/station/policy.json" },
+    "digest": "sha256:<64 hex>",
+    "summary": {
+      "organization": "Example Corp",
+      "supportUrl": "https://help.example.com/station",
+      "lockedSettings": [],
+      "limits": { "maxApprovalMode": "auto" }
+    }
+  }
+}
+```
+
+`source.kind` is `file`, or `test-override` for an isolated test instance. The
+summary never contains a setting value. `limits` holds `maxApprovalMode`
+(`ask`, `auto` or `never`) when the policy sets the
+[approval-mode ceiling](../guides/managed-policy.md#approval-mode-ceiling). A policy with `limits.updates` reports
+`"limits": {"updates": {"mode": "auto" | "off", "mirror": <boolean>,
+"allowNightly": <boolean>}}`; `mirror` says a feed is set, and the feed URL
+itself is never returned. The
+[capability switches](../guides/managed-policy.md#capability-switches) appear
+as set (`"telemetry": false`, `"webhookAutomations": false`, and
+`"registries"` with its `allowedUrls` and switches). A policy that sets
+`limits.engines` (#4520) adds `summary.engines`, which names the allowed
+engines (`null` for all), whether ACP registry agents may run, and each pinned
+engine's `locked`, pinned `fields` and `environmentNames`, never a launch
+value; `summary.limits` then omits `engines`. Routes refuse an engine the
+policy does not allow with `403` and code `managed-policy-engine-refused`.
+There is no error state: a server that
+cannot load its policy does not start. Older servers answer 404, which
+`station policy show` reports as a server too old to report a policy, and
+which the UI reads as no policy.
+
+### Refusals by the approval-mode ceiling
+
+Under a ceiling, a request that picks an approval mode above it, or changes
+this Station's default to one, is refused before it has any effect:
+
+```json
+{
+  "success": false,
+  "code": "managed-policy-approval-ceiling",
+  "error": "Example Corp's policy manages approval modes: the broadest allowed is Auto. For help, visit https://help.example.com/station"
+}
+```
+
+with status `403`. That covers `POST /api/orchestration/commands`
+(`setApprovalMode`), a `setApprovalMode` carried on `/chat`,
+`/chat/:id/continue` or a handoff, `PUT /config/app`
+(`defaultApprovalMode`), any explicit full-access default written to a
+project or Agent, adding a plugin Agent's tool grant, and a known ACP
+full-access `mode` on a request's options. A mode carried on a request's
+options as a default (`approvalMode`, `never` included) is lowered to the
+ceiling, not refused. A turn on a chat whose recorded pick is above the ceiling is refused with the
+same `code` and message as a turn refusal (`permission_denied`).
+
+`summary.limits` carries `clients` when the policy sets it, for example
+`{ "clients": ["desktop", "local-browser"] }`. Without `remote` in that list
+(#4519), pairing offers and access requests answer `403` with
+`{ "error": "managed-policy-remote-clients" }` (a pairing code finds no
+offer to match); relay setup
+approvals and invitations answer `403` with that `code` and the policy's
+sentence as `message`; turning on `lanDiscoveryEnabled` through
+`PUT /config/app` answers `403` with that `code`; and credentials of devices
+paired earlier answer as unknown. `GET /api/pairing/devices` still lists
+those devices, each with `suspended: { "by": "managed-policy",
+"organization": "<organization>" }` beside an unchanged `revocation`, and
+the Discord integration status reports `unavailable` with the policy's
+sentence. See
+[Network exposure](../guides/managed-policy.md#network-exposure).
 
 ## Branding
 
@@ -4448,7 +4705,11 @@ records compensation and retained-state limits.
 checks git/registry update sources. Results use the installed manifest name as
 `name`, even when a registry entry ID differs. A caught top-level check failure
 currently returns 200 with `{updates: []}`; that legacy result cannot prove
-there were no available updates.
+there were no available updates. Under a [managed policy](../guides/managed-policy.md#capability-switches)
+`limits.registries.allowedUrls`, a plugin installed from a registry the policy
+refuses is not checked (its git origin is not fetched); it is listed in
+`managedByPolicy` as `{name, message}` with the policy sentence, not as an
+error. Older servers omit the field.
 
 ### Update Plugin
 
@@ -4599,7 +4860,10 @@ caught separately; it is not a universal runtime-activation receipt.
 ### Uninstall Agent from Registry
 
 `DELETE /api/registry/agents/:id` likewise resolves a plugin-backed entry through
-plugin removal, or calls the Agent registry provider. Plugin lifecycle pending
+plugin removal, or calls the Agent registry provider. Removal is never refused
+by a managed `limits.registries`: the lookup applies no signature admission,
+and when the policy refuses the registry, that registry is not contacted and
+the recorded registry install decides. Plugin lifecycle pending
 results retain their activation semantics; a plain provider result is not the
 same receipt.
 
@@ -5036,7 +5300,11 @@ operator operations. SSE and webhook retain their separate HTTP transport roles.
 deliveries, newest first, as the [AutomationDeliveryRecord contract](../../packages/contracts/src/automation.ts)
 projection: hashed `deliveryKey`, `sourceId`, `semanticKey`, `eventType`,
 times, `outcome`, optional `reason`, and rule, episode, Task and session ids.
-No payload, secret or delivery GUID is returned. A `limit` outside 1–200 is
+A delivery that matched `observe` or `live` rules also carries `decisions`, one
+per rule ordered by rule id: `ruleId`, `ruleName`, `mode`, `outcome`
+(`would-start`, `suppressed`, `intent-retained`), optional suppression `reason`,
+`actionKind`, `projectId`, `agentId`, `episodeId` and `decidedAt`.
+No payload, instructions, secret or delivery GUID is returned. A `limit` outside 1–200 is
 refused with 400 rather than clamped, an unavailable ledger answers 503 with
 `code: "policy_unavailable"`, and hosted mode answers 404. The route
 ([source](../../src-server/routes/operations/automations.ts)) needs the
@@ -5245,6 +5513,19 @@ install's progress from its runtime files, or `{state: "unavailable"}` when the
 server is not launcher-supervised. Unknown/ineligible provenance returns 409.
 See the [update owner](../../src-server/routes/system/system-update-routes.ts)
 for exact result branches.
+
+The machine's [managed policy](../guides/managed-policy.md#update-control) can
+refuse these routes (#4522). When its `limits.updates` turns updates off, makes
+this server's nightly ring unavailable, or names a mirror a desktop bundle or
+source checkout cannot update from, `GET /api/system/core-update` contacts
+nothing and returns `updateAvailable: false` with
+`managedPolicyCode: "managed-policy-updates-refused"` and the policy's sentence
+in `message` and `selfUpdateUnavailableReason`. `POST /api/system/core-update`
+and `PUT /api/system/core-update/apply-when-idle` answer 403 with
+`code: "managed-policy-updates-refused"`, and the server's own update
+coordinator neither checks nor downloads. With a mirror, an archive's check
+reads the mirror's copy of its ring's signed manifest instead of the one its
+install recorded.
 
 The server's own update routes (#3851):
 - `GET /api/system/core-update/state` returns its update state
@@ -5617,7 +5898,10 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   for explicit recovery; a subsequent request returns the mapped session, including
   its ended state, without spawning another shell.
 - `GET` lists that Project/binding's session records. Pass `bindingKey` in the
-  query for a non-default binding.
+  query for a non-default binding. A record carries its launch directory
+  (`cwd`) and a read its process id (`pid`) only for a caller who may operate
+  the terminal; an observer gets neither (`pid: null`). Where its history is
+  stored is never returned.
 - `GET /:terminalId?bindingKey=project&fromSeq=0` reads a snapshot and numbered
   journal records. Replay admits at most 64 KiB of journal payload and applies
   the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,
@@ -5632,9 +5916,20 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
 - `POST /:terminalId/restart` takes `{bindingKey?, subdirectory?}` and is the
   explicit restart the socket's `restart` command performs: same id, a new
   journal segment, a directory confined to the binding. It returns the record
-  with `restart: {count, afterSeq, at}` and the journal's `lastSeq`. Agent
-  command sessions (`kind: "command"`) and server-owned launches are refused
-  (403).
+  with `restart: {count, afterSeq, at}` and the journal's `lastSeq`. Command
+  sessions (`kind: "command"`) other than package scripts, and server-owned
+  launches, are refused (403); a script is resolved again by name.
+- `GET /api/projects/:slug/terminal-scripts?bindingKey=project`
+  (`terminal:observe`) lists the binding directory's `package.json` scripts,
+  `{packageManager, scripts: [{name, command}]}`, in file order; at most 200,
+  names starting with `-` omitted. `packageManager` is the `packageManager`
+  field's tool, else the one whose lockfile is beside it, else npm.
+- `POST /api/projects/:slug/terminal-scripts` (`terminal:operate`) takes
+  `{bindingKey?, script}` and runs that script by name as a command session
+  (`launch: {kind: "script", name}`): `<packageManager> run <name>` in the
+  binding's directory, with a 16 MiB output cap and no PTY. A name the
+  `package.json` does not declare now, or a package manager that is not
+  installed, is refused with 409 and the reason.
 
 Deleting a Project (`DELETE /api/projects/:slug`) ends its running terminal
 sessions in every binding, keeping their records and journals until retention
@@ -5659,14 +5954,17 @@ with the same pid and its whole journal, by the next core generation after a
 restart or handoff (see [Shell host](../design/terminal.md#shell-host)). A shell
 that ended because its host restarted reopens on start under the same id, in its
 directory, after a "restored after restart" divider, without re-running anything
-(`restoredAt` is set). History persistence, location, maximum age and the
+(`restoredAt` is set). It reopens only while that directory lies inside its
+binding as the binding resolves then; otherwise it stays ended and its record
+carries `restoreRefused: { reason, at }`, with the reason also in its output. History persistence, location, maximum age and the
 per-terminal and total sizes are the `terminalHistory*`
 [settings](config.md); see [Journal](../design/terminal.md#journal).
 
 Core session retention reserves each record's per-terminal history against the
 total, with 64 MiB of raw tail payload and 32 retained records as constructor
 budgets. Agent command sessions (`kind: 'command'`) have a separate pool of 16
-records and only expire one another. Ended/failed sessions eligible for the caller's operate authority
+records and only expire one another; a person's package script runs are
+retained with shells. Ended/failed sessions eligible for the caller's operate authority
 expire when a new slot is needed or once older than the maximum age; active
 sessions are pinned. Expired session ids are refused.
 
@@ -5680,6 +5978,57 @@ hosted Stations.
 The scoped service's POSIX node-pty close terminates discovered owned process groups; it does
 not merely send HUP to the shell pid. See the
 [retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).
+
+### Agent terminal runs
+
+`terminal_run` and `terminal_read` (#3994) let an agent run a shell command in
+its chat's thread binding, and every run waits for a person: approving one
+command never approves the next (owner decision: ask each time, no
+remembered approval).
+
+The agent leaves under `/api/orchestration/station-control/terminal-runs` are
+internal only (404 to anything but Station's own station-control principal)
+and act for the verified caller's own conversation:
+
+- `POST` takes `{command, subdirectory?}` (a command of at most 8,192
+  characters; a relative directory). The run's directory is resolved when it
+  is requested, from the session's thread binding read as its recorded
+  owner, and is confined to it (403 `terminal_run_directory_refused`). A chat
+  outside a Project is refused (409 `terminal_run_needs_project`), as is one
+  with no recorded owner (409 `terminal_run_owner_required`), and a fourth
+  waiting request (409 `terminal_run_limit_reached`). Across all chats, at
+  most 64 requests wait at once and 512 are retained; past either, a request
+  is refused (429 `terminal_run_capacity_reached`). It answers
+  `{runId, state: "needs_approval", command, cwd, …}` at once.
+- `GET /:runId?waitSeconds=&fromSeq=` reads one of the conversation's runs.
+  `waitSeconds` (0–50) waits for its state to change first. Once it started,
+  the answer carries one page of output (256 KiB) after `fromSeq`, `nextSeq`,
+  `lastSeq`, `reset` and `outputCapped`, plus `exitCode` and `signal` when it
+  has ended. Another conversation's run is 404.
+
+States are `needs_approval`, `declined`, `expired` (unanswered for ten
+minutes), `starting`, `running`, `exited` and `failed`. Requests are kept in
+memory: a Station restart forgets them.
+
+The person's leaves are on personal hosts only, refuse a request that may be an
+agent's, and require the operator (in person or on their own device):
+
+- `GET /api/terminal/runs?conversationId=` (`terminal:observe`, and reading the
+  conversation) lists its runs that wait, are starting or run, and approved
+  runs that exited or failed in the last minute.
+- `POST /api/terminal/runs/:runId/approve` (`terminal:operate`, and sending to
+  the conversation) claims that one request and starts it as a command session
+  (`launch: {kind: "run", command}`) in the `thread:<session id>` binding, as
+  the approving person: `/bin/sh -c <command>` (`cmd.exe /d /s /c` on
+  Windows). The person's terminal authority over the binding decides, and a
+  directory that no longer resolves to the one shown is refused (409, "Its
+  directory has changed"). A settled request answers 409
+  `terminal_run_settled`.
+- `POST /api/terminal/runs/:runId/decline` (`terminal:operate`) settles it
+  without running anything.
+
+The run's session can be ended like any other with
+`DELETE /api/projects/:slug/terminal-sessions/:id?bindingKey=thread:<id>`.
 
 ### Terminal socket (operator transport)
 
@@ -5984,16 +6333,21 @@ exception for every iframe, image, or link request. See the
 
 ### CORS
 
-The running Station uses the exact browser origins assembled by
-[resolveStationBrowserOrigins](../../src-server/security/station-browser-origins.ts):
-configured additions, its bound-port loopback origins, native shell origins, and
-specific bound-host origins. The CLI adds its UI listener origins. Other origins
-are refused before route dispatch. This is not the permissive helper used when
+The running Station uses one browser-origin policy,
+[stationOriginPolicy](../../src-server/security/station-browser-origins.ts).
+It admits the exact configured origins first: configured additions, its
+bound-port loopback origins, native shell origins, and specific bound-host
+origins (the CLI adds its UI listener origins). It then admits this Station's
+own Tailscale Serve origin, which the local daemon attests and which is trusted
+for at most 1 second per read. The HTTP gates, the pairing check, the
+credential-free voice WebSocket and the sign-in origin picker all read this
+policy. Other origins are refused before route dispatch. This is not the permissive helper used when
 HTTP security is absent, and it does not allow every localhost port. Origin
 admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).
 
-The preflight allow-list includes `X-Station-Client-Protocol`. Cross-origin
+The preflight allow-list includes `If-Match` for revisioned writes, including
+account preference saves. It also includes `X-Station-Client-Protocol`. Cross-origin
 browser callers send it only after observing
 `compatibility.capabilities.clientProtocolHeader >= 1` on that host's public
 handshake. The UI forgets the prior origin observation before re-handshaking;
@@ -7043,8 +7397,8 @@ inside their mutation authority. Responses are private/no-store.
 | Method | Suffix under `/api/isolated-repairs` | Behavior |
 | --- | --- | --- |
 | GET | `/`, `/configuration`, `/profiles` | Read runs, redacted source/rule configuration and fingerprint, or profile revisions. |
-| POST | `/sources`, `/rules` | Create disabled poll sources and isolated-repair rules with server-issued identities. |
-| POST | `/configuration/enable` | Enable/disable an exact source/rule at expected configuration fingerprint. |
+| POST | `/sources`, `/rules` | Create disabled poll sources and `observe`-mode isolated-repair rules with server-issued identities. |
+| POST | `/configuration/enable` | Enable/disable an exact source at expected configuration fingerprint, or set a rule's `mode` (`off`, `observe`, `live`). For a rule, `enabled:true` still means `live` and `enabled:false` means `off`. |
 | POST | `/profiles`, `/profiles/:id/enable` | Configure a disabled profile or enable/disable its expected revision. Secret references are never returned. |
 | GET | `/:run/artifact` | Inspect the Task-bound source/result, review, grant, worker evidence and publication checkpoints. |
 | POST | `/:run/review` | Review exact binding/result digests with a verdict and rationale; approval completes the Task. |

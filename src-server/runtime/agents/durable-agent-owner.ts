@@ -46,6 +46,7 @@ import {
   isDurableNativeOutputFacts,
 } from '../native-output-turn-grant.js';
 import type { IStreamChunk, IStreamResult } from '../types.js';
+import { durableAgentCheckpoint } from './durable-agent-checkpoint.js';
 import {
   DurableForegroundChannel,
   encodeDurableAgentFrame,
@@ -171,6 +172,7 @@ function createStationOwner(home: string) {
       }
     : { id: randomUUID(), pid: process.pid, identityKind: 'unverified' };
   let released = false;
+  let pausing: Promise<void> | undefined;
   let retiredTurns: ReturnType<typeof listSqliteAgentTurns> = [];
   const liveness = ownerLivenessFromProbe(probeExactProcessIdentity, {
     isReleased: (id) => releasedOwners.has(id),
@@ -237,7 +239,10 @@ function createStationOwner(home: string) {
         database.exec('PRAGMA cache_size=-65536');
         handle = {
           database,
-          journal: openSqliteAgentJournal({ database }),
+          journal: openSqliteAgentJournal({
+            database,
+            checkpoint: durableAgentCheckpoint(database),
+          }),
           inode: statSync(path).ino,
         };
       } catch (error) {
@@ -265,9 +270,12 @@ function createStationOwner(home: string) {
     },
     async close() {
       if (handle) {
-        await handle.journal.close();
-        handle.database.close();
-        handle = undefined;
+        try {
+          await handle.journal.close();
+        } finally {
+          handle.database.close();
+          handle = undefined;
+        }
       }
     },
   };
@@ -703,19 +711,34 @@ function createStationOwner(home: string) {
         );
       });
     },
-    async pause() {
-      for (const job of jobs.values()) job.pause();
-      runtime.pause();
-      await Promise.all(
-        [...jobs.values()].map((job) => job.completion.catch(() => {})),
-      );
-      retiredTurns = existsSync(path)
-        ? withJournal(({ database }) => listSqliteAgentTurns({ database }))
-        : [];
-      await journal.close();
-      released = true;
-      releasedOwners.add(owner.id);
-      owners.delete(home);
+    pause() {
+      if (pausing) return pausing;
+      let resolve!: () => void;
+      let reject!: (error: unknown) => void;
+      pausing = new Promise<void>((accept, deny) => {
+        resolve = accept;
+        reject = deny;
+      });
+      void (async () => {
+        for (const job of jobs.values()) job.pause();
+        runtime.pause();
+        await Promise.all(
+          [...jobs.values()].map((job) => job.completion.catch(() => {})),
+        );
+        retiredTurns = existsSync(path)
+          ? withJournal(({ database }) => listSqliteAgentTurns({ database }))
+          : [];
+        try {
+          await journal.close();
+        } finally {
+          if (!handle) {
+            released = true;
+            releasedOwners.add(owner.id);
+            owners.delete(home);
+          }
+        }
+      })().then(resolve, reject);
+      return pausing;
     },
     list() {
       if (released) return structuredClone(retiredTurns);

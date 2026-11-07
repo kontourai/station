@@ -72,6 +72,7 @@ export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/enviro
 
 import packageJson from '../../../package.json' with { type: 'json' };
 import { resolveStationCapabilityFlags } from '../../capabilities/station-capability-flags.js';
+import { isPeerChatMutation } from '../../routes/environments/peer-chat-policy.js';
 import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
@@ -142,6 +143,13 @@ interface EnvironmentSecurityServiceOptions {
    * registry itself; defaults to `process.env`.
    */
   environment?: NodeJS.ProcessEnv;
+  /**
+   * #4519: the managed policy allows no remote clients; see
+   * `DevicePairingService`'s `localClientsOnly`.
+   */
+  localClientsOnly?: boolean;
+  /** #4519: the policy's organization, named on suspended devices. */
+  managedOrganization?: string;
 }
 
 interface EnvironmentSecurityLockRecord {
@@ -221,6 +229,8 @@ export class EnvironmentSecurityService {
   readonly #isProcessAlive: (pid: number) => boolean;
   readonly #hostIdentity: string;
   readonly #hosted: boolean;
+  readonly #localClientsOnly: boolean;
+  readonly #managedOrganization: string | undefined;
   #devicePairingService?: DevicePairingService;
   readonly #groups: StationGroupsService;
 
@@ -239,6 +249,8 @@ export class EnvironmentSecurityService {
       options.environment ?? process.env,
     );
     this.#groups = new StationGroupsService({ securityDir: this.#securityDir });
+    this.#localClientsOnly = options.localClientsOnly === true;
+    this.#managedOrganization = options.managedOrganization;
   }
 
   /**
@@ -323,6 +335,10 @@ export class EnvironmentSecurityService {
       now: this.#now,
       capScope: this.#capScope,
       ownerDeviceStanding: !this.#hosted,
+      localClientsOnly: this.#localClientsOnly,
+      ...(this.#managedOrganization
+        ? { managedOrganization: this.#managedOrganization }
+        : {}),
     });
     await this.#seedGroups(this.#devicePairingService);
     return record;
@@ -359,6 +375,13 @@ export class EnvironmentSecurityService {
         now: this.#now,
         capScope: this.#capScope,
         ownerDeviceStanding: !this.#hosted,
+        localClientsOnly: this.#localClientsOnly,
+        ...(this.#managedOrganization
+          ? { managedOrganization: this.#managedOrganization }
+          : {}),
+        ...(this.#managedOrganization
+          ? { managedOrganization: this.#managedOrganization }
+          : {}),
       });
       // #3557: personal access tokens go first, so a reset that cannot
       // revoke them fails before changing anything.
@@ -661,7 +684,13 @@ export class EnvironmentSecurityService {
         request.method.toUpperCase(),
       ) &&
       (request.path === '/api/environments/peers' ||
-        request.path.startsWith('/api/environments/peers/'))
+        request.path.startsWith('/api/environments/peers/')) &&
+      // The owner's own devices may send foreground chat through the bridge
+      // (D14); peer-credential administration stays operator-only.
+      !(
+        isPeerChatMutation(request.method, request.path) &&
+        this.credentialHasOwnerStanding(candidate)
+      )
     ) {
       return false;
     }
@@ -783,7 +812,9 @@ export class EnvironmentSecurityService {
     return this.#devicePairingService;
   }
 
-  async getPublicHandshake(): Promise<PublicStationHandshake> {
+  async getPublicHandshake(
+    peerChatEnabled = false,
+  ): Promise<PublicStationHandshake> {
     const { environmentId } = await this.initialize();
     return {
       schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
@@ -803,7 +834,10 @@ export class EnvironmentSecurityService {
       // Additive (archive#1095): same guarantee as `compatibility` above.
       // station-capability-flags.ts is the single source of truth — add a
       // flag there, not here. It withdraws flags this deployment can't serve.
-      capabilities: resolveStationCapabilityFlags({ hosted: this.#hosted }),
+      capabilities: resolveStationCapabilityFlags({
+        hosted: this.#hosted,
+        peerChatEnabled,
+      }),
     };
   }
 

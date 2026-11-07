@@ -243,7 +243,17 @@
    such failure mode, and taller rows on touch is what #3331 settled on for the
    sidebar. Available cards render the state as a plain span, so their heading
    is untouched. */
+/* #4470: Troubleshoot sits under the reason in the explanation. */
+.workspace-pane-availability-list__troubleshoot {
+  margin-top: var(--k-space-2);
+}
+
 @media (pointer: coarse) {
+  /* Outside `__actions`, so it declares the mobile floor itself. */
+  .workspace-pane-availability-list__troubleshoot {
+    min-height: 44px;
+  }
+
   .workspace-pane-availability-list__heading {
     align-items: center;
   }

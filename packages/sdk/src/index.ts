@@ -241,13 +241,17 @@ export {
   applyProjectLayout,
   bindProjectResource,
   closeProjectTerminal,
+  closeProjectTerminalSession,
   getProjectChatDefaults,
   getProjectCheckoutFreshness,
   getProjectResolution,
   getProjectView,
   listProjectRunLocations,
+  listProjectTerminalScripts,
   listProjectViews,
   openOrAdoptProjectShell,
+  type ProjectTerminalScript,
+  runProjectTerminalScript,
 } from './client/projects';
 export {
   getReviewReceipt,
@@ -281,6 +285,13 @@ export {
   listTaskOutputs,
   listTaskOutputs as fetchTaskOutputs,
 } from './client/task-outputs';
+export {
+  approveTerminalRun,
+  declineTerminalRun,
+  listConversationTerminalRuns,
+  type TerminalRun,
+  type TerminalRunState,
+} from './client/terminal-runs';
 export type {
   TerminalSession,
   TerminalSessionErrorCode,
@@ -447,6 +458,14 @@ export {
 } from './layoutProviders';
 export { NotificationsAPI } from './notifications/index.js';
 export { OrchestrationSessionsContext } from './orchestrationSessionsContext';
+export {
+  createPrivateMemoryClient,
+  type PrivateMemoryClient,
+  type PrivateMemoryFailure,
+  type PrivateMemoryHostSupport,
+  PrivateMemoryRequestError,
+  privateMemoryHostSupport,
+} from './private-memory.js';
 // Re-export components
 export {
   LayoutNavigationProvider,
@@ -1377,6 +1396,10 @@ export {
   useUpdateFeaturePreviewMutation,
 } from './query-domains/featurePreviews.js';
 export {
+  fetchManagedPolicyStatus,
+  useManagedPolicyStatusQuery,
+} from './query-domains/managedPolicy.js';
+export {
   fetchNotificationPreferences,
   type NotificationPreferencesPatch,
   NotificationPreferencesRequestError,
@@ -1611,6 +1634,7 @@ export type {
 export {
   AgentToolsRequestError,
   agentQueries,
+  type ConnectionReadTarget,
   conversationQueries,
   isAgentToolsActivatingError,
   knowledgeQueries,

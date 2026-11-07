@@ -1182,6 +1182,7 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * one the user chose: an otherwise-unbound ACP or confined Codex session
    * runs under `<stationHome>/runtime/<engine>-workspaces/session/<digest>`,
    * and (#4389) a chat with no Project runs in `<stationHome>/scratch/<id>`.
+   * New Windows folders substitute a per-Station root outside private data.
    * The server decides (`isStationChatFolder`), so clients name the folder
    * ("Chat workspace") instead of printing a hash path, and never match the
    * path themselves.
@@ -1909,7 +1910,11 @@ export interface TerminalProcessSummary {
   sessionId: string;
   projectSlug: string;
   terminalId: string;
-  cwd: string;
+  /**
+   * The launch directory, or null when the caller may only observe this
+   * terminal: a host path needs operate authority.
+   */
+  cwd: string | null;
   status: 'starting' | 'running' | 'exited';
   pid: number | null;
   exitCode: number | null;

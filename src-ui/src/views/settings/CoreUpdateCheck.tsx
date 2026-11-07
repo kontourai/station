@@ -11,15 +11,24 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { StatusSummary } from '../../components/StatusSummary';
 import { SkeletonBlock } from '../../components/state';
+import { ReleaseNotes } from '../../components/updates/ReleaseNotes';
+import {
+  clearUpdateNotice,
+  publishUpdateNotice,
+} from '../../components/updates/updatesEvents';
 import {
   type ConnectedServerUpdateContext,
   coreUpdateScopeFromContext,
 } from '../../hooks/useConnectedServerUpdateContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   ComparisonMessage,
   comparisonMetadata,
@@ -27,7 +36,6 @@ import {
   formatCheckTime,
   isArchiveInstall,
   SERVICE_UPDATE_IN_FLIGHT,
-  ServerUpdateHeader,
   serverIdentityMatchesView,
   serverUpdateBadge,
   serviceProgressIsHistory,
@@ -72,6 +80,7 @@ export function CoreUpdateCheck({
   headingId,
   alerts,
   details,
+  showReleaseNotes = false,
 }: {
   active?: boolean;
   apiBase: string;
@@ -98,6 +107,7 @@ export function CoreUpdateCheck({
   alerts?: ReactNode;
   /** Identity and install facts, folded into Details with the card's own. */
   details?: ReactNode;
+  showReleaseNotes?: boolean;
 }) {
   const scopeKey = coreUpdateScopeFromContext(context);
   const [confirmApplyScope, setConfirmApplyScope] = useState<string | null>(
@@ -608,6 +618,24 @@ export function CoreUpdateCheck({
   const download = serviceProgress
     ? serviceUpdateDownload(serviceProgress)
     : null;
+  const downloadNoticeId = useId();
+  const downloadPercent = !comparisonSuperseded ? download?.percent : undefined;
+  const downloadText = !comparisonSuperseded ? download?.text : undefined;
+  useEffect(() => {
+    if (downloadPercent === undefined || !downloadText) return;
+    publishUpdateNotice({
+      id: downloadNoticeId,
+      target: 'server',
+      message: 'Downloading server update',
+      summaryOnly: true,
+      progress: {
+        percent: downloadPercent,
+        text: downloadText,
+        label: 'Downloading server update',
+      },
+    });
+    return () => clearUpdateNotice(downloadNoticeId);
+  }, [downloadNoticeId, downloadPercent, downloadText]);
   // Where the progress line goes: a measured download is the bar, finished
   // history is Details, and a staged release has no line. While Restart is
   // offered the header's badge and version carry it; otherwise (a mismatched
@@ -664,13 +692,14 @@ export function CoreUpdateCheck({
   );
 
   return (
-    <div className="server-update">
-      <ServerUpdateHeader
+    <div className="server-update content-stack">
+      <StatusSummary
         title={title}
         headingId={headingId}
         badge={badge}
         current={status?.currentVersion}
         target={targetVersion}
+        checkedAt={!comparisonSuperseded ? dataUpdatedAt : null}
       />
       {alerts}
       {/*
@@ -770,7 +799,7 @@ export function CoreUpdateCheck({
       )}
       {updateMutation.error && (
         <div className="settings__update-msg settings__update-msg--error">
-          {(updateMutation.error as Error).message}
+          {describeStationFailure(updateMutation.error).body}
         </div>
       )}
       {comparisonSuperseded && status && historicalTime && (
@@ -803,24 +832,27 @@ export function CoreUpdateCheck({
           }}
         />
       ) : (
-        <div className="settings__update-row">
-          {canApply && !stagedFlow && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                setConfirmApplyScope(scopeKey ?? 'unscoped');
-              }}
-              disabled={updateMutation.isPending || restarting}
-            >
-              {restarting || updateMutation.isPending
-                ? 'Updating…'
-                : canApplyServiceUpdate
-                  ? 'Update server'
-                  : 'Update server checkout'}
-            </Button>
-          )}
-          {checkButton}
-        </div>
+        <ActionRow
+          overflowLabel="More server update actions"
+          secondary={checkButton}
+          primary={
+            canApply && !stagedFlow ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirmApplyScope(scopeKey ?? 'unscoped');
+                }}
+                disabled={updateMutation.isPending || restarting}
+              >
+                {restarting || updateMutation.isPending
+                  ? 'Updating…'
+                  : canApplyServiceUpdate
+                    ? 'Update server'
+                    : 'Update server checkout'}
+              </Button>
+            ) : undefined
+          }
+        />
       )}
       {active &&
         confirmApplyScope === (scopeKey ?? 'unscoped') &&
@@ -839,6 +871,13 @@ export function CoreUpdateCheck({
             }}
           />
         )}
+      {showReleaseNotes && targetVersion && (
+        <ReleaseNotes
+          key={targetVersion}
+          version={targetVersion}
+          active={active}
+        />
+      )}
       <details className="settings__update-technical server-update__details">
         <summary>Details</summary>
         {details}

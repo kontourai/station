@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { getActiveReplay } from '../../hooks/orchestration/replay/controller';
 import { downloadSessionTape } from '../../hooks/orchestration/replay/tape-file';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { PauseGlyph, PlayGlyph, ReturnGlyph } from '../icons/Glyph';
 import './ReplayTransport.css';
 
@@ -43,7 +44,7 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
     try {
       await action();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(describeStationFailure(cause).body);
     } finally {
       setBusy(false);
     }

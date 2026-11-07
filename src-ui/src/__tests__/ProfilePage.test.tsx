@@ -2,8 +2,15 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const buildPopulatedUsageStats = vi.hoisted(() => () => ({
   lifetime: {
@@ -27,18 +34,27 @@ const buildPopulatedUsageStats = vi.hoisted(() => () => ({
 }));
 
 const refreshAnalytics = vi.hoisted(() => vi.fn());
+const retryAnalytics = vi.hoisted(() =>
+  vi.fn<
+    ReturnType<
+      typeof import('../contexts/AnalyticsContext').useAnalytics
+    >['retryUsage']
+  >(),
+);
 const rescanAnalytics = vi.hoisted(() => vi.fn());
 const analyticsState = vi.hoisted(() => ({
   loading: false,
   error: null as unknown,
   usageStats: null as ReturnType<typeof buildPopulatedUsageStats> | null,
   refresh: refreshAnalytics,
+  retryUsage: retryAnalytics,
   rescan: rescanAnalytics,
 }));
 
-vi.mock('@kontourai/station-sdk', () => ({
-  AuthStatusBadge: () => <div>Auth badge</div>,
-}));
+vi.mock('@kontourai/station-sdk', async () => {
+  const { useQueryClient } = await import('@tanstack/react-query');
+  return { AuthStatusBadge: () => <div>Auth badge</div>, useQueryClient };
+});
 vi.mock('@kontourai/station-sdk/usage-rollup-query', () => ({
   useUsageRollupQuery: () => ({
     data: { coverage: [], rows: [], receipts: [] },
@@ -109,17 +125,33 @@ vi.mock('../core/PluginRegistry', () => ({
 
 import { ProfilePage } from '../pages/ProfilePage';
 
+let profileClient: QueryClient;
+function renderProfile() {
+  return render(<ProfilePage />, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={profileClient}>
+        {children}
+      </QueryClientProvider>
+    ),
+  });
+}
+
 describe('ProfilePage', () => {
   beforeEach(() => {
+    profileClient = new QueryClient();
     analyticsState.loading = false;
     analyticsState.error = null;
     analyticsState.usageStats = buildPopulatedUsageStats();
     refreshAnalytics.mockReset();
+    retryAnalytics
+      .mockReset()
+      .mockRejectedValue(new Error('usage read failed'));
     rescanAnalytics.mockReset().mockResolvedValue(undefined);
   });
+  afterEach(() => profileClient.clear());
 
   test('renders a compact populated usage graph inside the hero card', () => {
-    const { container } = render(<ProfilePage />);
+    const { container } = renderProfile();
 
     expect(screen.getByLabelText('Usage activity overview')).toBeTruthy();
     expect(screen.getByText(/Last 14 UTC days/)).toBeTruthy();
@@ -129,7 +161,7 @@ describe('ProfilePage', () => {
   });
 
   test('mounts diagnostic reads only while the disclosure is open', async () => {
-    render(<ProfilePage />);
+    renderProfile();
     expect(screen.queryByText('Insights')).toBeNull();
     const summary = screen.getByText('Diagnostics').closest('summary')!;
     fireEvent.click(summary);
@@ -150,7 +182,7 @@ describe('ProfilePage', () => {
       byDate: {},
     };
 
-    render(<ProfilePage />);
+    renderProfile();
 
     expect(screen.getByText(/Daily activity not recorded/i)).toBeTruthy();
   });
@@ -160,7 +192,7 @@ describe('ProfilePage', () => {
     analyticsState.usageStats.byDate = {
       '2020-01-01': { messages: 18, cost: 2.75 },
     };
-    const { container } = render(<ProfilePage />);
+    const { container } = renderProfile();
     expect(screen.getByText(/Daily activity not recorded/)).toBeTruthy();
     expect(container.querySelector('.profile-usage-graph__bar')).toBeNull();
     expect(screen.queryByText(/spent/)).toBeNull();
@@ -169,7 +201,7 @@ describe('ProfilePage', () => {
 
   test('discloses failed background refreshes over a retained snapshot', () => {
     analyticsState.error = new Error('Station offline');
-    render(<ProfilePage />);
+    renderProfile();
     expect(screen.getByText('Usage refresh failed')).toBeTruthy();
     expect(
       screen.getByText(/Showing the last available snapshot/),
@@ -178,10 +210,10 @@ describe('ProfilePage', () => {
 
   test('reports a failed rebuild instead of presenting it as refreshed usage', async () => {
     rescanAnalytics.mockRejectedValueOnce(new Error('Rebuild unavailable'));
-    render(<ProfilePage />);
+    renderProfile();
     fireEvent.click(screen.getByRole('button', { name: 'Rebuild usage' }));
     await waitFor(() =>
-      expect(screen.getByText(/Rebuild unavailable/)).toBeTruthy(),
+      expect(screen.getByText(/Try again in a moment/)).toBeTruthy(),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() =>
@@ -194,21 +226,21 @@ describe('ProfilePage', () => {
   // page ignored it, so a failed read settled with no stats and was drawn as
   // "No usage data yet" — a claim about the user's own activity made over a
   // request that never answered.
-  test('renders the read failure, not "No usage data yet", when the usage read errors', () => {
+  test('renders the read failure, not "No usage data yet", when the usage read errors', async () => {
     analyticsState.usageStats = null;
     analyticsState.error = new Error('usage read failed');
 
-    render(<ProfilePage />);
+    renderProfile();
 
     expect(screen.queryByText(/Daily activity not recorded/i)).toBeNull();
     expect(screen.getByText('Unable to load profile')).toBeTruthy();
-    expect(screen.getByText('usage read failed')).toBeTruthy();
-    // Header first, in a failure exactly as in a wait (6-OPS-23): the page
-    // title is the frame's (page-frame-registry.ts) and never depended on
-    // the read, so the page itself renders only the failure here.
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(refreshAnalytics).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired people')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+    expect(retryAnalytics).toHaveBeenCalledTimes(1);
   });
 
   test('the wait outranks the failure while the first usage read is in flight', () => {
@@ -216,9 +248,47 @@ describe('ProfilePage', () => {
     analyticsState.loading = true;
     analyticsState.error = new Error('usage read failed');
 
-    render(<ProfilePage />);
+    renderProfile();
 
     expect(screen.getByLabelText('Loading profile')).toBeTruthy();
     expect(screen.queryByText('Unable to load profile')).toBeNull();
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired people')).toBeTruthy();
+  });
+
+  test('keeps the access disclosure open through analytics pending, failure, Retry and recovery', async () => {
+    const { rerender } = renderProfile();
+    const summary = screen.getByText('Paired people').closest('summary')!;
+    fireEvent.click(summary);
+    await waitFor(() =>
+      expect(screen.getByText('Paired profiles')).toBeTruthy(),
+    );
+
+    analyticsState.usageStats = null;
+    analyticsState.loading = true;
+    rerender(<ProfilePage />);
+    expect(screen.getByLabelText('Loading profile')).toBeTruthy();
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired profiles')).toBeTruthy();
+
+    analyticsState.loading = false;
+    analyticsState.error = new Error('usage read failed');
+    rerender(<ProfilePage />);
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired profiles')).toBeTruthy();
+    expect(screen.queryByText(/Daily activity not recorded/i)).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+    expect(retryAnalytics).toHaveBeenCalledTimes(1);
+
+    analyticsState.error = null;
+    analyticsState.usageStats = buildPopulatedUsageStats();
+    rerender(<ProfilePage />);
+    expect(screen.getByLabelText('Usage activity overview')).toBeTruthy();
+    expect(screen.queryByText('Try again in a moment.')).toBeNull();
+    expect(screen.getByText('My access')).toBeTruthy();
+    expect(screen.getByText('Paired profiles')).toBeTruthy();
   });
 });

@@ -27,6 +27,11 @@ shared by pre-install CI intake and the trusted Station publisher. Its `.d.mts`
 entry supplies types without duplicating the implementation. See
 [isolated repairs](../guides/agent-efficiency.md#run-an-isolated-github-repair).
 
+`@kontourai/station-contracts/product-telemetry` owns the pure
+`isTelemetryPublisherId` validator used by config, CLI and receiver boundaries.
+It accepts the built-ins plus bounded legacy and registry-namespaced publisher
+IDs; see the [publisher ID grammar](usage-telemetry.md#plugin-publishers).
+
 ## Ownership rules
 
 - This package owns stable cross-package types and constants. Existing domain
@@ -311,13 +316,13 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/station-control-external-client` | Explicit initial tool selection, bounded lease request and secret-bearing client configuration response; a pure response parser grants no authority. Local operator setup, Session/Project validation and revocation remain server-owned. See [external client setup](session-api.md#external-clients-using-station-tools). |
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/engine-sign-in` | Sign-in for engines run as commands: status with its source, offered methods (id, name, kind, terms note), key names (never values), the running attempt and what the caller may do |
-| `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status |
+| `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status, and the known full-access session mode ids (`KNOWN_FULL_ACCESS_ACP_MODE_IDS`, `isKnownFullAccessAcpModeId`) the server and the approval pickers share |
 | `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise) |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
-| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. Companion management uses the separate operator-promoted `telemetry:manage` permission, absent from presets/defaults; it does not enable sending or personal source access. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. Device lists may mark an unrevoked device `suspended` by a managed policy (#4519), separately from its revocation. Companion management uses the separate operator-promoted `telemetry:manage` permission, absent from presets/defaults; it does not enable sending or personal source access. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
 | `@kontourai/station-contracts/station-routes` | The addresses a Station reports it can be reached on (`GET /api/system/routes`): LAN, Tailscale and Tailscale HTTPS origins with the Station's `environmentId`, and a parser that drops invalid entries. A client learns them as routes to the same saved Station and still checks each against the handshake before use; see [Station routes](../design/station-routes.md). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
@@ -336,13 +341,17 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
+| `@kontourai/station-contracts/managed-policy` | The machine administrator's v1 managed policy document and its boundary parser (unknown keys and unknown limits are refused, with a problem per key, and long key names are truncated in problem paths; `settings` entries are checked against the settings registry by `managedSettingsProblems`, which refuses the settings listed in `MANAGED_POLICY_UNMANAGEABLE_SETTINGS`, and against the settings file schema by `managedSettingsSchemaError`; a managed `settings.defaultApprovalMode` broader than `limits.maxApprovalMode` is refused; `withoutLockedProjectFields` hides the project fields a lock outranks, per `MANAGED_SETTING_PROJECT_FIELDS`), the approval-mode ceiling (`limits.maxApprovalMode`, #4518) with its comparison, clamp, mode names, denial sentence (also without its help clause, for a surface that links the support URL) and `managed-policy-approval-ceiling` refusal code, the #4521 capability switches (`limits.telemetry`, `limits.webhookAutomations`, `limits.registries`: off-only values, the registry URL normalizer and allow-list predicate, and the `managed-policy-capability-disabled` refusal code), the #4520 engine slice (`limits.engines`, in `/managed-policy-engines`), the client-kinds limit (`limits.clients`, #4519) with `managedPolicyAllowsRemoteClients`, its denial sentence and `managed-policy-remote-clients` refusal code, update control (`limits.updates`, #4522: its parser, the feed-free summary, the release download base and mirror mapping, the update refusal sentence and `managed-policy-updates-refused` code), the `duplicateJsonMemberPath` scanner that finds a repeated member name, the canonical form its `sha256:` fingerprint covers, the value-free client summary (every enforced limit is one entry in `MANAGED_POLICY_LIMIT_SLICES`, which the parsed document and the summary rebuild from), the `GET /api/settings/managed-policy` status, the denial and "Managed by" text helpers, and the `STATION_MANAGED_POLICY_INVALID` startup marker. Reading sources and hashing live in `@kontourai/station-shared/managed-policy`; see the [managed policy guide](../guides/managed-policy.md) |
+| `@kontourai/station-contracts/managed-policy-engines` | The #4520 engine slice of the managed policy, `limits.engines`: the engine ids a policy may name, the allow list, `acpRegistryAgents: false`, and pinned launch fields per engine (`binaryPath`, which must be absolute, `launchArgs`, `environment`, `locked`). It also holds their boundary problems, the value-free client engine summary and its parser, the `managedEngineAllowed` and `managedEnginePin` predicates, and the `managed-policy-engine-refused` refusal code. It imports no other managed-policy module, so clients can decode the engine summary without the settings registries; the refusal code lives in the internal `managed-policy-codes` module and is re-exported here; see the [managed policy guide](../guides/managed-policy.md#engines) |
+| `@kontourai/station-contracts/managed-policy-controls` | Lightweight approval-ceiling comparisons, clamps, denial text, remote-client predicates and refusal codes for mounted controls. Imports summary types only; it does not load the status decoder or settings registries. The status and full policy modules re-export these helpers for existing consumers. |
+| `@kontourai/station-contracts/managed-policy-status` | The browser-facing half of the managed policy contract: the value-free client summary and the `GET /api/settings/managed-policy` status with its boundary parser, one reader per enforced limit (`MANAGED_POLICY_SUMMARY_LIMIT_READERS`: `limits.maxApprovalMode`, the capability switches, `limits.clients` and `limits.updates` with `mirror`) that the status decode uses, the limit and summary types, the value-free `summary.engines` (#4520) the status decode parses beside `limits`, the client predicates, the denial and "Managed by" text helpers, the approval-mode ceiling helpers (#4518), and the approval-ceiling, capability, remote-clients and update refusal codes. The SDK loads this decoder when a successful status response needs validation; mounted controls use `/managed-policy-controls` to keep it out of the initial chunk. It carries no settings registry; `@kontourai/station-contracts/managed-policy` re-exports all of it |
 | `@kontourai/station-contracts/desktop-update` | The desktop app's native-owned update state (phases, the error beside the phase it returned to, download policy, its automatic-download time and a per-run sequence) and its state event name; the native shell computes it, the window and tray read it |
-| `@kontourai/station-contracts/config` | App config and template variables |
+| `@kontourai/station-contracts/config` | App config and template variables, the values the loader seeds into `config/app.json` (`APP_CONFIG_SEED`), and `appConfigSemanticError`, the settings file rules beyond its JSON schema that server startup and `station policy check` both apply |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
-| `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`; see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
+| `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`, and the optional `owner` that marks a Task-owned worktree (`{ kind: 'task', taskId }`, [#4507](../design/task-dispatcher.md#workspace-isolation)); see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
 | `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). A validated continuation without an owned-worktree binding reports its server-read bound workspace; owned worktrees retain the existing repository-root receipt form; the optional `confinement` is the started session's recorded confinement, attached after the start |
@@ -352,6 +361,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state with a selected server-owned session and optional ordered list of up to twelve session IDs, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads, including bounded network metadata and picked-element provenance |
+| `@kontourai/station-contracts/knowledge-memory` | Wire shapes for private-memory review, recall, the session brief and the per-run measurement record (`station.memory-measurement/1`). Plain shapes only: the Knowledge Kit and Survey own what the words mean |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | `layoutOwner` derives ownership and `layoutSubject` derives the optional Project subject. Project ownership implies its Project; principal ownership without a subject remains a Board or reusable template. Personal records never inherit Coding's implicit primary Chat claim. Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
@@ -372,7 +382,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, service and server update state, and engine workload memory budgets |
-| `@kontourai/station-contracts/troubleshoot` | In-app troubleshooting (#4470): the prepare route request and response, the `troubleshoot-report.yml` field ids, and a prefilled issue-link builder that returns over-limit fields separately instead of truncating |
+| `@kontourai/station-contracts/troubleshoot` | In-app troubleshooting (#4470): the prepare route request and response, the seed's fields and limits (route, error summary, conversation and turn ids, which the host refuses rather than truncates), the `troubleshoot-report.yml` field ids, and a prefilled issue-link builder that returns over-limit fields separately instead of truncating |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
@@ -403,6 +413,17 @@ and its permissive handling of extra keys. The
 use the real private store's writer and reader before calling the pure
 `importLegacyDiscordConfiguration` projection. This is contract preparation,
 not a completed runtime migration.
+
+`IntegrationConnectionStatus.authentication` is an opt-in GitHub-only
+`GitHubCliAuthentication` observation, not a grant. Its state is `signed-in`,
+`failed` or `unknown`, with a nonnegative safe-integer `observedAt` in Unix
+milliseconds. Only a signed-in observation can retain optional `account` and
+`scopes`. Accounts follow the bounded GitHub login shape (39 characters, plus an
+optional bot suffix); up to 32 distinct scopes each contain at most 64 lower-case
+letters/digits/hyphens/underscores separated by colons. Known token prefixes are refused. Extra fields, duplicate scopes,
+credential-shaped scope strings and failed observations retaining account facts
+are refused. The server omits this field from legacy requests; the explicit
+metadata read is operator-only and preview-gated.
 
 All new `parseChat*` and `parseIntegration*` functions return `null` for invalid
 input and extra keys, including nested records. They refuse max+1 without
@@ -963,6 +984,10 @@ partial/background work; they do not fail or replay the completed turn. Generic 
 can carry a more specific kind when structured quota details establish it.
 No existing diagnostic code is renamed or removed.
 
+`async_event_queue_consumer_conflict` identifies an internal queue-ownership
+invariant violation, not a provider or caller error. Its `conflict` kind is
+non-retryable.
+
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
 | `delegation_files_unsupported` | `input_unsupported` | `false` |
@@ -985,6 +1010,7 @@ No existing diagnostic code is renamed or removed.
 | `stage_incomplete` | `input_unsupported` | `false` |
 | `stage_invalid_upload` | `input_unsupported` | `false` |
 | `stage_capacity` | `busy` | `true` |
+| `async_event_queue_consumer_conflict` | `conflict` | `false` |
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
 | `create_request_capacity` | `busy` | `true` |
@@ -1026,6 +1052,10 @@ No existing diagnostic code is renamed or removed.
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
+| `managed-policy-capability-disabled` | `permission_denied` | `false` |
+| `managed-policy-remote-clients` | `permission_denied` | `false` |
+| `managed-policy-updates-refused` | `permission_denied` | `false` |
+| `managed-policy-engine-refused` | `permission_denied` | `false` |
 | `mcp_sign_in_required` | `auth` | `false` |
 | `model_not_advertised` | `model_unavailable` | `false` |
 | `model-override-unsupported` | `input_unsupported` | `false` |
@@ -1045,6 +1075,8 @@ No existing diagnostic code is renamed or removed.
 | `muse-turn-timeout` | `timeout` | `true` |
 | `principal_unresolved` | `auth` | `false` |
 | `project_identity_not_prepared` | `input_unsupported` | `false` |
+| `managed-policy-approval-ceiling` | `permission_denied` | `false` |
+| `managed_setting_locked` | `permission_denied` | `false` |
 | `provider_session_start_failed` | `unavailable` | `true` |
 | `provider_session_starting` | `busy` | `true` |
 | `provider_turn_in_progress` | `busy` | `true` |
@@ -1694,6 +1726,20 @@ a Task store that carries it is refused by Station builds that predate it.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
 
+### Child result text provenance
+
+A child result may carry `source: 'tool-return' | 'provider-summary' |
+'child-message' | 'provider-error'`. This qualifies its summary text only; a
+transcript handle or reported message does not establish a returned report.
+Absent provenance remains unknown, and provenance without summary text is
+discarded. Older consumers can ignore the optional field while retaining the
+released statuses and summary text.
+
+A structured completed tool return takes precedence over an earlier provider
+summary. Existing result handles are preserved, and later summaries do not
+overwrite returned text. A returned result remains reported output, not
+verification of its correctness.
+
 ### Task deliverable and work-chat relationships
 
 `task-graph` exports `TaskIdentity` (`taskId`, `taskCreatedAt`),
@@ -2231,6 +2277,11 @@ ETag, optional returned version, SHA-256, observation time and citation. These
 shapes describe bounded live reads; they confer no write, execution or indexing
 authority. The implementation remains default-off pending AWS acceptance.
 
+`KnowledgeAdapterDescriptor.validateRegistration`, when supplied, refuses a
+root whose metadata is invalid for that adapter before an adapter is returned,
+including when an instance is cached. It is an internal validation hook, not a
+grant or a public plugin admission policy.
+
 `KnowledgeStoreRoot.projectId` is an optional durable Project binding. Older
 registrations omit it; member access never infers it from `scope.projectSlug`.
 The pure `isProjectKnowledgeRoot(root, projectId)` helper owns matching for
@@ -2430,3 +2481,8 @@ Task incarnation, checkpoint, coordinator and known wait facts. The server
 reconciles through the existing inbox; it does not infer a new workflow DAG.
 See [bounded agent work](../guides/agent-efficiency.md) for current consumers and
 qualification limits.
+
+`DeviceSettings.showReleaseNotesAfterUpdate` is a device-local boolean,
+defaulting to `true`. It controls the installed app’s first-launch changelog
+after an upgrade; it does not control update downloads, installation, or
+release availability.

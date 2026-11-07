@@ -8,6 +8,10 @@ export const STATION_SERVER_EXTERNALS = [
   // Native OS-keyring binding used by the published CLI. It cannot be inlined
   // because npm selects a platform-specific binary package at install time.
   '@napi-rs/keyring',
+  // The managed policy's Windows registry and ACL reader (#4524). koffi's
+  // loader resolves its native binary from the per-platform
+  // @koromix/koffi-<os>-<arch> package beside it, so it must stay a package.
+  'koffi',
   '@anthropic-ai/claude-agent-sdk',
   // Flow resolves its Hachure schemas through require.resolve() from the
   // installed package. Bundling moves that lookup to Station's output and

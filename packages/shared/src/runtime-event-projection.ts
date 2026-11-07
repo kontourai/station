@@ -21,9 +21,10 @@ import {
 import { stationControlRefusalView } from '@kontourai/station-contracts/station-control-refusal';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { agentMessageInput } from './agent-message-frame.js';
-import type {
-  ConversationMessage,
-  MessagePart,
+import {
+  type ConversationMessage,
+  isStationRestartContinuationTurn,
+  type MessagePart,
 } from './conversation-message.js';
 import {
   EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
@@ -128,7 +129,7 @@ export const TURN_INTERRUPTED_MESSAGE =
  * ordinary turn from the person, in the same conversation.
  */
 export const TURN_INTERRUPTED_CONTINUE_PROMPT =
-  'Station restarted while you were working and your last turn was cut off. Continue from where you stopped; check what already finished before redoing anything.';
+  "Station restarted while you were working and your last turn was cut off. Before you continue, check what already happened: run `git status` and `git log` in the working directory, check the state of the Task's pull request and issue if this work has them, and look for background processes you started. Do not repeat a push, a pull request, a comment or any other action outside this working directory until you have confirmed it did not already happen. Then continue from where you stopped.";
 
 export {
   turnInterruptedContinueBoundaryId,
@@ -954,6 +955,13 @@ export function projectRuntimeEventsToMessages(
           if (isStationMemoryContinuationTurn(ev)) {
             const row = messages[messages.length - 1]!;
             row.metadata = { ...row.metadata, stationMemoryContinuation: true };
+          }
+          if (isStationRestartContinuationTurn(ev)) {
+            const row = messages[messages.length - 1]!;
+            row.metadata = {
+              ...row.metadata,
+              stationRestartContinuation: true,
+            };
           }
           userRowSender = undefined;
         }

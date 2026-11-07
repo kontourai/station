@@ -10,7 +10,8 @@
  * Mounts the real `ChatWorkspacePane` (so the `ChatDock` line that hands the
  * recovery to `ConversationPickerRecovery`, and its `lastCallerAccess`
  * wiring, are both in the path), with the same context stubs as
- * `ChatDockColdChatHydration.test.tsx`; only the SDK open read is scripted.
+ * `ChatDockColdChatHydration.test.tsx`. An independent inbox failure keeps
+ * its own Retry visible while the conversation recovery is exercised.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -21,6 +22,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatWorkspacePane } from '../components/chat-dock/ChatDock';
@@ -139,6 +141,7 @@ vi.mock('../hooks/useActiveProject', () => ({
 }));
 
 vi.mock('../hooks/useBackgroundTasks', () => ({
+  useChatBackgroundTasksLimited: () => false,
   useChatBackgroundTasksRunningCount: () => 0,
 }));
 
@@ -224,6 +227,21 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     useAcknowledgeConversationMutation: () => ({ mutate: () => {} }),
     useEngineConnectionsQuery: () => ({ data: [] }),
     useConversationInventoryQuery: () => ({ data: [] }),
+    useTasksQuery: () => ({
+      data: undefined,
+      status: 'error',
+      isPending: false,
+      isError: true,
+      error: new Error('Inbox task read failed'),
+      refetch: vi.fn(),
+    }),
+    useRemoteSessionsQuery: () => ({
+      data: { environments: [] },
+      status: 'success',
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    }),
     useGenerateSessionSummaryMutation: () => ({ mutate: () => {} }),
     useInvalidateQuery: () => () => {},
     useOrchestrationSessionsQuery: () => ({
@@ -299,6 +317,11 @@ async function pick(picked: { id: string } = conversation) {
   });
 }
 
+async function conversationRecovery() {
+  await screen.findByText("Couldn't check this chat.");
+  return within(screen.getByRole('status'));
+}
+
 describe('ChatDock picker recovery follows the server on Start new chat', () => {
   test('a caller the server refused a new chat is not offered one, even after a failed Retry', async () => {
     resolveConversationOpen.mockResolvedValueOnce(
@@ -307,7 +330,14 @@ describe('ChatDock picker recovery follows the server on Start new chat', () => 
     mountChat();
     await pick();
 
-    const retry = await screen.findByRole('button', { name: 'Retry' });
+    const inbox = await screen.findByRole('complementary', {
+      name: 'Inbox chats',
+    });
+    expect(
+      await within(inbox).findByRole('button', { name: 'Retry' }),
+    ).toBeTruthy();
+    const recovery = await conversationRecovery();
+    const retry = recovery.getByRole('button', { name: 'Retry' });
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
 
     // The retry's read fails outright: it says nothing new about access.
@@ -318,7 +348,9 @@ describe('ChatDock picker recovery follows the server on Start new chat', () => 
     await waitFor(() =>
       expect(resolveConversationOpen).toHaveBeenCalledTimes(2),
     );
-    expect(await screen.findByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(
+      (await conversationRecovery()).getByRole('button', { name: 'Retry' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
   });
 
@@ -330,7 +362,9 @@ describe('ChatDock picker recovery follows the server on Start new chat', () => 
     );
     mountChat();
     await pick();
-    await screen.findByRole('button', { name: 'Retry' });
+    expect(
+      (await conversationRecovery()).getByRole('button', { name: 'Retry' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
 
     resolveConversationOpen.mockRejectedValueOnce(new Error('offline'));

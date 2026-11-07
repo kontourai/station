@@ -1,7 +1,60 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { AsyncEventQueue } from '../async-event-queue.js';
 
 describe('AsyncEventQueue', () => {
+  test('refuses a second consumer and releases ownership on abort without an enqueue observer', async () => {
+    const queue = new AsyncEventQueue<string>();
+    const controller = new AbortController();
+    const first = queue
+      .iterable({ signal: controller.signal })
+      [Symbol.asyncIterator]();
+    expect(() => queue.iterable()[Symbol.asyncIterator]()).toThrow(
+      expect.objectContaining({
+        name: 'AsyncEventQueueConsumerConflictError',
+        code: 'async_event_queue_consumer_conflict',
+      }),
+    );
+    const waiting = first.next();
+    queue.push('owned');
+    await expect(waiting).resolves.toEqual({ value: 'owned', done: false });
+    controller.abort();
+    const live = queue.iterable()[Symbol.asyncIterator]();
+    queue.push('live');
+    await expect(live.next()).resolves.toEqual({ value: 'live', done: false });
+    await live.return?.();
+  });
+  test('observes accepted enqueues before consumption and detaches retired consumers', async () => {
+    const queue = new AsyncEventQueue<string>(1);
+    const controller = new AbortController();
+    const observe = vi.fn();
+    const iterator = queue
+      .iterable({ signal: controller.signal, onEnqueue: observe })
+      [Symbol.asyncIterator]();
+    expect(queue.push('buffered')).toBe(true);
+    expect(observe.mock.calls).toEqual([['buffered']]);
+    expect(queue.push('overflow')).toBe(false);
+    expect(observe).toHaveBeenCalledTimes(1);
+    controller.abort();
+    expect(queue.push('after-abort')).toBe(true);
+    expect(observe).toHaveBeenCalledTimes(1);
+    await expect(iterator.next()).resolves.toMatchObject({ done: true });
+
+    const nextObserver = vi.fn();
+    const next = queue
+      .iterable({ onEnqueue: nextObserver })
+      [Symbol.asyncIterator]();
+    await next.next();
+    const waiting = next.next();
+    expect(queue.push('waiting')).toBe(true);
+    expect(nextObserver.mock.calls).toEqual([['waiting']]);
+    await expect(waiting).resolves.toEqual({ value: 'waiting', done: false });
+    await next.return?.();
+    queue.push('after-return');
+    expect(nextObserver).toHaveBeenCalledTimes(1);
+    queue.close();
+    expect(queue.push('closed')).toBe(false);
+  });
+
   test('settles a pending iterator read when its consumer is aborted', async () => {
     const queue = new AsyncEventQueue<string>();
     const controller = new AbortController();

@@ -61,7 +61,7 @@ describe('SystemSection', () => {
       ).not.toBeNull();
       // The desktop card is its own catalog row, rendered above the server.
       const desktopCard = screen
-        .getByText('Desktop app updates')
+        .getByRole('button', { name: 'Check for desktop app updates' })
         .closest('[data-catalog-id]');
       const serverCard = screen.getByRole('region', {
         name: 'Server · station',
@@ -119,5 +119,39 @@ describe('SystemSection', () => {
       target: { value: 'debug' },
     });
     expect(onChange).toHaveBeenCalledWith({ logLevel: 'debug' });
+  });
+});
+
+describe('SystemSection under a managed policy (#4517)', () => {
+  it('disables and badges the locked log level and update policy', () => {
+    render(
+      <SystemSection
+        apiBase="http://station.test"
+        config={{ logLevel: 'error' } as never}
+        onChange={vi.fn()}
+        onExport={vi.fn()}
+        onImport={vi.fn(async () => undefined)}
+        onResetToDefaults={vi.fn()}
+        provenance={{
+          logLevel: { source: 'managed', locked: true, organization: 'Acme' },
+          serverUpdateDownloadPolicy: {
+            source: 'managed',
+            locked: false,
+            organization: 'Acme',
+          },
+        }}
+      />,
+    );
+    expect(document.getElementById('logLevel')?.matches(':disabled')).toBe(
+      true,
+    );
+    expect(screen.getByText('Managed by Acme')).toBeTruthy();
+    // A managed default stays changeable.
+    expect(
+      document
+        .getElementById('serverUpdateDownloadPolicy')
+        ?.matches(':disabled'),
+    ).toBe(false);
+    expect(screen.getByText('Acme default')).toBeTruthy();
   });
 });

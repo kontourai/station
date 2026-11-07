@@ -276,8 +276,15 @@ Project access administration still requires Project IAM. See the
 
 ## Saved Station addresses
 
-Choose **Manage Stations**, then **Connect a Station**. Enter its address, a pairing code,
-or scan a QR code. Station checks compatibility and displays the destination's
+Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
+Station also offers **Enter Station address** on its welcome screen, beside
+**Enter a pairing code**, with **Find nearby Stations** under **More connection
+options**. Enter its address, a pairing code,
+or scan a QR code. Return in the address field continues. Without a controlling
+Station there is no peer option to weigh, so the destination goes straight to
+its one Device request instead of a second **Request selected access** step.
+When that request is handed to the application shell, the dialog's status line
+follows it: waiting for approval, then saved. Station checks compatibility and displays the destination's
 reported identity. That public response is not a signing-key trust decision.
 In a browser, the destination must permit the current page's exact origin
 through its existing `--allowed-origin` startup setting. HTTPS pages may also
@@ -289,6 +296,14 @@ another page origin are refused even when discovery is allowed. That refusal
 does not create a pending request. Use the native app to request Device access,
 or open the receiver's own page; peer setup still belongs to the sending
 Station's trusted session.
+
+If the Station approves a request but this device cannot save the access, the
+request is held for review rather than retried automatically, because its
+one-time proof is spent. Choose **Pair again**: it retires the held request and
+sends a new one from the same per-origin client instance, and the Station's
+approval of that request supersedes the unsaved grant. Nothing needs revoking
+on the computer. A phone's first Station, including a plain-HTTP loopback
+address, saves its approved access even though saving it selects that Station.
 
 Choose either or both access requests:
 
@@ -305,11 +320,20 @@ remote operator elevation. A refused peer request keeps its reference for retry
 from an operator session. **Request access for this device** remains available
 independently, so peer setup cannot prevent Device pairing.
 
-For a Tailscale API endpoint, the receiving Station must allow that endpoint's
-exact HTTPS origin with `--allowed-origin=<endpoint>`. Peer enrollment sends
-that origin when requesting receiver approval. An `origin_forbidden` refusal
-creates no approval request; changing Device scopes or minting another code
-cannot fix it. Apply the endpoint setting through the receiver's launcher.
+Peer enrollment presents the receiver's own address as its `Origin`. A receiver
+published through a local Tailscale Serve HTTPS mapping to its own API or
+UI-proxy port trusts that origin with no setting, in every distribution
+(desktop sidecar, service, CLI). This reads the same daemon facts as the
+[endpoint-suggestion resolver](#suggested-tailscale-endpoints), through its own
+read trusted for at most 1 second, with stricter conditions: the mapping must be on the node's own MagicDNS name, every handler
+on that origin must proxy to this Station, Funnel must be off, and no foreground
+`serve` session or raw TCP forward can replace it. Any other Tailscale endpoint
+(for example one that also serves another app), or a receiver older than this
+behavior, still needs the exact HTTPS origin in `--allowed-origin=<endpoint>`
+(`ALLOWED_ORIGINS`). An `origin_forbidden` refusal creates no approval request.
+The sender's error names the refused address. Changing Device scopes or minting
+another code cannot fix it. Fix the receiver's Serve mapping or its launcher
+setting, then start a new peer request.
 
 Device access saves without replacing an existing selected Station. From a
 Project's Delegate dialog, setup preserves the draft and resource selection and
@@ -328,13 +352,16 @@ cancellation, **Choose another Station** returns to destination selection.
 A saved peer
 credential establishes permission, not observed reachability or Project readiness.
 
-Tap the connection dot on a phone, or the connection name on desktop, to
+Tap the Station chip (its dot and name, in every state) on a phone, or the
+connection name on desktop, to
 choose a Station, or press **Switch Station** (⌘⇧S, Ctrl+Shift+S elsewhere)
 once two are saved. The current Station comes first with a checkmark and its
 live status; the rest follow most recently used first, and focus starts on the
 previous one, so the shortcut and Enter flip back. With five or more Stations,
-type to filter; Enter switches to the first match. Holding the phone's dot
-shows its saved name without switching or opening the chooser.
+type to filter; Enter switches to the first match. The current Station's row
+uses the name the chip shows. Holding the phone's chip shows the full name
+without switching or opening the chooser. On a phone the chooser offers
+**Connect another device** where a computer offers **Pair phone**.
 
 Opening the chooser checks whether each other Station answers its public
 handshake, from this device, without credentials. A green dot means it
@@ -364,6 +391,9 @@ For the current saved Station, **Reconnect** opens its access-request flow
 even when this device is already paired, so you can request fresh approval.
 It is not offered for an inactive Station or a connection managed by the
 native host. Completing reauthorization still requires Station approval.
+A row with an open access request reads **Waiting for approval** rather than
+**Can't connect**, shows the request's countdown, and offers **Stop waiting**;
+the request keeps polling while the manager is open and connects on approval.
 The manager uses the current Station's live status; inactive rows show
 **Not checked** until checked there. Connections with valid saved access do
 not prompt for another access request. A rejected or missing credential still
@@ -831,8 +861,9 @@ opens on that entry's first step.
    **Retry check** (or add it again) if it was not ready by then.
 4. Read the readiness result and its detail. If it is not Ready, the result
    names the phase that failed and its reason. Use **Retry check** after fixing
-   the cause, or **Edit setup** for a custom engine. The engine's Agent is
-   added only once its check succeeds.
+   the cause, or **Edit setup** for a custom engine. On a saved engine that
+   isn't connected yet, **Troubleshoot** asks the Station Assistant about the
+   failure. The engine's Agent is added only once its check succeeds.
 5. When it is **Ready**, **Start a chat with** the engine opens New chat with
    its Agent selected. A Project-owned Agent uses its own Project; otherwise
    New chat uses the dock's current Project, or no Project when none is open.
@@ -878,6 +909,8 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
   cannot confirm that such a copy runs at all, let alone that it is current.
 - The installed executable runs when Station cannot read the bundled version, so an unreadable
   Agent SDK never silently downgrades a working installation.
+- On a machine whose [managed policy](managed-policy.md#pinned-launch-fields) pins `binaryPath`
+  for Claude, Station runs that program and never the bundled copy; if it cannot, chats are refused.
 
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
@@ -911,6 +944,11 @@ how it is distributed, its builds and packages, the command connecting would
 run, and any settings it recommends. Station does not apply those settings:
 the registry is not Station's own catalogue, and an environment variable can
 change what a program runs.
+
+On a machine whose [managed policy](managed-policy.md#capability-switches)
+sets `limits.registries.acpRegistryInstalls: false`, connecting an engine from
+the public registry is refused with the policy's message. Station's own engines
+are unaffected.
 
 **Review** opens the confirm step, which shows the exact command line (an
 argument with a space, or an empty one, is shown in quotes),
@@ -992,7 +1030,10 @@ under the Station home, readable only by its owner), never in
 only that it is saved. The value is added to that one connection's engine
 processes, overriding the same variable in Station's own environment.
 Removing the connection attempts to remove its keys. Station logs a warning
-if that cleanup fails; the connection removal still completes.
+if that cleanup fails; the connection removal still completes. While the
+machine's [managed policy](managed-policy.md#engines) does not allow the
+engine, its keys are not read, the panel's view and a new key are refused,
+and removing a key still works.
 
 **Who may sign in.** Reading the panel needs read access; **Check again**
 needs permission to operate Station. Starting or cancelling a sign-in and
@@ -1057,6 +1098,10 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
   `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
   station-managed app-home opt-in (`useAppHome`); a selected credential
   profile still wins over both.
+
+On a machine whose [managed policy](managed-policy.md#pinned-launch-fields)
+locks the engine's environment, `env`, `configHome` and **Connect through** are
+not applied.
 
 For example, if your local proxy expects a placeholder token:
 
@@ -1367,7 +1412,10 @@ the [credential check](../../src-server/providers/llm/bedrock.ts).
 
 See [docs/reference/config.md](../reference/config.md) for the full `app.json` reference and an Ollama-first example.
 
-A Project can override them with `defaultProviderId` and `defaultModel`. Its
+A Project can override them with `defaultProviderId` and `defaultModel`, unless
+the machine's [managed policy](managed-policy.md#settings) locks either
+setting; a lock outranks the Project's pair and its `last-used` model
+selection. Its
 **New chats** settings can instead start each new chat on the model the
 person's last chat in that Project started with (`defaultModelSelection:
 'last-used'`), falling back to the chain above when that model is no longer
@@ -1481,7 +1529,44 @@ the normal workspace checks. Operator-assisted import uses host Git credentials.
 Provider OAuth, Project-scoped forge grants and collaboration onboarding are
 tracked separately in [the authorization epic](https://github.com/kontourai/station/issues/4068);
 importing a repository does not grant an Agent remote credentials.
-Project Settings → Sources combines repository repair with knowledge-store
+Project Settings → Sources lists repositories as links with their provider mark and
+`owner/repo`. A healthy checkout needs no header status badge. **Used for new chats**
+names the selected repository; it does not mean a chat has run or a Station is online.
+**Checkout and access details** lists the answering Station and its local folder.
+Missing or mismatched folders retain their repository identity and offer checkout
+repair. Paths whose identity could not be confirmed are labelled **Folder to check**;
+a failed refresh withholds old paths. **Advanced details** retains resource IDs,
+primary selection and resolver diagnostics. **Refresh sources** rechecks local
+records, without fetching Git remotes. Repo-free Projects retain documents and tools.
+
+These details show one Station’s registered checkout, not a fleet-wide inventory.
+The Station name comes from its connection and reported machine presentation;
+the viewing browser is not an execution host. Additional Peer checkout registration
+and aggregation remain outside this view. Selecting a repository for new chats
+retains the existing execution-root/primary fallback rules and affects new Sessions.
+
+**Source and Station access** separates the checkout from its authentication.
+Enable **Repository sign-in details** in **Settings → Advanced → Feature previews**
+to read the owning Station’s GitHub CLI health, active account and reported scopes.
+This operator-only observation runs `gh auth status --hostname github.com --json
+hosts --no-refresh`, bounded to five seconds and 8 KiB, with a ten-second cache.
+It returns no token, credential source path or inactive account. On hosts that do
+not report authentication details, sign-in stays **Not confirmed**. Missing account
+or scope fields remain **Not reported**; malformed or unsupported CLI output is
+unavailable, even if its JSON-mode process exited zero. Turning the preview off
+prevents new metadata probes and withholds waiting responses; an already launched
+read remains bounded by its original deadline.
+
+The account/scopes describe this Station’s `gh`, not a verified repository grant.
+Git may use another SSH key or credential helper. Other providers’ authentication
+is not reported here. Project/repository credential bindings are not managed in
+this view. **Sign-in help** names the owning machine and its supported `gh auth
+status` / `gh auth login --hostname github.com` commands; the browser cannot start
+remote sign-in. No connection credentials are copied to the browser or another
+Station. The metadata API and its legacy-compatible opt-in are described in the
+[API reference](../reference/api.md#integration-capability-status-and-task-write-back).
+
+Sources combines repository repair with knowledge-store
 registration, refresh and disconnect. A repository repair row offers the same
 acquisition and retained-checkout picker. **Use this checkout** fills the repair
 path; the separate bind action verifies the current declared resource before
@@ -1582,6 +1667,13 @@ loopback, a private range or `localhost`) cannot be added unless the operator
 sets `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. The same check runs
 on every address the server's name resolves to when Station connects, so a
 name that later points at a private address is refused.
+
+On a machine whose [managed policy](managed-policy.md#capability-switches)
+sets `limits.registries.allowedUrls`, a subregistry URL that is not listed is
+never fetched; its row shows the policy's message and nothing can be added
+from it. With `unsignedPackages: false`, no entry can be added from it at all,
+because a tool-server definition carries no signature. Station's curated
+servers are unaffected.
 
 ### Tools after untrusted content
 
@@ -2020,7 +2112,9 @@ details. A paired browser can sign in with an enrolled operator passkey and
 confirm an ordinary pairing request on the consent origin; the request remains
 pending until confirmation. See [operator passkeys](operator-passkeys.md) for
 setup and availability. (The share prompt's **Request pairing for this browser** still
-asks for the full default grant; it says so on screen.) A Device paired by an older Station may still hold
+asks for the full default grant; it says so on screen.) The requesting
+screen says the same level, and a grant approved as asked is listed as
+**Full device access**. A Device paired by an older Station may still hold
 `access:manage` from the historical default grant; its first access change, in
 either place, removes it for good and says so.
 
@@ -2139,6 +2233,7 @@ exercise those contracts through the real dependency. No runtime private fields
 or DNS record overrides are used. Interface changes are checked every five
 seconds; publication is rebuilt using the current eligible addresses.
 
+<a id="suggested-tailscale-endpoints"></a>
 When creating a pairing code, the host can suggest an existing HTTPS Tailscale
 Serve mapping. `GET /api/pairing/endpoint-suggestions` requires the existing
 pairing-management authority and revalidates the principal after lookup. It
@@ -2146,7 +2241,12 @@ returns at most eight canonical endpoints, or an empty list if the daemon cannot
 establish a mapping. The existing resolver caches reads for 30 seconds and
 checks this node's MagicDNS name and Serve mappings to the Station's configured
 API or UI-proxy port. This proves daemon configuration, not reachability from a
-phone. `ALLOWED_ORIGINS` is not used as mapping evidence. The selected address
+phone. `ALLOWED_ORIGINS` is not used as mapping evidence. Which Serve origin is
+trusted as this Station's own (see [Saved Station addresses](#saved-station-addresses))
+does not use this 30-second cache: that admission has its own single-flight
+daemon read, trusted for at most 1 second from when it started, and refused
+when a reply comes later than that, when the daemon fails, or when it
+takes more than 3 seconds. The selected address
 stays visible and an explicit edit takes precedence over a suggestion. No
 Tailscale configuration or listener binding is changed.
 

@@ -98,6 +98,15 @@ collect the bounded diagnostics below. A data-home schema error containing
 not repair it. Follow the exact `station home reset` conditions only after you
 have a backup and have selected the intended home.
 
+A [managed policy](https://github.com/kontourai/station/blob/main/docs/guides/managed-policy.md) error containing
+`STATION_MANAGED_POLICY_INVALID` is also fail-closed. Your organization's
+policy on this computer cannot be used, so the app reports the failure without
+restarting. Only an administrator can fix or remove the policy. When the
+policy allows only this computer to connect, the same marker also starts a
+refusal that names something on this computer to change, such as a Tailscale
+Serve route or a Tailscale install Station cannot check. Make that change,
+then open Station again.
+
 Some home or schema refusals occur before the supervisor starts. They show a
 separate **Exit**-only dialog and start no backend. Repeatedly launching the app
 does not repair the refused home.
@@ -166,7 +175,9 @@ Choose the app identifier for your installed channel (Stable, Beta, or Nightly)
 from the [channel log path table in the repository guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md).
 
 The desktop shell honors `STATION_DESKTOP_LOG_LEVEL` set before launch:
-`trace`, `debug`, `info`, `warn`, `error`, or `off`. Its file rotation is
+`trace`, `debug`, `info`, `warn`, `error`, or `off`. At any level, the
+desktop updater's own records are left out and update errors show only each
+URL's scheme, host and port. Its file rotation is
 configured for up to five archived files plus the active log, with a 5 MiB
 rotation threshold. This is not a hard file-size or total-size cap: an oversized
 log entry can exceed the threshold. If the shell log directory is unwritable,

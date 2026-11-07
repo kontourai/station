@@ -570,6 +570,18 @@
       "tools": ["update_plugin"],
       "note": "The tool proposes the update; the CLI applies it."
     },
+    "policy check": {
+      "exempt": "local-host",
+      "reason": "Validates a managed policy file offline on this machine; no server is involved."
+    },
+    "policy show": {
+      "exempt": "local-host",
+      "reason": "Reads the managed policy installed on this machine and compares it with the local server; a remote Station is never compared."
+    },
+    "policy templates": {
+      "exempt": "local-host",
+      "reason": "Writes Group Policy and configuration-profile templates to a local directory, offline; no server is involved."
+    },
     "projects attach": {
       "exempt": "person-only",
       "reason": "Binds a Project to a checkout/path on the Station host (/api/projects/:slug/identity*, /api/projects/attach); a host path binding is a person step."
@@ -1609,6 +1621,14 @@
     "task_thread_resolve": {
       "exempt": "agent-self",
       "reason": "Resolves as the caller session."
+    },
+    "terminal_read": {
+      "exempt": "agent-self",
+      "reason": "Reads the caller's own terminal runs in its own conversation."
+    },
+    "terminal_run": {
+      "exempt": "agent-proposal",
+      "reason": "Agent asks a person to run one command; the person approves each run in the chat, and runs commands directly in the terminal."
     },
     "track_skill_run": {
       "exempt": "agent-self",

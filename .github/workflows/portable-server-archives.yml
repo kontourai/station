@@ -37,7 +37,7 @@ on:
         required: true
         type: string
       version:
-        description: Release version without the leading v (for example 0.1.11-nightly.245600).
+        description: Release version without the leading v (for example 0.1.11-nightly.2026110400).
         required: true
         type: string
       ring:

@@ -29,6 +29,8 @@
     "LICENSE"
   ],
   "exports": {
+    "./managed-policy": "./src/managed-policy.ts",
+    "./managed-policy-templates": "./src/managed-policy-templates.ts",
     "./public-network": "./src/public-network.ts",
     "./plugin-telemetry": "./src/plugin-telemetry.ts",
     "./product-telemetry": "./src/product-telemetry.ts",
@@ -142,6 +144,7 @@
     "@modelcontextprotocol/client": "2.4.0",
     "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",
-    "jose": "6.2.13"
+    "jose": "6.2.15",
+    "koffi": "3.3.6"
   }
 }

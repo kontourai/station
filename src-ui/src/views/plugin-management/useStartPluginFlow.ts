@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { pluginScaffoldEligibilityKey } from '../project-page/pluginScaffoldEligibilityKey';
 import {
   buildPluginAuthoringPrimer,
@@ -78,7 +79,7 @@ export function useStartPluginFlow(
       }
       onDone();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(describeStationFailure(caught).body);
     }
   }
 

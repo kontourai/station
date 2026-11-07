@@ -1,3 +1,11 @@
+import {
+  type ConnectionReadTarget,
+  captureConnectionReadTarget,
+  connectionQueryKey,
+} from './connection-read-target';
+
+export type { ConnectionReadTarget } from './connection-read-target';
+
 /**
  * Query Factories - Single source of truth for query definitions
  * Used by both hooks and imperative fetching (e.g., slash commands)
@@ -48,152 +56,184 @@ export const agentQueries = {
   /**
    * Get agent details
    */
-  agent: (agentSlug: string) => ({
-    queryKey: ['agent', agentSlug],
-    queryFn: async () => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/api/agents/${encodeURIComponent(agentSlug)}`,
-      );
-      if (response.status === 404) throw new Error('Agent not found');
-      if (!response.ok) throw new Error('Failed to fetch agent');
-      const result =
-        (await response.json()) as AgentEnvelope<EnrichedAgentProjection>;
-      if (!result.success) throw new Error(result.error);
-      return result.data!;
-    },
-    staleTime: 5 * 60 * 1000,
-  }),
+  agent: (agentSlug: string, target?: ConnectionReadTarget) => {
+    target = captureConnectionReadTarget(target);
+    return {
+      queryKey: connectionQueryKey('agent', target, agentSlug),
+      queryFn: async () => {
+        const apiBase = target?.targetApiBase ?? (await _getApiBase());
+        const response = await authenticatedFetch(
+          `${apiBase}/api/agents/${encodeURIComponent(agentSlug)}`,
+          ...(target ? [{ requestScope: target.requestScope }] : []),
+        );
+        if (response.status === 404) throw new Error('Agent not found');
+        if (!response.ok) throw new Error('Failed to fetch agent');
+        const result =
+          (await response.json()) as AgentEnvelope<EnrichedAgentProjection>;
+        if (!result.success) throw new Error(result.error);
+        return result.data!;
+      },
+      staleTime: 5 * 60 * 1000,
+    };
+  },
 
   /**
    * Get agent tools
    */
-  tools: (agentSlug: string) => ({
-    queryKey: ['agent-tools', agentSlug],
-    queryFn: async () => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/agents/${agentSlug}/tools`,
-      );
-      if (!response.ok) {
-        // Carry the STATUS, not just a sentence. A newly created Agent
-        // answers 503 while its activation is still owed — a transient state
-        // a caller should retry — where 409 means it genuinely is not active.
-        // Collapsing both into one opaque Error left the only two responses
-        // that need different handling indistinguishable.
-        //
-        // And keep the SERVER's sentence when it sent one: a 409 for an
-        // abandoned activation carries the actual failure reason, which is
-        // the only thing a user can act on. Discarding it for the generic
-        // "Failed to fetch tools" is how a diagnosable failure becomes a
-        // shrug.
-        const detail = await response
-          .json()
-          .then((body: unknown) =>
-            body !== null &&
-            typeof body === 'object' &&
-            'error' in body &&
-            typeof body.error === 'string'
-              ? body.error
-              : undefined,
-          )
-          .catch(unlessDeadline(() => undefined));
-        throw new AgentToolsRequestError(
-          detail ??
-            (response.status === 503
-              ? 'Agent tools are not available yet; it is still activating.'
-              : 'Failed to fetch tools'),
-          response.status,
+  tools: (agentSlug: string, target?: ConnectionReadTarget) => {
+    target = captureConnectionReadTarget(target);
+    return {
+      queryKey: connectionQueryKey('agent-tools', target, agentSlug),
+      queryFn: async () => {
+        const apiBase = target?.targetApiBase ?? (await _getApiBase());
+        const response = await authenticatedFetch(
+          `${apiBase}/agents/${agentSlug}/tools`,
+          ...(target ? [{ requestScope: target.requestScope }] : []),
         );
-      }
-      const result = (await response.json()) as AgentEnvelope<unknown[]>;
-      if (!result.success) throw new Error(result.error);
-      return result.data!;
-    },
-    staleTime: 5 * 60 * 1000,
-  }),
+        if (!response.ok) {
+          // Carry the STATUS, not just a sentence. A newly created Agent
+          // answers 503 while its activation is still owed — a transient state
+          // a caller should retry — where 409 means it genuinely is not active.
+          // Collapsing both into one opaque Error left the only two responses
+          // that need different handling indistinguishable.
+          //
+          // And keep the SERVER's sentence when it sent one: a 409 for an
+          // abandoned activation carries the actual failure reason, which is
+          // the only thing a user can act on. Discarding it for the generic
+          // "Failed to fetch tools" is how a diagnosable failure becomes a
+          // shrug.
+          const detail = await response
+            .json()
+            .then((body: unknown) =>
+              body !== null &&
+              typeof body === 'object' &&
+              'error' in body &&
+              typeof body.error === 'string'
+                ? body.error
+                : undefined,
+            )
+            .catch(unlessDeadline(() => undefined));
+          throw new AgentToolsRequestError(
+            detail ??
+              (response.status === 503
+                ? 'Agent tools are not available yet; it is still activating.'
+                : 'Failed to fetch tools'),
+            response.status,
+          );
+        }
+        const result = (await response.json()) as AgentEnvelope<unknown[]>;
+        if (!result.success) throw new Error(result.error);
+        return result.data!;
+      },
+      staleTime: 5 * 60 * 1000,
+    };
+  },
 
   /**
    * Get conversation stats
    */
-  stats: (agentSlug: string, conversationId: string) => ({
-    queryKey: ['stats', agentSlug, conversationId],
-    queryFn: async () => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/agents/${agentSlug}/conversations/${conversationId}/stats`,
-      );
-      if (!response.ok) throw new Error('Failed to fetch stats');
-      const result = (await response.json()) as AgentEnvelope<unknown>;
-      if (!result.success) throw new Error(result.error);
-      const stats = parseConversationStatsResponse(result.data);
-      if (!stats) throw new Error('Invalid conversation stats response');
-      return stats;
-    },
-    staleTime: 30 * 1000, // 30 seconds
-  }),
+  stats: (
+    agentSlug: string,
+    conversationId: string,
+    target?: ConnectionReadTarget,
+  ) => {
+    target = captureConnectionReadTarget(target);
+    return {
+      queryKey: connectionQueryKey('stats', target, agentSlug, conversationId),
+      queryFn: async () => {
+        const apiBase = target?.targetApiBase ?? (await _getApiBase());
+        const response = await authenticatedFetch(
+          `${apiBase}/agents/${agentSlug}/conversations/${conversationId}/stats`,
+          ...(target ? [{ requestScope: target.requestScope }] : []),
+        );
+        if (!response.ok) throw new Error('Failed to fetch stats');
+        const result = (await response.json()) as AgentEnvelope<unknown>;
+        if (!result.success) throw new Error(result.error);
+        const stats = parseConversationStatsResponse(result.data);
+        if (!stats) throw new Error('Invalid conversation stats response');
+        return stats;
+      },
+      staleTime: 30 * 1000, // 30 seconds
+    };
+  },
 };
 
 export const conversationQueries = {
-  list: (agentSlug: string) => ({
-    queryKey: ['conversations', agentSlug],
-    queryFn: async () => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/agents/${encodeURIComponent(agentSlug)}/conversations`,
-      );
-      if (!response.ok) throw new Error('Failed to fetch conversations');
-      const result = (await response.json()) as AgentEnvelope<
-        | ConversationSummary[]
-        | Partial<ConversationInventoryPage<ConversationSummary>>
-      >;
-      if (!result.success) throw new Error(result.error);
-      return Array.isArray(result.data)
-        ? result.data
-        : (result.data?.items ?? []);
-    },
-    staleTime: 0,
-  }),
+  list: (agentSlug: string, target?: ConnectionReadTarget) => {
+    target = captureConnectionReadTarget(target);
+    return {
+      queryKey: connectionQueryKey('conversations', target, agentSlug),
+      queryFn: async () => {
+        const apiBase = target?.targetApiBase ?? (await _getApiBase());
+        const response = await authenticatedFetch(
+          `${apiBase}/agents/${encodeURIComponent(agentSlug)}/conversations`,
+          ...(target ? [{ requestScope: target.requestScope }] : []),
+        );
+        if (!response.ok) throw new Error('Failed to fetch conversations');
+        const result = (await response.json()) as AgentEnvelope<
+          | ConversationSummary[]
+          | Partial<ConversationInventoryPage<ConversationSummary>>
+        >;
+        if (!result.success) throw new Error(result.error);
+        return Array.isArray(result.data)
+          ? result.data
+          : (result.data?.items ?? []);
+      },
+      staleTime: 0,
+    };
+  },
   /**
    * S2 of #1302: the global conversation-inventory endpoint's query key.
    * staleTime mirrors `orchestrationQueries.sessions()` — the surfaces this
    * feeds (inbox/history/picker, later slices) are read at the same
    * cadence as the session list they fold in.
    */
-  inventory: () => ({
-    queryKey: ['conversation-inventory'],
-    staleTime: 10 * 1000,
-  }),
+  inventory: (target?: ConnectionReadTarget) => {
+    target = captureConnectionReadTarget(target);
+    return {
+      queryKey: connectionQueryKey('conversation-inventory', target),
+      staleTime: 10 * 1000,
+    };
+  },
 };
 
 export const orchestrationQueries = {
-  providers: () => ({
-    queryKey: ['orchestration-providers'],
-    queryFn: async () => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/api/orchestration/providers`,
-      );
-      const result = (await response.json()) as AgentEnvelope<
-        OrchestrationProviderSummary[]
-      >;
-      if (!response.ok || !result.success) {
-        throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
-      }
-      return result.data!;
-    },
-    staleTime: 30 * 1000,
-  }),
-  sessions: (requestScope?: ApiRequestScope) => ({
-    queryKey: requestScope
-      ? [
-          'orchestration-sessions',
-          requestScope.apiBase,
-          requestScope.authorityKey,
-        ]
-      : ['orchestration-sessions'],
-    staleTime: 10 * 1000,
-  }),
+  providers: (target?: ConnectionReadTarget) => {
+    target = captureConnectionReadTarget(target);
+    return {
+      queryKey: connectionQueryKey('orchestration-providers', target),
+      queryFn: async () => {
+        const apiBase = target?.targetApiBase ?? (await _getApiBase());
+        const response = await authenticatedFetch(
+          `${apiBase}/api/orchestration/providers`,
+          ...(target ? [{ requestScope: target.requestScope }] : []),
+        );
+        const result = (await response.json()) as AgentEnvelope<
+          OrchestrationProviderSummary[]
+        >;
+        if (!response.ok || !result.success) {
+          throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+        }
+        return result.data!;
+      },
+      staleTime: 30 * 1000,
+    };
+  },
+  sessions: (requestScope?: ApiRequestScope, target?: ConnectionReadTarget) => {
+    target = captureConnectionReadTarget(target);
+    return {
+      queryKey: target
+        ? connectionQueryKey('orchestration-sessions', target)
+        : requestScope
+          ? [
+              'orchestration-sessions',
+              requestScope.apiBase,
+              requestScope.authorityKey,
+            ]
+          : ['orchestration-sessions'],
+      staleTime: 10 * 1000,
+    };
+  },
   loadedSessions: () => ({
     queryKey: ['orchestration-sessions-loaded'],
     staleTime: 10 * 1000,

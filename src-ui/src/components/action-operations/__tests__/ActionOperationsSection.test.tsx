@@ -381,7 +381,7 @@ describe('ActionOperationsSection', () => {
     openOperations();
     expect(screen.getByRole('status').textContent).toContain('Reconnecting');
     expect(screen.getByRole('alert').textContent).toContain(
-      'Cancellation was refused',
+      'Try again in a moment.',
     );
   });
 });

@@ -15,6 +15,10 @@ import type {
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
 import { RESOURCE_ENGINE_START_CAPACITY_CODE } from '@kontourai/station-contracts/provider-failure';
+import type {
+  WorkspaceIsolationConfig,
+  WorktreeSessionMetadata,
+} from '@kontourai/station-contracts/workspace-isolation';
 import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
   type FullAccessGrant,
@@ -186,8 +190,20 @@ export interface TaskDispatchAgentStart {
   readonly provider: EngineId;
   readonly modelId?: string;
   readonly modelOptions?: Readonly<Record<string, unknown>>;
+  /**
+   * The directory the Session starts in. #4507: for a worktree-isolated
+   * Project the resolver answers the Project directory, and `prepare`
+   * replaces it with the Task's worktree path once that is provisioned.
+   */
   readonly cwd: string;
   readonly environmentId: string;
+  /** #4507: the Project's resolved isolation; absent means `shared`. */
+  readonly workspaceIsolation?: WorkspaceIsolationConfig;
+  /**
+   * #4507: the Task-owned worktree `prepare` provisioned (or reused) before
+   * the reservation; `cwd` is its path. Absent for a `shared` Project.
+   */
+  readonly worktree?: WorktreeSessionMetadata;
   readonly metadata: Readonly<Record<string, unknown>>;
 }
 

@@ -8,10 +8,14 @@ import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import { useEffect, useRef } from 'react';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
 
-/** Runs only after a submitted access request returns control to the shell. */
+/**
+ * The one durable completion owner for a submitted access request. It runs
+ * whenever a request is pending, including while the connection manager is
+ * open: an exchange that pauses for UI state leaves an approved request
+ * unclaimed until the person happens to close a dialog.
+ */
 export function PendingPairingReconciler({
   pending,
-  enabled,
   onCompleted,
   onTerminalFailure,
   onConnectionWaiting,
@@ -19,7 +23,6 @@ export function PendingPairingReconciler({
   onIndeterminate,
 }: {
   pending: PendingPairingExchange;
-  enabled: boolean;
   onCompleted: () => void;
   onTerminalFailure: (title: string, message: string) => void;
   onConnectionWaiting: () => void;
@@ -68,7 +71,6 @@ export function PendingPairingReconciler({
   };
 
   useEffect(() => {
-    if (!enabled) return;
     let disposed = false;
     let resumedAfterSharedAbort = false;
     const controller = new AbortController();
@@ -266,7 +268,7 @@ export function PendingPairingReconciler({
       disposed = true;
       controller.abort();
     };
-  }, [enabled, pending]);
+  }, [pending]);
 
   return null;
 }

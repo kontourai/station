@@ -51,6 +51,7 @@ import type {
   KnowledgeRecordObservationPolicy,
   KnowledgeRootObservation,
 } from './knowledge-record-observation.js';
+import { assertNoPrivateRootOverlap } from './root-path-privacy.js';
 
 const logger = createLogger({ name: 'knowledge-store-provider' });
 
@@ -87,7 +88,11 @@ export interface KnowledgeStoreRootPersistence {
   /** createOnly must refuse an existing ID atomically rather than replacing it. */
   saveKnowledgeStoreRoot(
     root: KnowledgeStoreRoot,
-    options?: { createOnly?: boolean; expectedRoot?: KnowledgeStoreRoot },
+    options?: {
+      createOnly?: boolean;
+      expectedRoot?: KnowledgeStoreRoot;
+      assertCurrent?: () => void;
+    },
   ): Promise<void> | void;
   removeKnowledgeStoreRoot(
     id: string,
@@ -184,7 +189,11 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
     projectSlug: string,
     projectId: string,
   ): Promise<KnowledgeStoreRoot> {
-    if (expected.scope.kind !== 'project' || expected.projectId !== undefined)
+    if (
+      expected.scope.kind !== 'project' ||
+      expected.projectId !== undefined ||
+      expected.readPolicy !== undefined
+    )
       throw new FileStorageConflictError(
         'Only an unbound legacy Project store can be attached.',
       );
@@ -416,11 +425,12 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   }
 
   async adapterFor(rootId: string): Promise<KnowledgeStoreAdapter> {
-    const root = await this.getRoot(rootId);
+    const roots = await this.listRoots();
+    const root = roots.find((candidate) => candidate.id === rootId);
     if (!root) throw new Error(`Knowledge store root '${rootId}' not found`);
+    assertNoPrivateRootOverlap(root, roots);
     const rootKey = knowledgeRootIncarnationKey(root);
     const cached = this.adapterInstances.get(rootId);
-    if (cached?.rootKey === rootKey) return cached.adapter;
 
     const descriptor = this.registry.get(root.adapterId);
     if (!descriptor) {
@@ -429,6 +439,8 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
       );
     }
 
+    descriptor.validateRegistration?.(root);
+    if (cached?.rootKey === rootKey) return cached.adapter;
     const rawAdapter = await descriptor.create({ storeRoot: root.storeRoot });
     const wrapped = this.wrapWithChangeEvents(
       rawAdapter,

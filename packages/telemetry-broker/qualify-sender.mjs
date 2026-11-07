@@ -124,7 +124,7 @@ try {
   await store.lite.createSource({
     id: source,
     publisher: 'operator',
-    channel: 'unknown',
+    channels: ['unknown'],
     registryIds: [],
     releaseVersions: [],
   });

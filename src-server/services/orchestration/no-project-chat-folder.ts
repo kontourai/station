@@ -1,16 +1,23 @@
 import { createHash } from 'node:crypto';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
+import {
+  canonicalPathThroughExistingAncestor,
+  isCanonicalPathWithin,
+} from '../../utils/path-containment.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import {
   isManagedEngineWorkspace,
+  prepareStationChatWorkspaceRoot,
   prepareStationPrivateFolder,
+  stationChatWorkspaceRoot,
 } from '../infra/managed-engine-workspace.js';
 
 /**
  * #4389: where a chat with no Project runs. A new no-project chat used to
  * start in the person's whole home folder; it now gets a private scratch
- * folder of its own under Station's data, `<Station home>/scratch/<id>`.
+ * folder of its own. Windows keeps it outside private Station data so shells
+ * can normalize cwd without gaining access to Station credentials.
  * `AppConfig.noProjectChatFolder: 'home'` is the explicit opt-out.
  *
  * Only a NEW conversation is placed here. A conversation that already ran
@@ -33,27 +40,29 @@ export const DEFAULT_NO_PROJECT_CHAT_FOLDER: NoProjectChatFolder = 'private';
 /** A conversation id used as-is: no separators, no dot-only names. */
 const PLAIN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
-/** The directory under a Station home that holds every no-project scratch folder. */
-function noProjectChatScratchRoot(
-  stationHome: string = resolveHomeDir(),
-): string {
-  return join(resolve(stationHome), 'scratch');
-}
-
-function isContainedBy(parent: string, candidate: string): boolean {
-  const child = relative(parent, candidate);
-  return child === '' || (!child.startsWith('..') && !isAbsolute(child));
-}
-
 /** Whether `cwd` is a scratch folder this Station home made for a chat. */
 function isNoProjectChatScratch(
   cwd: string,
   stationHome: string = resolveHomeDir(),
 ): boolean {
   if (!isAbsolute(cwd)) return false;
-  const root = noProjectChatScratchRoot(stationHome);
-  const candidate = resolve(cwd);
-  return candidate !== root && isContainedBy(root, candidate);
+  try {
+    const candidate = canonicalPathThroughExistingAncestor(cwd);
+    return [stationChatWorkspaceRoot(stationHome), resolve(stationHome)].some(
+      (path) => {
+        const root = join(
+          canonicalPathThroughExistingAncestor(path),
+          'scratch',
+        );
+        return (
+          relative(root, candidate) !== '' &&
+          isCanonicalPathWithin(root, candidate)
+        );
+      },
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -82,15 +91,15 @@ function noProjectChatScratchName(conversationId: string): string {
 /**
  * Create (or reuse) the private scratch folder for `conversationId` and
  * return its real path, through the same safeguards as a managed engine
- * workspace (0700, no symbolic links, contained by the Station home). Fails
+ * workspace (0700, no symbolic links, contained by its workspace root). Fails
  * closed: a caller never replaces a failure with the home folder.
  */
 export async function prepareNoProjectChatScratch(
   conversationId: string,
   stationHome: string = resolveHomeDir(),
 ): Promise<string> {
-  const home = resolve(stationHome);
-  const root = noProjectChatScratchRoot(home);
+  const home = await prepareStationChatWorkspaceRoot(stationHome);
+  const root = join(home, 'scratch');
   return prepareStationPrivateFolder(home, [
     { directory: root, label: 'Station scratch root', restrict: true },
     {

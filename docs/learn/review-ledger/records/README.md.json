@@ -44,7 +44,13 @@
 
     "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
 
-    "src-ui/src/components/MobileWelcomeBoundary.tsx"
+    "src-ui/src/components/MobileWelcomeBoundary.tsx",
+
+    "docs/guides/deployment-authentication.md",
+
+    "docs/guides/plugins.md",
+
+    "docs/strategy/constitution.md"
   ],
 
   "checks": [

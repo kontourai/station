@@ -18,6 +18,10 @@ import type {
   TaskRecord,
 } from '@kontourai/station-sdk';
 import {
+  chatBelongsToStation,
+  conversationStateKey,
+} from '../../connections/station-state';
+import {
   activeChatHasWork,
   type ChatUIState,
 } from '../../contexts/active-chats-state';
@@ -34,6 +38,7 @@ import {
   orchestrationLifecycleLabel,
 } from '../../utils/session-state';
 import {
+  sessionCwdLabel,
   sessionProjectLabel,
   sessionRecency,
   sessionTitle,
@@ -392,12 +397,7 @@ function buildSessionWorkItem(
       ?.name,
     provider: session.provider,
   });
-  const cwdLabel = session.cwd
-    ?.trim()
-    .split(/[/\\]+/)
-    .filter(Boolean)
-    .slice(-2)
-    .join('/');
+  const cwdLabel = sessionCwdLabel(session);
   const lifecycleLabel = orchestrationLifecycleLabel(session);
   // archive#1783: the serving Station's own observation, read off the
   // summary's required decoration (ADR 0012) and never recomputed here.
@@ -465,7 +465,7 @@ function buildSessionWorkItem(
       session.reportedModel ?? session.effectiveModel ?? session.model,
     ),
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
-    ...(cwdLabel ? { cwdLabel: `…/${cwdLabel}` } : {}),
+    ...(cwdLabel ? { cwdLabel } : {}),
     turnProgress: activeTurnProgress(session),
     // #2312 review: a Draft's own clocks move without anyone touching it — a
     // stop (idle reaper, shutdown) rewrites `updatedAt`, engine housekeeping
@@ -760,6 +760,12 @@ function mergeHomeWorkItems(
  * execution Session id. Remote rows retain their existing namespace. */
 function localConversationIdentity(item: HomeWorkItem): string {
   if (item.kind === 'remote-session') return `remote:${item.id}`;
+  if (
+    item.kind === 'chat' &&
+    (item.id.startsWith('["station-chat",') ||
+      item.id.startsWith('["retained-chat",'))
+  )
+    return item.id;
   return item.conversationId ?? item.id;
 }
 
@@ -1164,9 +1170,12 @@ export function buildActiveChatTaskItems({
           chat.agentName ||
           agents.find((agent) => agent.slug === chat.agentSlug)?.name,
       });
-      const currentExecution = sessionByThread.get(
-        chat.currentSessionId ?? chat.conversationId ?? id,
-      );
+      const host = chatBelongsToStation(chat);
+      const currentExecution = host
+        ? sessionByThread.get(
+            chat.currentSessionId ?? chat.conversationId ?? id,
+          )
+        : undefined;
       const observedModel =
         currentExecution?.reportedModel ??
         currentExecution?.model ??
@@ -1175,12 +1184,20 @@ export function buildActiveChatTaskItems({
       // A present conversation id is authoritative. A thread-only chat must
       // keep its own execution fold, even when its id equals the root's
       // conversation id (archive#1075).
-      const correlated = chat.conversationId
-        ? turnByConversation.get(chat.conversationId)
-        : turnByThread.get(id);
+      const correlated = !host
+        ? undefined
+        : chat.conversationId
+          ? turnByConversation.get(chat.conversationId)
+          : turnByThread.get(id);
       const lifecycleLabel = chatLifecycleLabel(chat, id, correlated);
       return {
-        id: chat.conversationId || id,
+        id:
+          host || chat.stationBinding
+            ? conversationStateKey(
+                chat.stationBinding,
+                chat.conversationId || id,
+              )
+            : JSON.stringify(['retained-chat', id]),
         ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
         kind: 'chat' as const,
         kindLabel: 'Direct chat' as const,
@@ -1246,7 +1263,7 @@ export function buildActiveChatTaskItems({
   return [
     ...items
       .reduce((current, item) => {
-        const key = item.conversationId ?? item.id;
+        const key = item.id;
         const prior = current.get(key);
         const itemIsCurrentChild = item.currentSessionId === item.chatSessionId;
         const priorIsCurrentChild =

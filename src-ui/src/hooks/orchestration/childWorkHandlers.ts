@@ -12,8 +12,18 @@ import {
   forgetChildWorkReporter,
   type SessionChildWork,
 } from '@kontourai/station-contracts/child-work';
+import {
+  type StationStateSource,
+  stationPartitionKey,
+  stationStateKey,
+} from '../../connections/station-state';
 import type { ChatBackgroundTask } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
+import {
+  childWorkNoticeKey,
+  childWorkSummaryLabel,
+} from '../../utils/child-work-display';
 import type { OrchestrationEvent } from './types';
 
 /**
@@ -33,18 +43,48 @@ import type { OrchestrationEvent } from './types';
  *
  * `notReported` is carried but deliberately not rendered (#2456 F8).
  */
-let registry: ChildWorkRegistryState = createEmptyChildWorkRegistry();
+type ChatChildWorkPartition = {
+  registry: ChildWorkRegistryState;
+  reporterChat: Map<string, string>;
+  station?: StationStateSource;
+};
+const partitions = new Map<string, ChatChildWorkPartition>();
+const EMPTY_REGISTRY = createEmptyChildWorkRegistry();
 /**
  * reporterThreadId → the chat key it resolved to when it last reported. Kept
  * so a chat's removal can forget every reporter that fed it (R5): once the
  * chat is gone its reporters no longer resolve, and a later exit event for
  * them fails the chat guard before any forget can run.
  */
-const reporterChat = new Map<string, string>();
+function pruneStationPartitions(source?: StationStateSource): void {
+  const current = stationPartitionKey(source);
+  for (const [base, partition] of partitions)
+    if (
+      base !== '' &&
+      base !== current &&
+      stationStateKey(
+        typeof partition.station === 'object'
+          ? partition.station.binding
+          : undefined,
+      ) ===
+        stationStateKey(
+          typeof source === 'object' ? source.binding : undefined,
+        ) &&
+      !childWorkGlobalStore.hasPartition(base) &&
+      !Object.values(partitions.get(base)?.registry.items ?? {}).some(
+        (item) => item.status === 'running',
+      )
+    )
+      partitions.delete(base);
+}
 
 /** Read-only view for tests and diagnostics. */
-export function childWorkRegistrySnapshot(): ChildWorkRegistryState {
-  return registry;
+export function childWorkRegistrySnapshot(
+  station?: StationStateSource,
+): ChildWorkRegistryState {
+  return (
+    partitions.get(stationPartitionKey(station))?.registry ?? EMPTY_REGISTRY
+  );
 }
 
 let removalHooked = false;
@@ -91,13 +131,14 @@ function toChatBackgroundTask(item: ChildWorkItem): ChatBackgroundTask {
 function chatBackgroundTasksForChatKey(
   state: ChildWorkRegistryState,
   chatKey: string,
+  reporters: ReadonlyMap<string, string>,
 ): ChatBackgroundTask[] {
   return Object.values(state.items)
     .filter(
       (item) =>
         item.producer === 'engine-subagent' &&
         item.status === 'running' &&
-        reporterChat.get(item.reporterThreadId) === chatKey,
+        reporters.get(item.reporterThreadId) === chatKey,
     )
     .map(toChatBackgroundTask);
 }
@@ -129,7 +170,8 @@ function settleHeading(status: ChildWorkTerminalDisplayStatus): string {
  * outcome exactly once, on the settle that brought its RESULT. The engine's
  * first terminal has identity but no result, its second the result; the
  * reducer records the first and enriches it with the second, so "this settle
- * added a result" is the one moment to speak.
+ * added a result" is the one moment to speak. A later structured tool return
+ * corrects that notice in place without another announcement.
  *
  * station#1877: registry membership alone does not mean the user saw the
  * child as "still working" — an inline tool part already reports a same-turn
@@ -141,27 +183,57 @@ function announceSettle(
   threadId: string,
   before: ChildWorkItem | undefined,
   after: ChildWorkItem | undefined,
+  station?: StationStateSource,
 ): void {
-  if (!after || hasResult(before) || !hasResult(after)) return;
-  if (after.backgrounded !== true && before?.backgrounded !== true) return;
-  // R6: the registry's resulting status, which is sticky — a later terminal
-  // that only enriches must not relabel the outcome it enriches.
-  const status = childWorkDisplayStatus(
+  if (!after || !hasResult(after)) return;
+  const chatStore = activeChatsStore.forStation(
+    typeof station === 'object' ? station : undefined,
+  );
+  const key = childWorkNoticeKey(
     after,
-  ) as ChildWorkTerminalDisplayStatus;
+    typeof station === 'object' ? station.targetApiBase : station,
+  );
+  const messages = chatStore.getSnapshot()[threadId]?.ephemeralMessages;
+  const existing = messages?.find((message) => message.childWorkKey === key);
+  const returned =
+    after.result?.source === 'tool-return' &&
+    (existing?.backgroundTaskNotice?.summarySource ??
+      before?.result?.source) !== 'tool-return';
+  if (existing ? !returned : hasResult(before)) return;
+  if (!existing && after.backgrounded !== true && before?.backgrounded !== true)
+    return;
+  const status =
+    existing?.backgroundTaskNotice?.status ?? childWorkDisplayStatus(after);
+  if (status === 'running') return;
   const heading = settleHeading(status);
-  const label = after.title ? `${heading} — ${after.title}` : heading;
+  const title = after.title ?? existing?.backgroundTaskNotice?.title;
+  const label = title ? `${heading} — ${title}` : heading;
   const summary = after.result?.summary;
-  activeChatsStore.addEphemeralMessage(threadId, {
-    role: 'system',
-    childWorkKey: childWorkKey(after),
-    content: summary ? `${label}\n\n${summary}` : label,
+  const stationName =
+    typeof station === 'object' ? station.binding.stationName : undefined;
+  const notice = {
+    role: 'system' as const,
+    childWorkKey: key,
+    content: summary
+      ? `${label}\n\n${after.result?.source ? `${childWorkSummaryLabel(after.result.source)}: ` : ''}${summary}`
+      : label,
     backgroundTaskNotice: {
       status,
-      ...(after.title ? { title: after.title } : {}),
+      ...(stationName ? { stationName } : {}),
+      ...(title ? { title } : {}),
       ...(summary ? { summary } : {}),
+      ...(summary && after.result?.source
+        ? { summarySource: after.result.source }
+        : {}),
     },
-  });
+  };
+  if (existing) {
+    chatStore.updateChat(threadId, {
+      ephemeralMessages: messages?.map((message) =>
+        message.childWorkKey === key ? { ...message, ...notice } : message,
+      ),
+    });
+  } else chatStore.addEphemeralMessage(threadId, notice);
 }
 
 function deltaReporter(delta: ChildWorkDelta): string {
@@ -181,24 +253,44 @@ function deltaReporter(delta: ChildWorkDelta): string {
  * — but its children still sit in that chat's union until something about
  * that session (its empty view, its exit) is folded against the same key.
  */
-function chatKeyForReporter(threadId: string): string | undefined {
-  const resolved = activeChatsStore.getChatKeyForExecutionSession(threadId);
+function chatKeyForReporter(
+  threadId: string,
+  partition?: ChatChildWorkPartition,
+  station?: StationStateSource,
+): string | undefined {
+  const chatStore = activeChatsStore.forStation(
+    typeof station === 'object' ? station : undefined,
+  );
+  const resolved = chatStore.getChatKeyForExecutionSession(threadId);
   if (resolved) return resolved;
-  const recorded = reporterChat.get(threadId);
-  return recorded && activeChatsStore.getSnapshot()[recorded]
-    ? recorded
-    : undefined;
+  const recorded = partition?.reporterChat.get(threadId);
+  return recorded && chatStore.getSnapshot()[recorded] ? recorded : undefined;
 }
 
 export function applyChildWorkToChat(
   threadId: string,
   delta: ChildWorkDelta,
+  station?: StationStateSource,
 ): void {
+  if (typeof station === 'object' && !station.isCurrent()) return;
+  const chatStore = activeChatsStore.forStation(
+    typeof station === 'object' ? station : undefined,
+  );
   // A delta names its own reporter; one arriving on another session's thread
   // is not that session's to record (the server applies the same rule).
   if (deltaReporter(delta) !== threadId) return;
-  const chatKey = chatKeyForReporter(threadId);
+  pruneStationPartitions(station);
+  let partition = partitions.get(stationPartitionKey(station));
+  const chatKey = chatKeyForReporter(threadId, partition, station);
   if (!chatKey) return;
+  if (!partition) {
+    partition = {
+      registry: createEmptyChildWorkRegistry(),
+      reporterChat: new Map(),
+      station,
+    };
+    partitions.set(stationPartitionKey(station), partition);
+  }
   hookChatRemoval();
   // #2457: a late settle the adapter drains after its session exited lands
   // here too (it resolves through the chat's retained currentSessionId), so
@@ -206,24 +298,29 @@ export function applyChildWorkToChat(
   // the entry is terminal, chat-scoped and bounded, and is cleared on chat
   // removal (R5) or by a full snapshot that no longer lists the session —
   // while dropping the settle would lose the user's result announcement.
-  reporterChat.set(threadId, chatKey);
-  const before = registry;
+  partition.reporterChat.set(threadId, chatKey);
+  const before = partition.registry;
   const next = applyChildWorkDelta(before, delta);
   if (next === before) return;
-  registry = next;
-  activeChatsStore.updateChat(chatKey, {
-    backgroundTasks: chatBackgroundTasksForChatKey(next, chatKey),
+  partition.registry = next;
+  chatStore.updateChat(chatKey, {
+    backgroundTasks: chatBackgroundTasksForChatKey(
+      next,
+      chatKey,
+      partition.reporterChat,
+    ),
   });
   if (delta.kind === 'settle') {
     const key = childWorkKey(delta);
-    announceSettle(chatKey, before.items[key], next.items[key]);
+    announceSettle(chatKey, before.items[key], next.items[key], station);
   }
 }
 
 export function handleChildWorkUpdatedEvent(
   event: Extract<OrchestrationEvent, { method: 'child-work.updated' }>,
+  station?: StationStateSource,
 ): void {
-  applyChildWorkToChat(event.threadId, event.delta);
+  applyChildWorkToChat(event.threadId, event.delta, station);
 }
 
 /**
@@ -237,25 +334,34 @@ export function handleChildWorkUpdatedEvent(
 export function applySnapshotChildWork(
   threadId: string,
   view: ChildWorkSessionView | undefined,
+  station?: StationStateSource,
 ): void {
   if (!view) return;
   if (view.observability === 'not-reported') {
-    applyChildWorkToChat(threadId, {
-      kind: 'not-reported',
-      reporterThreadId: threadId,
-      reason: view.reason,
-    });
+    applyChildWorkToChat(
+      threadId,
+      {
+        kind: 'not-reported',
+        reporterThreadId: threadId,
+        reason: view.reason,
+      },
+      station,
+    );
     return;
   }
-  applyChildWorkToChat(threadId, {
-    kind: 'snapshot',
-    producer: 'engine-subagent',
-    reporterThreadId: threadId,
-    running: view.running,
-  });
+  applyChildWorkToChat(
+    threadId,
+    {
+      kind: 'snapshot',
+      producer: 'engine-subagent',
+      reporterThreadId: threadId,
+      running: view.running,
+    },
+    station,
+  );
   for (const item of view.settled ?? []) {
     const settle = childWorkSettleFromItem(item);
-    if (settle) applyChildWorkToChat(threadId, settle);
+    if (settle) applyChildWorkToChat(threadId, settle, station);
   }
 }
 
@@ -267,19 +373,29 @@ export function applySnapshotChildWork(
  */
 // Also called by childWorkHandlers.test.ts through a dynamic import that fallow cannot trace.
 // fallow-ignore-next-line unused-export
-export function forgetChildWorkForThread(threadId: string): void {
-  const chatKey = reporterChat.get(threadId);
-  if (chatKey === undefined) {
-    registry = forgetChildWorkReporter(registry, threadId);
-    return;
-  }
-  registry = forgetChildWorkReporter(registry, threadId);
-  reporterChat.delete(threadId);
-  if (activeChatsStore.getSnapshot()[chatKey]) {
-    activeChatsStore.updateChat(chatKey, {
-      backgroundTasks: chatBackgroundTasksForChatKey(registry, chatKey),
+export function forgetChildWorkForThread(
+  threadId: string,
+  station?: StationStateSource,
+): void {
+  if (typeof station === 'object' && !station.isCurrent()) return;
+  const chatStore = activeChatsStore.forStation(
+    typeof station === 'object' ? station : undefined,
+  );
+  const partition = partitions.get(stationPartitionKey(station));
+  if (!partition) return;
+  const chatKey = partition.reporterChat.get(threadId);
+  partition.registry = forgetChildWorkReporter(partition.registry, threadId);
+  partition.reporterChat.delete(threadId);
+  if (chatKey && chatStore.getSnapshot()[chatKey])
+    chatStore.updateChat(chatKey, {
+      backgroundTasks: chatBackgroundTasksForChatKey(
+        partition.registry,
+        chatKey,
+        partition.reporterChat,
+      ),
     });
-  }
+  if (partition.reporterChat.size === 0)
+    partitions.delete(stationPartitionKey(station));
 }
 
 /**
@@ -288,13 +404,16 @@ export function forgetChildWorkForThread(threadId: string): void {
  * session, when `getChatForExecutionSession` no longer finds it; the event
  * dispatcher calls this before that guard.
  */
-export function observeChildWorkLifecycle(event: OrchestrationEvent): void {
+export function observeChildWorkLifecycle(
+  event: OrchestrationEvent,
+  station?: StationStateSource,
+): void {
   if (
     event.method === 'session.exited' ||
     (event.method === 'session.state-changed' &&
       TERMINAL_CHILD_WORK_STATES.has(event.to))
   ) {
-    forgetChildWorkForThread(event.threadId);
+    forgetChildWorkForThread(event.threadId, station);
   }
 }
 
@@ -314,13 +433,21 @@ const TERMINAL_CHILD_WORK_STATES = new Set([
  */
 export function reconcileChildWorkSnapshot(
   sessions: ReadonlyArray<{ threadId: string; childWork?: SessionChildWork }>,
+  station?: StationStateSource,
 ): void {
   for (const session of sessions) {
-    applySnapshotChildWork(session.threadId, session.childWork?.children);
+    applySnapshotChildWork(
+      session.threadId,
+      session.childWork?.children,
+      station,
+    );
   }
   const listed = new Set(sessions.map((session) => session.threadId));
-  for (const reporter of [...reporterChat.keys()]) {
-    if (!listed.has(reporter)) forgetChildWorkForThread(reporter);
+  for (const reporter of [
+    ...(partitions.get(stationPartitionKey(station))?.reporterChat.keys() ??
+      []),
+  ]) {
+    if (!listed.has(reporter)) forgetChildWorkForThread(reporter, station);
   }
 }
 
@@ -331,20 +458,34 @@ export function reconcileChildWorkSnapshot(
  */
 export function backgroundTasksAfterSessionEnds(
   threadId: string,
+  station?: StationStateSource,
 ): ChatBackgroundTask[] | undefined {
+  if (typeof station === 'object' && !station.isCurrent()) return;
+  const chatStore = activeChatsStore.forStation(
+    typeof station === 'object' ? station : undefined,
+  );
+  const partition = partitions.get(stationPartitionKey(station));
+  if (!partition) return undefined;
   const chatKey =
-    reporterChat.get(threadId) ??
-    activeChatsStore.getChatKeyForExecutionSession(threadId);
-  registry = forgetChildWorkReporter(registry, threadId);
-  reporterChat.delete(threadId);
+    partition.reporterChat.get(threadId) ??
+    chatStore.getChatKeyForExecutionSession(threadId);
+  partition.registry = forgetChildWorkReporter(partition.registry, threadId);
+  partition.reporterChat.delete(threadId);
   if (!chatKey) return undefined;
-  const remaining = chatBackgroundTasksForChatKey(registry, chatKey);
+  const remaining = chatBackgroundTasksForChatKey(
+    partition.registry,
+    chatKey,
+    partition.reporterChat,
+  );
+  if (partition.reporterChat.size === 0)
+    partitions.delete(stationPartitionKey(station));
   return remaining.length > 0 ? remaining : undefined;
 }
 
-/** R5: a closed chat forgets every reporter that fed it. */
+/** R5: a closed chat forgets every reporter that fed it, on every Station. */
 function forgetChildWorkForChat(chatKey: string): void {
-  for (const [reporter, key] of [...reporterChat]) {
-    if (key === chatKey) forgetChildWorkForThread(reporter);
-  }
+  for (const [base, partition] of [...partitions])
+    for (const [reporter, key] of [...partition.reporterChat])
+      if (key === chatKey)
+        forgetChildWorkForThread(reporter, partition.station ?? base);
 }

@@ -327,6 +327,11 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
       journey:
         'Chat inventory item drill-down at 390x844: a real authored input read back and measured on a phone',
     },
+    {
+      path: 'tests/terminal-mobile-keyboard.spec.ts',
+      journey:
+        '#3994: a phone soft keyboard types, deletes and sends a command in a real Coding shell, and a shell shown again after a second shell tab redraws its screen',
+    },
   ],
 };
 
@@ -449,6 +454,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    'tests/station-connection-chat.spec.ts',
+    'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
     'tests/operator-sessions.spec.ts',
@@ -521,6 +528,26 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
 };
 
 export const e2eManifest = [
+  {
+    path: 'tests/station-connection-chat.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Station connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Two disposable real Stations, public owner-Device and delegation pairing, receiver Project selection, held local HTTP provider stream, approval, follow-up, Stop, history and grant narrowing; no authentication or conversation route mocks.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/conversation-surfaces.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Conversation surfaces',
+    tierTarget: 'partial',
+    primary: true,
+    rationale:
+      'Initial host and peer shared dock adoption with real provider streams and approvals; isolated Stations and retained viewport/theme screenshots. Activity, attached sessions and shared history remain separate migrations.',
+    exceptions: [],
+  },
   {
     path: 'tests/operator-sessions.spec.ts',
     bucket: 'product',
@@ -599,6 +626,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'The inventory item drill-down shipped broken on phones with its only browser coverage in the dispatch-only extended bucket. A real chat (one turn through a local model fixture) in a real isolated Station; at 390x844 the Chat inventory reader opens from the dock header, the authored input is drilled into, its text must return from the exact input read, and the layout is measured: no horizontal overflow, a label-wide classification chip, the title and its View details cue on one 44px row, and 44px actions below the body. Listed in PR_BROWSER_SMOKE_CONTRACT.journeys so it runs on every PR.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/terminal-mobile-keyboard.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Coding / Terminal',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#3994: \"sending a terminal message didn't work\" on a phone. Android keyboards send each letter as a keydown 229 then beforeinput insertText, and Send/Enter and Backspace as keydowns with key set and code empty (recorded from Gboard on Android Chrome). Pixel 7 emulation drives that exact event shape through the browser's input pipeline (CDP Input.insertText, key events with code '') into a real shell on a real isolated Station, and the shell's own output is read back from the server's journal: the command must run with the deleted characters gone, and the field the keyboard edits must hold what it typed. Then a second shell's tab hides the first (a hidden view gives its WebGL context back, as it does when the phone switches apps); shown again, the first must draw the same screen rather than a blank one, and closing the second leaves it drawn. Listed in PR_BROWSER_SMOKE_CONTRACT.journeys so it runs on every PR.",
     exceptions: [],
   },
   {

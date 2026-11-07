@@ -56,6 +56,15 @@ describe('translateChatError', () => {
     expect(translateChatError({ message }).hint).toMatch(/retrying may help/i);
   });
 
+  it('does not suggest retrying an unavailable conversation', () => {
+    const result = translateChatError({
+      message: 'The requested conversation is unavailable.',
+    });
+    expect(result.retryable).toBe(false);
+    expect(result.title).toMatch(/could not be resumed/);
+    expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
+  });
+
   it('classifies an ended-session refusal by backend code as a Station-side end, not an error', () => {
     const result = translateChatError({
       code: 'session_ended',
@@ -186,7 +195,8 @@ describe('translateChatError', () => {
       message: 'Synthetic provider failure',
     });
 
-    expect(result.body).toContain('Synthetic provider failure');
+    expect(result.body).not.toContain('Synthetic provider failure');
+    expect(result.disclosureRaw).toBe(true);
     // archive#3299: the fallback classified NOTHING, so its hint must not
     // assert that retrying helps — a stale credential does not improve on
     // retry, and telling the user it will is an unfounded claim.

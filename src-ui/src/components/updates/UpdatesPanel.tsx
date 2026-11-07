@@ -6,6 +6,9 @@ import { DesktopUpdateCheck } from '../../views/settings/DesktopUpdateCheck';
 import { settingsDeepLinkUrl } from '../../views/settings/settings-deep-link';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
+import { StatusSummary } from '../StatusSummary';
+import { ChangelogPreference } from './ChangelogPreference';
+import { ReleaseHistory, ReleaseNotes } from './ReleaseNotes';
 import { type UpdateTarget, useUpdateNotices } from './updatesEvents';
 import '../../views/SettingsView.css';
 
@@ -26,6 +29,12 @@ export function UpdatesPanel({
 }) {
   const profile = usePlatformProfile();
   const notices = useUpdateNotices();
+  const appUpdate = notices.find(
+    (notice) =>
+      notice.target === 'desktop' &&
+      notice.updateAvailable &&
+      notice.releaseVersion,
+  );
   const desktopRef = useRef<HTMLElement>(null);
   const serverRef = useRef<HTMLElement>(null);
   const id = useId();
@@ -43,6 +52,15 @@ export function UpdatesPanel({
         <div key={notice.id} className="updates-panel__notice">
           <p role="status">{notice.message}</p>
           {notice.detail && <p>{notice.detail}</p>}
+          {!profile.isDesktop &&
+            notice.target === 'desktop' &&
+            notice.releaseVersion && (
+              <ReleaseNotes
+                version={notice.releaseVersion}
+                nativeApp
+                active={open}
+              />
+            )}
           {notice.href && (
             <a href={notice.href} target="_blank" rel="noopener noreferrer">
               {notice.actionLabel ?? 'View release'}
@@ -81,7 +99,7 @@ export function UpdatesPanel({
         </Button>
       }
     >
-      <div className="updates-panel">
+      <div className="updates-panel content-stack content-stack--sections">
         {(profile.isDesktop ||
           profile.isMobile ||
           notices.some((notice) => notice.target === 'desktop')) && (
@@ -90,28 +108,47 @@ export function UpdatesPanel({
             tabIndex={-1}
             aria-labelledby={`${id}-desktop`}
           >
-            <h3 id={`${id}-desktop`}>
-              {profile.isDesktop ? 'Desktop app' : 'Station app'}
-            </h3>
-            <p className="updates-panel__identity">
-              {profile.isDesktop
-                ? (profile.productName ?? 'Station')
-                : (readClientReleaseVersion() ?? 'Version unavailable')}
-              {profile.channel ? ` · ${profile.channel}` : ''}
-            </p>
+            {!profile.isDesktop && (
+              <StatusSummary
+                headingId={`${id}-desktop`}
+                title={
+                  profile.channel
+                    ? `Station app · ${profile.channel}`
+                    : 'Station app'
+                }
+                current={readClientReleaseVersion() ?? 'Version unavailable'}
+                target={appUpdate?.releaseVersion}
+                badge={
+                  appUpdate
+                    ? { label: 'Update available', tone: 'caution' }
+                    : null
+                }
+              />
+            )}
             {noticesFor('desktop')}
             {profile.isDesktop && (
-              <DesktopUpdateCheck active={open} showPolicy={false} />
+              <DesktopUpdateCheck
+                active={open}
+                showPolicy={false}
+                showReleaseNotes
+                headingId={`${id}-desktop`}
+              />
             )}
           </section>
         )}
         <section ref={serverRef} tabIndex={-1} aria-labelledby={`${id}-server`}>
           <ConnectedServerUpdates
             active={open}
+            showReleaseNotes
             headingId={`${id}-server`}
             notices={noticesFor('server')}
           />
         </section>
+        <ReleaseHistory
+          active={open}
+          nativeApp={profile.isDesktop || profile.isMobile}
+        />
+        <ChangelogPreference />
       </div>
     </Dialog>
   );

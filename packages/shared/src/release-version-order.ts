@@ -68,14 +68,13 @@ const NIGHTLY_BUILDS_PER_DAY = 100;
  * Null when the version is not a Station release version.
  *
  * Releases and previews already share one shape. Nightlies do not (#2962):
- * a native client's build identity is `X.Y.Z-nightly.<day>` or
- * `X.Y.Z-nightly.<day>.<build>` (nightlyVersion; Android and macOS stamp it,
+ * a native client's build identity is `X.Y.Z-nightly.<YYYYMMDD>` or
+ * `X.Y.Z-nightly.<YYYYMMDD>.<build>` (nightlyVersion; Android and macOS stamp it,
  * and iOS stamps its web bundle with it although Apple's marketing version
  * is the bare `X.Y.Z`), while the portable host
- * names the same night's allocation by its version code,
- * `X.Y.Z-nightly.<day * 100 + build>` (portableNightlyVersion). The caller
- * states which writer produced the value; this never guesses a form from the
- * number's size.
+ * names the same night's allocation by `X.Y.Z-nightly.<YYYYMMDD><NN>`
+ * (portableNightlyVersion). Legacy day-counter clients still map to the old
+ * portable version-code form. The caller states which writer produced the value.
  */
 export function clientVersionInHostOrder(version: string): string | null {
   const nightly =
@@ -86,6 +85,12 @@ export function clientVersionInHostOrder(version: string): string | null {
     const day = Number(nightly[2]);
     const build = nightly[3] === undefined ? 0 : Number(nightly[3]);
     if (build >= NIGHTLY_BUILDS_PER_DAY) return null;
+    if (nightly[2].length === 8) {
+      const allocation = hostNightlyAllocation(
+        `${nightly[1]}-nightly.${nightly[2]}.${build}`,
+      );
+      if (!allocation) return null;
+    }
     const code = day * NIGHTLY_BUILDS_PER_DAY + build;
     if (!Number.isSafeInteger(code) || code < 1) return null;
     return `${nightly[1]}-nightly.${code}`;
@@ -101,12 +106,19 @@ export interface NightlyAllocation {
 
 /**
  * The allocation a host-order Nightly version names, for display. Reads the
- * version-code form `X.Y.Z-nightly.<day * 100 + build>` and, ahead of #2962,
- * the dated form `X.Y.Z-nightly.<YYYYMMDD>.<build>`. Null for anything else.
+ * version-code form `X.Y.Z-nightly.<day * 100 + build>`, the portable dated
+ * form `X.Y.Z-nightly.<YYYYMMDD><NN>`, and the native dated form with an
+ * explicit build index. Null for anything else.
  */
 export function hostNightlyAllocation(
   version: string,
 ): NightlyAllocation | null {
+  const portable = /^(.*-nightly\.)([0-9]{8})([0-9]{2})$/.exec(version);
+  if (portable) {
+    return hostNightlyAllocation(
+      `${portable[1]}${portable[2]}.${Number(portable[3])}`,
+    );
+  }
   const dated =
     /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-nightly\.([0-9]{4})([0-9]{2})([0-9]{2})\.(0|[1-9][0-9]*)$/.exec(
       version,

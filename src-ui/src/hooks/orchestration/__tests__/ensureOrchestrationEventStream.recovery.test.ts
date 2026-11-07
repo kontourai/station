@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
+import { AUTHORITY_OBSERVATION_SCHEMA_VERSION } from '@kontourai/station-contracts/authority-observation';
 import {
   notifyCredentialChanged,
+  StationRequestAuthorityError,
   setClientCredentialResolver,
 } from '@kontourai/station-sdk';
+import type { ClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -31,10 +34,17 @@ vi.mock('../eventHandlers', () => ({
     settleSemanticDeliveryBuffer(...args),
 }));
 
+import { conversationCapabilitiesFromAuthority } from '../../../connections/station-connection';
+import {
+  type StationConnectionLease,
+  StationConnectionRegistry,
+} from '../../../connections/station-connection-registry';
+import { CLIENT_DOCUMENT_SESSION_ID } from '../../clientDocumentSession';
 import {
   ensureOrchestrationEventStream,
   resyncOrchestrationEventStream,
 } from '../ensureOrchestrationEventStream';
+import { subscribeSharedOrchestrationStream } from '../sharedStreamListeners';
 import { getStreamConnectionState } from '../streamConnectionState';
 
 const encoder = new TextEncoder();
@@ -426,3 +436,249 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     }
   });
 });
+
+test.each([
+  { label: 'missing', acknowledgement: undefined, interest: 'early' },
+  { label: 'invalid', acknowledgement: '0', interest: 'early' },
+  { label: 'acknowledged', acknowledgement: '1', interest: 'early' },
+  { label: 'late', acknowledgement: undefined, interest: 'late' },
+  { label: 'no general owner', acknowledgement: undefined, interest: 'none' },
+] as const)(
+  'general-event transport requires stream acknowledgement: $label',
+  async ({ label, acknowledgement, interest }) => {
+    const apiBase = `http://recovery.test/general-ack-${encodeURIComponent(label)}`;
+    const signals: AbortSignal[] = [];
+    const generalData: unknown[] = [];
+    const authorityErrors: unknown[] = [];
+    let checkingBoundAuthority = false;
+    const generalFrame = [
+      'event: station:general',
+      `data: ${JSON.stringify({ event: 'data:changed', data: '{"version":1}' })}`,
+      '',
+      '',
+    ].join('\n');
+    const legacyFrame = 'event: data:changed\ndata: {"version":1}\n\n';
+    fetchMock.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.startsWith(apiBase)) {
+          if (init?.signal) signals.push(init.signal);
+          if (
+            url === `${apiBase}/api/orchestration/events?includeGeneral=1` ||
+            (checkingBoundAuthority &&
+              url === `${apiBase}/api/orchestration/events`)
+          ) {
+            const response = openSseResponse(
+              SNAPSHOT + generalFrame,
+              init?.signal,
+            );
+            if (acknowledgement !== undefined)
+              response.headers.set('X-Station-General-Stream', acknowledgement);
+            return response;
+          }
+          if (url === `${apiBase}/events`)
+            return openSseResponse(legacyFrame, init?.signal);
+          throw new Error(`Unexpected general-event request: ${url}`);
+        }
+        return openSseResponse(SNAPSHOT, init?.signal);
+      },
+    );
+    const listener = subscribeSharedOrchestrationStream(apiBase, {
+      onError: (error) => authorityErrors.push(error),
+      onMessage: (message) => {
+        if (message.event === 'station:general')
+          generalData.push(JSON.parse(message.data));
+      },
+    });
+    const registry =
+      label === 'missing'
+        ? new StationConnectionRegistry(() => true)
+        : undefined;
+    let lease: StationConnectionLease | undefined;
+    let release: (() => void) | undefined;
+    let releaseLate: (() => void) | undefined;
+    try {
+      if (registry) {
+        const boundScope = { apiBase, authorityKey: 'recovery-owner-a' };
+        const otherScope = { apiBase, authorityKey: 'recovery-owner-b' };
+        lease = await registry.acquire('recovery-bound', async () => ({
+          environmentId: 'recovery-bound',
+          stationName: 'recovery-bound',
+          stationKey: apiBase,
+          routeKind: 'host',
+          targetApiBase: apiBase,
+          requestScope: boundScope,
+          authorityNamespace: 'recovery-owner-a',
+          binding: {
+            version: 1,
+            environmentId: 'recovery-bound',
+            stationName: 'recovery-bound',
+            affinity: { kind: 'host' },
+          },
+          capabilities: conversationCapabilitiesFromAuthority(
+            {
+              schemaVersion: AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+              environmentId: 'recovery-bound',
+              principal: { kind: 'human', id: 'human:recovery' },
+              grant: {
+                kind: 'device',
+                deviceId: 'device:recovery',
+                grantedScopes: ['orchestration:read', 'orchestration:operate'],
+              },
+            },
+            { remote: false, mutationAllowed: true },
+          ),
+          isCurrent: () => true,
+          dispose: () => {},
+        }));
+        let mismatched = true;
+        const resolver = vi.fn<ClientCredentialResolver>((selector) => {
+          if (!selector?.url.startsWith(apiBase))
+            return {
+              origin: 'http://recovery.test',
+              credential: 'test-credential',
+            };
+          return {
+            origin: 'http://recovery.test',
+            credential: mismatched
+              ? 'other-authority-credential'
+              : 'test-credential',
+            requestAuthority: {
+              ...(mismatched ? otherScope : boundScope),
+              isCurrent: () => true,
+            },
+          };
+        });
+        setClientCredentialResolver(resolver);
+        // Keep the real lease current: the SDK must refuse both callers before
+        // fetch, rather than relying on the UI's earlier isCurrent guard.
+        expect(lease.connection.isCurrent()).toBe(true);
+        checkingBoundAuthority = true;
+        const releaseRefused = ensureOrchestrationEventStream(
+          apiBase,
+          undefined,
+          undefined,
+          true,
+          false,
+          lease.connection,
+        );
+        try {
+          await settle();
+          expect(requestsTo(apiBase)).toHaveLength(0);
+          expect(
+            resolver.mock.calls
+              .map(([selector]) => selector)
+              .filter((selector) => selector?.url.startsWith(apiBase)),
+          ).toEqual(
+            expect.arrayContaining([
+              {
+                url: `${apiBase}/api/orchestration/events`,
+                requestScope: boundScope,
+              },
+              { url: `${apiBase}/events`, requestScope: boundScope },
+            ]),
+          );
+          expect(authorityErrors).toEqual(
+            expect.arrayContaining([expect.any(StationRequestAuthorityError)]),
+          );
+          const primaryAttempts = () =>
+            resolver.mock.calls.filter(
+              ([selector]) =>
+                selector?.url === `${apiBase}/api/orchestration/events`,
+            );
+          const attemptsBeforeResync = primaryAttempts().length;
+          resyncOrchestrationEventStream(apiBase);
+          await settle();
+          expect(requestsTo(apiBase)).toHaveLength(0);
+          expect(primaryAttempts()).toHaveLength(attemptsBeforeResync + 1);
+          expect(primaryAttempts().at(-1)?.[0]?.requestScope).toEqual(
+            boundScope,
+          );
+        } finally {
+          releaseRefused();
+          await settle();
+          checkingBoundAuthority = false;
+        }
+        mismatched = false;
+      }
+      release = ensureOrchestrationEventStream(
+        apiBase,
+        undefined,
+        'acknowledgement-owner',
+        interest === 'early',
+        true,
+        lease?.connection,
+      );
+      await settle();
+      if (interest === 'late') {
+        expect(requestsTo(apiBase)).toHaveLength(1);
+        releaseLate = ensureOrchestrationEventStream(
+          apiBase,
+          undefined,
+          'acknowledgement-owner',
+          true,
+          true,
+        );
+        await settle();
+      }
+      const legacy = requestsTo(apiBase).filter(
+        ([input]) =>
+          String(input instanceof Request ? input.url : input) ===
+          `${apiBase}/events`,
+      );
+      expect(legacy).toHaveLength(
+        acknowledgement !== '1' && interest !== 'none' ? 1 : 0,
+      );
+      expect(getStreamConnectionState(apiBase).phase).toBe('receiving');
+      if (interest !== 'none')
+        expect(generalData).toEqual([
+          { event: 'data:changed', data: '{"version":1}' },
+        ]);
+      const primaryBeforeResync = requestsTo(apiBase).filter(([input]) =>
+        String(input instanceof Request ? input.url : input).startsWith(
+          `${apiBase}/api/orchestration/events`,
+        ),
+      );
+      expect(primaryBeforeResync.length).toBeGreaterThan(0);
+      resyncOrchestrationEventStream(apiBase);
+      await settle();
+      const requests = requestsTo(apiBase);
+      const primaryAfterResync = requests.filter(([input]) =>
+        String(input instanceof Request ? input.url : input).startsWith(
+          `${apiBase}/api/orchestration/events`,
+        ),
+      );
+      expect(primaryAfterResync).toHaveLength(primaryBeforeResync.length + 1);
+      const resumed = primaryAfterResync.at(-1);
+      const resumedHeaders = new Headers(
+        resumed?.[1]?.headers ??
+          (resumed?.[0] instanceof Request ? resumed[0].headers : undefined),
+      );
+      expect(resumedHeaders.get('Last-Event-ID')).toBe('5');
+      expect(CLIENT_DOCUMENT_SESSION_ID).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+      for (const [input, init] of requests) {
+        const headers = new Headers(
+          init?.headers ??
+            (input instanceof Request ? input.headers : undefined),
+        );
+        expect(headers.get('X-Station-Client-Session')).toBe(
+          CLIENT_DOCUMENT_SESSION_ID,
+        );
+        // Observed transport credentials do not prove server refusal or scope.
+        expect(headers.get('Authorization')).toBe('Bearer test-credential');
+      }
+    } finally {
+      releaseLate?.();
+      release?.();
+      listener.close();
+      lease?.release();
+      registry?.retire();
+      await settle();
+    }
+    expect(signals.length).toBeGreaterThan(0);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    if (label === 'missing') expect(lease?.connection.isCurrent()).toBe(false);
+  },
+);

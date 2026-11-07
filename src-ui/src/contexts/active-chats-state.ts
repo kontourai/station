@@ -1,6 +1,7 @@
 import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
   ChildWorkModel,
+  ChildWorkSummarySource,
   ChildWorkTerminalDisplayStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
@@ -26,8 +27,18 @@ import type {
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
+import type { ChatStationBindingV1 } from '../connections/station-connection';
+import { readChatStationBinding } from '../connections/station-state';
 import type { PeerChatBinding } from '../lib/peer-chat';
-import { readPeerChatBinding } from '../lib/peer-chat';
+import {
+  passivePeerChatBackup,
+  readPeerChatBinding,
+  readPeerChatMessages,
+} from '../lib/peer-chat';
+import {
+  type RetainedChatTranscript,
+  readRetainedChatTranscript,
+} from '../lib/retained-chat-transcript';
 import {
   readSkillExperienceDraft,
   type SkillExperienceDraft,
@@ -180,6 +191,9 @@ export type ChatContentPart = {
 };
 
 export type ChatMessage = {
+  /** Refused sends remain ordinary user messages, with shared delivery controls. */
+  deliveryNotice?: import('../types').ChatMessage['deliveryNotice'];
+  action?: import('../types').ChatMessage['action'];
   /** Stable server/event identity when the producer provides one. */
   id?: string;
   role: ChatRole;
@@ -194,6 +208,8 @@ export type ChatMessage = {
   stationCheckBack?: boolean;
   /** See `ChatMessage.stationMemoryContinuation` in types.ts. */
   stationMemoryContinuation?: boolean;
+  /** See `ChatMessage.stationRestartContinuation` in types.ts. */
+  stationRestartContinuation?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;
@@ -237,6 +253,9 @@ export interface BackgroundTaskNotice {
   status: ChildWorkTerminalDisplayStatus;
   title?: string;
   summary?: string;
+  summarySource?: ChildWorkSummarySource;
+  /** Verified name of the Station whose stream supplied this notice. */
+  stationName?: string;
 }
 
 export type EphemeralMessage = ChatMessage & {
@@ -260,6 +279,7 @@ export type EphemeralMessage = ChatMessage & {
    * composer repeats only these, and only until a later send is accepted.
    */
   sendFailure?: boolean;
+  deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
   /**
    * This notice says a send was queued to be retried by itself and carries the
    * one way to discard it. A short dock hides the transcript, so the composer
@@ -371,7 +391,14 @@ export type ChatLiveUsage = {
 };
 
 export type ChatUIState = {
+  retainedTranscript?: RetainedChatTranscript;
+  stationConnectionUnavailable?: boolean;
+  stationBinding?: ChatStationBindingV1;
+  stationBindingInvalid?: boolean;
+  stationBindingLegacy?: unknown;
   peerChat?: PeerChatBinding;
+  peerChatLegacy?: unknown;
+  peerChatTranscript?: unknown;
   peerChatInvalid?: boolean;
   taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
@@ -798,6 +825,9 @@ export type ChatReplayState = {
 };
 
 export type ActiveChatMetadata = {
+  stationBinding?: ChatStationBindingV1;
+  stationBindingInvalid?: boolean;
+  stationBindingLegacy?: unknown;
   agentSlug: string;
   agentName: string;
   title: string;
@@ -838,13 +868,20 @@ export type ActiveChatMetadata = {
 };
 
 export type PersistedActiveChat = {
-  peerChat?: PeerChatBinding;
+  retainedTranscript?: unknown;
+  stationBinding?: unknown;
+  stationBindingInvalid?: boolean;
+  stationBindingLegacy?: unknown;
+  peerChat?: unknown;
+  peerChatLegacy?: unknown;
+  peerChatTranscript?: unknown;
   peerChatInvalid?: boolean;
   taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
   skillExperienceActive?: boolean;
   skillExperienceMode?: 'guided' | 'alongside' | 'chat';
+  input?: string;
   sessionId: string;
   /**
    * Absent for a chat persisted ONLY because it holds unsent records
@@ -1069,7 +1106,10 @@ export function hydrateActiveChats(
       continue;
     }
     const session = candidate as PersistedActiveChat;
-    const peerChat = readPeerChatBinding(session.peerChat);
+    const stationBinding = readChatStationBinding(session.stationBinding);
+    const peerChat = stationBinding
+      ? undefined
+      : readPeerChatBinding(session.peerChat);
     const text = (value: unknown) => optionalString(value);
     const queuedMessageFailure = readQueuedMessageFailure(
       session.queuedMessageFailure,
@@ -1084,7 +1124,21 @@ export function hydrateActiveChats(
       typeof dispatch.metadata?.id === 'string'
         ? dispatch
         : undefined;
+    const peerChatTranscript =
+      session.peerChatTranscript ??
+      (session.peerChat !== undefined ? candidate.messages : undefined);
     chats[session.sessionId] = {
+      retainedTranscript: readRetainedChatTranscript(
+        session.retainedTranscript,
+        stationBinding,
+        session.conversationId,
+      ),
+      ...(peerChatTranscript !== undefined
+        ? {
+            messages: readPeerChatMessages(peerChatTranscript),
+            peerChatTranscript,
+          }
+        : {}),
       ...(experienceDraft ? { skillExperienceDraft: experienceDraft } : {}),
       ...(session.skillExperienceDraftInvalid ||
       (session.skillExperienceDraft !== undefined && !experienceDraft)
@@ -1098,7 +1152,15 @@ export function hydrateActiveChats(
       )
         ? { skillExperienceMode: session.skillExperienceMode }
         : {}),
-      input: '',
+      input:
+        stationBinding?.affinity.kind !== 'host' &&
+        (stationBinding ||
+          session.stationBinding !== undefined ||
+          session.peerChat !== undefined ||
+          session.peerChatInvalid ||
+          session.stationBindingInvalid)
+          ? (text(session.input) ?? '')
+          : '',
       attachments: [],
       ...(typeof session.pendingSendNow?.messageId === 'string' &&
       typeof session.pendingSendNow.threadId === 'string' &&
@@ -1165,10 +1227,18 @@ export function hydrateActiveChats(
       inputHistory: stringList(session.inputHistory),
       hasUnread: false,
       agentSlug: session.agentSlug,
+      stationBinding,
+      stationBindingLegacy:
+        session.stationBindingLegacy ??
+        (!stationBinding ? session.stationBinding : undefined),
+      stationBindingInvalid:
+        session.stationBindingInvalid === true ||
+        (session.stationBinding !== undefined && !stationBinding),
       peerChat,
+      peerChatLegacy: session.peerChatLegacy ?? session.peerChat,
       peerChatInvalid:
         session.peerChatInvalid === true ||
-        (session.peerChat !== undefined && !peerChat),
+        (!stationBinding && session.peerChat !== undefined && !peerChat),
       conversationId: text(session.conversationId),
       currentSessionId: text(session.currentSessionId),
       conversationOpenPending: typeof session.conversationId === 'string',
@@ -1310,7 +1380,12 @@ export function activeChatDurableId(
  * see `activeChatHasWork` below.
  */
 export function isDurableActiveChat(chat: {
+  stationBinding?: ChatStationBindingV1;
+  stationBindingInvalid?: boolean;
+  stationBindingLegacy?: unknown;
   peerChat?: PeerChatBinding;
+  peerChatLegacy?: unknown;
+  peerChatTranscript?: unknown;
   peerChatInvalid?: boolean;
   conversationId?: string;
   unsentMessages?: unknown[];
@@ -1323,6 +1398,8 @@ export function isDurableActiveChat(chat: {
   if (chat.replay) return false;
   return Boolean(
     chat.peerChat ||
+      (chat.stationBinding && chat.stationBinding.affinity.kind !== 'host') ||
+      chat.stationBindingInvalid ||
       chat.peerChatInvalid ||
       chat.conversationId ||
       chat.unsentMessages?.length ||
@@ -1368,6 +1445,13 @@ export function serializeActiveChats(
     .filter(([, chat]) => isDurableActiveChat(chat))
     .map(([sessionId, chat]) => ({
       sessionId,
+      ...((chat.stationBinding &&
+        chat.stationBinding.affinity.kind !== 'host') ||
+      chat.peerChat ||
+      chat.peerChatInvalid ||
+      chat.stationBindingInvalid
+        ? { input: chat.input }
+        : {}),
       ...(chat.skillExperienceDraft
         ? { skillExperienceDraft: chat.skillExperienceDraft }
         : {}),
@@ -1380,8 +1464,24 @@ export function serializeActiveChats(
         : {}),
       conversationId: chat.conversationId,
       currentSessionId: chat.currentSessionId,
+      retainedTranscript: readRetainedChatTranscript(
+        chat.retainedTranscript,
+        chat.stationBinding,
+        chat.conversationId,
+      ),
       agentSlug: chat.agentSlug!,
-      peerChat: chat.peerChat,
+      stationBinding: chat.stationBinding ?? chat.stationBindingLegacy,
+      stationBindingLegacy: chat.stationBindingLegacy,
+      stationBindingInvalid: chat.stationBindingInvalid,
+      peerChat: chat.stationBinding
+        ? passivePeerChatBackup(chat.peerChatLegacy)
+        : (chat.peerChat ?? chat.peerChatLegacy),
+      peerChatLegacy: chat.peerChatLegacy,
+      ...(chat.peerChat ||
+      chat.peerChatInvalid ||
+      chat.peerChatTranscript !== undefined
+        ? { peerChatTranscript: chat.peerChatTranscript ?? chat.messages }
+        : {}),
       peerChatInvalid: chat.peerChatInvalid,
       queuedMessages: chat.queuedMessages || [],
       queuedMessageMetadata: chat.queuedMessageMetadata,
@@ -1614,7 +1714,23 @@ export function mergeChatUpdates(
     chat.stopSettledTurnId = undefined;
   }
   const shouldPersist =
+    'retainedTranscript' in nextUpdates ||
+    ('input' in nextUpdates &&
+      Boolean(
+        chat.stationBinding?.affinity.kind !== 'host' &&
+          (chat.stationBinding ||
+            chat.peerChat ||
+            chat.peerChatInvalid ||
+            chat.stationBindingInvalid),
+      )) ||
+    'stationBinding' in nextUpdates ||
+    'stationBindingLegacy' in nextUpdates ||
+    'stationBindingInvalid' in nextUpdates ||
     'peerChat' in nextUpdates ||
+    'peerChatLegacy' in nextUpdates ||
+    'peerChatTranscript' in nextUpdates ||
+    ('messages' in nextUpdates &&
+      Boolean(chat.peerChat || chat.peerChatInvalid)) ||
     'peerChatInvalid' in nextUpdates ||
     'skillExperienceDraft' in nextUpdates ||
     'skillExperienceDraftInvalid' in nextUpdates ||
@@ -1879,6 +1995,7 @@ export function createEphemeralMessageState(
       confirm?: 'unconfirmed-discard';
     };
     sendFailure?: boolean;
+    deliveryNotice?: import('../utils/messageDeliveryState').ConversationDeliveryNotice;
     queuedRetry?: boolean;
     childWorkKey?: string;
     backgroundTaskNotice?: BackgroundTaskNotice;

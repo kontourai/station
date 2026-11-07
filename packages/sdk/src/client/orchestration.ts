@@ -604,6 +604,7 @@ async function dispatchSteerCommand<T>(
     turnId?: string;
     clientInputId?: string;
   },
+  opts?: ClientRequestOptions,
 ): Promise<T> {
   const response = await authenticatedFetch(
     `${apiBase}/api/orchestration/commands`,
@@ -611,6 +612,7 @@ async function dispatchSteerCommand<T>(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(command),
+      ...opts,
     },
   );
   const result = (await response.json()) as {
@@ -631,19 +633,24 @@ async function dispatchSteerCommand<T>(
 export async function steerTurn(
   apiBase: string,
   input: SteerInput,
+  opts?: ClientRequestOptions,
 ): Promise<SteerTurnResult & { clientInputId: string }> {
   const clientInputId = chooseSentTurnKey(input.clientInputId, {
     field: 'clientInputId',
     maxLength: 128,
   });
   try {
-    const result = await dispatchSteerCommand<SteerTurnResult>(apiBase, {
-      type: 'steerTurnOnce',
-      threadId: input.threadId,
-      input: input.text,
-      clientInputId,
-      ...(input.turnId ? { turnId: input.turnId } : {}),
-    });
+    const result = await dispatchSteerCommand<SteerTurnResult>(
+      apiBase,
+      {
+        type: 'steerTurnOnce',
+        threadId: input.threadId,
+        input: input.text,
+        clientInputId,
+        ...(input.turnId ? { turnId: input.turnId } : {}),
+      },
+      opts,
+    );
     return { ...result, clientInputId };
   } catch (error) {
     rememberSentTurnKey(error, clientInputId);
@@ -655,12 +662,17 @@ export async function steerTurn(
 export function inspectSteerInput(
   apiBase: string,
   input: SteerInput & { clientInputId: string },
+  opts?: ClientRequestOptions,
 ): Promise<SteerInputInspectionResult> {
-  return dispatchSteerCommand(apiBase, {
-    type: 'inspectSteerInput',
-    threadId: input.threadId,
-    input: input.text,
-    clientInputId: input.clientInputId,
-    ...(input.turnId ? { turnId: input.turnId } : {}),
-  });
+  return dispatchSteerCommand(
+    apiBase,
+    {
+      type: 'inspectSteerInput',
+      threadId: input.threadId,
+      input: input.text,
+      clientInputId: input.clientInputId,
+      ...(input.turnId ? { turnId: input.turnId } : {}),
+    },
+    opts,
+  );
 }

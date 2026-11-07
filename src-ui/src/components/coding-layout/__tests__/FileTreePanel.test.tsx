@@ -22,6 +22,7 @@ const createMutate = vi.fn();
 const renameMutate = vi.fn();
 const deleteMutate = vi.fn();
 const previewProjectWorkspaceFileMock = vi.fn();
+const refetchFiles = vi.fn();
 
 const filesState: { data: unknown; isLoading: boolean; error: unknown } = {
   data: [],
@@ -30,7 +31,7 @@ const filesState: { data: unknown; isLoading: boolean; error: unknown } = {
 };
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useCodingFilesQuery: () => filesState,
+  useCodingFilesQuery: () => ({ ...filesState, refetch: refetchFiles }),
   useCreateCodingFileMutation: () => ({ mutate: createMutate, error: null }),
   useRenameCodingFileMutation: () => ({ mutate: renameMutate, error: null }),
   useDeleteCodingFileMutation: () => ({ mutate: deleteMutate, error: null }),
@@ -86,6 +87,7 @@ beforeEach(() => {
   filesState.data = tree;
   filesState.isLoading = false;
   filesState.error = null;
+  refetchFiles.mockReset();
   attachState.files = [];
   createMutate.mockClear();
   renameMutate.mockClear();
@@ -148,6 +150,21 @@ describe('FileTreePanel', () => {
     expect(screen.getByText('src')).toBeTruthy();
     expect(screen.getByText('app.ts')).toBeTruthy();
     expect(screen.getByText('README.md')).toBeTruthy();
+  });
+
+  test('offers a retry of the file listing after a read failure', () => {
+    filesState.data = [];
+    filesState.error = new Error('The workspace could not be read');
+    renderPanel();
+
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('The workspace could not be read')).toBeNull();
+    expect(refetchFiles).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetchFiles).toHaveBeenCalledTimes(1);
+    expect(createMutate).not.toHaveBeenCalled();
+    expect(renameMutate).not.toHaveBeenCalled();
+    expect(deleteMutate).not.toHaveBeenCalled();
   });
 
   test('the filter input prunes the tree to matches', () => {
@@ -239,12 +256,40 @@ describe('FileTreePanel', () => {
     }
   });
 
-  test('the header + button opens a New File / New Folder menu', () => {
-    renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: 'New file or folder' }));
-    expect(screen.getByRole('menuitem', { name: 'New File' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'New Folder' })).toBeTruthy();
-  });
+  test.each(['origin', 'chosen control'] as const)(
+    'New file keeps dialog focus and respects %s focus after cancel',
+    async (destination) => {
+      renderPanel();
+      const trigger = screen.getByRole('button', {
+        name: 'New file or folder',
+      });
+      trigger.focus();
+      fireEvent.click(trigger);
+      const newFile = screen.getByRole('menuitem', { name: 'New File' });
+      expect(screen.getByRole('menuitem', { name: 'New Folder' })).toBeTruthy();
+      expect(document.activeElement).toBe(newFile);
+
+      fireEvent.click(newFile);
+      const name = screen.getByRole('textbox', { name: 'Name' });
+      await act(async () => {
+        await new Promise(requestAnimationFrame);
+      });
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(document.activeElement).toBe(name);
+
+      fireEvent.keyDown(name, { key: 'Escape' });
+      expect(screen.queryByRole('dialog', { name: 'New file' })).toBeNull();
+      const chosen = screen.getByRole('searchbox', { name: 'Filter files' });
+      if (destination === 'chosen control') chosen.focus();
+      await act(async () => {
+        await new Promise(requestAnimationFrame);
+      });
+      expect(document.activeElement).toBe(
+        destination === 'origin' ? trigger : chosen,
+      );
+      expect(createMutate).not.toHaveBeenCalled();
+    },
+  );
 
   test('the labeled empty file-tree region keeps the root menu available alongside the header action', () => {
     renderPanel();

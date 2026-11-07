@@ -9,6 +9,8 @@ import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { EngineSignInDisclosure } from '../components/engine-sign-in/EngineSignInDisclosure';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
+import { describeStationFailure } from '../utils/stationFailure';
 import type { NotConnectedEngine } from './EngineAddFlow';
 
 /**
@@ -81,9 +83,18 @@ export function NotConnectedEngineDetail({
           </span>
           {connection.lastError ? (
             <span className="acp-add-dialog__result-reason">
-              {connection.lastError.message}
+              {describeStationFailure(connection.lastError).body}
             </span>
           ) : null}
+          <span>
+            <TroubleshootAction
+              size="sm"
+              request={{
+                code: `engine-${connection.lastError?.phase ?? 'not-connected'}`,
+                message: `${connection.name}: ${connection.lastError?.message ?? 'not connected yet'}`,
+              }}
+            />
+          </span>
         </div>
         <EngineSignInDisclosure
           connectionId={connection.id}
@@ -131,9 +142,7 @@ export function NotConnectedEngineDetail({
           remove
             .mutateAsync(connection.id)
             .then(onRemoved, (error: unknown) =>
-              setRemoveError(
-                error instanceof Error ? error.message : String(error),
-              ),
+              setRemoveError(describeStationFailure(error).body),
             );
         }}
         onCancel={() => setConfirmRemove(false)}

@@ -249,18 +249,16 @@ export class PtyWorkloadHost {
     if (workload.info.state === 'running') {
       const pid = workload.info.pid;
       if (process.platform === 'win32') {
-        spawnSync('taskkill', ['/T', '/F', '/PID', String(pid)], {
-          stdio: 'ignore',
-          windowsHide: true,
-          timeout: KILL_DEADLINE_MS,
-        });
-        // Closing the PTY of a shell taskkill already ended makes node-pty
-        // attach to a console that is gone, so only one still running.
-        const ended = await Promise.race([
-          workload.exited.then(() => true),
-          this.delay(KILL_GRACE_MS).then(() => false),
-        ]);
-        if (!ended) this.quietly(() => workload.process.kill());
+        const killed = spawnSync(
+          'taskkill',
+          ['/T', '/F', '/PID', String(pid)],
+          { stdio: 'ignore', windowsHide: true, timeout: KILL_DEADLINE_MS },
+        );
+        // Ended (0) or already gone (128): wait for the exit as after a
+        // natural one. node-pty's kill() after its shell has gone signals the
+        // old pid seconds later, when Windows may have reused it (#3994).
+        if (killed.status !== 0 && killed.status !== 128)
+          this.quietly(() => workload.process.kill());
       } else if (workload.process.terminate) {
         await workload.process.terminate().catch(() => {
           this.quietly(() => workload.process.kill('SIGKILL'));

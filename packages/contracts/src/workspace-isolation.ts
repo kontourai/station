@@ -36,6 +36,17 @@ export interface WorkspaceIsolationConfig {
   policy?: WorktreeIsolationPolicy;
 }
 
+/**
+ * #4507: who owns a provisioned worktree when it is not the Session that
+ * started in it. A Task-owned worktree is shared by every Session of that
+ * Task and is finalized when the Task reaches `done` or `canceled`, never
+ * when one of its Sessions exits. Absent: the starting Session owns it.
+ */
+export interface WorktreeTaskOwner {
+  kind: 'task';
+  taskId: string;
+}
+
 export interface WorktreeSessionMetadata {
   mode: 'worktree';
   repoPath: string;
@@ -47,6 +58,8 @@ export interface WorktreeSessionMetadata {
   cleanupPolicy: WorktreeCleanupPolicy;
   preserveOnFailure: boolean;
   createdAt: string;
+  /** #4507: set only for a Task-owned worktree; see {@link WorktreeTaskOwner}. */
+  owner?: WorktreeTaskOwner;
 }
 
 export type WorkspaceIsolationMetadata =

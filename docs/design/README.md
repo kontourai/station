@@ -49,6 +49,7 @@ category.
 - [connections-onboarding.md](connections-onboarding.md) — Design: Connections onboarding & capability passthrough
 - [conversation-state.md](conversation-state.md) — Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 - [developer-surface.md](developer-surface.md) — Developer surface
+- [ended-task-resume.md](ended-task-resume.md) — Resuming ended Tasks
 - [entity-hierarchy.md](entity-hierarchy.md) — Design: Entity Hierarchy & Navigation Restructure
 - [event-content-spill.md](event-content-spill.md) — Event content spill: keep runtime events small, store large values once
 - [event-store-ledger-migration.md](event-store-ledger-migration.md) — EventStore ledger migration order
@@ -103,6 +104,7 @@ category.
 - [shell-plugins-distributions.md](shell-plugins-distributions.md) — Shell kernel, plugin contributions and distribution manifests
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (archive#193 shell convergence)
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
+- [station-connection.md](station-connection.md) — Station connections and shared conversations
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
 - [station-peer-pairing.md](station-peer-pairing.md) — Design: Station-to-Station peer pairing (spike, #70)
 - [station-routes.md](station-routes.md) — Station routes: one saved Station, many ways to reach it

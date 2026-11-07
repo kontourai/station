@@ -219,6 +219,7 @@ test('actual SDK isolates concurrent native conversations, approvals, model stat
   const seen: InvocationContext[] = [];
   const execute = vi.fn(async () => ({ ok: true }));
   const agent = await new StrandsFramework().createTempAgent({
+    purpose: 'agent-run',
     name: 'display-only',
     agentId: 'agent-a',
     instructions: 'Respond.',
@@ -423,6 +424,7 @@ test('title/subagent/no-conversation calls do not borrow the enclosing native hi
   for (const agentId of [undefined, 'other-agent']) {
     const model = new FixtureModel();
     const agent = await new StrandsFramework().createTempAgent({
+      purpose: 'agent-run',
       name: 'agent-a',
       agentId,
       instructions: 'Respond.',
@@ -444,6 +446,7 @@ test('title/subagent/no-conversation calls do not borrow the enclosing native hi
   }
   const model = new FixtureModel();
   const agent = await new StrandsFramework().createTempAgent({
+    purpose: 'agent-run',
     name: 'display',
     agentId: 'agent-a',
     instructions: 'Respond.',
@@ -463,6 +466,7 @@ test('revocation before lazy stream consumption prevents SDK execution and settl
   const owned = await f.companion('child', 'user', 'PRIVATE-PARENT');
   const model = new FixtureModel();
   const agent = await new StrandsFramework().createTempAgent({
+    purpose: 'agent-run',
     name: 'display',
     agentId: 'agent-a',
     instructions: 'Respond.',
@@ -493,6 +497,7 @@ test('direct explicit conversations use isolated current-only SDK history and pe
   ]);
   const model = new FixtureModel();
   const agent = await new StrandsFramework().createTempAgent({
+    purpose: 'agent-run',
     name: 'display',
     agentId: 'agent-a',
     instructions: 'Respond.',
@@ -529,6 +534,7 @@ test('direct explicit conversations use isolated current-only SDK history and pe
     }),
   ).rejects.toThrow('ownership is unavailable');
   const unowned = await new StrandsFramework().createTempAgent({
+    purpose: 'agent-run',
     name: 'agent-a',
     instructions: 'Respond.',
     model,
@@ -550,6 +556,7 @@ test.each([
   async ({ agentId, expected }) => {
     const seen: InvocationContext[] = [];
     const agent = await new StrandsFramework().createTempAgent({
+      purpose: 'agent-run',
       name: 'temporary-display',
       agentId,
       instructions: 'Respond.',
@@ -609,6 +616,7 @@ test('a direct conversation never replays a failed-turn marker to the model', as
   ]);
   const model = new FixtureModel();
   const agent = await new StrandsFramework().createTempAgent({
+    purpose: 'agent-run',
     name: 'display',
     agentId: 'agent-a',
     instructions: 'Respond.',

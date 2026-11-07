@@ -61,6 +61,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 
 /** The Station these events arrive from (the store is partitioned by it). */
@@ -79,11 +80,12 @@ const CONVERSATION_ID = 'conv-2050';
 
 /** The dock's own read of the badge, from the id `ChatDock` passes it. */
 function BadgeProbe({ sessionId }: { sessionId: string }) {
-  const count = useChatBackgroundTasksRunningCount(sessionId);
+  const count = useChatBackgroundTasksRunningCount(sessionId, API);
   return <output data-testid="badge">{count}</output>;
 }
 
 beforeEach(() => {
+  backgroundTasksStore.reset();
   activeChat = CONVERSATION_ID;
   useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
   for (const mutation of [
@@ -128,10 +130,12 @@ beforeEach(() => {
       active: [{ taskId: 'task-1', description: 'Investigate flaky test' }],
     },
   });
+  backgroundTasksStore.bindProviderReporter(API, 'exec-1', SESSION_KEY);
 });
 
 afterEach(() => {
   cleanup();
+  backgroundTasksStore.reset();
   activeChatsStore.removeChat(SESSION_KEY);
   vi.clearAllMocks();
 });
@@ -181,3 +185,7 @@ test('no chat is still no list, and an unknown id borrows nobody else’s work',
   expect(screen.getByText('No subagents running')).toBeTruthy();
   expect(screen.queryByText('Investigate flaky test')).toBeNull();
 });
+
+vi.mock('../../hooks/useActiveStationName', () => ({
+  useActiveStationName: () => 'Fixture Station',
+}));

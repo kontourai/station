@@ -3,6 +3,7 @@
  */
 
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -14,6 +15,15 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { projectOutboundQueueEntries } from '../hooks/outboundQueueProjection';
 import type { QueuedOutboundTurn } from '../lib/outboundQueue';
 
+const recheckOutboundTurnMock = vi.fn();
+const copyToClipboardMock = vi.fn();
+vi.mock('../lib/clipboard', () => ({
+  copyToClipboard: (...args: unknown[]) => copyToClipboardMock(...args),
+}));
+vi.mock('../lib/deliveryLookup', () => ({
+  recheckOutboundTurn: (...args: unknown[]) => recheckOutboundTurnMock(...args),
+}));
+
 const discardOutboundTurnMock = vi.fn();
 const editOutboundTurnMock = vi.fn();
 const reorderOutboundTurnMock = vi.fn();
@@ -22,7 +32,8 @@ const unmergeOutboundTurnMock = vi.fn();
 const sendHeldMock = vi.fn();
 const dismissUnconfirmedMock = vi.fn();
 
-vi.mock('../lib/outboundQueue', () => ({
+vi.mock('../lib/outboundQueue', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/outboundQueue')>()),
   isWorkspaceRefusedTurn: (turn: { status: string; lastError?: string }) =>
     turn.status === 'failed' &&
     turn.lastError?.startsWith('Workspace refusal:') === true,
@@ -41,6 +52,93 @@ vi.mock('../lib/outboundQueue', () => ({
 import { OutboundQueuedMessages } from '../components/chat/OutboundQueuedMessages';
 
 describe('OutboundQueuedMessages (station#2522)', () => {
+  it.each([true, false])(
+    'copying an unconfirmed message reports clipboard success=%s',
+    async (copied) => {
+      copyToClipboardMock.mockResolvedValueOnce(copied);
+      const retry = vi.fn();
+      render(
+        <OutboundQueuedMessages
+          sessionId="chat-copy"
+          turns={[
+            {
+              clientTurnId: 'copy-key',
+              content: 'saved text',
+              status: 'may-have-started',
+            },
+          ]}
+          onError={vi.fn()}
+          onRetry={retry}
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More delivery actions' }),
+      );
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy message' }));
+      await waitFor(() =>
+        expect(copyToClipboardMock).toHaveBeenCalledWith('saved text'),
+      );
+      expect(
+        await screen.findByText(
+          copied
+            ? 'Copied'
+            : 'Could not copy this message. Select its text to copy it.',
+        ),
+      ).toBeTruthy();
+      expect(retry).not.toHaveBeenCalled();
+      expect(discardOutboundTurnMock).not.toHaveBeenCalled();
+      expect(dismissUnconfirmedMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['indeterminate', 'error'])(
+    'refresh delivery reports %s without resending',
+    async (outcome) => {
+      if (outcome === 'error')
+        recheckOutboundTurnMock.mockRejectedValueOnce(
+          new Error('The requested conversation is unavailable.'),
+        );
+      else recheckOutboundTurnMock.mockResolvedValueOnce(outcome);
+      const retry = vi.fn();
+      render(
+        <OutboundQueuedMessages
+          sessionId="chat-1"
+          turns={[
+            {
+              clientTurnId: 'uncertain',
+              content: 'continue',
+              status: 'may-have-started',
+              lastError: 'Automatic delivery checks paused.',
+            },
+          ]}
+          onError={vi.fn()}
+          onRetry={retry}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            outcome === 'error'
+              ? 'Try again in a moment.'
+              : 'Station still can’t confirm it.',
+          ),
+        ).toBeTruthy(),
+      );
+      expect(
+        screen.queryByText(/The requested conversation is unavailable/),
+      ).toBeNull();
+      expect(retry).not.toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: 'Copy message' })).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More delivery actions' }),
+      );
+      expect(
+        screen.getByRole('menuitem', { name: 'Copy message' }),
+      ).toBeTruthy();
+    },
+  );
+
   beforeEach(() => {
     vi.clearAllMocks();
     discardOutboundTurnMock.mockResolvedValue(undefined);
@@ -98,7 +196,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
         onStartNewChat={vi.fn()}
       />,
     );
-    const note = screen.getByText(/From a closed window\. Not sent\./);
+    const note = screen.getByText(/From a closed window\./);
     expect(note.getAttribute('title')).toMatch(/only when you press Send/);
     // Its remove action says what it does.
     expect(
@@ -180,6 +278,87 @@ describe('OutboundQueuedMessages (station#2522)', () => {
         'turn-1',
         'corrected message',
       ),
+    );
+  });
+
+  it('keeps a rejected queued edit available for correction and retry', async () => {
+    const onError = vi.fn();
+    editOutboundTurnMock.mockRejectedValueOnce(
+      new Error('storage unavailable'),
+    );
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          { clientTurnId: 'turn-1', content: 'original', status: 'pending' },
+        ]}
+        onError={onError}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit message' }));
+    const input = screen.getByRole('textbox', { name: 'Edit queued message' });
+    fireEvent.change(input, { target: { value: 'my corrected message' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(onError).toHaveBeenCalled());
+    expect(
+      screen.getByRole('textbox', { name: 'Edit queued message' }),
+    ).toHaveProperty('value', 'my corrected message');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('textbox', { name: 'Edit queued message' }),
+      ).toBeNull(),
+    );
+    expect(editOutboundTurnMock).toHaveBeenCalledTimes(2);
+    expect(editOutboundTurnMock).toHaveBeenLastCalledWith(
+      'turn-1',
+      'my corrected message',
+    );
+  });
+
+  it('saves once while pending and does not close another queued edit', async () => {
+    let finish!: () => void;
+    editOutboundTurnMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          { clientTurnId: 'turn-1', content: 'original', status: 'pending' },
+          { clientTurnId: 'turn-2', content: 'second', status: 'pending' },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Edit message' })[0]!,
+    );
+    const input = screen.getByRole('textbox', { name: 'Edit queued message' });
+    fireEvent.change(input, { target: { value: 'first correction' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input);
+    await waitFor(() => expect(editOutboundTurnMock).toHaveBeenCalledTimes(1));
+    expect(input.hasAttribute('readonly')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit message' }));
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Edit queued message' }),
+      {
+        target: { value: 'newer correction' },
+      },
+    );
+    await act(async () => finish());
+    await waitFor(() =>
+      expect(
+        screen.getByRole('textbox', { name: 'Edit queued message' }),
+      ).toHaveProperty('value', 'newer correction'),
     );
   });
 
@@ -339,13 +518,17 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    const label = screen.getByText('Sending');
+    const label = screen.getByRole('img', { name: /^Sending/ });
     // Under way elsewhere: a neutral note, not the caution tone.
-    expect(label.classList.contains('queued-messages__label--sending')).toBe(
-      true,
-    );
     expect(
-      label.classList.contains('queued-messages__label--unconfirmed'),
+      label
+        .closest('[data-delivery-state]')
+        ?.getAttribute('data-delivery-state') === 'sending',
+    ).toBe(true);
+    expect(
+      label
+        .closest('[data-delivery-state]')
+        ?.getAttribute('data-delivery-state') === 'awaiting-confirmation',
     ).toBe(false);
     expect(screen.queryByText(/may have reached/i)).toBeNull();
     expect(screen.queryByText(/no answer yet/i)).toBeNull();
@@ -374,11 +557,13 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
     expect(screen.queryByText('Sending')).toBeNull();
     expect(screen.queryByText(/sending/)).toBeNull();
-    const label = screen.getByText(
+    const label = screen.getAllByText(
       'No answer yet. Resends only if it never arrived.',
-    );
+    )[0]!;
     expect(
-      label.classList.contains('queued-messages__label--unconfirmed'),
+      label
+        .closest('[data-delivery-state]')
+        ?.getAttribute('data-delivery-state') === 'awaiting-confirmation',
     ).toBe(true);
     expect(screen.getByRole('button', { name: 'Check' })).toBeTruthy();
   });
@@ -410,12 +595,8 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     expect(screen.queryByText(/waiting to send/)).toBeNull();
     expect(document.querySelectorAll('.queued-message')).toHaveLength(3);
     // The accepted row's note: sentence case, in this list's own words.
-    const accepted = screen.getByText(
-      'Accepted · waiting for the agent to finish',
-    );
-    expect(
-      accepted.classList.contains('queued-messages__label--accepted'),
-    ).toBe(true);
+    const accepted = screen.getByText('sent').closest('.queued-message');
+    expect(accepted?.querySelector('[data-delivery-state]')).toBeNull();
     expect(screen.queryByText(/Accepted; waiting for completion/)).toBeNull();
   });
 
@@ -436,7 +617,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     const failed = screen
       .getByText('fix me')
       .closest('.queued-message') as HTMLElement;
-    expect(failed.textContent).toContain('Needs retry');
+    expect(failed.textContent).toContain('Not sent');
     expect(within(failed).getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
@@ -458,7 +639,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    expect(screen.getByText('May have reached the agent')).not.toBeNull();
+    expect(screen.getAllByText('May have reached the agent')[0]).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete message' })).toBeNull();
@@ -537,7 +718,9 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
     // The same words its bubble uses.
     expect(
-      screen.getByText('No answer yet. Resends only if it never arrived.'),
+      screen.getAllByText(
+        'No answer yet. Resends only if it never arrived.',
+      )[0],
     ).toBeTruthy();
     expect(screen.queryByText(/delivery-uncertain/)).toBeNull();
     // Check and Discard… sit in one action group, outside the label.
@@ -545,7 +728,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     const discard = screen.getByRole('button', { name: 'Discard…' });
     expect(check.parentElement).toBe(discard.parentElement);
     expect(
-      check.parentElement?.classList.contains('queued-message__actions'),
+      check.parentElement?.classList.contains('message-delivery__actions'),
     ).toBe(true);
   });
 
@@ -738,7 +921,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
         onRetry={vi.fn()}
       />,
     );
-    expect(screen.getByText(/Refused/)).toBeTruthy();
+    expect(screen.getAllByText('Not sent')[0]).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
   });
 
@@ -764,7 +947,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     await waitFor(() =>
       expect(onError).toHaveBeenCalledWith(
-        'New chat created; old queued turn kept: storage failed',
+        'New chat created; old queued turn kept: Try again in a moment.',
       ),
     );
   });

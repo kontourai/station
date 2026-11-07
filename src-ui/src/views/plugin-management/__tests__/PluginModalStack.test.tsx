@@ -170,7 +170,7 @@ describe('PluginModalStack folder picker (plugin management)', () => {
 
     renderFolderPicker();
 
-    const { classList } = screen.getByText('Permission denied');
+    const { classList } = screen.getByText('Try again in a moment.');
     expect(classList.contains('plugins__modal-message')).toBe(true);
     expect(classList.contains('plugins__message--error')).toBe(true);
   });

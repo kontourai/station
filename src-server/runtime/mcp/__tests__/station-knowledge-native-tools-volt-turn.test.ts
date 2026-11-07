@@ -96,6 +96,7 @@ test('a VoltAgent turn calls a knowledge tool without its purpose field and read
           },
   });
   const agent = await new VoltAgentFramework().createTempAgent({
+    purpose: 'agent-run',
     agentId: 'station',
     name: 'station',
     instructions: 'Answer briefly.',

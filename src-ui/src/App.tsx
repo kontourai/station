@@ -3,7 +3,9 @@ import {
   connectionFailureCopy,
   useConnectionStatus,
   useConnections,
+  usePendingPairingApproval,
 } from '@kontourai/station-connect';
+import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import {
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
@@ -42,6 +44,7 @@ import {
 } from './components/notifications/StationConditions';
 import { ProjectSidebar } from './components/project-sidebar/ProjectSidebar';
 import { Empty, ErrorState, useRetainedReadFailure } from './components/state';
+import { StationConnectionsProvider } from './connections/StationConnectionsContext';
 import { useAgents } from './contexts/AgentsContext';
 import { useApiBase } from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
@@ -57,6 +60,7 @@ import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useShowSurface } from './contexts/useShowSurface';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
+import { isMainDesktopWindow } from './platform/native/mainWindow';
 import { foldedDockRegion } from './regions/region-model';
 
 /**
@@ -120,6 +124,7 @@ const loadServerEventsMount = () =>
 
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useFocusReporter } from './hooks/useFocusReporter';
+import { useFoldSplit } from './hooks/useFoldSplit';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
 import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
@@ -173,6 +178,7 @@ function App({
   loadServerEvents?: typeof loadServerEventsMount;
 } = {}) {
   const { apiBase: API_BASE } = useApiBase();
+  const [isSecondaryWindow] = useState(() => !isMainDesktopWindow());
   // The saved connection's display identity for unavailable-state copy —
   // `connectionFailureCopy`'s contract wants the short name the user saved,
   // with the URL as the address it actually tried (archive#3713).
@@ -237,7 +243,7 @@ function App({
   const queryClient = useQueryClient();
   const {
     data: projects = [],
-    isLoading: projectsLoading,
+    isPending: projectsLoading,
     isError: projectsError,
   } = useScopedProjectsQuery();
   const appConfig = useConfig();
@@ -348,11 +354,14 @@ function App({
     matchedRequestedProject?.slug || projects[0]?.slug || '';
   const {
     data: firstProjectLayouts = [],
-    isLoading: firstProjectLayoutsLoading,
+    isPending: firstProjectLayoutsPending,
     isError: firstProjectLayoutsError,
   } = useProjectLayoutsQuery(firstProjectSlug, {
     enabled: !!firstProjectSlug,
   });
+
+  const firstProjectLayoutsLoading =
+    Boolean(firstProjectSlug) && firstProjectLayoutsPending;
 
   // Apply the `/?project=<name>` deep-link exactly once, after projects (and,
   // when matched, that project's layouts) have loaded. On a match this uses
@@ -455,6 +464,8 @@ function App({
 
   const displayCurrentView: NavigationView =
     window.location.pathname === '/' ? { type: 'home' } : currentView;
+  const isPanePopOut =
+    isSecondaryWindow && displayCurrentView.type === 'workspace-pane';
   const selectedLayoutProjectSlug =
     displayCurrentView.type === 'layout'
       ? displayCurrentView.projectSlug
@@ -500,8 +511,9 @@ function App({
   // This prevents even a loading frame from owning both the dock and the
   // full-screen Chat layout's event listeners/state machine.
   const showAmbientChatDock =
-    displayCurrentView.type !== 'layout' ||
-    (!selectedLayoutUnknown && !isChatWorkspaceLayout);
+    !isPanePopOut &&
+    (displayCurrentView.type !== 'layout' ||
+      (!selectedLayoutUnknown && !isChatWorkspaceLayout));
   /**
    * A full-screen mobile dock owns the whole viewport (archive#4460: any
    * occupant, not just Chat — `ChatDockMobileHeader` already carries the app
@@ -510,14 +522,16 @@ function App({
    * view instead, even while a persisted dock snap is being restored on
    * navigation.
    */
-  const isAmbientMobileDockFullscreen = isMobileDockFullscreenState({
-    isMobile: isMobileViewport,
-    isDockOpen: renderedDockState ? renderedDockState.visible : isDockOpen,
-    isDockMaximized: renderedDockState
-      ? renderedDockState.maximized
-      : isDockMaximized,
-    isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
-  });
+  const isAmbientMobileDockFullscreen =
+    !isPanePopOut &&
+    isMobileDockFullscreenState({
+      isMobile: isMobileViewport,
+      isDockOpen: renderedDockState ? renderedDockState.visible : isDockOpen,
+      isDockMaximized: renderedDockState
+        ? renderedDockState.maximized
+        : isDockMaximized,
+      isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
+    });
   const isMobileDockFullscreen =
     isAmbientMobileDockFullscreen ||
     (isMobileViewport && isChatWorkspaceLayout);
@@ -541,7 +555,7 @@ function App({
     ['cmd', 'shift'],
     'Developer',
     useCallback(() => navigate('/developer'), [navigate]),
-    true,
+    !isPanePopOut,
     10,
   );
 
@@ -558,6 +572,7 @@ function App({
         navigateToView({ type: 'settings' });
       }
     }, [displayCurrentView.type, returnToOutlet, navigateToView]),
+    !isPanePopOut,
   );
 
   useKeyboardShortcut(
@@ -568,6 +583,7 @@ function App({
     useCallback(() => {
       navigateToView({ type: 'project-new' });
     }, [navigateToView]),
+    !isPanePopOut,
   );
 
   useKeyboardShortcut(
@@ -603,7 +619,7 @@ function App({
     useCallback(() => {
       if (parentView) navigateToView(parentView);
     }, [navigateToView, parentView]),
-    parentView !== null,
+    !isPanePopOut && parentView !== null,
     -100,
   );
 
@@ -623,6 +639,7 @@ function App({
       if (!next) return;
       regionModel?.placeSurface('chat', next);
     }, [availableDockSlotPlacements, effectiveDockSlotPlacement, regionModel]),
+    !isPanePopOut,
   );
 
   // SHELL-07: `.content-view` is the shell's one scroll container, so its
@@ -630,6 +647,10 @@ function App({
   // the same key an in-app navigation and a browser Back both land on.
   const contentViewRef = useRef<HTMLDivElement>(null);
   useScrollRestoration(contentViewRef, window.location.pathname);
+  // On a folded display the route outlet keeps its column off the crease
+  // (`.fold-avoid-crease`); a split layout inside it snaps to the crease
+  // itself instead.
+  useFoldSplit(contentViewRef);
 
   // The routed view. Built once: it is what every route other than `/`
   // renders, and what `/` renders once the home surface has resolved.
@@ -712,7 +733,11 @@ function App({
               pending={null}
               componentProps={{}}
             />
-            <div className="app app--with-sidebar">
+            <div
+              className={
+                isPanePopOut ? 'app app--pane-pop-out' : 'app app--with-sidebar'
+              }
+            >
               {/* SHELL-14: the shell chrome is already first in DOM order
               (measured: sidebar → toolbar → route → dock), so the keyboard
               defect was not the order — it was that there is no way PAST the
@@ -732,7 +757,7 @@ function App({
               >
                 Skip to content
               </button>
-              <ProjectSidebar />
+              {!isPanePopOut && <ProjectSidebar />}
               <div
                 className={`app__main${
                   isMobileDockFullscreen
@@ -740,10 +765,12 @@ function App({
                     : ''
                 }`}
               >
-                <Header
-                  currentView={displayCurrentView}
-                  onNavigate={navigateToView}
-                />
+                {!isPanePopOut && (
+                  <Header
+                    currentView={displayCurrentView}
+                    onNavigate={navigateToView}
+                  />
+                )}
                 <ConnectionBannerSource />
                 <StationRouteLearning />
                 <StationDetailsHost />
@@ -776,7 +803,10 @@ function App({
                   inert={isAmbientMobileDockFullscreen || undefined}
                   aria-hidden={isAmbientMobileDockFullscreen || undefined}
                 >
-                  <div className="content-view" ref={contentViewRef}>
+                  <div
+                    className="content-view fold-avoid-crease"
+                    ref={contentViewRef}
+                  >
                     {[
                       'home',
                       'task',
@@ -808,11 +838,13 @@ function App({
                 </main>
 
                 {showAmbientChatDock && <RegionShells />}
-                <LazyBoundary
-                  load={loadDeferredAppOverlays}
-                  componentProps={{}}
-                  pending={null}
-                />
+                {!isPanePopOut && (
+                  <LazyBoundary
+                    load={loadDeferredAppOverlays}
+                    componentProps={{}}
+                    pending={null}
+                  />
+                )}
                 <NativeContextMenuGuard />
                 {/* Single floating voice affordance: the S2S pill. The separate STT
               FAB was unmounted here first — having both rendered two floating
@@ -821,7 +853,7 @@ function App({
               deleted, so no caller can bring the second mic back. STT while
               typing remains available via the inline VoiceOrb in the chat
               input. */}
-                {featureSettings.voiceS2SEnabled && (
+                {!isPanePopOut && featureSettings.voiceS2SEnabled && (
                   <LazyBoundary
                     load={loadVoicePill}
                     componentProps={{}}
@@ -856,6 +888,38 @@ function HomeRouteHostUnavailable({
         variant="prominent"
         label="Connect to a Station to get started"
         description="Choose a saved Station or add its address."
+      />
+    );
+  }
+  return <HomeRouteHostFailure reason={reason} host={host} address={address} />;
+}
+
+function HomeRouteHostFailure({
+  reason,
+  host,
+  address,
+}: {
+  reason: ConnectionFailureReason | null;
+  host: string;
+  address: string;
+}) {
+  // The header chip reads this same pending-request fact; without it the
+  // card said "isn't accepting this device" (every probe 401s until approval)
+  // while the header said "Awaiting approval".
+  const pendingApproval = usePendingPairingApproval(address);
+  if (pendingApproval) {
+    return (
+      <Empty
+        variant="prominent"
+        label={
+          pairingStateCopy(
+            pendingApproval.requestKind === 'code'
+              ? 'waiting-for-code-approval'
+              : 'waiting-for-approval',
+            host,
+          ).message
+        }
+        description="This device connects as soon as it is approved."
       />
     );
   }
@@ -907,4 +971,12 @@ function HomeRouteError({
   );
 }
 
-export default App;
+function AppWithStationConnections(props: Parameters<typeof App>[0]) {
+  return (
+    <StationConnectionsProvider>
+      <App {...props} />
+    </StationConnectionsProvider>
+  );
+}
+
+export default AppWithStationConnections;

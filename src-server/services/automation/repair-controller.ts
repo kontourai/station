@@ -12,6 +12,11 @@ import {
   exactProcessIdentity,
   probeExactProcessIdentityAsync,
 } from '@kontourai/station-shared/process-identity';
+import {
+  MANAGED_REPAIR_RELAY_REFUSED,
+  type ManagedListenerAdmission,
+  managedRepairRelayHost,
+} from '../../security/managed-network-exposure.js';
 import type { Logger } from '../../utils/logger.js';
 import type { TaskGraphService } from '../projects/task-graph-service.js';
 import { sourceGrantsRuleAction } from './automation-config-validation.js';
@@ -29,7 +34,10 @@ import type {
   CreateAutomationRuleInput,
   CreateAutomationSourceInput,
 } from './automation-store.js';
-import { projectAutomationSource } from './automation-store.js';
+import {
+  projectAutomationSource,
+  requestedRuleMode,
+} from './automation-store.js';
 import { materializeRepairCredential } from './repair-credentials.mjs';
 import {
   publishRepair,
@@ -82,6 +90,8 @@ interface RepairControllerOptions {
   worker?: (input: RepairWorkerInput) => Promise<RepairWorkerEvidence>;
   observeWorker?: typeof observeRepairWorker;
   publisher?: Pick<RepairPublisherDependencies, 'fetch'>;
+  /** #4519: the runtime's listener admission; the relay binds under it. */
+  listenerAdmission?: ManagedListenerAdmission;
 }
 
 /** One durable controller; neither Task completion nor review comments confer publication authority. */
@@ -133,8 +143,14 @@ export class IsolatedRepairController {
     input: Parameters<AutomationStore['setEnabled']>[0],
     operator: RepairOperator,
   ) {
+    // Anything but switching off is a setup change: `observe` widens what
+    // intake records, `live` what it may start.
+    const switchingOn =
+      input.kind === 'rule'
+        ? requestedRuleMode(input) !== 'off'
+        : 'enabled' in input && input.enabled;
     const assertCurrent = () =>
-      input.enabled ? this.assertSetup(operator) : operator.assertCurrent();
+      switchingOn ? this.assertSetup(operator) : operator.assertCurrent();
     await assertCurrent();
     await this.options.policy.setEnabled(input, assertCurrent);
   }
@@ -168,7 +184,7 @@ export class IsolatedRepairController {
     const fields = intent.event.fields;
     if (
       !source ||
-      !rule?.enabled ||
+      rule?.mode !== 'live' ||
       rule.action.kind !== 'isolated-repair' ||
       !rule.episode ||
       !sourceGrantsRuleAction(source, rule) ||
@@ -303,6 +319,17 @@ export class IsolatedRepairController {
         const config = this.options.policy.read();
         const rule = config.rules.find((r) => r.id === intent.ruleId);
         if (rule?.action.kind !== 'isolated-repair') continue;
+        // A rule that is not `live` may not act. Its retained intent is
+        // refused now, as the native Task runtime does, so it cannot dispatch
+        // a stale repair if the rule is switched back to `live` later.
+        if (rule.mode !== 'live') {
+          ledger.updateIntent(
+            intent.intentId,
+            { state: 'refused', reason: 'policy_changed' },
+            Date.now(),
+          );
+          continue;
+        }
         const claim = ledger.claimAction({
           episodeKey: intent.episodeKey,
           expectedEpisodeId: intent.episodeId,
@@ -495,7 +522,31 @@ export class IsolatedRepairController {
         bindingDigest,
       }));
       await assertCurrent();
+      // #4519: under the managed limit the relay binds loopback (or the
+      // repair is refused on Linux) and passes listener admission.
+      const admission = this.options.listenerAdmission;
+      const relay = {
+        host: managedRepairRelayHost(admission),
+        admit: async (port: number) => {
+          try {
+            await admission?.admit({
+              name: 'repair relay',
+              host: relay.host,
+              port,
+            });
+          } catch (error) {
+            this.options.logger.warn(
+              'Repair relay refused by the managed policy',
+              {
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+            throw new Error(MANAGED_REPAIR_RELAY_REFUSED);
+          }
+        },
+      };
       const evidence = await (this.options.worker ?? executeDockerRepair)({
+        relay,
         ...this.identity(run),
         home: this.options.home,
         profile,

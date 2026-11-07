@@ -25,8 +25,17 @@ overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
 
 For a new Session that announces `session.started` before its adapter start
-returns, an accepted start awaits that event’s durable commit. A per-thread
-commit signal yields while publication retries. If the announcement settles
+returns, an accepted start awaits that event’s durable commit. Built-in adapter
+queues report the announcement synchronously at enqueue, so an earlier event
+blocking the consumer cannot bypass the wait. A per-thread commit signal yields
+while publication retries. Each built-in adapter queue permits one active consumer.
+Closing its EventStore or abandoning runtime initialization revokes that service’s
+consumer and registry subscription. Permanent loss of the consumer or settlement by another
+service ends the wait immediately with a typed indeterminate error. A recoverable
+stream fault settles only an announcement already pulled and lost; other pending
+starts keep waiting for the replacement consumer. A start already committed
+retains accepted truth after a later stream fault.
+If the announcement settles
 without a durable append, or five seconds pass without confirmation, the command
 returns `indeterminate`, attempts provider cleanup, and retains no in-memory
 start-owner send authority. Event settlement and failed-start cleanup share the
@@ -346,6 +355,12 @@ starts the engine. If the folder no longer resolves to the admitted canonical
 path, or the directory the engine would start in belongs to another scope, the
 request returns the same typed `403` and no engine starts.
 
+On a machine whose [managed policy](../guides/managed-policy.md#engines) does
+not allow the target engine, `/chat`, its continue route and a handoff answer
+`403` with `code: "managed-policy-engine-refused"` (`kind:
+"permission_denied"`, not retryable): no Session starts and no turn reaches an
+existing Session on that engine, which is kept.
+
 An Agent that messages, interrupts, or waits on an existing Session uses
 station-control's [Session control](../guides/self-configuring-agent.md#session-control)
 tools, which call their own agent-only routes under
@@ -552,7 +567,11 @@ refusal; a request alone does not prove storage.
   `POST /chat/<conversationId>/continue`, held or not, under a key
   the inbox holds for someone else in a state it may still send (`queued`,
   `sending`, `unconfirmed`) is refused `409` with `code: "inbox_key_held"`,
-  so nobody takes the turn another person's message waits for. Only a caller
+  so nobody takes the turn another person's message waits for. For a
+  Continue key (`continue-interrupted:<boundary id>`), whether Station queued
+  it after a restart (#4512) or another member holds it, the error reads
+  "This interrupted turn is already being continued." rather than asking for
+  a new key. Only a caller
   who may read the conversation is told so; anyone else gets the dispatch's
   ordinary refusal for a conversation they may not read. While Station is
   sending a held message (from the moment its send begins, and past the point
@@ -806,6 +825,20 @@ is not a retry candidate. Staged uploads the refused send had bound are released
 from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
 
+A start or send on a chat whose recorded approval pick is above the machine's
+managed approval ceiling is refused before any engine effect with
+`code: "managed-policy-approval-ceiling"` until the mode is lowered
+([ceiling](../guides/managed-policy.md#approval-mode-ceiling)). A recorded
+personal default (`source: "personal-default"`) is lowered to the ceiling
+instead. A start whose engine could only run above the ceiling
+(Muse Code on `muse exec` under `ask`) is refused the same way, with status
+`403`, whether a new chat starts it or a send restarts a parked session; the
+`error` leads with the engine's reason before the managed sentence. No engine
+session started, so there is no uncertain start to inspect; a parked session
+keeps its history. An inbound webhook gets the same
+`403` with `retryable: false`. A delegation with staged files reports
+`delegation_files_start_refused` instead, like any other refused start.
+
 A start or send that Station cannot run under the chat's approval mode on
 OpenCode is refused before any engine effect with
 `code: "acp_approval_governance_refused"`: OpenCode's resolved rules override
@@ -1002,7 +1035,8 @@ taken it, as a `setApprovalMode` of Auto based on the decision standing
 before the answer would. If any decision was recorded after the answer was
 sent, that decision stands and nothing is recorded. It is not recorded over a
 standing Auto or full access. It then lasts until the next approval-mode
-decision. Through the delegated-task respond route for a task on this Station,
+decision. Under a managed approval ceiling of Ask it is sent as `accept` and
+records nothing, because Auto is above the ceiling. Through the delegated-task respond route for a task on this Station,
 or the inbox, the same answer is sent as `accept` and records nothing. A
 delegated answer for a task on a saved Environment reaches that Station as
 this command, and that Station applies the same rule. Where nothing can be
@@ -1247,7 +1281,10 @@ The remaining controls are defined by
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was
-  observed. A stale basis refuses the change. An engine with no approval
+  observed. A stale basis refuses the change. A mode above the machine's
+  managed approval ceiling is refused with `403` and
+  `code: "managed-policy-approval-ceiling"`
+  ([ceiling](../guides/managed-policy.md#approval-mode-ceiling)). An engine with no approval
   control refuses it; on ACP that is decided per connection, and only an
   engine whose approval rules Station sets at launch (OpenCode) has one
   ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).

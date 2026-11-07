@@ -22,9 +22,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { NavigationProvider } from '../contexts/NavigationContext';
+import { PreviewProvider } from '../contexts/PreviewContext';
 import { ToastProvider } from '../contexts/ToastContext';
+import { forgetApprovalAnswer } from '../hooks/orchestration/answerRequest';
 import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
 import { ATTACHED_SESSION_CONTINUATION_STORAGE_KEY } from '../lib/attached-session-continuation-store';
+import {
+  _resetOutboundQueueStorage,
+  _setOutboundQueueStorage,
+} from '../lib/outboundQueue';
+import { describeStationFailure } from '../utils/stationFailure';
 
 // The native transport is mocked; positive continuation fixtures explicitly
 // carry the source context that the server now requires before adoption.
@@ -149,6 +156,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   // per-invocation envelope through them.
   const real = await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
+    ...real,
     OrchestrationSessionsContext: real.OrchestrationSessionsContext,
     isApiRequestScope: real.isApiRequestScope,
     projectIdentityReadFailure: real.projectIdentityReadFailure,
@@ -311,13 +319,28 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   };
 });
 
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  continueExecutionMessage: (
+    apiBase: string,
+    id: string,
+    input: { message: string },
+  ) => sendTurn({ apiBase, threadId: id, text: input.message }),
+  interruptTurn: (apiBase: string, input: { threadId: string }) =>
+    interruptTurn({ apiBase, threadId: input.threadId }),
+}));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
+
 // The Station-owned detail's conversation reads its own durable window
-// (useSessionTranscriptEvents, covered by SessionTranscript.test.tsx).
+// (useSessionTranscriptEvents, covered by ConversationReader.test.tsx).
 const transcriptLoadOlder = vi.hoisted(() => vi.fn());
 const transcriptHistory = vi.hoisted(() => ({ hasMore: false }));
 vi.mock('../hooks/orchestration/useSessionTranscriptEvents', () => ({
   useSessionTranscriptEvents: () => ({
-    events: [],
+    events: feedEvents.map((event, index) => ({
+      ...event,
+      eventId: event.eventId ?? 'event-' + index,
+    })),
     hasMore: transcriptHistory.hasMore,
     loadOlder: transcriptLoadOlder,
     settled: true,
@@ -373,11 +396,11 @@ function historicalSessions() {
  * #3552: an external conversation continues from its composer — type, send,
  * confirm once — exactly as the chat dock does.
  */
-function continueFromComposer(message = 'carry on') {
-  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+async function continueFromComposer(message = 'carry on') {
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
     target: { value: message },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue in Station' }));
   fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
 }
 
@@ -399,16 +422,18 @@ function renderView(
     nextOnFocusConsumed?: () => void,
   ) => (
     <QueryClientProvider client={client}>
-      <NavigationProvider>
-        <SessionsView
-          apiBase={apiBase}
-          sessionId={nextSessionId}
-          focusHint={nextFocusHint}
-          intentToken={nextIntentToken}
-          onFocusConsumed={nextOnFocusConsumed}
-          onContinueInChat={onContinueInChat}
-        />
-      </NavigationProvider>
+      <PreviewProvider>
+        <NavigationProvider>
+          <SessionsView
+            apiBase={apiBase}
+            sessionId={nextSessionId}
+            focusHint={nextFocusHint}
+            intentToken={nextIntentToken}
+            onFocusConsumed={nextOnFocusConsumed}
+            onContinueInChat={onContinueInChat}
+          />
+        </NavigationProvider>
+      </PreviewProvider>
     </QueryClientProvider>
   );
   const rendered = render(
@@ -480,7 +505,20 @@ function filterToProject(title: string) {
 }
 
 describe('SessionsView', () => {
+  afterEach(() => _resetOutboundQueueStorage());
   beforeEach(() => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, update) => {
+        stored = update(stored);
+      },
+    });
+    for (const requestId of ['req-7', 'req-dead'])
+      forgetApprovalAnswer('thread-alpha', requestId);
     for (const key of Object.keys(chatDraftsStore.getSnapshot()))
       chatDraftsStore.clear(key);
     for (const session of sessions)
@@ -706,7 +744,8 @@ describe('SessionsView', () => {
 
     renderView();
 
-    expect(screen.getByText('sessions unavailable')).toBeTruthy();
+    expect(screen.getByText('Unable to load Activity')).toBeTruthy();
+    expect(screen.queryByText('sessions unavailable')).toBeNull();
     expect(screen.queryByText('Nothing has run yet')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -1230,7 +1269,7 @@ describe('SessionsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
     fireEvent.click(
-      screen.getByRole('button', { name: 'Show older messages' }),
+      await screen.findByRole('button', { name: 'Earlier messages' }),
     );
 
     expect(transcriptLoadOlder).toHaveBeenCalledOnce();
@@ -1241,9 +1280,11 @@ describe('SessionsView', () => {
     // browser chrome in a fully themed transcript (archive#3150). Pin the
     // shared treatment: a class name that matches no stylesheet is worse than
     // none, because it tells the next reader the styling is handled.
-    const more = screen.getByRole('button', { name: 'Show older messages' });
+    const more = await screen.findByRole('button', {
+      name: 'Earlier messages',
+    });
     expect(more.className).toContain('button--secondary');
-    expect(screen.getByRole('alert').textContent).toBe(
+    expect((await screen.findByRole('alert')).textContent).toBe(
       'Update Station to view this session history.',
     );
   });
@@ -1261,8 +1302,8 @@ describe('SessionsView', () => {
     };
     const retrying = renderView();
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
-    expect(screen.getByRole('alert').textContent).toBe(
-      'Orchestration API error: 503 Retrying session history…',
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      `${describeStationFailure(historyState.error).body} Retrying session history…`,
     );
     retrying.unmount();
 
@@ -1275,7 +1316,9 @@ describe('SessionsView', () => {
     };
     renderView();
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
-    expect(screen.getByRole('alert').textContent).toBe('Unauthorized');
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      describeStationFailure(historyState.error).body,
+    );
   });
 
   /**
@@ -1294,7 +1337,9 @@ describe('SessionsView', () => {
     };
     const elided = renderView();
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
-    expect(screen.getByTestId('session-history-elided').textContent).toBe(
+    expect(
+      (await screen.findByTestId('session-history-elided')).textContent,
+    ).toBe(
       '1 recorded event has omitted content, and 1 tool result is shortened in this view. The session record retains the full details.',
     );
     elided.unmount();
@@ -1341,7 +1386,7 @@ describe('SessionsView', () => {
     // It shares its row with the pagination button, which is what
     // `.session-history-controls`' wrap/gap exists for.
     expect(
-      screen.getByRole('button', { name: 'Show older messages' }),
+      await screen.findByRole('button', { name: 'Earlier messages' }),
     ).toBeTruthy();
     expect(notice.parentElement?.className).toContain(
       'session-history-controls',
@@ -1421,12 +1466,14 @@ describe('SessionsView', () => {
     window.removeEventListener('station:shape-task', listener);
   });
 
-  test('selects the exact session requested by the route', () => {
+  test('selects the exact session requested by the route', async () => {
     renderView('thread-alpha');
     expect(screen.getByTestId('session-detail').textContent).toContain(
       'Worker task',
     );
-    expect(screen.getByLabelText('Continue delegated task')).toBeTruthy();
+    expect(
+      await screen.findByRole('textbox', { name: 'Message' }),
+    ).toBeTruthy();
   });
 
   test('selects a routed session when it arrives after a cold empty result', async () => {
@@ -1444,12 +1491,14 @@ describe('SessionsView', () => {
     view.rerender(
       <QueryClientProvider client={new QueryClient()}>
         <ToastProvider>
-          <NavigationProvider>
-            <SessionsView
-              apiBase="http://test.local"
-              sessionId="thread-alpha"
-            />
-          </NavigationProvider>
+          <PreviewProvider>
+            <NavigationProvider>
+              <SessionsView
+                apiBase="http://test.local"
+                sessionId="thread-alpha"
+              />
+            </NavigationProvider>
+          </PreviewProvider>
         </ToastProvider>
       </QueryClientProvider>,
     );
@@ -1475,7 +1524,9 @@ describe('SessionsView', () => {
       'thread-alpha',
       'http://test.local',
     );
-    expect(screen.getByLabelText('Continue delegated task')).toBeTruthy();
+    expect(
+      await screen.findByRole('textbox', { name: 'Message' }),
+    ).toBeTruthy();
   });
 
   test('an unavailable exact lookup offers Retry and a working return to the list', async () => {
@@ -1496,7 +1547,9 @@ describe('SessionsView', () => {
     ).toBeNull();
     expect(showSurfaceStub).toHaveBeenCalledWith('activity', {});
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
-    expect(screen.getByLabelText('Continue delegated task')).toBeTruthy();
+    expect(
+      await screen.findByRole('textbox', { name: 'Message' }),
+    ).toBeTruthy();
   });
 
   test('a successful lookup of a different session never admits it as the routed item', async () => {
@@ -1521,7 +1574,7 @@ describe('SessionsView', () => {
     renderView();
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
 
-    const input = screen.getByLabelText('Continue delegated task');
+    const input = await screen.findByRole('textbox', { name: 'Message' });
     fireEvent.change(input, { target: { value: 'continue please' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
@@ -1548,35 +1601,50 @@ describe('SessionsView', () => {
       }));
     }
 
-    test('keeps A and B drafts separate across selection and remount', () => {
+    test('keeps A and B drafts separate across selection and remount', async () => {
       prepareSessions();
       const view = renderView('owner-A');
-      fireEvent.change(screen.getByLabelText('Send input to session'), {
-        target: { value: 'Draft A' },
-      });
+      fireEvent.change(
+        await screen.findByRole('textbox', { name: 'Message' }),
+        {
+          target: { value: 'Draft A' },
+        },
+      );
       expect(chatDraftsStore.getSnapshot()).toEqual({});
       fireEvent.click(screen.getByRole('button', { name: 'Owner B' }));
       expect(
-        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
-          .value,
+        (
+          (await screen.findByRole('textbox', {
+            name: 'Message',
+          })) as HTMLTextAreaElement
+        ).value,
       ).toBe('');
-      fireEvent.change(screen.getByLabelText('Send input to session'), {
-        target: { value: 'Draft B' },
-      });
+      fireEvent.change(
+        await screen.findByRole('textbox', { name: 'Message' }),
+        {
+          target: { value: 'Draft B' },
+        },
+      );
       fireEvent.click(screen.getByRole('button', { name: 'Owner A' }));
       expect(
-        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
-          .value,
+        (
+          (await screen.findByRole('textbox', {
+            name: 'Message',
+          })) as HTMLTextAreaElement
+        ).value,
       ).toBe('Draft A');
       view.unmount();
       renderView('owner-B');
       expect(
-        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
-          .value,
+        (
+          (await screen.findByRole('textbox', {
+            name: 'Message',
+          })) as HTMLTextAreaElement
+        ).value,
       ).toBe('Draft B');
     });
 
-    test('keeps identical session ids separate between Stations', () => {
+    test('keeps identical session ids separate between Stations', async () => {
       prepareSessions();
       const a = renderView(
         'owner-A',
@@ -1585,9 +1653,12 @@ describe('SessionsView', () => {
         undefined,
         'https://station-a.example',
       );
-      fireEvent.change(screen.getByLabelText('Send input to session'), {
-        target: { value: 'Station A draft' },
-      });
+      fireEvent.change(
+        await screen.findByRole('textbox', { name: 'Message' }),
+        {
+          target: { value: 'Station A draft' },
+        },
+      );
       a.unmount();
       const b = renderView(
         'owner-A',
@@ -1597,8 +1668,11 @@ describe('SessionsView', () => {
         'https://station-b.example',
       );
       expect(
-        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
-          .value,
+        (
+          (await screen.findByRole('textbox', {
+            name: 'Message',
+          })) as HTMLTextAreaElement
+        ).value,
       ).toBe('');
       b.unmount();
       renderView(
@@ -1609,8 +1683,11 @@ describe('SessionsView', () => {
         'https://station-a.example',
       );
       expect(
-        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
-          .value,
+        (
+          (await screen.findByRole('textbox', {
+            name: 'Message',
+          })) as HTMLTextAreaElement
+        ).value,
       ).toBe('Station A draft');
       chatDraftsStore.clearActivityDraft(
         'https://station-a.example',
@@ -1628,9 +1705,12 @@ describe('SessionsView', () => {
           }),
       );
       renderView('owner-A');
-      fireEvent.change(screen.getByLabelText('Send input to session'), {
-        target: { value: 'Submitted A' },
-      });
+      fireEvent.change(
+        await screen.findByRole('textbox', { name: 'Message' }),
+        {
+          target: { value: 'Submitted A' },
+        },
+      );
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
       await waitFor(() =>
         expect(sendTurn).toHaveBeenCalledWith({
@@ -1641,36 +1721,52 @@ describe('SessionsView', () => {
       );
       fireEvent.click(screen.getByRole('button', { name: 'Owner B' }));
       expect(
-        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
-          .value,
+        (
+          (await screen.findByRole('textbox', {
+            name: 'Message',
+          })) as HTMLTextAreaElement
+        ).value,
       ).toBe('');
-      fireEvent.change(screen.getByLabelText('Send input to session'), {
-        target: { value: 'Draft B' },
-      });
+      fireEvent.change(
+        await screen.findByRole('textbox', { name: 'Message' }),
+        {
+          target: { value: 'Draft B' },
+        },
+      );
       expect(
         screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
       ).toBe(false);
       fireEvent.click(screen.getByRole('button', { name: 'Owner A' }));
-      expect(
-        screen
-          .getByRole('button', { name: 'Sending…' })
-          .hasAttribute('disabled'),
-      ).toBe(true);
-      fireEvent.change(screen.getByLabelText('Send input to session'), {
-        target: { value: 'Newer A' },
-      });
+      await screen.findByRole('textbox', { name: 'Message' });
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+        ).toBe(true),
+      );
+      fireEvent.change(
+        await screen.findByRole('textbox', { name: 'Message' }),
+        {
+          target: { value: 'Newer A' },
+        },
+      );
       fireEvent.click(screen.getByRole('button', { name: 'Owner B' }));
       await act(async () => {
         finishSend();
       });
       expect(
-        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
-          .value,
+        (
+          (await screen.findByRole('textbox', {
+            name: 'Message',
+          })) as HTMLTextAreaElement
+        ).value,
       ).toBe('Draft B');
       fireEvent.click(screen.getByRole('button', { name: 'Owner A' }));
       expect(
-        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
-          .value,
+        (
+          (await screen.findByRole('textbox', {
+            name: 'Message',
+          })) as HTMLTextAreaElement
+        ).value,
       ).toBe('Newer A');
       expect(
         screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
@@ -1679,7 +1775,7 @@ describe('SessionsView', () => {
     });
   });
 
-  test('#3382: an open request title is shown in display form beside Approve', () => {
+  test('#3382: an open request title is shown in display form beside Approve', async () => {
     const RLO = String.fromCodePoint(0x202e);
     feedEvents = [
       {
@@ -1695,9 +1791,9 @@ describe('SessionsView', () => {
     renderView();
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
 
-    const request = screen.getByTestId('session-request');
-    expect(request.querySelector('strong')!.textContent).toBe(
-      `echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+    const request = await screen.findByTestId('session-transcript');
+    expect(request.querySelector('.tool-call__label')?.textContent).toBe(
+      'Use echo a (+1 line)',
     );
   });
 
@@ -1716,20 +1812,22 @@ describe('SessionsView', () => {
     renderView();
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
 
-    const request = screen.getByTestId('session-request');
+    const request = await screen.findByTestId('session-transcript');
     expect(
-      request.compareDocumentPosition(
-        screen.getByTestId('session-transcript'),
-      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      request.closest('[data-conversation-density="record"]'),
     ).toBeTruthy();
     expect(within(request).getByText('Allow write')).toBeTruthy();
     expect(request.textContent).not.toContain('req-7');
-    fireEvent.click(within(request).getByRole('button', { name: 'Approve' }));
+    fireEvent.click(
+      within(request).getByRole('button', { name: 'Allow Once' }),
+    );
 
     await waitFor(() =>
       expect(resolveRequest).toHaveBeenCalledWith({
         threadId: 'thread-alpha',
         requestId: 'req-7',
+        expectedRequestEventId: 'event-0',
+        timeoutMs: 15_000,
         decision: 'accept',
         apiBase: 'http://test.local',
       }),
@@ -1754,14 +1852,12 @@ describe('SessionsView', () => {
     );
     expect(within(detail).getAllByText('Running').length).toBeGreaterThan(0);
 
-    // Stop asks first (activity redesign): the header control only opens
-    // the confirmation, and the confirmation's own button stops the turn.
-    fireEvent.click(within(detail).getByRole('button', { name: 'Stop…' }));
-    expect(interruptTurn).not.toHaveBeenCalled();
-    const confirm = screen.getByRole('alertdialog', {
-      name: 'Stop this task?',
-    });
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Stop task' }));
+    fireEvent.click(
+      await within(detail).findByRole('button', {
+        name: 'Stop the current turn',
+      }),
+    );
+    expect(screen.queryByRole('alertdialog')).toBeNull();
 
     await waitFor(() =>
       expect(interruptTurn).toHaveBeenCalledWith({
@@ -1892,9 +1988,7 @@ describe('SessionsView', () => {
     const detail = screen.getByTestId('session-detail');
     expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
     expect(within(detail).queryByText('Connecting…')).toBeNull();
-    expect(
-      within(detail).queryByLabelText('Continue delegated task'),
-    ).toBeNull();
+    expect(within(detail).queryByLabelText('Message')).toBeNull();
     expect(within(detail).getAllByText('Done').length).toBe(1);
   });
 
@@ -2002,7 +2096,7 @@ describe('SessionsView', () => {
     // Exactly one failure alert, and the composer coexists with it.
     expect(screen.getAllByTestId('session-failure')).toHaveLength(1);
     const alert = screen.getByTestId('session-failure');
-    const input = screen.getByLabelText('Send input to session');
+    const input = await screen.findByRole('textbox', { name: 'Message' });
     // The alert renders ABOVE the composer, so the failure context is
     // visible before the affordance that retries past it.
     expect(
@@ -2027,7 +2121,7 @@ describe('SessionsView', () => {
     ).toBeNull();
   });
 
-  test('a canceled session keeps the composer too — `canceled -> queued` is a transition out (station#3244)', () => {
+  test('a canceled session keeps the composer too — `canceled -> queued` is a transition out (station#3244)', async () => {
     sessions[0] = {
       ...sessions[0],
       lifecycleState: 'canceled',
@@ -2037,7 +2131,9 @@ describe('SessionsView', () => {
 
     renderView('thread-alpha');
 
-    expect(screen.getByLabelText('Send input to session')).toBeTruthy();
+    expect(
+      await screen.findByRole('textbox', { name: 'Message' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
   });
 
@@ -2051,13 +2147,16 @@ describe('SessionsView', () => {
    * empty here so the only gate under test is terminality (`needs_input`'s
    * attention-driven suppression has its own tests below).
    */
-  test('composer visibility matches the canonical terminal predicate for every lifecycle state (station#3244)', () => {
+  test('composer visibility matches the canonical terminal predicate for every lifecycle state (station#3244)', async () => {
     const baseSession = { ...sessions[0], delegation: undefined };
     feedEvents = [];
     for (const state of SESSION_LIFECYCLE_STATES) {
       sessions[0] = { ...baseSession, lifecycleState: state };
       const view = renderView('thread-alpha');
-      const composer = screen.queryByLabelText('Send input to session');
+      await screen.findByTestId('session-transcript');
+      const composer = isSessionLifecycleStateTerminal(state)
+        ? screen.queryByLabelText('Message')
+        : await screen.findByRole('textbox', { name: 'Message' });
       if (isSessionLifecycleStateTerminal(state)) {
         expect(composer, `expected NO composer for '${state}'`).toBeNull();
       } else {
@@ -2152,7 +2251,7 @@ describe('SessionsView', () => {
     expect(screen.queryByTestId('session-attention')).toBeNull();
   });
 
-  test("replaces the generic compose box with the attention card's own answer form for needs_input with no live request", async () => {
+  test('a legacy needs-input item without exact request identity offers its session without an independent composer', () => {
     attentionItems = [
       {
         id: 'needs_input:thread-alpha',
@@ -2169,24 +2268,20 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     const detail = screen.getByTestId('session-detail');
+    expect(within(detail).queryByLabelText('Message')).toBeNull();
+    expect(within(detail).queryByLabelText('Answer this session')).toBeNull();
     expect(
-      within(detail).queryByLabelText('Continue delegated task'),
-    ).toBeNull();
-    const answerBox = within(detail).getByLabelText('Answer this session');
-    fireEvent.change(answerBox, { target: { value: 'Use staging' } });
-    fireEvent.click(
-      within(detail).getByRole('button', { name: 'Send answer' }),
-    );
-
-    await waitFor(() =>
-      expect(sendTurn).toHaveBeenCalledWith({
-        threadId: 'thread-alpha',
-        text: 'Use staging',
-      }),
-    );
+      within(detail).getByText('Open the session to answer this request.'),
+    ).toBeTruthy();
+    expect(
+      within(detail)
+        .getByRole('link', { name: 'Open session' })
+        .getAttribute('href'),
+    ).toBe('/?surface=activity&session=thread-alpha');
+    expect(sendTurn).not.toHaveBeenCalled();
   });
 
-  test('defers to the live in-turn request UI instead of duplicating it when both cover the same needs_input reason', () => {
+  test('defers to the live in-turn request UI instead of duplicating it when both cover the same needs_input reason', async () => {
     attentionItems = [
       {
         id: 'needs_input:thread-alpha',
@@ -2218,7 +2313,7 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     expect(screen.queryByTestId('session-attention')).toBeNull();
-    expect(screen.getByTestId('session-request')).toBeTruthy();
+    expect(await screen.findByTestId('session-transcript')).toBeTruthy();
   });
 
   // (archive#1170): the previous filter suppressed
@@ -2228,7 +2323,7 @@ describe('SessionsView', () => {
   // vanish entirely, leaving only the unrelated permission card — and
   // ReviewAction (a bare "Open session" link) is never equivalent to
   // resolving that unrelated request anyway.
-  test('never suppresses review_pending, even when an unrelated request is pending on the same session', () => {
+  test('never suppresses review_pending, even when an unrelated request is pending on the same session', async () => {
     attentionItems = [
       {
         id: 'review_pending:thread-alpha',
@@ -2265,13 +2360,13 @@ describe('SessionsView', () => {
     ).toBeTruthy();
     // The unrelated live request still gets its own affordance too — both
     // are genuinely different reasons, so both survive.
-    expect(screen.getByTestId('session-request')).toBeTruthy();
+    expect(await screen.findByTestId('session-transcript')).toBeTruthy();
   });
 
   // (archive#1170): needs_input correlation must be
   // by requestType, not "any pending request" — an unrelated request type
   // (e.g. permission) must not suppress a needs_input item either.
-  test('does not suppress needs_input against an unrelated (non-matching-requestType) pending request', () => {
+  test('does not suppress needs_input against an unrelated (non-matching-requestType) pending request', async () => {
     attentionItems = [
       {
         id: 'needs_input:thread-alpha',
@@ -2301,9 +2396,9 @@ describe('SessionsView', () => {
 
     const attention = screen.getByTestId('session-attention');
     expect(
-      within(attention).getByLabelText('Answer this session'),
+      within(attention).getByText('Open the session to answer this request.'),
     ).toBeTruthy();
-    expect(screen.getByTestId('session-request')).toBeTruthy();
+    expect(await screen.findByTestId('session-transcript')).toBeTruthy();
   });
 
   // (archive#1170): attentionQuery.data?.items
@@ -2316,8 +2411,8 @@ describe('SessionsView', () => {
 
     renderView('thread-alpha');
 
-    expect(screen.queryByLabelText('Continue delegated task')).toBeNull();
-    expect(screen.queryByLabelText('Send input to session')).toBeNull();
+    expect(screen.queryByLabelText('Message')).toBeNull();
+    expect(screen.queryByLabelText('Message')).toBeNull();
     expect(screen.queryByLabelText('Answer this session')).toBeNull();
   });
 
@@ -2338,7 +2433,11 @@ describe('SessionsView', () => {
     expect(
       screen.getByText("Couldn't check whether this session needs attention"),
     ).toBeTruthy();
-    expect(screen.getByText('network unreachable')).toBeTruthy();
+    expect(
+      screen.getByText(
+        describeStationFailure(new Error('network unreachable')).body,
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(attentionRefetch).toHaveBeenCalledTimes(1);
@@ -2506,7 +2605,7 @@ describe('SessionsView', () => {
   //.`) silently stops mounting it. Keep both: this test would NOT catch
   // the CSS regression the reviewer fault-injected; only the Playwright
   // check does.
-  test('DOM PRESENCE ONLY (not visibility): the attention answer field stays mounted once the viewport goes compact (keyboard-open)', async () => {
+  test('DOM PRESENCE ONLY (not visibility): the legacy needs-input session action stays mounted in a compact viewport', async () => {
     class FakeViewport extends EventTarget {
       height = 844;
       offsetTop = 0;
@@ -2532,7 +2631,7 @@ describe('SessionsView', () => {
     ];
 
     renderView('thread-alpha');
-    expect(screen.getByLabelText('Answer this session')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open session' })).toBeTruthy();
 
     // Keyboard opens: the visual viewport shrinks below the compact
     // threshold, same signal the mobile chat dock already reacts to.
@@ -2544,10 +2643,10 @@ describe('SessionsView', () => {
       expect(detail.className).toContain('sessions-detail--viewport-compact');
     });
     const detail = screen.getByTestId('session-detail');
-    expect(within(detail).getByLabelText('Answer this session')).toBeTruthy();
     expect(
-      within(detail).getByRole('button', { name: 'Send answer' }),
+      within(detail).getByRole('link', { name: 'Open session' }),
     ).toBeTruthy();
+    expect(within(detail).queryByLabelText('Answer this session')).toBeNull();
 
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
@@ -2600,7 +2699,7 @@ describe('SessionsView', () => {
   // guarded on !isTerminal like Stop task and the live
   // indicator — a session that crashes mid-request must not leave
   // Approve/Decline clickable against a dead session.
-  test('hides the live in-turn request Approve/Decline once the session is terminal', () => {
+  test('hides the live in-turn request Approve/Decline once the session is terminal', async () => {
     sessions[0] = { ...sessions[0], lifecycleState: 'failed' };
     feedEvents = [
       {
@@ -2616,7 +2715,8 @@ describe('SessionsView', () => {
 
     renderView('thread-alpha');
 
-    expect(screen.queryByTestId('session-request')).toBeNull();
+    await screen.findByTestId('session-transcript');
+    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
   });
 
   // archive#1462: the list groups by project attribution, so an unattributable
@@ -2674,7 +2774,7 @@ describe('SessionsView', () => {
     ).toBe('station (unverified name match)');
   });
 
-  test('renders attached terminal transcripts through canonical message content without mutations', () => {
+  test('renders attached terminal transcripts through canonical message content without mutations', async () => {
     sessions[0] = {
       ...sessions[0],
       threadId: 'external:claude:terminal-1',
@@ -2720,13 +2820,17 @@ describe('SessionsView', () => {
     expect(
       within(detail).getByText('Started in Claude Code · Read only'),
     ).toBeTruthy();
-    expect(within(detail).getByText('Inspect the workspace')).toBeTruthy();
-    expect(within(detail).getByText('The workspace is ready.')).toBeTruthy();
-    expect(within(detail).queryByRole('button', { name: /stop/i })).toBeNull();
     expect(
-      within(detail).queryByLabelText(/input|follow-up|continue/i),
+      await within(detail).findByText('Inspect the workspace'),
+    ).toBeTruthy();
+    expect(
+      await within(detail).findByText('The workspace is ready.'),
+    ).toBeTruthy();
+    expect(within(detail).queryByRole('button', { name: /stop/i })).toBeNull();
+    expect(within(detail).queryByLabelText(/input|follow-up/i)).toBeNull();
+    expect(
+      within(detail).queryByRole('button', { name: 'Allow Once' }),
     ).toBeNull();
-    expect(within(detail).queryByTestId('session-request')).toBeNull();
   });
 
   test('an attached session says Station is unreachable only once the hook reports an interruption, not for a retrying history blip', () => {
@@ -2774,7 +2878,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-1');
-    continueFromComposer();
+    await continueFromComposer();
 
     await waitFor(() =>
       expect(adoptSession).toHaveBeenCalledWith(
@@ -2788,9 +2892,7 @@ describe('SessionsView', () => {
         }),
       ),
     );
-    await waitFor(() =>
-      expect(screen.getByLabelText('Send input to session')).toBeTruthy(),
-    );
+    await screen.findByRole('textbox', { name: 'Message' });
     expect(screen.getByTestId('session-detail').textContent).toContain(
       'station-child',
     );
@@ -2798,8 +2900,11 @@ describe('SessionsView', () => {
     // continued session's message box; nothing is sent from here.
     expect(sendTurn).not.toHaveBeenCalled();
     expect(
-      (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
-        .value,
+      (
+        (await screen.findByRole('textbox', {
+          name: 'Message',
+        })) as HTMLTextAreaElement
+      ).value,
     ).toBe('carry on');
     expect(
       window.localStorage.getItem(ATTACHED_SESSION_CONTINUATION_STORAGE_KEY),
@@ -2807,7 +2912,7 @@ describe('SessionsView', () => {
     expect(sessions[0]?.controlMode).toBe('read-only-attached');
   });
 
-  test('with a chat dock, Send hands the exact draft to it and continues nothing here (#3454)', () => {
+  test('with a chat dock, Send hands the exact draft to it and continues nothing here (#3454)', async () => {
     sessions[0] = {
       ...sessions[0],
       threadId: 'external:claude:handoff',
@@ -2824,11 +2929,13 @@ describe('SessionsView', () => {
       undefined,
       onContinueInChat,
     );
-    const composer = screen.getByRole('textbox', {
+    const composer = (await screen.findByRole('textbox', {
       name: 'Message',
-    }) as HTMLTextAreaElement;
+    })) as HTMLTextAreaElement;
     fireEvent.change(composer, { target: { value: 'My exact\nmessage' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
     expect(onContinueInChat).toHaveBeenCalledWith(
       'external:claude:handoff',
       'My exact\nmessage',
@@ -2860,13 +2967,13 @@ describe('SessionsView', () => {
         return child;
       });
     const first = renderView('external:claude:response-loss');
-    continueFromComposer();
+    await continueFromComposer();
     await screen.findByRole('alert');
     const operationId = adoptSession.mock.calls[0][0].operationId;
     first.unmount();
 
     renderView('external:claude:response-loss');
-    continueFromComposer();
+    await continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(2));
     expect(adoptSession.mock.calls[1][0].operationId).toBe(operationId);
   });
@@ -2886,7 +2993,7 @@ describe('SessionsView', () => {
       controlMode: 'station-owned',
     });
     renderView('external:claude:later-continuation');
-    continueFromComposer();
+    await continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(1));
     expect(adoptSession).toHaveBeenCalledWith({
       sourceThreadId: 'external:claude:later-continuation',
@@ -2909,7 +3016,7 @@ describe('SessionsView', () => {
     );
 
     renderView('external:claude:corrupt-continuation');
-    continueFromComposer();
+    await continueFromComposer();
 
     await screen.findByText(
       "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it.",
@@ -2936,7 +3043,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:unsafe-retry');
-    continueFromComposer();
+    await continueFromComposer();
     const continueButton = screen.getByRole('button', {
       name: 'Continue and send',
     });
@@ -2993,16 +3100,18 @@ describe('SessionsView', () => {
       });
 
     renderView(first.threadId);
-    continueFromComposer();
+    await continueFromComposer();
     await screen.findByText(
       'Station says this continuation cannot be retried safely from this state.',
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Attached B/ }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
     const secondButton = screen.getByRole('button', {
       name: 'Continue and send',
     });
@@ -3055,11 +3164,9 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:cleanup-failure');
-    continueFromComposer();
+    await continueFromComposer();
 
-    await waitFor(() =>
-      expect(screen.getByLabelText('Send input to session')).toBeTruthy(),
-    );
+    await screen.findByRole('textbox', { name: 'Message' });
     expect(showToast).toHaveBeenCalledWith(
       'Session continued, but its saved continuation request could not be cleared. Future retries may reuse it.',
       'station-cleanup-failure-child',
@@ -3085,13 +3192,13 @@ describe('SessionsView', () => {
     getStarterWork.mockRejectedValueOnce(new Error('status response lost'));
     adoptSession.mockResolvedValue(child);
     const first = renderView('external:claude:status-loss');
-    continueFromComposer();
+    await continueFromComposer();
     await screen.findByRole('alert');
     expect(adoptSession).not.toHaveBeenCalled();
     first.unmount();
 
     renderView('external:claude:status-loss');
-    continueFromComposer();
+    await continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(1));
     expect(adoptSession.mock.calls[0][0]).toMatchObject({
       starterId: 'continue-session',
@@ -3099,7 +3206,7 @@ describe('SessionsView', () => {
     });
   });
 
-  test('a station-owned session never offers Continue in Station', () => {
+  test('a station-owned session never offers Continue in Station', async () => {
     // The adopt affordance is only honest on a session Station merely
     // follows (`controlMode: 'read-only-attached'`); offering it on a
     // session Station already owns would "continue" a conversation into a
@@ -3109,13 +3216,9 @@ describe('SessionsView', () => {
 
     const detail = screen.getByTestId('session-detail');
     expect(
-      within(detail).getByLabelText(
-        /Send input to session|Continue delegated task/,
-      ),
+      await within(detail).findByRole('textbox', { name: 'Message' }),
     ).toBeTruthy();
-    expect(
-      within(detail).queryByRole('textbox', { name: 'Message' }),
-    ).toBeNull();
+    expect(within(detail).queryByText('Continue here?')).toBeNull();
     expect(
       within(detail).queryByText('Started in Claude Code · Read only'),
     ).toBeNull();
@@ -3147,7 +3250,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-mobile');
-    continueFromComposer();
+    await continueFromComposer();
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: /Back to list/ }));
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3184,7 +3287,7 @@ describe('SessionsView', () => {
     refetchSessions.mockImplementation(() => pendingRefetch.promise);
 
     renderView('external:claude:terminal-pending');
-    continueFromComposer();
+    await continueFromComposer();
     await screen.findByRole('button', { name: 'Continuing…' });
     fireEvent.click(screen.getByRole('button', { name: /Back to list/ }));
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3233,7 +3336,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-mobile');
-    continueFromComposer();
+    await continueFromComposer();
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
 
     fireEvent.click(
@@ -3281,7 +3384,7 @@ describe('SessionsView', () => {
     refetchSessions.mockImplementation(() => pendingRefetch.promise);
 
     renderView('external:claude:terminal-mobile');
-    continueFromComposer();
+    await continueFromComposer();
     await screen.findByRole('button', { name: 'Continuing…' });
     fireEvent.click(
       screen.getByRole('button', { name: /Worker task.*sibling/ }),
@@ -3474,7 +3577,7 @@ describe('SessionsView', () => {
    * each was probe-confirmed as a real regression before these landed.
    */
 
-  test('an approval item with no actions renders only Dismiss and must NOT hide the composer (station#1249 review HIGH)', () => {
+  test('an approval item with no actions renders only Dismiss and must NOT hide the composer (station#1249 review HIGH)', async () => {
     // `ApprovalActions` gates Approve/Deny on `isApprovalLivePending`
     // (actions.length > 0), so an action-less approval renders a lone
     // Dismiss. Suppressing the composer on `kind === 'approval'` alone left
@@ -3508,7 +3611,9 @@ describe('SessionsView', () => {
     expect(dismissNotification).toHaveBeenCalledWith('notif-actionless');
     expect(within(detail).queryByText('Approve')).toBeNull();
     // The composer is the ONLY remaining way to respond — it must survive.
-    expect(screen.getByLabelText('Send input to session')).toBeTruthy();
+    expect(
+      await screen.findByRole('textbox', { name: 'Message' }),
+    ).toBeTruthy();
   });
 
   test('dismissing or opening a session-failed attention item acknowledges that exact item', async () => {
@@ -3567,7 +3672,7 @@ describe('SessionsView', () => {
     expect(
       within(detail).getByRole('button', { name: 'Approve' }),
     ).toBeTruthy();
-    expect(screen.queryByLabelText('Send input to session')).toBeNull();
+    expect(screen.queryByLabelText('Message')).toBeNull();
   });
 
   test('a live form request (no notification actions) still hides the composer', () => {
@@ -3600,7 +3705,7 @@ describe('SessionsView', () => {
 
     renderView('thread-alpha');
 
-    expect(screen.queryByLabelText('Send input to session')).toBeNull();
+    expect(screen.queryByLabelText('Message')).toBeNull();
   });
 
   test('a session carrying only effectiveModel still shows its model (station#1249 review HIGH)', () => {
@@ -3671,18 +3776,18 @@ describe('SessionsView', () => {
       ];
     }
 
-    test('AC4: the card RENDERS, disabled, with the observation that disabled it', () => {
+    test('AC4: the card RENDERS, disabled, with the observation that disabled it', async () => {
       openRequest();
       sessions[0].answerability = observation;
       renderView('thread-alpha');
 
       // Anti-filter first: deleting the card would hide a request that really
       // is still open.
-      const request = screen.getByTestId('session-request');
+      const request = await screen.findByTestId('session-transcript');
       expect(within(request).getByText('Allow write')).toBeTruthy();
 
-      const notice = screen.getByTestId(
-        'session-request-answerability',
+      const notice = (
+        await within(request).findByText(/no adapter for provider/)
       ).textContent;
       expect(notice).toContain("no adapter for provider 'claude'");
       expect(notice).toContain('station-7f3a');
@@ -3691,14 +3796,14 @@ describe('SessionsView', () => {
       expect(
         (
           within(request).getByRole('button', {
-            name: 'Approve',
+            name: 'Allow Once',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
       expect(
         (
           within(request).getByRole('button', {
-            name: 'Decline',
+            name: 'Deny',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
@@ -3709,9 +3814,12 @@ describe('SessionsView', () => {
       sessions[0].answerability = observation;
       renderView('thread-alpha');
       fireEvent.click(
-        within(screen.getByTestId('session-request')).getByRole('button', {
-          name: 'Approve',
-        }),
+        within(await screen.findByTestId('session-transcript')).getByRole(
+          'button',
+          {
+            name: 'Allow Once',
+          },
+        ),
       );
       // The mutation dispatches on a microtask, so a bare synchronous
       // assertion here has no power — it passes with the button ENABLED.
@@ -3754,26 +3862,28 @@ describe('SessionsView', () => {
       openRequest();
       seedLiveApprovalItem();
       renderView('thread-alpha');
-      expect(screen.queryByLabelText('Continue delegated task')).toBeNull();
+      expect(screen.queryByLabelText('Message')).toBeNull();
     });
 
-    test('AC4: the generic composer is NOT suppressed by a request nothing can answer', () => {
+    test('AC4: the generic composer is NOT suppressed by a request nothing can answer', async () => {
       openRequest();
       seedLiveApprovalItem();
       sessions[0].answerability = observation;
       renderView('thread-alpha');
-      expect(screen.getByLabelText('Continue delegated task')).toBeTruthy();
+      expect(
+        await screen.findByRole('textbox', { name: 'Message' }),
+      ).toBeTruthy();
     });
 
-    test('AC5 (control): a live request keeps enabled buttons and no annotation', () => {
+    test('AC5 (control): a live request keeps enabled buttons and no annotation', async () => {
       openRequest();
       renderView('thread-alpha');
-      const request = screen.getByTestId('session-request');
-      expect(screen.queryByTestId('session-request-answerability')).toBeNull();
+      const request = await screen.findByTestId('session-transcript');
+      expect(screen.queryByText(/no adapter for provider/)).toBeNull();
       expect(
         (
           within(request).getByRole('button', {
-            name: 'Approve',
+            name: 'Allow Once',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(false);
@@ -5050,13 +5160,13 @@ describe('Activity presentation (sessions moved under Home)', () => {
     ];
     renderView();
     const startedFrom = screen.getByLabelText(
-      'Started from',
+      'Recorded origin',
     ) as HTMLSelectElement;
     expect(
       Array.from(startedFrom.options).map((option) => option.textContent),
-    ).toContain('Paired device · Mobile app (1)');
+    ).toContain('Paired device · Mobile app (reported) (1)');
     fireEvent.change(startedFrom, {
-      target: { value: 'Paired device · Mobile app' },
+      target: { value: 'Paired device · Mobile app (reported)' },
     });
     expect(
       screen
@@ -5088,7 +5198,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
 
     // The unrecorded row is filed by what IS known (the attached engine),
     // never under a paired device the registry happens to hold.
-    fireEvent.change(screen.getByLabelText('Started from'), {
+    fireEvent.change(screen.getByLabelText('Recorded origin'), {
       target: { value: 'Started in Claude Code' },
     });
     expect(
@@ -5097,12 +5207,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
       ),
     ).toEqual(['No provenance session']);
     expect(container.textContent).not.toContain('Casey’s Pixel');
-    fireEvent.change(screen.getByLabelText('Started from'), {
+    fireEvent.change(screen.getByLabelText('Recorded origin'), {
       target: { value: '' },
     });
     expect(
       container.querySelector('.split-pane__item [data-segment="origin"]')
         ?.textContent,
-    ).toBe('Browser and elsewhere');
+    ).toBe('Browser (reported) and elsewhere');
   });
 });

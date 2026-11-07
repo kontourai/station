@@ -1,8 +1,16 @@
 /** @vitest-environment jsdom */
 import { resolve } from 'node:path';
 import { chromium } from '@playwright/test';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import {
   assertNoImportsSurvive,
   chromiumIsInstalled,
@@ -18,6 +26,9 @@ const hooks = vi.hoisted(() => ({
   resetPreview: vi.fn(),
   resetRollback: vi.fn(),
   resetReview: vi.fn(),
+  refetchSources: vi.fn(),
+  sourcesError: false,
+  applyError: false,
   /** Set while a test renders the stepper before any preview exists. */
   noPreviewYet: false,
 }));
@@ -53,7 +64,9 @@ vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
   useSetupImportSourcesQuery: () => ({
     data: [{ id: 'codex-prompts', available: true }],
     isLoading: false,
-    isError: false,
+    isError: hooks.sourcesError,
+    error: new Error('Could not check existing setup'),
+    refetch: hooks.refetchSources,
   }),
   useCreateSetupImportPreviewMutation: () => ({
     data: hooks.noPreviewYet ? undefined : preview,
@@ -64,7 +77,8 @@ vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
   }),
   useApplySetupImportMutation: () => ({
     isPending: false,
-    isError: false,
+    isError: hooks.applyError,
+    error: new Error('Import response unavailable'),
     mutate: hooks.apply,
     reset: hooks.resetApply,
   }),
@@ -92,6 +106,102 @@ function expectResponsiveActionRow(button: HTMLElement) {
 }
 
 describe('ExistingSetupImportStepper', () => {
+  beforeEach(() => {
+    hooks.sourcesError = false;
+    hooks.applyError = false;
+    hooks.review.mockReset();
+    hooks.apply.mockReset();
+  });
+
+  test('offers a source-check retry instead of hiding a failed read', () => {
+    hooks.sourcesError = true;
+    render(<ExistingSetupImportStepper />);
+    const failure = screen.getByRole('alert').textContent;
+    expect(failure).toContain('Existing setup unavailable');
+    expect(failure).toContain('Try again in a moment.');
+    expect(failure).not.toContain('Could not check existing setup');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry setup check' }));
+    expect(hooks.refetchSources).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(['selection', 'rename'] as const)(
+    'requires another review after changing the %s',
+    (change) => {
+      hooks.review.mockImplementation((_input, options) =>
+        options.onSuccess({
+          preview,
+          witness: { id: 'witness-old', expiresAt: 'later', items: [] },
+        }),
+      );
+      render(<ExistingSetupImportStepper />);
+      fireEvent.click(screen.getByLabelText('two.md'));
+      fireEvent.change(
+        screen.getByLabelText('New Station Skill name for two.md'),
+        { target: { value: 'two-renamed' } },
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Review targets' }));
+      expect(
+        screen.getByRole('button', { name: 'Apply reviewed targets' }),
+      ).toBeTruthy();
+      if (change === 'selection')
+        fireEvent.click(screen.getByLabelText('one.md'));
+      else
+        fireEvent.change(
+          screen.getByLabelText('New Station Skill name for two.md'),
+          { target: { value: 'changed-name' } },
+        );
+      expect(
+        screen.queryByRole('button', { name: 'Apply reviewed targets' }),
+      ).toBeNull();
+      expect(hooks.apply).not.toHaveBeenCalled();
+    },
+  );
+
+  test('ignores a review response that arrives after choices change', () => {
+    let resolveReview: (() => void) | undefined;
+    hooks.review.mockImplementation((_input, options) => {
+      resolveReview = () =>
+        options.onSuccess({
+          preview,
+          witness: { id: 'witness-old', expiresAt: 'later', items: [] },
+        });
+    });
+    render(<ExistingSetupImportStepper />);
+    fireEvent.click(screen.getByRole('button', { name: 'Review targets' }));
+    fireEvent.click(screen.getByLabelText('one.md'));
+    expect(resolveReview).toBeTypeOf('function');
+    act(() => resolveReview?.());
+    expect(
+      screen.queryByRole('button', { name: 'Apply reviewed targets' }),
+    ).toBeNull();
+    expect(hooks.apply).not.toHaveBeenCalled();
+  });
+
+  test('shows an apply failure without replaying it or discarding the choices', () => {
+    hooks.review.mockImplementation((_input, options) =>
+      options.onSuccess({
+        preview,
+        witness: { id: 'witness-1', expiresAt: 'later', items: [] },
+      }),
+    );
+    const { rerender } = render(<ExistingSetupImportStepper />);
+    fireEvent.click(screen.getByRole('button', { name: 'Review targets' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Apply reviewed targets' }),
+    );
+    hooks.applyError = true;
+    rerender(<ExistingSetupImportStepper />);
+    const failure = screen.getByRole('alert').textContent;
+    expect(failure).toContain('Import outcome unavailable');
+    expect(failure).toContain('Try again in a moment.');
+    expect(failure).toContain(
+      'Check installed Skills before starting another import.',
+    );
+    expect(failure).not.toContain('Import response unavailable');
+    expect(screen.getByLabelText('one.md')).toHaveProperty('checked', true);
+    expect(hooks.apply).toHaveBeenCalledTimes(1);
+  });
+
   test('requires an explicit checkbox decision and a valid rename for collisions', () => {
     render(<ExistingSetupImportStepper />);
 

@@ -254,7 +254,41 @@
 
     "patches/vitest-runner-4.1.12.patch",
 
-    "scripts/__tests__/vitest-resource-manifest.test.ts"
+    "scripts/__tests__/vitest-resource-manifest.test.ts",
+
+    "tests/helpers/hit-target-audit.ts",
+
+    "scripts/__tests__/gallery-ui-audit.browser.test.ts",
+
+    "scripts/install-playwright-browsers.mjs",
+
+    "scripts/__tests__/install-playwright-browsers.test.ts",
+
+    "tests/helpers/gallery-asset-diagnostics.ts",
+
+    "scripts/__tests__/gallery-asset-diagnostics.test.ts",
+
+    "src-ui/src/__tests__/local-restart-notice.browser.test.tsx",
+
+    "src-ui/src/__tests__/local-restart-notice.browser.fixture.tsx",
+
+    "scripts/conversation-boundary-gate.mjs",
+
+    "scripts/conversation-surfaces.json",
+
+    "scripts/conversation-boundary-baseline.json",
+
+    "scripts/__tests__/conversation-boundary-gate.test.ts",
+
+    "tests/station-connection-chat.spec.ts",
+
+    "tests/conversation-surfaces.spec.ts",
+
+    "scripts/windows-portable-floor.mjs",
+
+    "scripts/lib/windows-worker-diagnostics.mjs",
+
+    "scripts/__tests__/windows-portable-floor.test.ts"
   ],
 
   "checks": [

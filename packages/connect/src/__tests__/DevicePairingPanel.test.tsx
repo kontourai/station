@@ -206,10 +206,11 @@ describe('device pairing panels', () => {
       />,
     );
     expect(screen.getByRole('alert').textContent).toContain('peer Station');
-    expect(
-      screen.getByRole('button', { name: 'Request access' }),
-    ).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    expect(screen.getByRole('button', { name: 'Connect' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
     expect(transport).not.toHaveBeenCalled();
   });
 
@@ -288,7 +289,7 @@ describe('device pairing panels', () => {
     expect(screen.getByText(/Expires:/)).toBeTruthy();
     expect(screen.queryByLabelText('Pairing client channel')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       'https://station.example.ts.net/.well-known/station/v1/pairing/request',
@@ -825,6 +826,9 @@ describe('device pairing panels', () => {
     expect(
       screen.getByText('station environment access approve request-direct'),
     ).toBeTruthy();
+    expect(
+      document.querySelector('.pairing-wait__instruction')?.textContent,
+    ).toMatch(/to connect this browser\.$/);
     // station#1711 — a custom instance's STATION_HOME/STATION_PORT/--api-base
     // sentence is a documentation concern, not a modal concern; deleted from
     // this screen entirely.
@@ -947,6 +951,44 @@ describe('device pairing panels', () => {
     );
     expect(document.activeElement).toBe(fallback);
     expect(execCommand).not.toHaveBeenCalled();
+  });
+
+  test('the native waiting screen asks to connect this device, not a browser', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        response(
+          {
+            environmentId: 'environment-native-wait',
+            offerId: 'offer-native-wait',
+            proof: 'proof-native-wait',
+            requestId: 'request-native-wait',
+            expiresAt: Date.now() + 60_000,
+          },
+          202,
+        ),
+      )
+      // The approval never arrives in this test: it stays on the waiting screen.
+      .mockImplementation(() => new Promise<Response>(() => {}));
+    render(
+      <JoinDevicePairingPanel
+        initialMode="direct"
+        originIsStation={false}
+        hostAppName="Station"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Station server address'), {
+      target: { value: 'https://remote.example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    await waitFor(() =>
+      expect(document.querySelector('.pairing-wait__instruction')).toBeTruthy(),
+    );
+    const instruction =
+      document.querySelector('.pairing-wait__instruction')?.textContent ?? '';
+    expect(instruction).toMatch(/to connect this device\.$/);
+    expect(instruction).not.toMatch(/browser/);
   });
 
   test('native request-access collects a host address first and targets the entered host', async () => {
@@ -2270,6 +2312,69 @@ describe('device pairing panels', () => {
     view.unmount();
   });
 
+  test('Pair again recovers an unsaved approval with a fresh request, without revoking on the computer', async () => {
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
+    let saves = 0;
+    let requests = 0;
+    // A real Station issues a new request id per request; reusing one would
+    // (correctly) read as the already-spent request.
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) => {
+        if (String(input).endsWith('/exchange')) return PAIRED_RESPONSE();
+        requests += 1;
+        return response(
+          {
+            environmentId: 'environment-direct',
+            offerId: `offer-${requests}`,
+            proof: `proof-${requests}`,
+            requestId: `request-${requests}`,
+            expiresAt: Date.now() + 300_000,
+          },
+          202,
+        );
+      });
+    const onPaired = vi.fn(() => {
+      saves += 1;
+      if (saves === 1) throw new Error('storage unavailable');
+    });
+    const { view } = renderDirectJoin(onPaired);
+    await tick(600);
+    await tick(600);
+    expect(screen.getByText('Pairing outcome needs review')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/revoke (that|any) access/);
+    const requestsBefore = fetchSpy.mock.calls.filter(
+      ([input]) => !String(input).endsWith('/exchange'),
+    ).length;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pair again' }));
+    await tick(600);
+    await tick(600);
+
+    // A fresh request went out (the same client instance, so the Station's
+    // approval supersedes the unsaved grant) and this time it was saved.
+    expect(
+      fetchSpy.mock.calls.filter(
+        ([input]) => !String(input).endsWith('/exchange'),
+      ).length,
+    ).toBe(requestsBefore + 1);
+    const bodies = fetchSpy.mock.calls
+      .filter(([input]) => !String(input).endsWith('/exchange'))
+      .map(([, init]) => JSON.parse(String(init?.body)).clientInstanceId);
+    expect(new Set(bodies).size).toBe(1);
+    expect(onPaired).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Pairing outcome needs review')).toBeNull();
+    view.unmount();
+  });
+
   test('still fails loudly on a malformed success response', async () => {
     vi.useFakeTimers({
       toFake: [
@@ -2481,7 +2586,7 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(
       // station#3849: the shared map distinguishes the code wait from the
@@ -2537,7 +2642,7 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => expect(onPaired).toHaveBeenCalledOnce(), {
       timeout: 2_000,
@@ -2573,7 +2678,7 @@ describe('device pairing panels', () => {
         onCancel={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
     return (await screen.findByRole('alert')).textContent ?? '';
   }
 
@@ -2607,7 +2712,7 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     const message = (await screen.findByRole('alert')).textContent ?? '';
     expect(message).toContain('expired');
@@ -2631,10 +2736,10 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'The server address is not valid.',
+      'Enter a Station address, like https://station.example.ts.net.',
     );
     // Nothing was contacted, so nothing may be claimed about a Station.
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -2645,10 +2750,14 @@ describe('device pairing panels', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
     const address = screen.getByLabelText('Station server address');
     const hint = /Messages sent this way are not encrypted/i;
+    // Connect stays disabled until both fields are filled.
+    fireEvent.change(screen.getByLabelText('Pairing code'), {
+      target: { value: 'PAIRME2345' },
+    });
 
     fireEvent.change(address, { target: { value: 'http://192.168.1.9:3141' } });
     expect(await screen.findByText(hint)).toBeTruthy();
-    const request = screen.getByRole('button', { name: 'Request access' });
+    const request = screen.getByRole('button', { name: 'Connect' });
     expect(request.hasAttribute('disabled')).toBe(true);
     fireEvent.click(
       screen.getByRole('checkbox', {
@@ -2708,7 +2817,7 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing code'), {
       target: { value: 'PAIRME2345' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => expect(onPaired).toHaveBeenCalledOnce(), {
       timeout: 2_000,
@@ -3879,4 +3988,120 @@ describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
     expect(created).toEqual([]);
     expect(screen.queryByTestId('pairing-qr')).toBeNull();
   });
+});
+
+test('a pairing code connects, and an approval wait stays in place while the caller owns completion', async () => {
+  const now = Date.now();
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    response({
+      requestId: 'request-owned',
+      offerId: 'offer-owned',
+      deviceName: 'Pixel',
+      scope: 'station:interactive',
+      createdAt: now,
+      status: 'pending',
+    }),
+  );
+  const order: string[] = [];
+  const onApprovalPending = vi.fn((pending: PendingPairingExchange) => ({
+    ...pending,
+    targetConnectionId: 'saved-kontour',
+    targetConnectionLabel: 'Kontour',
+  }));
+  const onApprovalCancelled = vi.fn((pending: PendingPairingExchange) => {
+    order.push('cancelled');
+    // The owner hears first, while the stored request still exists.
+    expect(
+      loadPendingExchange(pending.endpoint, pending.requestKind)?.requestId,
+    ).toBe('request-owned');
+  });
+  const onCancel = vi.fn(() => order.push('closed'));
+  try {
+    render(
+      <JoinDevicePairingPanel
+        initialMode="manual"
+        onPaired={vi.fn()}
+        onCancel={onCancel}
+        onApprovalPending={onApprovalPending}
+        onApprovalCancelled={onApprovalCancelled}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Station server address'), {
+      target: { value: 'https://station.example.test' },
+    });
+    fireEvent.change(screen.getByLabelText('Pairing code'), {
+      target: { value: 'PAIRME2345' },
+    });
+    // A code is the invitation; only an address-only request asks for access.
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    // In place, naming the Station the caller resolved, with its countdown.
+    expect(
+      await screen.findByText(
+        'Waiting for the code to be approved on Kontour…',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/^Expires in [45]m \d\ds$/)).toBeTruthy();
+    expect(onApprovalPending).toHaveBeenCalledOnce();
+
+    // The caller owns the exchange: this panel never races it for the proof.
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/pairing/exchange'),
+      ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop waiting' }));
+    expect(order).toEqual(['cancelled', 'closed']);
+    expect(onApprovalCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: 'request-owned',
+        targetConnectionId: 'saved-kontour',
+      }),
+    );
+    expect(
+      loadPendingExchange('https://station.example.test', 'code'),
+    ).toBeNull();
+  } finally {
+    fetchMock.mockRestore();
+    globalThis.localStorage.clear();
+  }
+});
+
+test('a pairing code needs both fields, submits on Return, and names a bad address on that field', async () => {
+  const fetchSpy = vi.spyOn(globalThis, 'fetch');
+  try {
+    render(
+      <JoinDevicePairingPanel
+        initialMode="manual"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const connect = screen.getByRole('button', { name: 'Connect' });
+    expect(connect.hasAttribute('disabled')).toBe(true);
+    const address = screen.getByLabelText('Station server address');
+    // URL keyboard without autocapitalize/autocorrect on a phone.
+    expect(address.getAttribute('inputmode')).toBe('url');
+    expect(address.getAttribute('autocapitalize')).toBe('none');
+    expect(address.getAttribute('autocorrect')).toBe('off');
+    fireEvent.change(address, { target: { value: 'https://exa mple' } });
+    expect(connect.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(screen.getByLabelText('Pairing code'), {
+      target: { value: 'PAIRME2345' },
+    });
+    expect(connect.hasAttribute('disabled')).toBe(false);
+
+    fireEvent.submit(address.closest('form')!);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/Enter a Station address/);
+    expect(address.getAttribute('aria-invalid')).toBe('true');
+    expect(address.getAttribute('aria-describedby')).toBe(alert.id);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  } finally {
+    fetchSpy.mockRestore();
+  }
 });

@@ -15,6 +15,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { requestProjectChat } from '../../lib/projectChatEvents';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { BoardEditor } from './BoardEditor';
 import { BoardSetup } from './BoardSetup';
 import { BoardToolbar } from './BoardToolbar';
@@ -99,7 +100,7 @@ function BoardWorkspace({
     return (
       <ErrorState
         title="Could not open this Board"
-        description={query.error.message}
+        description={describeStationFailure(query.error).body}
         action={<Button onClick={() => void query.refetch()}>Retry</Button>}
       />
     );
@@ -188,8 +189,8 @@ function BoardWorkspace({
         )}
         {save.isError && (
           <p role="alert">
-            {save.error.message} Your draft is still here. Refresh the Board to
-            inspect what was saved before trying again.
+            {describeStationFailure(save.error).body} Your draft is still here.
+            Refresh the Board to inspect what was saved before trying again.
           </p>
         )}
         {changed && (
@@ -209,6 +210,20 @@ function BoardWorkspace({
             </Button>
           </div>
         )}
+        {(edit || (!document.definition && !document.proposal)) &&
+          (projects.isError ? (
+            <ErrorState
+              variant="compact"
+              title="Could not load Projects"
+              action={
+                <Button onClick={() => void projects.refetch()}>
+                  Retry Projects
+                </Button>
+              }
+            />
+          ) : projects.isLoading ? (
+            <SkeletonBlock count={1} label="Loading Projects" />
+          ) : null)}
         {document.proposal && !edit && (
           <section
             className="personal-board__proposal"

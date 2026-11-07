@@ -159,7 +159,10 @@ export class ConnectionHealthCoordinator {
     ) {
       this.inFlight = false;
       if (this.abortController === controller) this.abortController = null;
-      if (controller.signal.aborted || this.listeners.size === 0) return;
+      if (controller.signal.aborted || this.listeners.size === 0) {
+        this.runQueuedCheck();
+        return;
+      }
       this.failureCount = 0;
       this.publish({
         status: 'connected',
@@ -174,10 +177,7 @@ export class ConnectionHealthCoordinator {
         })),
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
-      if (this.rerunRequested) {
-        this.rerunRequested = false;
-        this.trigger();
-      }
+      this.runQueuedCheck();
       return;
     }
     let connected: AccessEndpoint | null = null;
@@ -224,6 +224,8 @@ export class ConnectionHealthCoordinator {
       } catch (error) {
         if (controller.signal.aborted) {
           this.inFlight = false;
+          if (this.abortController === controller) this.abortController = null;
+          this.runQueuedCheck();
           return;
         }
         // Both probes catch their own transport failures and return a reason,
@@ -244,7 +246,10 @@ export class ConnectionHealthCoordinator {
     const routeResults = [...routes.values()];
     this.inFlight = false;
     if (this.abortController === controller) this.abortController = null;
-    if (controller.signal.aborted || this.listeners.size === 0) return;
+    if (controller.signal.aborted || this.listeners.size === 0) {
+      this.runQueuedCheck();
+      return;
+    }
     if (connected) {
       this.failureCount = 0;
       this.options.onSuccess?.(connected, success);
@@ -317,6 +322,10 @@ export class ConnectionHealthCoordinator {
       });
       if (!blocked) this.schedule(this.retryDelay());
     }
+    this.runQueuedCheck();
+  }
+
+  private runQueuedCheck(): void {
     if (this.rerunRequested) {
       this.rerunRequested = false;
       this.trigger();

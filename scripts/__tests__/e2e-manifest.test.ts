@@ -153,6 +153,7 @@ describe('e2e manifest', () => {
       'tests/paired-device-chat.spec.ts',
       'tests/pr-smoke-live-chat-send.spec.ts',
       'tests/chat-inventory-drilldown-mobile.spec.ts',
+      'tests/terminal-mobile-keyboard.spec.ts',
       'tests/native-conversation-restart.spec.ts',
       'tests/chat-send-again-failed-turn.spec.ts',
       'tests/message-delivery-recovery.spec.ts',
@@ -226,6 +227,9 @@ describe('e2e manifest', () => {
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
     expect(PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive).toEqual([
+      // Own paired Stations, peer grants and source preview state.
+      'tests/station-connection-chat.spec.ts',
+      'tests/conversation-surfaces.spec.ts',
       'tests/owned-work-custody.spec.ts',
       // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
       'tests/operator-sessions.spec.ts',
@@ -326,6 +330,9 @@ describe('e2e manifest', () => {
       }),
       expect.objectContaining({
         path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+      }),
+      expect.objectContaining({
+        path: 'tests/terminal-mobile-keyboard.spec.ts',
       }),
     ]);
     expect(getSpecsForSuite('pr-smoke')).toEqual(

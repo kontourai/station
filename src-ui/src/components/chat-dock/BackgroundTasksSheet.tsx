@@ -1,3 +1,4 @@
+import type { StationConnection } from '../../connections/station-connection';
 // station#1301: Running/Finished panel over the chat's background-task
 // registry, with safe delegate controls and persisted transcript details.
 // Lazy-loaded from ChatDock.tsx — see the note there on why this stays out of
@@ -50,6 +51,8 @@ function writeSectionState(state: SectionState) {
 
 export interface BackgroundTasksSheetProps {
   chatThreadId: string;
+  apiBase?: string;
+  station?: StationConnection;
   anchorRef: RefObject<HTMLElement | null>;
   returnFocusTarget?: HTMLElement | null;
   onOpenTranscript: (threadId: string) => void;
@@ -58,13 +61,18 @@ export interface BackgroundTasksSheetProps {
 
 export function BackgroundTasksSheet({
   chatThreadId,
+  apiBase,
+  station,
   anchorRef,
   returnFocusTarget,
   onOpenTranscript,
   onClose,
 }: BackgroundTasksSheetProps) {
   const agents = useAgents();
-  const { running, finished } = useChatBackgroundTasks(chatThreadId);
+  const { running, finished, toolHistoryLimited } = useChatBackgroundTasks(
+    chatThreadId,
+    station ?? apiBase,
+  );
   const [sections, setSections] = useState<SectionState>(readSectionState);
   // The shared elapsed clock for every Running row, only while this sheet is
   // mounted (it is only ever mounted while open; see the lazy Suspense gate in
@@ -101,17 +109,24 @@ export function BackgroundTasksSheet({
         />
       </header>
       <div className="background-tasks-sheet__body">
-        {isEmpty && <Empty variant="compact" label="Nothing here yet" />}
+        {toolHistoryLimited && (
+          <p className="background-tasks-sheet__meta" role="status">
+            Older tool rows are omitted. Running counts cover retained rows.
+          </p>
+        )}
+        {isEmpty && <Empty variant="compact" label="Nothing to show" />}
         {running.length > 0 && (
           <section className="background-tasks-sheet__section">
             <h3 className="background-tasks-sheet__section-label">
-              Running ({running.length})
+              Running ({running.length}
+              {toolHistoryLimited ? ' shown' : ''})
             </h3>
             <ul className="background-tasks-sheet__list">
               {running.map((entry) => (
                 <TaskRow
                   key={entry.id}
                   entry={entry}
+                  station={station}
                   agents={agents}
                   elapsedMs={backgroundTaskElapsedMs(entry, now)}
                   onOpenTranscript={onOpenTranscript}
@@ -131,7 +146,7 @@ export function BackgroundTasksSheet({
               <span aria-hidden="true">
                 {sections.finishedExpanded ? '−' : '+'}
               </span>
-              Finished ({finished.length})
+              Recent activity ({finished.length})
             </button>
             {sections.finishedExpanded && (
               <ul className="background-tasks-sheet__list">
@@ -139,6 +154,7 @@ export function BackgroundTasksSheet({
                   <TaskRow
                     key={entry.id}
                     entry={entry}
+                    station={station}
                     agents={agents}
                     elapsedMs={backgroundTaskElapsedMs(entry, now)}
                     outcomeChip={entry.state}
@@ -151,7 +167,8 @@ export function BackgroundTasksSheet({
         )}
       </div>
       <footer className="background-tasks-sheet__footer">
-        Remote delegations appear on the Activity page.
+        Recent activity only; closed-chat history may be missing. Find remote
+        delegations in Activity.
       </footer>
     </ResponsiveDialogSurface>
   );

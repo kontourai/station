@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
@@ -9,6 +9,7 @@ import { viewedContentPreimage } from '@kontourai/station-contracts/runtime-even
 import type {
   CanonicalRuntimeEvent,
   TokenUsageUpdatedEvent,
+  TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -256,6 +257,12 @@ function localService() {
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
     ),
+    // #4512: an ordinary conversation's Session works for its person.
+    sessionDispatchFacts: vi.fn((_threadId: string) => ({
+      taskBound: false,
+      delegatedChild: false,
+      priorOrigin: (): TurnDispatchOrigin => 'interactive',
+    })),
     getProviderAdapter: vi.fn(() => ({
       metadata: {
         modelLaunch: {
@@ -607,6 +614,9 @@ function installRemoteStationFetch(
     if (discovery && url === `${REMOTE_API}/api/connections/agents`) {
       return json({ success: true, data: [] });
     }
+    if (discovery && url === `${REMOTE_API}/api/connections/models`) {
+      return json({ success: true, data: [] });
+    }
     if (discovery && url === `${REMOTE_API}/api/agents`) {
       return json({ success: true, data: [] });
     }
@@ -626,6 +636,79 @@ describe('Station Control canonical Environment + Agent execution', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     fetchMock.mockReset();
+  });
+
+  test('discovers only ready receiver model connections for the Station engine', async () => {
+    installRemoteStationFetch(
+      '/api/orchestration/delegations',
+      {},
+      { workingDirectory: '/srv/station' },
+    );
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === `${REMOTE_API}/api/agents`)
+        return json({
+          success: true,
+          data: [
+            {
+              slug: 'station',
+              name: 'Station Assistant',
+              executionDefault: true,
+            },
+          ],
+        });
+      if (url === `${REMOTE_API}/api/connections/models`)
+        return json({
+          success: true,
+          data: [
+            {
+              kind: 'model',
+              enabled: true,
+              status: 'ready',
+              config: {
+                modelOptions: [
+                  {
+                    id: 'receiver-model',
+                    name: 'Receiver model',
+                    originalId: 'receiver-model',
+                    apiKey: 'must-not-leak',
+                  },
+                ],
+              },
+            },
+            {
+              kind: 'model',
+              enabled: false,
+              status: 'ready',
+              config: { modelOptions: [{ id: 'disabled-model' }] },
+            },
+            {
+              kind: 'model',
+              enabled: true,
+              status: 'error',
+              config: { modelOptions: [{ id: 'broken-model' }] },
+            },
+          ],
+        });
+      return original(input, init);
+    });
+    const { discoverDelegationOptions } = await import(
+      '../station-control-delegation.js'
+    );
+    const catalog = await discoverDelegationOptions({
+      environmentId: 'environment-remote',
+    });
+    expect(catalog.targets[0]?.models).toEqual([
+      {
+        id: 'receiver-model',
+        name: 'Receiver model',
+        originalId: 'receiver-model',
+      },
+    ]);
+    expect(catalog.targets[0]?.capabilities.modelSelection).toBe(true);
+    expect(catalog.targets[0]?.engineId).toBe('station');
+    expect(JSON.stringify(catalog)).not.toContain('must-not-leak');
   });
 
   test('rejects a tilde suffix collision while discovering remote delegation options', async () => {
@@ -950,11 +1033,17 @@ describe('Station Control canonical Environment + Agent execution', () => {
       resourceAdmissionIntent: 'delegated_background',
     });
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+    // #4512: the delegated first turn is Station's, though a person asked
+    // for the delegation (their operator origin rides the same dispatch).
+    expect(service.dispatchWithReceipt.mock.calls[0][2]).toMatchObject({
+      dispatchOrigin: 'delegation',
+    });
     expect(service.sessionCommands.execute.mock.calls[0][0]).toMatchObject({
       type: 'start-session',
       input: {
         threadId: 'task:11111111-1111-4111-8111-111111111111',
         provider: 'station-agent',
+        persistSession: true,
         metadata: {
           agentId: 'reviewer',
           targetKind: 'agent',
@@ -2298,6 +2387,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
   test('derives delegated/background admission from server-carried delegation metadata', async () => {
     installCurrentStationFetch();
     const service = localService();
+    // The conversation is a delegated child Station derived.
+    service.sessionDispatchFacts.mockImplementation(() => ({
+      taskBound: false,
+      delegatedChild: true,
+      priorOrigin: (): TurnDispatchOrigin => 'delegation',
+    }));
     const { executeExecutionTargetMessage } = await import(
       '../station-control-delegation.js'
     );
@@ -2315,6 +2410,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
           parentAgentSlug: 'parent' as never,
           rootAgentSlug: 'root' as never,
         },
+        delegationProvenance: 'caller-derived',
         readAuthority: hostedAuthority('alpha'),
       },
       service as never,
@@ -2323,6 +2419,45 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
       resourceAdmissionIntent: 'delegated_background',
     });
+    // #4512: the same server-carried fact classifies the send's turn.
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'delegation' });
+  });
+
+  test("#4512: a requester's own delegation claim does not classify the turn as delegation", async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        userId: 'test-user',
+        target: currentTarget(),
+        message: 'A person naming a delegation',
+        conversationId: 'conversation-claimed',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        delegationProvenance: 'direct-claim',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn).toBeDefined();
+    expect(
+      (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
+        ?.dispatchOrigin,
+    ).toBeUndefined();
   });
 
   test('derives queued/background admission from the fixed background route seam', async () => {
@@ -2347,6 +2482,15 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
       resourceAdmissionIntent: 'queued_background',
     });
+    // #4512: no delegation context, so the send names no delegated origin.
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn).toBeDefined();
+    expect(
+      (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
+        ?.dispatchOrigin,
+    ).toBeUndefined();
   });
 
   test('refuses a foreground start without fabricating a session when provider creation is uncertain', async () => {
@@ -2776,12 +2920,13 @@ describe('Station Control canonical Environment + Agent execution', () => {
   // retried continue all run the production derivations.
   test('a reconciled continue after an uncertain start reuses the same reserved child through the real lineage store (#764)', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'delegate-continuation-'));
+    const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
+    let service: OrchestrationService | undefined;
     try {
-      const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
       const claude = new ContinuationFakeAdapter('claude');
       const stationAgent = new ContinuationFakeAdapter('station-agent');
       const adapters = [claude, stationAgent];
-      const service = new OrchestrationService({
+      service = new OrchestrationService({
         adapterRegistry: {
           register() {},
           get(provider: string) {
@@ -2921,7 +3066,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
       ).toHaveLength(2);
       expect(stationAgent.startedSessionThreadIds()).toEqual([reservedChildId]);
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      try {
+        await service?.shutdown();
+      } finally {
+        eventStore.close();
+        rmSync(tmp, { recursive: true, force: true });
+      }
     }
   });
 
@@ -3270,7 +3420,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(startInternal?.receiverExecutionAdmission?.admitted).toMatchObject({
       threadId: 'task-alpha:session:child-1',
       projectSlug: 'receiver-local',
-      cwd: '/fixture/checkout',
+      cwd: resolve('/fixture/checkout'),
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
       localProjectId: 'local-project-1',

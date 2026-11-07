@@ -544,6 +544,40 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
     expect(await e.knowledge.listRoots()).toEqual([]);
   });
 
+  test('Task learning excludes author-private roots from listing and promotion', async () => {
+    const e = await setup();
+    const { taskId } = await e.closedTaskWithLessons();
+    const shared = await e.createProjectStore();
+    const privateRoot = await e.knowledge.createRoot({
+      scope: { kind: 'project', projectSlug: PROJECT },
+      readPolicy: { kind: 'author-private', ownerId: 'human:another-owner' },
+      adapterId: 'kit-default-store',
+      storeRoot: `${shared.storeRoot}-private`,
+      displayName: 'Private memory',
+    });
+    const view = await e.learning(taskId);
+    expect(view.stores).toEqual([
+      { rootId: shared.id, displayName: shared.displayName },
+    ]);
+    const refused = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/room/memory/learning/promote`,
+      {
+        kind: 'decision',
+        key: 'storage-engine',
+        version: 1,
+        rootId: privateRoot.id,
+        title: 'Storage engine',
+        text: 'Use SQLite.',
+      },
+    );
+    expect(refused.status).toBe(409);
+    expect(refused.json.code).toBe('task_learning_no_store');
+    expect(
+      await (await e.knowledge.adapterFor(privateRoot.id)).listByType('raw'),
+    ).toEqual([]);
+  });
+
   test('promote writes one knowledge record with provenance that search finds, and promoting the same version again writes nothing', async () => {
     const e = await setup();
     const { taskId, sessionId } = await e.closedTaskWithLessons();

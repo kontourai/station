@@ -21,6 +21,8 @@ mod linux_webkit;
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+#[cfg(not(mobile))]
+mod managed_update_policy;
 #[cfg(any(target_os = "ios", test))]
 mod mobile_recovery;
 #[cfg(target_os = "ios")]
@@ -13500,18 +13502,42 @@ fn spawn_sidecar_stderr_reader(
 #[cfg(not(mobile))]
 fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
     const MAX_TAIL_BYTES: usize = 64 * 1024;
+    // The head of each line. The first line that starts with the server's
+    // policy refusal is latched as it is read, because a long diagnostic
+    // after it (or the 16-line cut below) can drop it from the tail, and the
+    // exit is classified as terminal only when the marker reaches `detail`.
+    // Only that exact line prefix counts: a line that merely mentions the
+    // marker must not make an unrelated crash terminal.
+    const MAX_LATCHED_LINE_BYTES: usize = 4096;
+    let prefix = bundled_server_state::MANAGED_POLICY_LINE_PREFIX.as_bytes();
     let mut tail = std::collections::VecDeque::with_capacity(MAX_TAIL_BYTES + 4096);
+    let mut line_head: Vec<u8> = Vec::with_capacity(MAX_LATCHED_LINE_BYTES);
+    let mut latched: Option<String> = None;
+    let latch_line = |line_head: &mut Vec<u8>, latched: &mut Option<String>| {
+        if latched.is_none() && line_head.starts_with(prefix) {
+            *latched = Some(String::from_utf8_lossy(line_head).into_owned());
+        }
+        line_head.clear();
+    };
     let mut chunk = [0_u8; 4096];
     loop {
         let count = match stderr.read(&mut chunk) {
             Ok(0) | Err(_) => break,
             Ok(count) => count,
         };
+        for &byte in &chunk[..count] {
+            if byte == b'\n' {
+                latch_line(&mut line_head, &mut latched);
+            } else if line_head.len() < MAX_LATCHED_LINE_BYTES {
+                line_head.push(byte);
+            }
+        }
         tail.extend(&chunk[..count]);
         if tail.len() > MAX_TAIL_BYTES {
             tail.drain(..tail.len() - MAX_TAIL_BYTES);
         }
     }
+    latch_line(&mut line_head, &mut latched);
     let bytes: Vec<u8> = tail.into_iter().collect();
     let text = String::from_utf8_lossy(&bytes);
     // Invalid UTF-8 expands into replacement characters; bound the rendered
@@ -13521,7 +13547,18 @@ fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
         start += 1;
     }
     let lines: Vec<&str> = text[start..].lines().rev().take(16).collect();
-    (!lines.is_empty()).then(|| lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
+    let tail = (!lines.is_empty()).then(|| lines.into_iter().rev().collect::<Vec<_>>().join("\n"));
+    // At most MAX_LATCHED_LINE_BYTES (plus replacement expansion) beyond
+    // the tail bound, and only when the tail lost the marker.
+    match (latched, tail) {
+        (Some(line), Some(tail))
+            if !tail.contains(bundled_server_state::MANAGED_POLICY_LINE_PREFIX) =>
+        {
+            Some(format!("{line}\n{tail}"))
+        }
+        (Some(line), None) => Some(line),
+        (_, tail) => tail,
+    }
 }
 
 /// The direct child can exit while a descendant retains its stderr pipe. Keep
@@ -14036,6 +14073,26 @@ fn desktop_updater_plugin_configured(
         })
 }
 
+/// The build-time updater endpoints (`plugins.updater.endpoints`), the
+/// URLs a managed mirror replaces (#4522). Empty when the build has none.
+#[cfg(not(mobile))]
+fn desktop_updater_endpoints(
+    plugins: &std::collections::HashMap<String, serde_json::Value>,
+) -> Vec<String> {
+    plugins
+        .get("updater")
+        .and_then(|config| config.get("endpoints"))
+        .and_then(serde_json::Value::as_array)
+        .map(|endpoints| {
+            endpoints
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// The desktop shell's own log file's name (no extension — matches
 /// `tauri_plugin_log::TargetKind::LogDir { file_name }`'s own vocabulary),
 /// within `app_log_dir()`. `run()`'s `LogDir` target registration (every
@@ -14144,6 +14201,13 @@ If a stable instance is running, this launch will focus its window and exit.",
     // registered at all, not merely how it behaves once running.
     #[cfg(not(mobile))]
     let updater_configured = desktop_updater_plugin_configured(&context.config().plugins.0);
+    // #4522: the managed policy's update route needs this build's own
+    // endpoints (a mirror replaces each one) and its channel (nightly may be
+    // refused).
+    #[cfg(not(mobile))]
+    let updater_endpoints = desktop_updater_endpoints(&context.config().plugins.0);
+    #[cfg(not(mobile))]
+    let updater_channel = native_app_channel(&context.config().identifier, cfg!(debug_assertions));
     #[cfg(mobile)]
     let log_dir_writable = true;
 
@@ -14248,6 +14312,14 @@ If a stable instance is running, this launch will focus its window and exit.",
     let mut builder = builder.plugin(
         tauri_plugin_log::Builder::new()
             .level(log_level)
+            // #4522: the updater plugin logs its HTTP client's raw errors at
+            // Error and each request URL at Debug, and a managed mirror's feed
+            // URL may carry a path token. Station logs every update outcome
+            // itself with URLs redacted (`desktop_update`), so the plugin's own
+            // records are dropped, and the HTTP client's are capped at Info
+            // (it logs hosts, never paths, at Debug).
+            .level_for("tauri_plugin_updater", log::LevelFilter::Off)
+            .level_for("reqwest", log_level.min(log::LevelFilter::Info))
             .max_file_size(5 * 1024 * 1024)
             .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
             .targets(log_targets)
@@ -14302,6 +14374,10 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_discovery::init());
+    // iOS-only, with its own capability file (ios-fold.json) for the same
+    // ACL reason as the plugins above.
+    #[cfg(target_os = "ios")]
+    let builder = builder.plugin(tauri_plugin_station_fold::init());
     let builder = builder
         .manage(NativeProfileAuthority::default())
         .manage(NativePendingPairingCredentials::default())
@@ -14554,8 +14630,21 @@ If a stable instance is running, this launch will focus its window and exit.",
             // Before any setup step that can end early: the update commands
             // read this managed state, and an unconfigured build still
             // answers them (as `disabled`).
+            // #4522: the shell reads the managed policy itself, so updates
+            // honor it even when the bundled server never starts, including
+            // when the server refuses to start because of that policy.
             #[cfg(not(mobile))]
-            desktop_update::manage(app.handle(), updater_configured);
+            let managed_update_route = managed_update_policy::route(
+                &managed_update_policy::load_installed(
+                    std::env::var(managed_update_policy::TEST_FILE_ENV)
+                        .ok()
+                        .as_deref(),
+                ),
+                updater_channel,
+                &updater_endpoints,
+            );
+            #[cfg(not(mobile))]
+            desktop_update::manage(app.handle(), updater_configured, managed_update_route);
 
             #[cfg(not(mobile))]
             {
@@ -18221,6 +18310,95 @@ mod tests {
         let tail = capture_sidecar_stderr(lines.as_bytes()).unwrap();
         assert_eq!(tail.lines().count(), 16);
         assert!(tail.starts_with("line 14\n"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_stderr_latches_a_fatal_marker_that_a_long_diagnostic_pushes_out_of_the_tail() {
+        // The marker leads a line longer than the retained tail, then later
+        // lines follow: without latching, neither the tail nor its last 16
+        // lines would carry the marker and the exit would be retried.
+        let mut text = format!(
+            "STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /p: unknown key {}\n",
+            "k".repeat(100_000)
+        );
+        text.push_str(&(0..30).map(|i| format!("later {i}\n")).collect::<String>());
+        let detail = capture_sidecar_stderr(text.as_bytes()).unwrap();
+        assert!(detail.starts_with(
+            "STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /p"
+        ));
+        assert!(detail.len() <= 64 * 1024 + 4096 + 1);
+        assert!(detail.ends_with("later 29"));
+        let (next, effects) = transition(
+            &BundledServerStatus::initial("/tmp/out.log".into(), "/tmp/err.log".into()),
+            &SupervisorInput::Exited {
+                code: Some(1),
+                detail: Some(detail),
+            },
+        );
+        assert!(
+            next.fail_closed,
+            "a latched marker must make the exit terminal"
+        );
+        assert_eq!(effects, vec![SupervisorEffect::None]);
+
+        // A marker still inside the tail is not duplicated.
+        let short =
+            capture_sidecar_stderr("STATION_HOME_RESET_REQUIRED: incompatible schema\n".as_bytes())
+                .unwrap();
+        assert_eq!(short, "STATION_HOME_RESET_REQUIRED: incompatible schema");
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_stderr_does_not_latch_a_line_that_only_mentions_the_policy_marker() {
+        // An agent or a logged search can print the marker mid-line long
+        // before an unrelated crash; that crash must still be retried.
+        let mut text = String::from(
+            "Unhandled rejection (non-fatal): Error: grep found STATION_MANAGED_POLICY_INVALID in docs\n",
+        );
+        text.push_str(
+            &(0..5_000)
+                .map(|i| format!("ordinary line {i}\n"))
+                .collect::<String>(),
+        );
+        text.push_str("Uncaught exception: RangeError: boom\n");
+        let detail = capture_sidecar_stderr(text.as_bytes()).unwrap();
+        assert!(!detail.contains("STATION_MANAGED_POLICY_INVALID"));
+        let (next, effects) = transition(
+            &BundledServerStatus::initial("/tmp/out.log".into(), "/tmp/err.log".into()),
+            &SupervisorInput::Exited {
+                code: Some(1),
+                detail: Some(detail),
+            },
+        );
+        assert!(!next.fail_closed, "an unrelated crash must stay retryable");
+        assert_ne!(effects, vec![SupervisorEffect::None]);
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn oversized_managed_policy_stderr_from_a_child_is_classified_terminal() {
+        // Crosses the real pipe: the child writes the marker, a 100,000-byte
+        // key, and more output in many reads' worth of chunks.
+        let mut child = Command::new("/bin/sh")
+            .args([
+                "-c",
+                "printf 'STATION_MANAGED_POLICY_INVALID: unknown key ' >&2; \
+                 head -c 100000 /dev/zero | tr '\\0' k >&2; printf '\\n' >&2; \
+                 i=0; while [ $i -lt 40 ]; do echo \"later $i\" >&2; i=$((i+1)); done; exit 1",
+            ])
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let detail = capture_sidecar_stderr(stderr);
+        let code = child.wait().unwrap().code();
+        let status = BundledServerStatus::initial("/tmp/out.log".into(), "/tmp/err.log".into());
+        let (next, effects) = transition(&status, &SupervisorInput::Exited { code, detail });
+        assert_eq!(next.phase, bundled_server_state::ServerPhase::Failed);
+        assert!(next.fail_closed);
+        assert_eq!(effects, vec![SupervisorEffect::None]);
     }
 
     #[cfg(not(mobile))]

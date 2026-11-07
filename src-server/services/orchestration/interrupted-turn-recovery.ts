@@ -325,9 +325,21 @@ function ownTurnEnding(
  * `'../../telemetry/metrics.js'` specifier, and its absence is not an
  * oversight to "fix".
  */
+/**
+ * #4512: one turn this boot's recovery settled as interrupted: its banner
+ * is written and its boundary row resolved. Only this Station's own turn
+ * boundaries are ever drained, so these are always local Sessions.
+ */
+export interface RecoveredInterruptedTurn {
+  readonly threadId: string;
+  readonly boundaryId: string;
+  readonly turnId: string;
+}
+
 export class InterruptedTurnRecovery {
   /** Aborted by `stop()`: no further pass runs and a backoff ends early. */
   private readonly stopSignal = new AbortController();
+  private readonly recovered: RecoveredInterruptedTurn[] = [];
 
   constructor(private readonly deps: InterruptedTurnRecoveryDeps) {}
 
@@ -339,6 +351,11 @@ export class InterruptedTurnRecovery {
    */
   stop(): void {
     this.stopSignal.abort();
+  }
+
+  /** #4512: the turns `consume` has settled so far, in the order it did. */
+  recoveredTurns(): readonly RecoveredInterruptedTurn[] {
+    return [...this.recovered];
   }
 
   /**
@@ -971,6 +988,12 @@ export class InterruptedTurnRecovery {
           ownerId: record.ownerId,
           state: record.state,
         });
+        if (ownTurnId)
+          this.recovered.push({
+            threadId: record.threadId,
+            boundaryId: record.boundaryId,
+            turnId: ownTurnId,
+          });
       } catch (error) {
         failed.push(record);
         this.deps.logger.warn(

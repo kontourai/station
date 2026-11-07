@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { Skill } from '@kontourai/station-contracts/catalog';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -10,12 +11,19 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { _setApiBase } from '../../../packages/sdk/src/api-core';
+import { routeSurfaceIdentity } from '../app-shell/route-identity';
+import { resolveViewFromPath } from '../app-shell/routing';
+import type { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import {
   NavigationProvider,
   navigationStore,
+  useNavigation,
 } from '../contexts/NavigationContext';
+import { GuidanceView } from '../views/GuidanceView';
 import { SkillsView } from '../views/SkillsView';
+import { chooseOverflow } from './helpers/overflow-menu';
 
 type SkillRecord = Partial<Skill> & { name: string };
 
@@ -38,14 +46,47 @@ let createdSkill: SkillRecord | null = null;
 let createPending = false;
 const createSkillMock = vi.fn<(payload: SkillRecord) => Promise<void>>();
 const showToastMock = vi.fn();
+const deleteRequestMock = vi.fn<typeof fetch>();
+const removedSkills = new Set<string>();
+let queryClient: QueryClient;
+const requestAuthorityScope = {
+  apiBase: 'http://localhost',
+  authorityKey: 'skills-navigation-fixture',
+  isCurrent: () => true,
+} satisfies NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
+
+function RoutedGuidance() {
+  const { pathname } = useNavigation();
+  const route = resolveViewFromPath(`${pathname}${window.location.search}`);
+  if (route.type !== 'guidance') return <div>Outside Skills</div>;
+  return (
+    <div key={routeSurfaceIdentity(route)}>
+      <GuidanceView route={route} />
+    </div>
+  );
+}
+
+function mountRoutedLibrary() {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <NavigationProvider>
+        <KeyboardShortcutsProvider>
+          <RoutedGuidance />
+        </KeyboardShortcutsProvider>
+      </NavigationProvider>
+    </QueryClientProvider>,
+  );
+}
 
 function library() {
   return (
-    <NavigationProvider>
-      <KeyboardShortcutsProvider>
-        <SkillsView basePath="/guidance" />
-      </KeyboardShortcutsProvider>
-    </NavigationProvider>
+    <QueryClientProvider client={queryClient}>
+      <NavigationProvider>
+        <KeyboardShortcutsProvider>
+          <SkillsView basePath="/guidance" />
+        </KeyboardShortcutsProvider>
+      </NavigationProvider>
+    </QueryClientProvider>
   );
 }
 
@@ -53,55 +94,62 @@ function mountLibrary() {
   return render(library());
 }
 
-vi.mock('@kontourai/station-sdk', () => ({
-  useSkillsQuery: () => ({
-    data: [
-      skillA,
-      ...(imported ? [skillB] : []),
-      ...(createdSkill ? [createdSkill] : []),
-    ],
-    isPending: false,
-    error: null,
-    refetch: vi.fn().mockResolvedValue(undefined),
-  }),
-  useSkillQuery: (name: string | undefined) => ({
-    data:
-      name === 'skill-a'
-        ? skillA
-        : name === 'skill-b'
-          ? skillB
-          : createdSkill?.name === name
-            ? createdSkill
-            : undefined,
-    isPending: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
-  useImportSkills: () => ({
-    isPending: false,
-    mutateAsync: async () => {
-      imported = true;
-      return {
-        imported: 1,
-        results: [{ filename: 'skill-b.md', success: true, name: 'skill-b' }],
-      };
-    },
-  }),
-  useCreateLocalSkillMutation: () => ({
-    isPending: createPending,
-    mutateAsync: createSkillMock,
-  }),
-  useUpdateLocalSkillMutation: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
-  useUninstallSkillMutation: () => ({ isPending: false, mutate: vi.fn() }),
-  useRunSkill: () => ({ isPending: false, mutateAsync: vi.fn() }),
-}));
+vi.mock('@kontourai/station-sdk', async () => {
+  const actual = await vi.importActual<typeof import('@kontourai/station-sdk')>(
+    '@kontourai/station-sdk',
+  );
+  return {
+    ...actual,
+    useSkillsQuery: () => ({
+      data: [
+        skillA,
+        ...(imported ? [skillB] : []),
+        ...(createdSkill ? [createdSkill] : []),
+      ].filter((skill) => !removedSkills.has(skill.name)),
+      isPending: false,
+      error: null,
+      refetch: vi.fn().mockResolvedValue(undefined),
+    }),
+    useSkillQuery: (name: string | undefined) => ({
+      data:
+        name === 'skill-a'
+          ? skillA
+          : name === 'skill-b'
+            ? skillB
+            : createdSkill?.name === name
+              ? createdSkill
+              : undefined,
+      isPending: false,
+      error: null,
+      refetch: vi.fn(),
+    }),
+    useImportSkills: () => ({
+      isPending: false,
+      mutateAsync: async () => {
+        imported = true;
+        return {
+          imported: 1,
+          results: [{ filename: 'skill-b.md', success: true, name: 'skill-b' }],
+        };
+      },
+    }),
+    useCreateLocalSkillMutation: () => ({
+      isPending: createPending,
+      mutateAsync: createSkillMock,
+    }),
+    useUpdateLocalSkillMutation: () => ({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    }),
+    useUninstallSkillMutation: actual.useUninstallSkillMutation,
+    useRunSkill: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  };
+});
 
 vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost' }),
+  useHostRequestAuthorityScope: () => requestAuthorityScope,
 }));
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: showToastMock }),
@@ -111,18 +159,32 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 }));
 
 beforeEach(() => {
+  // jsdom clears its window-focus flag when the focused trigger is removed.
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   imported = false;
   createdSkill = null;
   createPending = false;
   showToastMock.mockReset();
+  removedSkills.clear();
+  queryClient = new QueryClient({
+    defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+  });
+  _setApiBase('http://localhost');
+  deleteRequestMock.mockReset();
+  vi.stubGlobal('fetch', deleteRequestMock);
   createSkillMock.mockReset().mockImplementation(async (payload) => {
     createdSkill = { ...payload, writable: true, origin: 'user' };
   });
   navigationStore.navigate('/guidance/skill-a', { tab: 'skills' });
+  sessionStorage.setItem('station-guidance-tab', 'skills');
 });
 
 afterEach(() => {
   cleanup();
+  queryClient.clear();
+  _setApiBase('');
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   navigationStore.navigate('/');
 });
 
@@ -242,7 +304,7 @@ test('a failed Create retains the dirty draft and its exit protection', async ()
   fillNewSkill();
   fireEvent.click(screen.getByRole('button', { name: 'Create' }));
   await waitFor(() =>
-    expect(showToastMock).toHaveBeenCalledWith('Create refused'),
+    expect(showToastMock).toHaveBeenCalledWith('Try again in a moment.'),
   );
   expect(navigationStore.getSnapshot().pathname).toBe('/guidance/new');
   expect((screen.getByLabelText('Body') as HTMLTextAreaElement).value).toBe(
@@ -359,5 +421,125 @@ test.each(['another skill', 'replacement draft'])(
       );
     }
     expect(screen.queryByText('unsaved')).toBeNull();
+  },
+);
+
+function deferRemoval() {
+  let resolve!: () => void;
+  let reject!: () => void;
+  const pending = new Promise<Response>((yes) => {
+    resolve = () => {
+      removedSkills.add('skill-a');
+      yes(Response.json({ success: true }));
+    };
+    reject = () =>
+      yes(
+        Response.json(
+          { success: false, error: 'Removal refused' },
+          { status: 503 },
+        ),
+      );
+  });
+  deleteRequestMock.mockImplementationOnce(async () => pending);
+  return { resolve, reject };
+}
+
+async function requestRemoval() {
+  screen.getByRole('button', { name: 'More skill actions' }).focus();
+  chooseOverflow('More skill actions', 'Remove');
+  await waitFor(() => expect(deleteRequestMock).toHaveBeenCalledOnce());
+  const [input, init] = deleteRequestMock.mock.calls[0];
+  expect(String(input)).toBe('http://localhost/api/registry/skills/skill-a');
+  expect(init?.method).toBe('DELETE');
+}
+
+test('removing a filtered skill preserves the query and returns keyboard focus to search', async () => {
+  const removal = deferRemoval();
+  mountRoutedLibrary();
+  fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+    target: { value: 'skill-a' },
+  });
+  await requestRemoval();
+  await act(async () => removal.resolve());
+  await waitFor(() =>
+    expect(showToastMock).toHaveBeenCalledWith('Skill removed'),
+  );
+  await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+  await act(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+
+  const search = screen.getByPlaceholderText('Search skills...');
+  expect.soft((search as HTMLInputElement).value).toBe('skill-a');
+  expect.soft(document.activeElement).toBe(search);
+  expect(navigationStore.getSnapshot().pathname).toBe('/guidance');
+  expect(screen.queryByRole('button', { name: 'skill-a' })).toBeNull();
+});
+
+test('a refused removal preserves the filtered selection and its retry trigger', async () => {
+  const removal = deferRemoval();
+  mountRoutedLibrary();
+  fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+    target: { value: 'skill-a' },
+  });
+  await requestRemoval();
+  await act(async () => removal.reject());
+  await waitFor(() =>
+    expect(showToastMock).toHaveBeenCalledWith('Failed to remove skill'),
+  );
+  await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+  await act(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+
+  expect(navigationStore.getSnapshot().pathname).toBe('/guidance/skill-a');
+  expect(
+    (screen.getByPlaceholderText('Search skills...') as HTMLInputElement).value,
+  ).toBe('skill-a');
+  expect(screen.getByRole('region', { name: 'Skill overview' })).toBeTruthy();
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'More skill actions' }),
+  );
+});
+
+test.each(['connected control', 'another skill', 'outside Guidance'])(
+  'late removal respects a deliberate move to %s',
+  async (destination) => {
+    imported = true;
+    const removal = deferRemoval();
+    mountRoutedLibrary();
+    await requestRemoval();
+    if (destination === 'connected control') {
+      screen.getByPlaceholderText('Search skills...').focus();
+    } else if (destination === 'another skill') {
+      fireEvent.click(screen.getByRole('button', { name: 'skill-b' }));
+      screen.getByRole('button', { name: 'Edit skill' }).focus();
+    } else {
+      act(() => navigationStore.navigate('/'));
+    }
+    const keeper = document.activeElement;
+    await act(async () => removal.resolve());
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+
+    expect(navigationStore.getSnapshot().pathname).toBe(
+      destination === 'outside Guidance'
+        ? '/'
+        : destination === 'another skill'
+          ? '/guidance/skill-b'
+          : '/guidance',
+    );
+    expect(document.activeElement).toBe(keeper);
   },
 );

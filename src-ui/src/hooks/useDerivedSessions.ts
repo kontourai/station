@@ -3,8 +3,8 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
-
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
+import { chatBelongsToStation } from '../connections/station-state';
 import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import { type AgentData, useAgents } from '../contexts/AgentsContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
@@ -312,6 +312,10 @@ function deriveSession(
     createdAt: Date.now(),
     updatedAt: Date.now(),
     provider: chatState.provider,
+    stationConnectionUnavailable: chatState.stationConnectionUnavailable,
+    retainedTranscript: chatState.retainedTranscript,
+    stationBinding: chatState.stationBinding,
+    stationBindingInvalid: chatState.stationBindingInvalid,
     peerChat: chatState.peerChat,
     peerChatInvalid: chatState.peerChatInvalid,
     providerOptions: chatState.providerOptions,
@@ -446,10 +450,14 @@ export function useDerivedSessions(
 
       liveSessionIds.add(chatId);
 
-      const agent = agents.find((a) => a.slug === chatState.agentSlug);
+      const remote = !chatBelongsToStation(chatState);
+      const agent = remote
+        ? undefined
+        : agents.find((a) => a.slug === chatState.agentSlug);
 
       const conversationsList =
-        conversationsSnapshot.conversations[chatState.agentSlug!] ||
+        (!remote &&
+          conversationsSnapshot.conversations[chatState.agentSlug!]) ||
         EMPTY_CONVERSATIONS_LIST;
       const conversationMeta = conversationsList.find(
         (c) => c.id === chatState.conversationId,
@@ -458,12 +466,13 @@ export function useDerivedSessions(
       const messagesKey = chatState.conversationId
         ? `messages:${chatState.agentSlug}:${chatState.conversationId}`
         : null;
-      const backendMessages = chatState.orchestrationSessionStarted
-        ? EMPTY_BACKEND_MESSAGES
-        : messagesKey
-          ? conversationsSnapshot.messages[messagesKey] ||
-            EMPTY_BACKEND_MESSAGES
-          : EMPTY_BACKEND_MESSAGES;
+      const backendMessages =
+        remote || chatState.orchestrationSessionStarted
+          ? EMPTY_BACKEND_MESSAGES
+          : messagesKey
+            ? conversationsSnapshot.messages[messagesKey] ||
+              EMPTY_BACKEND_MESSAGES
+            : EMPTY_BACKEND_MESSAGES;
 
       const cached = cache.get(chatId);
       // Inputs outside ChatUIState — shared by the full-reuse check and the

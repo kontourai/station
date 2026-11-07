@@ -1,7 +1,8 @@
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { PageFrameActions, usePageHeader } from '../page-frame';
-import { Empty, FilteredEmpty, SkeletonList } from '../state';
+import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
 import { Tabs, tabElementId, tabPanelElementId } from '../Tabs';
 import {
   RegistryCatalogCard,
@@ -79,6 +80,7 @@ export interface RegistryCatalogActions {
   managePlugins: () => void;
   openProjects: () => void;
   retryInstalled: () => void;
+  retryCatalog: () => void;
   renderKits?: () => ReactNode;
 }
 
@@ -184,6 +186,7 @@ export function RegistryCatalog({
               message={message}
               loading={isLoading}
               error={loadError}
+              onRetryCatalog={actions.retryCatalog}
               installedStatusError={installedStatusError}
               onRetryInstalled={actions.retryInstalled}
               availableCount={available.length}
@@ -191,40 +194,34 @@ export function RegistryCatalog({
               query={search}
               onClearFilter={() => actions.setSearch('')}
             />
-            {!isLoading && !loadError && (
-              <>
-                {selectedItem && selectedItemId && (
-                  <RegistryCatalogDetail
-                    tab={activeTab}
-                    item={selectedItem}
-                    id={selectedItemId}
-                    installed={selectedInstalled}
-                    pending={selectedActionPending}
-                    checkingInstalled={isCheckingInstalled}
-                    actions={itemActions}
-                  />
-                )}
-              </>
+            {!isLoading && !loadError && selectedItem && selectedItemId && (
+              <RegistryCatalogDetail
+                tab={activeTab}
+                item={selectedItem}
+                id={selectedItemId}
+                installed={selectedInstalled}
+                pending={selectedActionPending}
+                checkingInstalled={isCheckingInstalled}
+                actions={itemActions}
+              />
             )}
             {!isLoading && !loadError && filtered.length > 0 && (
-              <>
-                <div className="page__card-grid">
-                  {filtered.map((item) => {
-                    const id = getRegistryItemId(item);
-                    return (
-                      <RegistryCatalogCard
-                        key={id}
-                        tab={activeTab}
-                        item={item}
-                        installed={isInstalled(item, id)}
-                        selected={id === selectedItemId}
-                        layoutPending={layoutPending && layoutPendingId === id}
-                        actions={itemActions}
-                      />
-                    );
-                  })}
-                </div>
-              </>
+              <div className="page__card-grid">
+                {filtered.map((item) => {
+                  const id = getRegistryItemId(item);
+                  return (
+                    <RegistryCatalogCard
+                      key={id}
+                      tab={activeTab}
+                      item={item}
+                      installed={isInstalled(item, id)}
+                      selected={id === selectedItemId}
+                      layoutPending={layoutPending && layoutPendingId === id}
+                      actions={itemActions}
+                    />
+                  );
+                })}
+              </div>
             )}
           </>
         )}
@@ -238,6 +235,7 @@ function RegistryCatalogState({
   message,
   loading,
   error,
+  onRetryCatalog,
   installedStatusError,
   onRetryInstalled,
   availableCount,
@@ -249,6 +247,7 @@ function RegistryCatalogState({
   message: string | null;
   loading: boolean;
   error: Error | null;
+  onRetryCatalog: () => void;
   installedStatusError: Error | null;
   onRetryInstalled: () => void;
   availableCount: number;
@@ -261,10 +260,11 @@ function RegistryCatalogState({
       {message && <div className="page__message">{message}</div>}
       {loading && <SkeletonList count={4} label="Loading catalog" />}
       {!loading && error && (
-        <div className="page__empty">
-          <p>Could not load {tab} right now.</p>
-          <p className="page__subtitle">{error.message}</p>
-        </div>
+        <ErrorState
+          title={`Could not load ${tab} right now.`}
+          description={describeStationFailure(error).body}
+          action={<Button onClick={onRetryCatalog}>Retry catalog</Button>}
+        />
       )}
       {!loading && !error && availableCount === 0 && (
         <Empty
@@ -299,7 +299,7 @@ function RegistryCatalogState({
         <div className="page__message" role="alert">
           <span>
             Catalog entries are available, but installed status could not be
-            confirmed: {installedStatusError.message}
+            confirmed: {describeStationFailure(installedStatusError).body}
           </span>{' '}
           <button
             type="button"

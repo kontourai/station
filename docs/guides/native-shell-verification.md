@@ -745,7 +745,9 @@ uses 1 s, 2 s, 4 s, and 8 s crash backoff for its four automatic respawns. The
 fifth counted exit is terminal; it does not schedule a fifth respawn. A manual
 restart resets that attempt count.
 `STATION_HOME_RESET_REQUIRED` is terminal for this loop: diagnose the selected
-home; do not call it a retryable boot failure.
+home; do not call it a retryable boot failure. `STATION_MANAGED_POLICY_INVALID`
+is terminal too: the machine's [managed policy](managed-policy.md) cannot be
+enforced, and only an administrator can change it.
 
 Interpret evidence narrowly:
 
@@ -756,6 +758,7 @@ Interpret evidence narrowly:
 | Browser hostile-plugin spec passes | Isolated browser-frame containment | Native plugin IPC denial or a release-shell sandbox |
 | Sidecar status reaches `failed` after five attempts | Supervisor exhausted automatic sidecar restarts | Cause of the child failure or renderer recovery |
 | `STATION_HOME_RESET_REQUIRED` is logged | An incompatible home blocked sidecar startup | Which files may safely be deleted; use backup/reset policy before acting |
+| `STATION_MANAGED_POLICY_INVALID` is logged | The installed managed policy blocked server startup | That the policy is otherwise correct; run `station policy check` on the named file |
 
 Window recreation exists, but this review establishes no automatic
 renderer-process-death detection, kill-the-WebView command, or physically
@@ -811,7 +814,11 @@ These are separate from installed service output. macOS LaunchAgents write
 service log-file path. The public recovery guide links here because this
 operator detail is not admitted to Pages.
 Set `STATION_DESKTOP_LOG_LEVEL=debug` or `trace` before launch when collecting
-a reproduction, and restore the normal level afterward. The file target is
+a reproduction, and restore the normal level afterward. Whatever the level, the updater plugin's own records are dropped and the HTTP
+client's (`reqwest`) are capped at `info`, because they can contain an update
+feed URL, which a [managed policy's](managed-policy.md#update-control) mirror
+may carry a token in. Station logs every update outcome itself, with each URL
+reduced to its scheme, host and port. The file target is
 best effort: if its directory is not writable, the host continues with stdout
 only. The pinned `tauri-plugin-log` 2.9.1 `KeepSome(5)` policy retains up to
 five archived logs plus the active `station.log`. The 5 MiB setting is a

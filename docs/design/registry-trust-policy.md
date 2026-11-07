@@ -31,6 +31,9 @@ algorithm check live where the policy identity is computed
 admitted, or published as applied. A syntactically accepted public-key envelope
 is not proof that its contents form a valid Ed25519 key.
 There are at most 16 profiles and 16 keys per profile. A registry cannot supply or install its own trust anchors.
+A machine's [managed policy](../guides/managed-policy.md#settings) can set
+`registryTrust` as a whole; when it locks it, the policy's value is the
+candidate every observer reads and `PUT /config/app` refuses changes.
 
 Profiles apply to their selected registry. An unrelated unsigned local source
 continues to work without a registry account. A supplied registry claim without
@@ -60,6 +63,18 @@ legal publisher identity. Replacing key material under the same label changes
 the policy identity and its applied epoch.
 
 ## Acquisition and consent
+
+A [managed policy](../guides/managed-policy.md#capability-switches) can narrow
+acquisition further with `limits.registries`. It sets an https-only registry
+URL allow list, applied in `RegistrySourceManager`, in every reader of the
+registered plugin registries and in the tool-server catalogs, in the
+manifest reader itself (so every face of a manifest, agents included, is
+covered), and checked at each redirect hop of a manifest or GitHub skill read.
+It can require a signer, which turns every registry install into one that
+needs a key from this applied policy (`managed-signature-required`, answered as
+the managed `403`); an unsigned claim, a dependency's included, is refused
+before the package is fetched. Removal is never refused. It also has switches for the
+default skill registries and ACP registry installs. It adds no trust anchor.
 
 `JsonManifestRegistryProvider.resolvePackage()` obtains source and untrusted
 claim from one fresh catalog response, bypassing its browsing cache. The central
@@ -168,6 +183,9 @@ A direct trust refusal returns HTTP 409 with `code: "registry-trust-refused"` an
 a closed `reason`, such as `stale-review`, `missing-claim`,
 `untrusted-signing-key`, `signature-mismatch`, `continuity-change`, or
 `receipt-unavailable`. Messages contain no raw claim URLs or key material.
+The managed policy's signature requirement is the exception: it answers the
+managed `403` (`managed-policy-capability-disabled`) with reason
+`managed-signature-required` and the policy sentence.
 Preview/review can resolve a stale observation. A continuity or unavailable
 receipt refusal retains data and requires the indicated inspection or reviewed
 migration; automatic retries cannot provide that authority. Aggregate

@@ -32,7 +32,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: [] }),
   usePrepareTroubleshootMutation: () => ({ mutateAsync: mocks.prepare }),
 }));
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk/client')>()),
   readTroubleshootCapability: mocks.capability,
 }));
 vi.mock('../../../contexts/AgentsContext', () => ({
@@ -147,6 +148,48 @@ describe('TroubleshootHost', () => {
     );
   });
 
+  test('turns an error entry point’s facts into the prepare seed, with the route at dispatch time', async () => {
+    window.history.pushState({}, '', '/projects/demo?token=abc123#frag');
+    try {
+      render(<TroubleshootHost />);
+      await act(async () => {
+        requestTroubleshoot({
+          code: 'runtime-error',
+          message: 'Engine exited\n    at run (/Users/alice/station/x.ts:1:2)',
+          conversationId: 'conv-1',
+          turnId: 'turn-1',
+        });
+      });
+      await waitFor(() =>
+        expect(mocks.prepare).toHaveBeenCalledWith({
+          seed: {
+            route: '/projects/demo',
+            errorSummary: 'runtime-error: Engine exited',
+            conversationId: 'conv-1',
+            turnId: 'turn-1',
+          },
+        }),
+      );
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  test('sends no seed for an open event with no facts', async () => {
+    await openTroubleshoot();
+    await waitFor(() => expect(mocks.prepare).toHaveBeenCalledWith({}));
+  });
+
+  test('an error entry point falls back like the help menu when the assistant has no engine', async () => {
+    mocks.agent = { ...RUNNABLE_STATION, available: false };
+    render(<TroubleshootHost />);
+    await act(async () => {
+      requestTroubleshoot({ code: 'HTTP 500', message: 'Boom' });
+    });
+    expect(reportProblem).toHaveBeenCalledTimes(1);
+    expect(mocks.prepare).not.toHaveBeenCalled();
+  });
+
   test('sends the opening message when the description is left empty', async () => {
     await openTroubleshoot();
     fireEvent.click(
@@ -188,7 +231,7 @@ describe('TroubleshootHost', () => {
     const failure = mocks.upsertToast.mock.calls
       .map(([options]) => options as Record<string, any>)
       .find((options) => options.tone === 'error');
-    expect(failure).toMatchObject({ detail: 'HTTP 500' });
+    expect(failure).toMatchObject({ detail: 'Try again in a moment.' });
     expect(failure!.actions.map((a: { label: string }) => a.label)).toEqual([
       'Report a problem',
       'Copy station triage',

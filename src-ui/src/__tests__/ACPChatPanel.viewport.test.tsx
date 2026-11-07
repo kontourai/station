@@ -66,6 +66,23 @@ vi.mock('../components/chat/ChatMessageList', () => ({
   ChatMessageList: () => <div data-testid="acp-messages" />,
 }));
 
+// This adapter test observes the shared-body input; its real rendering is covered by ownerWiring.
+vi.mock('../components/conversation/ConversationBody', () => ({
+  ConversationBody: ({
+    activeSession,
+  }: {
+    activeSession: import('../types').ChatSession;
+  }) => {
+    void activeSession;
+    return (
+      <>
+        <div data-testid="acp-messages" />
+        <div data-testid="acp-composer" />
+      </>
+    );
+  },
+}));
+
 import { ACPChatPanel } from '../components/acp-connections/ACPChatPanel';
 
 describe('ACP chat viewport boundary', () => {

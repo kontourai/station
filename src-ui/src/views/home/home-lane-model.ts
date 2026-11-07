@@ -236,7 +236,8 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       const resolved =
         item.kind === 'task'
           ? lane === 'finished'
-          : resolution.has(item.conversationId ?? item.id);
+          : workFacts?.get(item.id)?.hostDetails !== false &&
+            resolution.has(item.conversationId ?? item.id);
       (resolved ? settled : live.idle).push(item);
       continue;
     }

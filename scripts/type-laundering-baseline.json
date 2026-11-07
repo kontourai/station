@@ -2385,60 +2385,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-      "rule": "as-any",
-      "fingerprint": "b9c895492d1f49431157d886c13ddf7fed82c40d0ddc8dacb3b802c83fcb8a86",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-      "rule": "as-any",
-      "fingerprint": "91adaa86f58a8b0654decfb77a028564187bccf322d538fe1f9ce38a9162487c",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-      "rule": "as-any",
-      "fingerprint": "f016a3b50dfdadfbae047786580c452f3ef650f34a451e037044c5ca4cd7316d",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-      "rule": "as-any",
-      "fingerprint": "4f792f17fe79c043571a08c2936d5f31f2a8044e9580a91a87a56a1daeb7a52b",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-      "rule": "as-any",
-      "fingerprint": "a3529677806b16df6e5eb74f13622324849f3f7fc35b44bd42ad244c15344182",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-      "rule": "as-any",
-      "fingerprint": "c4e6ecae9685854bdde2a349151207f45187efcf9a58ef5b0de8a286bd36efcb",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-      "rule": "as-any",
-      "fingerprint": "0da9aef3fae9a0e9ef41b134c52f718efef01aa945a1c6c231d7968ef7c0a9d7",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-      "rule": "as-any",
-      "fingerprint": "e33c32f70489f8a8747267112c13f7094179555680c436aa59711a564b8088e9",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
-      "rule": "as-any",
-      "fingerprint": "efdf83e79fb507af654ff13fa5393e1bf23ebc07a1031aebd4edb394a922e1e8",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-ui/src/components/chat/ChatMessageList.tsx",
       "rule": "as-any",
       "fingerprint": "f914ca0343f6316308ab67b1b29b869acc722d7a37e8f4953757732e4a0adf25",

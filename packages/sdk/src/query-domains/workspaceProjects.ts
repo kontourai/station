@@ -26,6 +26,10 @@ import {
   StationRequestAuthorityError,
 } from '../client/http';
 import { getProjectIdentity } from '../client/project-identity';
+import {
+  captureConnectionReadTarget,
+  connectionQueryKey,
+} from '../connection-read-target';
 
 /** Re-exported at the domain boundary so placement surfaces share one classifier. */
 export {
@@ -190,23 +194,32 @@ function captureProjectScope(
 }
 
 export function useProjectsQuery(config?: ProjectReadQueryConfig<any>) {
-  const requestScope = captureProjectScope(config?.requestScope);
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
+  const requestScope = captureProjectScope(
+    readTarget?.requestScope ?? config?.requestScope,
+  );
   const scoped = requestScope !== undefined;
   const unavailable = config?.requireRequestScope === true && !scoped;
-  const queryKey = unavailable
+  const legacyQueryKey = unavailable
     ? ['projects', 'list', 'unavailable']
     : scoped
       ? scopedProjectsListKey(requestScope, config?.durableAuthorityId)
       : ['projects'];
+  const queryKey = readTarget
+    ? connectionQueryKey('projects', readTarget, 'list')
+    : legacyQueryKey;
   return useApiQuery(
     queryKey,
     async (signal) => {
       if (unavailable) throw new StationRequestAuthorityError();
       if (scoped)
-        return listProjectViews(requestScope.apiBase, {
-          requestScope,
-          signal,
-        });
+        return listProjectViews(
+          readTarget?.targetApiBase ?? requestScope.apiBase,
+          {
+            requestScope,
+            signal,
+          },
+        );
       const apiBase = await _getApiBase();
       return listProjectViews(apiBase, { signal });
     },
@@ -232,10 +245,13 @@ export const PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX = 'project-run-locations';
 export function useProjectRunLocationsQuery(
   config?: ProjectReadQueryConfig<any>,
 ) {
-  const requestScope = captureProjectScope(config?.requestScope);
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
+  const requestScope = captureProjectScope(
+    readTarget?.requestScope ?? config?.requestScope,
+  );
   const scoped = requestScope !== undefined;
   const unavailable = config?.requireRequestScope === true && !scoped;
-  const queryKey = unavailable
+  const legacyQueryKey = unavailable
     ? [PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX, 'unavailable']
     : scoped
       ? [
@@ -247,15 +263,21 @@ export function useProjectRunLocationsQuery(
           ),
         ]
       : [PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX];
+  const queryKey = readTarget
+    ? connectionQueryKey(PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX, readTarget)
+    : legacyQueryKey;
   return useApiQuery(
     queryKey,
     async (signal) => {
       if (unavailable) throw new StationRequestAuthorityError();
       if (scoped)
-        return listProjectRunLocations(requestScope.apiBase, {
-          requestScope,
-          signal,
-        });
+        return listProjectRunLocations(
+          readTarget?.targetApiBase ?? requestScope.apiBase,
+          {
+            requestScope,
+            signal,
+          },
+        );
       const apiBase = await _getApiBase();
       return listProjectRunLocations(apiBase, { signal });
     },
@@ -293,10 +315,13 @@ export function useProjectChatDefaultsQuery(
   slug: string,
   config?: ProjectReadQueryConfig<any>,
 ) {
-  const requestScope = captureProjectScope(config?.requestScope);
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
+  const requestScope = captureProjectScope(
+    readTarget?.requestScope ?? config?.requestScope,
+  );
   const scoped = requestScope !== undefined;
   const unavailable = config?.requireRequestScope === true && !scoped;
-  const queryKey = unavailable
+  const legacyQueryKey = unavailable
     ? [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, 'unavailable', slug]
     : scoped
       ? [
@@ -307,15 +332,26 @@ export function useProjectChatDefaultsQuery(
           ),
         ]
       : [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, slug];
+  const queryKey = readTarget
+    ? connectionQueryKey(
+        PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+        readTarget,
+        slug,
+      )
+    : legacyQueryKey;
   return useApiQuery(
     queryKey,
     async (signal) => {
       if (unavailable) throw new StationRequestAuthorityError();
       if (scoped)
-        return getProjectChatDefaults(requestScope.apiBase, slug, {
-          requestScope,
-          signal,
-        });
+        return getProjectChatDefaults(
+          readTarget?.targetApiBase ?? requestScope.apiBase,
+          slug,
+          {
+            requestScope,
+            signal,
+          },
+        );
       const apiBase = await _getApiBase();
       return getProjectChatDefaults(apiBase, slug, { signal });
     },
@@ -339,10 +375,13 @@ export function useProjectCheckoutFreshnessQuery(
   slug: string,
   config?: ProjectReadQueryConfig<any>,
 ) {
-  const requestScope = captureProjectScope(config?.requestScope);
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
+  const requestScope = captureProjectScope(
+    readTarget?.requestScope ?? config?.requestScope,
+  );
   const scoped = requestScope !== undefined;
   const unavailable = config?.requireRequestScope === true && !scoped;
-  const queryKey = unavailable
+  const legacyQueryKey = unavailable
     ? [PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX, 'unavailable', slug]
     : scoped
       ? [
@@ -355,15 +394,22 @@ export function useProjectCheckoutFreshnessQuery(
           slug,
         ]
       : [PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX, slug];
+  const queryKey = readTarget
+    ? connectionQueryKey('project-checkout-freshness', readTarget, slug)
+    : legacyQueryKey;
   return useApiQuery(
     queryKey,
     async (signal) => {
       if (unavailable) throw new StationRequestAuthorityError();
       if (scoped)
-        return getProjectCheckoutFreshness(requestScope.apiBase, slug, {
-          requestScope,
-          signal,
-        });
+        return getProjectCheckoutFreshness(
+          readTarget?.targetApiBase ?? requestScope.apiBase,
+          slug,
+          {
+            requestScope,
+            signal,
+          },
+        );
       const apiBase = await _getApiBase();
       return getProjectCheckoutFreshness(apiBase, slug, { signal });
     },
@@ -378,13 +424,14 @@ export function useProjectQuery(
   slug: string,
   config?: ProjectReadQueryConfig<any>,
 ) {
-  const candidate = config?.requestScope;
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
+  const candidate = readTarget?.requestScope ?? config?.requestScope;
   const requestScope = isApiRequestScope(candidate)
     ? { apiBase: candidate.apiBase, authorityKey: candidate.authorityKey }
     : undefined;
   const scoped = requestScope !== undefined;
   const unavailable = config?.requireRequestScope === true && !scoped;
-  const queryKey = unavailable
+  const legacyQueryKey = unavailable
     ? ['projects', slug, 'unavailable']
     : scoped
       ? [
@@ -398,15 +445,22 @@ export function useProjectQuery(
           ),
         ]
       : ['projects', slug];
+  const queryKey = readTarget
+    ? connectionQueryKey('projects', readTarget, 'detail', slug)
+    : legacyQueryKey;
   return useApiQuery(
     queryKey,
     async (signal) => {
       if (unavailable) throw new StationRequestAuthorityError();
       if (scoped)
-        return getProject(requestScope.apiBase, slug, {
-          requestScope,
-          signal,
-        });
+        return getProject(
+          readTarget?.targetApiBase ?? requestScope.apiBase,
+          slug,
+          {
+            requestScope,
+            signal,
+          },
+        );
       const apiBase = await _getApiBase();
       return getProject(apiBase, slug, { signal });
     },

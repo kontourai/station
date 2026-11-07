@@ -9,8 +9,8 @@ import {
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
 import { useResolvedThemeMode } from '../../hooks/useResolvedThemeMode';
-import { SkeletonBlock } from '../state';
-import { useChatRequestTarget } from './ChatRequestContext';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { describeReadFailure, SkeletonBlock } from '../state';
 import { HtmlReply } from './HtmlReply';
 
 export function PublishedHtmlReply({
@@ -20,7 +20,7 @@ export function PublishedHtmlReply({
 }) {
   const host = useApiBase();
   const hostAuthority = useHostRequestAuthorityScope();
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const apiBase = target?.apiBase ?? host.apiBase;
   const authority = target?.requestScope ?? hostAuthority;
   const theme = useResolvedThemeMode();
@@ -55,7 +55,12 @@ export function PublishedHtmlReply({
     gcTime: 0,
   });
   if (query.error)
-    return <p role="status">Visual reply unavailable: {query.error.message}</p>;
+    return (
+      <p role="status">
+        Visual reply unavailable:{' '}
+        {describeReadFailure(query.error, target?.station)}
+      </p>
+    );
   if (!query.data) return <SkeletonBlock label="Loading visual reply" />;
   return (
     <HtmlReply

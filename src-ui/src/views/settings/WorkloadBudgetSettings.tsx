@@ -10,6 +10,7 @@ import { Button } from '../../components/Button';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 /** The Feature Preview that offers this editor (server-bound id). */
 export const WORKLOAD_BUDGET_SETTINGS_PREVIEW_ID = 'workload-budget-settings';
@@ -68,7 +69,11 @@ function WorkloadBudgetEditor() {
   if (status.isLoading)
     body = <SkeletonBlock count={2} label="Reading workload budgets" />;
   else if (status.error instanceof WorkloadBudgetsUnsupportedError)
-    body = <p className="settings__field-hint">{status.error.message}</p>;
+    body = (
+      <p className="settings__field-hint">
+        {describeStationFailure(status.error).body}
+      </p>
+    );
   else if (status.error || !status.data)
     body = (
       <ErrorState
@@ -151,7 +156,7 @@ function WorkloadBudgetEditor() {
         </p>
         {update.error && (
           <p className="settings__field-warning" role="status">
-            {update.error.message}
+            {describeStationFailure(update.error).body}
           </p>
         )}
         <ResponsiveSurfaceActions className="workload-budgets__actions">

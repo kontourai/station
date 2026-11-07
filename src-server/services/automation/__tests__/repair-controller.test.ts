@@ -5,9 +5,20 @@ import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createIsolatedRepairRoutes } from '../../../routes/operations/repairs.js';
+import {
+  MANAGED_REPAIR_RELAY_REFUSED,
+  type ManagedListenerAdmission,
+} from '../../../security/managed-network-exposure.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
-import { recordAutomationEvent } from '../automation-intake.js';
+import {
+  automationEpisodeKey,
+  recordAutomationEvent,
+} from '../automation-intake.js';
+import {
+  automationIntentId,
+  automationPolicyFingerprint,
+} from '../automation-intent.js';
 import { createAutomationLedger } from '../automation-ledger.js';
 import { AutomationStore } from '../automation-store.js';
 import { normalizeGitHubWorkflowRun } from '../github-workflow-run.js';
@@ -39,6 +50,10 @@ async function fixture(
   options: {
     failure?: 'protected' | 'authority' | 'stopped' | 'case';
     publishBranch?: boolean;
+    /** #4519: the runtime's listener admission. */
+    listenerAdmission?: ManagedListenerAdmission;
+    /** The run is expected to end indeterminate without a `failure`. */
+    expectIndeterminate?: boolean;
   } = {},
 ) {
   const home = temporary('isolated-repair-caller-');
@@ -266,6 +281,9 @@ async function fixture(
     worker,
     observeWorker,
     publisher: { fetch: publisherFetch },
+    ...(options.listenerAdmission
+      ? { listenerAdmission: options.listenerAdmission }
+      : {}),
   });
   closes.push(async () => {
     await controller.close();
@@ -410,7 +428,9 @@ async function fixture(
   await controller.tick();
   await vi.waitFor(() =>
     expect(controller.list()[0]?.phase, controller.list()[0]?.reasonCode).toBe(
-      options.failure ? 'indeterminate' : 'proposed',
+      options.failure || options.expectIndeterminate
+        ? 'indeterminate'
+        : 'proposed',
     ),
   );
   const retained = controller.store.read(controller.list()[0]!.runId)!;
@@ -822,5 +842,225 @@ test('a source that grants isolated execution only cannot grant publication afte
     context.controller.store.read(context.retained.runId)?.grant,
   ).toBeUndefined();
   expect(context.calls).toHaveLength(0);
+  expect(context.worker).toHaveBeenCalledTimes(1);
+});
+
+test('#4519: under the managed limit the worker relay binds loopback and passes listener admission, or the repair is refused on Linux', async () => {
+  const admitted: number[] = [];
+  const listenerAdmission: ManagedListenerAdmission = {
+    localClientsOnly: true,
+    admit: async ({ port }) => {
+      admitted.push(port);
+      throw new Error('Tailscale Serve forwards port to it');
+    },
+  };
+  const linux = process.platform === 'linux';
+  const context = await fixture({
+    listenerAdmission,
+    expectIndeterminate: linux,
+  });
+  if (linux) {
+    expect(context.worker).not.toHaveBeenCalled();
+    expect(context.retained.reasonCode).toBe(MANAGED_REPAIR_RELAY_REFUSED);
+    return;
+  }
+  expect(context.worker).toHaveBeenCalledTimes(1);
+  const relay = context.worker.mock.calls[0]![0].relay!;
+  expect(relay.host).toBe('127.0.0.1');
+  await expect(relay.admit(43191)).rejects.toThrow(
+    MANAGED_REPAIR_RELAY_REFUSED,
+  );
+  expect(admitted).toEqual([43191]);
+});
+
+test('an observe isolated-repair rule records would-start and starts no intent or repair run (#4509)', async () => {
+  const context = await fixture();
+  const original = context.policy.read().rules[0]!;
+  const observed = await context.policy.createRule({
+    ...original,
+    name: 'observed repair',
+  });
+  expect(observed.mode).toBe('observe');
+  const source = context.policy.read().sources[0]!;
+  const normalized = normalizeGitHubWorkflowRun(
+    workflowRun({
+      id: 55555556,
+      runAttempt: 2,
+      conclusion: 'failure',
+      updatedAt: new Date(Date.now() - 1000).toISOString(),
+    }),
+    { source, receivedAt: Date.now() },
+  );
+  if (normalized.kind !== 'event') throw new Error(normalized.reason);
+  const intentsBefore = context.ledger.listActionIntents().length;
+  expect(
+    recordAutomationEvent({
+      ledger: context.ledger,
+      source,
+      rules: context.policy
+        .actionableRules(source.id)
+        .filter((rule) => rule.id === observed.id),
+      event: normalized.event,
+      transportId: normalized.event.semanticKey,
+      now: Date.now(),
+    }).outcome,
+  ).toBe('matched');
+  expect(context.ledger.listDeliveries()[0]?.decisions).toEqual([
+    expect.objectContaining({
+      ruleId: observed.id,
+      mode: 'observe',
+      outcome: 'would-start',
+      actionKind: 'isolated-repair',
+      projectId: 'project',
+      agentId: 'repairer',
+    }),
+  ]);
+  expect(
+    context.ledger
+      .listActionIntents()
+      .filter((intent) => intent.ruleId === observed.id),
+  ).toEqual([]);
+  await context.controller.tick();
+  await context.controller.tick();
+  expect(context.ledger.listActionIntents()).toHaveLength(intentsBefore);
+  expect(
+    context.controller.store.list().map((run) => run.intent.ruleId),
+  ).toEqual([original.id]);
+  expect(context.worker).toHaveBeenCalledTimes(1);
+});
+
+test('a retained live repair intent is refused when its rule is switched off and never dispatches after it returns to live (#4509)', async () => {
+  const context = await fixture();
+  const original = context.policy.read().rules[0]!;
+  const second = await context.policy.createRule({
+    ...original,
+    name: 'second repair',
+  });
+  const setMode = (mode: 'off' | 'observe' | 'live') =>
+    context.policy.setEnabled({
+      kind: 'rule',
+      id: second.id,
+      expectedFingerprint:
+        context.controller.automationConfiguration().fingerprint,
+      mode,
+    });
+  await setMode('live');
+  const source = context.policy.read().sources[0]!;
+  const normalized = normalizeGitHubWorkflowRun(
+    workflowRun({
+      id: 55555557,
+      runAttempt: 2,
+      conclusion: 'failure',
+      updatedAt: new Date(Date.now() - 1000).toISOString(),
+    }),
+    { source, receivedAt: Date.now() },
+  );
+  if (normalized.kind !== 'event') throw new Error(normalized.reason);
+  recordAutomationEvent({
+    ledger: context.ledger,
+    source,
+    rules: context.policy
+      .actionableRules(source.id)
+      .filter((rule) => rule.id === second.id),
+    event: normalized.event,
+    transportId: normalized.event.semanticKey,
+    now: Date.now(),
+  });
+  const intent = context.ledger
+    .listActionIntents()
+    .find((candidate) => candidate.ruleId === second.id);
+  expect(intent?.state).toBe('pending');
+  await setMode('off');
+  await context.controller.tick();
+  expect(context.ledger.readIntent(intent!.intentId)).toMatchObject({
+    state: 'refused',
+    reason: 'policy_changed',
+  });
+  await setMode('live');
+  await context.controller.tick();
+  await context.controller.tick();
+  expect(
+    context.controller.store.list().map((run) => run.intent.ruleId),
+  ).toEqual([original.id]);
+  expect(context.worker).toHaveBeenCalledTimes(1);
+});
+
+test('the repair mode check alone refuses an intent whose fingerprint matches the rule as it is now in observe (#4509)', async () => {
+  const context = await fixture();
+  const original = context.policy.read().rules[0]!;
+  const created = await context.policy.createRule({
+    ...original,
+    name: 'observed repair',
+  });
+  const config = context.policy.read();
+  const source = config.sources[0]!;
+  const rule = config.rules.find((candidate) => candidate.id === created.id)!;
+  expect(rule.mode).toBe('observe');
+  const normalized = normalizeGitHubWorkflowRun(
+    workflowRun({
+      id: 55555558,
+      runAttempt: 2,
+      conclusion: 'failure',
+      updatedAt: new Date(Date.now() - 1000).toISOString(),
+    }),
+    { source, receivedAt: Date.now() },
+  );
+  if (normalized.kind !== 'event') throw new Error(normalized.reason);
+  const event = normalized.event;
+  const episodeKey = automationEpisodeKey(rule, event)!;
+  const episodeId = '55555558.2';
+  // Intake never retains an intent for an observe rule, so write one through
+  // the ledger's intake transaction with the current observe rule's
+  // fingerprint: only the controller's mode checks can refuse it.
+  context.ledger.recordIntake({
+    delivery: {
+      sourceId: source.id,
+      transportId: event.semanticKey,
+      semanticKey: event.semanticKey,
+      eventType: event.type,
+      receivedAt: Date.now(),
+      outcome: 'matched',
+      ruleId: rule.id,
+    },
+    openings: [
+      {
+        ruleId: rule.id,
+        episodeKey,
+        episodeId,
+        maxAttempts: 1,
+        now: Date.now(),
+      },
+    ],
+    closings: [],
+    intents: [
+      {
+        intentId: automationIntentId(rule.id, episodeKey, episodeId),
+        sourceId: source.id,
+        ruleId: rule.id,
+        episodeKey,
+        episodeId,
+        policyFingerprint: automationPolicyFingerprint(source, rule),
+        event,
+        action: rule.action as Extract<
+          typeof rule.action,
+          { kind: 'isolated-repair' }
+        >,
+      },
+    ],
+    now: Date.now(),
+  });
+  const intent = context.ledger
+    .listActionIntents()
+    .find((candidate) => candidate.ruleId === rule.id);
+  expect(intent?.state).toBe('pending');
+  await context.controller.tick();
+  await context.controller.tick();
+  expect(context.ledger.readIntent(intent!.intentId)).toMatchObject({
+    state: 'refused',
+    reason: 'policy_changed',
+  });
+  expect(
+    context.controller.store.list().map((run) => run.intent.ruleId),
+  ).toEqual([original.id]);
   expect(context.worker).toHaveBeenCalledTimes(1);
 });

@@ -84,12 +84,14 @@ import type { LoadedLocalAccounts } from '../../services/identity/local-account-
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { ProjectMembershipService } from '../../services/projects/project-membership-service.js';
+import { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import * as fakeGh from '../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
+import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
@@ -425,11 +427,14 @@ const { attachVoiceWebSocket } = await import(
  */
 function stationBrowserOriginsFor(port: number) {
   return {
-    allowedBrowserOrigins: expect.arrayContaining([
-      `http://127.0.0.1:${port}`,
-      `http://localhost:${port}`,
-      'tauri://localhost',
-    ]),
+    browserOrigins: expect.objectContaining({
+      admits: expect.any(Function),
+      configured: expect.arrayContaining([
+        `http://127.0.0.1:${port}`,
+        `http://localhost:${port}`,
+        'tauri://localhost',
+      ]),
+    }),
   };
 }
 
@@ -692,6 +697,38 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     ).toThrow(/STATION_HOME_RESET_REQUIRED/);
     expect(existsSync(join(home, 'monitoring'))).toBe(false);
     expect(existsSync(join(home, 'config', 'agent-registry.json'))).toBe(false);
+  });
+
+  // #4507: a restarted Station finishes Task worktree finalizations the
+  // previous process deferred, but only once the sweep that reaps that
+  // process's detached engines has settled.
+  it('retries deferred Task worktree finalizations at startup, after the orphan engine sweep', async () => {
+    home = await createSchemaHome('station-task-worktree-startup-');
+    const retry = vi
+      .spyOn(
+        TaskGraphService.prototype,
+        'retryDeferredTaskWorktreeFinalizations',
+      )
+      .mockResolvedValue(undefined);
+    try {
+      let settleSweep!: () => void;
+      const orphanEngineSweep = new Promise<void>((resolve) => {
+        settleSweep = resolve;
+      });
+      runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: TEST_PORT,
+        host: '127.0.0.1',
+        orphanEngineSweep,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(retry).not.toHaveBeenCalled();
+
+      settleSweep();
+      await vi.waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
+    } finally {
+      retry.mockRestore();
+    }
   });
 
   it('refuses to construct a runtime when STATION_TRUSTED_CONSENT_ORIGIN is malformed', () => {
@@ -1214,8 +1251,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       expect.objectContaining({
         verifyCredential: expect.any(Function),
         limiter: expect.anything(),
-        allowedBrowserOrigins:
-          stationBrowserOriginsFor(port).allowedBrowserOrigins,
+        browserOrigins: stationBrowserOriginsFor(port).browserOrigins,
       }),
     );
     expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalledTimes(1);
@@ -1353,6 +1389,31 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           undefined,
           { workItemProvenance: 'project-board' },
         );
+        // #4508: what the runtime's own follow-up store recorded for the
+        // Task reaches the dispatch brief.
+        (Reflect.get(runtime, 'taskFollowUps') as TaskFollowUpStoreHolder)
+          .forWrite()!
+          .recordPage(
+            { taskId: task.id, taskCreatedAt: task.createdAt },
+            ref,
+            {
+              items: [
+                {
+                  kind: 'review',
+                  githubId: '7001',
+                  author: 'member-reviewer',
+                  actorClass: 'member',
+                  association: 'MEMBER',
+                  occurredAt: '2999-01-01T00:00:00Z',
+                  excerpt: 'Ship it after the rebase.',
+                  truncated: false,
+                  reviewState: 'APPROVED',
+                },
+              ],
+              cursors: {},
+            },
+            new Date().toISOString(),
+          );
         const dispatcher = Reflect.get(runtime, 'taskDispatcher') as {
           dispatch(taskId: string, input: object): Promise<{ kind: string }>;
         };
@@ -1374,6 +1435,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         expect(brief).toContain('Labels: bug, P1');
         // Comments since the Task's creation (it has no earlier read).
         expect(brief).toContain('Newer than the Task.');
+        expect(brief).toContain(
+          '- Review on github:acme/widgets#42 by member-reviewer (member, MEMBER) at 2999-01-01T00:00:00Z (APPROVED)\n> Ship it after the rebase.',
+        );
         expect(brief).not.toContain('Older than the Task.');
         expect(brief).not.toContain('linked item not re-read');
         // The read is the runtime's observer, through gh on PATH.
@@ -2024,8 +2088,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       '127.0.0.1',
       expect.objectContaining({
         verifyCredential: expect.any(Function),
-        allowedBrowserOrigins:
-          stationBrowserOriginsFor(port).allowedBrowserOrigins,
+        browserOrigins: stationBrowserOriginsFor(port).browserOrigins,
       }),
     );
   });

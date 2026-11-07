@@ -350,10 +350,10 @@ describe('pending message actions', () => {
         onSendMessageNow={onSendMessageNow}
       />,
     );
-    expect(screen.getByText('Queue · Queued for next turn')).not.toBeNull();
     expect(
-      screen.getByText(/Steer · Waiting for this turn to finish/),
+      screen.getAllByText('Queued. Sends after this reply.')[0],
     ).not.toBeNull();
+    expect(screen.getByText('Steer')).not.toBeNull();
     const button = screen.getByRole('button', {
       name: 'Send pending message 2 now',
     });

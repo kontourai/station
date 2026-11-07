@@ -35,6 +35,33 @@ function seedChat(sessionId: string, conversationId: string) {
 }
 
 describe('usePruneActiveChats', () => {
+  test('a source-only inventory prunes host tabs and preserves bound and malformed peer tabs', async () => {
+    seedChat('host', 'same');
+    seedChat('remote', 'same');
+    seedChat('invalid', 'same');
+    activeChatsStore.updateChat('remote', {
+      stationBinding: {
+        version: 1,
+        environmentId: 'receiver',
+        stationName: 'Receiver',
+        affinity: {
+          kind: 'device',
+          connectionId: 'device',
+          principalNamespace: 'receiver-owner',
+        },
+      },
+    });
+    activeChatsStore.updateChat('invalid', { peerChatInvalid: true });
+    fetchConversationPage.mockResolvedValue({ items: [], hasMore: false });
+    renderHook(() => usePruneActiveChats());
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot().host).toBeUndefined(),
+    );
+    expect(activeChatsStore.getSnapshot().remote).toBeDefined();
+    expect(activeChatsStore.getSnapshot().invalid).toBeDefined();
+    expect(fetchConversationPage).toHaveBeenCalledOnce();
+  });
+
   beforeEach(() => {
     clearChats();
     fetchConversationPage.mockReset();

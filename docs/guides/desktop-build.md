@@ -14,7 +14,9 @@ endpoint/key configuration; an ordinary development build has none and reports
 no update channel. A configured app checks about 20 seconds after it starts and
 then hourly by wall-clock time while it runs, including tray-only (after the
 computer sleeps past a due check, it checks within about 30 seconds of
-waking); there is no OS job.
+waking); there is no OS job. A machine's
+[managed policy](managed-policy.md#update-control), read when the app starts,
+can turn these checks off or send them to an approved mirror.
 
 Updating has three separate steps:
 
@@ -117,11 +119,28 @@ maps while retaining them in the original build output for diagnostics. It also
 removes reviewed SDK source/test trees and unused browser Cedar WASM variants.
 RxJS keeps its Node CommonJS exports (also used by Node ESM imports), metadata
 and license; its browser distributions and TypeScript sources are omitted.
+The OTLP transformer likewise retains its Node `build/src` implementation,
+metadata and license. Its alternate `build/esm` and `build/esnext` bundler
+distributions are omitted; normal Node imports and `require` share the retained
+implementation. Flow Agents keeps its compiled `build/`, hooks, skills, kits,
+schemas and context; its per-harness `dist/` bundles, its TypeScript `src/` and
+its own `evals/` test harness are omitted (a kit's own `evals/` is kept). The
+512 MiB runtime ceiling remains enforced.
 node-pty keeps every architecture's prebuilds for the staging operating system
 and omits prebuilds for other operating systems. Release packages use pinned
 Node, but desktop debug builds select Node from the login PATH; its architecture
 can differ from the staging Node (for example x64 Node under Rosetta on an
 arm64 Mac). Keeping same-OS bindings preserves that debug launch path.
+The pinned Windows backend uses ConPTY; its runtime assets are `conpty.node`,
+`conpty_console_list.node`, `conpty.dll` and `OpenConsole.exe` for each supported
+Windows architecture. Winpty assets are absent from the dependency and are not
+required by the lifecycle inventory. Native process tests and artifact staging
+checks remain separate from an installed Tauri-shell receipt.
+
+koffi, the FFI the managed policy's Windows registry and permission reader
+loads, ships without vendored build inputs and docs. Its `src` tree includes
+the JavaScript loader and stays in Windows staging with the native binary; elsewhere nothing loads it, so koffi
+and its platform package keep only their metadata and license.
 The stager and [pruning tests](../../scripts/__tests__/desktop-runtime-pruning.test.ts)
 own these rules. File-count reductions are packaging evidence; they do not
 measure Windows Defender scans or first-launch time.

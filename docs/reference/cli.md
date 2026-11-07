@@ -107,8 +107,9 @@ node packages/cli/dist/station.mjs --help
 ```
 
 The bundle inlines the Station workspace packages, so it needs neither `tsx`
-nor a checkout at runtime. The package declares `@napi-rs/keyring` and `qrcode`
-dependencies. `esbuild` is an optional peer loaded for plugin-authoring builds;
+nor a checkout at runtime. The package declares `@napi-rs/keyring`, `koffi` and
+`qrcode` dependencies; `koffi` reads the Windows registry and access lists for
+`station policy show` and is loaded only on Windows. `esbuild` is an optional peer loaded for plugin-authoring builds;
 client-only use does not require it. See the [package manifest](../../packages/cli/package.json)
 and [bundle externals](../../packages/cli/bundle-externals.mjs).
 
@@ -592,7 +593,8 @@ station stations forget <name>
 station stations project show|use <name>|clear
 station stations export
 station target [--station=<name>|--api-base=<url>]
-station triage [--context-only] [--agent=codex|claude] [--problem=<text>] [--search-issues] [--station=<name>|--api-base=<url>] [--credential=<token>]
+station triage [--context-only] [--headless] [--agent=codex|claude] [--problem=<text>] [--search-issues] [--station=<name>|--api-base=<url>] [--credential=<token>]
+station triage draft-report < report.json
 ```
 
 Adding, showing, exporting, or targeting a Station does not change the
@@ -658,57 +660,81 @@ Without `--print`, success prints only the bare address.
 ### `triage`
 
 `station triage` creates an opaque owner-only run under
-`$STATION_ROOT/cache/triage/<uuid>`. Each run has schema-v1 `context.json`,
+`$STATION_ROOT/cache/triage/<uuid>`. Each run has schema-v2 `context.json`,
 readable `summary.md`, the versioned Station-owned `playbook.md`, bounded
-`problem.md`, and `related-issues.json`. Runs with nonempty agent output also
-retain a redacted `diagnosis.md` and local `issue-draft.md`, including when the
-agent exits unsuccessfully. These files retain at most the first 64 KiB of
-stdout, so they are not a guarantee of a complete diagnosis. The
-context contains only bounded, redacted CLI provenance, selected Station facts,
-and source-doctor facts when the checkout launcher injects that callback. When
-an existing credential is available, it uses the authenticated raw
-`/api/diagnostics/bundle` seam and retains only allowlisted app
+`problem.md`, and `related-issues.json`. Headless runs with nonempty agent
+output also retain a redacted `diagnosis.md` and local `issue-draft.md`,
+including when the agent exits unsuccessfully. These files retain at most the
+first 64 KiB of stdout, so they are not a guarantee of a complete diagnosis.
+The context contains only bounded, redacted CLI provenance, selected Station
+facts, and source-doctor facts when the checkout launcher injects that
+callback. When an existing credential is available, it uses the authenticated
+raw `/api/diagnostics/bundle` seam and retains only allowlisted app
 version/platform/build facts, a summarized doctor report, and a re-sanitized,
 bounded log tail. It drops bundle config and every other field. It does not
 read keyring values directly, pairing/local-grant secrets, databases, arbitrary
 environment values, provider payloads, or unbounded logs; absent authentication
 or an unreachable Station is recorded as unavailable, never fatal.
 
+`localLogs` in the context names the log directory of this machine's default
+Station runtime home, with the home directory shown as `~` (for example
+`~/.station/instances/stable/logs`; the durable server logs are in its
+`server/` subdirectory), and whether it exists. A directory outside the home
+directory is recorded as `null` instead of a raw absolute path. That runtime is
+not necessarily the Station the run targets.
+
 ```bash
+station triage
 station triage --context-only
-station triage --agent=codex
+station triage --headless --agent=codex
 station triage --agent=claude
 station triage --problem='Beta stopped opening' --search-issues --agent=codex
+station triage draft-report < report.json
 ```
 
-`--context-only` skips agent probing and launch while still collecting the same
-read-only source-doctor and authenticated remote facts available to a normal
-run. Without an explicit agent,
-Station selects the only detected supported agent. When both are detected in a
-TTY it asks the owner to choose; in a non-interactive shell it preserves
-artifacts and tells the caller to choose `--agent=codex` or `--agent=claude`.
-When no supported agent is installed and none was explicitly requested, the
-command succeeds with artifacts only. Explicitly requesting an unavailable
-agent fails after preserving those artifacts.
+**Interactive and headless modes.** When both stdin and stdout are a terminal,
+`station triage` starts the selected agent as an interactive troubleshooting
+conversation. The agent inherits the terminal, uses its normal approval
+prompts, and receives no mode or bypass flags; its only argument is a
+single-line instruction to read the run's `playbook.md` and `context.json`.
+`playbook.md` is then the same troubleshooting playbook (v2) the in-app Station
+Assistant follows. Its terminal section tells the agent that Station and its
+tools may be unavailable, to investigate with the run files, the local log
+directory and Station's read commands such as `station doctor`, never to kill
+or restart a process without the person's explicit yes, and how to file. Station
+captures no output from an interactive session and writes no `diagnosis.md`;
+the run is `completed` when the agent exits successfully.
+
+`--headless`, or stdin or stdout that is not a terminal, selects the one-shot
+read-only diagnosis described below, with its read-only v1 playbook.
+`--context-only` never launches an agent and also writes the v1 playbook.
+
+Without an explicit agent, Station selects the only detected supported agent.
+When both are detected in a TTY it asks the owner to choose; in a
+non-interactive shell it preserves artifacts and tells the caller to choose
+`--agent=codex` or `--agent=claude`. When no supported agent is installed and
+none was explicitly requested, the command succeeds with artifacts only.
+Explicitly requesting an unavailable agent fails after preserving those
+artifacts.
 
 `--problem` stores a bounded, redacted symptom. `--search-issues` explicitly
 allows sending it to `gh issue list --repo kontourai/station`; an interactive run asks
 the same yes/no question before searching unless that flag already supplied
 consent. `--context-only` skips prompting but still performs a search explicitly
 requested by `--search-issues`. Results retain only
-bounded issue number/title/state fields. No GitHub write command exists here.
+bounded issue number/title/state fields.
 
 An agent launch separately makes the run files available to that agent and its
 configured model service; issue-search consent is not a promise of offline
 model processing. Use `--context-only` to collect without launching an agent.
 
-The launcher requests Codex's read-only sandbox, no approval prompts, an
-ephemeral session, and ignored user config. For Claude it requests safe plan
-mode, disabled session persistence/Chrome/slash commands, and a Read/Glob/Grep
-tool set. Both receive a short argument pointing at the run-local playbook,
-not a multiline prompt argument; processes use argv arrays with no shell. The
-playbook consumes only Station's consented related-issue artifact. Station
-captures a bounded stdout prefix, redacts it, and writes
+In headless mode, the launcher requests Codex's read-only sandbox, no approval
+prompts, an ephemeral session, and ignored user config. For Claude it requests
+safe plan mode, disabled session persistence/Chrome/slash commands, and a
+Read/Glob/Grep tool set. Both receive a short argument pointing at the
+run-local playbook, not a multiline prompt argument; processes use argv arrays
+with no shell. The playbook consumes only Station's consented related-issue
+artifact. Station captures a bounded stdout prefix, redacts it, and writes
 `diagnosis.md` plus `issue-draft.md` with model/agent and harness attribution;
 the playbook forbids repairs, service commands, state/database writes,
 source patches, and every GitHub write. Posting or repair remains an explicit later
@@ -719,11 +745,69 @@ Live stdout is forwarded to the terminal before that redaction, and child
 stderr is inherited directly. The stored-artifact redaction is not a guarantee
 about terminal output. The [triage owner](../../packages/cli/src/commands/triage.ts)
 passes mode flags and instructions; fixture tests do not establish enforcement
-by every installed agent version.
+by every installed agent version. In interactive mode the playbook's rules are
+instructions to the agent; the agent's own approval prompts are the only
+enforcement.
+
+**`station triage draft-report`** reads one JSON object,
+`{"title": "...", "fields": {"<field-id>": "...", ...}}`, on stdin, using the
+`troubleshoot-report.yml` field ids. It prints JSON with the redacted `title`
+and `fields`, the prefilled issue-form `url`, the field ids `included` in it,
+and any `overflow` fields that did not fit, returned whole for pasting into the
+form. It uses the same redactor and link builder as the in-app
+`draft_troubleshoot_report` tool: credentials, non-public links and home
+directories (shown as `~`) are removed. Input over 256 KiB, an unknown key or
+field id, a title over 200 characters, or a field over 20,000 characters is
+refused rather than truncated. The command sends nothing. Filing stays a
+separate step: the interactive playbook shows the complete redacted text, asks
+for an explicit yes, and posts with
+`gh issue create --repo kontourai/station --label reported:troubleshoot` only
+when `gh` is authenticated and the account has triage permission on the
+repository; otherwise it gives the person the form link.
 
 ---
 
 ## Configuration
+
+### `policy`
+
+Machine administrators use these commands to check, deploy and confirm a
+[managed policy](../guides/managed-policy.md).
+
+```bash
+station policy check <file> [--json]
+station policy show [--json] [--api-base=<url>|--station=<name>]
+station policy templates <dir> [--policy <file>]
+```
+
+`templates` writes `macos/station.mobileconfig`, `windows/station.admx` and
+`windows/en-US/station.adml` under `<dir>`. With `--policy` (or
+`--policy=<file>`), the configuration profile carries that policy after the
+same validation as `check`, and nothing is written if it is invalid or holds a
+`null`. Without it, the profile names a placeholder organization.
+
+`check` is offline and runs the same validation as server startup, including
+each managed setting value against the settings schema (`schemas/app.schema.json`,
+bundled into the CLI), so a composite value such as `approvalGuardian` with a
+field of the wrong type fails `check` exactly as it would refuse startup. It
+exits `0` and prints the organization, the support link,
+one line per managed setting saying whether it is locked or a default, the
+names of the limits it sets (never their values), and its `sha256:`
+fingerprint. It exits `1` and
+names each problem when the file is
+missing, unreadable, a directory or other non-regular file, a symbolic link,
+invalid JSON, repeats a key name, or does not match the schema. It does not
+check root ownership; the server checks that only at the installed path.
+With `--json` it prints `{valid, path, digest, summary}` or
+`{valid: false, path, reason, problems}`.
+
+`show` reads the policy installed on this machine and asks the target Station
+(`GET /api/settings/managed-policy`) which policy it loaded at startup. It
+compares the two only when the target is a loopback address; for a remote
+target it says the comparison was skipped. When the fingerprints differ, it
+says a restart is needed. When the installed policy is invalid, it reports the
+startup error and exits `1`. With `--json` it prints `{installed, running,
+restartNeeded}`, where `restartNeeded` is `null` when nothing could be compared.
 
 ### `telemetry`
 
@@ -732,21 +816,33 @@ publisher's choice through its authenticated configuration API:
 
 ```sh
 station telemetry status
+station telemetry set kontour anonymous
 station telemetry set kontour off
 station telemetry set operator full
 station telemetry outbox --publisher operator
-station telemetry set publisher:<registry-digest>/writer off
+station telemetry set publisher:<registry-digest>/writer lite
 station telemetry outbox --publisher publisher:<registry-digest>/writer
 ```
 
+The registry digest is exactly 24 lowercase hex characters; the item ID is bounded
+to 128 characters. See the [publisher ID grammar](usage-telemetry.md#plugin-publishers)
+for permitted characters, reserved keys, and the retained legacy form.
+
 Plugin publishers default Off. Choose Lite or Full explicitly after reviewing the opt-in prompt; a notice receipt does not enable sending. Plugin Lite contains plugin-chosen counts which can encode identifiers.
 
-Status prints each destination's plain sharing label with its `off`, `lite` or
-`full` configuration value. Do Not Track and pending review use readable
-explanations. Kontour Detailed saving requires its own current acknowledgement when its build
+For `kontour` and `operator`, `anonymous` is an alias for `lite`; both inputs
+save `lite`. Plugin publishers accept `off|lite|full`, never `anonymous`.
+
+Status prints each destination's plain sharing label, with built-in Lite shown
+as `Anonymous usage counts (anonymous)`. Plugin Lite remains
+`Plugin usage counts (lite)`. Off and Full retain `off` and `full` in parentheses.
+Do Not Track and pending review use readable explanations. Kontour Detailed saving requires its own current acknowledgement when its build
 destination is configured. The CLI does not create that acknowledgement. The normal target and credential flags apply; `--json`
-prints the status object. Full remains Lite until the current disclosure has
-been acknowledged. DNT forces Off. Changing one publisher preserves the other.
+prints the unchanged status object with `lite` tier values. Stored configuration
+and `STATION_TELEMETRY_TIER` still use `off|lite|full`. Full remains Lite until the
+current disclosure has been acknowledged. DNT forces Off. A managed policy with `limits.telemetry: false`
+forces Off too: status prints the policy's sentence beside each destination,
+and `set` to a higher tier fails with it. Changing one publisher preserves the other.
 Operator environment-limited status also explains that restoring Full delivery requires an
 explicit config choice (`station telemetry set operator full`) and acknowledgement
 in Settings; a legacy environment true plus a receipt no longer enables Full.
@@ -799,7 +895,7 @@ station config set <key> <value> [--offline]
 |----------|-------------|
 | `<key>` | A top-level configuration field, e.g. `registryUrl`. |
 | `<value>` | `true`/`false` become booleans, all-digit values become numbers, and other values stay strings. `null` is retained for registry-nullable fields and clears other accepted fields. |
-| `--offline` | Skip the live Station route and write `config/app.json` directly. |
+| `--offline` | Skip the live Station route and write `config/app.json` directly. A setting the installed [managed policy](../guides/managed-policy.md#settings) locks is refused, as it is by the live route. |
 
 `config get <key>` prints `(not set)` for an absent key.
 
@@ -822,9 +918,12 @@ once Station is reachable, or pass `--offline` to write `config/app.json`
 directly — that offline path still runs the same registry validation
 locally, it just cannot apply a running Station's live reload/event-emit
 side effects. `config get` reads through the live route when reachable
-(showing an env-override provenance note where one applies). On a transport
-failure it prints a notice and shows the local home's file instead; that is
-not a reading of the unavailable target Station's configuration.
+(showing a provenance note when the value comes from the environment or from
+the managed policy). On a transport
+failure it prints a notice and shows the local home's file instead, with the
+installed managed policy's locks and defaults applied and the same managed
+note (`config get --offline` reads it this way directly); that is not a
+reading of the unavailable target Station's configuration.
 
 A mistyped action is a failure, not a listing: `station config sett` exits
 non-zero and names the valid actions.
@@ -2215,11 +2314,15 @@ Requires management access and the **GitHub automation observations** Feature
 Preview. Prints `deliveries` (default 50) and `polls` through
 `GET /automations/deliveries`: each row's outcome (`matched`, `no-match`,
 `ignored`, `refused` with a reason, or `duplicate`), its semantic key, and its
-rule and episode ids. `polls` retains partial coverage and failed observations
-with their last poll time and cursor; missing coverage is not success. Station
-currently records matches for `github-poll`
-sources and starts no Automation work. The other `AUTOMATION_OPERATOR_SURFACE`
-verbs are not available yet.
+rule and episode ids. Each row's `decisions` lists every matched `observe` or
+`live` rule with its mode and outcome: `would-start` or `suppressed` (with a
+reason) for an `observe` rule, `intent-retained` or `suppressed` for a `live`
+one, plus the rule name, action kind, Project, Agent and episode id. `polls`
+retains partial coverage and failed observations with their last poll time and
+cursor; missing coverage is not success. This command reads history only; an
+`observe` rule never starts work, and `live` rules act only through the separate
+action previews. The other `AUTOMATION_OPERATOR_SURFACE` verbs are not available
+yet.
 
 ### `runs`
 
@@ -2869,7 +2972,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 |------|---------|-------------|
 | `--port=<n>` | worktree-derived development port (or explicit release channel port) | API server port |
 | `--ui-port=<n>` | worktree-derived development port (or explicit release channel port) | UI static file server port |
-| `--host=<address>` | existing lifecycle default | Explicit bind address for all four Station listeners: API, terminal, voice, and UI. Dogfood uses `127.0.0.1`. |
+| `--host=<address>` | existing lifecycle default (`127.0.0.1` under a managed policy without `remote` clients) | Explicit bind address for all four Station listeners: API, terminal, voice, and UI. Dogfood uses `127.0.0.1`. Under a [managed policy](../guides/managed-policy.md#network-exposure) without `remote` clients, a non-loopback address is refused, and so is a non-loopback `STATION_HOST` in the environment. |
 | `--clean` | — | Clean the selected Station home before starting |
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
@@ -3131,6 +3234,9 @@ station environment peers remove <environment-id>
   device-pairing offer and prints its expiry, short manual pairing code, plaintext
   `station-pairing:v1:` payload, and terminal QR. A loopback offer is explicitly
   not reachable from a phone; it does not guess or advertise a LAN address.
+  Under a [managed policy](../guides/managed-policy.md#network-exposure)
+  without `remote` clients, `--tailscale` is refused before any `tailscale`
+  command runs, and the server refuses the offer itself.
   `--tailscale` reads the active machine's MagicDNS name and HTTPS Serve status,
   refuses a foreign or unrecognized HTTPS mapping, and then publishes only
   the already-validated loopback listener origin as `https://<magicdns>`.
@@ -3408,6 +3514,14 @@ again, and if the service does not come back answering as the new release it
 restores the previous version and restarts the service on it. Any other installed service still
 blocks the upgrade, as in a source checkout.
 
+The machine's [managed policy](../guides/managed-policy.md#update-control) is
+read first. `upgrade` is refused, with exit status 1 and nothing changed, when
+the policy turns updates off, makes a nightly install's channel unavailable,
+or cannot be used. With a mirror, a packaged install's installer reads the
+mirror's copy of its ring's manifest and downloads from the mirror, an explicit
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` that names anything else is refused, and a
+source checkout (or a Windows install) is refused.
+
 A loose extracted archive has no installer-owned layout and still refuses
 `upgrade` without changing anything. Install through `install.sh`, or stop
 Station, extract the newer archive into its own directory and start it there;
@@ -3675,7 +3789,11 @@ tsx. Doctor also compares every exact-pinned `@kontourai/*` dependency in the
 Station manifest with its installed package version. A mismatch or missing
 installation is a fail-level check with an `npm install` repair suggestion.
 Optional tools and whether chat and External-agent paths are ready are checked
-separately.
+separately. External-agent readiness reads the agent connections in effect,
+with the installed [managed policy](../guides/managed-policy.md) applied as the
+server applies it, so a connection the policy disables is not counted. An
+installed policy the server would refuse is a fail-level `Managed policy`
+check, and no stored connection counts as ready while it stands.
 
 Run from a prebuilt server archive, doctor reports the Node.js the archive
 ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
@@ -3947,7 +4065,10 @@ installed state: the running Station owns that, and
 `station registry plugins list` shows it. The URL is read from
 `<STATION_HOME>/config/app.json` (`registryUrl` field). A legacy
 `<STATION_HOME>/config.json` value is read only to migrate it into the owned
-file.
+file. A registry the installed
+[managed policy](../guides/managed-policy.md#settings) locks is used instead of
+either; a managed default is used only when neither is set. An installed
+policy that Station would refuse at startup refuses the read.
 
 With a URL argument, saves it to `<STATION_HOME>/config/app.json` and exits.
 

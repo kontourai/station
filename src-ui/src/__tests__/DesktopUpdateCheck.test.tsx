@@ -98,9 +98,8 @@ describe('Desktop app updates settings card', () => {
       }),
     );
     expect(select.value).toBe('never');
-    expect(screen.getByRole('status').textContent).toMatch(
-      /It downloads when you choose\./,
-    );
+    expect(screen.getByText('It downloads when you choose.')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Update available');
   });
 
   test('a policy the native side could not save is reported', async () => {
@@ -169,9 +168,7 @@ describe('Desktop app updates settings card', () => {
 
   test('an unconfigured build offers no check, download or policy', async () => {
     await mount('disabled');
-    expect(screen.getByRole('status').textContent).toMatch(
-      /has no desktop update channel/,
-    );
+    expect(screen.getByRole('status').textContent).toBe('No update channel');
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByLabelText('Automatic download')).toBeNull();
   });
@@ -190,28 +187,73 @@ describe('Desktop app updates settings card', () => {
     );
   });
 
-  test('a failed state read is reported with a retry', async () => {
-    const fake = installFakeNativeUpdater(
-      native,
-      desktopUpdateFixture('ready'),
-    );
-    const answer = native.invoke.getMockImplementation()!;
-    native.invoke.mockImplementationOnce(async () => {
-      throw new Error('command desktop_update_state not found');
+  test.each(['snapshot', 'subscription'] as const)(
+    'a failed %s is reported and a retry restores live update actions',
+    async (failure) => {
+      const fake = installFakeNativeUpdater(
+        native,
+        desktopUpdateFixture('ready'),
+      );
+      const answer = native.invoke.getMockImplementation()!;
+      const failingCall =
+        failure === 'snapshot' ? native.invoke : native.listen;
+      failingCall.mockImplementationOnce(async () => {
+        throw new Error('native update connection unavailable');
+      });
+      render(<DesktopUpdateCheck />);
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        'Station could not read the desktop app’s update state.',
+      );
+      expect(screen.getByText('Try again in a moment.')).not.toBeNull();
+      expect(
+        screen.queryByText('native update connection unavailable'),
+      ).toBeNull();
+      native.invoke.mockImplementation(answer);
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(await screen.findByText('Ready to restart')).not.toBeNull();
+      expect(fake.listenerCount()).toBe(1);
+      act(() => fake.emit(desktopUpdateFixture('available')));
+      fireEvent.click(screen.getByRole('button', { name: 'Download update' }));
+      await waitFor(() =>
+        expect(fake.commands()).toEqual(['desktop_update_download']),
+      );
+    },
+  );
+
+  test('restart cancellation returns focus and a rejected install remains retryable', async () => {
+    const fake = await mount('ready', {
+      desktop_update_install: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('installer access denied'))
+        .mockResolvedValue(desktopUpdateFixture('ready')),
     });
-    render(<DesktopUpdateCheck />);
-    expect((await screen.findByRole('alert')).textContent).toBe(
-      'Station could not read the desktop app’s update state.',
+    const trigger = screen.getByRole('button', { name: 'Restart to update…' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(fake.commands()).toEqual([]);
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+    expect(await screen.findByText('Try again in a moment.')).not.toBeNull();
+    expect(screen.queryByText('installer access denied')).toBeNull();
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'The update did not install, and Station did not restart.',
     );
-    expect(
-      screen.getByText('command desktop_update_state not found'),
-    ).not.toBeNull();
-    native.invoke.mockImplementation(answer);
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(
-      await screen.findByText(/Station 0.1.12 is downloaded/),
-    ).not.toBeNull();
-    expect(fake.listenerCount()).toBe(1);
+    await waitFor(() =>
+      expect(fake.commands()).toEqual([
+        'desktop_update_install',
+        'desktop_update_install',
+      ]),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Restart now' }),
+      ).not.toBeNull(),
+    );
   });
 
   test('names the built-in server only when it serves this window', async () => {

@@ -11,7 +11,10 @@
  * `KnowledgeStoreProvider` is the K2 seam this layer builds on (`./knowledge-store.js`).
  */
 
-import type { KnowledgeStoreProvider } from './knowledge-store.js';
+import type {
+  KnowledgeStoreAdapter,
+  KnowledgeStoreProvider,
+} from './knowledge-store.js';
 
 // ── Embedding seam ──────────────────────────────────────────────────────────
 
@@ -99,6 +102,9 @@ export interface KnowledgeIndexProvider {
    * an index without it cannot report stale generations. */
   generations?(rootIds?: string[]): Promise<KnowledgeIndexGeneration[]>;
 
+  /** True only when rebuildRoot honors withRootRevision at every documented boundary. */
+  readonly supportsRootRevision?: boolean;
+
   /**
    * THE rebuild contract: drop everything held for `rootId` and re-derive it by enumerating the
    * root's records through the K2 seam (listByType over all types → chunk → embed → upsert).
@@ -111,6 +117,10 @@ export interface KnowledgeIndexProvider {
     deps: {
       store: KnowledgeStoreProvider;
       embedder: IEmbeddingProvider; // existing seam, model-provider-types.ts:48-55
+      /** If supplied, the provider must use this for record reads, immediately before embedding, and while publishing index rows. */
+      withRootRevision?: <T>(
+        operation: (adapter: KnowledgeStoreAdapter) => Promise<T>,
+      ) => Promise<T>;
     },
   ): Promise<{ records: number; chunks: number }>;
 

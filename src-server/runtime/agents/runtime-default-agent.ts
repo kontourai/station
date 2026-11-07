@@ -361,6 +361,7 @@ export async function bootstrapRuntimeDefaultAgent(
   };
 
   const defaultAgent = await context.framework.createTempAgent({
+    purpose: 'agent-run',
     agentId: 'station',
     name: 'default',
     instructions: () =>

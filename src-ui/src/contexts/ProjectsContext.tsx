@@ -20,6 +20,7 @@ import type {
   ProjectSharedTaskSummary,
 } from '@kontourai/station-contracts/project-shared-task';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
+import type { ConnectionReadTarget } from '@kontourai/station-sdk';
 import {
   type ProjectReadQueryConfig,
   useProjectChatDefaultsQuery,
@@ -29,8 +30,14 @@ import {
   useProjectRunLocationsQuery,
   useProjectsQuery,
 } from '@kontourai/station-sdk';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { type ReactNode, useEffect, useMemo } from 'react';
+import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
+import { taskHistoryReadDenied } from '../components/conversation/task-history-policy';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import { useAuthorityPersistence } from './AuthorityPersistenceContext';
 
@@ -71,10 +78,14 @@ type AppProjectReadConfig<T> = Omit<
 export function useScopedProjectsQuery(
   config?: AppProjectReadConfig<ProjectMetadata[]>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useOptionalConversationConnection();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectsQuery({
     ...config,
+    readTarget,
     requestScope,
     requireRequestScope: true,
     durableAuthorityId: namespace ?? undefined,
@@ -90,7 +101,10 @@ export function useScopedProjectsQuery(
 export function useScopedProjectRunLocationsQuery(
   config?: AppProjectReadConfig<ProjectRunLocations>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useOptionalConversationConnection();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectRunLocationsQuery({
     staleTime: PROJECT_RUN_LOCATIONS_STALE_MS,
@@ -99,6 +113,7 @@ export function useScopedProjectRunLocationsQuery(
     // answer is older than the stale time.
     refetchOnMount: true,
     ...config,
+    readTarget,
     requestScope,
     requireRequestScope: true,
     durableAuthorityId: namespace ?? undefined,
@@ -116,12 +131,16 @@ export function useScopedProjectChatDefaultsQuery(
   slug: string | null | undefined,
   config?: AppProjectReadConfig<ProjectChatDefaultsView>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useOptionalConversationConnection();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectChatDefaultsQuery(slug ?? '', {
     staleTime: 0,
     refetchOnMount: true,
     ...config,
+    readTarget,
     enabled: !!slug && (config?.enabled ?? true),
     requestScope,
     requireRequestScope: true,
@@ -143,7 +162,10 @@ export function useScopedProjectCheckoutFreshnessQuery(
   slug: string | null | undefined,
   config?: AppProjectReadConfig<ProjectCheckoutFreshness | null>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useOptionalConversationConnection();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectCheckoutFreshnessQuery(slug ?? '', {
     staleTime: 10_000,
@@ -153,6 +175,7 @@ export function useScopedProjectCheckoutFreshnessQuery(
     refetchOnMount: true,
     refetchOnWindowFocus: true,
     ...config,
+    readTarget,
     enabled: !!slug && (config?.enabled ?? true),
     requestScope,
     requireRequestScope: true,
@@ -180,10 +203,14 @@ export function useScopedProjectQuery(
   slug: string,
   config?: AppProjectReadConfig<ProjectConfig>,
 ) {
-  const requestScope = useHostRequestAuthorityScope();
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useOptionalConversationConnection();
+  const readTarget = config?.readTarget ?? target?.station;
+  const requestScope = readTarget?.requestScope ?? hostScope;
   const { namespace } = useAuthorityPersistence();
   return useProjectQuery(slug, {
     ...config,
+    readTarget,
     requestScope,
     requireRequestScope: true,
     durableAuthorityId: namespace ?? undefined,
@@ -377,6 +404,7 @@ export function useScopedMemberProjectSharedTaskDetails(
   sharedTask: ProjectSharedTaskSummary,
   requestScope: ReturnType<typeof useHostRequestAuthorityScope>,
 ) {
+  const client = useQueryClient();
   const apiBase = requestScope?.apiBase ?? 'unavailable';
   const authorityKey = requestScope?.authorityKey ?? 'unavailable';
   const key = useMemo(
@@ -462,9 +490,27 @@ export function useScopedMemberProjectSharedTaskDetails(
       sameSharedProjectTask(publication.data.publication, sharedTask),
   );
   const sharedDetailsEnabled = requestEnabled && publicationIsCurrent;
-  const history = useQuery<ProjectSharedTaskHistory>({
+  const requirePublication = () => {
+    const state = client.getQueryState<ProjectSharedTaskPublication>([
+      ...key,
+      'publication',
+    ]);
+    if (
+      !requestScope?.isCurrent() ||
+      state?.status !== 'success' ||
+      state.fetchStatus !== 'idle' ||
+      state.data?.kind !== 'shared' ||
+      !sameSharedProjectTask(state.data.publication, sharedTask)
+    )
+      throw new Error('The shared publication is no longer current.');
+  };
+  const history = useInfiniteQuery({
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page: ProjectSharedTaskHistory) =>
+      page.kind === 'available' && page.hasMore ? page.nextCursor : undefined,
     queryKey: [...key, 'history'],
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal, pageParam }) => {
+      requirePublication();
       const captured = requestScope;
       if (!captured?.isCurrent())
         throw new Error('The selected Station authority is unavailable.');
@@ -479,6 +525,7 @@ export function useScopedMemberProjectSharedTaskDetails(
         project.slug,
         sharedTask.task.id,
         {
+          ...(pageParam ? { cursor: pageParam } : {}),
           requestScope: captured,
           requireCredential: captured.requiresEnrolledCredential ?? true,
           signal,
@@ -488,6 +535,7 @@ export function useScopedMemberProjectSharedTaskDetails(
       );
       if (!captured.isCurrent())
         throw new Error('The selected Station authority changed.');
+      requirePublication();
       return value;
     },
     enabled: sharedDetailsEnabled,
@@ -537,7 +585,19 @@ export function useScopedMemberProjectSharedTaskDetails(
     gcTime: 0,
   });
 
-  return { publication, publicationIsCurrent, history, document };
+  const readDenied = taskHistoryReadDenied(history.error);
+  useEffect(() => {
+    if (publicationIsCurrent && !readDenied) return;
+    const queryKey = [...key, 'history'];
+    void client.cancelQueries({ queryKey });
+    client.removeQueries({ queryKey });
+  }, [client, key, publicationIsCurrent, readDenied]);
+  return {
+    publication,
+    publicationIsCurrent,
+    history: { ...history, readDenied },
+    document,
+  };
 }
 
 export interface ProjectMetadata {
@@ -623,11 +683,15 @@ export function useProjects(): {
   };
 }
 
-export function useProject(slug: string): {
+export function useProject(
+  slug: string,
+  readTarget?: ConnectionReadTarget,
+): {
   project: ProjectConfig | undefined;
   isLoading: boolean;
 } {
   const { data, isLoading } = useScopedProjectQuery(slug, {
+    readTarget,
     enabled: !!slug,
   });
   return { project: data, isLoading };

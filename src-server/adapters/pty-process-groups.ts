@@ -75,6 +75,7 @@ function groupsFor(
 export async function terminatePtyProcessGroups(
   root: number,
   current: () => boolean,
+  expectedTty?: string,
 ): Promise<void> {
   const frozen = new Map<number, Set<number>>();
   let tty: string | undefined;
@@ -82,6 +83,11 @@ export async function terminatePtyProcessGroups(
   const deadline = performance.now() + 3000;
   let completed = false;
   try {
+    if (
+      expectedTty !== undefined &&
+      !/^(?:ttys[0-9]+|pts\/[0-9]+)$/.test(expectedTty)
+    )
+      throw new Error('Terminal controlling tty ownership unavailable');
     for (let round = 0; round < 8; round++) {
       if (!current())
         throw new Error('Terminal process ownership ended before cleanup');
@@ -92,8 +98,17 @@ export async function terminatePtyProcessGroups(
       if (!current() || rows.get(root)?.group !== root)
         throw new Error('Terminal process group ownership unavailable');
       const currentTty = rows.get(root)!.tty;
+      // forkpty returns the parent's owned device before the child completes
+      // login_tty. Wait for that exact binding; never signal an unknown tty.
+      if (expectedTty && !tty && ['?', '??', '-'].includes(currentTty)) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(10, remaining)),
+        );
+        continue;
+      }
       if (
         !/^(?:ttys[0-9]+|pts\/[0-9]+)$/.test(currentTty) ||
+        (expectedTty !== undefined && currentTty !== expectedTty) ||
         (tty && tty !== currentTty)
       )
         throw new Error('Terminal controlling tty ownership unavailable');

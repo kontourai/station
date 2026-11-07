@@ -869,6 +869,7 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
         kindLabel: 'general-purpose',
         result: {
           summary: 'Traced it to conversationOpenController.',
+          source: 'provider-summary',
           handle: { kind: 'transcript-file', path: '/tmp/agent-1.jsonl' },
         },
         usage: { totalTokens: 5100, toolUses: 23, durationMs: 311000 },
@@ -1164,6 +1165,7 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
         status: 'cancelled',
         result: {
           summary: 'stopped',
+          source: 'provider-summary',
           handle: { kind: 'transcript-file', path: '/tmp/x' },
         },
       }),

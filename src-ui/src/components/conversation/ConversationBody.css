@@ -1,0 +1,31 @@
+.conversation-body--record {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.conversation-body--record .conversation-body__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.conversation-body--record .conversation-reader {
+  min-width: 0;
+}
+
+.conversation-body--record .chat-messages {
+  overflow: visible;
+  mask-image: none;
+  -webkit-mask-image: none;
+  flex: none;
+  padding: var(--k-space-3);
+}
+
+.conversation-body--record .chat-input {
+  flex: none;
+  padding: var(--k-space-3);
+}

@@ -14,9 +14,16 @@
   max-width: 40%;
 }
 
+/* The Agent chip names who runs the chat, so it is the one that keeps its
+   name: at 40% it cut "Muse Code" to "Muse…" on a phone while a short Model
+   label beside it held 112px it did not use. It does not shrink below its
+   name (half the row caps it); the chips beside it give way, their engine
+   caption first, and a long model id still truncates at their 40% cap. */
 .composer-choices
-  > .composer-choice:has(.composer-choice__icon, .chat-input__model-name) {
+  > .choice-trigger.composer-choice:has(.composer-choice__icon) {
   min-width: 112px;
+  max-width: 50%;
+  flex-shrink: 0;
 }
 
 .composer-choices > .composer-choice:has(.chat-input__engine-moved--short) {

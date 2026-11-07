@@ -78,6 +78,10 @@ import {
   GitHubWorkItemObserver,
   type WorkItemObserver,
 } from '../../services/work-item-providers/github-work-item-observer.js';
+import {
+  TaskFollowUpStoreHolder,
+  taskFollowUpStorePath,
+} from '../../services/work-item-providers/task-follow-up-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { recordManagedModelContext } from '../context-efficiency-runtime.js';
@@ -102,7 +106,7 @@ import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   type EngineConnectionId,
@@ -117,13 +121,17 @@ import {
   resolveBuiltinAgentEngineBinding,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  managedPolicyAllowsRemoteClients,
+  managedRemoteClientsDenial,
+} from '@kontourai/station-contracts/managed-policy';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
-import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import {
   type MCPConnection,
   MCPLocalConnectionCustody,
@@ -149,6 +157,7 @@ import {
 } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
+import { installManagedAppSettings } from '../../domain/managed-settings.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
 import type { IPtyAdapter } from '../../domain/pty-adapter.js';
 import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
@@ -164,6 +173,11 @@ import { createCredentialProfileAppHomeEnvResolver } from '../../providers/app-h
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
+import {
+  createManagedListenerAdmission,
+  type ManagedListenerAdmission,
+  managedSuspensionLogContext,
+} from '../../security/managed-network-exposure.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
@@ -230,7 +244,7 @@ import { composeTaskDispatcher } from '../../services/projects/task-dispatch-com
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import {
-  assertWorktreeMetadataSessionBinding,
+  sessionExitWorktreeMetadata,
   terminalWorktreeStateForExit,
   WorktreeProvisioningService,
 } from '../../services/projects/worktree-provisioning-service.js';
@@ -291,6 +305,7 @@ import {
 import * as MCPManager from '../mcp/mcp-manager.js';
 import {
   type MCPUIFrameServer,
+  McpUiFrameAdmissionRefused,
   startMcpUiFrameServer,
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
@@ -579,6 +594,15 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  /**
+   * #4507: the boot sweep that reaps engine processes a previous Station
+   * left running (`sweepOrphanedOwnedProcesses`). An engine is spawned
+   * detached, so one can outlive a crashed or restarted core and keep
+   * working in a Task's worktree until this settles; the startup retry of
+   * deferred Task worktree finalizations waits for it. Absent: nothing to
+   * wait for.
+   */
+  orphanEngineSweep?: Promise<unknown>;
   /** Trusted connector composition; no virtual listener is enabled by default. */
   virtualApplication?: {
     origin: string;
@@ -609,6 +633,17 @@ export interface StationRuntimeOptions {
   logger?: Logger;
   /** Immutable process identity captured by the entrypoint during bootstrap. */
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  /**
+   * The managed policy the entrypoint loaded before construction (#4515);
+   * null or absent means none is installed. Fixed for the process lifetime:
+   * a changed policy takes effect on restart.
+   */
+  managedPolicy?: LoadedManagedPolicy | null;
+  /**
+   * #4519: admits each listener opened after startup (loopback bind, no
+   * Tailscale Serve route). Built from `managedPolicy` when absent.
+   */
+  listenerAdmission?: ManagedListenerAdmission;
 }
 
 /** How long session recovery may take before update readiness warns. */
@@ -662,6 +697,8 @@ export class StationRuntime {
   private appConfig!: AppConfig;
   private logger: Logger;
   private readonly buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  private readonly managedPolicy: LoadedManagedPolicy | null = null;
+  private readonly listenerAdmission: ManagedListenerAdmission;
   /** One persistent grant store shared by default and persisted managed agents. */
   private readonly unattendedGrantStore: UnattendedGrantStore;
   private readonly discordGatewayService: DiscordGatewayService;
@@ -1178,6 +1215,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private failedInitializationOrchestration?: OrchestrationService;
   private nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
@@ -1230,6 +1268,10 @@ export class StationRuntime {
   /** #4003: the one exact-identity tracker reader (host `gh` login). */
   private readonly workItemObserver: WorkItemObserver =
     new GitHubWorkItemObserver();
+  /** #4508: Task follow-ups; the scheduler's poller writes, briefs read. */
+  private readonly taskFollowUps = new TaskFollowUpStoreHolder(() =>
+    taskFollowUpStorePath(this.configLoader.getProjectHomeDir()),
+  );
   private ptyAdapter!: IPtyAdapter;
   private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
     {};
@@ -1545,11 +1587,26 @@ export class StationRuntime {
       }
       this.port = options.port ?? DEFAULT_SERVER_PORT;
       this.buildProvenanceSnapshot = options.buildProvenanceSnapshot;
+      this.managedPolicy = options.managedPolicy ?? null;
+      // #4517: before any config is loaded, so every reader (this runtime's
+      // loader and the ones plugin routes build) sees the managed values.
+      installManagedAppSettings(this.managedPolicy);
+      this.listenerAdmission =
+        options.listenerAdmission ??
+        createManagedListenerAdmission(this.managedPolicy);
       setRuntimeControlApiBase(this.port);
       this.host = options.host;
       this.eventLogPath = `${projectHomeDir}/monitoring`;
       this.environmentSecurityService = new EnvironmentSecurityService({
         homeDir: projectHomeDir,
+        // #4519: without `remote` in `limits.clients`, only this machine's
+        // home-possession credentials are issued or accepted.
+        localClientsOnly: !managedPolicyAllowsRemoteClients(
+          this.managedPolicy?.summary,
+        ),
+        ...(this.managedPolicy
+          ? { managedOrganization: this.managedPolicy.summary.organization }
+          : {}),
       });
 
       const agentPluginLoader = new AgentPluginLoader({
@@ -1582,6 +1639,14 @@ export class StationRuntime {
             composition,
           ),
       });
+      // #4519: nearby discovery advertises Station to the network.
+      if (
+        this.managedPolicy &&
+        !managedPolicyAllowsRemoteClients(this.managedPolicy.summary)
+      )
+        lanDiscoveryFor(this.configLoader).refuseByManagedPolicy(
+          managedRemoteClientsDenial(this.managedPolicy.summary),
+        );
       // archive#3063: the built-in tool servers' spawn identity (dist path,
       // STATION_API_BASE/STATION_PORT) is THIS instance's property, resolved
       // fresh on every `loadIntegration` — never read from, and never
@@ -1733,6 +1798,15 @@ export class StationRuntime {
       this.discordGatewayService = new DiscordGatewayService({
         homeDir: projectHomeDir,
         logger: this.logger,
+        // #4519: Discord commands come from off this machine.
+        ...(this.managedPolicy &&
+        !managedPolicyAllowsRemoteClients(this.managedPolicy.summary)
+          ? {
+              managedRefusal: managedRemoteClientsDenial(
+                this.managedPolicy.summary,
+              ),
+            }
+          : {}),
         eventBus: this.eventBus,
         // Discord supplies only the bound Station conversation. The shared
         // continuation resolves that conversation's persisted target and then
@@ -1881,6 +1955,22 @@ export class StationRuntime {
         }),
         assignmentClaimService: this.taskDispatchAssignmentClaims,
         resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
+        // #4507: a Task worktree is never removed while a Session in it has a
+        // running turn. Read when finalization runs, not at construction.
+        isWorkspaceBusy: (path) => {
+          const root = resolve(path);
+          return this.orchestrationService
+            .listActiveTurnThreadIds()
+            .some((threadId) => {
+              const cwd =
+                this.orchestrationEventStore?.readSessionByThread(
+                  threadId,
+                )?.cwd;
+              if (!cwd) return false;
+              const at = resolve(cwd);
+              return at === root || at.startsWith(`${root}${sep}`);
+            });
+        },
       });
       // Release a task's assignment claim when its orchestration session ends
       // (natural completion or `stopSession`/cancel — both surface as the
@@ -1914,6 +2004,23 @@ export class StationRuntime {
               exitCode?: number;
             }
           | undefined;
+        // #4507: a turn or Session ending may free a finished Task's
+        // worktree that was kept while a turn ran in it. Retried after this
+        // event's own handling, so the turn no longer counts as running.
+        if (
+          event?.method === 'turn.completed' ||
+          event?.method === 'turn.aborted' ||
+          event?.method === 'session.exited'
+        )
+          setImmediate(() => {
+            void this.taskGraphService
+              .retryDeferredTaskWorktreeFinalizations()
+              .catch((error) => {
+                this.logger.warn('Deferred Task worktree finalization failed', {
+                  error: errorMessage(error),
+                });
+              });
+          });
         if (event?.method !== 'session.exited' || !event.sessionId) return;
         const sessionId = event.sessionId;
         void this.taskGraphService
@@ -1974,7 +2081,7 @@ export class StationRuntime {
                 occurredAt: detail.session.updatedAt,
               });
             }
-            const metadata = worktreeMetadataFromEvents(
+            const metadata = sessionExitWorktreeMetadata(
               detail.events,
               sessionId,
             );
@@ -2008,6 +2115,24 @@ export class StationRuntime {
       // which it is at this point in the constructor. See
       // `TaskGraphService.reconcileStaleAssignmentClaims`'s own doc comment
       // for the accepted residual gap this sweep does not close.
+      // #4507: retry Task worktree finalizations a previous process
+      // deferred. Started only after the boot orphan-engine sweep settles,
+      // so it does not run while that sweep is still reaping a previous
+      // process's detached engines; a sweep that settled has not proved
+      // every orphan is gone (it reaps only what it can identify), and the
+      // later turn-end retries do not wait for it. Finalization's own
+      // checks (running turns here, a clean checkout, git refusing a dirty
+      // removal) still apply on every retry.
+      void Promise.resolve(options.orphanEngineSweep)
+        .catch(() => undefined)
+        .then(() =>
+          this.taskGraphService.retryDeferredTaskWorktreeFinalizations(),
+        )
+        .catch((error) => {
+          this.logger.warn('Deferred Task worktree finalization failed', {
+            error: errorMessage(error),
+          });
+        });
       void this.taskGraphService
         .reconcileStaleAssignmentClaims()
         .then((result) => {
@@ -3629,6 +3754,11 @@ export class StationRuntime {
         buildProvenance: this.buildProvenanceSnapshot ?? null,
         logger: this.logger,
         telemetrySecretResolver: this.secretBindingAdministration,
+        dailyUsage: (day) =>
+          this.orchestrationService.listDailyUsage(
+            day,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
         dailyFacts: async () => {
           const homeDir = this.configLoader.getProjectHomeDir();
           const pluginsDir = `${homeDir}/plugins`;
@@ -3995,6 +4125,12 @@ export class StationRuntime {
         });
       }
       await retire(() => this.retireSelfHostedBroker());
+      if (
+        this.failedInitializationOrchestration !== this.orchestrationService
+      ) {
+        this.failedInitializationOrchestration = this.orchestrationService;
+        await retire(() => this.orchestrationService?.shutdown());
+      }
       if (cleanupErrors.length)
         throw new AggregateError(
           [error, ...cleanupErrors],
@@ -4072,6 +4208,7 @@ export class StationRuntime {
     // Identity/credential state is a startup invariant. Corrupt or unsafe
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
+    this.logManagedCredentialSuspension();
     this.stationEnvironmentId = identity.environmentId;
     try {
       await this.loadProjectSharing(identity.environmentId);
@@ -4430,6 +4567,10 @@ export class StationRuntime {
               | StrandsFramework;
             this.modelCatalog = core.modelCatalog;
           },
+          onOrchestrationServiceCreated: (service) => {
+            this.failedInitializationOrchestration = undefined;
+            this.orchestrationService = service;
+          },
           onRouteServicesReady: async (services) => {
             this.orchestrationService = services.orchestrationService;
             this.nativeForkStoredReadBinder =
@@ -4633,6 +4774,7 @@ export class StationRuntime {
                   // the route context), so dispatch and get_task_brief
                   // read the tracker one way.
                   workItemObserver: this.workItemObserver,
+                  followUps: this.taskFollowUps,
                   logger: this.logger,
                 }),
                 // #4005: an engine-started Task Session runs as the Task's
@@ -4732,8 +4874,11 @@ export class StationRuntime {
       );
     }
 
-    await this.startMcpUiFrameServerIfConfigured();
+    // Consent first: the frame origin's managed admission (#4519) asks
+    // Tailscale, and `station start` reads consent availability as soon as
+    // the API answers.
     await this.startConsentListenerOrReport();
+    await this.startMcpUiFrameServerIfConfigured();
     await this.startTaskRoomAcceptanceControlIfConfigured();
     this.discordGatewayService.start();
     await this.initializeUsageTelemetry();
@@ -4807,6 +4952,8 @@ export class StationRuntime {
       }
     };
 
+    this.failedInitializationOrchestration = this.orchestrationService;
+    await attempt(() => this.orchestrationService?.shutdown());
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
@@ -4878,6 +5025,29 @@ export class StationRuntime {
   }
 
   /**
+   * #4519: one line at startup naming what the managed limit suspends, so an
+   * operator can tell why earlier devices stopped working. Nothing records
+   * an earlier run's limit, so lifting it is not announced: without the
+   * limit nothing is suspended and this logs nothing.
+   */
+  private logManagedCredentialSuspension(): void {
+    if (
+      !this.managedPolicy ||
+      managedPolicyAllowsRemoteClients(this.managedPolicy.summary)
+    )
+      return;
+    const inventory =
+      this.environmentSecurityService.devicePairing.managedSuspensionInventory();
+    this.logger.info(
+      'Managed policy allows no remote clients; earlier remote credentials are suspended, not revoked',
+      managedSuspensionLogContext(
+        this.managedPolicy.summary.organization,
+        inventory,
+      ),
+    );
+  }
+
+  /**
    * Dedicated MCP Apps sandbox-proxy origin. It starts on an ephemeral port by
    * default; MCP_UI_FRAME_PORT may pin one for deployments. A bind failure is
    * non-fatal and degrades to the opaque-origin native/static fallback.
@@ -4901,12 +5071,28 @@ export class StationRuntime {
       );
       return;
     }
-    this.mcpUiFrameServer = await startMcpUiFrameServer({
-      port,
-      stationPort: this.port,
-      stationHost: this.host,
-      logger: this.logger,
-    });
+    // #4519: the frame origin is a listener too. Admission runs once it is
+    // bound and before it serves anything; refused, it closes and startup
+    // stops with the managed refusal.
+    let frame: Awaited<ReturnType<typeof startMcpUiFrameServer>>;
+    try {
+      frame = await startMcpUiFrameServer({
+        port,
+        stationPort: this.port,
+        stationHost: this.host,
+        logger: this.logger,
+        admit: ({ host, port: bound }) =>
+          this.listenerAdmission.admit({
+            name: 'MCP Apps frame',
+            host,
+            port: bound,
+          }),
+      });
+    } catch (error) {
+      if (error instanceof McpUiFrameAdmissionRefused) throw error.refusal;
+      throw error;
+    }
+    this.mcpUiFrameServer = frame;
   }
 
   private async startTaskRoomAcceptanceControlIfConfigured(): Promise<void> {
@@ -5194,6 +5380,8 @@ export class StationRuntime {
       port: this.port,
       host: this.host,
       buildProvenanceSnapshot: this.buildProvenanceSnapshot,
+      managedPolicy: this.managedPolicy,
+      listenerAdmission: this.listenerAdmission,
       usageAggregator: this.usageAggregator,
       usageTelemetry: this.usageTelemetry,
       getUsageTelemetry: () => this.usageTelemetry,
@@ -5216,6 +5404,7 @@ export class StationRuntime {
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
       workItemObserver: this.workItemObserver,
+      taskFollowUps: this.taskFollowUps,
       ptyAdapter: this.ptyAdapter,
       scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,
@@ -6235,47 +6424,4 @@ export class StationRuntime {
       // Diagnostics are observer-only and cannot change runtime lifecycle.
     }
   }
-}
-
-function worktreeMetadataFromEvents(
-  events: unknown[],
-  sessionId: string,
-): WorktreeSessionMetadata | undefined {
-  for (const event of events) {
-    if (!event || typeof event !== 'object') continue;
-    const sessionStart = event as {
-      method?: unknown;
-      sessionId?: unknown;
-      metadata?: unknown;
-    };
-    if (
-      sessionStart.method !== 'session.started' ||
-      sessionStart.sessionId !== sessionId
-    ) {
-      continue;
-    }
-    const metadata = sessionStart.metadata;
-    if (!metadata || typeof metadata !== 'object') continue;
-    const worktree = (metadata as Record<string, unknown>).worktree;
-    if (!worktree || typeof worktree !== 'object') continue;
-    const candidate = worktree as Partial<WorktreeSessionMetadata>;
-    if (
-      candidate.mode === 'worktree' &&
-      typeof candidate.repoPath === 'string' &&
-      typeof candidate.path === 'string' &&
-      typeof candidate.branch === 'string' &&
-      typeof candidate.baseRef === 'string' &&
-      (candidate.cleanupPolicy === 'cleanup' ||
-        candidate.cleanupPolicy === 'preserve') &&
-      typeof candidate.preserveOnFailure === 'boolean' &&
-      typeof candidate.createdAt === 'string'
-    ) {
-      assertWorktreeMetadataSessionBinding(
-        candidate as WorktreeSessionMetadata,
-        sessionId,
-      );
-      return candidate as WorktreeSessionMetadata;
-    }
-  }
-  return undefined;
 }

@@ -12,7 +12,7 @@
     "src"
   ],
   "scripts": {
-    "build": "../../station plugin build",
+    "build": "node ../../node_modules/tsx/dist/cli.mjs ../../scripts/station-cli.ts plugin build",
     "test": "vitest run"
   },
   "dependencies": {

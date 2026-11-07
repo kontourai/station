@@ -1,5 +1,6 @@
 import type { PluginLifecycleProposalAttentionItem } from '@kontourai/station-sdk';
 import { useDismissPluginLifecycleProposalMutation } from '@kontourai/station-sdk';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { PluginProposalSummary } from '../plugins/PluginProposalSummary';
 
 /**
@@ -49,9 +50,7 @@ export function PluginProposalAttentionActions({
       </div>
       {dismiss.error != null ? (
         <p className="attention-error" role="alert">
-          {dismiss.error instanceof Error
-            ? dismiss.error.message
-            : 'Unable to update inbox item.'}
+          {describeStationFailure(dismiss.error).body}
         </p>
       ) : null}
     </>

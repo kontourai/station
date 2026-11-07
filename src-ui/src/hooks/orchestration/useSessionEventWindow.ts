@@ -15,7 +15,7 @@ import {
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useChatRequestTarget } from '../../components/chat/ChatRequestContext';
+import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useWorkObservation } from '../../contexts/work-observation';
@@ -244,10 +244,28 @@ export function useSessionEventWindow(
   threadId: string | null,
   reconcileRevision = 0,
   legacySessionId?: string,
+  explicitTarget?: ReturnType<typeof useOptionalConversationConnection>,
 ): SessionEventWindowReader {
-  const target = useChatRequestTarget();
+  const contextTarget = useOptionalConversationConnection();
+  const target = explicitTarget ?? contextTarget;
+  apiBase = target?.apiBase ?? apiBase;
+  // Delivery controls may change without changing the history reader.
+  const bound = target != null;
+  const station = target?.station;
   const requestScope = target?.requestScope;
-  const observation = useWorkObservation(target ? null : threadId);
+  const observationTarget =
+    station ??
+    (target?.requestScope
+      ? {
+          targetApiBase: target.apiBase,
+          requestScope: target.requestScope,
+          runtimeKey: JSON.stringify([
+            target.apiBase,
+            target.requestScope.authorityKey,
+          ]),
+        }
+      : undefined);
+  const observation = useWorkObservation(threadId, observationTarget);
   const { namespace } = useAuthorityPersistence();
   const readingNamespace = useRef(namespace);
   readingNamespace.current = namespace;
@@ -257,6 +275,7 @@ export function useSessionEventWindow(
         threadId,
         legacySessionId,
         requestScope?.authorityKey,
+        station?.runtimeKey,
       ])
     : undefined;
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
@@ -322,8 +341,9 @@ export function useSessionEventWindow(
       'history',
       () =>
         requestGeneration === generation.current &&
-        requestSerial === requestSerialRef.current,
-      activeChatsStore.getChatForExecutionSession(threadId)
+        requestSerial === requestSerialRef.current &&
+        (!station || station.isCurrent()),
+      activeChatsStore.getChatForExecutionSession(threadId, station)
         ?.conversationActivity?.asOfSequence,
     );
 
@@ -385,9 +405,10 @@ export function useSessionEventWindow(
       read?.observed(page.watermark);
       setUpgradeRequired(false);
       // #2309: the window read carries its conversation's activity too.
-      if (!requestScope)
+      if (!bound || station)
         activeChatsStore.applyConversationActivity(
           page.session?.conversationActivity,
+          station,
         );
       setCurrentSessionId(page.currentSessionId);
       setSessionLineage(page.sessionLineage);
@@ -395,7 +416,7 @@ export function useSessionEventWindow(
       setContextBoundaries(page.contextBoundaries ?? []);
       setMemoryContinuation(page.memoryContinuation);
       const next = page.events;
-      if (namespace && !requestScope) {
+      if (namespace && (!bound || station?.binding.affinity.kind === 'host')) {
         void saveOfflineReading(
           namespace,
           threadId,
@@ -498,6 +519,8 @@ export function useSessionEventWindow(
     threadId,
     namespace,
     requestScope,
+    station,
+    bound,
   ]);
 
   /**
@@ -519,8 +542,9 @@ export function useSessionEventWindow(
         'older-history',
         () =>
           requestGeneration === generation.current &&
-          requestSerial === requestSerialRef.current,
-        activeChatsStore.getChatForExecutionSession(threadId)
+          requestSerial === requestSerialRef.current &&
+          (!station || station.isCurrent()),
+        activeChatsStore.getChatForExecutionSession(threadId, station)
           ?.conversationActivity?.asOfSequence,
       );
 
@@ -542,9 +566,11 @@ export function useSessionEventWindow(
         )
           return undefined;
         if (read?.current() === false) return undefined;
-        activeChatsStore.applyConversationActivity(
-          page.session?.conversationActivity,
-        );
+        if (!bound || station)
+          activeChatsStore.applyConversationActivity(
+            page.session?.conversationActivity,
+            station,
+          );
         setCurrentSessionId(page.currentSessionId);
         setSessionLineage(page.sessionLineage);
         setHandoffs(page.handoffs ?? []);
@@ -588,7 +614,15 @@ export function useSessionEventWindow(
           setLoading(false);
       }
     },
-    [apiBase, legacySessionId, observation, threadId, requestScope],
+    [
+      apiBase,
+      legacySessionId,
+      observation,
+      threadId,
+      requestScope,
+      station,
+      bound,
+    ],
   );
 
   const loadOlder = useCallback(async () => {
@@ -724,7 +758,12 @@ export function useSessionEventWindow(
   // authority or transcript during the first render of a different identity.
   const currentReader = Boolean(threadId) && readerKeyRef.current === readerKey;
   useEffect(() => {
-    if (!threadId || !currentReader) return;
+    if (
+      !threadId ||
+      !currentReader ||
+      (bound && station?.binding.affinity.kind !== 'host')
+    )
+      return;
     publishHistoryForCapture(apiBase, threadId, {
       events,
       currentSessionId,
@@ -741,6 +780,8 @@ export function useSessionEventWindow(
     apiBase,
     threadId,
     currentReader,
+    bound,
+    station,
     events,
     currentSessionId,
     sessionLineage,
@@ -754,9 +795,10 @@ export function useSessionEventWindow(
   ]);
   useEffect(
     () => () => {
-      if (threadId) removeHistoryForCapture(apiBase, threadId);
+      if (threadId && (!bound || station?.binding.affinity.kind === 'host'))
+        removeHistoryForCapture(apiBase, threadId);
     },
-    [apiBase, threadId],
+    [apiBase, threadId, bound, station],
   );
   return {
     events: currentReader ? events : [],

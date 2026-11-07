@@ -2981,6 +2981,16 @@ describe('CI verification workflow contracts', () => {
     expect(windowsPortable.split(/\s+/)).toContain(
       'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
     );
+    // The only real-ConPTY run of the terminal session, socket and
+    // retention suites (#3994).
+    for (const suite of [
+      'terminal-sessions',
+      'terminal-gateway',
+      'terminal-retention',
+    ])
+      expect(windowsPortable.split(/\s+/)).toContain(
+        `src-server/services/terminal/__tests__/${suite}.process.test.ts`,
+      );
     expect(windows).toContain('name: Compile desktop Rust tests');
     expect(windows).toContain(
       'cargo test --manifest-path src-desktop/Cargo.toml --no-run',
@@ -3024,6 +3034,18 @@ describe('CI verification workflow contracts', () => {
     expect(compile?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       "${{ steps.rust_relevance.outputs.relevant != 'false' }}",
+    );
+    // #3994: the Desktop test build's WebDriver plugin compiles against
+    // Tauri's Windows crates only on Windows; check it after the staging step.
+    const webdriverCheck = floorJob.steps.find(
+      (step) => step.name === 'Check the Desktop webdriver build',
+    );
+    expect(webdriverCheck?.run).toBe(
+      'cargo check --manifest-path src-desktop/Cargo.toml --features webdriver',
+    );
+    expect(webdriverCheck?.if).toBe(compile?.if);
+    expect(floorJob.steps.indexOf(webdriverCheck!)).toBeGreaterThan(
+      floorJob.steps.indexOf(compile!),
     );
     const relevanceIndex = floorJob.steps.findIndex(
       (step) => step.id === 'rust_relevance',
@@ -3269,7 +3291,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
     );
   });
 
-  it('starts the simulator booting before the build without trusting that boot', () => {
+  it('preboots after dependency verification and keeps runtime smoke authoritative', () => {
     const document = load(ios) as {
       jobs: Record<
         string,
@@ -3290,6 +3312,9 @@ describe('iOS verification proves packaged runtime readiness', () => {
     const xcode = steps.findIndex((step) =>
       String(step.run ?? '').includes('xcode-select -s'),
     );
+    const dependencies = steps.findIndex((step) =>
+      String(step.run ?? '').includes('npm run dependencies:ci'),
+    );
     const build = steps.findIndex((step) =>
       String(step.run ?? '').includes('npx tauri ios build'),
     );
@@ -3300,6 +3325,8 @@ describe('iOS verification proves packaged runtime readiness', () => {
     // the build it overlaps, and before the smoke that waits on it.
     expect(xcode).toBeGreaterThan(-1);
     expect(preboot).toBeGreaterThan(xcode);
+    expect(dependencies).toBeGreaterThan(-1);
+    expect(preboot).toBeGreaterThan(dependencies);
     expect(preboot).toBeLessThan(build);
     expect(build).toBeLessThan(smoke);
     // A failed pre-boot must not fail the job on its own: the smoke's own

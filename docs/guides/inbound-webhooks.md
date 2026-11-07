@@ -9,6 +9,11 @@ There is no Settings page, API or CLI for creating webhooks. An operator writes
 one private JSON file in the Station home. Station re-reads that file on every
 request, so changes and revocations apply immediately without a restart.
 
+A [managed policy](managed-policy.md#capability-switches) with
+`limits.webhookAutomations: false` refuses every request with `403` and code
+`managed-policy-capability-disabled`, before Station reads this file. The file
+is kept and stays editable, but nothing in it re-enables webhooks.
+
 Code: [the route](../../src-server/routes/webhooks/inbound-webhooks.ts), the
 [authorization and stores](../../src-server/services/webhooks/), and the
 [configuration contract](../../packages/contracts/src/inbound-webhook.ts).
@@ -150,6 +155,7 @@ So a request with no signature and a malformed body is refused with
 | 403 | `replay` | The token, timestamp and nonce were already used |
 | 429 | `rate_limited` | Too many attempts (`retryable: true`) |
 | 503 | `turn_start_failed` | The request was valid but the turn could not start (`retryable: true`) |
+| 403 | `managed-policy-approval-ceiling` | The Agent's engine could only run above the machine's [managed approval ceiling](managed-policy.md#approval-mode-ceiling); `error` names the reason and the support link (`retryable: false`) |
 
 - **Timestamps:** a timestamp more than 5 minutes from the server's clock is
   `stale_timestamp`.
