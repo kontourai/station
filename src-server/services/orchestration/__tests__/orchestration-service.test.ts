@@ -14,6 +14,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { EventEmitter as NodeEventEmitter } from 'node:events';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -24,8 +25,9 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { unlink } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
@@ -18898,54 +18900,130 @@ describe('OrchestrationService', () => {
     });
   });
 
-  test('startSession expands a stored literal-~ working directory before it reaches the adapter (#686 review HIGH-1)', async () => {
-    // Project workingDirectory is persisted with a literal `~` (see
-    // terminal-service); adapters spawn/chdir with the value, so the
-    // resolver must expand exactly like every other server-side consumer.
-    // Windows os.homedir() uses USERPROFILE; POSIX uses HOME.
-    const profile = join(tmp, 'profile');
-    mkdirSync(profile);
-    const projectDir = join(profile, 'station-686-tilde');
-    mkdirSync(projectDir);
+  // Projects persist literal `~`; CLI and Station Control callers can pass it
+  // through verbatim. Both entry points need the real filesystem boundary.
+  test.each([
+    [
+      'startSession expands a stored literal-~ working directory before it reaches the adapter (#686 review HIGH-1)',
+      {
+        folder: 'station-686-tilde',
+        slug: 'proj-tilde',
+        threadId: 'thread-cwd-tilde',
+        supplied: false,
+      },
+    ],
+    [
+      'startSession expands a tilde in a caller-supplied cwd (#1011)',
+      {
+        folder: 'station-1011-supplied',
+        slug: 'proj-supplied-tilde',
+        threadId: 'thread-supplied-tilde',
+        supplied: true,
+      },
+    ],
+  ] as const)('%s', async (_name, { folder, slug, threadId, supplied }) => {
+    const runRoot = process.env.STATION_VITEST_RUN_ROOT;
+    assert(runRoot, 'fixture setup requires the canonical Vitest run root');
+    const ownedRoot = realpathSync.native(tmp);
+    const withinRun = relative(realpathSync.native(runRoot), ownedRoot);
+    assert(
+      withinRun !== '' &&
+        withinRun !== '..' &&
+        !withinRun.startsWith(`..${sep}`) &&
+        !isAbsolute(withinRun),
+      'fixture setup must stay inside its owned run root',
+    );
+    const target = join(ownedRoot, 'fixture-parent');
+    const alias = join(ownedRoot, 'fixture-parent-alias');
+    const marker = join(target, 'owned-marker.txt');
     const previousHome = process.env.HOME;
     const previousUserProfile = process.env.USERPROFILE;
+    const failures: unknown[] = [];
+    let aliasCreated = false;
     try {
+      mkdirSync(target);
+      const targetStat = lstatSync(target);
+      assert(
+        targetStat.isDirectory() &&
+          !targetStat.isSymbolicLink() &&
+          realpathSync.native(target) === target,
+        'fixture setup target must be a new owned regular directory',
+      );
+      assert(
+        lstatSync(alias, { throwIfNoEntry: false }) === undefined,
+        'fixture setup alias must not already exist',
+      );
+      writeFileSync(marker, 'owned tilde fixture\n');
+      symlinkSync(target, alias, process.platform === 'win32' ? 'junction' : 'dir');
+      aliasCreated = true;
+      assert(
+        lstatSync(alias).isSymbolicLink() &&
+          realpathSync.native(alias) === target,
+        'fixture setup alias must resolve to its owned target',
+      );
+      const profilePath = join(alias, 'profile');
+      mkdirSync(profilePath);
+      const profile = realpathSync.native(profilePath);
+      const projectDir = join(profile, folder);
+      mkdirSync(projectDir);
       process.env.HOME = profile;
       process.env.USERPROFILE = profile;
-      configuredProjects.push({
-        slug: 'proj-tilde',
-        workingDirectory: '~/station-686-tilde',
-      });
-      const claudeLocal = new FakeAdapter('claude');
-      const localService = new OrchestrationService({
-        adapterRegistry: createRegistry([claudeLocal]),
-        eventBus,
-        eventStore,
-        listProjects: () => configuredProjects,
-        logger: { debug: vi.fn(), warn: vi.fn() },
-      });
-
-      await localService.dispatch({
+      configuredProjects.push({ slug, workingDirectory: `~/${folder}` });
+      const adapter = supplied ? claude : new FakeAdapter('claude');
+      const actualService = supplied
+        ? service
+        : new OrchestrationService({
+            adapterRegistry: createRegistry([adapter]),
+            eventBus,
+            eventStore,
+            listProjects: () => configuredProjects,
+            logger: { debug: vi.fn(), warn: vi.fn() },
+          });
+      await actualService.dispatch({
         type: 'startSession',
         input: {
-          threadId: 'thread-cwd-tilde',
+          threadId,
           provider: 'claude',
           modelId: 'claude-sonnet',
-          metadata: { projectSlug: 'proj-tilde' },
+          ...(supplied ? { cwd: `~/${folder}` } : {}),
+          metadata: { projectSlug: slug },
         },
       });
-
-      expect(claudeLocal.startSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cwd: realpathSync.native(projectDir),
-        }),
-      );
+      if (supplied) {
+        expect(adapter.startSession.mock.calls.at(-1)?.[0].cwd).toBe(
+          realpathSync.native(projectDir),
+        );
+      } else {
+        expect(adapter.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({ cwd: realpathSync.native(projectDir) }),
+        );
+      }
+    } catch (error) {
+      failures.push(error);
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;
       if (previousUserProfile === undefined) delete process.env.USERPROFILE;
       else process.env.USERPROFILE = previousUserProfile;
+      if (aliasCreated) {
+        try {
+          assert(
+            lstatSync(alias).isSymbolicLink() &&
+              realpathSync.native(alias) === target,
+            'fixture cleanup refuses an alias whose identity changed',
+          );
+          await unlink(alias);
+          expect(lstatSync(alias, { throwIfNoEntry: false })).toBeUndefined();
+          expect(statSync(target).isDirectory()).toBe(true);
+          expect(readFileSync(marker, 'utf8')).toBe('owned tilde fixture\n');
+        } catch (error) {
+          failures.push(error);
+        }
+      }
     }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(failures, 'Tilde fixture and alias cleanup failed');
   });
 
   test('startSession refuses a project whose working directory no longer exists (#791)', async () => {
@@ -19225,46 +19303,6 @@ describe('OrchestrationService', () => {
       /bound to project 'missing-project', which this Station does not have/,
     );
     expect(claude.startSession).not.toHaveBeenCalled();
-  });
-
-  test('startSession expands a tilde in a caller-supplied cwd (#1011)', async () => {
-    // `station chat --project=<slug>` and station-control delegation both pass
-    // the project's stored workingDirectory through verbatim, and Station
-    // stores it with a literal `~`. Unexpanded, no chdir can satisfy it and
-    // the engine never reaches the project.
-    const profile = join(tmp, 'profile');
-    mkdirSync(profile);
-    const projectDir = join(profile, 'station-1011-supplied');
-    mkdirSync(projectDir);
-    const previousHome = process.env.HOME;
-    const previousUserProfile = process.env.USERPROFILE;
-    try {
-      process.env.HOME = profile;
-      process.env.USERPROFILE = profile;
-      configuredProjects.push({
-        slug: 'proj-supplied-tilde',
-        workingDirectory: '~/station-1011-supplied',
-      });
-
-      await service.dispatch({
-        type: 'startSession',
-        input: {
-          threadId: 'thread-supplied-tilde',
-          provider: 'claude',
-          modelId: 'claude-sonnet',
-          cwd: '~/station-1011-supplied',
-          metadata: { projectSlug: 'proj-supplied-tilde' },
-        },
-      });
-      expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(
-        realpathSync.native(projectDir),
-      );
-    } finally {
-      if (previousHome === undefined) delete process.env.HOME;
-      else process.env.HOME = previousHome;
-      if (previousUserProfile === undefined) delete process.env.USERPROFILE;
-      else process.env.USERPROFILE = previousUserProfile;
-    }
   });
 
   test('startSession keeps an explicit cwd inside the bound project (#686)', async () => {
