@@ -186,6 +186,13 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
               (element) => element instanceof HTMLElement && element.inert,
             ),
         ).toBe(true);
+        await mkdir(resolve('.surface/inbox-dismiss-swipe'), {
+          recursive: true,
+        });
+        await page.screenshot({
+          path: resolve('.surface/inbox-dismiss-swipe/dragging-390-dark.png'),
+          animations: 'disabled',
+        });
       },
     });
     const rail = page.locator('.inbox-row__swipe-actions').first();
@@ -385,7 +392,9 @@ test('draft discard offers a reachable Undo without overflow in touch rows and d
   });
   try {
     await page.addStyleTag({
-      content: resolveCssImports(resolve('src-ui/src/index.css')),
+      content: ['src-ui/src/index.css', 'src-ui/src/components/chat/chat.css']
+        .map((path) => resolveCssImports(resolve(path)))
+        .join('\n'),
     });
     const artifacts = resolve('.surface/inbox-dismiss-swipe');
     await mkdir(artifacts, { recursive: true });
@@ -425,6 +434,8 @@ test('draft discard offers a reachable Undo without overflow in touch rows and d
           expect(target!.height).toBeGreaterThanOrEqual(44);
           expect(target!.x).toBeGreaterThanOrEqual(0);
           expect(target!.x + target!.width).toBeLessThanOrEqual(width);
+          expect(target!.y).toBeGreaterThanOrEqual(0);
+          expect(target!.y + target!.height).toBeLessThanOrEqual(844);
           expect(
             await page.evaluate(
               () => document.documentElement.scrollWidth > innerWidth,

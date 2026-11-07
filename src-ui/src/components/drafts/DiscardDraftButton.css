@@ -21,3 +21,7 @@
   min-width: 44px;
   min-height: 44px;
 }
+
+.menu-row.discard-draft__cancel {
+  color: var(--k-text);
+}
