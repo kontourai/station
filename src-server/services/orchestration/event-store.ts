@@ -774,7 +774,11 @@ const SESSION_INVENTORY_GROUP_METHODS: Readonly<
 
 /**
  * The receipt facts joined onto each `token-usage.updated` row: its
- * conversation, task, model and credential account. The cost segment is
+ * conversation, task, model, credential account and connections. The engine
+ * connection follows the account's process-epoch rule. The model connection
+ * is the first accepted launch plan, exactly as `extractModelLaunchPlan`
+ * (orchestration-session-state.ts) reads it: later resumes cannot replace
+ * it, and an engine-selected first plan means no model connection. The cost segment is
  * not a per-row join: it is replayed over each thread's whole history by
  * `cumulativeCostSegmentsFor`.
  * Shared by the windowed usage rollup and the per-conversation usage tree so
@@ -808,7 +812,31 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
                     AND json_valid(config.payload)
                     AND json_type(config.payload, '$.metadata.usageAccountKey') = 'text'
                     AND config.sequence >= COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started' AND epoch.sequence <= e.sequence), 0)
-                  ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json
+                  ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json,
+                (SELECT json_extract(config.payload, '$.metadata.connectionId')
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method IN ('session.started', 'session.configured')
+                    AND json_valid(config.payload)
+                    AND json_type(config.payload, '$.metadata.connectionId') = 'text'
+                    AND config.sequence >= COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started' AND epoch.sequence <= e.sequence), 0)
+                  ORDER BY config.sequence DESC LIMIT 1) AS connection_id,
+                (SELECT CASE WHEN json_extract(config.payload, '$.metadata.modelLaunchPlan.kind') = 'station-resolved'
+                             THEN json_extract(config.payload, '$.metadata.modelLaunchPlan.modelConnectionId') END
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method = 'session.configured'
+                    AND json_valid(config.payload)
+                    AND json_type(config.payload, '$.metadata.modelLaunchPlan') = 'object'
+                    AND ((json_extract(config.payload, '$.metadata.modelLaunchPlan.kind') = 'station-resolved'
+                          AND json_type(config.payload, '$.metadata.modelLaunchPlan.modelConnectionId') = 'text'
+                          AND json_type(config.payload, '$.metadata.modelLaunchPlan.modelId') = 'text'
+                          AND json_extract(config.payload, '$.metadata.modelLaunchPlan.evidence') = 'catalog-accepted')
+                      OR (json_extract(config.payload, '$.metadata.modelLaunchPlan.kind') = 'engine-selected'
+                          AND json_extract(config.payload, '$.metadata.modelLaunchPlan.evidence') IN ('adapter-declared', 'capability-absent')))
+                  ORDER BY config.sequence ASC LIMIT 1) AS model_connection_id
 `;
 
 /** How much of a turn's prompt the digest read keeps (the first line is clipped from it). */
@@ -879,6 +907,8 @@ export interface UsageReceiptEventRow {
    */
   costSegment?: string;
   accountKey?: string;
+  connectionId?: string;
+  modelConnectionId?: string;
 }
 
 /**
@@ -8189,6 +8219,13 @@ export class EventStore {
       ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
       ...(typeof row.model === 'string' ? { model: row.model } : {}),
       ...(typeof accountKey === 'string' ? { accountKey } : {}),
+      ...(typeof row.connection_id === 'string' && row.connection_id
+        ? { connectionId: row.connection_id }
+        : {}),
+      ...(typeof row.model_connection_id === 'string' &&
+      row.model_connection_id
+        ? { modelConnectionId: row.model_connection_id }
+        : {}),
       ...(costSegment !== undefined ? { costSegment } : {}),
     };
   }

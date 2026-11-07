@@ -2,11 +2,16 @@
  * Analytics Routes - usage stats and achievements
  */
 
+import {
+  parseEngineConnectionId,
+  parseEngineId,
+} from '@kontourai/station-contracts/agent-identity';
 import { MS_PER_DAY } from '@kontourai/station-contracts/time';
 import type {
   UsageExportPage,
   UsageExportRequest,
 } from '@kontourai/station-contracts/usage-export';
+import type { UsageRollupGroupBy } from '@kontourai/station-contracts/usage-rollup';
 import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
 import { type Context, Hono } from 'hono';
 import { LocalUsageReceiptSource } from '../../analytics/local-usage-receipt-source.js';
@@ -26,6 +31,12 @@ import {
   credentialProfileRefSchema,
   errorMessage,
 } from '../schemas/schemas.js';
+
+/**
+ * Model connection ids are opaque configuration keys rather than clean
+ * identities, so the filter checks a bounded, printable shape only.
+ */
+const USAGE_MODEL_CONNECTION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 function publicUsageStats(stats: UsageStats) {
   const { byPrincipal: _operatorPrincipals, ...publicStats } = stats;
@@ -204,19 +215,41 @@ export function createAnalyticsRoutes(
       );
     const credentialProfileRef =
       profileQuery === undefined ? undefined : profileQuery || null;
-    if (provider !== undefined && !['claude', 'codex'].includes(provider))
+    // Any well-formed engine id may filter: an engine Station has no receipts
+    // for answers an empty rollup with unknown coverage, not a refusal.
+    if (provider !== undefined && parseEngineId(provider) === undefined)
       return c.json(
         { success: false, error: 'Unsupported engine usage filter.' },
         400,
       );
-    const allowed = new Set([
+    const connectionId = c.req.query('connectionId');
+    if (
+      connectionId !== undefined &&
+      parseEngineConnectionId(connectionId) === undefined
+    )
+      return c.json(
+        { success: false, error: 'Invalid connection usage filter.' },
+        400,
+      );
+    const modelConnectionId = c.req.query('modelConnectionId');
+    if (
+      modelConnectionId !== undefined &&
+      !USAGE_MODEL_CONNECTION_ID_PATTERN.test(modelConnectionId)
+    )
+      return c.json(
+        { success: false, error: 'Invalid model connection usage filter.' },
+        400,
+      );
+    const allowed = new Set<string>([
       'provider',
       'model',
       'station',
       'conversation',
       'task',
       'day',
-    ]);
+      'connection',
+      'modelConnection',
+    ] satisfies UsageRollupGroupBy[]);
     if (groupBy !== undefined && !allowed.has(groupBy)) {
       return c.json(
         { success: false, error: 'invalid usage rollup grouping' },
@@ -299,14 +332,9 @@ export function createAnalyticsRoutes(
           to,
           provider,
           credentialProfileRef,
-          groupBy: groupBy as
-            | 'provider'
-            | 'model'
-            | 'station'
-            | 'conversation'
-            | 'task'
-            | 'day'
-            | undefined,
+          ...(connectionId !== undefined ? { connectionId } : {}),
+          ...(modelConnectionId !== undefined ? { modelConnectionId } : {}),
+          groupBy: groupBy as UsageRollupGroupBy | undefined,
           cursor: c.req.query('cursor'),
           pageSize,
           drilldown: c.req.query('drilldown') !== '0',

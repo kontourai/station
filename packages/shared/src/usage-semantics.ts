@@ -71,6 +71,23 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
     ['opencode', 'per-turn'],
   ]);
 
+/**
+ * Providers whose `token-usage.updated` carries only context occupancy
+ * (`contextTokens`/`contextWindowTokens`) and never consumed-token or cost
+ * figures. They stay out of {@link PROVIDER_USAGE_SCOPE} on purpose: neither
+ * scope describes an event with no totals, and declaring one would let a
+ * consumer read their absent totals as zero. ACP: `session/update`'s
+ * `usage_update` reports the current context window only
+ * (`acp-adapter-events.ts`), so an ACP turn never has a usage total.
+ */
+export const CONTEXT_OCCUPANCY_ONLY_PROVIDERS: ReadonlySet<string> =
+  new Set<string>(['acp']);
+
+/** True when a provider is declared to report context occupancy, never totals. */
+export function providerReportsContextOccupancyOnly(provider: string): boolean {
+  return CONTEXT_OCCUPANCY_ONLY_PROVIDERS.has(provider);
+}
+
 /** `undefined` means nobody has declared this provider's usage scope. */
 export function providerUsageScope(
   provider: string,

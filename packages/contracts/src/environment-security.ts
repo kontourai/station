@@ -1399,6 +1399,14 @@ export interface StationCapabilityFlags {
    * agent" only on this flag.
    */
   troubleshootPrepare?: boolean;
+  /**
+   * #4710: `GET /api/analytics/usage-rollup` honours `connectionId` and
+   * `modelConnectionId` filters and accepts any engine id as `provider`. An
+   * older host silently ignores the connection filters (answering unfiltered
+   * totals) and refuses engines other than `claude` and `codex`, so a client
+   * sends those filters only on this flag.
+   */
+  usageConnectionFilters?: boolean;
 }
 
 export interface PublicStationHandshake {

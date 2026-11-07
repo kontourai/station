@@ -15,6 +15,7 @@ export {
   PROVIDER_USAGE_SCOPE,
   type ProviderUsageScope,
   providerPromptCacheInclusivity,
+  providerReportsContextOccupancyOnly,
   providerUsageScope,
 } from './usage-semantics.js';
 

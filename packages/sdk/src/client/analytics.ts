@@ -18,7 +18,10 @@
  * consumer to justify it.
  */
 
-import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
+import type {
+  UsageRollup,
+  UsageRollupGroupBy,
+} from '@kontourai/station-contracts/usage-rollup';
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
 import { unlessDeadline } from './request-deadline';
@@ -26,11 +29,24 @@ import { unlessDeadline } from './request-deadline';
 export { fetchStationUsage, type StationUsageOverview } from './station-usage';
 
 export interface UsageRollupQuery {
-  provider?: 'claude' | 'codex';
+  /**
+   * Any engine id. A host without the `usageConnectionFilters` capability
+   * refuses ids other than `claude` and `codex` with a 400; a current host
+   * answers unknown coverage for an engine with no receipts.
+   */
+  provider?: string;
   credentialProfileRef?: string | null;
+  /**
+   * Engine connection the session recorded. Send it only to a host with the
+   * `usageConnectionFilters` capability: an older host ignores it and
+   * answers unfiltered totals.
+   */
+  connectionId?: string;
+  /** Model connection of an accepted launch plan; gated like `connectionId`. */
+  modelConnectionId?: string;
   localOnly?: boolean;
   days: 7 | 14 | 30;
-  groupBy?: 'provider' | 'model' | 'station' | 'conversation' | 'task' | 'day';
+  groupBy?: UsageRollupGroupBy;
   cursor?: string;
   pageSize?: number;
 }
@@ -74,6 +90,10 @@ export async function fetchUsageRollup(
   if (query.provider) params.set('provider', query.provider);
   if (query.credentialProfileRef !== undefined)
     params.set('credentialProfileRef', query.credentialProfileRef ?? '');
+  if (query.connectionId !== undefined)
+    params.set('connectionId', query.connectionId);
+  if (query.modelConnectionId !== undefined)
+    params.set('modelConnectionId', query.modelConnectionId);
   if (query.localOnly) params.set('localOnly', '1');
   if (query.groupBy) params.set('groupBy', query.groupBy);
   if (query.cursor) params.set('cursor', query.cursor);

@@ -8,7 +8,10 @@ import type {
   UsageExportPage,
   UsageExportRequest,
 } from '@kontourai/station-contracts/usage-export';
-import type { EventStore } from '../services/orchestration/event-store.js';
+import type {
+  EventStore,
+  UsageReceiptEventRow,
+} from '../services/orchestration/event-store.js';
 import { usageReceiptsForEventRow } from '../services/orchestration/session-transcript-reads.js';
 
 export class UsageExportRejected extends Error {
@@ -250,7 +253,10 @@ export function readAuthorizedUsageExport(input: {
             }
           : {
               globalSequence: row.globalSequence,
-              receipts: usageReceiptsForEventRow(row.usage, stationId),
+              receipts: usageReceiptsForEventRow(
+                exportWireUsageRow(row.usage),
+                stationId,
+              ),
             },
       ),
       ...(next
@@ -274,4 +280,19 @@ export function readAuthorizedUsageExport(input: {
         throw new UsageExportRejected('usage_export_authority_changed', 403);
     },
   };
+}
+
+/**
+ * Export page schemaVersion 1 is a closed wire shape that every receiver
+ * (`parseUsageExportPage`) refuses on an unknown field. Connection
+ * attribution is not part of it, so it stays local to the rollup until the
+ * export wire versions it.
+ */
+function exportWireUsageRow(row: UsageReceiptEventRow): UsageReceiptEventRow {
+  const {
+    connectionId: _connectionId,
+    modelConnectionId: _modelConnectionId,
+    ...wire
+  } = row;
+  return wire;
 }
