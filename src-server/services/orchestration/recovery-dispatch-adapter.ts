@@ -1,5 +1,6 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
+import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 
 /** Provider execution lives at the orchestration Seam, not in recovery policy. */
 export interface RecoveryDispatchAdapter {
@@ -28,6 +29,12 @@ export interface RecoveryDispatchReplay {
   modelOptions?: Record<string, string | number | boolean>;
   recoveryCorrelationId: string;
   signal: AbortSignal;
+  /**
+   * #4568: who caused the source turn, as this Station recorded it on that
+   * turn's `turn.started`. A credential-profile restart derives its
+   * engine-start intent from it; it is never sent as turn input.
+   */
+  dispatchOrigin?: TurnDispatchOrigin;
 }
 
 type RecoveryDispatchOutcome =

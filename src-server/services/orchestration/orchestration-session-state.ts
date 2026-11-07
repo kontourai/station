@@ -24,6 +24,7 @@ import type {
   AgentRunStatus,
   AgentRunSummary,
   ConversationTurnActivity,
+  EngineStartWaitObservation,
   OrchestrationDelegationContext,
   OrchestrationPeerPendingRequest,
   OrchestrationSessionSummary,
@@ -65,7 +66,10 @@ import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tena
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { receiptBus } from '../infra/receipt-bus.js';
-import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
+import {
+  EngineStartCancelledError,
+  type RuntimeEngineStartLease,
+} from '../infra/resource-posture.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import { isStationChatFolder } from './no-project-chat-folder.js';
@@ -563,6 +567,8 @@ export function buildOrchestrationSessionSummary(options: {
   answerability: SessionAnswerabilityObservation;
   /** Process-local watchdog observation; never reconstructed from event time. */
   turnProgress?: TurnProgressObservation;
+  /** #4568: process-local capacity wait of a person's engine start. */
+  engineStartWait?: EngineStartWaitObservation;
   /** #2309: the conversation activity projection's read for this thread. */
   conversationActivity?: ConversationTurnActivity;
   /** Durable current execution child, supplied by a lineage-aware reader. */
@@ -770,6 +776,9 @@ export function buildOrchestrationSessionSummary(options: {
       ? { lastTurnAbortReason: lastEvent.reason }
       : {}),
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
+    ...(options.engineStartWait
+      ? { engineStartWait: options.engineStartWait }
+      : {}),
     ...(options.conversationActivity
       ? { conversationActivity: options.conversationActivity }
       : {}),
@@ -1798,9 +1807,10 @@ export interface RecoveredSessionStartOptions {
     input: ProviderSessionStartInput,
   ) => void;
   /**
-   * The same observed-host admission gate used for foreground engine starts.
-   * A critical refusal leaves the persisted session recoverable and writes no
-   * recovery-failure event — it is a deferral, not a verdict on the session.
+   * The engine-start lease, under the intent of whoever needs this start
+   * (#4568). A capacity refusal is recorded like any failed reopen; a
+   * person's Stop during the wait (`EngineStartCancelledError`) records
+   * nothing, because nothing ran.
    */
   admitEngineStart?: (
     threadId: string,
@@ -1913,6 +1923,10 @@ export async function startRecoveredOrchestrationSession(options: {
     deps.eventStore?.upsertSession(nextSession);
     return nextSession;
   } catch (error) {
+    // #4568: a person's Stop cancelled this start while it waited for the
+    // start lease. No provider started and nothing failed, so the Session
+    // keeps its record exactly as it was.
+    if (error instanceof EngineStartCancelledError) throw error;
     const message = errorMessage(error);
     deps.logger.warn('Failed to recover provider session', {
       provider: session.provider,

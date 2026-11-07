@@ -58,6 +58,7 @@ import {
 import { sanitizeChatInput } from '../utils/sanitizeChatInput';
 import { describeStationFailure } from '../utils/stationFailure';
 import { clearLastChosenModel } from './lastChosenModel';
+import { readPendingEngineStart } from './orchestration/engineStartWaits';
 import { describeStopTurnOutcome } from './useActiveChatSessionMessaging';
 import { useCancelMessage, useSendMessage } from './useActiveChatSessions';
 import { useAutocompleteState } from './useAutocompleteState';
@@ -751,7 +752,12 @@ export function useChatInput({
     // Until the authorized conversation window identifies that child, Stop
     // must remain unavailable rather than guessing the legacy/root id and
     // supervising the wrong execution context.
-    if (currentChat?.conversationId && !currentChat.currentSessionId) {
+    // An owned pending first start supplies its own authorized Stop target.
+    if (
+      currentChat?.conversationId &&
+      !currentChat.currentSessionId &&
+      !readPendingEngineStart(apiBase, currentChat.conversationId)
+    ) {
       showToast(
         'Restoring this conversation before Stop is available.',
         'info',
@@ -774,7 +780,7 @@ export function useChatInput({
       role: 'system',
       content: describeStopTurnOutcome(outcome),
     });
-  }, [sessionId, cancelMessage, addEphemeralMessage, showToast]);
+  }, [sessionId, apiBase, cancelMessage, addEphemeralMessage, showToast]);
 
   const handleClearInput = useCallback(() => {
     if (!sessionId) return;

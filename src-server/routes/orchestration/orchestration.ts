@@ -42,6 +42,7 @@ import {
 } from '@kontourai/station-contracts/execution-target';
 import { MANAGED_POLICY_ENGINE_REFUSED_CODE } from '@kontourai/station-contracts/managed-policy-engines';
 import type {
+  OrchestrationEngineStartWaitFrame,
   TerminalProcessDetail,
   TerminalProcessSummary,
   TurnDeliveryInspection,
@@ -7395,6 +7396,21 @@ export function createOrchestrationRoutes(
           if (frame.id !== undefined)
             deliveredSequence = Math.max(deliveredSequence, Number(frame.id));
         };
+        const writeEngineStartWaits = async () => {
+          for (const frame of orchestrationService.readableEngineStartWaits(
+            authority,
+          )) {
+            if (threadId !== undefined && threadId !== frame.threadId) continue;
+            await writeAuthorized({
+              event: SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED,
+              data: JSON.stringify(frame),
+              isAuthorized: () =>
+                orchestrationService
+                  .readableEngineStartWaits(authority)
+                  .some((current) => current.threadId === frame.threadId),
+            });
+          }
+        };
         let caughtUp = false;
         const pending: StreamFrame[] = [];
         let pendingBytes = 0;
@@ -7464,6 +7480,7 @@ export function createOrchestrationRoutes(
                       }),
                       id: String(deliveredSequence),
                     });
+                    await writeEngineStartWaits();
                   }
                 }
                 replaying = false;
@@ -7576,6 +7593,32 @@ export function createOrchestrationRoutes(
             const isAuthorized = () => canRead(authority) === true;
             if (isAuthorized())
               forward({ event: evt.event, data: '{}', isAuthorized });
+            return;
+          }
+          if (
+            evt.event === SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED
+          ) {
+            // #4568: the producer captured who may see this start's wait (a
+            // fresh start's own caller, or an existing Session's readers);
+            // the frame is re-checked against this stream at write time.
+            const frame = (
+              evt.data as { frame?: OrchestrationEngineStartWaitFrame }
+            )?.frame;
+            const canRead = (evt.data as { canRead?: unknown })?.canRead;
+            if (
+              typeof frame?.threadId !== 'string' ||
+              typeof canRead !== 'function' ||
+              (threadId !== undefined && threadId !== frame.threadId)
+            )
+              return;
+            const isAuthorized = () => canRead(authority) === true;
+            if (isAuthorized())
+              forward({
+                event: evt.event,
+                threadId: frame.threadId,
+                data: JSON.stringify(frame),
+                isAuthorized,
+              });
             return;
           }
           if (evt.event === SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED) {
@@ -7820,6 +7863,10 @@ export function createOrchestrationRoutes(
           }),
           id: String(resolvedHead),
         });
+        // #4568: the waits this reader may see, as of now, so a reconnect
+        // replaces whatever its client held. Live changes buffered meanwhile
+        // drain after these and so still win.
+        await writeEngineStartWaits();
         // The one queue owns both buffered and subsequent live writes. This
         // switch has no await, so a new frame cannot overtake the buffer.
         pendingFrameLimit = pending.length + 1024;

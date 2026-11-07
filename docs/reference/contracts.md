@@ -1082,6 +1082,7 @@ non-retryable.
 | `provider_turn_in_progress` | `busy` | `true` |
 | `provider-plan-quota-exhausted` | `quota_exhausted` | `false` |
 | `resource_engine_start_capacity` | `busy` | `true` |
+| `resource_engine_start_cancelled` | `cancelled` | `false` |
 | `session_ended` | `session_gone` | `false` |
 | `session_recovery_failed` | `unavailable` | `true` |
 | `session_start_in_flight` | `busy` | `true` |
