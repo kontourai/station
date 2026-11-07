@@ -1,6 +1,11 @@
 import { JSDOM } from 'jsdom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
+  ACCESS_AUDIENCE,
+  ACCESS_TEAM,
+  accessFixture,
+} from './access-fixture.ts';
+import {
   call,
   fakeReceiver,
   LITE_PATH,
@@ -20,7 +25,10 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-04T12:00:00Z'));
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 async function openPage(
   env: ReturnType<typeof testEnv>,
@@ -36,11 +44,18 @@ async function openPage(
   });
   const { window } = dom;
   if (key) window.localStorage.setItem('station-insights-operator-key', key);
+  const fixture = await accessFixture();
+  env.ACCESS_TEAM_DOMAIN = ACCESS_TEAM;
+  env.ACCESS_AUDIENCE = ACCESS_AUDIENCE;
+  vi.stubGlobal('fetch', async () => Response.json(fixture.jwks));
   const requests: string[] = [];
   window.fetch = (async (input: string, init?: RequestInit) => {
     requests.push(String(input));
     const response = await call(env, String(input), {
-      headers: init?.headers as Record<string, string>,
+      headers:
+        key === OPERATOR_KEY && init?.credentials === 'same-origin'
+          ? { 'cf-access-jwt-assertion': fixture.token }
+          : (init?.headers as Record<string, string>),
     });
     // jsdom has no Response; the pages read only these members.
     const body = await response.text();
@@ -85,18 +100,18 @@ test('insights renders the operator JSON as headline numbers and charts', async 
     '/insights/insights.js',
     OPERATOR_KEY,
   );
-  expect(requests).toEqual(['/v1/operator/lite/insights']);
+  expect(requests).toEqual(['/insights/data']);
   const hero = document.querySelector('.tile.hero');
   expect(hero?.querySelector('.label')?.textContent).toBe(
-    'Active installs today',
+    'Reports received today',
   );
   expect(hero?.querySelector('.value')?.textContent).toBe('3');
   expect(titles(document)).toEqual(
     expect.arrayContaining([
-      'Daily active installs',
-      'Weekly actives',
-      'Monthly actives',
-      'New installs per day',
+      'Daily usage reports',
+      'First activity by week',
+      'First activity by month',
+      'New-install reports per day',
       'Favorite harness',
       'Version adoption',
       'Surfaces used',
@@ -145,23 +160,17 @@ test('a per-engine token dimension gets its own panel once pings carry it', asyn
   expect(legend).toBe('10k-100k1M-10M');
 });
 
-test('insights asks for the key when none is stored, and forgets a refused one', async () => {
+test('insights uses the browser session and explains an expired sign-in without asking for a key', async () => {
   const env = testEnv(fakeReceiver());
-  const empty = await openPage(env, '/insights', '/insights/insights.js');
-  expect(empty.document.getElementById('unlock')?.hidden).toBe(false);
-  expect(empty.requests).toEqual([]);
-  const refused = await openPage(
-    env,
-    '/insights',
-    '/insights/insights.js',
-    `sto_${'x'.repeat(43)}`,
+  const refused = await openPage(env, '/insights', '/insights/insights.js');
+  expect(refused.requests).toEqual(['/insights/data']);
+  expect(refused.document.getElementById('status')?.textContent).toContain(
+    'sign-in has expired',
   );
-  expect(refused.document.getElementById('unlock-status')?.textContent).toBe(
-    'That key was not accepted.',
-  );
+  expect(refused.document.querySelector('input[type="password"]')).toBeNull();
 });
 
-test('the public page charts the published weeks', async () => {
+test('the public page explains an uncertain release without filling the page with empty charts', async () => {
   const receiver = fakeReceiver();
   const env = testEnv(receiver);
   vi.setSystemTime(new Date('2026-10-26T09:00:00Z'));
@@ -169,6 +178,7 @@ test('the public page charts the published weeks', async () => {
   await post(env, LITE, ping());
   vi.setSystemTime(new Date('2026-11-02T00:10:00Z'));
   await receiver.object.alarm();
+  receiver.storage.db.exec('UPDATE lite_published SET estimate = 0');
   const { document, requests } = await openPage(
     env,
     '/public/',
@@ -176,17 +186,16 @@ test('the public page charts the published weeks', async () => {
   );
   expect(requests[0]).toBe('/v1/public/aggregates');
   expect(requests.length).toBeGreaterThanOrEqual(1);
-  expect(document.querySelector('.tile.hero .label')?.textContent).toBe(
-    'Weekly active networks, week of Oct 26',
+  expect(titles(document)).toEqual(['No reliable public estimates yet']);
+  expect(document.body.textContent).toContain(
+    'does not mean there was no activity',
   );
-  expect(titles(document)).toEqual(
-    expect.arrayContaining([
-      'Weekly active networks',
-      'Harnesses used',
-      'Platform',
-      'Versions',
-    ]),
+  expect(document.getElementById('publication')?.textContent).toContain(
+    '2026-11-01',
   );
+  expect(document.querySelector('svg.chart')).toBeNull();
+  expect(document.querySelector('.tile')).toBeNull();
+  expect(document.querySelector('a[href="/insights"]')).not.toBeNull();
 });
 
 /** Stores one published week with chosen estimates, as the alarm would. */
@@ -295,7 +304,7 @@ test("no bar, chart label or table cell shows a value within its card's noise th
   expect(tiles).not.toContain('Most used harness');
   expect(tiles).toContain('Top platform');
   expect(document.body.textContent).toContain(
-    'Each card shows a value only when noise alone would produce a false one less than 5% of the time.',
+    'Small estimates cannot be reliably separated from the added noise.',
   );
 });
 
@@ -456,16 +465,16 @@ test('insights tiles and period charts count the right flags on seeded pings', a
     [...document.querySelectorAll('.tile')]
       .find((node) => node.querySelector('.label')?.textContent === label)
       ?.querySelector('.value')?.textContent;
-  expect(tile('Active installs today')).toBe('1');
+  expect(tile('Reports received today')).toBe('1');
   expect(tile('Yesterday')).toBe('0');
-  expect(tile('This week')).toBe('2');
-  expect(tile('This month')).toBe('1');
-  expect(tile('New installs')).toBe('3');
-  expect(tile('Installs counted')).toBe('3');
+  expect(tile('First activity this week')).toBe('2');
+  expect(tile('First activity this month')).toBe('1');
+  expect(tile('New-install reports')).toBe('3');
+  expect(tile('New-install reports in window')).toBe('3');
   const endLabel = (title: string) =>
     [...document.querySelectorAll('.card')]
       .find((card) => card.querySelector('h2')?.textContent === title)
       ?.querySelector('svg text.end')?.textContent;
-  expect(endLabel('Weekly actives')).toBe('2');
-  expect(endLabel('Monthly actives')).toBe('1');
+  expect(endLabel('First activity by week')).toBe('2');
+  expect(endLabel('First activity by month')).toBe('1');
 });
