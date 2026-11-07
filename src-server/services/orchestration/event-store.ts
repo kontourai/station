@@ -872,13 +872,6 @@ const USAGE_RECEIPT_CONNECTION_COLUMNS = `,
                   ORDER BY attribution.sequence DESC LIMIT 1) AS model_connection_id
 `;
 
-/**
- * The windowed rollup's receipt selection. A connection filter first selects
- * the threads that ever recorded that connection (an indexed lookup of their
- * configuration events), so usage events of every other thread are never
- * projected; the exact per-event attribution then decides membership.
- * Exported so a test can pin that query plan.
- */
 function connectionFilterValues(filter: UsageReceiptFilter): string[] {
   return [
     ...(filter.connectionId !== undefined ? [filter.connectionId] : []),
@@ -888,6 +881,13 @@ function connectionFilterValues(filter: UsageReceiptFilter): string[] {
   ];
 }
 
+/**
+ * The windowed rollup's receipt selection. A connection filter first selects
+ * the threads that ever recorded that connection (an indexed lookup of their
+ * configuration events), so usage events of every other thread are never
+ * projected; the exact per-event attribution then decides membership.
+ * Exported so a test can pin that query plan.
+ */
 export function usageReceiptEventsSql(
   ownerCount: number,
   filter: UsageReceiptFilter,

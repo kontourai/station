@@ -6439,13 +6439,13 @@ window answers empty rows with `unknown` coverage. ACP reports context
 occupancy only, so it has no receipts and its provider coverage says so.
 Filtering precedes folding and pagination, while coverage remains explicit.
 
-Provider filters now narrow inside the bounded selection, so provider-filtered
+Provider filters narrow inside the bounded selection, so provider-filtered
 totals and coverage describe that provider rather than the Station's first 500
 observations.
 
-`connectionId` (the engine connection the process recorded at start) and
+`connectionId` (the engine connection last recorded in the current process run) and
 `modelConnectionId` (the accepted Station-resolved launch plan in effect at that
-usage event) narrow to receipts with that attribution, both scoped to the
+usage event; the session view keeps the first accepted plan, so after a model switch the two can differ) narrow to receipts with that attribution, both scoped to the
 process run since the latest `session.started`; `groupBy=connection|modelConnection` groups by
 it. Connection ids belong to this Station, so these require `localOnly=1` (400
 otherwise). Sessions that recorded no connection stay unattributed and are
