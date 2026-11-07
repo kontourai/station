@@ -851,6 +851,21 @@ still supply nonempty message/prompt text. Bytes may expire under retention whil
 history descriptors remain. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
 for limits, persistence and mixed-version behavior.
 
+### Shared Task agent request negotiation
+
+The client exports shared capability, request, withdrawal, and published-result
+operations. They use the Task room shared paths and do not fall back to personal
+delegation. Capability discovery is not admission. An unavailable or unknown
+capability prevents submission; existing hosts do not mount the shared routes.
+A caller captures the host authority and Task incarnation, and retains the
+original operation and intent for lookup or retry. An accepted acknowledgement
+must match that intent and the SHA-256 digest of its recursively key-sorted JSON encoding. Failure after dispatch
+is unconfirmed; it does not prove the request was not accepted. `placed` is
+ledger-proved placement or start, not model consumption or result success.
+Published result reads require the sequence and both digests and verify the
+returned Markdown content digest. No shared provider execution is enabled by
+this SDK surface.
+
 ### Task room agent requests
 
 `@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,

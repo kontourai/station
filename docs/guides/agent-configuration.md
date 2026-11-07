@@ -22,6 +22,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.agentConnectionId` | Saved engine connection binding; absence selects Station's engine |
 | `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |
 | `execution.modelId` | Explicit model preference on that execution binding |
+| `execution.sharedTurns` | Optional operator declaration for separately negotiated shared model-only turns; shared execution is not yet available |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
 | `audience` | Who besides the operator may list, read and use the Agent; absent means operator only ([reference](../reference/config.md#audience)) |

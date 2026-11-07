@@ -1,6 +1,18 @@
 import { isTaskRoomAttachments } from '@kontourai/station-contracts/project-task-room';
 import {
+  isSharedAgentRequest,
+  isSharedResultRef,
+  type SharedAgentRequest,
+  type SharedContextSnapshot,
+  type SharedResultRef,
+  type SharedTaskIdentity,
+  type SharedWorkCapability,
+  type SharedWorkOutcome,
+  type SharedWorkRecord,
   TASK_ROOM_CONTEXT_VERSION,
+  TASK_ROOM_SHARED_CONTEXT_VERSION,
+  TASK_ROOM_SHARED_RESULT_VERSION,
+  TASK_ROOM_SHARED_WORK_VERSION,
   TASK_ROOM_WORK_VERSION,
   type TaskRoomContextSnapshot,
   type TaskRoomWorkInput,
@@ -9,11 +21,16 @@ import {
   type TaskRoomWorkRecord,
 } from '@kontourai/station-contracts/task-room-work';
 import { envelopeError } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ApiRequestScope,
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+} from './http';
 
 /** Stable option identity shared by the request sender and durable reservation owner. */
 export async function taskRoomModelOptionsDigest(
-  options: Readonly<Record<string, unknown>>,
+  options: unknown,
 ): Promise<string> {
   const canonical = JSON.stringify(options, (_key, value) =>
     value && typeof value === 'object' && !Array.isArray(value)
@@ -138,7 +155,7 @@ export async function fetchTaskRoomAgentRequests(
   if (
     value.contextVersion !== undefined &&
     (value.contextVersion !== TASK_ROOM_CONTEXT_VERSION ||
-      (value.context !== null && !contextSnapshot(value.context)))
+      (value.context !== null && !sharedBrief(value.context)))
   )
     throw new TaskRoomWorkProtocolError('Task brief context is unavailable.');
   return {
@@ -297,4 +314,428 @@ export async function submitTaskRoomAgentRequest(
   throw new TaskRoomWorkProtocolError(
     'Agent request acknowledgement is unavailable. Check requests before retrying.',
   );
+}
+
+// UNWIRED(#4659): these paths negotiate a future shared receiver.
+export interface SharedWorkRequestOptions extends ClientRequestOptions {
+  requestScope: ApiRequestScope;
+  isCurrent: () => boolean;
+}
+const unavailable = (): SharedWorkCapability => ({
+  version: TASK_ROOM_SHARED_WORK_VERSION,
+  kind: 'unavailable',
+  reason: 'unsupported',
+});
+const sharedPath = (apiBase: string, taskId: string) =>
+  `${apiBase}/api/tasks/${encodeURIComponent(taskId)}/room/agent-requests/shared`;
+const sharedDigest = (value: unknown): value is string =>
+  typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+const sharedText = (value: unknown, max: number): value is string =>
+  typeof value === 'string' &&
+  value.length > 0 &&
+  value.length <= max &&
+  value.trim() === value;
+const keys = (
+  value: unknown,
+  names: readonly string[],
+): value is Record<string, unknown> =>
+  object(value) &&
+  Object.keys(value).length === names.length &&
+  names.every((name) => Object.keys(value).includes(name));
+const same = (left: unknown, right: unknown) =>
+  JSON.stringify(left, canonicalOrder) ===
+  JSON.stringify(right, canonicalOrder);
+function canonicalOrder(_key: string, value: unknown): unknown {
+  return object(value)
+    ? Object.fromEntries(
+        Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+      )
+    : value;
+}
+function sameTask(
+  value: SharedTaskIdentity,
+  scope: SharedTaskIdentity,
+): boolean {
+  return (
+    value.projectId === scope.projectId &&
+    value.taskId === scope.taskId &&
+    value.taskCreatedAt === scope.taskCreatedAt
+  );
+}
+function sharedBrief(value: unknown): value is TaskRoomContextSnapshot {
+  return (
+    keys(value, [
+      'version',
+      'digest',
+      'title',
+      'description',
+      'documentRevision',
+      'text',
+    ]) && contextSnapshot(value)
+  );
+}
+function sharedSnapshot(
+  value: unknown,
+  scope: SharedTaskIdentity,
+  input: SharedAgentRequest,
+): value is SharedContextSnapshot {
+  return (
+    keys(value, ['version', 'digest', 'brief', 'results']) &&
+    value.version === TASK_ROOM_SHARED_CONTEXT_VERSION &&
+    sharedDigest(value.digest) &&
+    sharedBrief(value.brief) &&
+    value.brief.digest === input.context.brief.digest &&
+    value.brief.documentRevision === input.context.brief.documentRevision &&
+    Array.isArray(value.results) &&
+    value.results.length === input.context.results.length &&
+    value.results.every(
+      (item, index) =>
+        keys(item, ['reference', 'markdown']) &&
+        isSharedResultRef(item.reference) &&
+        sameTask(item.reference, scope) &&
+        same(item.reference, input.context.results[index]) &&
+        typeof item.markdown === 'string',
+    )
+  );
+}
+async function publishedDigest(markdown: string): Promise<string> {
+  const bytes = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(markdown),
+  );
+  return [...new Uint8Array(bytes)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+async function snapshotContentMatches(
+  snapshot: SharedContextSnapshot,
+): Promise<boolean> {
+  for (const result of snapshot.results) {
+    if (
+      (await publishedDigest(result.markdown)) !==
+      result.reference.contentDigest
+    )
+      return false;
+  }
+  return true;
+}
+function sharedRecord(
+  value: unknown,
+  scope: SharedTaskIdentity,
+  input: SharedAgentRequest,
+  inputDigest: string,
+): value is SharedWorkRecord {
+  return (
+    keys(value, [
+      'version',
+      'projectId',
+      'taskId',
+      'taskCreatedAt',
+      'operationId',
+      'requesterId',
+      'expectedActorId',
+      'agentId',
+      'modelId',
+      'inputDigest',
+      'context',
+      'target',
+      'state',
+    ]) &&
+    value.version === TASK_ROOM_SHARED_WORK_VERSION &&
+    value.projectId === scope.projectId &&
+    value.taskId === scope.taskId &&
+    value.taskCreatedAt === scope.taskCreatedAt &&
+    value.operationId === input.operationId &&
+    sharedText(value.requesterId, 512) &&
+    value.expectedActorId === input.expectedActorId &&
+    value.agentId === input.agentId &&
+    value.modelId === input.modelId &&
+    value.inputDigest === inputDigest &&
+    same(value.target, input.target) &&
+    sharedSnapshot(value.context, scope, input) &&
+    typeof value.state === 'string' &&
+    [
+      'waiting',
+      'placing',
+      'placed',
+      'refused',
+      'withdrawn',
+      'unconfirmed',
+    ].includes(value.state)
+  );
+}
+export async function fetchSharedTaskRoomCapabilities(
+  apiBase: string,
+  taskId: string,
+  options: SharedWorkRequestOptions,
+): Promise<SharedWorkCapability> {
+  if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
+    throw new TaskRoomWorkProtocolError('Task request connection changed.');
+  let response: Response;
+  try {
+    response = await getJson(
+      `${sharedPath(apiBase, taskId)}-capabilities`,
+      options,
+    );
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    return unavailable();
+  }
+  if (response.status === 404) return unavailable();
+  let value: unknown;
+  try {
+    value = await data(response);
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    return unavailable();
+  }
+  if (!options.isCurrent())
+    throw new TaskRoomWorkProtocolError('Task request connection changed.');
+  if (!object(value) || value.version !== TASK_ROOM_SHARED_WORK_VERSION)
+    return unavailable();
+  if (
+    keys(value, ['version', 'kind', 'reason']) &&
+    value.kind === 'unavailable' &&
+    typeof value.reason === 'string' &&
+    [
+      'unsupported',
+      'access',
+      'host',
+      'agent',
+      'model',
+      'compute',
+      'confinement',
+    ].includes(value.reason)
+  ) {
+    switch (value.reason) {
+      case 'unsupported':
+      case 'access':
+      case 'host':
+      case 'agent':
+      case 'model':
+      case 'compute':
+      case 'confinement':
+        return {
+          version: TASK_ROOM_SHARED_WORK_VERSION,
+          kind: 'unavailable',
+          reason: value.reason,
+        };
+    }
+  }
+  if (
+    !keys(value, [
+      'version',
+      'kind',
+      'contextVersion',
+      'resultVersion',
+      'mode',
+      'nextTurn',
+      'agents',
+      'context',
+    ]) ||
+    value.kind !== 'available' ||
+    value.contextVersion !== TASK_ROOM_SHARED_CONTEXT_VERSION ||
+    value.resultVersion !== TASK_ROOM_SHARED_RESULT_VERSION ||
+    value.mode !== 'model-only' ||
+    value.nextTurn !== 'durable' ||
+    !Array.isArray(value.agents) ||
+    value.agents.length > 160 ||
+    !value.agents.every(
+      (agent) =>
+        keys(agent, ['agentId', 'definitionFingerprint', 'modelIds']) &&
+        sharedText(agent.agentId, 160) &&
+        typeof agent.definitionFingerprint === 'string' &&
+        /^sha256:[0-9a-f]{64}$/.test(agent.definitionFingerprint) &&
+        Array.isArray(agent.modelIds) &&
+        agent.modelIds.length > 0 &&
+        agent.modelIds.length <= 160 &&
+        agent.modelIds.every((id) => sharedText(id, 512)) &&
+        new Set(agent.modelIds).size === agent.modelIds.length,
+    ) ||
+    (value.context !== null && !sharedBrief(value.context))
+  )
+    return unavailable();
+  return {
+    version: TASK_ROOM_SHARED_WORK_VERSION,
+    kind: 'available',
+    contextVersion: TASK_ROOM_SHARED_CONTEXT_VERSION,
+    resultVersion: TASK_ROOM_SHARED_RESULT_VERSION,
+    mode: 'model-only',
+    nextTurn: 'durable',
+    agents: value.agents,
+    context: value.context,
+  };
+}
+export async function submitSharedTaskRoomAgentRequest(
+  apiBase: string,
+  scope: SharedTaskIdentity,
+  input: SharedAgentRequest,
+  options: SharedWorkRequestOptions,
+): Promise<SharedWorkOutcome> {
+  if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
+    return { kind: 'not-sent', reason: 'authority' };
+  if (
+    !isSharedAgentRequest(input) ||
+    input.taskCreatedAt !== scope.taskCreatedAt ||
+    input.context.results.some((ref) => !sameTask(ref, scope)) ||
+    (input.target.kind === 'thread' && !sameTask(input.target.thread, scope))
+  )
+    return { kind: 'not-sent', reason: 'input' };
+  const intent = structuredClone(input);
+  const task = { ...scope };
+  const capability = await fetchSharedTaskRoomCapabilities(
+    apiBase,
+    task.taskId,
+    options,
+  );
+  if (
+    capability.kind !== 'available' ||
+    !capability.agents.some(
+      (agent) =>
+        agent.agentId === intent.agentId &&
+        agent.modelIds.includes(intent.modelId),
+    )
+  )
+    return { kind: 'not-sent', reason: 'unavailable' };
+  if (options.signal?.aborted) throw options.signal.reason;
+  const inputDigest = await taskRoomModelOptionsDigest(intent);
+  if (!options.isCurrent()) return { kind: 'not-sent', reason: 'authority' };
+  try {
+    const response = await mutateJson(
+      sharedPath(apiBase, task.taskId),
+      'POST',
+      options,
+      intent,
+    );
+    const value = await data(response);
+    if (
+      options.isCurrent() &&
+      keys(value, ['kind', 'record', 'replayed']) &&
+      value.kind === 'accepted' &&
+      typeof value.replayed === 'boolean' &&
+      sharedRecord(value.record, task, intent, inputDigest) &&
+      (await snapshotContentMatches(value.record.context)) &&
+      options.isCurrent()
+    )
+      return {
+        kind: 'accepted',
+        record: value.record,
+        replayed: value.replayed,
+      };
+  } catch {
+    // Once dispatch begins, failure or cancellation does not prove non-acceptance.
+  }
+  return { kind: 'unconfirmed', operationId: intent.operationId };
+}
+export async function fetchSharedTaskRoomRequests(
+  apiBase: string,
+  scope: SharedTaskIdentity,
+  input: SharedAgentRequest,
+  options: SharedWorkRequestOptions,
+): Promise<readonly SharedWorkRecord[]> {
+  if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
+    throw new TaskRoomWorkProtocolError('Task request connection changed.');
+  if (
+    !isSharedAgentRequest(input) ||
+    input.taskCreatedAt !== scope.taskCreatedAt
+  )
+    throw new TaskRoomWorkProtocolError('Invalid shared request.');
+  const inputDigest = await taskRoomModelOptionsDigest(input);
+  const value = await data(
+    await getJson(sharedPath(apiBase, scope.taskId), options),
+  );
+  if (
+    !keys(value, ['version', 'records']) ||
+    value.version !== TASK_ROOM_SHARED_WORK_VERSION ||
+    !Array.isArray(value.records)
+  )
+    throw new TaskRoomWorkProtocolError('Invalid shared request records.');
+  const matches: SharedWorkRecord[] = [];
+  for (const record of value.records) {
+    if (!object(record) || record.operationId !== input.operationId) continue;
+    if (
+      !sharedRecord(record, scope, input, inputDigest) ||
+      !(await snapshotContentMatches(record.context))
+    )
+      throw new TaskRoomWorkProtocolError('Invalid shared request record.');
+    matches.push(record);
+  }
+  if (!options.isCurrent())
+    throw new TaskRoomWorkProtocolError('Task request connection changed.');
+  return matches;
+}
+export async function withdrawSharedTaskRoomRequest(
+  apiBase: string,
+  scope: SharedTaskIdentity,
+  input: SharedAgentRequest,
+  options: SharedWorkRequestOptions,
+): Promise<SharedWorkOutcome> {
+  if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
+    return { kind: 'not-sent', reason: 'authority' };
+  if (
+    !isSharedAgentRequest(input) ||
+    input.taskCreatedAt !== scope.taskCreatedAt
+  )
+    return { kind: 'not-sent', reason: 'input' };
+  if (options?.signal?.aborted) throw options.signal.reason;
+  const inputDigest = await taskRoomModelOptionsDigest(input);
+  if (!options.isCurrent()) return { kind: 'not-sent', reason: 'authority' };
+  try {
+    const value = await data(
+      await mutateJson(
+        `${sharedPath(apiBase, scope.taskId)}/${encodeURIComponent(input.operationId)}`,
+        'DELETE',
+        options,
+      ),
+    );
+    if (
+      keys(value, ['kind', 'record', 'replayed']) &&
+      value.kind === 'accepted' &&
+      typeof value.replayed === 'boolean' &&
+      sharedRecord(value.record, scope, input, inputDigest) &&
+      (await snapshotContentMatches(value.record.context)) &&
+      options.isCurrent()
+    )
+      return {
+        kind: 'accepted',
+        record: value.record,
+        replayed: value.replayed,
+      };
+  } catch {
+    // A dispatched withdrawal can settle even if its response is lost.
+  }
+  return { kind: 'unconfirmed', operationId: input.operationId };
+}
+export async function fetchSharedTaskRoomResult(
+  apiBase: string,
+  scope: SharedTaskIdentity,
+  reference: SharedResultRef,
+  options: SharedWorkRequestOptions,
+): Promise<string> {
+  if (!options.isCurrent() || options.requestScope.apiBase !== apiBase)
+    throw new TaskRoomWorkProtocolError('Task request connection changed.');
+  if (!isSharedResultRef(reference) || !sameTask(reference, scope))
+    throw new TaskRoomWorkProtocolError('Invalid shared result reference.');
+  const query = new URLSearchParams({
+    sequence: String(reference.sequence),
+    proposalDigest: reference.proposalDigest,
+    contentDigest: reference.contentDigest,
+  });
+  const value = await data(
+    await getJson(
+      `${apiBase}/api/tasks/${encodeURIComponent(scope.taskId)}/room/agent-results/${encodeURIComponent(reference.sessionId)}/${encodeURIComponent(reference.turnId)}?${query}`,
+      options,
+    ),
+  );
+  if (
+    !keys(value, ['reference', 'markdown']) ||
+    !same(value.reference, reference) ||
+    typeof value.markdown !== 'string'
+  )
+    throw new TaskRoomWorkProtocolError('Invalid shared result.');
+  if ((await publishedDigest(value.markdown)) !== reference.contentDigest)
+    throw new TaskRoomWorkProtocolError('Shared result digest mismatch.');
+  if (!options.isCurrent())
+    throw new TaskRoomWorkProtocolError('Task request connection changed.');
+  return value.markdown;
 }

@@ -13,6 +13,17 @@ when the API base, request authority, Task ID or Task creation time changes.
 That remount does not restore Task data, drafts or editor mode from the view
 choice. **Plan** starts in preview; editing remains an explicit action.
 
+## Shared work negotiation
+
+The shared work, context and published-result contracts are separate from the
+personal request path described below. The SDK reserves room-scoped paths and
+requires a supported capability before submission. Current hosts do not mount
+those shared paths. The Agent's `execution.sharedTurns` declaration does not
+itself admit a request or establish runtime confinement. A lost acknowledgement
+is unconfirmed; callers retain the exact operation and selected context. These
+contracts do not establish provider, invited-user, or UI behavior. See the
+[SDK reference](../reference/sdk.md#shared-task-agent-request-negotiation).
+
 ## Owners and transport
 
 The [work module](../../src-server/services/projects/task-room-work-module.ts)
