@@ -662,9 +662,6 @@ as navigation authority.
 owns registered handlers, priority, conditional dispatch and local binding
 overrides. `useKeyboardShortcuts` exposes registration/binding actions;
 `useShortcutRegistry` subscribes readers such as the settings list and palette.
-Chrome that can render without the provider, such as the header's palette
-entry, uses `useOptionalShortcutRegistry`, which returns nothing there instead
-of throwing.
 Registration must not re-render registering components into a loop. A replaced
 handler's identity and registry order remain observable even when its display
 metadata is unchanged.
