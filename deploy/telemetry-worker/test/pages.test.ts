@@ -119,7 +119,7 @@ test('insights renders the operator JSON as headline numbers and charts', async 
       'First activity by week',
       'First activity by month',
       'New-install reports per day',
-      'Favorite harness',
+      'Reported harnesses',
       'Version adoption',
       'Surfaces used',
       'Platform',
@@ -490,6 +490,7 @@ test('insights tiles and period charts count the right flags on seeded pings', a
     [...document.querySelectorAll('.tile')]
       .find((node) => node.querySelector('.label')?.textContent === label)
       ?.querySelector('.value')?.textContent;
+  expect(tile('Reports in window')).toBe('5');
   expect(tile('Reports received today')).toBe('1');
   expect(tile('Yesterday')).toBe('0');
   expect(tile('First activity this week')).toBe('2');

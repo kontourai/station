@@ -69,6 +69,7 @@ const PAGE_JS = String.raw`
     days.forEach(function (day, i) { if (day >= thisWeek) wau += weekFlag[i]; if (day.slice(0, 7) === thisMonth) mau += monthFlag[i]; });
     var installs = fresh.reduce(function (s, v) { return s + v; }, 0);
 
+    C.stat(tiles, 'Reports in window', C.full(t.reduce(function (sum, value) { return sum + value; }, 0)), 'Since ' + C.shortDay(days[0]));
     C.stat(tiles, 'Reports received today', C.full(t[n - 1]), 'So far · UTC day ' + C.shortDay(today), true);
     C.stat(tiles, 'Yesterday', C.full(n > 1 ? t[n - 2] : 0), 'Usage reports');
     C.stat(tiles, 'First activity this week', C.full(wau), 'Reports marked first active this week');
@@ -99,7 +100,7 @@ const PAGE_JS = String.raw`
     var halves = [];
     var engines = totalsOver(data, 'engines_used_today', 30).filter(function (r) { return r.label !== 'none'; });
     var engineMentions = engines.reduce(function (s, r) { return s + r.value; }, 0);
-    halves.push({ title: 'Favorite harness', caption: 'Share of engine use across received reports · last 30 days',
+    halves.push({ title: 'Reported harnesses', caption: 'Share of engine use across received reports · last 30 days',
       draw: function (body) { C.barList(body, withShare(engines, engineMentions), { share: true, unit: 'reports' }); } });
 
     // Every per-engine bucket dimension (values 'engine:bucket'), token
