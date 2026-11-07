@@ -885,8 +885,9 @@ opens on that entry's first step.
    New chat uses the dock's current Project, or no Project when none is open.
    Choose **Done** to finish without opening a chat.
 
-A configured engine that reads **Setup required** offers **Retry check** on its
-engine page; a Ready engine offers **Check connection** instead.
+A configured command-backed engine that is not ready offers **Retry check** on its
+engine page, except one the managed policy refuses (**Not allowed**), which has
+no repair; a Ready engine offers **Check connection** instead.
 An engine whose first check never succeeded is saved but has no Agent yet; it
 is listed on the Engines page and at the top of Add engine as **Not connected
 yet**, and its page offers **Retry check**, **Remove**, and, for a custom
