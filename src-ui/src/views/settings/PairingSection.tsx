@@ -1,8 +1,10 @@
 import { Button } from '../../components/Button';
+import { ManagedRemoteClientsNote } from '../../components/managed/ManagedRemoteClientsNote';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { useManagedRemoteClientsLimit } from '../../hooks/useManagedRemoteClientsRefusal';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
@@ -16,6 +18,9 @@ export function PairingSection() {
   const profile = usePlatformProfile();
   const { isMobile } = profile;
   const canInviteDevice = hasLocalStationForProfile(profile);
+  // #4519: the Station's managed policy allows no remote clients.
+  const policyLimit = useManagedRemoteClientsLimit();
+  const managedRefusal = canInviteDevice ? policyLimit : undefined;
   const { openLastStationOnLaunch } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   return (
@@ -35,6 +40,10 @@ export function PairingSection() {
           title={undefined}
           size="sm"
           className="settings__header-action"
+          disabled={managedRefusal !== undefined}
+          aria-describedby={
+            managedRefusal ? 'pairing-managed-refusal' : undefined
+          }
           onClick={() =>
             openConnectionsModal({
               mode: canInviteDevice ? 'pair-host' : 'pair-device',
@@ -45,7 +54,7 @@ export function PairingSection() {
         </Button>
       }
     >
-      {canInviteDevice && <LanDiscoveryControl />}
+      {canInviteDevice && !managedRefusal && <LanDiscoveryControl />}
       {isMobile && (
         <div {...settingsRow('open-last-station')} tabIndex={-1}>
           <SettingsToggle
@@ -76,11 +85,19 @@ export function PairingSection() {
           </SettingsToggle>
         </div>
       )}
-      <p className="settings__section-note">
-        {canInviteDevice
-          ? 'Invite a phone or another device to the selected Station.'
-          : 'Scan a pairing code to connect this phone to another Station.'}
-      </p>
+      {managedRefusal ? (
+        <ManagedRemoteClientsNote
+          summary={managedRefusal}
+          className="settings__section-note"
+          id="pairing-managed-refusal"
+        />
+      ) : (
+        <p className="settings__section-note">
+          {canInviteDevice
+            ? 'Invite a phone or another device to the selected Station.'
+            : 'Scan a pairing code to connect this phone to another Station.'}
+        </p>
+      )}
       {/* #3557: a person's own tokens, beside the device they act from. It
           renders nothing unless this device is tied to a person. */}
       <OwnAccessTokensPanel />

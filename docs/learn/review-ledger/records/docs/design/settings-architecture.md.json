@@ -110,7 +110,13 @@
 
     "src-ui/src/components/chat/MessageBubble.tsx",
 
-    "src-ui/src/index.css"
+    "src-ui/src/index.css",
+
+    "src-ui/src/views/ProjectSettingsView.tsx",
+
+    "src-ui/src/hooks/useSectionNavigation.ts",
+
+    "src-ui/src/contexts/__tests__/AccountPreferencesContext.test.tsx"
   ],
 
   "checks": [

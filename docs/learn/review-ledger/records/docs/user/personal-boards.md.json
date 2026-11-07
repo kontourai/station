@@ -64,7 +64,21 @@
 
     "src-server/services/plugins/tool-library-catalog.ts",
 
-    "src-server/services/plugins/tool-library-service.ts"
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-ui/src/views/apps/AppsLibrary.tsx",
+
+    "src-ui/src/views/apps/AppDetailsDialog.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+
+    "src-ui/src/views/apps/__tests__/AppsLibrary.test.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+
+    "src-ui/src/views/apps/AppsLibrary.css",
+
+    "src-ui/src/__tests__/ProjectSidebarBoards.test.tsx"
   ],
 
   "checks": [

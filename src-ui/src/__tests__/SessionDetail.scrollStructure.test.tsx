@@ -1,10 +1,11 @@
+import { PreviewProvider } from '../contexts/PreviewContext';
 // @vitest-environment jsdom
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ToastProvider } from '../contexts/ToastContext';
 
@@ -27,7 +28,8 @@ const receiptData = vi.hoisted(() => ({
 // The chat's user avatar reads auth, which this harness does not provide.
 vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useAgentsQuery: () => ({ data: [], error: null }),
   // The chat's per-message rating, inert here.
   useFeedbackRatingsQuery: () => ({ data: [] }),
@@ -80,7 +82,7 @@ const detailState = {
   workflowMoreCount: 0,
 };
 
-// The conversation's source has its own suite (SessionTranscript.test.tsx);
+// The conversation's source has its own suite (ConversationReader.test.tsx);
 // here it is a settled read of the events each test names.
 const transcriptEvents = vi.hoisted(() => ({ value: [] as unknown[] }));
 vi.mock('../hooks/orchestration/useSessionTranscriptEvents', () => ({
@@ -121,18 +123,23 @@ const ev = (
     ...e,
   }) as unknown as CanonicalRuntimeEvent;
 
-function withClient(node: React.ReactElement) {
+async function withClient(node: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   // The real ToastProvider, not a stub: AttachedSessionDetail calls `useToast`
   // at its top and throws outside a provider, so a render without one fails
   // before this file's structural assertions ever run.
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>{node}</ToastProvider>
+      <ToastProvider>
+        <PreviewProvider>{node}</PreviewProvider>
+      </ToastProvider>
     </QueryClientProvider>,
   );
+  await within(view.container).findByTestId('session-transcript');
+  await within(view.container).findByRole('textbox');
+  return view;
 }
 
 /**
@@ -147,13 +154,7 @@ function withClient(node: React.ReactElement) {
  * not named at all). So the assertion runs the other way — anything that is
  * not pinned chrome is a scroll-region failure by default.
  */
-const PINNED_CHILD_CLASSES = [
-  'sessions-detail__header',
-  'sessions-detail__scroll',
-  'sessions-detail__request',
-  'sessions-detail__compose',
-  'sessions-detail__note',
-];
+const PINNED_CHILD_CLASSES = ['sessions-detail__header', 'conversation-body'];
 
 function unpinnedChildrenOutsideScroll(detail: Element): string[] {
   return [...detail.children]
@@ -167,7 +168,7 @@ function unpinnedChildrenOutsideScroll(detail: Element): string[] {
 }
 
 describe('session detail scroll structure (station#3305)', () => {
-  test('renders the latest receipt origin and keeps absent provenance unknown', () => {
+  test('renders the latest receipt origin and keeps absent provenance unknown', async () => {
     receiptData.value = [
       { createdAt: '2026-08-23T00:00:00.000Z' },
       {
@@ -178,7 +179,7 @@ describe('session detail scroll structure (station#3305)', () => {
         },
       },
     ];
-    const rendered = withClient(
+    const rendered = await withClient(
       <MutableSessionDetail
         apiBase="http://station.test"
         session={session}
@@ -202,7 +203,7 @@ describe('session detail scroll structure (station#3305)', () => {
     );
     rendered.unmount();
     receiptData.value = undefined;
-    withClient(
+    await withClient(
       <MutableSessionDetail
         apiBase="http://station.test"
         session={session}
@@ -217,7 +218,7 @@ describe('session detail scroll structure (station#3305)', () => {
   // Activity redesign: the conversation itself replaces the standalone
   // "Result" card, inside the scroll region and ahead of the collapsed
   // Details (evidence) disclosure.
-  test('renders the conversation inside the scroll region, ahead of the Details disclosure', () => {
+  test('renders the conversation inside the scroll region, ahead of the Details disclosure', async () => {
     receiptData.value = undefined;
     transcriptEvents.value = [
       ev({ method: 'turn.started', turnId: 't1', prompt: 'do the thing' }),
@@ -229,7 +230,7 @@ describe('session detail scroll structure (station#3305)', () => {
         outputText: 'Done.',
       }),
     ];
-    withClient(
+    await withClient(
       <MutableSessionDetail
         apiBase="http://station.test"
         session={session}
@@ -274,8 +275,8 @@ describe('session detail scroll structure (station#3305)', () => {
    * connection status and the composer stay pinned around it, and nothing
    * else sits outside it to be clipped.
    */
-  test('read-only detail: the conversation scrolls in the chat log, with only its header, status and composer pinned', () => {
-    withClient(
+  test('read-only detail: the conversation scrolls in the chat log, with only its header, status and composer pinned', async () => {
+    await withClient(
       <AttachedSessionDetail
         apiBase="http://station.test"
         session={session}
@@ -294,21 +295,22 @@ describe('session detail scroll structure (station#3305)', () => {
     );
 
     const detail = screen.getByTestId('session-detail');
-    const log = screen.getByRole('log', { name: 'Conversation messages' });
-    expect(log.parentElement).toBe(detail);
+    const log = screen.getByRole('log', { name: 'Conversation transcript' });
+    expect(log.closest('.sessions-detail__scroll')).toBe(
+      detail.querySelector('.sessions-detail__scroll'),
+    );
     expect(
-      screen.getByTestId('attached-session-transcript').closest('[role="log"]'),
+      screen.getByTestId('session-transcript').querySelector('[role="log"]'),
     ).toBe(log);
     expect([...detail.children].map((child) => child.className)).toEqual([
       'sessions-detail__chat-header',
       'sessions-detail__connection-state',
-      'chat-messages',
-      'external-chat-composer chat-input',
+      'conversation-body conversation-body--record',
     ]);
   });
 
-  test('mutable detail: context and diagnostics scroll; the composer is pinned outside the scroll region', () => {
-    withClient(
+  test('mutable detail: context and diagnostics scroll; the composer is pinned outside the scroll region', async () => {
+    await withClient(
       <MutableSessionDetail
         apiBase="http://station.test"
         session={session}
@@ -337,7 +339,7 @@ describe('session detail scroll structure (station#3305)', () => {
     // …while the composer stays reachable without scrolling.
     expect(
       screen
-        .getByRole('textbox', { name: 'Send input to session' })
+        .getByRole('textbox', { name: 'Message' })
         .closest('.sessions-detail__scroll'),
     ).toBeNull();
 
@@ -356,7 +358,7 @@ describe('session detail scroll structure (station#3305)', () => {
   // region never scrolls — the same "details don't show" outcome the grid
   // template produced. jsdom ignores width media queries, so a narrow-viewport
   // override is out of this test's reach.
-  test('the scroll region does not let its children compress instead of scrolling', () => {
+  test('the scroll region does not let its children compress instead of scrolling', async () => {
     const sheet = document.createElement('style');
     sheet.textContent = readFileSync(
       join(__dirname, '..', 'views', 'SessionsView.css'),
@@ -378,7 +380,7 @@ describe('session detail scroll structure (station#3305)', () => {
         };
       };
 
-      const mutable = withClient(
+      const mutable = await withClient(
         <MutableSessionDetail
           apiBase="http://station.test"
           session={session}
@@ -389,7 +391,7 @@ describe('session detail scroll structure (station#3305)', () => {
         />,
       );
       const mutableChildren = shrinkingChildren();
-      expect(mutableChildren.classes).toContain('session-transcript');
+      expect(mutableChildren.classes).toContain('conversation-reader');
       expect(mutableChildren.classes).toContain('sessions-detail__disclosure');
       expect(mutableChildren.shrinking).toEqual([]);
       mutable.unmount();

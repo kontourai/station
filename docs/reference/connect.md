@@ -667,7 +667,11 @@ permissions. Ordinary Device-use grants, including running commands and full
 access, remain available; protected promotions keep their separate operator path.
 
 At the end of onboarding or in the Connections modal, choose **Connect another device** to invite a phone
-to the selected Station server. The panel asks the Station for its reachable
+to the selected Station server. A host that cannot pair other devices (its
+[managed policy](../guides/managed-policy.md#network-exposure) allows no
+remote clients) passes its explanation as `pairingRefusal`: the modal then
+disables **Connect another device** and **Approve another device**, and shows
+the explanation in place of the pairing panel. The panel asks the Station for its reachable
 routes (`GET /api/system/routes`) and opens straight to a pre-approved code on
 the first HTTPS one (a code carries a secret, and the phone's decoder accepts
 only HTTPS, so cleartext LAN and Tailscale IP routes are not listed); choosing
@@ -726,6 +730,26 @@ valid and unrevoked. Cross-origin and native exchanges support bearer delivery;
 Station's native host captures and holds it outside the WebView.
 Expired, denied, cancelled, altered, replayed, and unconfirmed offers are
 rejected.
+
+With a code or scanned invitation, the dialog's action is **Connect**; only an
+address-only request reads **Request access**. When the code still needs
+approval, the dialog stays open on a waiting view that names the Station,
+counts down to the request's expiry and offers **Stop waiting**. The
+application shell owns the exchange from that point
+(`src-ui/src/components/PendingPairingReconciler.tsx`): it keeps polling with
+the existing backoff while **Manage Stations** is open, the dialog is closed,
+or the saved Station is renamed, and stops only on approval, decline, expiry,
+or **Stop waiting**. On approval the device connects without further action
+and the waiting dialog closes.
+
+`completeVerifiedPairing` (`packages/connect/src/react/pairingCompletion.ts`)
+refuses to save access that would replace the selected Station's access or
+route, except when the selected Station is the target and this device holds no
+access to it (no saved credential or device session, and no differing reported
+identity). A held exchange attempt (`exchangeAttempt`) is not reported as
+awaiting approval by `observePendingPairingApproval`; its recovery is **Pair
+again**, which retires the hold and sends a fresh request whose approval
+supersedes the unsaved grant for the same client instance.
 
 Use the paired-device inventory in the same host panel to revoke one device.
 Revocation makes the credential fail subsequent authenticated HTTP, SSE and

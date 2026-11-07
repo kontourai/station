@@ -24,18 +24,19 @@
  * THE TWO THINGS THAT MAKE THIS GUARD REAL, both of which it asserts as
  * preconditions rather than assuming:
  *
- * 1. THE CONNECTION CHIP MUST BE IN THE DRIVEN STATE, AND DOT-ONLY. Every
- *    state renders dot-only at ~44px on mobile, because `chat.css` hides
- *    `.app-toolbar__conn-state` in every state under the mobile breakpoint —
- *    the banner layer announces the states that need a decision, and the
- *    drawer footer owns Settings. EVERY defect in the retired class lived in
- *    a labelled chip, and two independent lanes have each measured this
- *    toolbar in the CONNECTED state and concluded it fits. So each case below
- *    drives ONE NAMED failure state and pins the exact modifier class it got
- *    (a drive that silently lands elsewhere measures a chip nobody chose),
- *    and the preconditions assert the label span lays out zero width and the
- *    chip sits at the 44px touch floor. A regressed label shows up here as a
- *    wider chip in exactly that state.
+ * 1. THE CONNECTION CHIP MUST BE IN THE DRIVEN STATE, WITH ITS FIXED NAME
+ *    SLOT. Every state renders the dot and the Station name in one fixed-width
+ *    slot on mobile, because `chat.css` hides `.app-toolbar__conn-state` in
+ *    every state under the mobile breakpoint — the banner layer announces the
+ *    states that need a decision, and the drawer footer owns Settings. EVERY
+ *    defect in the retired class lived in a chip whose width followed its
+ *    text, and two independent lanes have each measured this toolbar in the
+ *    CONNECTED state and concluded it fits. So each case below drives ONE
+ *    NAMED failure state and pins the exact modifier class it got (a drive
+ *    that silently lands elsewhere measures a chip nobody chose), and the
+ *    preconditions assert the state text lays out zero width, the name fills
+ *    exactly its literal slot, and the chip meets the 44px touch floor. A
+ *    regressed label shows up here as a wrong slot in exactly that state.
  *
  * 2. THE INVENTORY MUST NOT BE EMPTY OR HALF-EMPTY. A hit test over zero
  *    controls passes forever. `assertToolbarPreconditions` requires four
@@ -152,9 +153,9 @@ const REQUIRED_CONTROL_KEYS = [
  *
  * 412 is the Pixel 7's own viewport. 402 is a second real Android width. 390
  * is the common iPhone width #1401 closed. 375 and 360 are the two sides of
- * the retired label-drop breakpoint (#1132/#1401): the chip is dot-only at
- * both now, and keeping both pins that no width-conditional label rule crept
- * back. Five rather than two because a single width cannot notice a defect
+ * the retired label-drop breakpoint (#1132/#1401): the chip shows the same
+ * name slot at both now, and keeping both pins that no width-conditional
+ * label rule crept back. Five rather than two because a single width cannot notice a defect
  * confined to a narrow band, and a narrow band is exactly what a regressed
  * breakpoint leaves behind.
  */
@@ -172,21 +173,19 @@ const PRODUCT_NAMES: readonly string[] = ['Station', 'Station Nightly'];
 /**
  * Literal expectations for the app name that do NOT depend on the measured
  * slot (the slot check in `assertToolbarPreconditions` is derived from the
- * post-layout chip position, so a chip that stopped being a fixed 44px dot
+ * post-layout chip position, so a chip that grew past its fixed name slot
  * would shrink the slot and excuse a hidden name). Each list is pinned here as
  * literals.
  *
- * "Station Nightly" is the owner's real build: it is whole at 375 (a real
- * iPhone width) and 393 and every wider width, in every connection state, and
- * wrapped away whole at 320. "Station" is whole at 360, 375 and 393. The
- * widest measured name box is 107.41px; at 375 the row leaves the lockup about
- * 140px (22 logo + 10 gap + the name) with ~11px to spare, which is what these
- * pins protect. 360 is deliberately not listed for "Station Nightly": the row
- * is ~5px short of slack there, so it is whole or not by font metrics.
+ * On a phone the chip shows the connected Station's name in every state
+ * (owner decision, 2026-11-05), and that name wins over the app name: the
+ * wordmark wraps away whole wherever the row cannot hold it, while the logo
+ * stays. Measured: "Station" is whole at 440 in every connection state (412 is
+ * whole or not by font metrics, so it is not listed), and "Station Nightly"
+ * (107.41px) is wrapped away at every width this spec drives.
  */
 const NAME_WHOLE_WIDTHS: Readonly<Record<string, readonly number[]>> = {
-  'Station Nightly': [440, 412, 402, 393, 390, 375],
-  Station: [440, 412, 402, 393, 390, 375, 360, 320],
+  Station: [440],
 };
 const NAME_HIDDEN_WIDTHS: Readonly<Record<string, readonly number[]>> = {
   'Station Nightly': [320],
@@ -224,11 +223,16 @@ async function applyProductName(page: Page, name: string): Promise<void> {
 }
 
 /**
- * The connection chip on a phone is a fixed 44px dot in every state (chat.css:
- * "Holding the dot reveals the name"). It no longer yields width to the app
- * name; the lockup is the one member of the row that does.
+ * The connection chip on a phone is the dot plus the Station name in a
+ * fixed-width slot, in every state (chat.css: `width: min(28vw, 120px)` on
+ * `.app-toolbar__conn-label`). The slot is a literal here, not read from the
+ * stylesheet, so a slot that started following its text, or the state, reds.
+ * The chip never yields width to the app name; the lockup is the one member
+ * of the row that does.
  */
-const CHIP_DOT_WIDTH = 44;
+const CHIP_MIN_WIDTH = 44;
+const chipNameSlot = (viewportWidth: number) =>
+  Math.min(0.28 * viewportWidth, 120);
 
 /**
  * The connection states this guard drives, each through the real
@@ -236,10 +240,11 @@ const CHIP_DOT_WIDTH = 44;
  * produce. Driving "a failure" and accepting whichever state arrives is the
  * trap this list exists to close.
  *
- * The chip is dot-only in every state on mobile, so these two cases no longer
- * measure different widths — they exercise two different MECHANISMS reaching
- * the same dot (a dead host vs. a host answering with the wrong identity),
- * plus a named state in the failure output either way. The retired
+ * The chip has the same fixed name slot in every state on mobile, so these
+ * two cases no longer measure different widths — they exercise two different
+ * MECHANISMS reaching the same chip (a dead host vs. a host answering with the
+ * wrong identity, which also raises a Station notice and its "!" mark), plus a
+ * named state in the failure output either way. The retired
  * widest-label derivation (`newsLabelWidths`, the `max-width` ceiling read,
  * the `coversClassMaximum` designation) went with the label it measured:
  * there is no text width left to bound.
@@ -252,7 +257,7 @@ const NEWS_STATES: ReadonlyArray<{
 }> = [
   {
     // The healthy state. No route is changed: the fixture Station answers its
-    // handshake. The chip is the same 44px dot as in the failure states.
+    // handshake. The chip is the same width as in the failure states.
     id: 'connected',
     modifier: 'app-toolbar__conn--connected',
     drive: async () => {},
@@ -627,24 +632,28 @@ function assertToolbarPreconditions(
     (measurement.connectionClass ?? '').split(/\s+/),
     `this case drives ${expectedModifier}, but the chip is in a different ` +
       `state — the drive did not do what it claims, so the measurement is of ` +
-      `an unchosen state (and, if it is connected/idle, of the dot-only chip ` +
-      `that cannot reproduce any defect in this class)\n${context}`,
+      `an unchosen state\n${context}`,
   ).toContain(expectedModifier);
 
-  // (b) The chip is the 44px dot in the exact state this case drove, with no
-  //     label text laid out. It is the same in every state so a state flip
-  //     cannot move its neighbours or take room from the app name.
+  // (b) In the exact state this case drove, the chip lays out no state text
+  //     and shows the Station name in its fixed slot. The slot is the same in
+  //     every state, so a state flip cannot move its neighbours.
   expect(
     measurement.connectionStateWidth ?? 0,
-    `the ${expectedModifier} chip lays out label text on a phone - these ` +
-      `states are dot-only\n${context}`,
+    `the ${expectedModifier} chip lays out state text on a phone - the ` +
+      `state lives in the dot and the accessible name\n${context}`,
   ).toBe(0);
   const chipWidth = measurement.connectionChipWidth ?? Number.POSITIVE_INFINITY;
   expect(
     chipWidth,
-    `the ${expectedModifier} chip must be the ${CHIP_DOT_WIDTH}px dot at ` +
+    `the ${expectedModifier} chip must meet the ${CHIP_MIN_WIDTH}px touch ` +
+      `floor at ${measurement.viewportWidth}px\n${context}`,
+  ).toBeGreaterThanOrEqual(CHIP_MIN_WIDTH);
+  expect(
+    measurement.connectionLabelWidth,
+    `the ${expectedModifier} chip's Station name must fill its fixed slot at ` +
       `${measurement.viewportWidth}px\n${context}`,
-  ).toBe(CHIP_DOT_WIDTH);
+  ).toBeCloseTo(chipNameSlot(measurement.viewportWidth), 0);
 
   // (c) The app name: whole or absent, never a stub. A text-overflow ellipsis
   //     is the "S…" defect, and the name must be whole wherever it can fit.
@@ -715,12 +724,6 @@ function assertToolbarPreconditions(
     expect(measurement.brandTabIndex, context).toBeNull();
     expect(measurement.brandAriaHidden, context).toBe('true');
   }
-
-  // (d) The dot has no label to show: nothing of it is laid out.
-  expect(
-    measurement.connectionLabelWidth,
-    `a ${chipWidth}px chip must be dot-only\n${context}`,
-  ).toBe(0);
 
   // A non-empty, complete inventory — precondition 2.
   const keys = measurement.controls.map((control) => control.key);

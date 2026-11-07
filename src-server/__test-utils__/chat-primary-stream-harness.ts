@@ -97,6 +97,10 @@ export function buildChatHarnessApp(options: {
   conversations: ChatHarnessConversationStore;
   dedupStore: ChatTurnDedupStore;
   nativeForeground?: NativeForegroundRelayCompanion;
+  /** A private-memory brief reserved for each turn; see `streamPrimaryAgentChat`. */
+  memoryBrief?: { delivered(): void; abandoned(): void };
+  /** The turn's text; default `hello`. */
+  input?: string;
 }): Hono {
   // The route takes the runtime context by its full type; this harness
   // supplies only the members a direct /chat turn reads.
@@ -115,7 +119,7 @@ export function buildChatHarnessApp(options: {
       ctx,
       slug: 'assistant',
       plugin: '',
-      input: 'hello',
+      input: options.input ?? 'hello',
       restOptions: clientTurnId ? { clientTurnId } : {},
       injectContext: null,
       ragContext: null,
@@ -124,6 +128,7 @@ export function buildChatHarnessApp(options: {
       dedupStore: options.dedupStore,
       nativeForeground: options.nativeForeground,
       nativeRuntimeAgent: options.agent,
+      ...(options.memoryBrief ? { memoryBrief: options.memoryBrief } : {}),
     });
   });
   return app;

@@ -14,7 +14,32 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+## Project settings
+
+Open a Project's settings to change its defaults, sources and access. Desktop
+uses the same vertical section navigation as Settings; on a narrow screen,
+choose a section from the picker. One section is shown at a time. Section
+links remain bookmarkable, and moving between sections keeps unsaved edits.
+
+**Save** applies project defaults. Layout, source, access and knowledge actions
+apply separately when confirmed. A saved model connection that is no longer
+available stays visible until you choose a replacement; an unrelated edit does
+not reset it to the Station default.
+
+Folder paths identify the Station that owns them. A path shown while using a
+phone or remote browser belongs to that Station, rather than to the viewing
+device. **Sources** shows repository links and checkout locations. Use
+**Add a repository** to attach a checkout and **Advanced: checkout repair**
+for filesystem repair. **Workspace** edits the Project's local working folder.
+
 ## Feature previews
+
+**Paired Station chats** lets New Chat use another paired Station. Choose its
+Project; the chat header says **Via <Station>**. Full access, folder selection,
+mentions, offline copies and local integrations are unavailable over relay.
+Turning it off keeps text and drafts visible and stops remote chat operations.
+Older held chats require confirmed **Reconnect chat** before continuing. See
+[starting a chat](getting-started.md#start-your-first-chat).
 
 Feature previews are features that are still being evaluated. Each one has a
 switch, a name and a description of what turning it on does. A preview is listed
@@ -35,7 +60,7 @@ only when this Station's build can run it; if none is, the section says
 | `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
 | `conversation-resolution` | Open and Settled inbox | Keeps conversations Open until explicitly settled. Task closure follows the existing Task close-on-merge setting. | Personal resolution state syncs across devices. Turning it off preserves saved choices and restores turn-based grouping; no provider cost. |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
-| `private-memory` | Private memory | Use a private memory store on a personal Station. Create it through the API. | Memory can contain personal information. Off by default; review and erasure are not available yet. Disabling hides access but retains the store. Hosted Stations do not offer it. |
+| `private-memory` | Private memory | Private memory you can check and search. New chats start with what you confirmed. No erasure yet. | Memory can contain personal information. Off by default. Only chats on the Station engine get the brief. Create it through the API. Disabling hides access but retains the store. Hosted Stations do not offer it. |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `integration-content-trust` | Integration content trust | Shows trust classification and after-untrusted-content permissions for integrations in Connections. | Saved choices remain effective when the preview is off; enforcement depends on the engine and integration path. |
 | `browser-experience` | Browser experience | Adds Browser shortcuts, per-tab zoom and appearance, float over chat, and agent action visualization. | Off by default on personal hosts; ordinary Browser authority and control checks still apply. |
@@ -51,8 +76,10 @@ only when this Station's build can run it; if none is, the section says
 | `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
 | `task-review` | Task review | Adds a Review tab and Overview Timeline to Tasks for Screens and anchored comments that can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
 | `member-passkeys` | Member passkeys | Lets invited people with Station accounts create an account, sign in and recover with a passkey (see [member passkeys](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#member-passkeys-feature-preview)). | Passkeys work only at the configured sign-in address, selected in Settings or supplied by `STATION_AUTHENTICATION_ORIGIN`; changing its hostname orphans them. Turning it off keeps stored passkeys, but they cannot sign in. |
+| `apps-library` | Apps library | Adds a searchable launcher for your personal Boards and plugin layouts, with name, icon and description editing. | Uses existing personal-layout permissions; does not install plugins or grant access. |
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
 | `chat-apps` | Chat apps | Shows integration capability status in Connections and write-back history in Task Details. | Status checks can run `gh auth status` on the Station host; an unverified result does not prove delivery. |
+| `repository-auth-details` | Repository sign-in details | Shows the current Station’s GitHub CLI account, health and reported scopes in Project Sources. | Runs a bounded `gh auth status --json hosts --no-refresh`; no token refresh, credential transfer or repository-permission proof. |
 | `continue-interrupted-turn` | Continue after restart | Offers **Continue** on a chat turn a Station restart cut off, which sends the agent a short note to pick up where it stopped. | Continue starts an ordinary agent turn, once per interrupted turn; it is never sent on its own. |
 | `continue-unattended-after-restart` | Continue unattended work after restart | After a restart, continues Task and delegated work the restart cut off, once, with the restart note, oldest Task first. | Starts an agent turn per interrupted turn on its own; never for your chats, Automations or Tasks that are done, canceled or blocked. Waits for engine-start capacity. |
 | `paired-station-chats` | Paired Station chats | Starts text chats on a paired Station from New Chat, with that Station’s Project picker, transcript, replies and approvals. | Personal hosts only. Uses the destination’s providers and credits. Off disables reads and new operations; saved tabs and unconfirmed messages remain. Existing remote Tasks keep their separate flow. |

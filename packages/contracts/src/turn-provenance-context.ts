@@ -87,6 +87,12 @@ export interface TurnProvenanceContextAmbient {
   approxTokens: number;
 }
 
+/** The background briefing from the person's private memory, on a new session's first turn. */
+export interface TurnProvenanceContextMemoryBrief {
+  entries: number;
+  approxTokens: number;
+}
+
 /**
  * What Station itself injected into this turn's model input, recorded AT
  * DISPATCH from the exact strings composed into the input — never
@@ -118,6 +124,7 @@ export interface TurnProvenanceContextInjection {
   workflowSteering?: TurnProvenanceContextWorkflowSteering;
   conversationFeedback?: TurnProvenanceContextConversationFeedback;
   ambient?: TurnProvenanceContextAmbient;
+  memoryBrief?: TurnProvenanceContextMemoryBrief;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -223,6 +230,20 @@ export function parseTurnProvenanceContextInjection(
     const raw = value.ambient;
     if (!isRecord(raw) || !isCountField(raw.approxTokens)) return undefined;
     out.ambient = { approxTokens: raw.approxTokens };
+  }
+
+  if (value.memoryBrief !== undefined) {
+    const raw = value.memoryBrief;
+    if (
+      !isRecord(raw) ||
+      !isCountField(raw.entries) ||
+      !isCountField(raw.approxTokens)
+    )
+      return undefined;
+    out.memoryBrief = {
+      entries: raw.entries,
+      approxTokens: raw.approxTokens,
+    };
   }
 
   return out;

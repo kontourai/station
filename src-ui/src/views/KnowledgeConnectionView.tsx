@@ -17,6 +17,7 @@ import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { modelProviderDisplayLabel } from '../utils/modelProviderDisplay';
+import { describeStationFailure } from '../utils/stationFailure';
 import {
   findModelConnectionById,
   getKnowledgeInventory,
@@ -121,7 +122,7 @@ export function KnowledgeConnectionView({
     },
     onError: (err: Error) => {
       setTestResult(null);
-      setTestError(err.message);
+      setTestError(describeStationFailure(err).body);
     },
   });
 

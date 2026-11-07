@@ -518,6 +518,30 @@ The mutation cases `ci-health-concurrency-threshold`, `ci-health-reentry-commits
 
 ## Running Tests
 
+### Conversation surface evidence
+
+`node scripts/conversation-boundary-gate.mjs` checks shared owner consumption,
+explicit authority, control/capability drift and raw failure sinks, including
+durable publishers and `String(error)`. The conversation baseline is empty.
+Exact manifest contracts distinguish host/domain composition and diagnostic
+Details from conversation policy; a changed fingerprint is reviewed again.
+`failureSurfaces` registers error publishers without misclassifying settings or
+other host views as conversation adapters.
+
+Run the gate's known-bad/control tests and the affected consumer tests. The
+browser route is `tests/conversation-surfaces.spec.ts`: local/direct/relay controls,
+owner/member/guest history, attached continuation and desktop/mobile Inbox.
+Typecheck browser fixtures with `npm run typecheck:e2e` and run
+`npm run test:fixtures:check` before the product and smoke-live lanes. Those runners
+require their supported POSIX host; Windows component fixtures do not qualify
+runtime authentication, process settlement or a native shell.
+
+For component captures use production components and CSS, typed domain/failed
+request fixtures and ordinary user actions. Capture 390/1440 pixels in light/dark,
+retain geometry and PNGs outside source, and open every image. State whether a
+capture shows a complete parent or its shared error region; neither substitutes
+for the actual failed-request or two-Station journey.
+
 ### Default implementation loop
 
 ```bash
@@ -770,6 +794,7 @@ npm run verify:local              # coordinated static + desktop Rust + mobile c
 npm run verify:static             # lint, ratchets, and typecheck
 npm run verify                    # broad diagnostic escalation when explicitly required
 npm run test:focused -- <file...> # exact-file focused runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
+npm run test:focused -- <file> --test-name="suite case name" # one exact fully qualified case
 npm run test:coverage             # with coverage report
 npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's NotificationContainer touch-target check)
 npm run install:playwright:ci     # CI runners: Chromium into the ambient PLAYWRIGHT_BROWSERS_PATH, bounded retry, no root (station#1648)
@@ -986,7 +1011,15 @@ runs each terminal process suite in a Vitest invocation of its own after the
 other files, so a forked worker that dies (an open,
 intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
 other suite's results; every invocation runs, and any failure fails the floor
-without a retry. A ConPTY cannot change
+without a retry. Its coordinator records fork PIDs, numeric and hexadecimal
+exit codes, and signals in `.kontourai/verification-output/windows-workers-*.jsonl`;
+the Windows verification artifact retains those records even when the floor
+fails. The observer does not consume worker exceptions or change verdicts.
+The adapter suite also runs in the floor: its owned children cover concurrent
+native exits/resizes, paused silent-reader retirement, and vendor cancellation.
+Issue #4626 records the captured access violation, handle-table reproduction,
+and dependency repair; retained source/binary receipts establish each run's
+qualification. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
@@ -1923,8 +1956,19 @@ these controls through the managed dependency workflow.
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
-A raw Vitest worker override is not accepted by `test:focused`, whose interface
-accepts exact paths rather than options. Use the owning runner's resource policy;
+A raw Vitest worker override is not accepted by `test:focused`. It accepts exact
+in-worktree file paths and optional repeatable `--test-name="suite case name"`
+selectors. Names include every enclosing suite title separated by spaces and
+are literal, not regular expressions. Duplicate, empty or whitespace-padded
+names are rejected. With selectors, every requested name must pass exactly once
+in the selected files; an unmatched, skipped or partially matched selection is
+nonpass even if Vitest exits zero. The wrapper checks Vitest's JSON result and
+prints the verified names. Unfiltered runs retain their existing behavior.
+
+Name selection still loads the whole selected module and its setup and imports;
+it does not waive dependency, native or fixture prerequisites. The active
+worktree root, dependency provenance, one-worker limit and timeout policy are
+unchanged. No other Vitest options are forwarded. Use the owning runner's resource policy;
 do not bypass the manifest or increase an authoritative lane's concurrency.
 
 The opt-in load-reliability lane below remains host-local evidence only. It

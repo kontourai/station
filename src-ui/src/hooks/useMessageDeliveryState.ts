@@ -1,5 +1,7 @@
 import type { TurnDeliveryOutcome } from '@kontourai/station-contracts/orchestration';
 import { useCallback, useSyncExternalStore } from 'react';
+import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
+import { outboundStationIdentity } from '../connections/station-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   type MessageDeliveryState,
@@ -41,10 +43,20 @@ export function useMessageDeliveryState(
 export function useRecheckMessageDelivery(
   chatKey: string,
 ): (clientTurnId: string) => Promise<TurnDeliveryOutcome | undefined> {
+  const connection = useOptionalConversationConnection()?.station;
   return useCallback(
     async (clientTurnId: string) => {
       const { recheckOutboundTurn } = await import('../lib/deliveryLookup');
-      const outcome = await recheckOutboundTurn(clientTurnId);
+      const chatOwner = activeChatsStore.getSnapshot()[chatKey];
+      if (connection && !connection.isCurrent()) return;
+      const outcome = connection
+        ? await recheckOutboundTurn(clientTurnId, {
+            station: outboundStationIdentity(connection),
+            requestScope: connection.requestScope,
+            conversationId: chatOwner?.conversationId,
+          })
+        : await recheckOutboundTurn(clientTurnId);
+      if (connection && !connection.isCurrent()) return;
       if (outcome) {
         const chat = activeChatsStore.getSnapshot()[chatKey];
         activeChatsStore.updateChat(chatKey, {
@@ -63,6 +75,6 @@ export function useRecheckMessageDelivery(
       }
       return outcome;
     },
-    [chatKey],
+    [chatKey, connection],
   );
 }

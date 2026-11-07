@@ -48,6 +48,7 @@ import {
   readPluginManifestFileSync,
   readPluginManifestFileSyncWithFormat,
 } from './plugin-manifest-loader.js';
+import { findRegistryAcquisitionRefusal } from './registry-acquisition.js';
 import { assertPluginIdentityAvailable } from './reserved-plugin-identities.js';
 
 interface PluginRegistryInstaller {
@@ -923,6 +924,9 @@ export async function resolvePluginDependencies(
           }
         }
       } catch (error) {
+        // A trust refusal (a managed limit included, #4521) is an answer,
+        // not an unreachable registry: the caller reports it.
+        if (findRegistryAcquisitionRefusal(error)) throw error;
         logger.debug('Failed to check registry for dependency', {
           dep: dependency.id,
           error,

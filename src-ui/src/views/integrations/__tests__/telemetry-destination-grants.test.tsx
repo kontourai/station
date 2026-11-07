@@ -245,7 +245,9 @@ test('an unsupported successful response cannot confirm a telemetry grant', asyn
   });
   fireEvent.click(screen.getByRole('button', { name: 'Grant destination' }));
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain('invalid metadata'),
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Try again in a moment.',
+    ),
   );
   expect(screen.queryByText('Telemetry destination granted.')).toBeNull();
 });

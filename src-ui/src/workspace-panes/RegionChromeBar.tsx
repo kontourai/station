@@ -780,8 +780,14 @@ export function RegionChromeBar({
 
   if (mobileChat) return null;
 
+  // While a pane is open over Chat (the phone layer), "‹ Chat" is the way
+  // back to Chat; a Chat tab beside it would be a second control for the same
+  // move under the same name. The strip keeps every other pane.
+  const stripTabs = onBackToChat
+    ? tabs.filter((tab) => tab.surfaceId !== 'chat')
+    : tabs;
   const showStrip =
-    tabs.length > 1 &&
+    stripTabs.length > 1 &&
     !chrome.isMobile &&
     (isDockOpen || chrome.isCollapsedDragPreview);
   // #4401: an open side region near its minimum width cannot fit the bar's
@@ -824,11 +830,17 @@ export function RegionChromeBar({
         {showStrip ? (
           <RegionTabStrip
             groupId={groupId}
-            tabs={tabs}
+            tabs={stripTabs}
             selectedSurfaceId={selectedSurfaceId}
             onSelect={onSelectTab}
             onClose={onCloseTab}
-            onReorder={onReorderTab}
+            // The strip counts positions among the tabs it shows; the region
+            // orders all of them, Chat included.
+            onReorder={(surfaceId, toIndex) => {
+              const target = stripTabs[toIndex]?.surfaceId;
+              const index = tabs.findIndex((tab) => tab.surfaceId === target);
+              if (index >= 0) onReorderTab(surfaceId, index);
+            }}
             canMove={canMove}
             onOpenMove={(tab, anchor) =>
               setMoving({ tab, anchor, from: 'tab' })

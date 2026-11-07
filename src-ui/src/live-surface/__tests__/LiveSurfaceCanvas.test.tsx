@@ -53,6 +53,13 @@ function lease(
 const ME = { principal: 'human:local:me', device: 'device:mine' } as const;
 const MY_HOLD = { kind: 'human', ...ME } as const;
 
+/** The viewer's root, which carries its diagnostics attributes. */
+function liveSurfaceRoot(): HTMLElement {
+  const root = document.querySelector<HTMLElement>('.live-surface');
+  if (!root) throw new Error('live surface not rendered');
+  return root;
+}
+
 function stateRecord(l: LiveSurfaceControlLease): LiveSurfaceRecord {
   return {
     kind: 'state',
@@ -940,7 +947,10 @@ describe('LiveSurfaceCanvas', () => {
     expect(h.inputs).toHaveLength(1);
   });
 
-  test('a producer failure of any kind (dispatch-failed) says the input was not delivered', async () => {
+  const UNKNOWN_DELIVERY =
+    'Your last input may not have reached the page. Check it.';
+
+  test('a producer failure of any kind (dispatch-failed) says the input may not have reached the page', async () => {
     // #2442: an SSH-host rotation that timed out (tool-timeout) or hit the
     // producer's own deadline (dispatch-timeout) both arrive as this code.
     const h = harness({
@@ -963,7 +973,134 @@ describe('LiveSurfaceCanvas', () => {
       pointerId: 1,
     });
     await flush();
-    expect(screen.getByText('Your input could not be delivered.')).toBeTruthy();
+    expect(screen.getByText(UNKNOWN_DELIVERY)).toBeTruthy();
+  });
+
+  test('an event that took effect before its error is never sent again: no Retry, no replay (PAY must not become PAYPAY)', async () => {
+    // The host typed P, A and Y, then the producer reported a failure on
+    // the last one: `accepted` counts only completed dispatches, so the
+    // client cannot know Y did not land.
+    const applied: string[] = [];
+    let call = 0;
+    const h = harness({
+      inputReply: (body) => {
+        call += 1;
+        for (const event of body.events as { kind: string; text?: string }[])
+          if (event.kind === 'text') applied.push(event.text ?? '');
+        return {
+          success: true,
+          data:
+            call === 1
+              ? {
+                  ok: false,
+                  code: 'dispatch-failed',
+                  accepted: 0,
+                  lease: lease(body.epoch, MY_HOLD),
+                }
+              : {
+                  ok: true,
+                  accepted: body.events.length,
+                  lease: lease(body.epoch, MY_HOLD),
+                },
+        };
+      },
+    });
+    await renderLive(h);
+    const keyboard = screen.getByLabelText(
+      'Keyboard input for Browser: example.com',
+    );
+    fireEvent.input(keyboard, { target: { value: 'PAY' } });
+    await flush();
+    expect(applied.join('')).toBe('PAY');
+    expect(screen.getByRole('alert').textContent).toContain(UNKNOWN_DELIVERY);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    // Later input goes out alone, with nothing replayed ahead of it.
+    fireEvent.input(keyboard, { target: { value: '!' } });
+    await flush();
+    expect(applied.join('')).toBe('PAY!');
+  });
+
+  test('a lost response offers no Retry and replays nothing', async () => {
+    let call = 0;
+    const h = harness({
+      inputReply: (body) => {
+        call += 1;
+        if (call === 1) throw new TypeError('network connection was lost');
+        return {
+          success: true,
+          data: {
+            ok: true,
+            accepted: body.events.length,
+            lease: lease(body.epoch, MY_HOLD),
+          },
+        };
+      },
+    });
+    await renderLive(h);
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    const canvas = screen.getByTestId('live-surface-canvas');
+    fireEvent.pointerDown(canvas, {
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    expect(screen.getByText(UNKNOWN_DELIVERY)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    fireEvent.pointerUp(canvas, {
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    expect(h.inputs.map((batch) => batch.events.length)).toEqual([1, 1]);
+    expect(h.inputs[1]!.events).toEqual([
+      expect.objectContaining({ kind: 'pointer', type: 'up' }),
+    ]);
+  });
+
+  test('a failure that later input gets past clears without Retry', async () => {
+    let call = 0;
+    const h = harness({
+      inputReply: (body) => {
+        call += 1;
+        return {
+          success: true,
+          data:
+            call === 1
+              ? {
+                  ok: false,
+                  code: 'dispatch-failed',
+                  accepted: 0,
+                  lease: lease(body.epoch, MY_HOLD),
+                }
+              : {
+                  ok: true,
+                  accepted: body.events.length,
+                  lease: lease(body.epoch, MY_HOLD),
+                },
+        };
+      },
+    });
+    await renderLive(h);
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    const press = () =>
+      fireEvent.pointerDown(screen.getByTestId('live-surface-canvas'), {
+        clientX: 10,
+        clientY: 10,
+        button: 0,
+        pointerId: 1,
+      });
+    press();
+    await flush();
+    expect(screen.getByText(UNKNOWN_DELIVERY)).toBeTruthy();
+    press();
+    await flush();
+    expect(h.inputs).toHaveLength(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   test('losing focus releases held keys and buttons while this client holds control', async () => {
@@ -1288,11 +1425,9 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
       expect.objectContaining({ kind: 'pointer', type: 'down' }),
     ]);
     expect(
-      screen.getByText(
-        'The host is busy, so nothing was sent. Try again in a moment.',
-      ),
+      screen.getByText('The host is busy, so nothing was sent.'),
     ).toBeTruthy();
-    expect(screen.queryByText('Your input could not be delivered.')).toBeNull();
+    expect(screen.queryByText(/may not have reached the page/)).toBeNull();
   });
 
   test('the busy notice clears by itself when nothing newer answers', async () => {
@@ -1339,6 +1474,93 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     expect(screen.queryByText(/The host is busy/)).toBeNull();
   });
 
+  /** Busy on the first send, then accepted. */
+  function busyOnce() {
+    let call = 0;
+    return harness({
+      inputReply: (body) => {
+        call += 1;
+        return call === 1
+          ? busy()
+          : {
+              success: true,
+              data: {
+                ok: true,
+                accepted: body.events.length,
+                lease: lease(body.epoch, MY_HOLD),
+              },
+            };
+      },
+    });
+  }
+
+  test('a busy tap keeps its whole gesture: lifting the finger is not sent alone, and Retry sends the tap once', async () => {
+    const h = busyOnce();
+    await renderLive(h);
+    pressOnce();
+    await flush();
+    expect(screen.getByText(/The host is busy/)).toBeTruthy();
+    fireEvent.pointerUp(screen.getByTestId('live-surface-canvas'), {
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    // The release joined the kept press instead of going out (and
+    // succeeding as a no-op that would clear Retry).
+    expect(h.inputs).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await flush();
+    expect(h.inputs).toHaveLength(2);
+    expect(
+      h.inputs[1]!.events.map((event) => (event as { type: string }).type),
+    ).toEqual(['down', 'up']);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByText(/The host is busy/)).toBeNull();
+  });
+
+  test('kept input is dropped when control changes hands: no Retry onto the newer epoch', async () => {
+    const h = busyOnce();
+    const stream = await renderLive(h);
+    pressOnce();
+    await flush();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    // An agent took over: the kept press was meant for epoch 0.
+    await stream.push(
+      stateRecord(
+        lease(1, { kind: 'agent', principal: 'agent:coder', sessionId: 's' }),
+      ),
+    );
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(h.inputs).toHaveLength(1);
+  });
+
+  test('Retry is not offered once this viewer may no longer send input', async () => {
+    const h = busyOnce();
+    const canvas = (readOnly: boolean) => (
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Browser: example.com"
+        transport={h.transport as never}
+        readOnly={readOnly}
+      />
+    );
+    const view = render(canvas(false));
+    await flush();
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(0)));
+    await stream.push(frameRecord(1, 0));
+    pressOnce();
+    await flush();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    view.rerender(canvas(true));
+    await flush();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(h.inputs).toHaveLength(1);
+  });
+
   test('input answered 403 access-denied is still undeliverable, not busy', async () => {
     const h = harness({
       inputReply: () =>
@@ -1350,7 +1572,11 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     await renderLive(h);
     pressOnce();
     await flush();
-    expect(screen.getByText('Your input could not be delivered.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Your last input may not have reached the page. Check it.',
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(/The host is busy/)).toBeNull();
   });
 
@@ -1391,9 +1617,7 @@ describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
     await flush();
     expect(claims).toEqual([{ action: 'claim' }]);
     expect(
-      screen.getByText(
-        'The host is busy, so nothing was sent. Try again in a moment.',
-      ),
+      screen.getByText('The host is busy, so nothing was sent.'),
     ).toBeTruthy();
   });
 });
@@ -1742,10 +1966,9 @@ describe('LiveSurfaceCanvas: client H.264 (#4418)', () => {
       576,
       1280,
     );
-    expect(screen.getByTestId('live-surface-codec').dataset.codec).toBe('h264');
-    expect(screen.getByTestId('live-surface-codec').textContent).toBe(
-      'H.264, decoded in this browser',
-    );
+    expect(liveSurfaceRoot().dataset.codec).toBe('h264');
+    // Diagnostics, never resting copy under the picture.
+    expect(screen.queryByText(/H\.?264|JPEG|PNG/i)).toBeNull();
   });
 
   test('a decode error reconnects for a keyframe; a second inside the window waits for its end', async () => {
@@ -1912,7 +2135,7 @@ describe('LiveSurfaceCanvas: client H.264 (#4418)', () => {
     expect(new URL(second.url).searchParams.has('codec')).toBe(false);
     await second.push(stateRecord(lease(0)));
     await second.push(frameRecord(2, 0));
-    expect(screen.getByTestId('live-surface-codec').textContent).toBe('PNG');
+    expect(liveSurfaceRoot().dataset.codec).toBe('png');
   });
 
   test('a host too old for ?codec= (400 invalid-request) is asked once more, for images, and no more', async () => {

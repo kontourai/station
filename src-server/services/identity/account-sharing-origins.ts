@@ -12,13 +12,14 @@ import type {
   AccountSharingOriginOption,
   AccountSharingOriginSource,
 } from '@kontourai/station-contracts/local-accounts';
+import type { StationOriginPolicy } from '../../security/station-browser-origins.js';
 import { authenticationOrigin } from './deployment-authentication-loader.js';
 
 export interface AccountSharingOriginInput {
   /** `ALLOWED_ORIGINS` entries as configured. */
   allowedOrigins: readonly string[];
-  /** Every browser origin the API admits (`resolveStationBrowserOrigins`). */
-  browserOrigins: readonly string[];
+  /** The API's own browser-origin policy (`stationOriginPolicy`). */
+  originPolicy: Pick<StationOriginPolicy, 'admits'>;
   /** The API listener is never a sign-in application. */
   apiPort: number;
   /** The UI listener, when its launcher reported one. */
@@ -43,9 +44,9 @@ function bareOrigin(value: string): string | undefined {
   }
 }
 
-export function accountSharingOriginOptions(
+export async function accountSharingOriginOptions(
   input: AccountSharingOriginInput,
-): AccountSharingOriginOption[] {
+): Promise<AccountSharingOriginOption[]> {
   const sources = new Map<string, Set<AccountSharingOriginSource>>();
   const add = (value: string, source: AccountSharingOriginSource) => {
     const origin = bareOrigin(value);
@@ -90,24 +91,26 @@ export function accountSharingOriginOptions(
   }
   if (input.uiPort) add(`http://localhost:${input.uiPort}`, 'station-loopback');
   // The gate compares exact strings, so admission is checked on the
-  // configured spelling, not the normalized one.
-  const admitted = new Set(input.browserOrigins);
-  return [...sources]
-    .slice(0, MAX_OPTIONS)
-    .map(([origin, from]): AccountSharingOriginOption => {
-      let unavailable: AccountSharingOriginOption['unavailable'];
-      try {
-        authenticationOrigin(origin);
-        if (!admitted.has(origin)) unavailable = 'not-a-browser-origin';
-      } catch {
-        unavailable = 'requires-https';
-      }
-      return {
-        origin,
-        sources: [...from],
-        ...(unavailable ? { unavailable } : {}),
-      };
-    });
+  // normalized origin a browser presents, not the configured spelling.
+  return Promise.all(
+    [...sources]
+      .slice(0, MAX_OPTIONS)
+      .map(async ([origin, from]): Promise<AccountSharingOriginOption> => {
+        let unavailable: AccountSharingOriginOption['unavailable'];
+        try {
+          authenticationOrigin(origin);
+          if (!(await input.originPolicy.admits(origin)))
+            unavailable = 'not-a-browser-origin';
+        } catch {
+          unavailable = 'requires-https';
+        }
+        return {
+          origin,
+          sources: [...from],
+          ...(unavailable ? { unavailable } : {}),
+        };
+      }),
+  );
 }
 
 /** The origin an apply request named, when it is a selectable option. */

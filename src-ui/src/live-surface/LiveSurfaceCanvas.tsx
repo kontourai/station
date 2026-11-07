@@ -18,12 +18,24 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from 'react';
 import { Button } from '../components/Button';
+import { ExpandGlyph, MoreGlyph } from '../components/icons/Glyph';
+import { Empty, ErrorState } from '../components/state';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
+import { useNarrowViewport } from '../hooks/useNarrowViewport';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { AgentActionOverlay } from './AgentActionOverlay';
+import {
+  CONTROLS_AUTO_HIDE_MS,
+  DRIVER_TEXT,
+  isKeyboardFocus,
+  LiveSurfaceViewerControls,
+  useAutoHide,
+} from './LiveSurfaceViewerControls';
 import { mapClientPointToSurface } from './liveSurfaceGeometry';
 import {
   liveSurfaceStreamBudget,
@@ -33,6 +45,17 @@ import {
   LiveSurfaceH264Decoder,
   liveSurfaceH264Offered,
 } from './liveSurfaceVideoDecoder';
+import {
+  clampSurfaceZoom,
+  pinchSurfaceZoom,
+  SURFACE_ZOOM_FIT,
+  type SurfaceZoom,
+  scaleSurfaceZoomAt,
+  settleSurfaceZoom,
+  surfaceZoomTransform,
+  type ZoomPoint,
+} from './liveSurfaceZoom';
+import { useImmersive } from './useImmersive';
 import {
   type LiveSurfaceFrame,
   type UseLiveSurfaceResult,
@@ -68,6 +91,17 @@ import './LiveSurfaceCanvas.css';
  *   holds control through an explicit Take control, and the keyboard target
  *   leaves the tab order until then (the float-over-chat, which can sit
  *   under the pointer and in the tab order without anyone meaning to drive).
+ *
+ * Touch (viewing, never input): two fingers pinch-zoom and pan the PICTURE
+ * (`liveSurfaceZoom`); a double tap while zoomed returns to fit. So that a
+ * pinch never lands a press on the page, a one-finger press is held back
+ * until it is clearly not the start of one: it goes out when the finger
+ * lifts (a tap), moves past a slop (a drag), or stays down past a short
+ * hold. A second finger before then cancels it, and nothing was sent.
+ *
+ * Immersive (`useImmersive`): the same element, laid over the whole viewport
+ * (and the platform's full screen where granted), with the shared viewer
+ * chrome revealed on tap and hidden again after a few seconds.
  */
 
 export interface LiveSurfaceCanvasProps {
@@ -122,15 +156,77 @@ export interface LiveSurfaceCanvasProps {
   /** Dimensions of the most recently drawn frame, after rotation. */
   onFrameSize?: (size: { width: number; height: number }) => void;
   /**
+   * The producer's status (input/video liveness, orientation, a foldable's
+   * `fold`) whenever it changes, in every mode: unlike `renderHeader`, this
+   * keeps reporting while the surface is full screen.
+   */
+  onProducerStatus?: (status: UseLiveSurfaceResult['producerStatus']) => void;
+  /**
    * No input at all — not even a click or a key — until this viewer holds
    * control (through `claimControl`, the host's Take control). For a
    * surface that can sit under the pointer or in the tab order without
-   * anyone meaning to drive it.
+   * anyone meaning to drive it. Lifted in immersive mode: there the person
+   * chose to drive, and a touch on the surface is input.
    */
   inputRequiresLease?: boolean;
   /** This viewer may watch but must not send input. */
   readOnly?: boolean;
   agentActionsEnabled?: boolean;
+  /**
+   * Drawn over the stage, unzoomed, and kept in immersive mode: a page's
+   * held dialog belongs over the live view wherever the view is.
+   */
+  overlay?: ReactNode;
+  /**
+   * The per-surface extension point of the full-screen bar: what this kind
+   * of surface adds to the shared chrome (a browser's navigation, a
+   * device's hardware buttons), given the same surface API as
+   * `renderHeader` so its input goes through this surface's lease.
+   */
+  renderImmersiveActions?: (surface: LiveSurfaceHeaderApi) => ReactNode;
+  /**
+   * The surface's secondary full-screen controls: in the bar's row when it
+   * has room, behind its More controls button at phone width.
+   */
+  renderImmersiveMenu?: (surface: LiveSurfaceHeaderApi) => ReactNode;
+  /** Told when this surface enters or leaves full screen. */
+  onImmersiveChange?: (immersive: boolean) => void;
+  /** Ask for a foldable's fold state (a device viewer that can draw it). */
+  acceptFold?: boolean;
+  /** A Full screen button on the stage (a pane; the float has its pill). */
+  fullScreenButton?: boolean;
+  /**
+   * Optional (foldable devices; fit mode only): draw the frame through a
+   * host-owned presentation instead of flat. The canvas stays the input
+   * target, invisible, and `toFrame` maps a client point on it to the
+   * SHOWN frame's pixels (null where the presentation shows nothing). The
+   * shared viewer's other hosts (fullscreen, float) pass the same object.
+   */
+  projection?: LiveSurfaceProjection;
+}
+
+/** What a `projection` gives the canvas. */
+export interface LiveSurfaceProjection {
+  toFrame(
+    client: { x: number; y: number },
+    box: { left: number; top: number; width: number; height: number },
+    shown: { width: number; height: number },
+  ): { x: number; y: number } | null;
+  /** Drawn over the canvas box; repaints from `source` after each frame. */
+  render(source: LiveSurfaceProjectionSource): ReactNode;
+  /**
+   * The box's aspect (width / height) for this shown frame, when the
+   * projection draws it differently (turned a quarter to fit a screen).
+   */
+  fitAspect?(shown: { width: number; height: number }): number;
+}
+
+/** The drawn frame a projection copies from. */
+export interface LiveSurfaceProjectionSource {
+  canvas: HTMLCanvasElement | null;
+  shown: { width: number; height: number };
+  /** Called after every frame is drawn; returns an unsubscribe. */
+  subscribe(onDrawn: () => void): () => void;
 }
 
 /** What `renderOverlay` receives. */
@@ -185,6 +281,10 @@ export interface LiveSurfaceControlState {
   releaseControl: () => Promise<void>;
   /** Keep this person's hold alive (capped by the server; not input). */
   keepControlAlive: () => Promise<void>;
+  /** The surface fills the screen (see `useImmersive`). */
+  immersive: boolean;
+  enterImmersive: () => void;
+  exitImmersive: () => void;
 }
 
 export type LiveSurfaceControllerTone = 'you' | 'agent' | 'other' | 'none';
@@ -196,13 +296,17 @@ const VIDEO_RESYNC_MIN_INTERVAL_MS = 2_000;
 /** Decoder failures in a row, with no picture between, before images. */
 const VIDEO_FAILURES_BEFORE_IMAGES = 3;
 
-/** Pane diagnostics: what this viewer is drawing, and where it decodes. */
-function codecLabel(codec: LiveSurfaceFrameHeader['codec']): string {
-  if (codec === 'h264') return 'H.264, decoded in this browser';
-  return codec.toUpperCase();
-}
 const DOUBLE_CLICK_MS = 500;
 const DOUBLE_CLICK_SLOP_PX = 4;
+/** A held-back touch press goes out once the finger has stayed down this long. */
+export const TOUCH_PRESS_HOLD_MS = 150;
+/** ...or moved this far (CSS px): it is a drag on the page, not a pinch. */
+const TOUCH_PRESS_SLOP_PX = 8;
+/** Two taps this close in time and place, while zoomed, return to fit. */
+const DOUBLE_TAP_MS = 300;
+const DOUBLE_TAP_SLOP_PX = 24;
+/** How far a watcher's double tap zooms in. */
+const DOUBLE_TAP_ZOOM = 2;
 
 function modifiersOf(event: {
   altKey: boolean;
@@ -244,19 +348,75 @@ function isTextKey(event: ReactKeyboardEvent): boolean {
   );
 }
 
-function controllerLine(surface: UseLiveSurfaceResult): {
+const INPUT_NOTICE_TEXT: Record<
+  NonNullable<UseLiveSurfaceResult['inputNotice']>,
+  string
+> = {
+  'control-changed':
+    'Control changed before your input arrived, so it was not sent.',
+  'input-failed': 'Your last input may not have reached the page. Check it.',
+  'page-dialog': 'The page is showing a dialog. Answer it to continue.',
+  'host-busy': 'The host is busy, so nothing was sent.',
+};
+
+/**
+ * Why the person's last input did not take effect: one slim line over the
+ * top of the surface they are looking at, the same banner for every case.
+ * Input the host refused before sending any of it offers Retry while this
+ * viewer may still send input (`canRetry`); input whose delivery is unknown
+ * never does, since sending it again could apply it twice.
+ */
+function InputNotice(props: {
+  surface: UseLiveSurfaceResult;
+  canRetry: boolean;
+  onRetry: () => void;
+}) {
+  const notice = props.surface.inputNotice;
+  if (!notice) return null;
+  const title = INPUT_NOTICE_TEXT[notice];
+  if (notice === 'input-failed' || notice === 'host-busy')
+    return (
+      <ErrorState
+        variant="compact"
+        className="live-surface__input-notice"
+        title={title}
+        action={
+          props.surface.retryableInput && props.canRetry ? (
+            <Button
+              size="sm"
+              className="live-surface__input-notice-action"
+              onClick={props.onRetry}
+            >
+              Retry
+            </Button>
+          ) : undefined
+        }
+      />
+    );
+  return (
+    <div className="live-surface__input-notice" role="status">
+      <Empty variant="compact" label={title} />
+    </div>
+  );
+}
+
+function controllerLine(
+  surface: UseLiveSurfaceResult,
+  touch = false,
+): {
   text: string;
   tone: LiveSurfaceControllerTone;
 } {
+  const verb = touch ? 'Tap' : 'Click or type';
   const holder = surface.lease?.holder;
   if (!holder)
     return {
-      text: 'No one is in control. Click or type to take control.',
+      text: `No one is in control. ${verb} to take control.`,
       tone: 'none',
     };
   if (holder.kind === 'agent')
     return {
-      text: 'An agent is in control. Click or type to take control from it.',
+      text: `An agent is in control. ${verb} to take control from it.`,
       tone: 'agent',
     };
   // Identity comes from the server (each viewer's state record names it),
@@ -266,12 +426,12 @@ function controllerLine(surface: UseLiveSurfaceResult): {
     if (holder.device === self.device)
       return { text: 'You are in control.', tone: 'you' };
     return {
-      text: 'You are in control from another device. Click or type here to take control.',
+      text: `You are in control from another device. ${verb} here to take control.`,
       tone: 'other',
     };
   }
   return {
-    text: 'Another person is in control. Click or type to take control.',
+    text: `Another person is in control. ${verb} to take control.`,
     tone: 'other',
   };
 }
@@ -308,6 +468,13 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     if (frameSize) props.onFrameSize?.(frameSize);
   }, [frameSize, props.onFrameSize]);
   const decodingRef = useRef(false);
+  const drawnListenersRef = useRef(new Set<() => void>());
+  const subscribeDrawn = useCallback((onDrawn: () => void) => {
+    drawnListenersRef.current.add(onDrawn);
+    return () => {
+      drawnListenersRef.current.delete(onDrawn);
+    };
+  }, []);
   const nextFrameRef = useRef<LiveSurfaceFrame | null>(null);
   const composingRef = useRef(false);
   const lastDownRef = useRef<{
@@ -354,6 +521,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       // header's (the size input maps against), so draw to that box.
       if (!header.rotation) {
         context.drawImage(picture, 0, 0, header.width, header.height);
+        for (const onDrawn of drawnListenersRef.current) onDrawn();
         return;
       }
       // Turn the drawing clockwise about the canvas origin, then shift it
@@ -371,6 +539,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       }
       context.drawImage(picture, 0, 0, header.width, header.height);
       context.restore();
+      for (const onDrawn of drawnListenersRef.current) onDrawn();
     },
     [adoptFrame],
   );
@@ -512,9 +681,14 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     transport: props.transport,
     now,
     acceptH264,
+    acceptFold: props.acceptFold === true,
     ...(props.projectSlug ? { projectSlug: props.projectSlug } : {}),
     agentActionsEnabled: props.agentActionsEnabled === true,
   });
+  const { onProducerStatus } = props;
+  useEffect(() => {
+    onProducerStatus?.(surface.producerStatus);
+  }, [surface.producerStatus, onProducerStatus]);
   // A new target or a new stream starts a new decoder at its first keyframe.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the surface and its connection status are the change keys.
   useEffect(() => {
@@ -532,9 +706,14 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const canInteract = inputReady && frameSize !== null && !props.readOnly;
 
   const holding = holdsControl(surface);
+  /**
+   * The host's lease-first rule, while it applies: not in immersive mode,
+   * where the person chose to drive the surface (so a touch on it is input).
+   */
+  const requiresLeaseRef = useRef(props.inputRequiresLease === true);
   /** A claiming interaction may be sent: always, unless the host requires the lease first. */
   const mayClaim = () =>
-    !props.inputRequiresLease || holdsControl(surfaceRef.current);
+    !requiresLeaseRef.current || holdsControl(surfaceRef.current);
 
   // Fit: the stage's size, measured, so the surface is the largest box at
   // the frame's aspect (a device screen is drawn exactly, never letterboxed).
@@ -544,6 +723,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     height: number;
   } | null>(null);
   const fitting = props.fit !== undefined;
+  const projecting = fitting && props.projection !== undefined;
   useLayoutEffect(() => {
     const stage = stageRef.current;
     if ((!fitting && !props.agentActionsEnabled) || !stage) return;
@@ -564,7 +744,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   let fitStyle: CSSProperties | undefined;
   if (props.fit && stageBox) {
     const aspect = frameSize
-      ? frameSize.width / frameSize.height
+      ? (props.projection?.fitAspect?.(frameSize) ??
+        frameSize.width / frameSize.height)
       : props.fit.aspect;
     const box = largestBoxAtAspect(stageBox, aspect);
     fitStyle = {
@@ -595,12 +776,35 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   /** Keys this client pressed (as key events) and has not released. */
   const heldKeysRef = useRef(new Map<string, { key: string; code: string }>());
 
+  const projectionRef = useRef(props.projection);
+  projectionRef.current = props.projection;
   const toSurface = useCallback(
     (clientX: number, clientY: number, clamp = false) => {
       const canvas = canvasRef.current;
       const header = headerRef.current;
       if (!canvas || !header) return null;
       const rect = canvas.getBoundingClientRect();
+      const projection = projectionRef.current;
+      if (projection) {
+        const shown = shownSize(header);
+        const point = projection.toFrame(
+          { x: clientX, y: clientY },
+          {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          },
+          shown,
+        );
+        // A press must land on the drawn surface; a release or drag already
+        // under way is kept at the edge it left by, as flat input is.
+        if (!point) return clamp ? lastPointRef.current : null;
+        return {
+          x: point.x / header.deviceScaleFactor,
+          y: point.y / header.deviceScaleFactor,
+        };
+      }
       return mapClientPointToSurface(
         { x: clientX, y: clientY },
         {
@@ -616,13 +820,22 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     [],
   );
 
-  const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!mayClaim()) return;
-    const point = toSurface(event.clientX, event.clientY);
-    keyboardRef.current?.focus({ preventScroll: true });
-    if (!point) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+  /** What a press needs once it goes out (a held-back touch press keeps it). */
+  interface Press {
+    pointerId: number;
+    point: { x: number; y: number };
+    clientX: number;
+    clientY: number;
+    button: number;
+    pointerType: string;
+    altKey: boolean;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    shiftKey: boolean;
+  }
+
+  const sendPress = (press: Press) => {
+    const { point } = press;
     const at = now();
     const last = lastDownRef.current;
     const count =
@@ -634,25 +847,233 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         : 1;
     lastDownRef.current = { at, x: point.x, y: point.y, count };
     lastPointRef.current = point;
-    heldPointerTypeRef.current = pointerTypeOf(event);
+    heldPointerTypeRef.current = pointerTypeOf(press);
     const input: LiveSurfaceInput = {
       kind: 'pointer',
       type: 'down',
       ...point,
       clickCount: count,
-      ...pointerTypeOf(event),
+      ...pointerTypeOf(press),
     };
-    const button = buttonOf(event.button);
+    const button = buttonOf(press.button);
     if (button) {
       input.button = button;
       heldRef.current.add(button);
     }
-    const modifiers = modifiersOf(event);
+    const modifiers = modifiersOf(press);
     if (modifiers) input.modifiers = modifiers;
     sendInput([input]);
   };
 
+  // ---- touch: pinch zoom, and presses held back until they are not one ----
+  const [zoom, setZoom] = useState<SurfaceZoom>(SURFACE_ZOOM_FIT);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  /** Touch pointers down on the canvas, in client pixels. */
+  const touchesRef = useRef(new Map<number, ZoomPoint>());
+  const pinchRef = useRef<{
+    start: SurfaceZoom;
+    from: [ZoomPoint, ZoomPoint];
+    ids: [number, number];
+  } | null>(null);
+  /** Pointers that belong to a zoom gesture: nothing they do is input. */
+  const zoomPointersRef = useRef(new Set<number>());
+  const pendingPressRef = useRef<{
+    press: Press;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const lastTouchDownRef = useRef<{ at: number; x: number; y: number } | null>(
+    null,
+  );
+  /** A mouse drag panning the zoomed picture (never input). */
+  const panRef = useRef<{
+    pointerId: number;
+    start: SurfaceZoom;
+    x: number;
+    y: number;
+  } | null>(null);
+  const sendPressRef = useRef(sendPress);
+  sendPressRef.current = sendPress;
+
+  /** Whether a press may go out NOW: eligibility can change while held. */
+  const mayPressRef = useRef<() => boolean>(() => false);
+  mayPressRef.current = () => canInteract && mayClaim();
+  const flushPendingPress = () => {
+    const pending = pendingPressRef.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingPressRef.current = null;
+    if (!mayPressRef.current()) return;
+    sendPressRef.current(pending.press);
+  };
+  const flushPendingPressRef = useRef(flushPendingPress);
+  flushPendingPressRef.current = flushPendingPress;
+  /** The held-back press is not going out (a pinch began): nothing was sent. */
+  const dropPendingPress = () => {
+    const pending = pendingPressRef.current;
+    if (pending) clearTimeout(pending.timer);
+    pendingPressRef.current = null;
+  };
+  useEffect(
+    () => () => {
+      const pending = pendingPressRef.current;
+      if (pending) clearTimeout(pending.timer);
+    },
+    [],
+  );
+
+  /** A client point in the (untransformed) stage's own pixels. */
+  const stageLocal = (point: ZoomPoint): ZoomPoint => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    return rect ? { x: point.x - rect.left, y: point.y - rect.top } : point;
+  };
+  const stageExtent = () => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    return { width: rect?.width ?? 0, height: rect?.height ?? 0 };
+  };
+
+  const beginPinch = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    // Claimed here so a host (the float's drag) leaves it alone.
+    event.preventDefault();
+    // The press a first finger was holding back never goes out; one that
+    // already did is released where it is (a press is never left down).
+    dropPendingPress();
+    if (heldRef.current.size > 0) releaseHeld();
+    for (const id of touchesRef.current.keys()) zoomPointersRef.current.add(id);
+    if (pinchRef.current) return; // a third finger joins nothing
+    const [first, second] = [...touchesRef.current.entries()];
+    if (!first || !second) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    pinchRef.current = {
+      start: zoomRef.current,
+      from: [stageLocal(first[1]), stageLocal(second[1])],
+      ids: [first[0], second[0]],
+    };
+  };
+
+  /** A second quick tap, while zoomed: back to fit, and not input. */
+  const isDoubleTap = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const at = now();
+    const last = lastTouchDownRef.current;
+    lastTouchDownRef.current = { at, x: event.clientX, y: event.clientY };
+    return (
+      !!last &&
+      at - last.at <= DOUBLE_TAP_MS &&
+      Math.hypot(event.clientX - last.x, event.clientY - last.y) <=
+        DOUBLE_TAP_SLOP_PX
+    );
+  };
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerType === 'touch') {
+      // The first finger of a new gesture: no other finger is down, whatever
+      // this canvas last heard (a finger a host captured, e.g. the float's
+      // drag, never lifts here). Without this a stale finger joins the pinch.
+      if (event.isPrimary) {
+        touchesRef.current.clear();
+        zoomPointersRef.current.clear();
+        pinchRef.current = null;
+      }
+      touchesRef.current.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      if (touchesRef.current.size >= 2) {
+        beginPinch(event);
+        return;
+      }
+      if (isDoubleTap(event)) {
+        // Zoomed: back to fit. At fit, and only while just watching (a
+        // driver's double tap is the page's double click): in, at the tap.
+        const watching = !canInteract || !mayClaim();
+        if (zoomRef.current.scale > 1 || watching) {
+          event.preventDefault();
+          zoomPointersRef.current.add(event.pointerId);
+          setZoom(
+            zoomRef.current.scale > 1
+              ? SURFACE_ZOOM_FIT
+              : scaleSurfaceZoomAt(
+                  zoomRef.current,
+                  stageLocal({ x: event.clientX, y: event.clientY }),
+                  DOUBLE_TAP_ZOOM,
+                  stageExtent(),
+                ),
+          );
+          return;
+        }
+      }
+    }
+    if (
+      event.pointerType === 'mouse' &&
+      event.button === 0 &&
+      zoomRef.current.scale > 1 &&
+      (!canInteract || !mayClaim())
+    ) {
+      // Zoomed and just watching: a mouse drag pans the picture.
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      panRef.current = {
+        pointerId: event.pointerId,
+        start: zoomRef.current,
+        x: event.clientX,
+        y: event.clientY,
+      };
+      return;
+    }
+    if (!canInteract || !mayClaim()) {
+      // Not input: in immersive mode a tap on the picture shows the chrome.
+      if (immersiveRef.current) revealChromeRef.current();
+      return;
+    }
+    const point = toSurface(event.clientX, event.clientY);
+    keyboardRef.current?.focus({ preventScroll: true });
+    if (!point) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const press: Press = {
+      pointerId: event.pointerId,
+      point,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      button: event.button,
+      pointerType: event.pointerType,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      shiftKey: event.shiftKey,
+    };
+    if (event.pointerType !== 'touch') {
+      sendPress(press);
+      return;
+    }
+    // Held back until it is a tap, a drag or a long press (see the header).
+    dropPendingPress();
+    pendingPressRef.current = {
+      press,
+      timer: setTimeout(
+        () => flushPendingPressRef.current(),
+        TOUCH_PRESS_HOLD_MS,
+      ),
+    };
+  };
+
   const onPointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    touchesRef.current.delete(event.pointerId);
+    if (panRef.current?.pointerId === event.pointerId) {
+      panRef.current = null;
+      return;
+    }
+    if (zoomPointersRef.current.has(event.pointerId)) {
+      zoomPointersRef.current.delete(event.pointerId);
+      if (pinchRef.current?.ids.includes(event.pointerId)) {
+        pinchRef.current = null;
+        setZoom((current) => settleSurfaceZoom(current));
+      }
+      return;
+    }
+    if (pendingPressRef.current?.press.pointerId === event.pointerId)
+      flushPendingPress();
+    if (!canInteract) return;
     const button = buttonOf(event.button);
     const held = button !== undefined && heldRef.current.has(button);
     // Only the release of a press this client sent, or any release while it
@@ -737,7 +1158,59 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     sendInput(events);
   };
 
+  const onPointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    touchesRef.current.delete(event.pointerId);
+    if (panRef.current?.pointerId === event.pointerId) panRef.current = null;
+    zoomPointersRef.current.delete(event.pointerId);
+    if (pinchRef.current?.ids.includes(event.pointerId)) {
+      pinchRef.current = null;
+      setZoom((current) => settleSurfaceZoom(current));
+    }
+    // A cancelled press that was held back never went out.
+    if (pendingPressRef.current?.press.pointerId === event.pointerId)
+      dropPendingPress();
+    releaseHeld();
+  };
+
   const onPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (touchesRef.current.has(event.pointerId))
+      touchesRef.current.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+    const pan = panRef.current;
+    if (pan?.pointerId === event.pointerId) {
+      setZoom(
+        clampSurfaceZoom(
+          {
+            ...pan.start,
+            x: pan.start.x + event.clientX - pan.x,
+            y: pan.start.y + event.clientY - pan.y,
+          },
+          stageExtent(),
+        ),
+      );
+      return;
+    }
+    const pinch = pinchRef.current;
+    if (pinch?.ids.includes(event.pointerId)) {
+      const [a, b] = pinch.ids.map((id) =>
+        stageLocal(touchesRef.current.get(id) ?? { x: 0, y: 0 }),
+      ) as [ZoomPoint, ZoomPoint];
+      setZoom(pinchSurfaceZoom(pinch.start, pinch.from, [a, b], stageExtent()));
+      return;
+    }
+    if (zoomPointersRef.current.has(event.pointerId)) return;
+    const pending = pendingPressRef.current;
+    if (pending?.press.pointerId === event.pointerId) {
+      const travel = Math.hypot(
+        event.clientX - pending.press.clientX,
+        event.clientY - pending.press.clientY,
+      );
+      if (travel < TOUCH_PRESS_SLOP_PX) return;
+      flushPendingPress();
+    }
+    if (!canInteract) return;
     // A hover (no button this client pressed) is sent only while it already
     // holds control: passing the pointer over the surface claims nothing.
     if (heldRef.current.size === 0 && !holdsControl(surfaceRef.current)) return;
@@ -764,6 +1237,24 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const onWheel = (event: WheelEvent) => {
+      // A trackpad pinch arrives as Ctrl+wheel: it zooms this view, and is
+      // never input (the page does not see it).
+      if (event.ctrlKey) {
+        event.preventDefault();
+        const rect = stageRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const unit = event.deltaMode === 1 ? 16 : 1;
+        // Not settled per step: small trackpad steps must add up.
+        setZoom((current) =>
+          scaleSurfaceZoomAt(
+            current,
+            { x: event.clientX - rect.left, y: event.clientY - rect.top },
+            Math.exp((-event.deltaY * unit) / 100),
+            rect,
+          ),
+        );
+        return;
+      }
       // Scrolling never claims: without control the wheel is the host
       // page's (the chat scrolls past the surface), not the surface's.
       if (!holdsControl(surfaceRef.current)) return;
@@ -787,8 +1278,33 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       if (modifiers) input.modifiers = modifiers;
       sendInput([input]);
     };
+    // Safari reports a trackpad pinch as gesture events (a cumulative
+    // `scale`), not Ctrl+wheel. Same meaning: this view zooms.
+    let gestureStart: SurfaceZoom | null = null;
+    const onGesture = (event: Event) => {
+      const scale = (event as Event & { scale?: number }).scale;
+      if (typeof scale !== 'number' || !Number.isFinite(scale)) return;
+      event.preventDefault();
+      if (event.type === 'gesturestart') gestureStart = zoomRef.current;
+      const rect = stageRef.current?.getBoundingClientRect();
+      if (!rect || !gestureStart) return;
+      const at = event as Event & { clientX?: number; clientY?: number };
+      const anchor = {
+        x: (at.clientX ?? rect.left + rect.width / 2) - rect.left,
+        y: (at.clientY ?? rect.top + rect.height / 2) - rect.top,
+      };
+      const next = scaleSurfaceZoomAt(gestureStart, anchor, scale, rect);
+      setZoom(event.type === 'gestureend' ? settleSurfaceZoom(next) : next);
+      if (event.type === 'gestureend') gestureStart = null;
+    };
     canvas.addEventListener('wheel', onWheel, { passive: false });
-    return () => canvas.removeEventListener('wheel', onWheel);
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend'])
+      canvas.addEventListener(type, onGesture, { passive: false });
+    return () => {
+      canvas.removeEventListener('wheel', onWheel);
+      for (const type of ['gesturestart', 'gesturechange', 'gestureend'])
+        canvas.removeEventListener(type, onGesture);
+    };
   }, [toSurface, sendInput]);
 
   const sendKey = (type: 'down' | 'up', event: ReactKeyboardEvent) => {
@@ -843,10 +1359,82 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     event.currentTarget.value = '';
   };
 
-  const controller = controllerLine(surface);
+  const touchPointer = useCoarsePointer();
+  const narrowViewport = useNarrowViewport();
+  const controller = controllerLine(surface, touchPointer);
   const { onControlState } = props;
   const { status, claimControl, releaseControl, keepControlAlive } = surface;
   const tone = controller.tone;
+
+  // ---- immersive: the same element over the whole viewport ----
+  const {
+    immersive,
+    enter: enterImmersive,
+    exit: exitImmersive,
+  } = useImmersive(containerRef);
+  const immersiveRef = useRef(immersive);
+  immersiveRef.current = immersive;
+  // Going full screen and back is this viewer still at the surface: a hold
+  // it has is renewed (never claimed), so the bar does not open on
+  // "No one is in control" merely because the viewer stopped touching.
+  const wasImmersiveRef = useRef(immersive);
+  const { onImmersiveChange } = props;
+  useEffect(() => {
+    if (wasImmersiveRef.current === immersive) return;
+    wasImmersiveRef.current = immersive;
+    if (holdsControl(surfaceRef.current)) void keepControlAlive();
+    onImmersiveChange?.(immersive);
+  }, [immersive, keepControlAlive, onImmersiveChange]);
+  const requiresLease = props.inputRequiresLease === true && !immersive;
+  requiresLeaseRef.current = requiresLease;
+  // A touch press held back before eligibility changed (read-only, lost
+  // input, immersive toggled, another surface) was meant for the old state:
+  // it never goes out.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these are the eligibility change keys.
+  useEffect(() => {
+    const pending = pendingPressRef.current;
+    if (pending) clearTimeout(pending.timer);
+    pendingPressRef.current = null;
+  }, [canInteract, requiresLease, immersive, props.surfaceId]);
+  /** Retry applies the rules any new input would meet right now. */
+  const mayRetry = canInteract && (!requiresLease || holding);
+  const inputNotice = (
+    <InputNotice
+      surface={surface}
+      canRetry={mayRetry}
+      onRetry={() => {
+        if (!mayRetry) return;
+        surface.retryInput();
+        // Back to the page: on a phone, typing goes on where it stopped.
+        keyboardRef.current?.focus({ preventScroll: true });
+      }}
+    />
+  );
+  const [chromeShown, setChromeShown] = useState(false);
+  /** Any interaction with the chrome restarts its auto-hide. */
+  const [chromeTouched, touchChrome] = useReducer((n: number) => n + 1, 0);
+  /** A mouse over the bar, or keyboard focus in it, keeps it up. */
+  const [chromeHeld, setChromeHeld] = useState(false);
+  const revealChrome = () => {
+    setChromeShown(true);
+    touchChrome();
+  };
+  const revealChromeRef = useRef(revealChrome);
+  revealChromeRef.current = revealChrome;
+  // Entering shows the chrome (so Exit is in reach); leaving forgets it.
+  useEffect(() => {
+    setChromeShown(immersive);
+    if (!immersive) setChromeHeld(false);
+  }, [immersive]);
+  useAutoHide(
+    immersive && chromeShown && !chromeHeld,
+    () => setChromeShown(false),
+    CONTROLS_AUTO_HIDE_MS,
+    chromeTouched,
+  );
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const coarsePointer = useCoarsePointer();
+
   useEffect(() => {
     onControlState?.({
       status,
@@ -854,6 +1442,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       claimControl,
       releaseControl,
       keepControlAlive,
+      immersive,
+      enterImmersive,
+      exitImmersive,
     });
   }, [
     onControlState,
@@ -862,6 +1453,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     claimControl,
     releaseControl,
     keepControlAlive,
+    immersive,
+    enterImmersive,
+    exitImmersive,
   ]);
   const recordAge = secondsAgo(clock, surface.lastActivityAt);
   const frameAge = secondsAgo(clock, surface.lastFrameAt);
@@ -915,10 +1509,35 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       : null;
 
   return (
-    <div className="live-surface" ref={containerRef}>
-      {props.renderHeader?.({ surface, inputReady, sendInput })}
-      {/* With host controls the toolbar is left only for "Try again". */}
-      {props.hostControls &&
+    <div
+      className="live-surface"
+      ref={containerRef}
+      data-immersive={immersive ? '' : undefined}
+      data-compact={immersive && narrowViewport ? '' : undefined}
+      // Immersive owns Escape (it leaves full screen): the app's own Escape
+      // shortcuts, such as "Go up one level", yield while it is active.
+      data-escape-owner={immersive ? '' : undefined}
+      // Diagnostics only (devtools, tests): what this viewer draws. Not
+      // shown; a codec name is not something the person acts on.
+      data-codec={
+        surface.activeCodec && surface.status === 'live'
+          ? surface.activeCodec
+          : undefined
+      }
+      onPointerMove={
+        immersive
+          ? (event) => {
+              if (event.pointerType === 'mouse') revealChrome();
+            }
+          : undefined
+      }
+    >
+      {immersive
+        ? null
+        : props.renderHeader?.({ surface, inputReady, sendInput })}
+      {/* With host controls the toolbar is left only for "Try again"; the
+          immersive bar replaces it. */}
+      {(props.hostControls || immersive) &&
       surface.status !== 'unavailable' &&
       surface.status !== 'denied' ? null : (
         <div className="live-surface__toolbar">
@@ -974,41 +1593,85 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           {videoLine}
         </p>
       ) : null}
-      {surface.inputNotice === 'control-changed' ? (
-        <p className="live-surface__notice" role="status">
-          Control changed before your input arrived, so it was not sent.
-        </p>
-      ) : surface.inputNotice === 'input-failed' ? (
-        <p className="live-surface__notice" role="status">
-          Your input could not be delivered.
-        </p>
-      ) : surface.inputNotice === 'page-dialog' ? (
-        <p className="live-surface__notice" role="status">
-          The page is showing a dialog. Answer it to continue.
-        </p>
-      ) : surface.inputNotice === 'host-busy' ? (
-        <p className="live-surface__notice" role="status">
-          The host is busy, so nothing was sent. Try again in a moment.
-        </p>
-      ) : null}
       <div
         className={`live-surface__stage${fitting ? ' live-surface__stage--fit' : ''}`}
         ref={stageRef}
+        data-zoomed={zoom.scale > 1 ? '' : undefined}
       >
-        <canvas
-          ref={canvasRef}
-          style={fitStyle}
-          className={`live-surface__canvas${fitting ? ' live-surface__canvas--fit' : ''}`}
-          role="img"
-          aria-label={`Live view of ${label}`}
-          data-testid="live-surface-canvas"
-          onPointerDown={canInteract ? onPointerDown : undefined}
-          onPointerUp={canInteract ? onPointerUp : undefined}
-          onPointerMove={canInteract ? onPointerMove : undefined}
-          onPointerCancel={releaseHeld}
-          onLostPointerCapture={releaseHeld}
-          onContextMenu={(event) => event.preventDefault()}
-        />
+        {immersive && chromeShown ? null : inputNotice}
+        {/* The zoom layer: the picture and what is drawn over the picture
+            move and scale together; the stage around it does not. */}
+        <div
+          className="live-surface__zoom"
+          data-testid="live-surface-zoom"
+          style={
+            zoom.scale === 1
+              ? undefined
+              : { transform: surfaceZoomTransform(zoom) }
+          }
+        >
+          <canvas
+            ref={canvasRef}
+            style={fitStyle}
+            className={`live-surface__canvas${fitting ? ' live-surface__canvas--fit' : ''}${projecting ? ' live-surface__canvas--projected' : ''}`}
+            role="img"
+            aria-label={`Live view of ${label}`}
+            data-testid="live-surface-canvas"
+            // Always listening: zoom is viewing, so it works without control;
+            // each handler gates what it SENDS on `canInteract`.
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
+            onPointerMove={onPointerMove}
+            onPointerCancel={onPointerCancel}
+            onLostPointerCapture={releaseHeld}
+            onContextMenu={(event) => event.preventDefault()}
+          />
+          {projecting && fitStyle && frameSize ? (
+            <div
+              aria-hidden="true"
+              className="live-surface__overlay live-surface__projection"
+              data-testid="live-surface-projection"
+              style={fitStyle}
+            >
+              {props.projection!.render({
+                canvas: canvasRef.current,
+                shown: frameSize,
+                subscribe: subscribeDrawn,
+              })}
+            </div>
+          ) : null}
+          {props.renderOverlay && fitStyle && frameSize ? (
+            <div
+              aria-hidden="true"
+              className="live-surface__overlay"
+              data-testid="live-surface-overlay"
+              style={fitStyle}
+            >
+              {props.renderOverlay({
+                shown: frameSize,
+                rotation: frameRotation,
+                visible: surface.status === 'live',
+              })}
+            </div>
+          ) : null}
+          {props.agentActionsEnabled && surface.agentAction && actionBox ? (
+            <div
+              className="live-surface__overlay"
+              data-testid="agent-action-overlay"
+              style={{
+                width: `${actionBox.width}px`,
+                height: `${actionBox.height}px`,
+              }}
+            >
+              <AgentActionOverlay
+                key={`${props.surfaceId}:${surface.agentAction.action.seq}`}
+                action={surface.agentAction.action}
+                expiresAt={surface.agentAction.expiresAt}
+                now={now}
+              />
+            </div>
+          ) : null}
+        </div>
         <textarea
           ref={keyboardRef}
           data-live-surface-keyboard=""
@@ -1018,10 +1681,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          readOnly={!canInteract || (props.inputRequiresLease && !holding)}
+          readOnly={!canInteract || (requiresLease && !holding)}
           // Out of the tab order until this viewer may drive: tabbing through
           // a floated surface must not land keys on an agent's page.
-          tabIndex={props.inputRequiresLease && !holding ? -1 : undefined}
+          tabIndex={requiresLease && !holding ? -1 : undefined}
           onKeyDown={(event) => sendKey('down', event)}
           onKeyUp={(event) => sendKey('up', event)}
           onInput={onKeyboardInput}
@@ -1029,38 +1692,37 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
             composingRef.current = true;
           }}
           onCompositionEnd={onCompositionEnd}
-          onBlur={() => releaseEverything()}
+          onFocus={() => setKeyboardOpen(true)}
+          onBlur={() => {
+            setKeyboardOpen(false);
+            releaseEverything();
+          }}
         />
-        {props.renderOverlay && fitStyle && frameSize ? (
-          <div
-            aria-hidden="true"
-            className="live-surface__overlay"
-            data-testid="live-surface-overlay"
-            style={fitStyle}
+        {zoom.scale > 1 ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="live-surface__zoom-reset"
+            aria-label={`Zoom ${Math.round(zoom.scale * 100)}%. Reset to fit`}
+            title="Reset zoom (or double-tap)"
+            onClick={() => setZoom(SURFACE_ZOOM_FIT)}
           >
-            {props.renderOverlay({
-              shown: frameSize,
-              rotation: frameRotation,
-              visible: surface.status === 'live',
-            })}
-          </div>
+            {Math.round(zoom.scale * 100)}%
+          </Button>
         ) : null}
-        {props.agentActionsEnabled && surface.agentAction && actionBox ? (
-          <div
-            className="live-surface__overlay"
-            data-testid="agent-action-overlay"
-            style={{
-              width: `${actionBox.width}px`,
-              height: `${actionBox.height}px`,
-            }}
+        {props.overlay}
+        {props.fullScreenButton && !immersive ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="live-surface__fullscreen"
+            data-pointer={coarsePointer ? 'coarse' : 'fine'}
+            aria-label="Full screen"
+            title="Full screen"
+            onClick={enterImmersive}
           >
-            <AgentActionOverlay
-              key={`${props.surfaceId}:${surface.agentAction.action.seq}`}
-              action={surface.agentAction.action}
-              expiresAt={surface.agentAction.expiresAt}
-              now={now}
-            />
-          </div>
+            <ExpandGlyph />
+          </Button>
         ) : null}
         {statusText ? (
           <p className="live-surface__status" role="status">
@@ -1068,14 +1730,74 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           </p>
         ) : null}
       </div>
-      {surface.activeCodec && surface.status === 'live' ? (
-        <p
-          className="live-surface__codec"
-          data-testid="live-surface-codec"
-          data-codec={surface.activeCodec}
-        >
-          {codecLabel(surface.activeCodec)}
-        </p>
+      {immersive ? (
+        chromeShown ? (
+          // biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only tracks whether a mouse or keyboard focus is holding the bar up; its buttons carry the semantics.
+          <div
+            className="live-surface__immersive-bar"
+            onPointerEnter={(event) => {
+              if (event.pointerType === 'mouse') setChromeHeld(true);
+            }}
+            onPointerLeave={() => setChromeHeld(false)}
+            onPointerDown={touchChrome}
+            onFocus={(event) => {
+              if (isKeyboardFocus(event.target)) setChromeHeld(true);
+            }}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node))
+                setChromeHeld(false);
+            }}
+          >
+            <LiveSurfaceViewerControls
+              label={`${label}: full screen controls`}
+              status={DRIVER_TEXT[tone]}
+              tone={tone}
+              onClaim={
+                !props.readOnly && tone !== 'you' && surface.status === 'live'
+                  ? () => void claimControl()
+                  : null
+              }
+              onRelease={tone === 'you' ? () => void releaseControl() : null}
+              keyboard={
+                holding && canInteract
+                  ? {
+                      open: keyboardOpen,
+                      onToggle: () => {
+                        touchChrome();
+                        if (keyboardOpen) keyboardRef.current?.blur();
+                        else
+                          keyboardRef.current?.focus({ preventScroll: true });
+                      },
+                    }
+                  : null
+              }
+              immersive
+              onToggleImmersive={exitImmersive}
+              trailing={props.renderImmersiveActions?.({
+                surface,
+                inputReady,
+                sendInput,
+              })}
+              menu={props.renderImmersiveMenu?.({
+                surface,
+                inputReady,
+                sendInput,
+              })}
+            />
+            {inputNotice}
+          </div>
+        ) : (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="live-surface__immersive-reveal"
+            aria-label="Show controls"
+            title="Show controls"
+            onClick={revealChrome}
+          >
+            <MoreGlyph />
+          </Button>
+        )
       ) : null}
     </div>
   );

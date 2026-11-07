@@ -81,7 +81,7 @@ import {
 } from './errors.js';
 import { PROJECT_HOME } from './helpers.js';
 import {
-  effectiveAppConfigOffline,
+  appConfigOffline,
   withoutManagedNoOpsOffline,
 } from './managed-settings-guard.js';
 
@@ -429,8 +429,12 @@ function printConfigValue(config: Record<string, unknown>, key?: string): void {
 
 function printConfigFromFile(key?: string): void {
   // #4517: the values in effect, with the installed policy's locks and
-  // defaults applied; the file itself is not changed.
-  printConfigValue(effectiveAppConfigOffline(loadConfigFile()), key);
+  // defaults applied; the file itself is not changed. The note is the live
+  // read's, from the same installed policy.
+  const { config, provenance } = appConfigOffline(loadConfigFile());
+  printConfigValue(config, key);
+  const note = key ? describeProvenanceNote(key, provenance) : undefined;
+  if (note) console.error(`  (${note})`);
 }
 
 /**

@@ -4,6 +4,7 @@ import { type RefObject, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { sha256Hex } from '../../utils/sha256';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { BrowserAnnotation } from './BrowserAnnotation';
 import { BROWSER_PAGE_CONTENT_NOTICE } from './browserArtifactContent';
 import type { BrowserPaneApi } from './browserPaneApi';
@@ -185,12 +186,7 @@ export function BrowserAnnotationFlow({
           if (mounted.current) onClose();
         })()
           .catch((error) => {
-            if (mounted.current)
-              onError(
-                error instanceof Error
-                  ? error.message
-                  : 'Could not attach annotation.',
-              );
+            if (mounted.current) onError(describeStationFailure(error).body);
           })
           .finally(() => {
             if (mounted.current) setPending(false);

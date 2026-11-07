@@ -99,6 +99,12 @@ export class ConnectionStore {
    * the invalidation the pairing just made.
    */
   private counterView = new Map<string, number>();
+  private readonly leaseInstance = uuid();
+  private leaseSequence = 0;
+  private readonly profileLeases = new Map<
+    string,
+    { fingerprint: string; epoch: string }
+  >();
   /**
    * This document's own profile snapshot while a serialized write of it is
    * still queued, and the number of those queued writes.
@@ -742,6 +748,7 @@ export class ConnectionStore {
   }
 
   remove(id: string): void {
+    this.profileLeases.delete(id);
     const snapshot = this.read();
     const { connections, activeId } = snapshot;
     if (this.preparedBrokerRouteId === id) this.preparedBrokerRouteId = null;
@@ -1010,6 +1017,38 @@ export class ConnectionStore {
    */
   credentialGeneration(id: string): number {
     return this.counter(this.generationPrefix, id);
+  }
+
+  /** Profile liveness is independent of the active connection selection. */
+  connectionLeaseEpoch(id: string): string | null {
+    const connection = this.getAll().find((item) => item.id === id);
+    if (!connection) {
+      this.profileLeases.delete(id);
+      return null;
+    }
+    const fingerprint = JSON.stringify([
+      connection.url,
+      connection.environmentId,
+      connection.selectedEndpointId,
+      connection.selectedAccessMethodId,
+      connection.credentialState,
+      connection.credentialRef,
+      connection.brokerRoute,
+      connection.nativeBrokerRoute,
+      connection.ownerId,
+      connection.hostOwnedCredential,
+      this.credentialGeneration(id),
+      this.credentialAuthorityGeneration(id),
+    ]);
+    let lease = this.profileLeases.get(id);
+    if (lease?.fingerprint !== fingerprint) {
+      lease = {
+        fingerprint,
+        epoch: `${this.leaseInstance}:${++this.leaseSequence}`,
+      };
+      this.profileLeases.set(id, lease);
+    }
+    return lease.epoch;
   }
 
   /** Retires every credential observation currently in flight for `id`. */
@@ -1903,6 +1942,7 @@ export class ConnectionStore {
   setInjectedConnection(next: InjectedConnection | null): void {
     const built = next ? this.buildInjected(next) : null;
     if (this.injectedEquals(built)) return;
+    if (this.injected) this.profileLeases.delete(this.injected.id);
     this.injected = built;
     this.invalidateCache();
     this.notify();

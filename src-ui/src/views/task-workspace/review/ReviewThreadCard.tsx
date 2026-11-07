@@ -7,6 +7,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { ActionOverflowMenu } from '../../../components/ActionOverflowMenu';
 import { Button } from '../../../components/Button';
+import { MessageDeliveryNote } from '../../../components/chat/message-bubble/MessageDeliveryNote';
+import { recordedDeliveryPort } from '../../../components/conversation/DeliveryPort';
 import {
   CameraGlyph,
   CheckGlyph,
@@ -15,10 +17,8 @@ import {
   CopyGlyph,
   LinkGlyph,
   OutboxGlyph,
-  RefreshGlyph,
   ReopenGlyph,
   ReturnGlyph,
-  TimeGlyph,
   WarningGlyph,
 } from '../../../components/icons/Glyph';
 import { ResponsiveSurfaceActions } from '../../../components/ResponsiveDialogSurface';
@@ -26,6 +26,7 @@ import { ErrorState } from '../../../components/state';
 import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { relativeTimeAgo } from '../../../utils/relativeTime';
+import { describeStationFailure } from '../../../utils/stationFailure';
 import { RoomAvatar } from '../../../workspace-panes/ProjectTaskRoomPresence';
 import { useReviewContext } from './ReviewContext';
 import { copyReviewThreadsForAgent } from './review-copy';
@@ -217,32 +218,23 @@ export function ReviewThreadCard({
     lastDelivery.deliveryKey === thread.deliveryKey
       ? lastDelivery
       : undefined;
-  const label = failure
-    ? 'Not sent'
-    : state === 'outdated'
+  const label =
+    state === 'outdated'
       ? 'Outdated'
-      : unconfirmed
-        ? 'Unconfirmed'
-        : queued
-          ? 'Queued'
-          : {
-              open: 'Open',
-              sent: 'Sent',
-              'agent-replied': 'Replied',
-              resolved: 'Resolved',
-            }[base];
+      : {
+          open: 'Open',
+          sent: undefined,
+          'agent-replied': 'Replied',
+          resolved: 'Resolved',
+        }[base];
   const Icon =
-    failure || state === 'outdated' || unconfirmed
+    state === 'outdated'
       ? WarningGlyph
-      : queued
-        ? TimeGlyph
-        : base === 'agent-replied'
-          ? ReturnGlyph
-          : base === 'resolved'
-            ? CheckGlyph
-            : base === 'open'
-              ? undefined
-              : OutboxGlyph;
+      : base === 'agent-replied'
+        ? ReturnGlyph
+        : base === 'resolved'
+          ? CheckGlyph
+          : undefined;
   const review = useReviewContext();
   const coarse = useCoarsePointer();
   const {
@@ -280,9 +272,7 @@ export function ReviewThreadCard({
       await action();
       if (clearDraft) discard();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'Review action failed.',
-      );
+      setError(describeStationFailure(cause).body);
     } finally {
       setPending(false);
     }
@@ -361,22 +351,40 @@ export function ReviewThreadCard({
                   >
                     {relativeTimeAgo(Date.parse(event.createdAt), Date.now())}
                   </time>
-                  {opening && label && (
+                  {opening && (failure || base === 'sent') && (
+                    <MessageDeliveryNote
+                      variant="inline"
+                      state={
+                        failure
+                          ? 'not-sent'
+                          : unconfirmed
+                            ? 'unconfirmed'
+                            : queued
+                              ? 'received'
+                              : 'delivered'
+                      }
+                      port={{
+                        ...recordedDeliveryPort,
+                        ...(failure &&
+                        actions.onSend &&
+                        sendable &&
+                        !pending &&
+                        !actions.sending
+                          ? {
+                              retry: async () => {
+                                await actions.onSend?.(
+                                  [thread.threadId],
+                                  'send',
+                                );
+                              },
+                            }
+                          : {}),
+                      }}
+                    />
+                  )}
+                  {opening && label && !failure && (
                     <span
                       className={`review-chip review-thread__state review-chip--${failure ? 'danger' : state === 'outdated' || unconfirmed ? 'caution' : base === 'resolved' ? 'positive' : base === 'agent-replied' ? 'active' : 'neutral'}`}
-                      title={
-                        failure
-                          ? failure.reason
-                          : queued
-                            ? 'Queued: agent is working'
-                            : base === 'sent'
-                              ? thread.pendingFollowUp
-                                ? 'Unsent follow-up'
-                                : actions.delivery
-                                  ? `Sent to ${actions.delivery.agentName}`
-                                  : 'Sent to agent'
-                              : undefined
-                      }
                     >
                       {Icon && <Icon />}
                       {label}
@@ -422,22 +430,6 @@ export function ReviewThreadCard({
           ) : (
             !replying && (
               <ResponsiveSurfaceActions className="review-thread__footer">
-                {failure && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Retry sending thread ${thread.ordinal}`}
-                    pending={pending || actions.sending}
-                    disabled={!actions.onSend || !sendable}
-                    onClick={() =>
-                      void run(() =>
-                        actions.onSend?.([thread.threadId], 'send'),
-                      )
-                    }
-                  >
-                    <RefreshGlyph /> Retry
-                  </Button>
-                )}
                 <Button
                   ref={replyTrigger}
                   size="sm"

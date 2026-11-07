@@ -17,12 +17,14 @@ import {
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { toolPurposeView } from '../../components/chat/tool-display-view';
+import type { StationStateScope } from '../../connections/station-state';
 import {
   activeChatsStore,
   type ChatUIState,
 } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { isChatInForeground } from './chatForeground';
 import { contentRefreshVersion } from './contentRefresh';
 import { isReplayThread } from './replay/replay-registry';
@@ -35,12 +37,14 @@ import type { OrchestrationEvent } from './types';
 export function handleRequestOpenedEvent(
   apiBase: string,
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
+  station?: StationStateScope,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   // The record is written for an asynchronous question too, as the
   // projection does; only the pending bookkeeping below is for blocking ones.
-  openLiveInputRequestRecord(event);
+  openLiveInputRequestRecord(event, station);
 
   if (event.blocking === false) return;
 
@@ -52,7 +56,7 @@ export function handleRequestOpenedEvent(
   // a new ask, so its binding is this event's, or none.
   const { [event.requestId]: _reopened, ...otherTurnIds } =
     chat.pendingApprovalTurnIds ?? {};
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     pendingApprovals,
     pendingApprovalTurnIds:
       typeof event.turnId === 'string'
@@ -71,7 +75,7 @@ export function handleRequestOpenedEvent(
     orchestrationStatus: 'awaiting-approval',
   });
 
-  raiseRequestOpenedToast(apiBase, event);
+  raiseRequestOpenedToast(apiBase, event, station);
 }
 
 /**
@@ -80,6 +84,7 @@ export function handleRequestOpenedEvent(
  */
 function openLiveInputRequestRecord(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
+  station?: StationStateScope,
 ) {
   // The record names the exact opened event; a frame without one has
   // nothing to name, and the projection writes the row once it is durable.
@@ -92,12 +97,17 @@ function openLiveInputRequestRecord(
     outcome: 'pending' as const,
   };
   if (form) {
-    openInputRequestRecordPart(event, {
-      ...base,
-      kind: 'form',
-      requester: form.requester,
-      message: inputRequestSummary(form.message),
-    });
+    openInputRequestRecordPart(
+      event,
+      {
+        ...base,
+        kind: 'form',
+        requester: form.requester,
+        message: inputRequestSummary(form.message),
+      },
+      undefined,
+      station,
+    );
     return;
   }
   if (event.requestType !== 'approval' && event.requestType !== 'permission')
@@ -115,6 +125,7 @@ function openLiveInputRequestRecord(
       message: event.title,
     },
     typeof toolCallId === 'string' ? toolCallId : undefined,
+    station,
   );
 }
 
@@ -128,8 +139,10 @@ function openLiveInputRequestRecord(
 export function raiseRequestOpenedToast(
   apiBase: string,
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
+  station?: StationStateScope,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat || event.blocking === false) return;
   // A form has no one-click answer; the pending-requests card collects it.
   if (inputRequestFromRequestEvent(event)) return;
@@ -178,16 +191,21 @@ export function raiseRequestOpenedToast(
   )
     return;
 
-  showApprovalToast(apiBase, event, {
-    toolName,
-    toolPreview,
-    agentName,
-    conversationTitle: chat.title,
-    grantLabel,
-    ...(toolRequestServerGrantFromPayload(event.payload) === 'server'
-      ? { serverGrantLabel: STATION_BROWSER_SERVER_GRANT_LABEL }
-      : {}),
-  });
+  showApprovalToast(
+    apiBase,
+    event,
+    {
+      toolName,
+      toolPreview,
+      agentName,
+      conversationTitle: chat.title,
+      grantLabel,
+      ...(toolRequestServerGrantFromPayload(event.payload) === 'server'
+        ? { serverGrantLabel: STATION_BROWSER_SERVER_GRANT_LABEL }
+        : {}),
+    },
+    station,
+  );
 }
 
 type ApprovalToastView = {
@@ -204,19 +222,21 @@ function showApprovalToast(
   apiBase: string,
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
   // docs/design/event-content-spill.md: a request whose content (or the
   // content of the call it gates, such as a Codex file change's diff) was
   // stored out of line is allowed only from its card, once loaded.
-  const needsContentLoad = requestNeedsContentLoad(event);
+  const needsContentLoad = requestNeedsContentLoad(event, station);
   const answer = (
     decision: 'accept' | 'acceptForSession' | 'decline',
     sessionGrantScope?: 'server',
   ) => {
-    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    const chat = chatStore.getChatForExecutionSession(event.threadId);
     if (
       !isChatInForeground({
-        chatKey: activeChatsStore.getChatKeyForExecutionSession(event.threadId),
+        chatKey: chatStore.getChatKeyForExecutionSession(event.threadId),
         threadId: event.threadId,
         conversationId: chat?.conversationId,
       })
@@ -226,10 +246,18 @@ function showApprovalToast(
         dock: 'open',
       });
     }
-    void answerFromToast(apiBase, event, view, decision, sessionGrantScope);
+    void answerFromToast(
+      apiBase,
+      event,
+      view,
+      decision,
+      sessionGrantScope,
+      station,
+    );
   };
   const toastId = toastStore.showToolApproval({
-    sessionId: event.threadId,
+    sessionId:
+      chatStore.getChatKeyForExecutionSession(event.threadId) ?? event.threadId,
     requestId: event.requestId,
     toolName: view.toolName,
     ...(view.toolPreview ? { toolPreview: view.toolPreview } : {}),
@@ -249,7 +277,7 @@ function showApprovalToast(
               label: 'Review',
               variant: 'primary' as const,
               onClick: () => {
-                const chat = activeChatsStore.getChatForExecutionSession(
+                const chat = chatStore.getChatForExecutionSession(
                   event.threadId,
                 );
                 navigationStore.navigate('/', {
@@ -279,10 +307,10 @@ function showApprovalToast(
     ],
   });
 
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   const approvalToasts = new Map(chat?.approvalToasts || []);
   approvalToasts.set(event.requestId, toastId);
-  activeChatsStore.updateChat(event.threadId, { approvalToasts });
+  chatStore.updateChat(event.threadId, { approvalToasts });
 }
 
 /**
@@ -293,13 +321,15 @@ function showApprovalToast(
  */
 export function requestNeedsContentLoad(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
+  station?: StationStateScope,
 ): boolean {
+  const chatStore = activeChatsStore.forStation(station);
   if (event.spilledContent) return true;
   if (event.eventId && contentRefreshVersion(event.threadId, event.eventId) > 0)
     return true;
   const callIds = requestBoundCallIds(event);
   if (callIds.length === 0) return false;
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   const parts = [
     ...(chat?.messages ?? []).flatMap((message) => message.contentParts ?? []),
     ...(chat?.streamingMessage?.contentParts ?? []),
@@ -313,13 +343,19 @@ export function requestNeedsContentLoad(
 }
 
 /** Marks or unmarks a request as answered here; see `answeredApprovals`. */
-function setAnswered(threadId: string, requestId: string, answered: boolean) {
-  const chat = activeChatsStore.getChatForExecutionSession(threadId);
+function setAnswered(
+  threadId: string,
+  requestId: string,
+  answered: boolean,
+  station?: StationStateScope,
+) {
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(threadId);
   if (!chat) return;
   const others = (chat.answeredApprovals ?? []).filter(
     (id) => id !== requestId,
   );
-  activeChatsStore.updateChat(threadId, {
+  chatStore.updateChat(threadId, {
     answeredApprovals: answered ? [...others, requestId] : others,
   });
 }
@@ -338,25 +374,32 @@ async function answerFromToast(
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
   sessionGrantScope?: 'server',
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
   // The request stops waiting on the user at the click, not at the engine's
   // `request.resolved`: the queue card is already gone, and a status surface
   // that kept saying "Approval needed" until the round trip finished would
   // contradict it.
-  setAnswered(event.threadId, event.requestId, true);
+  setAnswered(event.threadId, event.requestId, true, station);
   try {
     // Loaded on demand: the answer path runs only after a click, so it stays
     // out of the entry chunk (same precedent as queueDrain's dispatcher). A
     // failed load is a decision that did not land, and takes the same
     // report-and-re-offer path below.
     const { answerOrchestrationRequest } = await import('./answerRequest');
-    const outcome = await answerOrchestrationRequest(apiBase, {
-      threadId: event.threadId,
-      requestId: event.requestId,
-      requestEventId: event.eventId,
-      decision,
-      ...(sessionGrantScope ? { sessionGrantScope } : {}),
-    });
+    if (station && !station.isCurrent()) return;
+    const outcome = await answerOrchestrationRequest(
+      station?.targetApiBase ?? apiBase,
+      {
+        ...(station ? { requestScope: station.requestScope } : {}),
+        threadId: event.threadId,
+        requestId: event.requestId,
+        requestEventId: event.eventId,
+        decision,
+        ...(sessionGrantScope ? { sessionGrantScope } : {}),
+      },
+    );
     if (outcome === 'already-settled') {
       toastStore.show(
         `${view.toolName}: this request is no longer open.`,
@@ -365,15 +408,12 @@ async function answerFromToast(
       );
     }
   } catch (error) {
-    const reason =
-      error instanceof Error && error.message
-        ? error.message
-        : 'Station did not accept this decision.';
+    const reason = describeStationFailure(error).body;
     const unconfirmed =
       error instanceof Error &&
       'code' in error &&
       error.code === 'approval_delivery_unconfirmed';
-    setAnswered(event.threadId, event.requestId, false);
+    setAnswered(event.threadId, event.requestId, false, station);
     toastStore.show(
       unconfirmed
         ? `Delivery of your decision on ${view.toolName} is not confirmed: ${reason}`
@@ -386,9 +426,9 @@ async function answerFromToast(
     );
     // Only while the request is still waiting: a `request.resolved` that
     // landed meanwhile already removed it, and must not get a dead prompt.
-    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    const chat = chatStore.getChatForExecutionSession(event.threadId);
     if (chat?.pendingApprovals?.includes(event.requestId)) {
-      showApprovalToast(apiBase, event, view);
+      showApprovalToast(apiBase, event, view, station);
     }
   }
 }
@@ -401,8 +441,10 @@ async function answerFromToast(
  */
 export function handleRequestDeliveryEvent(
   event: Extract<OrchestrationEvent, { method: 'request.delivery' }>,
+  station?: StationStateScope,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   // The note speaks for a live engine; a report settled after the session
   // ended (a cancel written during teardown) must not re-add what
@@ -415,7 +457,7 @@ export function handleRequestDeliveryEvent(
   const others = (chat.unacknowledgedDecisions || []).filter(
     (decision) => decision.requestId !== event.requestId,
   );
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     unacknowledgedDecisions:
       event.outcome === 'unacknowledged'
         ? [
@@ -434,16 +476,21 @@ export function handleRequestDeliveryEvent(
 
 export function handleRequestResolvedEvent(
   event: Extract<OrchestrationEvent, { method: 'request.resolved' }>,
+  station?: StationStateScope,
 ) {
-  void import('./answerRequest')
-    .then(({ forgetApprovalAnswer }) =>
-      forgetApprovalAnswer(event.threadId, event.requestId),
-    )
-    .catch(() => undefined);
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  if (!station || station.binding.affinity.kind === 'host')
+    void import('./answerRequest')
+      .then(({ forgetApprovalAnswer }) =>
+        forgetApprovalAnswer(event.threadId, event.requestId),
+      )
+      .catch(() => undefined);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
-  settleInputRequestRecordPart(event, (kind) =>
-    inputRequestOutcome(kind, event.status),
+  settleInputRequestRecordPart(
+    event,
+    (kind) => inputRequestOutcome(kind, event.status),
+    station,
   );
 
   const pendingApprovals = (chat.pendingApprovals || []).filter(
@@ -457,7 +504,7 @@ export function handleRequestResolvedEvent(
     toastStore.dismiss(toastId);
   }
   approvalToasts.delete(event.requestId);
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     pendingApprovals,
     pendingApprovalTurnIds,
     answeredApprovals: (chat.answeredApprovals ?? []).filter(

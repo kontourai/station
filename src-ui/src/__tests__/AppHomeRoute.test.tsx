@@ -26,8 +26,19 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
 const serverEventsMount = vi.hoisted(() => vi.fn(() => null));
+// Connection authority is exercised by station-connection-registry.test.tsx;
+// these shell routing fixtures intentionally supply no query/credential graph.
+vi.mock('../connections/StationConnectionsContext', () => ({
+  StationConnectionsProvider: ({ children }: { children: ReactNode }) =>
+    children,
+}));
 vi.mock('../hooks/ServerEventsMount', () => ({
   ServerEventsMount: serverEventsMount,
+}));
+// Outbox transport is qualified by its mounted controller suites. This shell
+// routing fixture has no credential graph or QueryClient.
+vi.mock('../hooks/OutboundQueueFlushMount', () => ({
+  OutboundQueueFlushMount: () => null,
 }));
 
 vi.mock('../components/chat/TaskShapingComposer', () => ({
@@ -126,6 +137,11 @@ const {
   connectionState: {
     status: 'connected',
     reason: null as string | null,
+    pendingApproval: null as null | {
+      requestKind: 'direct' | 'code';
+      expiresAt: number;
+      remainingMs: number;
+    },
   },
   coreUpdateStatus: {
     data: undefined as
@@ -158,8 +174,14 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
     isPending: false,
   }),
-  useProjectsQuery: () => hooks.projects,
-  useProjectLayoutsQuery: () => hooks.layouts,
+  useProjectsQuery: () => ({
+    ...hooks.projects,
+    isPending: hooks.projects.isPending ?? hooks.projects.isLoading,
+  }),
+  useProjectLayoutsQuery: () => ({
+    ...hooks.layouts,
+    isPending: hooks.layouts.isPending ?? hooks.layouts.isLoading,
+  }),
   useProjectLayoutQuery: () => hooks.layout,
   useCoreUpdateStatusQuery: () => coreUpdateStatus,
   useQueryClient: () => ({ invalidateQueries }),
@@ -209,6 +231,8 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
     status: connectionState.status,
     reason: connectionState.reason,
   }),
+  // The same pending-request fact the header chip reads.
+  usePendingPairingApproval: () => connectionState.pendingApproval,
 }));
 // The launch update check reads its connected-server context through real
 // react-query (#2032), and this file renders App without a QueryClient. A
@@ -396,12 +420,14 @@ vi.mock('../app-shell/ActivityRegionShell', () => ({
     <div data-testid="activity-region-shell">{regionId}</div>
   ),
 }));
-vi.mock('../components/header/Header', () => ({ Header: () => null }));
+vi.mock('../components/header/Header', () => ({
+  Header: () => <header>Workspace toolbar</header>,
+}));
 vi.mock('../components/notifications/ConnectionBannerSource', () => ({
   ConnectionBannerSource: () => null,
 }));
 vi.mock('../components/project-sidebar/ProjectSidebar', () => ({
-  ProjectSidebar: () => null,
+  ProjectSidebar: () => <nav aria-label="Projects" />,
 }));
 vi.mock('../components/ShortcutsCheatsheet', () => ({
   ShortcutsCheatsheet: () => null,
@@ -706,6 +732,89 @@ describe('App home route resolution', () => {
     expect(request!.pending).toBe(false);
   });
 
+  test.each(['projects', 'layouts'] as const)(
+    'keeps Home pending while the %s cache is restoring without a fetch',
+    async (query) => {
+      hooks.projects = {
+        data: [{ slug: 'dev' }],
+        isLoading: false,
+        isPending: false,
+      };
+      hooks.layouts = {
+        data: [{ slug: 'code' }],
+        isLoading: false,
+        isPending: false,
+      };
+      hooks[query] = {
+        data: undefined,
+        isLoading: false,
+        isPending: true,
+        fetchStatus: 'idle',
+      };
+      const { rerender } = render(<App />);
+      await act(async () => undefined);
+      expect(
+        screen.getByRole('status', { name: /loading your workspace/i }),
+      ).toBeTruthy();
+      expect(screen.queryByTestId('app-view-content')).toBeNull();
+      hooks[query] =
+        query === 'projects'
+          ? { data: [{ slug: 'dev' }], isPending: false }
+          : { data: [{ slug: 'code' }], isPending: false };
+      await act(async () => rerender(<App />));
+      expect(screen.getByTestId('app-view-content').textContent).toBe(
+        '{"type":"home"}',
+      );
+    },
+  );
+
+  test('a native pane pop-out renders its route without the main workspace chrome', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {
+        metadata: {
+          currentWindow: {
+            label:
+              'workspace-pane-pop-out-8b094e38-b8b0-4148-a44e-a660159e740a',
+          },
+        },
+      },
+    });
+    window.history.replaceState(
+      {},
+      '',
+      '/projects/dev/panes/files/workspace-files',
+    );
+    try {
+      render(<App />);
+      await act(async () => undefined);
+      expect(screen.queryByRole('navigation', { name: 'Projects' })).toBeNull();
+      expect(screen.queryByText('Workspace toolbar')).toBeNull();
+      expect(screen.getByRole('main')).toBeTruthy();
+      expect(screen.getByTestId('app-view-content')).toBeTruthy();
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+      await act(async () => {
+        window.history.pushState({}, '', '/?surface=activity&session=result');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      expect(screen.getByRole('navigation', { name: 'Projects' })).toBeTruthy();
+      expect(screen.getByText('Workspace toolbar')).toBeTruthy();
+      expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
+      await act(async () => {
+        window.history.replaceState(
+          {},
+          '',
+          '/projects/dev/panes/files/workspace-files',
+        );
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      expect(screen.queryByRole('navigation', { name: 'Projects' })).toBeNull();
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+    } finally {
+      Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
+    }
+  });
+
   test('renders pending root route without exposing stale restore state, then settles on Home without redirecting', async () => {
     hooks.navigation.lastProject = 'ghost-project';
     hooks.navigation.lastProjectLayout = 'ghost-layout';
@@ -935,6 +1044,29 @@ describe('App home route resolution', () => {
     // the connect package don't false-fail this wiring test.
     expect(screen.getByText(/isn't accepting this device/)).toBeTruthy();
     expect(screen.queryByText(/offline/i)).toBeNull();
+  });
+
+  // Field report: the header read "Awaiting approval" while this card read
+  // "isn't accepting this device" — every probe 401s until approval. Both now
+  // derive from the one pending-request fact.
+  test('a pending access request reads as waiting, not as a refusal', async () => {
+    connectionState.status = 'error';
+    connectionState.reason = 'authentication-failed';
+    connectionState.pendingApproval = {
+      requestKind: 'direct',
+      expiresAt: Date.now() + 120_000,
+      remainingMs: 120_000,
+    };
+    hooks.projects = { data: [], isLoading: false, isError: true };
+    try {
+      render(<App />);
+      await act(async () => undefined);
+
+      expect(screen.getByText(/^Waiting for approval on /)).toBeTruthy();
+      expect(screen.queryByText(/isn't accepting this device/)).toBeNull();
+    } finally {
+      connectionState.pendingApproval = null;
+    }
   });
 
   // #928 slice C: App's `navigateToView` no longer intercepts an `activity`

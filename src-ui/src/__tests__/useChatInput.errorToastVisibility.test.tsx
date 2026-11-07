@@ -695,7 +695,7 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
     capturedOnError?.(new Error('Agent not found'));
 
     expect(showToastMock).toHaveBeenCalledWith(
-      'Error: Agent not found',
+      'Error: Try again in a moment.',
       'error',
     );
   });
@@ -719,7 +719,7 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
     capturedOnError?.(new Error('Agent not found'));
 
     expect(showToastMock).toHaveBeenCalledWith(
-      'Error: Agent not found',
+      'Error: Try again in a moment.',
       'error',
     );
   });

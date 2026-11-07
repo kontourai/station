@@ -416,7 +416,7 @@ describe('secret binding operator UI', () => {
       />,
     );
     expect(screen.getByRole('alert').textContent).toContain(
-      'projection unavailable',
+      'Try again in a moment.',
     );
     fireEvent.click(
       screen.getByRole('button', { name: 'Retry binding configuration' }),

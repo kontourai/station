@@ -56,6 +56,15 @@ both folders go through the same preparation, so the chat gets one private
 folder. With **Chats without a project** set to **Home folder**, the chat is
 still unbound and a confined Codex session uses the private folder here.
 
+On Windows, newly prepared scratch and managed engine folders use
+`~/.station-workspaces/<hash of Station home>/` in place of `<Station home>`.
+PowerShell reads ancestor attributes to establish its location; private Station
+data denies those reads, making relative commands start at `C:\` even when the
+process cwd is correct. Workspace placement preserves the data home's ACL and
+the engine's filesystem profile. Existing conversations keep their recorded
+folders. These Windows workspace files are external to Station home archives
+and resets; back them up and retire them separately, as with Project folders.
+
 The user home is too broad a writable sandbox root: Windows sandbox setup can
 recursively change ACLs throughout it, delaying commands and granting sandbox
 accounts access to unrelated launchers.
@@ -73,12 +82,20 @@ resolves and checks that package-manager pin. On Linux,
 `make`, `python3`) when the `node-pty` terminal module must be compiled.
 macOS and Windows normally use the supported prebuild paths. The Linux
 [prebuild manifest](../../packaging/node-pty-prebuilds/manifest.json) is currently
-empty. Its future artifact channel needs the libc compatibility admission in
+empty. Managed installation removes unapproved bundled Linux prebuilds before
+running the approved hook, so their presence cannot silently replace compilation.
+Its future artifact channel needs the libc compatibility admission in
 [#2813](https://github.com/kontourai/station/issues/2813) before it can replace
 source builds on supported hosts. `npm_config_build_from_source=true` opts out
 of prebuild staging. Other native dependencies retain their own platform
 requirements. Rust and platform SDKs are needed for native builds/checks; a server/UI-only
 loop need not run them.
+
+Station pins node-pty `1.2.0-beta.18` for its synchronized Windows native handle
+registry. The prerelease supplies ConPTY rather than the removed WinPTY backend.
+Windows process publication waits for connection readiness and a valid PID;
+a startup exit is an error. Keep the exact package/hook/artifact review aligned
+when changing this pin; macOS checks do not qualify Windows or ARM64 behavior.
 
 Scoped terminal process-group cleanup on POSIX also needs `ps` with PID, PPID
 and process-group columns. A missing or failed census is a cleanup error, not
@@ -173,7 +190,11 @@ screen. Mint the link at handoff time — an earlier link may already be
 consumed or name a boot that has since restarted — and open it in the
 operator's browser rather than asking them to retype a URL. Pairing is stored
 per browser profile in the instance home, so once paired, ordinary stop and
-start on the same home needs no new link.
+start on the same home needs no new link. Each link pairs its own Device, so
+opening one on a phone leaves a desktop browser signed in, on either origin;
+a browser that already holds a session keeps its Device. Sign one browser out
+by revoking its Device. Each fresh profile that redeems a link adds a Device
+toward the identityless-Device quota, so revoke ones you no longer use.
 
 ### Running a second Station in development mode
 
@@ -510,7 +531,7 @@ npm run dev:ui
 # http://127.0.0.1:5173
 ```
 
-It listens on IPv4 loopback, and the Tauri development shell uses that same endpoint. Direct LAN or other non-loopback exposure of the root Vite server is unsupported. When developing on a remote machine, keep Vite on loopback and forward it explicitly from your local machine:
+It listens on IPv4 loopback, and the Tauri development shell uses that same endpoint. Direct LAN or other non-loopback exposure of the root Vite server is unsupported. Under a [managed policy](managed-policy.md#network-exposure) without `remote` clients, Vite refuses to start with a non-loopback `--host`. When developing on a remote machine, keep Vite on loopback and forward it explicitly from your local machine:
 
 ```bash
 ssh -L 5173:127.0.0.1:5173 user@remote-host

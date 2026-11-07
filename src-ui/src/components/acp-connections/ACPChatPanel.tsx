@@ -1,5 +1,8 @@
 import { useConnections } from '@kontourai/station-connect';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import {
   ENGINE_CAPABILITY_MATRICES,
   resolveComposerImageSupport,
@@ -20,29 +23,17 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
-import { useAuth } from '../../contexts/AuthContext';
-import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useProject } from '../../contexts/ProjectsContext';
-import { useACPConnections } from '../../hooks/useACPConnections';
 import { useCreateChatSession } from '../../hooks/useActiveChatSessions';
 import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
-import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
-import {
-  acpApprovalFor,
-  sessionApprovalOverride,
-} from '../../utils/approvalMode';
-import { sessionAdapterSupportsSteering } from '../../utils/execution';
-import {
-  accountableHumanFromUser,
-  ownerAttributionFromStation,
-} from '../../utils/ownerAttribution';
-import { ChatInputArea } from '../chat/ChatInputArea';
-import { ChatMessageList } from '../chat/ChatMessageList';
+import { ownerAttributionFromStation } from '../../utils/ownerAttribution';
 import { durableMentionAuthority } from '../chat/composer-mentions';
+import { ConversationBody } from '../conversation/ConversationBody';
+import { ConversationConnectionProvider } from '../conversation/ConversationConnectionContext';
 import { shouldBindPanelProjectContext } from './project-context-binding';
 
 interface ACPChatPanelProps {
@@ -155,7 +146,6 @@ export function ACPChatPanel({
   const agents = useAgents();
   const createSession = useCreateChatSession();
   const { updateChat } = useActiveChatActions();
-  const { user } = useAuth();
   const { activeConnection, captureCredentialEvidence } = useConnections();
   const mentionCredentialEvidence = captureCredentialEvidence();
   const mentionAuthority = mentionCredentialEvidence
@@ -166,6 +156,7 @@ export function ACPChatPanel({
         credentialState: mentionCredentialEvidence.credentialState,
       })
     : null;
+
   // #4402: "via <machine>" for the seeded "Default" connection.
   const activeStationName = useActiveStationName();
   const owner = useMemo(
@@ -177,10 +168,6 @@ export function ACPChatPanel({
         verifiedBuildLabel ? `Station ${verifiedBuildLabel}` : null,
       ),
     [activeConnection, activeStationName],
-  );
-  const accountableHuman = useMemo(
-    () => accountableHumanFromUser(user),
-    [user],
   );
 
   // Resolve session ID: restore from sessionStorage or create new
@@ -216,24 +203,6 @@ export function ACPChatPanel({
   )?.execution?.approvalMode;
   // #2144 slice 6: the Station-scope layer below that Agent default.
   const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
-  const { data: acpConnections = [] } = useACPConnections();
-  const activeAcpConnection = useMemo(
-    () =>
-      acpConnections.find(
-        (connection) => connection.id === activeSession?.agentConnectionId,
-      ),
-    [acpConnections, activeSession?.agentConnectionId],
-  );
-  const advertisedAcpSession = useMemo(
-    () => advertisedAcpSessionModesFromConnection(activeAcpConnection),
-    [activeAcpConnection],
-  );
-  // #3290: who decides which of this ACP engine's actions ask.
-  const acpApproval = useMemo(
-    () => acpApprovalFor(activeAcpConnection),
-    [activeAcpConnection],
-  );
-
   // A panel's Project is a default for its fresh tab only. A restored or
   // already-dispatched conversation has an immutable workspace identity from
   // its first turn, so navigation must not rewrite it to this panel's Project.
@@ -243,12 +212,6 @@ export function ACPChatPanel({
     }
   }, [activeSession, projectSlug, projectName, sessionId, updateChat]);
 
-  // archive#3344: this used to read `agent.supportsAttachments`, a wire field
-  // no server code has ever written — so it was `undefined ?? false` on every
-  // render and this panel refused every image, while `acp-adapter.ts` declares
-  // `image-input` and builds real ACP image content blocks. The engine's own
-  // declared cell answers it now, the same way the tool-policy chip below
-  // resolves.
   const composerImageSupport = resolveComposerImageSupport(
     ENGINE_CAPABILITY_MATRICES.acp,
     runtimeConnection
@@ -294,11 +257,8 @@ export function ACPChatPanel({
     isChatVisible: isActive,
   });
 
-  // Narrow, selector-granular subscription for the transcript: only
-  // re-renders (i.e. only returns a new object) when a field the transcript
-  // actually reads changes. This is what stops composer keystrokes —
-  // updateChat(sessionId, { input }) — from re-rendering/re-parsing the
-  // memoized ChatMessageList tree below.
+  // Normalize the transcript identity while the shared body receives the
+  // complete runtime and control state from this host conversation.
   const transcriptSession = useActiveChatSelector(
     sessionId,
     useCallback(
@@ -324,102 +284,41 @@ export function ACPChatPanel({
       data-visual-viewport-boundary="shared"
       style={acpViewportBoundaryStyle(visualViewport.style)}
     >
-      <ChatMessageList
-        activeSession={transcriptSession}
-        fontSize={13}
-        showReasoning={true}
-        showToolDetails={true}
-        owner={owner}
-        accountableHuman={accountableHuman}
-      />
-      <ChatInputArea
-        sessionId={sessionId}
-        input={chatInput.input}
-        attachments={chatInput.attachments}
-        textareaRef={chatInput.textareaRef}
-        disabled={false}
-        turnInFlight={isTurnInFlight(activeSession)}
-        workingDirectory={sessionProject?.workingDirectory}
-        mentionProjectSlug={sessionProject?.slug}
-        mentionRequestScope={mentionRequestScope}
-        mentionAuthority={mentionAuthority}
-        busyFollowUp={
-          isTurnInFlight(activeSession) &&
-          sessionAdapterSupportsSteering(
-            activeSession.orchestrationDurability,
-          ) &&
-          chatInput.attachments.length === 0
-            ? 'steer'
-            : 'queue'
-        }
-        onQueueFollowUp={() =>
-          chatInput.handleSend(undefined, undefined, { queueOnBusy: true })
-        }
-        modelSupportsAttachments={composerImageSupport.attachable}
-        fileAttachmentsSupported={false}
-        fontSize={13}
-        dockHeight={400}
-        canModelSelect={chatInput.canModelSelect}
-        currentModel={chatInput.currentModel}
-        availableModels={[]}
-        modelQuery={chatInput.modelQuery}
-        agentConnectionId={activeSession.agentConnectionId}
-        modelRuntimeOptions={
-          activeSession.requestedProviderOptions ??
-          activeSession.providerOptions
-        }
-        executionMode={activeSession.executionMode}
-        approvalModeAgentDefault={agentApprovalModeDefault}
-        approvalModeStationDefault={stationApprovalModeDefault}
-        toolPolicyDelivery={
-          runtimeConnection
-            ? resolveEngineCapabilityMatrix(
-                activeSession.agentConnectionId,
-                runtimeConnection,
-              ).toolPolicy
-            : undefined
-        }
-        lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
-        approvalModeOverride={sessionApprovalOverride(activeSession)}
-        acpSessionModes={advertisedAcpSession.modes}
-        acpApproval={acpApproval}
-        acpCurrentModeId={
-          activeSession.currentModeId ?? advertisedAcpSession.currentModeId
-        }
-        commandQuery={chatInput.commandQuery}
-        slashCommands={chatInput.slashCommands}
-        onInputChange={chatInput.handleInputChange}
-        onSend={chatInput.handleSend}
-        onCancel={chatInput.handleCancel}
-        onClearInput={chatInput.handleClearInput}
-        selectAttachmentFiles={chatInput.selectAttachmentFiles}
-        attachmentError={chatInput.attachmentError}
-        attachmentStages={chatInput.attachmentStages}
-        attachmentNotice={chatInput.attachmentNotice}
-        attachUnavailableReason={chatInput.attachUnavailableReason}
-        onAttachUnavailable={chatInput.setAttachmentError}
-        removalUnblocksSend={chatInput.removalUnblocksSend}
-        sendBlockedReason={chatInput.sendBlockedReason}
-        onRetryAttachmentStage={chatInput.retryAttachmentStage}
-        onCancelAttachmentStage={chatInput.cancelAttachmentStage}
-        onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
-        onRemoveAttachment={chatInput.handleRemoveAttachment}
-        onClearAttachments={chatInput.handleClearAttachments}
-        onModelSelect={chatInput.handleModelSelect}
-        onModelReset={chatInput.handleModelReset}
-        onModelClose={chatInput.handleModelClose}
-        onModelOpen={chatInput.handleModelOpen}
-        onModelRuntimeOptionChange={chatInput.handleModelRuntimeOptionChange}
-        onApprovalModeChange={chatInput.handleApprovalModeChange}
-        onAcpSessionModeChange={chatInput.handleAcpSessionModeChange}
-        onCommandSelect={chatInput.handleCommandSelect}
-        onCommandClose={chatInput.handleCommandClose}
-        onHistoryUp={chatInput.handleHistoryUp}
-        onHistoryDown={chatInput.handleHistoryDown}
-        onRestorePortableDraft={chatInput.handleRestorePortableDraft}
-        updateFromInput={chatInput.updateFromInput}
-        closeAll={chatInput.closeAll}
-      />
+      <ConversationConnectionProvider
+        value={{ apiBase, requestScope: mentionRequestScope }}
+      >
+        <ConversationBody
+          activeSession={{
+            ...activeSession,
+            ...transcriptSession,
+            agentConnectionId: activeSession.agentConnectionId
+              ? engineConnectionId(activeSession.agentConnectionId)
+              : undefined,
+          }}
+          owner={owner}
+          workingDirectory={sessionProject?.workingDirectory}
+          chatInput={chatInput}
+          chatFontSize={13}
+          dockHeight={400}
+          showStatsPanel={false}
+          showReasoning
+          showToolDetails
+          modelSupportsAttachments={composerImageSupport.attachable}
+          fileAttachmentsSupported={false}
+          availableModels={[]}
+          agentApprovalModeDefault={agentApprovalModeDefault}
+          stationApprovalModeDefault={stationApprovalModeDefault}
+          toolPolicyDelivery={
+            runtimeConnection
+              ? resolveEngineCapabilityMatrix(
+                  activeSession.agentConnectionId,
+                  runtimeConnection,
+                ).toolPolicy
+              : undefined
+          }
+          setShowStatsPanel={() => {}}
+        />
+      </ConversationConnectionProvider>
     </div>
   );
 }

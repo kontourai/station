@@ -35,6 +35,7 @@ import {
   useRecoveryConfig,
 } from '../hooks/useRecoveryConfig';
 import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
+import { describeStationFailure } from '../utils/stationFailure';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
@@ -494,7 +495,12 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
   const dismissalRevision = query.data?.publishers
     ? `${query.data.inventoryRevision}:${status.data?.liteInventoryRevision ?? ''}:${status.data?.authorEndpoint ?? ''}:${dntActive}`
     : query.data?.inventoryRevision;
+  // #4521: a managed policy turned telemetry off; there is nothing to decide.
+  const managedOff = Object.values(status.data?.publishers ?? {}).some(
+    (state) => state?.reason === 'managed',
+  );
   const dismissed =
+    managedOff ||
     inactiveWithoutEndpoint ||
     (pageDismissed !== undefined && pageDismissed === dismissalRevision) ||
     isSnoozedFor(dismissalRevision) ||
@@ -1053,11 +1059,7 @@ function useUsageTelemetryDecision(
             });
           },
           onError: (error) =>
-            setSettingError(
-              error instanceof Error
-                ? error.message
-                : 'The usage telemetry setting could not be saved.',
-            ),
+            setSettingError(describeStationFailure(error).body),
         },
       );
       return;
@@ -1115,12 +1117,7 @@ function useUsageTelemetryDecision(
             tier: next,
           });
         },
-        onError: (error) =>
-          setSettingError(
-            error instanceof Error
-              ? error.message
-              : 'The usage telemetry setting could not be saved.',
-          ),
+        onError: (error) => setSettingError(describeStationFailure(error).body),
       },
     );
   };

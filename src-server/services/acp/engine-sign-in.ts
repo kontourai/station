@@ -232,6 +232,7 @@ export class EngineSignInService {
       args: config.args,
       cwd: ensureEngineSpawnTmpDir(),
       launchEnv: registryLaunchEnvFor(config),
+      connection: config,
       credentialEnv: () => engineCredentialEnvFor(config),
       createClient: () =>
         createProbeClient(

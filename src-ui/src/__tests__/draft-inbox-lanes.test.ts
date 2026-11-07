@@ -101,11 +101,13 @@ function inboxGroups(
 }
 
 describe('Draft sessions are not live work (#2310)', () => {
-  test('the recorded never-prompted session is a Draft, listed under Drafts', () => {
-    const { items, idsIn, liveIds } = inboxGroups([SERVER_DRAFT]);
+  test('the recorded never-prompted session is a Draft in Open, without claiming it is working', () => {
+    const { items, idsIn } = inboxGroups([SERVER_DRAFT]);
     expect(items[0]?.lifecycleLabel).toBe('Draft');
-    expect(liveIds()).toEqual([]);
-    expect(idsIn('drafts')).toEqual([THREAD]);
+    expect(idsIn('running')).toEqual([]);
+    expect(idsIn('needsYou')).toEqual([]);
+    expect(idsIn('idle')).toEqual([THREAD]);
+    expect(idsIn('drafts')).toEqual([]);
     expect(sessionWorkStatus(SERVER_DRAFT, [], NOW).word).toBe('Draft');
   });
 
@@ -190,7 +192,8 @@ describe('Draft sessions are not live work (#2310)', () => {
         },
       });
       expect(items[0]?.lifecycleLabel).toBe('Draft');
-      expect(idsIn('drafts')).toEqual([THREAD]);
+      expect(idsIn('idle')).toEqual([THREAD]);
+      expect(idsIn('drafts')).toEqual([]);
     });
   });
 
@@ -243,7 +246,7 @@ describe('Draft sessions are not live work (#2310)', () => {
       return { label: items[0]?.lifecycleLabel, drafts: idsIn('drafts') };
     };
 
-    expect(step(opened)).toEqual({ label: 'Draft', drafts: [THREAD] });
+    expect(step(opened)).toEqual({ label: 'Draft', drafts: [] });
     expect(step(sending)).toEqual({ label: 'Running', drafts: [] });
     const after = step(completed);
     expect(after.drafts).toEqual([]);

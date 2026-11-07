@@ -157,7 +157,8 @@ describe('FileTreePanel', () => {
     filesState.error = new Error('The workspace could not be read');
     renderPanel();
 
-    expect(screen.getByText('The workspace could not be read')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('The workspace could not be read')).toBeNull();
     expect(refetchFiles).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetchFiles).toHaveBeenCalledTimes(1);

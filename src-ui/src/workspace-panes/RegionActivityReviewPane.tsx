@@ -38,6 +38,7 @@ import {
   handOffAttachedContinuation,
 } from '../lib/attached-continuation-handoff';
 import { openerSelectionKey } from '../regions/pane-relations';
+import { describeStationFailure } from '../utils/stationFailure';
 import { resolveConversationOpenAction } from '../views/home/work-item-open-policy';
 import { readActivityReviewPane } from './activityReviewPane';
 import { FencedRelatedPane, RelatedPaneStrip } from './RelatedPaneStrip';
@@ -283,14 +284,14 @@ function ActivityReviewPane({ id }: { id: string }) {
         <ErrorState
           title={
             query.error instanceof StationHttpError &&
-            query.error.status === 404
-              ? 'This activity is no longer available'
+            query.error.status === 403
+              ? 'Station denied access to this activity'
               : query.error instanceof StationHttpError &&
-                  [401, 403].includes(query.error.status)
-                ? 'Station denied access to this activity'
+                  query.error.status === 404
+                ? 'This activity is no longer available'
                 : 'Station could not load this activity'
           }
-          description={query.error.message}
+          description={describeStationFailure(query.error).body}
           action={<Button onClick={() => void query.refetch()}>Retry</Button>}
         />
       ) : !exact ? (

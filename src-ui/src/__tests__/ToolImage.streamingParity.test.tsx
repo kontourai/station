@@ -153,6 +153,7 @@ describe('a tool-returned image renders on the streaming and the settled row', (
       );
       expect(authenticatedFetch).toHaveBeenCalledWith(
         `http://station.test/api/attachments/${REF}`,
+        { requestScope: undefined, signal: expect.any(AbortSignal) },
       );
       expect(
         within(preview).getByAltText('image-1.png').getAttribute('src'),

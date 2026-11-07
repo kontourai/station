@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../../utils/stationFailure';
 /**
  * #4470: starts a troubleshooting conversation on the Station Assistant.
  *
@@ -110,7 +111,7 @@ export function useStartTroubleshoot() {
         upsertToast({
           dedupeKey: 'troubleshoot-failed',
           message: 'Troubleshooting couldn’t start.',
-          detail: error instanceof Error ? error.message : undefined,
+          detail: error ? describeStationFailure(error).body : undefined,
           tone: 'error',
           duration: 0,
           actions: [

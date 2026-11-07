@@ -151,6 +151,12 @@ interface ConnectionsContextType {
    * cannot un-send the credential.
    */
   captureCredentialEvidence: () => RequestCredentialEvidence | null;
+  captureCredentialEvidenceForConnection: (
+    id: string,
+  ) => RequestCredentialEvidence | null;
+  isConnectionCredentialEvidenceCurrent: (
+    evidence: RequestCredentialEvidence,
+  ) => boolean;
   /** Checks a prior evidence record against the live store, never React state. */
   isCredentialEvidenceCurrent: (evidence: RequestCredentialEvidence) => boolean;
   /**
@@ -207,6 +213,8 @@ interface ConnectionsContextType {
 /** One atomic live read of what a request is being issued against. */
 export interface RequestCredentialEvidence {
   connectionId: string;
+  /** Present only for a profile lease, which survives active selection changes. */
+  leaseEpoch?: string;
   /** Runtime-local selection epoch; distinct from credential authority gains. */
   activationEpoch: string;
   generation: number;
@@ -592,6 +600,37 @@ export function ConnectionsProvider({
               JSON.stringify(evidence.nativeBrokerRoute),
         );
       },
+      captureCredentialEvidenceForConnection: (id) => {
+        const connection = resolvedStore
+          .getAll()
+          .find((item) => item.id === id);
+        const leaseEpoch = resolvedStore.connectionLeaseEpoch(id);
+        if (!connection || !leaseEpoch) return null;
+        return {
+          connectionId: id,
+          leaseEpoch,
+          activationEpoch: `profile:${leaseEpoch}`,
+          generation: resolvedStore.credentialGeneration(id),
+          authorityGeneration: resolvedStore.credentialAuthorityGeneration(id),
+          credentialState: connection.credentialState,
+          credential: resolvedStore.getCredential(id) ?? undefined,
+          origin: connection.url,
+          ...(connection.nativeBrokerRoute
+            ? {
+                nativeBrokerRoute: structuredClone(
+                  connection.nativeBrokerRoute,
+                ),
+              }
+            : {}),
+          ...(connection.brokerRoute
+            ? { brokerRoute: structuredClone(connection.brokerRoute) }
+            : {}),
+        };
+      },
+      isConnectionCredentialEvidenceCurrent: (evidence) =>
+        evidence.leaseEpoch !== undefined &&
+        resolvedStore.connectionLeaseEpoch(evidence.connectionId) ===
+          evidence.leaseEpoch,
       recordAuthenticatedSuccess: (id, url, generation, at) =>
         resolvedStore.recordAuthenticatedSuccess(id, url, generation, at),
       recordEndpointFailure: (id, reason, at, detail) =>

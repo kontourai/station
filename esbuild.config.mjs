@@ -169,6 +169,13 @@ await Promise.all([
     ],
     outfile: `${serverDir}/project-task-room-history-worker.js`,
   }),
+  esbuild.build({
+    ...shared,
+    entryPoints: [
+      './src-server/runtime/agents/durable-agent-checkpoint-worker.ts',
+    ],
+    outfile: `${serverDir}/durable-agent-checkpoint-worker.js`,
+  }),
   // The fixed first-party Task reader uses the same relative packaged path.
   esbuild.build({
     ...shared,

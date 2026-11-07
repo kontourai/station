@@ -415,9 +415,7 @@ test.describe
       await expect(detail).toContainText('Started in Claude Code · Read only');
       await expect(detail).toContainText('Inspect the workspace');
       await expect(detail).toContainText('The workspace is ready.');
-      await expect(
-        page.getByTestId('attached-session-transcript'),
-      ).toBeVisible();
+      await expect(page.getByTestId('session-transcript')).toBeVisible();
 
       const rejection = await authenticatedE2EFetch(
         `${API}/api/orchestration/sessions/${encodeURIComponent(THREAD_ID)}/lifecycle`,
@@ -472,7 +470,7 @@ test.describe
 
       await page.setViewportSize({ width: 320, height: 720 });
       await expect(detail).toBeVisible();
-      // Read only: the one action is the composer's Send, which confirms
+      // Read only: Continue in Station confirms
       // a continuation first; nothing here acts on the source session.
       await expect(
         detail.getByRole('button', {
@@ -490,7 +488,7 @@ test.describe
     });
   });
 
-test('opens an attached session in the normal mobile chat without adopting before Send', async ({
+test('opens an attached session in the normal mobile chat without adopting before continuation', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 720 });
@@ -500,7 +498,10 @@ test('opens an attached session in the normal mobile chat without adopting befor
   );
   const detail = page.getByTestId('session-detail');
   await expect(detail).toContainText('Started in Claude Code · Read only');
-  const composer = detail.getByPlaceholder('Type a message…', { exact: true });
+  const composer = detail.getByPlaceholder(
+    'Continue in Station from this history…',
+    { exact: true },
+  );
   await expect(composer).toBeVisible();
   await composer.fill('UI audit draft — do not send.');
   expect(fixture.commands).toEqual([]);

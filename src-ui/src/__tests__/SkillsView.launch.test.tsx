@@ -216,7 +216,7 @@ test('a refused dispatch leaves the created chat selected with its retry draft a
   const { chat } = await startSkill();
   expect(requests('/api/orchestration/chat')).toHaveLength(1);
   expect(chat.status).toBe('error');
-  expect(chat.error).toContain('Engine sign-in required');
+  expect(chat.error).toContain("Station didn't accept this message.");
   expect(chat.input).toBe('Review garden in staging');
   expect(chat.currentSessionId).toBeUndefined();
   expect(requests('/api/skills/release-check/outcome')).toHaveLength(0);

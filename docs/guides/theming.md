@@ -249,3 +249,12 @@ contrast, rendered fonts, native appearance or accessibility. Verify the changed
 surface in light and dark, with its actual background, focus state, disabled
 state, channel branding and any custom accent. Keep unrun platform or visual
 checks explicitly NOT_VERIFIED.
+
+## Native value pickers
+
+The shell stylesheet gives native selects a shared token-based background,
+foreground, border, spacing and disabled treatment. The root `color-scheme`
+follows the selected app theme so platform option menus use the same light or
+dark mode. Editors keep the native arrow; compact custom pickers continue to
+use `.choice-trigger`, `.choice-caret` and `ArrowDownGlyph`. Keep native select
+labels and keyboard behavior when applying page-specific sizing.

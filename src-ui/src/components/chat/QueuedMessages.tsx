@@ -9,7 +9,9 @@ import {
 import { useQueuedMessages } from '../../hooks/useQueuedMessages';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { Button } from '../Button';
+import { recordedDeliveryPort } from '../conversation/DeliveryPort';
 import { ArrowDownGlyph, EditGlyph } from '../icons/Glyph';
+import { MessageDeliveryNote } from './message-bubble/MessageDeliveryNote';
 import { heldSendsInOrder, pendingMessageCount } from './pendingMessages';
 import './QueuedMessages.css';
 
@@ -80,15 +82,6 @@ export interface HeldMessages {
   onRetry: () => void;
   onResend?: (entry: ConversationInboxEntry) => void;
 }
-
-const HELD_STATE_LABEL: Record<ConversationInboxEntry['state'], string> = {
-  queued: 'Held by Station',
-  sending: 'Sending',
-  unconfirmed: 'May have been sent',
-  refused: 'Not sent',
-  sent: 'Sent',
-  cancelled: 'Removed',
-};
 
 interface QueueRow {
   id: number;
@@ -293,25 +286,33 @@ export function QueuedMessages({
           />
         ) : (
           <>
-            <span className="queued-message__text" title={msg}>
+            <div className="queued-message__text" title={msg}>
               {/* Clamped to two lines; Edit opens the full text. */}
               <span className="queued-message__body">{msg}</span>
-              <span className="queued-message__status">
-                {metadata?.[idx]?.originUnverified
-                  ? metadata[idx].delivery
-                    ? 'Review destination · Delivery unknown'
-                    : 'Review destination'
-                  : metadata?.[idx]?.delivery
-                    ? metadata[idx].delivery === 'steering'
-                      ? 'Steer · Sending steering'
-                      : 'Steer · Delivery not confirmed; retry steering'
-                    : metadata?.[idx]?.mode === 'steer'
-                      ? waitingForTools
-                        ? 'Steer · Waiting for tools to finish'
-                        : 'Steer · Waiting for this turn to finish'
-                      : 'Queue · Queued for next turn'}
-              </span>
-            </span>
+              {metadata?.[idx]?.originUnverified && (
+                <span className="queued-message__status">
+                  Review destination
+                </span>
+              )}
+              {metadata?.[idx]?.mode === 'steer' && (
+                <span className="queued-message__status">
+                  Steer{waitingForTools ? ' · Waiting for tools to finish' : ''}
+                </span>
+              )}
+              <MessageDeliveryNote
+                variant="inline"
+                state={
+                  metadata?.[idx]?.delivery === 'steering'
+                    ? 'sending'
+                    : metadata?.[idx]?.delivery
+                      ? 'unconfirmed'
+                      : metadata?.[idx]?.originUnverified
+                        ? 'waiting-for-station'
+                        : 'held-on-device'
+                }
+                port={recordedDeliveryPort}
+              />
+            </div>
             {metadata?.[idx] &&
               (metadata[idx].originUnverified
                 ? onReviewOrigin
@@ -448,44 +449,57 @@ export function QueuedMessages({
         >
           {order}
         </span>
-        <span className="queued-message__text" title={entry.message}>
+        <div className="queued-message__text" title={entry.message}>
           <span className="queued-message__body">{entry.message}</span>
-          <span
-            className="queued-message__status"
-            title={
+          <MessageDeliveryNote
+            variant="inline"
+            state={
               entry.state === 'queued'
-                ? entry.kind === 'steer'
-                  ? 'Held for the next boundary this engine or Station can accept.'
-                  : 'Sent when the current turn ends, even if you close the app.'
-                : undefined
+                ? 'received'
+                : entry.state === 'sending'
+                  ? 'sending'
+                  : entry.state === 'unconfirmed'
+                    ? 'unconfirmed'
+                    : entry.state === 'refused'
+                      ? 'not-sent'
+                      : 'delivered'
             }
-          >
-            {HELD_STATE_LABEL[entry.state]}
-          </span>
+            port={{
+              ...recordedDeliveryPort,
+              ...(entry.state === 'unconfirmed' && held && !held.removing
+                ? {
+                    check: async () => {
+                      await held.onRetry();
+                      return undefined;
+                    },
+                    canDiscardUnconfirmed: !!removable,
+                    discard: async () => {
+                      if (key) await held.onRemove(key);
+                      return null;
+                    },
+                  }
+                : {}),
+            }}
+          />
           {entry.reason && (
             <span className="queued-message__status">{entry.reason}</span>
           )}
-        </span>
-        {removable && (
-          <div
-            className={
-              entry.state === 'unconfirmed'
-                ? 'queued-message__actions'
-                : 'queued-message__utilities'
-            }
-          >
-            {entry.kind === 'steer' &&
-              entry.state === 'unconfirmed' &&
-              held?.onResend && (
-                <Button
-                  variant="ghost"
-                  disabled={held.removing}
-                  title="This may duplicate the original steer. Review the text before sending."
-                  onClick={() => held.onResend?.(entry)}
-                >
-                  Review and resend
-                </Button>
-              )}
+        </div>
+        {entry.kind === 'steer' &&
+          entry.state === 'unconfirmed' &&
+          held?.onResend && (
+            <Button
+              variant="ghost"
+              disabled={held.removing}
+              title="This may duplicate the original steer. Review the text before sending."
+              onClick={() => held.onResend?.(entry)}
+            >
+              Review and resend
+            </Button>
+          )}
+
+        {removable && entry.state !== 'unconfirmed' && (
+          <div className="queued-message__utilities">
             <button
               type="button"
               disabled={held?.removing}

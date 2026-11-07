@@ -259,7 +259,56 @@ describe('Browser live surface against a real installed Chromium', () => {
     ).toBe('clicked');
   }, 60_000);
 
-  test("an alert() a person's click opens waits for them: the click settles at once, the surface is not wedged, and their answer lets the page continue", async (ctx) => {
+  test('a touch lift with no touch in progress (a second finger, a lift after a cancel) is delivered, not a dispatch failure, and the next tap lands', async (ctx) => {
+    if (!executablePath) return ctx.skip(SKIP_REASON);
+    const surface = entry();
+    const touch = (type: 'down' | 'up', x: number, y: number) =>
+      ({
+        kind: 'pointer',
+        type,
+        x,
+        y,
+        button: 'left',
+        pointerType: 'touch',
+      }) as const;
+    await evaluate('document.getElementById("out").textContent = "idle"');
+    // A phone viewer's two-finger touch: each finger reports its own lift,
+    // and only the first has a touch to end.
+    const twoFingers = await dispatchHumanInput(
+      surface,
+      HUMAN,
+      surface.lease.snapshot().epoch,
+      [touch('down', 600, 600), touch('up', 600, 600), touch('up', 610, 610)],
+    );
+    expect(twoFingers).toEqual(
+      expect.objectContaining({ ok: true, accepted: 3 }),
+    );
+    // A lift arriving on its own, after the touch it belonged to ended.
+    const strayLift = await dispatchHumanInput(
+      surface,
+      HUMAN,
+      surface.lease.snapshot().epoch,
+      [touch('up', 600, 600)],
+    );
+    expect(strayLift).toEqual(
+      expect.objectContaining({ ok: true, accepted: 1 }),
+    );
+    const tap = await dispatchHumanInput(
+      surface,
+      HUMAN,
+      surface.lease.snapshot().epoch,
+      [touch('down', 140, 140), touch('up', 140, 140)],
+    );
+    expect(tap).toEqual(expect.objectContaining({ ok: true, accepted: 2 }));
+    expect(
+      await poll(
+        () => evaluate('document.getElementById("out").textContent'),
+        (value) => value === 'clicked',
+      ),
+    ).toBe('clicked');
+  }, 60_000);
+
+  test("an alert() a person's click opens waits for them:the click settles at once, the surface is not wedged, and their answer lets the page continue", async (ctx) => {
     if (!executablePath) return ctx.skip(SKIP_REASON);
     const started = Date.now();
     const result = await click(140, 300);

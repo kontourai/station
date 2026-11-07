@@ -134,26 +134,118 @@ Project membership and delegation do not grant access to this root.
 `requestKey`, and `GET /api/knowledge/memory/proposals` is the explicit proposal
 query. Reusing a key for different input is refused. Pending proposals are not
 records and are not indexed or returned by ordinary Knowledge search. Ordinary
-record mutation routes cannot write directly into this root. Review decisions,
-distillation and erasure are separate work and are not provided by this preview.
-Optional `provenance.source_refs` identify transcript sources for attribution;
-they neither grant transcript access nor serve as review evidence. Station checks
+record mutation routes cannot write directly into this root. Optional
+`provenance.source_refs` identify transcript sources for attribution; they
+neither grant transcript access nor serve as review evidence. Station checks
 the Corpus adapter binding when opening a root and before cached reads, but does
 not pin that identity across a Station restart. Replacing the store directory can
 therefore cause a reopened registration to adopt a different store. Durable host
 binding is tracked in [corpus#61](https://github.com/kontourai/corpus/issues/61).
-Proposals submitted through this preview are attributed to the operator; Corpus
-refuses that same person as an approver, including through a future review route.
-Corpus permits the proposer to reject a proposal, but rejection retains its
-content. The preview provides no decision or erasure route; proposal content
-remains in the store until erased through a separately authorized flow.
+Proposals submitted through this route are attributed to the operator; Corpus
+refuses that same person as an approver. Corpus permits the proposer to reject a
+proposal, but rejection retains its content. Proposal content remains in the
+store until erased through a separately authorized flow.
 With the preview enabled, **My knowledge store** lists proposals for lookup and
 can look up a record or proposal by ID. The preview identifies the target; affected claims are
 unavailable until a producer-authored Surface bundle exists ([surface#360](https://github.com/kontourai/surface/issues/360)).
 Corpus provides a cascade preview, but Station does not show it yet.
 Erasure remains unavailable until index cleanup and recovery are fenced
 ([#4593](https://github.com/kontourai/station/issues/4593)).
-Agent-backed proposals and human review are separate future work.
+
+### Review, recall and brief
+
+With the preview on, **Settings → My knowledge → My knowledge store → What
+Station remembers about you** does three things with what your agents have
+learned about you and your work:
+
+- **You check the doubtful ones.** Station asks you only when a new memory
+  disagrees with an older one, replaces something Station remembers, came from a
+  conversation Station wasn't sure how to read, or would be shown to more people
+  than its source was. Each shows the words it came from, beside the older memory
+  it conflicts with. You can remember the new one, keep the old one, correct it,
+  or choose "Not sure", which leaves it in the queue.
+- **You can search.** Each result shows the sentence it came from, whether
+  anyone has reviewed it, and what it replaces, was replaced by or disagrees
+  with. Memories nobody flagged show up in search right away, marked "Not
+  reviewed". Press **Confirm** on one to add it to new chats.
+- **New chats start informed.** A new chat on the Station engine starts with a
+  short brief of what you confirmed, marked as background, not instructions. Chats
+  in Claude Code or Codex don't get it. Left out: anything unreviewed, waiting on
+  you, rejected, replaced, inferred rather than said, or hidden from you. Once
+  the brief reaches 6 KB, further entries are dropped. Turn the preview off and
+  nothing is added.
+
+Only you, signed in at this Station, can approve a memory. If an agent or another
+device tries, Station saves it as a note and the memory keeps waiting for you. A
+replacement reaches new chats only after you confirm it. The exact list of who
+counts is in the [threat model](../security/remote-access-threat-model.md).
+
+How it works, for integrators:
+
+| Need | Route (all under `/api/knowledge/memory`) | Owner of the meaning |
+| --- | --- | --- |
+| The queue | `GET /queue` | Routing rules: Knowledge Kit `routeMemoryChange` |
+| Open an item (starts its review clock) | `POST /queue/:itemId/open` | Station |
+| Decide | `POST /queue/:itemId/decision` | Survey `ReviewDecision`, with a host-attested `reviewerKind` |
+| Recall | `GET /recall?q=` | Knowledge Kit `presentMemoryClaims` |
+| The brief | `GET /brief` | Knowledge Kit `presentMemoryClaims`, plus the Kit's marker |
+| Measurement | `GET /measurement` | Knowledge Kit `deriveMemoryRunMetrics` |
+
+Claims arrive as Corpus create proposals whose body is the Knowledge Kit's
+distilled-claim envelope (category `memory.claim`). Station reads that claim,
+checks it against its own content-addressed id, and compares it with the claims
+proposed before it. When two disagree, the earlier one stays searchable and the
+later one goes to you. Station does not distil sessions or schedule distillation
+in this preview.
+
+Known limits:
+
+- **Merges and splits of "the same thing".** The Kit and Survey can review them,
+  but nothing yet produces those proposals into a memory root, so none reaches
+  the queue ([#4612](https://github.com/kontourai/station/issues/4612)).
+- **A restart forgets which chats were briefed.** A conversation is briefed once,
+  when its first message reaches the model; a message that is refused or replayed
+  does not use that up. After a restart a long-running chat can be briefed once
+  more, still marked as background.
+- **Other people's sessions.** The brief follows the person a session belongs
+  to. A session another person started on this Station gets no brief from your
+  memory, and Station does not yet brief them from theirs.
+- **Surface accumulation.** Station does not run Surface's projection (it needs
+  custody records Station does not hold), so a conflict is found by comparing
+  claims in the same subject and property. The Kit reports these as
+  `not-evaluated` ([surface#361](https://github.com/kontourai/surface/issues/361)).
+- **Who could see a source.** Station treats a memory root's owner as the only
+  person who could see the sessions its claims came from, so a claim meant for
+  anyone else is queued as widening the audience. A claim distilled from a session
+  several people could see is therefore queued too: you decide it, and it still
+  shows in search meanwhile. The envelope's own record of its source is ignored,
+  because it cannot be checked. Real source custody is the Surface work above.
+- **Replacements aren't checked.** Search shows what a memory replaces, but
+  Station doesn't yet confirm that the replacement is valid.
+- **External engines.** The brief reaches Station-engine chats. Claude Code and
+  Codex sessions build their own context; Station does not write their brief
+  files.
+- **Recall is a plain word match** over claims, titles and excerpts, and the
+  brief applies a smaller version of the Kit's rules. The Kit's question-answering
+  recall, brief compiler, envelope decoder and marker are not yet published
+  ([flow-agents#1611](https://github.com/kontourai/flow-agents/issues/1611)).
+
+### Measuring whether review is worth it
+
+`GET /api/knowledge/memory/measurement` returns `station.memory-measurement/1`:
+the figures for the whole memory root, plus one entry in `runs` for each run
+that produced claims: claims proposed, claims no rule flagged,
+claims routed (and the share), routed claims by rule, decisions by outcome
+(confirmed, corrected, rejected, held, annotated, pending), and review time. A
+review is timed from opening the item to submitting the decision, only from the
+reviewer's own events, and is `null` rather than estimated when it was not
+observed. `lineages` has one row per change with whether it was routed, its
+rules, its standing outcome, who decided and how long it took.
+
+This is what the [evals lane](https://github.com/kontourai/evals/blob/main/docs/measurement.md)
+needs for *defect escapes per human-review-minute*: review minutes per lineage
+(`reviewSeconds / 60` for its first human review, zero when never routed) and the
+routed set.
 
 ## `./station knowledge reindex` — (re)build the index
 

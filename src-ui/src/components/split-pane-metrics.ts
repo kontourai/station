@@ -55,6 +55,33 @@ export function clampPaneWidth(
   return Math.min(Math.max(Math.round(width), min), max);
 }
 
+/**
+ * The narrowest list, and detail, a fold may snap to. Below these the crease
+ * is too close to the layout's edge to be its divider, and the pane keeps
+ * its own width (the crease then runs through one pane, as on a flat screen).
+ * The list floor sits a little under `SPLIT_PANE_MIN_WIDTH` so a Book-posture
+ * Duo with the sidebar open (a ~260px left side) still snaps.
+ */
+export const FOLD_SNAP_MIN_LIST = 200;
+export const FOLD_SNAP_MIN_DETAIL = 280;
+
+/**
+ * The list width that puts the split exactly on a vertical crease, or null
+ * when the panes should keep their ordinary geometry: stacked, collapsed, no
+ * folded crease through the layout, or too little room on either side. The
+ * persisted width is untouched, so unfolding restores it.
+ */
+export function foldSnappedListWidth(
+  split: { axis: 'vertical' | 'horizontal'; start: number; end: number } | null,
+  layout: { stacked: boolean; collapsed: boolean },
+): number | null {
+  if (!split || layout.stacked || layout.collapsed) return null;
+  if (split.axis !== 'vertical') return null;
+  if (split.start < FOLD_SNAP_MIN_LIST || split.end < FOLD_SNAP_MIN_DETAIL)
+    return null;
+  return split.start;
+}
+
 export function defaultSplitPaneState(): SplitPanePersistedState {
   return {
     width: SPLIT_PANE_DEFAULT_WIDTH,

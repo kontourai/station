@@ -4,6 +4,7 @@ import {
   createTailscaleCli,
   inspectServePort,
   parseMagicDnsHost,
+  parseServeOwnedOrigins,
   parseServePublicOrigins,
   TAILSCALE_MACOS_APP_CLI,
   type TailscaleCliResult,
@@ -181,6 +182,76 @@ describe('parseServePublicOrigins', () => {
   });
 });
 
+describe('parseServeOwnedOrigins', () => {
+  const owned = (config: Record<string, unknown>) =>
+    parseServeOwnedOrigins(
+      JSON.stringify(config),
+      'station.example.ts.net',
+      [3000, 3141],
+    );
+  const web = {
+    'station.example.ts.net:443': {
+      Handlers: {
+        '/': { Proxy: 'http://127.0.0.1:3000' },
+        '/api/': { Proxy: 'http://localhost:3141' },
+      },
+    },
+  };
+
+  test('owns an origin whose every handler is this Station', () => {
+    expect(owned({ TCP: { '443': { HTTPS: true } }, Web: web })).toEqual([
+      'https://station.example.ts.net',
+    ]);
+    // Same daemon snapshot as the endpoint resolver: owned is a subset.
+    expect(owned(JSON.parse(SERVE_JSON))).toEqual([
+      'https://station.example.ts.net',
+    ]);
+  });
+
+  test('disowns an origin a foreground session or a raw TCP forward can override', () => {
+    expect(
+      owned({
+        Web: web,
+        Foreground: {
+          session: {
+            Web: {
+              'station.example.ts.net:443': {
+                Handlers: { '/': { Proxy: 'http://127.0.0.1:9000' } },
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual([]);
+    expect(
+      owned({
+        Web: web,
+        Foreground: {
+          session: { AllowFunnel: { 'station.example.ts.net:443': true } },
+        },
+      }),
+    ).toEqual([]);
+    expect(
+      owned({ TCP: { '443': { TCPForward: '127.0.0.1:22' } }, Web: web }),
+    ).toEqual([]);
+  });
+
+  test('a disowned origin remains a valid pairing endpoint', () => {
+    const config = {
+      Web: web,
+      AllowFunnel: { 'station.example.ts.net:443': true },
+    };
+    expect(owned(config)).toEqual([]);
+    expect(
+      parseServePublicOrigins(
+        JSON.stringify(config),
+        'station.example.ts.net',
+        [3000],
+      ),
+    ).toEqual(['https://station.example.ts.net']);
+  });
+});
+
 describe('createPublicIngressOriginResolver', () => {
   function cliFrom(
     responses: Record<string, TailscaleCliResult>,
@@ -199,6 +270,32 @@ describe('createPublicIngressOriginResolver', () => {
     'status --json': { stdout: STATUS_JSON, exitCode: 0 },
     'serve status --json': { stdout: SERVE_JSON, exitCode: 0 },
   } satisfies Record<string, TailscaleCliResult>;
+
+  test('isOwnedOrigin matches only the exact canonical owned origin', async () => {
+    const { cli, calls } = cliFrom(ok);
+    const resolver = createPublicIngressOriginResolver({
+      localPorts: [3000],
+      cli,
+    });
+    // Refused without a lookup: not HTTPS, not canonical, not a tailnet name.
+    for (const origin of [
+      'http://station.example.ts.net',
+      'https://station.example.ts.net:443',
+      'https://station.example.ts.net/',
+      'https://station.example.com',
+      'null',
+    ]) {
+      await expect(resolver.isOwnedOrigin(origin)).resolves.toBe(false);
+    }
+    expect(calls).toEqual([]);
+    await expect(
+      resolver.isOwnedOrigin('https://station.example.ts.net'),
+    ).resolves.toBe(true);
+    // :8090 serves port 8080, which is not this Station.
+    await expect(
+      resolver.isOwnedOrigin('https://station.example.ts.net:8090'),
+    ).resolves.toBe(false);
+  });
 
   test('resolves the origin from the daemon', async () => {
     const { cli } = cliFrom(ok);

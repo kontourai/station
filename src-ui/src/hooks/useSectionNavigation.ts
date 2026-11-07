@@ -6,6 +6,8 @@ interface SectionNavigationOptions {
   legacyQueryKey?: string;
   /** A leaf reveal is consumed when someone intentionally chooses a section. */
   clearHighlightOnNavigate?: boolean;
+  /** Selected panels can take focus without scrolling the page chrome away. */
+  scrollOnNavigate?: boolean;
 }
 
 function currentSection(
@@ -21,7 +23,7 @@ function currentSection(
   return value && allowed.includes(value) ? value : fallback;
 }
 
-function focusSection(section: string) {
+function focusSection(section: string, scroll = true) {
   const reveal = () => {
     const target = document.getElementById(`section-${section}`);
     if (!target) return false;
@@ -32,7 +34,7 @@ function focusSection(section: string) {
       )
     )
       return true;
-    if (typeof target?.scrollIntoView === 'function') {
+    if (scroll && typeof target?.scrollIntoView === 'function') {
       target.scrollIntoView({ block: 'start' });
     }
     target?.focus({ preventScroll: true });
@@ -67,6 +69,7 @@ export function useSectionNavigation(
   const queryKey = options.queryKey ?? 'section';
   const legacyQueryKey = options.legacyQueryKey;
   const clearHighlightOnNavigate = options.clearHighlightOnNavigate ?? false;
+  const scrollOnNavigate = options.scrollOnNavigate ?? true;
   const allowedKey = allowedSections.join('\u0000');
   const allowed = useMemo(
     () => allowedKey.split('\u0000').filter(Boolean),
@@ -111,9 +114,9 @@ export function useSectionNavigation(
     // race it and steal the final destination.
     cancelFocusRef.current =
       requested && allowed.includes(requested) && !hasHighlight
-        ? focusSection(next)
+        ? focusSection(next, scrollOnNavigate)
         : undefined;
-  }, [allowed, fallbackSection, legacyQueryKey, queryKey]);
+  }, [allowed, fallbackSection, legacyQueryKey, queryKey, scrollOnNavigate]);
 
   useEffect(() => {
     syncFromLocation();
@@ -156,10 +159,16 @@ export function useSectionNavigation(
         window.history.pushState(window.history.state, '', url);
         setActiveSection(section);
         cancelFocusRef.current?.();
-        cancelFocusRef.current = focusSection(section);
+        cancelFocusRef.current = focusSection(section, scrollOnNavigate);
       }
     },
-    [allowed, clearHighlightOnNavigate, legacyQueryKey, queryKey],
+    [
+      allowed,
+      clearHighlightOnNavigate,
+      legacyQueryKey,
+      queryKey,
+      scrollOnNavigate,
+    ],
   );
 
   return { activeSection, hrefForSection, navigateToSection };

@@ -304,7 +304,7 @@ test('a failed Create retains the dirty draft and its exit protection', async ()
   fillNewSkill();
   fireEvent.click(screen.getByRole('button', { name: 'Create' }));
   await waitFor(() =>
-    expect(showToastMock).toHaveBeenCalledWith('Create refused'),
+    expect(showToastMock).toHaveBeenCalledWith('Try again in a moment.'),
   );
   expect(navigationStore.getSnapshot().pathname).toBe('/guidance/new');
   expect((screen.getByLabelText('Body') as HTMLTextAreaElement).value).toBe(

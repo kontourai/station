@@ -45,6 +45,12 @@ export interface RegistrySource {
   lastSuccessfulAt?: string;
   error?: string;
   itemCount?: number;
+  /**
+   * #4521: the machine's managed policy (`limits.registries`) does not allow
+   * this source; it reads as disabled and cannot be enabled. The sentence
+   * clients show. Absent otherwise and on older servers.
+   */
+  managedDenial?: string;
 }
 
 export interface SkillProvenance {

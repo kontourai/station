@@ -24,6 +24,7 @@ import {
 } from '../contexts/__tests__/paneRelationsHarness';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
+import { PreviewProvider } from '../contexts/PreviewContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import {
   attachedContinuationScope,
@@ -122,15 +123,17 @@ function mount(station = 'station-a') {
     apiBase = 'http://station.test',
   ) => (
     <QueryClientProvider client={client}>
-      <ToastProvider>
-        <AuthorityHarness initial={{ station }}>
-          <ImportedConversationPane
-            threadId={threadId}
-            apiBase={apiBase}
-            onContinueInDock={boundary.open}
-          />
-        </AuthorityHarness>
-      </ToastProvider>
+      <PreviewProvider>
+        <ToastProvider>
+          <AuthorityHarness initial={{ station }}>
+            <ImportedConversationPane
+              threadId={threadId}
+              apiBase={apiBase}
+              onContinueInDock={boundary.open}
+            />
+          </AuthorityHarness>
+        </ToastProvider>
+      </PreviewProvider>
     </QueryClientProvider>
   );
   const view = render(tree());
@@ -145,7 +148,7 @@ async function start() {
   fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
     target: { value: 'Exact review reply' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue in Station' }));
   const dialog = await screen.findByRole('dialog', { name: 'Continue here?' });
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'Continue and send' }),
@@ -275,10 +278,10 @@ test('a handoff waits for its exact Station reader and never fills the other Sta
   await screen.findByRole('dialog', { name: 'Continue here?' });
   expect(
     (
-      screen.getByRole('textbox', {
+      (await screen.findByRole('textbox', {
         name: 'Message',
         hidden: true,
-      }) as HTMLTextAreaElement
+      })) as HTMLTextAreaElement
     ).value,
   ).toBe('Only Station A');
   expect(takeAttachedContinuationHandoff(source.threadId, scope)).toBeNull();
@@ -295,28 +298,32 @@ test('the real attached sender preserves a newer same-scope draft while handoff 
   try {
     render(
       <QueryClientProvider client={client}>
-        <ToastProvider>
-          <AuthorityHarness initial={{ station: 'station-a' }}>
-            <SessionDetail
-              apiBase="http://station.test"
-              presentation="chat"
-              session={source}
-              draftScope={draftScope}
-              getSelectionIntent={() => 0}
-              onTaskChanged={() => {}}
-              onAdopted={() => {
-                throw new Error('Handoff must not adopt here');
-              }}
-              onContinueInChat={boundary.handoff}
-            />
-          </AuthorityHarness>
-        </ToastProvider>
+        <PreviewProvider>
+          <ToastProvider>
+            <AuthorityHarness initial={{ station: 'station-a' }}>
+              <SessionDetail
+                apiBase="http://station.test"
+                presentation="chat"
+                session={source}
+                draftScope={draftScope}
+                getSelectionIntent={() => 0}
+                onTaskChanged={() => {}}
+                onAdopted={() => {
+                  throw new Error('Handoff must not adopt here');
+                }}
+                onContinueInChat={boundary.handoff}
+              />
+            </AuthorityHarness>
+          </ToastProvider>
+        </PreviewProvider>
       </QueryClientProvider>,
     );
     fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
       target: { value: 'Submitted reply' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
     await waitFor(() =>
       expect(boundary.handoff).toHaveBeenCalledExactlyOnceWith(
         'Submitted reply',
@@ -337,7 +344,7 @@ test('the real attached sender preserves a newer same-scope draft while handoff 
       expect(
         (
           screen.getByRole('button', {
-            name: 'Send message',
+            name: 'Continue in Station',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(false),

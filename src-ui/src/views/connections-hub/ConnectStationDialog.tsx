@@ -7,9 +7,11 @@ import {
   QRScanner,
   savePendingExchange,
   useConnections,
+  usePendingPairingApproval,
 } from '@kontourai/station-connect';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts';
 import type { PeerEnrollment } from '@kontourai/station-contracts/environment-security';
+import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import {
   useCancelPeerEnrollmentMutation,
   useCompletePeerEnrollmentMutation,
@@ -27,6 +29,8 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { checkHostCompatibility } from '../../lib/compatibilityLoader';
 import type { OpenConnectionsModalDetail } from '../../lib/connectionModalEvents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { StationUiError } from '../../utils/StationUiError';
+import { describeStationFailure } from '../../utils/stationFailure';
 import './ConnectStationDialog.css';
 
 interface Destination {
@@ -42,6 +46,17 @@ export interface ConnectStationDialogProps {
   onReopen: () => void;
   onApprovalPending: (pending: PendingPairingExchange) => void;
 }
+
+/** A Station address is a URL: URL keyboard, no autocapitalize or autocorrect. */
+// `inputMode`, not `type="url"`: a bare host such as `station.local` is a
+// valid entry that URL constraint validation would refuse.
+const STATION_ADDRESS_INPUT_PROPS = {
+  inputMode: 'url',
+  autoCapitalize: 'none',
+  autoCorrect: 'off',
+  autoComplete: 'url',
+  spellCheck: false,
+} as const;
 
 export function ConnectStationDialog({
   isOpen,
@@ -59,9 +74,11 @@ export function ConnectStationDialog({
     apiBase: connections.apiBase,
     id: connections.activeConnection?.id,
     environmentId: connections.activeConnection?.environmentId,
+    // Without a controlling Station there is no name to show; never render a
+    // placeholder as if it were one.
     name: scope
       ? connections.activeConnection?.name || connections.apiBase
-      : 'No controlling Station',
+      : undefined,
   }).current;
   const [address, setAddress] = useState('');
   const [code, setCode] = useState('');
@@ -109,7 +126,7 @@ export function ConnectStationDialog({
         url.hash ||
         (url.pathname !== '/' && url.pathname !== '')
       ) {
-        throw new Error(
+        throw new StationUiError(
           'Enter the Station address without a path, password, query, or fragment.',
         );
       }
@@ -122,11 +139,11 @@ export function ConnectStationDialog({
           controller.signal,
         );
         if (compatibility.blocking) {
-          throw new Error(
+          throw new StationUiError(
             !profile.isTauri &&
               apiBase !== window.location.origin &&
               compatibility.verdict === 'unknown'
-              ? 'This browser could not verify the Station. Browser origin restrictions, HTTPS-to-HTTP blocking, or connectivity may prevent reading its response.'
+              ? 'This browser could not verify the Station. Check its address, connection and browser HTTPS settings.'
               : compatibility.reason,
           );
         }
@@ -139,12 +156,14 @@ export function ConnectStationDialog({
           { signal: controller.signal, credentials: 'omit', redirect: 'error' },
         );
         if (!response.ok)
-          throw new Error(
+          throw new StationUiError(
             'The Station could not be identified. Check its address and retry.',
           );
         const reader = response.body?.getReader();
         if (!reader)
-          throw new Error('The Station returned no identity response.');
+          throw new StationUiError(
+            'The Station returned no identity response.',
+          );
         let text = '';
         let bytes = 0;
         const decoder = new TextDecoder();
@@ -154,7 +173,7 @@ export function ConnectStationDialog({
           bytes += chunk.value.byteLength;
           if (bytes > 32 * 1024) {
             await reader.cancel();
-            throw new Error(
+            throw new StationUiError(
               'The Station returned an oversized identity response.',
             );
           }
@@ -169,7 +188,9 @@ export function ConnectStationDialog({
           typeof handshake.environmentId !== 'string' ||
           !handshake.environmentId
         ) {
-          throw new Error('This address did not return a Station identity.');
+          throw new StationUiError(
+            'This address did not return a Station identity.',
+          );
         }
         const offer = input.payload
           ? decodeDevicePairingPayload(input.payload)
@@ -178,7 +199,7 @@ export function ConnectStationDialog({
           input.payload &&
           (!offer || offer.environmentId !== handshake.environmentId)
         )
-          throw new Error(
+          throw new StationUiError(
             'The pairing code and this Station report different identities. Request a fresh code.',
           );
         return {
@@ -315,6 +336,23 @@ export function ConnectStationDialog({
     });
   };
 
+  const canContinue =
+    !identify.isPending &&
+    !stale &&
+    Boolean(method === 'code' ? code.trim() : address.trim());
+  // Device access is the only choice without a controlling Station (no peer
+  // option to weigh), so the destination goes straight to its one request
+  // instead of asking for the same confirmation twice.
+  const deviceOnly =
+    !peerAvailable &&
+    !peerInvitation &&
+    !selectedControllerTarget &&
+    deviceSelected;
+  const deviceRequestOpen =
+    deviceStarted || (deviceOnly && !devicePending && !reservation);
+  const deviceSavedCopy = scope
+    ? 'Device access saved. Switch to it from Stations.'
+    : 'Device access saved. This Station is available in Stations.';
   const acceptCode = (payload: string) => {
     const offer = decodeDevicePairingPayload(payload);
     if (!offer) {
@@ -344,11 +382,14 @@ export function ConnectStationDialog({
   );
   const failure =
     error ||
-    identify.error?.message ||
+    (identify.error
+      ? describeStationFailure(identify.error).body
+      : undefined) ||
     (!peerAuthorityRefused &&
-      (start.error?.message ||
-        complete.error?.message ||
-        cancel.error?.message));
+      ([start.error, complete.error, cancel.error].some(Boolean)
+        ? describeStationFailure(start.error ?? complete.error ?? cancel.error)
+            .body
+        : undefined));
 
   let failedBrowserOrigin: string | undefined;
   if (identify.isError && !profile.isTauri && identify.variables) {
@@ -403,14 +444,26 @@ export function ConnectStationDialog({
       }
     >
       <div className="connect-station-setup">
-        <p>
-          Sending Station: <strong>{controller.name}</strong>
-        </p>
+        {controller.name ? (
+          <p>
+            Sending Station: <strong>{controller.name}</strong>
+          </p>
+        ) : null}
         {stale ? (
           <p role="alert">Station access changed. Reopen this setup.</p>
         ) : null}
         {!destination ? (
-          <>
+          <form
+            noValidate
+            className="connect-station-identify"
+            onSubmit={(event) => {
+              // Return in the address field submits, like Continue.
+              event.preventDefault();
+              if (method === 'scan' || !canContinue) return;
+              if (method === 'code') acceptCode(code.trim());
+              else identify.mutate({ address });
+            }}
+          >
             <fieldset
               className="connect-station-methods"
               aria-label="Identify a Station"
@@ -449,6 +502,7 @@ export function ConnectStationDialog({
                     value={address}
                     onChange={(event) => setAddress(event.target.value)}
                     placeholder="https://station.example"
+                    {...STATION_ADDRESS_INPUT_PROPS}
                   />
                 </label>
                 <label className="editor-field">
@@ -468,29 +522,27 @@ export function ConnectStationDialog({
                   value={address}
                   onChange={(event) => setAddress(event.target.value)}
                   placeholder="https://station.example"
-                  autoCapitalize="none"
-                  autoCorrect="off"
+                  enterKeyHint="go"
+                  onFocus={(event) => {
+                    // Keep Continue reachable once the on-screen keyboard
+                    // shrinks the visual viewport.
+                    const field = event.currentTarget;
+                    window.setTimeout(() => {
+                      field.form
+                        ?.querySelector('button[type="submit"]')
+                        ?.scrollIntoView({ block: 'nearest' });
+                    }, 300);
+                  }}
+                  {...STATION_ADDRESS_INPUT_PROPS}
                 />
               </label>
             )}
             {method !== 'scan' ? (
-              <Button
-                variant="primary"
-                disabled={
-                  identify.isPending ||
-                  stale ||
-                  !(method === 'code' ? code.trim() : address.trim())
-                }
-                onClick={() =>
-                  method === 'code'
-                    ? acceptCode(code.trim())
-                    : identify.mutate({ address })
-                }
-              >
+              <Button type="submit" variant="primary" disabled={!canContinue}>
                 {identify.isPending ? 'Checking Station…' : 'Continue'}
               </Button>
             ) : null}
-          </>
+          </form>
         ) : (
           <>
             <div className="connect-station-destination">
@@ -499,7 +551,7 @@ export function ConnectStationDialog({
               <span>Reported identity; verified on approval.</span>
             </div>
             {!reservation &&
-            !deviceStarted &&
+            !deviceRequestOpen &&
             !devicePending &&
             !deviceSaved ? (
               <>
@@ -514,15 +566,19 @@ export function ConnectStationDialog({
                   />{' '}
                   Use {destination.label} from this device
                 </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={peerSelected}
-                    disabled={!peerAvailable}
-                    onChange={(event) => setPeerSelected(event.target.checked)}
-                  />{' '}
-                  Let {controller.name} send work to {destination.label}
-                </label>
+                {controller.name ? (
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={peerSelected}
+                      disabled={!peerAvailable}
+                      onChange={(event) =>
+                        setPeerSelected(event.target.checked)
+                      }
+                    />{' '}
+                    Let {controller.name} send work to {destination.label}
+                  </label>
+                ) : null}
                 {selectedControllerTarget ? (
                   <p>
                     This is your current Station; its Device access is kept. To
@@ -538,8 +594,14 @@ export function ConnectStationDialog({
                     invitation.
                   </p>
                 ) : null}
-                <p>Peer setup requires operator access on {controller.name}.</p>
-                <p>Peer access doesn't include consent to run Projects.</p>
+                {controller.name ? (
+                  <>
+                    <p>
+                      Peer setup requires operator access on {controller.name}.
+                    </p>
+                    <p>Peer access doesn't include consent to run Projects.</p>
+                  </>
+                ) : null}
                 <Button
                   variant="primary"
                   disabled={
@@ -687,7 +749,7 @@ export function ConnectStationDialog({
                 />
               </section>
             ) : null}
-            {deviceStarted && !deviceSaved && !stale ? (
+            {deviceRequestOpen && !deviceSaved && !stale ? (
               <section aria-label="Device access">
                 <h3>This device → {destination.label}</h3>
                 {!profile.isTauri &&
@@ -720,7 +782,13 @@ export function ConnectStationDialog({
                   hostAppName={
                     profile.isTauri ? profile.productName : undefined
                   }
-                  onCancel={() => setDeviceStarted(false)}
+                  onCancel={() => {
+                    setDeviceStarted(false);
+                    if (deviceOnly) {
+                      setDestination(null);
+                      identify.reset();
+                    }
+                  }}
                   onApprovalPending={(pending) => {
                     const existing = connections.connections.find(
                       (connection) => connection.url === destination.apiBase,
@@ -750,27 +818,27 @@ export function ConnectStationDialog({
                       (scope.isCurrent() === false ||
                         connections.apiBase !== controller.apiBase)
                     )
-                      throw new Error(
+                      throw new StationUiError(
                         'Station access changed. Nothing was saved.',
                       );
                     if (
                       result.environmentId !== destination.environmentId ||
                       new URL(result.endpoint).origin !== destination.apiBase
                     )
-                      throw new Error(
+                      throw new StationUiError(
                         'Approved Station identity changed. Nothing was saved.',
                       );
                     const compatibility = await checkHostCompatibility(
                       destination.apiBase,
                     );
                     if (compatibility.blocking)
-                      throw new Error(compatibility.reason);
+                      throw new StationUiError(compatibility.reason);
                     if (
                       scope &&
                       (scope.isCurrent() === false ||
                         connections.apiBase !== controller.apiBase)
                     )
-                      throw new Error(
+                      throw new StationUiError(
                         'Station access changed. Nothing was saved.',
                       );
                     const existing = connections.connections.find(
@@ -803,7 +871,7 @@ export function ConnectStationDialog({
                       (scope.isCurrent() === false ||
                         connections.apiBase !== controller.apiBase)
                     )
-                      throw new Error(
+                      throw new StationUiError(
                         'Device access was saved, but Station access changed. Return to the original Station to review it.',
                       );
                     setDeviceSaved(true);
@@ -812,17 +880,13 @@ export function ConnectStationDialog({
               </section>
             ) : null}
             {devicePending ? (
-              <p role="status">
-                Device access requested. Track it in connection status.
-              </p>
+              <DeviceRequestStatus
+                endpoint={destination.apiBase}
+                label={destination.label}
+                savedCopy={deviceSavedCopy}
+              />
             ) : null}
-            {deviceSaved ? (
-              <p role="status">
-                {scope
-                  ? 'Device access saved. Switch to it from Stations.'
-                  : 'Device access saved. This Station is available in Stations.'}
-              </p>
-            ) : null}
+            {deviceSaved ? <p role="status">{deviceSavedCopy}</p> : null}
           </>
         )}
         {failure ? <p role="alert">{failure}</p> : null}
@@ -849,5 +913,44 @@ export function ConnectStationDialog({
         ) : null}
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * What became of the Device request this dialog handed to the shell. Read
+ * from the same pending-request fact the header and Stations use, plus the
+ * saved connection the shell's completion writes, so this line cannot keep
+ * saying "requested" after the Station approved it.
+ */
+function DeviceRequestStatus({
+  endpoint,
+  label,
+  savedCopy,
+}: {
+  endpoint: string;
+  label: string;
+  savedCopy: string;
+}) {
+  const { connections } = useConnections();
+  const approval = usePendingPairingApproval(endpoint);
+  const saved = connections.some(
+    (connection) =>
+      connection.url === endpoint &&
+      (connection.credentialState === 'saved' ||
+        connection.credentialState === 'device-session'),
+  );
+  return (
+    <p role="status">
+      {saved
+        ? savedCopy
+        : approval
+          ? pairingStateCopy(
+              approval.requestKind === 'code'
+                ? 'waiting-for-code-approval'
+                : 'waiting-for-approval',
+              label,
+            ).message
+          : `This request to ${label} has ended. Stations shows what happened.`}
+    </p>
   );
 }

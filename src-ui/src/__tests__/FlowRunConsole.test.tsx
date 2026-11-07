@@ -380,8 +380,9 @@ describe('FlowRunConsole', () => {
     runsState.error = new Error('workspace unavailable');
     render(<FlowRunConsole />);
     expect(screen.getByRole('alert').textContent).toContain(
-      'workspace unavailable',
+      'Try again in a moment.',
     );
+    expect(screen.queryByText('workspace unavailable')).toBeNull();
   });
 
   test('asks for a project when none is selected', () => {

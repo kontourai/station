@@ -276,6 +276,7 @@ export async function generateSessionSummary({
         },
       );
       const agent = await ctx.framework.createTempAgent({
+        purpose: 'utility',
         name: 'session-summary-generator',
         instructions: SUMMARY_INSTRUCTIONS,
         model,

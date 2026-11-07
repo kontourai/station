@@ -5,6 +5,7 @@ import {
   UsageAggregator,
 } from '../../analytics/usage-aggregator.js';
 import { DEFAULT_OLLAMA_BASE_URL } from '../../constants.js';
+import { managedRegistryLimits } from '../../security/managed-capability-limits.js';
 import { startupDefaultSelection } from '../../telemetry/metrics.js';
 
 interface RuntimeStartupLogger {
@@ -83,7 +84,10 @@ function shouldRegisterRuntimeDefaultSkillRegistry(
 ): boolean {
   const pluginDisabled =
     pluginOverrides['aws-internal']?.settings?.disableDefaultSkillRegistries;
-  return !disableDefaultSkillRegistries && !pluginDisabled;
+  // #4521: `limits.registries.defaultSkillRegistries: false` outranks both.
+  const managedDisabled =
+    managedRegistryLimits()?.defaultSkillRegistries === false;
+  return !disableDefaultSkillRegistries && !pluginDisabled && !managedDisabled;
 }
 
 function initializeRuntimeUsageAggregator(

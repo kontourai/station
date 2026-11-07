@@ -31,6 +31,8 @@ import {
 import { RESETTABLE_STATION_SETTING_KEYS } from '../views/settings/station-reset';
 import { visibleCatalogIds } from './helpers/settings-catalog-visibility';
 
+// The memory review panel has its own tests; this catalog test does not render it.
+vi.mock('../views/settings/MemoryReview', () => ({ MemoryReview: () => null }));
 vi.mock('@kontourai/station-connect', () => ({
   QRDisplay: () => <div />,
   useConnections: () => ({
@@ -60,6 +62,8 @@ vi.mock('@kontourai/station-sdk', async () => {
   );
   return {
     authenticatedFetch: vi.fn(),
+    // #4519: Pairing reads the managed policy; this host has none.
+    useManagedPolicyStatusQuery: () => ({ data: { state: 'none' } }),
     useApiQuery: () => ({ data: undefined, isFetching: false, isError: false }),
     // #2586: the notification-delivery section. The ORDINARY case — defaults
     // in hand, nothing in flight — because the state under test here is the
@@ -692,7 +696,7 @@ describe('settings catalog completeness', () => {
 
     expect(container.querySelector('.settings__skeleton')).toBeNull();
     expect(screen.getByText('Unable to load settings')).toBeTruthy();
-    expect(screen.getByText('config read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     // 6-OPS-23: the frame the page owns does not depend on the read — the
     // title is the page frame's (page-frame-registry.ts), rendered by the
     // shell above this body, so the page itself renders only the failure.

@@ -35,6 +35,7 @@
  * is per authority, not app-wide — see `streamQueryClients` there (#2307).
  */
 import type { QueryClient } from '@tanstack/react-query';
+import { chatBelongsToStation } from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationsStore } from '../../contexts/conversations-store';
@@ -82,9 +83,14 @@ export async function rehydrateChatSession(
     | 'planArtifact'
     | 'orchestrationSessionStarted'
     | 'provider'
+    | 'stationBinding'
+    | 'stationBindingInvalid'
+    | 'peerChat'
+    | 'peerChatInvalid'
   >,
   options: RehydrateChatSessionOptions = {},
 ): Promise<void> {
+  if (!chatBelongsToStation(chat)) return;
   const { agentSlug, conversationId } = chat;
   if (!agentSlug || !conversationId) return;
   // Station-owned threads hydrate through the bounded event-window reader in

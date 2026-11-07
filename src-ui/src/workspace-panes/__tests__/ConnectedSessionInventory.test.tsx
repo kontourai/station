@@ -615,7 +615,7 @@ describe('ConnectedSessionInventory', () => {
 
   test.each([
     [404, "This input isn't available", false],
-    [403, "This input isn't available", false],
+    [403, "This input didn't load", false],
     [200, "This input couldn't be shown", false],
     [503, "This input didn't load", true],
     [0, "This input didn't load", true],
@@ -632,6 +632,10 @@ describe('ConnectedSessionInventory', () => {
       });
       const failure = screen.getByRole('alert');
       expect(failure.textContent).toContain(title);
+      if (status === 403)
+        expect(failure.textContent).toContain(
+          "Station didn't accept this message.",
+        );
       expect(screen.queryByText('Recorded origin')).toBeNull();
       const retry = screen.queryByRole('button', { name: 'Try again' });
       expect(Boolean(retry)).toBe(retryable);

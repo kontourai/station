@@ -8,6 +8,7 @@ import {
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import type { SlashCommandContext } from '../slashCommands/dispatch';
+import { describeStationFailure } from '../utils/stationFailure';
 
 export function useSlashCommandHandler() {
   const { apiBase } = useApiBase();
@@ -48,7 +49,7 @@ export function useSlashCommandHandler() {
       } catch (error) {
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: `Could not load Station's commands, so ${command} was not sent. Try again. (${error instanceof Error ? error.message : 'unknown error'})`,
+          content: `Could not load Station's commands, so ${command} was not sent. Try again. (${describeStationFailure(error).body})`,
         });
         updateChat(sessionId, { input: '' });
         context.autocomplete.closeAll();

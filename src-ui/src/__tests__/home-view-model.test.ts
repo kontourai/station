@@ -16,6 +16,7 @@ import {
   chatTaskSessionId,
   type HomeWorkItem,
 } from '../views/home/home-view-model';
+import { buildWorkFacts } from '../views/home/work-facts';
 
 describe('buildHomeWorkItems', () => {
   test.each([false, true])(
@@ -2742,4 +2743,47 @@ test('a recorded agent sender reaches Inbox and Activity markers without changin
     label: 'Agent message',
   });
   expect(activityOriginShortLabel(personSession)).toBe('Browser (reported)');
+});
+
+test('Inbox retains identical conversation IDs on different Stations and principals', () => {
+  const chat = createDefaultChatState();
+  const binding = (environmentId: string, principalNamespace: string) => ({
+    version: 1 as const,
+    environmentId,
+    stationName: environmentId,
+    affinity: {
+      kind: 'device' as const,
+      connectionId: 'direct-' + environmentId,
+      principalNamespace,
+    },
+  });
+  const chats = {
+    host: { ...chat, conversationId: 'same', title: 'Host copy' },
+    receiverA: {
+      ...chat,
+      conversationId: 'same',
+      title: 'Receiver A',
+      stationBinding: binding('receiver', 'principal-a'),
+    },
+    receiverB: {
+      ...chat,
+      conversationId: 'same',
+      title: 'Receiver B',
+      stationBinding: binding('receiver', 'principal-b'),
+    },
+    other: {
+      ...chat,
+      conversationId: 'same',
+      title: 'Other Station',
+      stationBinding: binding('other', 'principal-a'),
+    },
+  };
+  const rows = buildHomeWorkItems({ chats, agents: [], sessions: [] });
+  expect(rows).toHaveLength(4);
+  const facts = buildWorkFacts({ items: rows, chats });
+  expect(rows.filter((row) => facts.get(row.id)?.hostDetails)).toHaveLength(1);
+  expect(new Set(rows.map((row) => row.id)).size).toBe(4);
+  expect(new Set(rows.map((row) => row.chatSessionId))).toEqual(
+    new Set(['host', 'receiverA', 'receiverB', 'other']),
+  );
 });

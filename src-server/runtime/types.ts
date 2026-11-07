@@ -526,6 +526,15 @@ export interface IAgentFramework {
 
   /** Create a lightweight agent for one-shot invocations (no persistence) */
   createTempAgent(opts: {
+    /**
+     * #4515: `agent-run` is a run of Station's own agent (the default agent,
+     * a chat's model-override agent, `/invoke`, a scheduled job) and is
+     * refused while the managed policy does not allow `station-agent`;
+     * `utility` is Station's own work on a model connection (a title, a
+     * summary, the approval guardian, a review guide). Required so a new
+     * caller decides.
+     */
+    purpose: 'agent-run' | 'utility';
     /** Canonical Agent owning optional prompt history; never inferred from display name. */
     agentId?: string;
     name: string;
@@ -677,6 +686,31 @@ export interface RuntimeContext {
   acpProviderSecretResolver?: ACPProviderSecretResolver;
   providerService: ProviderService;
   knowledgeService: KnowledgeService;
+  /**
+   * The briefing from the signed-in person's private memory, for a new
+   * session's first turn. Set only when the Private memory preview is on. It
+   * re-derives the person and their access from the request, so a caller with
+   * no identity or no access gets `null`, never someone else's memory.
+   */
+  memoryBrief?: (
+    request: Request,
+    session?: {
+      /**
+       * `undefined`: a direct caller. A string: Station's own relay, which
+       * recorded this person as the session's owner. `null`: Station's own relay
+       * with no owner recorded.
+       */
+      relayOwner?: string | null;
+      conversationId?: string;
+    },
+  ) => Promise<{
+    text: string | null;
+    entries: number;
+    /** The turn reached the agent with the brief in its input. */
+    delivered: () => void;
+    /** The turn ended without reaching the agent; the conversation may be briefed again. */
+    abandoned: () => void;
+  } | null>;
   feedbackService: FeedbackService;
   usageAggregator?: import('../analytics/usage-aggregator.js').UsageAggregator;
   storageAdapter: IStorageAdapter;

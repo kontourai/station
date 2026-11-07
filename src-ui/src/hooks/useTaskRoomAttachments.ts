@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { inlineComposerAttachments } from '../lib/attachment-staging-queue';
 import type { FileAttachment } from '../types';
 import { readChatAttachmentFiles } from '../utils/chatAttachments';
+import { describeStationFailure } from '../utils/stationFailure';
 
 export function useTaskRoomAttachments(
   taskId: string,
@@ -117,9 +118,7 @@ export function useTaskRoomAttachments(
       })
       .catch((cause: unknown) => {
         if (mounted.current && currentOwner.current === owner)
-          setError(
-            cause instanceof Error ? cause.message : 'Files could not be read.',
-          );
+          setError(describeStationFailure(cause).body);
       })
       .finally(() => {
         pendingReads.current -= 1;

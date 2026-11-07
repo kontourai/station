@@ -225,11 +225,7 @@ describe('AnswerSharesSection', () => {
       await waitFor(() => expect(fixture.pending.has('share-1')).toBe(true));
       fixture.retire();
       fixture.finish('share-1');
-      expect(
-        await screen.findByText(
-          /requested Station authority is no longer available/,
-        ),
-      ).toBeTruthy();
+      expect(await screen.findByText(/Try again in a moment/)).toBeTruthy();
       expect(
         screen
           .getByRole('button', { name: 'Revoke share of turn turn-2' })

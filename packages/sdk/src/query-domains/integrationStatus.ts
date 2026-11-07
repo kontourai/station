@@ -25,15 +25,31 @@ export class IntegrationStatusUnsupportedError extends StationHttpError {
 
 export async function fetchIntegrationStatus(
   apiBase: string,
-  options?: ClientRequestOptions,
+  options?: ClientRequestOptions & { includeGithubAuthentication?: boolean },
 ): Promise<IntegrationStatus> {
   const base = options?.requestScope?.apiBase ?? apiBase;
-  const response = await getJson(`${base}/api/integrations/status`, {
-    ...options,
-    maxResponseBytes: 1_048_576,
-  });
-  if (response.status === 404) throw new IntegrationStatusUnsupportedError();
+  const response = await getJson(
+    `${base}/api/integrations/status${options?.includeGithubAuthentication ? '?include=github-authentication' : ''}`,
+    {
+      ...options,
+      maxResponseBytes: 1_048_576,
+    },
+  );
   const body: unknown = await response.json().catch(unlessDeadline(() => null));
+  if (response.status === 404) {
+    if (
+      body &&
+      typeof body === 'object' &&
+      'code' in body &&
+      body.code === 'feature_preview_disabled'
+    )
+      throw envelopeError(
+        response,
+        body,
+        'Repository sign-in details are disabled',
+      );
+    throw new IntegrationStatusUnsupportedError();
+  }
   if (!response.ok)
     throw envelopeError(response, body, 'Integration status unavailable');
   if (
@@ -54,6 +70,7 @@ export function useIntegrationStatusQuery(
   apiBase: string,
   config?: QueryConfig<IntegrationStatus> & {
     requestScope?: ClientRequestOptions['requestScope'];
+    includeGithubAuthentication?: boolean;
   },
 ) {
   return useApiQuery<IntegrationStatus>(
@@ -61,10 +78,12 @@ export function useIntegrationStatusQuery(
       'integration-status',
       config?.requestScope?.apiBase ?? apiBase,
       config?.requestScope?.authorityKey ?? 'default',
+      ...(config?.includeGithubAuthentication ? ['github-authentication'] : []),
     ],
     (signal) =>
       fetchIntegrationStatus(apiBase, {
         signal,
+        includeGithubAuthentication: config?.includeGithubAuthentication,
         requestScope: config?.requestScope,
       }),
     {

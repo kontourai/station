@@ -1628,8 +1628,11 @@ describe('executeForegroundMessage', () => {
 
   test('keeps a shared project session in its checkout', async () => {
     const deps = dependencies();
+    const checkout = realpathSync(
+      makeCreateHome('foreground-shared-checkout-'),
+    );
     deps.getProject = vi.fn(async () => ({
-      workingDirectory: '/srv/station',
+      workingDirectory: checkout,
       defaultWorkspaceIsolation: 'shared' as const,
     }));
 
@@ -1648,7 +1651,7 @@ describe('executeForegroundMessage', () => {
 
     expect(deps.startSession).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ cwd: '/srv/station' }),
+      expect.objectContaining({ cwd: checkout }),
     );
   });
 

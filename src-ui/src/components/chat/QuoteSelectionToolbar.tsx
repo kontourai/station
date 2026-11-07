@@ -8,6 +8,7 @@ import {
   quoteHref,
   type SavedAnswerQuote,
 } from '../../utils/answer-quotes';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 
 interface Candidate {
@@ -211,11 +212,7 @@ function QuoteCaptureButton({
             onDone();
           } catch (cause) {
             if (!controller.signal.aborted)
-              setError(
-                cause instanceof Error
-                  ? cause.message
-                  : 'The source could not be quoted.',
-              );
+              setError(describeStationFailure(cause).body);
           } finally {
             if (!controller.signal.aborted) {
               setPending(false);
