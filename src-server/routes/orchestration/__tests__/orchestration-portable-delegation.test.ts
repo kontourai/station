@@ -40,6 +40,8 @@ import {
   test,
   vi,
 } from 'vitest';
+import { createChildDelegationContext } from '../../../runtime/agents/delegation.js';
+import { createRequestDelegationResolver } from '../../../runtime/agents/request-delegation.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import {
@@ -287,6 +289,116 @@ describe('POST /delegations — portable execution admission (#484 phase A)', ()
       (delegateTask.mock.calls[0]![0] as Record<string, unknown>)
         .receiverAdmission,
     ).toBeUndefined();
+  });
+});
+
+describe('delegated child fan-out (delegated_tool_blocked)', () => {
+  /**
+   * The production resolver over stand-in records of a verified
+   * station-control caller, behind the real routes. `started` is the caller's
+   * own first `session.started` metadata.
+   */
+  function appFor(started: Record<string, unknown>) {
+    const delegateTask = vi.fn().mockResolvedValue({ taskId: 'task:1' });
+    const executeForegroundMessage = vi.fn().mockResolvedValue({
+      conversationId: 'conversation-a',
+      sessionId: 'session-a',
+      providerTurnId: 'turn-a',
+    });
+    const app = createOrchestrationRoutes(
+      {} as never,
+      baseDeps({
+        delegateTask,
+        executeForegroundMessage,
+        resolveRequestDelegation: createRequestDelegationResolver({
+          isInternalRequest: () => true,
+          resolveCaller: () => ({
+            sessionId: 'session-caller',
+            assurance: 'bound',
+            conversationId: 'conversation-caller',
+          }),
+          startedMetadata: () => started,
+          sessionEngine: () => 'codex',
+          loadAgentSpec: async () => ({}) as never,
+          isRegistryDefaultAgent: async () => true,
+        }),
+      }),
+    );
+    return { app, delegateTask, executeForegroundMessage };
+  }
+
+  const childStarted = {
+    agentSlug: 'child-agent',
+    delegation: createChildDelegationContext({
+      agentSlug: 'root-agent',
+      conversationId: 'conversation-root',
+    }),
+  };
+  const post = (
+    app: ReturnType<typeof createOrchestrationRoutes>,
+    path: string,
+    body: unknown,
+  ) =>
+    app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(keyedTurnRequest(body)),
+    });
+  const delegationBody = {
+    prompt: 'Do more',
+    target: { environment: { kind: 'current' }, agent: 'planner' },
+  };
+  const messageBody = {
+    conversationId: 'conversation-a',
+    message: 'Hello',
+    target: { environment: { kind: 'current' }, agent: 'planner' },
+  };
+  /** `/chat/delegated` requires a claimed context; a verified caller's is ignored. */
+  const claimedMessageBody = {
+    ...messageBody,
+    delegation: childStarted.delegation,
+    delegationAttestation: 'ignored-for-a-verified-caller',
+  };
+
+  test('a delegated child calling /delegations (delegate_task) is refused 403 before dispatch', async () => {
+    const { app, delegateTask } = appFor(childStarted);
+    const res = await post(app, '/delegations', delegationBody);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      success: false,
+      code: 'delegated_tool_blocked',
+    });
+    expect(delegateTask).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['/chat/delegated', claimedMessageBody],
+    ['/chat', messageBody],
+  ])('a delegated child calling %s (send_message) is refused 403 before dispatch', async (route, body) => {
+    const { app, executeForegroundMessage } = appFor(childStarted);
+    const res = await post(app, route, body);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      success: false,
+      code: 'delegated_tool_blocked',
+    });
+    expect(executeForegroundMessage).not.toHaveBeenCalled();
+  });
+
+  test('a root caller is not refused on either route (control)', async () => {
+    const { app, delegateTask, executeForegroundMessage } = appFor({
+      agentSlug: 'root-agent',
+    });
+    const delegated = await post(app, '/delegations', delegationBody);
+    expect(delegated.status, await delegated.clone().text()).toBe(200);
+    const sent = await post(app, '/chat/delegated', claimedMessageBody);
+    expect(sent.status, await sent.clone().text()).toBe(200);
+    expect(delegateTask).toHaveBeenCalledTimes(1);
+    expect(executeForegroundMessage).toHaveBeenCalledTimes(1);
+    expect(
+      (delegateTask.mock.calls[0]![0] as { delegation?: { depth: number } })
+        .delegation?.depth,
+    ).toBe(1);
   });
 });
 

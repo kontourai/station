@@ -405,6 +405,7 @@ function errorCode(error: unknown): string | undefined {
 const DELEGATION_REFUSAL_CODES = new Set([
   'delegation_depth_exceeded',
   'delegation_lineage_unavailable',
+  'delegated_tool_blocked',
 ]);
 
 function delegationRefusal(c: Context, error: unknown): Response | undefined {
@@ -2993,6 +2994,7 @@ export function createOrchestrationRoutes(
       const resolvedDelegation = await deps.resolveRequestDelegation?.(
         c.req.raw,
         {
+          tool: 'send_message',
           ...(claimedDelegation
             ? { delegation: claimedDelegation as AgentDelegationContext }
             : {}),
@@ -4344,6 +4346,7 @@ export function createOrchestrationRoutes(
       const resolvedDelegation = await deps.resolveRequestDelegation?.(
         c.req.raw,
         {
+          tool: 'delegate_task',
           ...(claimedDelegation
             ? { delegation: claimedDelegation as AgentDelegationContext }
             : {}),
