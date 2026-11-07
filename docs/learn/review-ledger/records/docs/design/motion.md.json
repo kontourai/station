@@ -22,7 +22,11 @@
 
     "src-ui/src/components/status/live-status.css",
 
-    "tests/screenshots.spec.ts"
+    "tests/screenshots.spec.ts",
+
+    "src-ui/src/hooks/useInboxSwipe.ts",
+
+    "src-ui/src/components/inbox-row/InboxRow.css"
   ],
 
   "checks": [
