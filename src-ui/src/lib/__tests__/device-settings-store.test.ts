@@ -744,6 +744,46 @@ describe('device-settings-store', () => {
       });
     });
 
+    test.each([
+      { order: 42 },
+      { order: ['running', 'running'] },
+      { order: ['drafts'] },
+      { order: ['unknown'] },
+    ])('rejects an invalid inbox section order: %j', async ({ order }) => {
+      const { deviceSettingsStore } = await freshStore();
+      const result = deviceSettingsStore.importEnvelope({
+        version: 1,
+        values: { theme: 'light', inboxSections: { order } },
+      });
+      expect(result.droppedKeys).toEqual(['inboxSections']);
+      expect(deviceSettingsStore.get('theme')).toBe('light');
+      expect(deviceSettingsStore.get('inboxSections')).toEqual({
+        snoozed: false,
+        earlier: false,
+      });
+    });
+
+    test('imports a partial inbox order without losing fold choices', async () => {
+      const { deviceSettingsStore } = await freshStore();
+      const result = deviceSettingsStore.importEnvelope({
+        version: 1,
+        values: {
+          inboxSections: {
+            snoozed: true,
+            running: false,
+            order: ['running', 'needsYou'],
+          },
+        },
+      });
+      expect(result.droppedKeys).toEqual([]);
+      expect(deviceSettingsStore.get('inboxSections')).toEqual({
+        snoozed: true,
+        earlier: false,
+        running: false,
+        order: ['running', 'needsYou'],
+      });
+    });
+
     test('imports the valid subset of a partially-valid file', async () => {
       const { deviceSettingsStore } = await freshStore();
 

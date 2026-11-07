@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { outboundStationIdentity } from '../../connections/station-state';
 import type { UnsentMessageRecord } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { copyToClipboard } from '../../lib/clipboard';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { recordedDeliveryPort } from '../conversation/DeliveryPort';
+import { MessageDeliveryNote } from './message-bubble/MessageDeliveryNote';
 import './UnsentMessages.css';
 
 interface UnsentMessagesProps {
@@ -20,11 +24,17 @@ interface UnsentMessagesProps {
  * Rows leave only by the user's own Dismiss, keyed on the record's `id`.
  */
 export function UnsentMessages({ sessionId, messages }: UnsentMessagesProps) {
+  const station = useOptionalConversationConnection()?.station;
+  const conversationId = useSyncExternalStore(
+    activeChatsStore.subscribe,
+    () => activeChatsStore.getSnapshot()[sessionId]?.conversationId,
+  );
   // Copy feedback is per-row and transient; `id` is the row key (`at` is a
   // timestamp, not an identity — archive#3706).
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const dismiss = (id: string) => {
+    if (station && !station.isCurrent()) return;
     const chat = activeChatsStore.getSnapshot()[sessionId];
     activeChatsStore.updateChat(sessionId, {
       unsentMessages: (chat?.unsentMessages ?? []).filter(
@@ -33,7 +43,15 @@ export function UnsentMessages({ sessionId, messages }: UnsentMessagesProps) {
     });
     // The same message's durable not-sent copy (keyed alike) goes with it.
     void import('../../lib/outboundQueue')
-      .then(({ outboundDispatch }) => outboundDispatch.discard(id))
+      .then(({ outboundDispatch }) =>
+        station
+          ? outboundDispatch.discard(
+              id,
+              outboundStationIdentity(station),
+              conversationId,
+            )
+          : outboundDispatch.discard(id),
+      )
       .catch(() => undefined);
   };
 
@@ -46,12 +64,16 @@ export function UnsentMessages({ sessionId, messages }: UnsentMessagesProps) {
   if (messages.length === 0) return null;
   return (
     <section className="unsent-messages" aria-label="Unsent messages">
-      <div className="unsent-messages__label">Not sent</div>
       <div className="unsent-messages__list">
         {messages.map((record) => (
           <div className="unsent-message" key={record.id}>
             <div className="unsent-message__body">
               <span className="unsent-message__text">{record.content}</span>
+              <MessageDeliveryNote
+                variant="inline"
+                state="not-sent"
+                port={recordedDeliveryPort}
+              />
               <span className="unsent-message__reason">{record.reason}</span>
             </div>
             <div className="unsent-message__actions">

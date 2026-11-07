@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { relativeTimeAgo } from '../../utils/relativeTime';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { SkeletonList } from '../state';
 import './ActionOperationsSection.css';
 
@@ -255,7 +256,7 @@ export function ActionOperationsSection() {
         )}
         {cancel.error && (
           <p className="action-operations__state" role="alert">
-            {cancel.error.message}
+            {describeStationFailure(cancel.error).body}
           </p>
         )}
         <Group

@@ -88,11 +88,22 @@ describe('verification policy gate', () => {
         'node scripts/verification-policy-gate.mjs',
         'node scripts/product-law-gate.mjs',
         'node scripts/test-temp-dir-ratchet.mjs',
+        'node scripts/conversation-boundary-gate.mjs',
         'npm run test:fixtures:guard',
       ]),
     );
     expect(PREPUSH_TEST_FILES).toContain(
       'scripts/__tests__/verification-policy-gate.test.ts',
+    );
+    expect(FAST_STATIC_COMMANDS).toContainEqual([
+      'npm',
+      ['run', 'verification:policy:gate'],
+    ]);
+    expect(packageJson.scripts['ci:fast:raw']).toBe(
+      'node scripts/run-ci-fast.mjs',
+    );
+    expect(packageJson.scripts['ci:fast']).toBe(
+      'node scripts/run-verification.mjs request ci-fast',
     );
   });
 

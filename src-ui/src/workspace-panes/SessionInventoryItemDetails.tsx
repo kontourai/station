@@ -16,6 +16,7 @@ import { type ReactNode, type RefObject, useEffect, useRef } from 'react';
 import { Button } from '../components/Button';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useShowSurface } from '../contexts/useShowSurface';
+import { describeStationFailure } from '../utils/stationFailure';
 
 /**
  * What a failed body read can honestly tell the user, and whether trying
@@ -35,7 +36,7 @@ export function describeItemReadFailure(
     error instanceof TaskToolResultRequestError
       ? error.status
       : 0;
-  if (status === 401 || status === 403 || status === 404)
+  if (status === 404)
     return {
       title: `This ${noun} isn't available`,
       description:
@@ -54,8 +55,8 @@ export function describeItemReadFailure(
     description:
       status === 0
         ? 'Station could not be reached. Check the connection, then try again.'
-        : 'Station could not read it just now. Try again in a moment.',
-    retryable: true,
+        : describeStationFailure(error).body,
+    retryable: describeStationFailure(error).retryable !== false,
   };
 }
 

@@ -1,0 +1,22 @@
+.station-path {
+  display: inline-grid;
+  min-width: 0;
+  max-width: 100%;
+  gap: var(--k-space-1);
+  vertical-align: top;
+  text-align: left;
+}
+.station-path__host {
+  color: var(--k-text-muted);
+  font-family: var(--k-font-ui);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+.station-path__value {
+  min-width: 0;
+  color: var(--k-text);
+  font-family: var(--k-font-mono);
+  font-size: inherit;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

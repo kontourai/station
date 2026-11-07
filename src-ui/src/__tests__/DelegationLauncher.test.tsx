@@ -743,7 +743,7 @@ describe('DelegationLauncher', () => {
     );
 
     expect(screen.getByRole('alert').textContent).toContain(
-      'Home Media could not be reached',
+      'Try again in a moment.',
     );
     expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
       'Keep this task draft',
@@ -1809,7 +1809,7 @@ describe('DelegationLauncher', () => {
     );
     rerender(<DelegationLauncher {...props} />);
     expect(screen.getByRole('alert').textContent).toContain(
-      'does not currently offer execution',
+      'Try again in a moment.',
     );
     expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
       'Keep this refused draft',

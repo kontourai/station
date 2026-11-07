@@ -51,7 +51,7 @@ const STUBS: Array<{ pattern: RegExp; overrides: string }> = [
   },
 ];
 
-const shellStubs: Plugin = {
+export const shellStubs: Plugin = {
   name: 'turn-rail-shell-stubs',
   setup(build) {
     build.onResolve({ filter: /\.css$/ }, (args) => ({

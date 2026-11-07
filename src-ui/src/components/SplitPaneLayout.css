@@ -72,7 +72,11 @@
   display: none;
 }
 
-@media (min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse))) {
+/* Side by side from 600px, not from the mobile breakpoint: a foldable open in
+   portrait (~670px) is a phone shell with room for both panes. The literal is
+   the negation of LIST_DETAIL_STACKED_QUERY (hooks/useIsMobile.ts); keep the
+   two in step, and the stacked block below. */
+@media (min-width: 600px) and (not ((max-height: 540px) and (pointer: coarse))) {
   .split-pane {
     flex-direction: row;
     gap: 0;
@@ -684,7 +688,9 @@
   height: 5rem;
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+/* Stacked: the list fills the pane and the detail opens over it as a sheet.
+   LIST_DETAIL_STACKED_QUERY (hooks/useIsMobile.ts), byte for byte. */
+@media (max-width: 599px), (max-height: 540px) and (pointer: coarse) {
   .split-pane {
     overflow: hidden;
   }
@@ -728,13 +734,14 @@
       var(--app-toolbar-total-height, 46px) +
       var(--banner-stack-height, 0px)
     );
-    right: 0;
+    /* Fixed, so outside the route outlet's own side insets: inset here. */
+    right: var(--safe-right, 0px);
     bottom: calc(
       var(--dock-slot-size, var(--chat-dock-header-height, 38px)) +
       var(--safe-bottom, 0px) +
       var(--visual-viewport-bottom-inset, 0px)
     );
-    left: 0;
+    left: var(--safe-left, 0px);
     z-index: var(--layer-sticky);
   }
 
@@ -747,7 +754,11 @@
        header's 10 it paints over the back bar it scrolls under. */
     z-index: auto;
   }
+}
 
+/* Phone presentation (type and touch sizes), at the mobile breakpoint whether
+   the panes are stacked or side by side. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .split-pane__header {
     padding: var(--space-10) var(--space-8) var(--space-6);
   }
@@ -1037,4 +1048,21 @@
     visibility: hidden;
     pointer-events: none;
   }
+}
+
+/* A folded display (Book posture): the split sits on the crease.
+   `foldSnappedListWidth` gives the list exactly the room before it (the
+   pane's own width bounds do not apply: the crease is the divider) and the
+   detail starts after the crease's own width. The resize divider is not
+   rendered, because no drag can move a hinge. Unfolding restores the
+   persisted width. */
+.split-pane--fold-snapped > .split-pane__left {
+  min-width: 0;
+  max-width: none;
+}
+
+.split-pane--fold-snapped
+  > .split-pane__detail-inline-host
+  > .split-pane__right {
+  margin-left: var(--fold-split-gap, 0px);
 }

@@ -9,6 +9,7 @@ import type { HttpBindings } from '@hono/node-server';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
 import { describe, expect, test } from 'vitest';
+import { DEVICE_WITHOUT_HOST_SHELL } from '../../__test-utils__/owner-standing.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   isBoundRuntimeLocalOperator,
@@ -95,6 +96,12 @@ async function harness() {
       principal: resolvePrincipal(c as never).id,
     }),
   );
+  // Probes behind the real boundary for the paired-Station chat bridge and
+  // peer administration: reaching them means the boundary admitted the call.
+  app.post('/api/environments/peers/:id/chat-api/*', (c) =>
+    c.json({ relayed: true }),
+  );
+  app.post('/api/environments/peers', (c) => c.json({ added: true }));
   configureDevicePairingHostRoutes(app as never, pairing, {
     verifyOperatorCredential: (credential) =>
       security.verifyOperatorCredential(credential),
@@ -239,6 +246,45 @@ describe('owner-device standing at the real boundary', () => {
             endpoint: 'https://station.example.test',
             approval: 'on-create',
           },
+        })
+      ).status,
+    ).toBe(403);
+  });
+
+  test('an owner device chats with a paired Station but cannot administer peers', async () => {
+    const { pair, call } = await harness();
+    const phone = pair(pairingScopePresetString('standard'));
+    const device = pair(DEVICE_WITHOUT_HOST_SHELL);
+    const chat =
+      '/api/environments/peers/environment-b/chat-api/api/orchestration/chat';
+    const sent = await call(chat, phone.credential, {
+      method: 'POST',
+      body: { message: 'hello' },
+    });
+    expect(sent.status).toBe(200);
+    await expect(sent.json()).resolves.toEqual({ relayed: true });
+    expect(
+      (
+        await call(
+          '/api/environments/peers/environment-b/chat-api/api/orchestration/commands',
+          phone.credential,
+          { method: 'POST', body: { type: 'interruptTurn' } },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await call('/api/environments/peers', phone.credential, {
+          method: 'POST',
+          body: {},
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await call(chat, device.credential, {
+          method: 'POST',
+          body: { message: 'hello' },
         })
       ).status,
     ).toBe(403);

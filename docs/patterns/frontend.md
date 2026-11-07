@@ -157,6 +157,31 @@ that do not navigate may use the guard explicitly. See
 
 ## Styling and responsive behavior
 
+Before adding markup or CSS for a surface, check the shared primitive and
+recipe owners below. Reuse a matching pattern and keep domain-state derivation
+with its feature. A new rule should have real consumers and one style owner.
+
+- `StatusSummary` (`src-ui/src/components/StatusSummary.tsx`) groups a resource
+  name, version, status badge, and subdued check time. Desktop and server
+  updates use it in both Updates and System settings. Pass the badge from
+  typed state; a different app/server version alone is not an available update.
+- `content-stack` (`src-ui/src/styles/layout-recipes.css`) gives ordinary
+  semantic children one token-based rhythm and resets their direct margins.
+  Add `content-stack--sections` for divided sibling `section` elements. Keep
+  paragraphs, lists, and field groups semantic instead of spacing each child
+  with feature-specific margins. This recipe is opt-in; it does not reset
+  unrelated pages or long-form prose.
+- `ActionRow` owns primary/secondary action order, wrapping, and gaps. App and
+  server update controls use the same row instead of custom button-row CSS.
+- `Field` and `Select` from `@kontourai/ui/react` own labels, hints, control
+  geometry, and the select chevron. The select retains native keyboard and
+  mobile behavior. Do not add a bare select with separate border, padding,
+  and caret rules when this published control fits.
+
+These patterns remove duplicated presentation without making status or
+authority decisions globally. For example, a header can show a verified
+server release as current while the app has its own, separately newer release.
+
 Use Kontour UI's semantic `--k-*` tokens for new styles, following the
 [shared design rules](https://github.com/kontourai/ui/blob/main/DESIGN.md):
 

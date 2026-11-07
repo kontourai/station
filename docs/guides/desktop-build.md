@@ -122,12 +122,21 @@ and license; its browser distributions and TypeScript sources are omitted.
 The OTLP transformer likewise retains its Node `build/src` implementation,
 metadata and license. Its alternate `build/esm` and `build/esnext` bundler
 distributions are omitted; normal Node imports and `require` share the retained
-implementation. The 512 MiB runtime ceiling remains enforced.
+implementation. Flow Agents keeps its compiled `build/`, hooks, skills, kits,
+schemas and context; its per-harness `dist/` bundles, its TypeScript `src/` and
+its own `evals/` test harness are omitted (a kit's own `evals/` is kept). The
+512 MiB runtime ceiling remains enforced.
 node-pty keeps every architecture's prebuilds for the staging operating system
 and omits prebuilds for other operating systems. Release packages use pinned
 Node, but desktop debug builds select Node from the login PATH; its architecture
 can differ from the staging Node (for example x64 Node under Rosetta on an
 arm64 Mac). Keeping same-OS bindings preserves that debug launch path.
+The pinned Windows backend uses ConPTY; its runtime assets are `conpty.node`,
+`conpty_console_list.node`, `conpty.dll` and `OpenConsole.exe` for each supported
+Windows architecture. Winpty assets are absent from the dependency and are not
+required by the lifecycle inventory. Native process tests and artifact staging
+checks remain separate from an installed Tauri-shell receipt.
+
 koffi, the FFI the managed policy's Windows registry and permission reader
 loads, ships without vendored build inputs and docs. Its `src` tree includes
 the JavaScript loader and stays in Windows staging with the native binary; elsewhere nothing loads it, so koffi

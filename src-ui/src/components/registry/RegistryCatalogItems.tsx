@@ -1,5 +1,6 @@
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import { useRegistrySkillContentQuery } from '@kontourai/station-sdk';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { IntegrationGlyph } from '../icons/IntegrationGlyph';
 import { SkeletonBlock } from '../state';
@@ -295,7 +296,7 @@ function RegistrySkillInstructions({ id }: { id: string }) {
       {content.isLoading ? (
         <SkeletonBlock count={3} label="Loading instructions" />
       ) : content.error ? (
-        <p role="alert">{content.error.message}</p>
+        <p role="alert">{describeStationFailure(content.error).body}</p>
       ) : (
         <pre className="marketplaces__instructions">{content.data}</pre>
       )}

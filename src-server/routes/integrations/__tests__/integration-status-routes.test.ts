@@ -21,13 +21,17 @@ function route(
   const app = new Hono();
   app.route(
     '/api/integrations/status',
-    createIntegrationStatusRoutes({ readStatus, mayRead }),
+    createIntegrationStatusRoutes({
+      readStatus,
+      mayRead,
+      githubAuthenticationEnabled: () => true,
+    }),
   );
   return app;
 }
 
-async function read(app: Hono) {
-  const response = await app.request('/api/integrations/status');
+async function read(app: Hono, path = '/api/integrations/status') {
+  const response = await app.request(path);
   expect(response.status).toBe(200);
   expect(response.headers.get('Cache-Control')).toBe('no-store');
   const body = await readJson<{ success: boolean; data: unknown }>(response);
@@ -227,42 +231,48 @@ describe('integration status route', () => {
     });
   });
 
-  test('bounds a hung GitHub probe and returns a failed timeout', async () => {
-    vi.useFakeTimers();
-    try {
-      const exec = vi.fn<typeof execGitContextCommand>(
-        (_command, _args, options) =>
-          new Promise<never>((_, reject) => {
-            options?.signal?.addEventListener('abort', () =>
-              reject(new Error('executor aborted')),
-            );
-          }),
-      );
-      const app = route(
-        createIntegrationStatusReader(
-          createIntegrationStatusProbes({
-            exec,
-            readDiscord: () => ({
-              state: 'unavailable',
-              reason: 'Not configured.',
+  test.each([false, true])(
+    'bounds a hung GitHub probe including metadata %s',
+    async (metadata) => {
+      vi.useFakeTimers();
+      try {
+        const exec = vi.fn<typeof execGitContextCommand>(
+          (_command, _args, options) =>
+            new Promise<never>((_, reject) => {
+              options?.signal?.addEventListener('abort', () =>
+                reject(new Error('executor aborted')),
+              );
             }),
-            readWebhook: () => ({ schemaVersion: 1 }),
-            githubTimeoutMs: 50,
-          }),
-        ),
-      );
-      const result = read(app);
-      await vi.advanceTimersByTimeAsync(50);
-      const status = await result;
-      expect(status.connections[0].actions[0]).toMatchObject({
-        state: 'failed',
-        reason: 'GitHub authentication check timed out.',
-      });
-      expect(exec.mock.calls[0]?.[2]?.signal?.aborted).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        );
+        const app = route(
+          createIntegrationStatusReader(
+            createIntegrationStatusProbes({
+              exec,
+              readDiscord: () => ({
+                state: 'unavailable',
+                reason: 'Not configured.',
+              }),
+              readWebhook: () => ({ schemaVersion: 1 }),
+              githubTimeoutMs: 50,
+            }),
+          ),
+        );
+        const result = read(
+          app,
+          `/api/integrations/status${metadata ? '?include=github-authentication' : ''}`,
+        );
+        await vi.advanceTimersByTimeAsync(50);
+        const status = await result;
+        expect(status.connections[0].actions[0]).toMatchObject({
+          state: 'failed',
+          reason: 'GitHub authentication check timed out.',
+        });
+        expect(exec.mock.calls[0]?.[2]?.signal?.aborted).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   test('coalesces concurrent checks and caches the GitHub result until TTL expires', async () => {
     let now = 1_000;
@@ -451,4 +461,188 @@ describe('integration status route', () => {
     expect((await app.request('/api/integrations/status')).status).toBe(403);
     expect(run).toHaveBeenCalledOnce();
   });
+});
+
+test('opt-in GitHub metadata selects the active account, strips secrets and leaves repository actions unverified', async () => {
+  const exec = vi.fn<typeof execGitContextCommand>(async (_command, args) => ({
+    stdout: args.includes('--json')
+      ? JSON.stringify({
+          hosts: {
+            'github.com': [
+              {
+                state: 'success',
+                active: false,
+                login: 'other-person',
+                scopes: 'admin:org',
+                token: 'private-inactive-token',
+              },
+              {
+                state: 'success',
+                active: true,
+                login: 'repo-owner',
+                scopes: 'repo, read:org, admin:public_key',
+                token: 'private-active-token',
+                tokenSource: '/private/credential/path',
+              },
+            ],
+          },
+        })
+      : '',
+    stderr: '',
+  }));
+  const app = route(
+    createIntegrationStatusReader(
+      createIntegrationStatusProbes({
+        exec,
+        now: () => 1234,
+        readDiscord: () => ({ state: 'unavailable', reason: 'Unavailable' }),
+        readWebhook: () => ({ schemaVersion: 1 }),
+      }),
+    ),
+  );
+  const plain = await read(app);
+  expect(plain.connections[0].authentication).toBeUndefined();
+  const withMetadata = await read(
+    app,
+    '/api/integrations/status?include=github-authentication',
+  );
+  expect(withMetadata.connections[0].authentication).toEqual({
+    state: 'signed-in',
+    observedAt: 1234,
+    account: 'repo-owner',
+    scopes: ['repo', 'read:org', 'admin:public_key'],
+  });
+  expect(
+    withMetadata.connections[0].actions.find(
+      (action) => action.action === 'read',
+    )?.state,
+  ).toBe('unverified');
+  expect(JSON.stringify(withMetadata)).not.toMatch(
+    /private-|other-person|admin:org/,
+  );
+  expect(exec.mock.calls[1]?.[1]).toEqual([
+    'auth',
+    'status',
+    '--hostname',
+    'github.com',
+    '--json',
+    'hosts',
+    '--no-refresh',
+  ]);
+  expect(exec.mock.calls[1]?.[2]).toMatchObject({
+    timeout: 5000,
+    maxBuffer: 8192,
+    windowsHide: true,
+  });
+});
+
+test.each([
+  [
+    {
+      hosts: {
+        'github.com': [
+          {
+            state: 'failure',
+            active: true,
+            login: 'old-account',
+            scopes: 'repo',
+          },
+        ],
+      },
+    },
+    'failed',
+  ],
+  [{ hosts: { 'github.com': [] } }, 'failed'],
+  [
+    {
+      hosts: {
+        'github.com': [
+          {
+            state: 'success',
+            active: true,
+            login: 'owner',
+            scopes: 'ghp_private_secret',
+          },
+        ],
+      },
+    },
+    'unknown',
+  ],
+  [
+    {
+      hosts: {
+        'github.com': Array.from({ length: 21 }, () => ({
+          state: 'success',
+          active: true,
+        })),
+      },
+    },
+    'unknown',
+  ],
+  ['not JSON private-token', 'unknown'],
+])('JSON exit zero is not sign-in proof: %j', async (output, state) => {
+  const exec = vi.fn<typeof execGitContextCommand>(async () => ({
+    stdout: typeof output === 'string' ? output : JSON.stringify(output),
+    stderr: '',
+  }));
+  const app = route(
+    createIntegrationStatusReader(
+      createIntegrationStatusProbes({
+        exec,
+        now: () => 1234,
+        readDiscord: () => ({ state: 'unavailable', reason: 'Unavailable' }),
+        readWebhook: () => ({ schemaVersion: 1 }),
+      }),
+    ),
+  );
+  const status = await read(
+    app,
+    '/api/integrations/status?include=github-authentication',
+  );
+  expect(status.connections[0].authentication).toEqual({
+    state,
+    observedAt: 1234,
+  });
+  expect(status.connections[0].actions[0].state).toBe('failed');
+  expect(JSON.stringify(status)).not.toMatch(/old-account|private-|ghp_/);
+});
+
+test('metadata preview selects before probing and before release, while ordinary status remains available', async () => {
+  let enabled = false;
+  const readStatus = vi.fn(async () => {
+    enabled = false;
+    return { connections: [] };
+  });
+  const app = new Hono().route(
+    '/api/integrations/status',
+    createIntegrationStatusRoutes({
+      readStatus,
+      mayRead: () => true,
+      githubAuthenticationEnabled: () => enabled,
+    }),
+  );
+  const path = '/api/integrations/status?include=github-authentication';
+  const off = await app.request(path);
+  expect(off.status).toBe(404);
+  expect(await off.json()).toMatchObject({
+    code: 'feature_preview_disabled',
+    previewId: 'repository-auth-details',
+  });
+  expect(readStatus).not.toHaveBeenCalled();
+  enabled = true;
+  const disabledDuringRead = await app.request(path);
+  expect(disabledDuringRead.status).toBe(404);
+  expect(readStatus).toHaveBeenCalledOnce();
+  expect((await app.request('/api/integrations/status')).status).toBe(200);
+  const deniedRead = vi.fn(async () => ({ connections: [] }));
+  const denied = new Hono().route(
+    '/api/integrations/status',
+    createIntegrationStatusRoutes({
+      readStatus: deniedRead,
+      mayRead: () => false,
+      githubAuthenticationEnabled: () => true,
+    }),
+  );
+  expect((await denied.request(path)).status).toBe(403);
+  expect(deniedRead).not.toHaveBeenCalled();
 });

@@ -12,7 +12,12 @@ test('persists a session identifier index without titles, recovery cursors or ru
   const client = new QueryClient();
   render(
     <QueryClientProvider client={client}>
-      <OfflineSessionIndex />
+      <OfflineSessionIndex
+        requestScope={{
+          apiBase: 'https://station.example.test',
+          authorityKey: 'authority-1',
+        }}
+      />
     </QueryClientProvider>,
   );
   act(() =>

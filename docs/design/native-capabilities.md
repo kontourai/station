@@ -37,6 +37,7 @@ host.
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
 | Nearby Station discovery | unsupported | iOS and Android 14+ source integration | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
+| Fold geometry | CSS Viewport Segments where the engine has them | iOS 27.1+ (`station-fold`); Android and desktop use the web path | Read-only hinge geometry and posture for foldable displays. Safari has no segments API, so on an iPhone only the native shell reports a crease. See [Fold geometry](#fold-geometry). |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
 | Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (#178). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
 | Remote push wakeup | unsupported | build-dependent | Enabled for Android builds carrying all four Firebase values or iOS builds carrying the Live Activity plugin. iOS also checks push signing before offering registration. User opt-in, server registration and provider delivery remain separate. |
@@ -85,6 +86,56 @@ See [native shell verification](../guides/native-shell-verification.md#nearby-st
 for installed-shell and physical-network evidence requirements. The source and
 unit checks do not qualify permission prompts, real mobile discovery or background
 recovery.
+
+### Fold geometry
+
+The [station-fold plugin](../../src-desktop/plugins/station-fold/src/lib.rs)
+reports where a foldable iPhone's display divides, for layouts that keep text
+off the crease. Its [Swift half](../../src-desktop/plugins/station-fold/ios/Sources/StationFoldPlugin/StationFoldPlugin.swift)
+reads two iOS 27.1 seams: `UIView.reservedRegionsOfKind:` with
+`UIViewReservedRegionKind.divisionRegionKind` (the crease, in the WebView's
+coordinates, including the system's interactive margins), and
+`UIHingeInteraction` (hinge status and angle, and the one callback that fires
+when Book becomes Open flat at an unchanged size). Both are looked up through
+the Objective-C runtime because the hosted iOS builds use an SDK that predates
+them; where they are absent the plugin reports `supported: false`.
+
+`plugin:station-fold|state` answers `{ revision, supported, hinge?, regions,
+viewport }`; the `change` event is a nudge to read it again. It controls
+nothing and carries no identifiers.
+
+A cold launch on a device that is already folded is the case to protect. The
+plugin's first reading precedes UIKit's first hinge update, so it carries no
+hinge and no region, and the posture never changes afterwards. Therefore
+`state` always answers a fresh reading, never a cached one; the plugin also
+re-reads on scene activation and trait changes and 0.25, 1 and 3 seconds after
+install, emitting `change` when the reading moved. The page, for its part,
+asks again 0.25, 1, 3 and 8 seconds after install (and on every resize) until
+a reply carries a hinge reading, so a missed or unregistered subscription
+cannot leave it on the launch answer. The crease is matched against the
+WebView bounds the plugin reported, not the page's possibly unsettled
+`innerHeight`. That decision lives in the UIKit-free
+[`StationFoldCore`](../../src-desktop/plugins/station-fold/ios/Sources/StationFoldCore/FoldReading.swift),
+whose host tests run with `STATION_FOLD_HOST_TESTS=1 swift test` in
+`src-desktop/plugins/station-fold/ios`; no hosted lane runs them yet. The WebView side is one store,
+[`foldStore`](../../src-ui/src/platform/fold/foldStore.ts), fed by
+[`foldSources`](../../src-ui/src/platform/fold/foldSources.ts). It asks the
+plugin only once the page's own platform resolution (the profile's one
+capability report) names iOS, so desktop and Android are never asked and no
+second report is requested; reads coalesce to one in flight plus one trailing
+read. The native reply then wins whenever the shell answers, and otherwise CSS
+Viewport Segments (with the Device Posture API's `continuous` read as flat)
+decide. The store publishes
+`data-fold-posture` and `data-fold-axis` on `<html>` and the
+`--station-hinge-x|y|width|height` properties; [responsive UI](../guides/responsive-ui.md#foldable-displays)
+owns how layouts use them.
+
+The iPhone Duo simulator (iOS 27.1, 2026-11-04) reported a 40pt vertical
+division at x 455.5 in Book (hinge `partially-open`, 90°), the same region with
+`fully-open` at 180° when open flat, a horizontal one in Laptop, and no region
+on the cover display (Closed, Tent). Those replies are the
+[test fixtures](../../src-ui/src/platform/fold/__tests__/nativeFoldFixtures.ts).
+A physical device remains **NOT_VERIFIED**.
 
 ### Personal analytics requester consent
 
@@ -465,7 +516,7 @@ one each of `linkVersion`, `clientChannel`, and `payload`: no credentials, URLs 
 fragments, duplicate fields, user info, or ports are accepted. The value must
 pass the same `station-pairing:v1:` decoder used by the QR scanner, including
 offer expiry, scope, and HTTPS/loopback endpoint validation. The link merely
-prefills a Join review screen; the user must explicitly request access before
+prefills a Join review screen; the user must explicitly choose **Connect** before
 Station sends any network request. It does not enable generic share intake,
 webview navigation, opener permission, or a new credential transport.
 

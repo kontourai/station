@@ -18,8 +18,7 @@
   --agent-accent: var(--agent-accent-light, var(--text-secondary));
 }
 
-.message.agent-incoming,
-.session-transcript__message.agent-incoming {
+.message.agent-incoming {
   align-self: flex-start;
   background: color-mix(in srgb, var(--agent-accent) 12%, var(--bg-tertiary));
   border: 1px solid
@@ -198,11 +197,6 @@
 }
 [data-transcript-mobile="true"] .agent-incoming__desktop {
   display: none;
-}
-[data-transcript-mobile="true"] .session-transcript__message.agent-incoming {
-  background: transparent;
-  border: none;
-  padding: 0;
 }
 
 .agent-cause > span {

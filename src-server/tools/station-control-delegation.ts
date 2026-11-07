@@ -3203,6 +3203,38 @@ export async function discoverDelegationOptions(
     throw new Error('Agents are unavailable on the selected Station');
   }
 
+  // Station-engine Agents use the selected Station's model connections, not
+  // an external engine's runtime catalog or the requesting Station's models.
+  let stationModels: ModelOption[] = [];
+  if (agentEnvelope.data.some((agent) => !agent.execution?.agentConnectionId)) {
+    const inventory = await readSanitizedJson<
+      ApiEnvelope<ConnectionConfig[]> & { failures?: unknown[] }
+    >(
+      target,
+      `${target.apiBase}/api/connections/models`,
+      target.requestOptions,
+      'Model connections are unavailable on the selected Station',
+    );
+    if (
+      !inventory.success ||
+      !Array.isArray(inventory.data) ||
+      (inventory.failures?.length ?? 0) > 0
+    )
+      throw new Error(
+        'Model connections are unavailable on the selected Station',
+      );
+    stationModels = safeModels(
+      inventory.data
+        .filter(
+          (connection) =>
+            connection.kind === 'model' &&
+            connection.enabled &&
+            connection.status === 'ready',
+        )
+        .flatMap((connection) => safeModels(connection.config.modelOptions)),
+    );
+  }
+
   const connections = new Map(
     connectionEnvelope.data.flatMap((connection) => {
       const id = safeIdentifier(connection.id);
@@ -3219,7 +3251,10 @@ export async function discoverDelegationOptions(
         : undefined;
       const models = connection
         ? connectionModels(connection)
-        : safeModels(agent.modelOptions);
+        : safeModels([
+            ...safeModels(agent.modelOptions),
+            ...(!connectionId ? stationModels : []),
+          ]);
       const defaultModel = safeIdentifier(
         agent.execution?.modelId ||
           agent.model ||
@@ -3240,12 +3275,18 @@ export async function discoverDelegationOptions(
       const ready = agent.available !== false && connectionReady;
       const resolvedEngineId =
         parseEngineId(agent.engineId) ??
-        (connectionReady
-          ? parseEngineId(connection?.config.engineId)
-          : undefined);
+        (!connectionId
+          ? parseEngineId('station')
+          : connectionReady
+            ? parseEngineId(connection?.config.engineId)
+            : undefined);
       const engineName =
         safeDescription(agent.engineDisplayName) ||
-        (connectionReady ? safeDescription(connection?.name) : undefined);
+        (!connectionId
+          ? 'Station'
+          : connectionReady
+            ? safeDescription(connection?.name)
+            : undefined);
       const unavailableReason =
         safeDescription(agent.unavailableReason) ||
         (connection && !connectionReady
@@ -6222,6 +6263,8 @@ export async function delegateTask(
             input: {
               threadId: sessionId,
               provider: resolved.provider,
+              // Durable Tasks must retain the native transcript their resume cursor names.
+              persistSession: true,
               ...(resolvedCwd ? { cwd: resolvedCwd } : {}),
               ...(resolved.workspace?.kind === 'project'
                 ? { workspaceIsolation: resolved.workspace.workspaceIsolation }

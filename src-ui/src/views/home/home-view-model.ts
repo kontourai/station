@@ -18,6 +18,10 @@ import type {
   TaskRecord,
 } from '@kontourai/station-sdk';
 import {
+  chatBelongsToStation,
+  conversationStateKey,
+} from '../../connections/station-state';
+import {
   activeChatHasWork,
   type ChatUIState,
 } from '../../contexts/active-chats-state';
@@ -756,6 +760,12 @@ function mergeHomeWorkItems(
  * execution Session id. Remote rows retain their existing namespace. */
 function localConversationIdentity(item: HomeWorkItem): string {
   if (item.kind === 'remote-session') return `remote:${item.id}`;
+  if (
+    item.kind === 'chat' &&
+    (item.id.startsWith('["station-chat",') ||
+      item.id.startsWith('["retained-chat",'))
+  )
+    return item.id;
   return item.conversationId ?? item.id;
 }
 
@@ -1160,9 +1170,12 @@ export function buildActiveChatTaskItems({
           chat.agentName ||
           agents.find((agent) => agent.slug === chat.agentSlug)?.name,
       });
-      const currentExecution = sessionByThread.get(
-        chat.currentSessionId ?? chat.conversationId ?? id,
-      );
+      const host = chatBelongsToStation(chat);
+      const currentExecution = host
+        ? sessionByThread.get(
+            chat.currentSessionId ?? chat.conversationId ?? id,
+          )
+        : undefined;
       const observedModel =
         currentExecution?.reportedModel ??
         currentExecution?.model ??
@@ -1171,12 +1184,20 @@ export function buildActiveChatTaskItems({
       // A present conversation id is authoritative. A thread-only chat must
       // keep its own execution fold, even when its id equals the root's
       // conversation id (archive#1075).
-      const correlated = chat.conversationId
-        ? turnByConversation.get(chat.conversationId)
-        : turnByThread.get(id);
+      const correlated = !host
+        ? undefined
+        : chat.conversationId
+          ? turnByConversation.get(chat.conversationId)
+          : turnByThread.get(id);
       const lifecycleLabel = chatLifecycleLabel(chat, id, correlated);
       return {
-        id: chat.conversationId || id,
+        id:
+          host || chat.stationBinding
+            ? conversationStateKey(
+                chat.stationBinding,
+                chat.conversationId || id,
+              )
+            : JSON.stringify(['retained-chat', id]),
         ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
         kind: 'chat' as const,
         kindLabel: 'Direct chat' as const,
@@ -1242,7 +1263,7 @@ export function buildActiveChatTaskItems({
   return [
     ...items
       .reduce((current, item) => {
-        const key = item.conversationId ?? item.id;
+        const key = item.id;
         const prior = current.get(key);
         const itemIsCurrentChild = item.currentSessionId === item.chatSessionId;
         const priorIsCurrentChild =

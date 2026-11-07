@@ -89,6 +89,25 @@ describe('useSectionNavigation', () => {
     second.remove();
   });
 
+  test('a selected-panel page can focus its section without scrolling the page', () => {
+    const target = document.createElement('section');
+    target.id = 'section-agents';
+    target.tabIndex = -1;
+    target.scrollIntoView = vi.fn();
+    document.body.append(target);
+    try {
+      const { result } = renderHook(() =>
+        useSectionNavigation(sections, 'models', { scrollOnNavigate: false }),
+      );
+      act(() => result.current.navigateToSection('agents'));
+      expect(document.activeElement).toBe(target);
+      expect(target.scrollIntoView).not.toHaveBeenCalled();
+      expect(window.location.search).toBe('?keep=1&section=agents');
+    } finally {
+      target.remove();
+    }
+  });
+
   test('tracks browser back and forward popstate changes', () => {
     const { result } = renderHook(() =>
       useSectionNavigation(sections, 'models'),

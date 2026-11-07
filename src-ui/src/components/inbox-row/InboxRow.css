@@ -458,7 +458,7 @@
   position: static;
   flex: 0 0 auto;
   align-self: center;
-  gap: 0;
+  gap: var(--k-space-1);
   padding: 0;
   background: transparent;
   box-shadow: none;
@@ -471,6 +471,10 @@
   min-width: 44px;
   min-height: 44px;
   border-radius: var(--radius-md);
+  /* Always on screen here, with no hover to reveal them and no tooltip a
+     finger can raise: drawn as buttons so Details and Snooze do not read as
+     status glyphs beside the row. */
+  box-shadow: inset 0 0 0 var(--k-border-thin) var(--k-line);
 }
 
 .inbox-row--touch .inbox-row__action::after {
@@ -495,6 +499,7 @@
   min-width: 0;
 }
 .inbox-row-family > .disclosure-toggle {
+  font-size: var(--k-text-sm);
   min-height: 44px;
   padding-inline: var(--k-space-3);
   color: var(--k-text-muted);
@@ -506,6 +511,7 @@
 }
 
 .inbox-row-family__summary {
+  font-size: var(--k-text-sm);
   margin: 0;
   padding: var(--k-space-2) var(--k-space-3);
   color: var(--k-text-muted);
@@ -629,4 +635,36 @@
 .inbox-row__meta,
 .inbox-row__time {
   color: var(--k-text-muted);
+}
+
+.inbox-row--task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+}
+.inbox-row--task .inbox-row__title,
+.inbox-row--task .inbox-row__status {
+  grid-column: 1;
+}
+.inbox-row__task-label {
+  grid-column: 1;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.inbox-row__task-actions {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  min-height: 44px;
+  font-size: var(--k-text-sm);
+}
+
+.inbox-row__task-actions {
+  display: flex;
+  align-items: center;
+}
+.inbox-row__task-actions > button {
+  min-height: 44px;
+  font-size: var(--k-text-sm);
 }

@@ -232,3 +232,7 @@ test('a missing delegate is retained as uncertain recent activity rather than a 
   fireEvent.click(screen.getByRole('button', { name: /^Recent activity/ }));
   expect(screen.getByText('No result')).toBeTruthy();
 });
+
+vi.mock('../hooks/useActiveStationName', () => ({
+  useActiveStationName: () => 'Fixture Station',
+}));

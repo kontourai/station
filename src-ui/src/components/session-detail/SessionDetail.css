@@ -1,7 +1,4 @@
-/* The Station-owned session detail (`MutableSessionDetail`): header identity
-   and actions, the one failure card, the read-only conversation, and the
-   Details disclosure. Base pane geometry (`.sessions-detail`, `__scroll`,
-   the pinned request/compose controls) stays in views/SessionsView.css. */
+/* Activity identity and evidence surround the shared record-density body. */
 
 /* The detail is often hosted in a ~380px dock. The identity keeps a
    readable measure and the actions wrap under it rather than squeezing the
@@ -59,20 +56,10 @@
   cursor: pointer;
 }
 
-.session-transcript__toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  justify-content: flex-end;
-  padding-block: var(--space-2);
-  background: var(--bg-primary);
-}
-
 .sessions-detail__meta-line {
   margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-md);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-md);
   overflow-wrap: anywhere;
 }
 
@@ -82,7 +69,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-3);
+  gap: var(--k-space-3);
 }
 
 .sessions-detail__actions .button {
@@ -124,40 +111,6 @@
   min-height: 44px;
 }
 
-/* The conversation: a record of the session, read in place. */
-.session-transcript {
-  display: grid;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-.session-transcript__message {
-  min-width: 0;
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-primary);
-  overflow-wrap: anywhere;
-}
-
-.session-transcript__message--user {
-  background: var(--bg-secondary);
-}
-
-.session-transcript__role {
-  margin: 0 0 var(--space-2);
-  color: var(--text-secondary);
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-}
-
-.sessions-detail__peer-note,
-.session-transcript__working {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-md);
-}
-
 /* Details: evidence, identity, linked pull requests and the event log,
    collapsed until asked for (or opened by an evidence reveal). */
 .sessions-detail__disclosure {
@@ -167,8 +120,8 @@
 }
 
 .sessions-detail__disclosure > summary {
-  display: flex;
-  align-items: center;
+  display: list-item;
+  align-content: center;
   min-height: 44px;
   color: var(--text-primary);
   font-weight: var(--weight-semibold);

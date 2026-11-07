@@ -12,6 +12,7 @@ import {
   updateModelPickerPreferences,
   useModelPickerPreferences,
 } from '../../settings/modelPickerPreferences';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { PROVIDER_TYPES, resolveProviderPresentation } from './providerCatalog';
 import type { ProviderConnection } from './types';
 
@@ -727,9 +728,7 @@ export function ProviderConnectionForm({
                   variant="compact"
                   title="Couldn't load AWS profiles"
                   description={
-                    awsProfilesQuery.error instanceof Error
-                      ? awsProfilesQuery.error.message
-                      : 'Failed to load AWS profiles.'
+                    describeStationFailure(awsProfilesQuery.error).body
                   }
                 />
               ) : awsProfilesQuery.data?.profiles.length ? (

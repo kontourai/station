@@ -1882,8 +1882,11 @@ describe('TaskWorkspaceView', () => {
         else if (kind === 'refusal') {
           await waitFor(() =>
             expect(screen.getByRole('alert').textContent).toContain(
-              'Worktree diff unavailable:',
+              'Try again in a moment.',
             ),
+          );
+          expect(screen.getByRole('alert').textContent).not.toContain(
+            'Worktree diff unavailable:',
           );
           expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
           expect(screen.queryByText('No changes')).toBeNull();
@@ -2338,8 +2341,9 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
 
     expect(screen.getByRole('alert').textContent).toContain(
-      'Couldn’t load Task outputs: Offline',
+      'Couldn’t load Task outputs: Try again in a moment.',
     );
+    expect(screen.getByRole('alert').textContent).not.toContain('Offline');
     fireEvent.click(screen.getByRole('button', { name: 'Retry outputs' }));
     expect(taskOutputsResult.refetch).toHaveBeenCalledTimes(1);
   });
@@ -2422,8 +2426,9 @@ describe('TaskWorkspaceView', () => {
     const [, options] = deleteOutputMutation.mutate.mock.calls[0];
     act(() => options.onError(new Error('Still in use')));
     expect(screen.getByRole('alert').textContent).toMatch(
-      /Couldn’t delete.*Still in use/i,
+      /Couldn’t delete.*Try again in a moment\./i,
     );
+    expect(screen.getByRole('alert').textContent).not.toContain('Still in use');
   });
 
   test('renders PNG only from the exact safe server receipt and revokes its URL', async () => {

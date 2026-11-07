@@ -16,6 +16,7 @@ const mutate = vi.fn();
 const mintState = { isPending: false, isError: false, error: null as unknown };
 
 class FakeAuthRequiredError extends Error {
+  readonly status = 401;
   constructor(message: string) {
     super(message);
     this.name = 'AnswerShareAuthRequiredError';
@@ -252,13 +253,13 @@ describe('ShareAnswerButton', () => {
     ).toBeTruthy();
   });
 
-  it("surfaces the server's own refusal rather than a generic failure", () => {
+  it('surfaces safe recovery for a refused share and creates no link', () => {
     mintState.isError = true;
     mintState.error = new Error('That turn has no answer on this Station.');
     render(<ShareAnswerButton provenance={envelope()} />);
 
     expect(screen.getByRole('alert').textContent).toBe(
-      'That turn has no answer on this Station.',
+      'Try again in a moment.',
     );
     expect(screen.queryByText(/share#t=/)).toBeNull();
   });
@@ -274,7 +275,7 @@ describe('ShareAnswerButton', () => {
     render(<ShareAnswerButton provenance={envelope()} />);
 
     const alert = screen.getByRole('alert').textContent ?? '';
-    expect(alert).toContain('not paired with Station');
+    expect(alert).toContain('Reconnect to Station');
     expect(alert).not.toContain('[object Object]');
     expect(await screen.findByText('PAIRING PATH OFFERED')).toBeTruthy();
   });
@@ -290,7 +291,7 @@ describe('ShareAnswerButton', () => {
     render(<ShareAnswerButton provenance={envelope()} />);
 
     expect(screen.getByRole('alert').textContent).toContain(
-      'access level does not allow managing shares',
+      'Try again in a moment.',
     );
     expect(screen.queryByText('PAIRING PATH OFFERED')).toBeNull();
   });

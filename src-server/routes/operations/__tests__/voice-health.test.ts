@@ -2,7 +2,10 @@ import { once } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket, type WebSocketServer } from 'ws';
 import { RuntimeAuthFailureLimiter } from '../../../security/runtime-request-security.js';
-import { resolveStationBrowserOrigins } from '../../../security/station-browser-origins.js';
+import {
+  createStationOriginPolicy,
+  resolveStationBrowserOrigins,
+} from '../../../security/station-browser-origins.js';
 import { attachVoiceWebSocket as attachListener } from '../voice.js';
 
 // The voice listener guards against re-binding a port it already holds. Every
@@ -704,14 +707,16 @@ describe('voice websocket remote authentication', () => {
 describe('voice websocket browser origin on the credential-free loopback path', () => {
   const SERVER_PORT = 47_300;
   const UI_ORIGIN = 'http://127.0.0.1:47400';
-  const allowedBrowserOrigins = resolveStationBrowserOrigins({
-    port: SERVER_PORT,
-    host: '127.0.0.1',
-    allowedOriginsEnv: UI_ORIGIN,
+  const browserOrigins = createStationOriginPolicy({
+    configured: resolveStationBrowserOrigins({
+      port: SERVER_PORT,
+      host: '127.0.0.1',
+      allowedOriginsEnv: UI_ORIGIN,
+    }),
   });
 
   async function startVoice(
-    authOverrides: Record<string, unknown> = { allowedBrowserOrigins },
+    authOverrides: Record<string, unknown> = { browserOrigins },
   ) {
     const voiceService = {
       createSession: vi.fn(),
@@ -823,7 +828,7 @@ describe('voice websocket browser origin on the credential-free loopback path', 
   });
   it('leaves a remote peer with a foreign Origin to the credential handshake', async () => {
     const { voiceService, auth, port, close } = await startVoice({
-      allowedBrowserOrigins,
+      browserOrigins,
       classifyPeer: vi.fn(() => 'remote'),
       authTimeoutMs: 50,
       maxAuthFailures: 1,

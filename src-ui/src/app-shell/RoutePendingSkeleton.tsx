@@ -4,7 +4,7 @@ import type { CSSProperties } from 'react';
 import type { PageFrameSpec } from '../components/page-frame/PageFrame';
 import { Skeleton, SkeletonBlock, SkeletonList } from '../components/Skeleton';
 import { SPLIT_PANE_DEFAULT_WIDTH } from '../components/split-pane-metrics';
-import { useIsMobile } from '../hooks/useIsMobile';
+import { useStackedListDetail } from '../hooks/useIsMobile';
 import { useLocale } from '../i18n/LocaleContext';
 import type { NavigationView } from '../types';
 import { routePendingShape } from './route-pending-shape';
@@ -61,8 +61,10 @@ export function RoutePendingSkeleton({
   const { message } = useLocale();
   // A `matchMedia` subscription, but only for as long as this placeholder is
   // mounted — which is only while a route outlet is suspended.
-  const isMobile = useIsMobile();
-  const shape = view ? routePendingShape(view, spec, isMobile) : 'unshaped';
+  // `SplitPaneLayout`'s own stacking query, so the placeholder and the
+  // arriving pane agree on one side or two.
+  const stacked = useStackedListDetail();
+  const shape = view ? routePendingShape(view, spec, stacked) : 'unshaped';
 
   if (shape === 'split-pane') {
     return (

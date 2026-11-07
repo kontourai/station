@@ -79,6 +79,7 @@ export type MessageDeliveryState =
   | 'waiting-behind-unsent'
   | 'waiting-for-station'
   | 'held-on-device'
+  | 'held-for-send'
   | 'not-sent'
   | 'unconfirmed'
   | 'unanswered';
@@ -226,4 +227,13 @@ export function outboxTurnDeliveryState(row: {
     outboxWaitsForStation: row.waitingForStation !== undefined,
     outboxBehindUnsent: row.behindUnsent === true,
   });
+}
+
+/** A send notice keeps diagnostics out of its shared delivery copy. */
+export interface ConversationDeliveryNotice {
+  clientTurnId: string;
+  text: string;
+  description: string;
+  diagnostic: string;
+  state: 'not-sent' | 'unconfirmed';
 }

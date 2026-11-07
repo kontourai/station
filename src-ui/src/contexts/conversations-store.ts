@@ -1,3 +1,20 @@
+import type { StationConnection } from '../connections/station-connection';
+
+function conversationMessagesKey(
+  agentSlug: string,
+  conversationId: string,
+  connection?: StationConnection,
+): string {
+  return connection
+    ? JSON.stringify([
+        'messages',
+        connection.runtimeKey,
+        agentSlug,
+        conversationId,
+      ])
+    : `messages:${agentSlug}:${conversationId}`;
+}
+
 import {
   deleteConversation as deleteConversationRequest,
   fetchConversationMessages,
@@ -44,8 +61,12 @@ class ConversationsStore {
     this.isActiveConversation = reader;
   }
 
-  retainMessages(agentSlug: string, conversationId: string): () => void {
-    const key = `messages:${agentSlug}:${conversationId}`;
+  retainMessages(
+    agentSlug: string,
+    conversationId: string,
+    connection?: StationConnection,
+  ): () => void {
+    const key = conversationMessagesKey(agentSlug, conversationId, connection);
     this.readers.set(key, (this.readers.get(key) ?? 0) + 1);
     if (this.recentMessages.has(key)) this.touchMessages(key);
     return () => {
@@ -122,8 +143,14 @@ class ConversationsStore {
     conversationId: string,
     queryClient?: any,
     isCurrent?: () => boolean,
+    connection?: StationConnection,
   ): Promise<boolean> {
-    const key = `messages:${agentSlug}:${conversationId}`;
+    if (
+      connection &&
+      (connection.routeKind !== 'host' || !connection.isCurrent())
+    )
+      return false;
+    const key = conversationMessagesKey(agentSlug, conversationId, connection);
     const inFlight = this.fetching.get(key);
     if (inFlight && !isCurrent) {
       return inFlight.promise;
@@ -164,8 +191,13 @@ class ConversationsStore {
           agentSlug,
           conversationId,
           toolMappings,
+          connection,
         );
-        if (this.fetchScopes.get(key) !== scope || isCurrent?.() === false)
+        if (
+          this.fetchScopes.get(key) !== scope ||
+          isCurrent?.() === false ||
+          (connection && !connection.isCurrent())
+        )
           return false;
         // A successful older read must not replace a newer published transcript.
         if (sequence > scope.publishedSequence) {
@@ -192,8 +224,12 @@ class ConversationsStore {
     return promise;
   }
 
-  forgetConversation(agentSlug: string, conversationId: string) {
-    const key = `messages:${agentSlug}:${conversationId}`;
+  forgetConversation(
+    agentSlug: string,
+    conversationId: string,
+    connection?: StationConnection,
+  ) {
+    const key = conversationMessagesKey(agentSlug, conversationId, connection);
     this.fetchScopes.delete(key);
     this.fetching.delete(key);
     delete this.messages[key];
@@ -207,10 +243,18 @@ class ConversationsStore {
     agentSlug: string,
     conversationId: string,
     queryClient?: any,
+    connection?: StationConnection,
   ): Promise<boolean> {
-    const key = `messages:${agentSlug}:${conversationId}`;
+    const key = conversationMessagesKey(agentSlug, conversationId, connection);
     this.fetching.delete(key);
-    return this.fetchMessages(apiBase, agentSlug, conversationId, queryClient);
+    return this.fetchMessages(
+      apiBase,
+      agentSlug,
+      conversationId,
+      queryClient,
+      undefined,
+      connection,
+    );
   }
 
   async deleteConversation(

@@ -52,7 +52,7 @@ describe('LayoutSwitcher', () => {
     refetchLayouts.mockReset();
   });
 
-  test('an errored read renders the error state with its message, not "No layouts"', () => {
+  test('an errored read renders safe error copy, not "No layouts"', () => {
     layoutsData = [];
     layoutsError = new Error('layouts read failed');
     render(<LayoutSwitcher projectSlug="project-alpha" layoutSlug="main" />);
@@ -60,7 +60,8 @@ describe('LayoutSwitcher', () => {
 
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Unable to load layouts')).toBeTruthy();
-    expect(screen.getByText('layouts read failed')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('layouts read failed')).toBeNull();
     expect(screen.queryByText('No layouts')).toBeNull();
   });
 

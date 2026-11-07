@@ -440,6 +440,8 @@ function enqueue<T>(
 async function dispatchWithTimeout(
   entry: LiveSurfaceEntry,
   run: () => Promise<void>,
+  /** What is dispatched, for the failure log: a kind and type, never content. */
+  what: string,
 ): Promise<'ok' | 'failed' | 'timeout' | LiveSurfaceInputRefusal> {
   const own = internalsOf(entry);
   const pending = run();
@@ -448,8 +450,15 @@ async function dispatchWithTimeout(
     pending.then(
       () => 'ok' as const,
       // A refusal the viewer can act on is carried through, not flattened.
-      (error: unknown) =>
-        error instanceof LiveSurfaceInputRefusal ? error : ('failed' as const),
+      (error: unknown) => {
+        if (error instanceof LiveSurfaceInputRefusal) return error;
+        // The viewer is told only `dispatch-failed`; the cause is kept here.
+        own.onError(
+          'live surface input dispatch failed',
+          dispatchFailureDetail(entry.producer.surfaceId, what, error),
+        );
+        return 'failed' as const;
+      },
     ),
     new Promise<'timeout'>((resolve) => {
       timer = setTimeout(() => resolve('timeout'), own.dispatchTimeoutMs);
@@ -473,6 +482,29 @@ async function dispatchWithTimeout(
     });
   }
   return outcome;
+}
+
+/** Bound on a producer error's text in the failure log. */
+const DISPATCH_FAILURE_DETAIL_MAX = 300;
+
+/**
+ * One line naming the surface, the input's kind and type, and the producer's
+ * error. A string because the host logger keeps only a string or an Error's
+ * message. The input's key or text is never included.
+ */
+function dispatchFailureDetail(
+  surfaceId: string,
+  what: string,
+  error: unknown,
+): string {
+  const cause =
+    error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return `${surfaceId} ${what}: ${cause}`.slice(0, DISPATCH_FAILURE_DETAIL_MAX);
+}
+
+/** An input's kind and type: what the failure log may say about it. */
+function describeInput(event: LiveSurfaceInput): string {
+  return 'type' in event ? `${event.kind} ${event.type}` : event.kind;
 }
 
 function wedged(entry: LiveSurfaceEntry): LiveSurfaceInputResult | null {
@@ -500,15 +532,21 @@ function cancelHeld(entry: LiveSurfaceEntry): void {
     const producer = entry.producer;
     const outcomes = producer.cancelHeldInput
       ? [
-          await dispatchWithTimeout(entry, () =>
-            producer.cancelHeldInput!(held),
+          await dispatchWithTimeout(
+            entry,
+            () => producer.cancelHeldInput!(held),
+            'held-input cancel',
           ),
         ]
       : [];
     if (!producer.cancelHeldInput)
       for (const event of neutralCancelEvents(held))
         outcomes.push(
-          await dispatchWithTimeout(entry, () => producer.dispatch(event)),
+          await dispatchWithTimeout(
+            entry,
+            () => producer.dispatch(event),
+            `held-input cancel ${describeInput(event)}`,
+          ),
         );
     if (outcomes.some((outcome) => outcome !== 'ok'))
       own.onError('live surface held-input cancel failed', outcomes);
@@ -546,10 +584,13 @@ async function dispatchFenced(
     // Recorded as SENT: an event in flight at a takeover, or one that times
     // out and lands later, is still accounted for by the cancel.
     own.pressed.record(event, controller);
-    const outcome = await dispatchWithTimeout(entry, () =>
-      entry.producer.dispatch(event, {
-        isCurrent: () => entry.lease.isCurrent(fence, controller).ok,
-      }),
+    const outcome = await dispatchWithTimeout(
+      entry,
+      () =>
+        entry.producer.dispatch(event, {
+          isCurrent: () => entry.lease.isCurrent(fence, controller).ok,
+        }),
+      describeInput(event),
     );
     if (outcome instanceof LiveSurfaceInputRefusal)
       return {

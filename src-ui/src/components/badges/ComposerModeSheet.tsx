@@ -10,6 +10,10 @@ import {
   approvalModeDescription,
 } from '../../utils/approvalMode';
 import { Button } from '../Button';
+import {
+  ConversationManagedPolicyProvider,
+  useOptionalConversationConnection,
+} from '../conversation/ConversationConnectionContext';
 import { EngineGlyph, HandGlyph, ReturnGlyph } from '../icons/Glyph';
 import { ManagedApprovalCeilingNote } from '../managed/ManagedApprovalCeilingNote';
 import {
@@ -72,7 +76,7 @@ interface ComposerModeSheetProps {
  * nothing is disabled and a pick above the ceiling comes back refused with
  * the same sentence.
  */
-export function ComposerModeSheet({
+function ComposerModeSheetContent({
   triggerRef,
   effectiveMode,
   engineConnectionId,
@@ -85,10 +89,15 @@ export function ComposerModeSheet({
   layer = 'popover',
 }: ComposerModeSheetProps) {
   const account = useAccountPreferences();
+  const target = useOptionalConversationConnection();
+  const personalDefaults =
+    !target?.station ||
+    target.station.capabilities.personalDefaults.state === 'allowed';
   const { aboveCeiling } = useManagedApprovalCeiling();
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const apply = (mode: ApprovalMode) => {
     if (
+      personalDefaults &&
       saveAsDefault &&
       (engineConnectionId === 'codex' ||
         engineConnectionId === 'claude' ||
@@ -146,7 +155,7 @@ export function ComposerModeSheet({
               : 'Applies next turn'}
           {activeMode ? ` · Active: ${activeMode}` : ''}
         </p>
-        {account.status === 'account' && (
+        {personalDefaults && account.status === 'account' && (
           <label className="composer-mode-sheet__confirm-body">
             <input
               type="checkbox"
@@ -202,7 +211,12 @@ export function ComposerModeSheet({
           role="radiogroup"
           aria-label="Approval mode"
         >
-          {APPROVAL_MODE_OPTIONS.map((option) => {
+          {APPROVAL_MODE_OPTIONS.filter(
+            (option) =>
+              option.value !== 'never' ||
+              !target?.station ||
+              target.station.capabilities.fullAccess.state === 'allowed',
+          ).map((option) => {
             const isSelected = option.value === effectiveMode;
             const managed = aboveCeiling(option.value);
             return (
@@ -256,5 +270,13 @@ export function ComposerModeSheet({
         </div>
       )}
     </ResponsiveDialogSurface>
+  );
+}
+
+export function ComposerModeSheet(props: ComposerModeSheetProps) {
+  return (
+    <ConversationManagedPolicyProvider>
+      <ComposerModeSheetContent {...props} />
+    </ConversationManagedPolicyProvider>
   );
 }

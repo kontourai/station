@@ -19,6 +19,8 @@
 import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
+  peerChatTunnelV1: true,
+  delegationLocalConversationV1: true,
   childWorkSteering: true,
   privateOperationalOutcomes: true,
   // Automation targets: src-server/routes/operations/scheduler.ts accepts a
@@ -29,6 +31,9 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
+  // Private memory review, recall and briefing: src-server/routes/knowledge/
+  // memory-routes.ts. Hosted deployments withdraw it: see servesPrivateMemory.
+  privateMemoryReview: true,
   // Station routes: GET /api/system/routes reports the addresses this Station
   // is reached on (src-server/services/connections/station-routes.ts). Hosted
   // deployments withdraw it: see servesConnectionRoutes.
@@ -131,6 +136,7 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
 export interface StationCapabilityDeployment {
   /** A hosted tenant registry is configured (`STATION_HOSTED_TENANT_REGISTRY_FILE`). */
   hosted: boolean;
+  peerChatEnabled?: boolean;
 }
 
 /**
@@ -170,6 +176,11 @@ export function servesConnectionRoutes(
   return !deployment.hosted;
 }
 
+/** Private memory is a personal-host feature; hosted never binds its preview. */
+function servesPrivateMemory(deployment: StationCapabilityDeployment): boolean {
+  return !deployment.hosted;
+}
+
 /** Scheduler storage is not tenant-bound, so hosted routes refuse these targets. */
 function servesScheduledConversationTarget(
   deployment: StationCapabilityDeployment,
@@ -193,9 +204,13 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
     >
   >
 > = {
+  peerChatTunnelV1: (deployment) =>
+    !deployment.hosted && deployment.peerChatEnabled === true,
+  delegationLocalConversationV1: (deployment) => !deployment.hosted,
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,
+  privateMemoryReview: servesPrivateMemory,
   scheduledConversationTarget: servesScheduledConversationTarget,
   coordinatorSession: servesCoordinatorSession,
 };

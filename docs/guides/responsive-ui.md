@@ -151,6 +151,13 @@ corresponding CSS conditions aligned. The documentation token `--bp-mobile`
 cannot be substituted into a CSS media query. Dock placement has a different
 policy: a wide coarse-pointer device can be bottom-only without being mobile.
 
+List/detail stacking is a separate question with its own query,
+`LIST_DETAIL_STACKED_QUERY` (`useStackedListDetail`): below 600px, or on a
+short coarse-pointer viewport. [SplitPaneLayout](../../src-ui/src/components/SplitPaneLayout.tsx)
+uses it, not `useIsMobile`, so a foldable open flat in portrait (~670px) keeps
+the phone shell but shows its list beside the detail; see
+[Foldable displays](#foldable-displays).
+
 Content whose room depends on the dock rather than the window measures the
 dock. The session context card beside the Chat transcript
 ([sessionContextCardModel.ts](../../src-ui/src/components/chat-dock/sessionContextCardModel.ts))
@@ -178,7 +185,13 @@ at the surface or workspace boundary that needs geometry, then size descendants
 from `--responsive-visual-viewport-height`. It combines Visual Viewport readings
 with the Android inset projection and falls back to window dimensions. The
 separate document publisher, installed by `main.tsx`, exposes
-`--visual-viewport-bottom-inset` for fixed siblings. Every call, and the SDK
+`--visual-viewport-bottom-inset` for fixed siblings; a fixed bottom sheet that
+is not a `ResponsiveDialogSurface` (the phone notifications sheet) docks at that
+inset, not at `bottom: 0`, so iOS Safari's floating toolbar does not cover it.
+[useSoftKeyboardTarget](../../src-ui/src/hooks/useSoftKeyboardTarget.ts) derives
+an open software keyboard from a focused text entry plus a keyboard-sized
+inset; the collapsed phone dock bar hides while it types into another surface.
+Every call, and the SDK
 and Connect modals, reads one per-window store
 (`@kontourai/station-shared/visual-viewport`) that reads the geometry once per
 frame, so another call adds a re-render rather than more listeners. Still read
@@ -223,6 +236,10 @@ accessory keys in their existing row rather than adding a second floating dock.
 Use `.tap-target` for compact interactive controls; the local floor is 44 by
 44 CSS pixels. Preserve visible keyboard focus. These CSS rules do not prove
 actual hit area after transforms, overlays or clipping.
+
+The sidebar's narrow drawer keeps Home, add and Board-menu controls at the same
+floor, even with a fine pointer. Board navigation and its menu use separate
+flex slots so their targets do not overlap.
 
 Record discovered modal-like surfaces in
 [responsive-surfaces.json](../ui/responsive-surfaces.json) and action surfaces in
@@ -313,6 +330,15 @@ lifetime. The Gallery regression observes the rendered pill through the Web
 Animations API and checks its resting styles after completion. Its visually
 hidden live announcement is anchored at the document origin so the body portal
 cannot add a scroll row below a dock that fills the viewport.
+
+### Phone app toolbar
+
+On a phone the Station chip shows its dot and the connected Station's name in
+a fixed-width slot in every state, so a state change or a Station notice never
+moves the controls beside it. That name takes priority over the app wordmark:
+the wordmark wraps away whole wherever the row cannot hold it, and the logo
+stays. [`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts)
+measures the row at every phone width it supports.
 
 ### Action rows
 
@@ -459,8 +485,11 @@ trailing click cannot open the conversation. Details and long press retain the
 same actions with the preview off.
 
 Dismissal is browser-local inbox visibility, separate from tab teardown, stopping
-work, or deleting a draft. The Dismissed section offers Restore. Lifecycle changes
-use the existing debounce; running progress does not restore a dismissed row.
+work, or deleting a draft. Inbox search reveals matching dismissed items and
+their Restore action. Lifecycle changes use the existing debounce; running
+progress does not restore a dismissed row. Hidden Third-party sessions stay
+hidden through external updates and return to normal status handling when
+adopted into Station.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
@@ -503,6 +532,57 @@ bottom dock track never takes the content row's floor, `min(35%, 160px)` of the
 frame, so a page in `main` keeps room above the dock. Device emulation that
 resizes only the viewport reports `pointer: fine`; it is not a phone check.
 
+
+## Foldable displays
+
+One store, [`foldStore`](../../src-ui/src/platform/fold/foldStore.ts), holds
+where the display's crease is and whether the device is folded (a partially
+open hinge, Book or Laptop) or flat. The iOS shell's `station-fold` plugin feeds
+it on foldable iPhones and the CSS Viewport Segments API elsewhere
+([native capabilities](../design/native-capabilities.md#fold-geometry)); with
+neither, nothing is published and layouts are unchanged.
+
+Layouts read the crease relative to themselves through
+[`useFoldSplit`](../../src-ui/src/hooks/useFoldSplit.ts). It measures its own
+element and writes `data-fold-split`, `data-fold-larger` and the
+`--fold-split-start|gap|end` lengths onto it while a folded crease crosses it.
+Two treatments use them; do not add a per-screen fold rule:
+
+- a split layout puts its first pane before the crease and its second after it.
+  `SplitPaneLayout` gives its list exactly the room before a vertical crease and
+  hides the resize divider (unfolding restores the saved width); it snaps only
+  when the list keeps 200px and the detail 280px. The dock's Inbox row does the
+  same with the Inbox. Each marks itself `data-fold-aware`;
+- a single column (`.fold-avoid-crease`) moves wholly into the larger side. The
+  route outlet and the dock's conversation reader carry it; a column that
+  contains a `data-fold-aware` layout leaves the panes to it.
+
+A horizontal crease (Laptop) is published but no layout acts on it yet, and the
+dock header's one-line title still crosses a vertical crease.
+
+On a folded or narrow foldable the list/detail breakpoint matters more than
+the phone one: open flat in portrait, `SplitPaneLayout` is side by side from
+600px of viewport, and its container rule still shows list or detail (with a
+back control, not a sheet) in a container narrower than 641px.
+
+Side safe areas are applied at the route outlet: `.main-content` pads by
+`--safe-left` and `--safe-right`, as the toolbar and dock already do for
+themselves. A foldable's cover display puts its status bar and camera in a
+vertical column on one side (iOS 27.1's vertical bar), so without it a page's
+heading and banner actions ran under that column. Fixed sheets outside the
+outlet (the stacked split's detail sheet) inset themselves.
+
+A short coarse-pointer viewport (a phone held sideways, a foldable's cover in
+Tent posture) compacts the chrome: the toolbar and the collapsed dock bar keep
+their 44px controls and drop the block padding around them (52px to 44px, and
+53px to 45px). Both heights stay literal tokens, because the dock's snap math
+parses `--chat-dock-header-height` in script.
+
+[The fold layout journey](../../src-ui/src/__tests__/fold-layout.browser.test.tsx)
+renders these in Chromium from both sources (the captured iOS replies through a
+stand-in IPC, and Chromium's display-feature emulation), along with the
+breakpoints, the side inset and the compact chrome. The iPhone Duo simulator
+screenshots are development evidence; a physical device is not verified.
 
 ## Fresh-phone welcome and initial CSS
 

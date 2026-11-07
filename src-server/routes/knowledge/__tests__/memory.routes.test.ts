@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { MemoryReviewService } from '../../../knowledge-store/memory-review.js';
 import { MemoryRootManager } from '../../../knowledge-store/memory-root.js';
 import { createMemoryRoutes } from '../memory-routes.js';
 
@@ -51,6 +52,8 @@ test('memory routes require the preview and owner, and expose proposals only exp
       allowRead &&
       request.headers.get('x-test-user') === 'owner' &&
       root.readPolicy?.ownerId === owner.userId,
+    review: new MemoryReviewService({ manager, home }),
+    reviewerKind: () => 'agent',
     guardReadResponse: async (_request, _roots, response) => response,
   });
   const headers = {

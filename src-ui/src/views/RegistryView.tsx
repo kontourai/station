@@ -34,6 +34,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { usePermissions } from '../core/PermissionManager';
 import { pluginRegistry } from '../core/PluginRegistry';
+import { describeStationFailure } from '../utils/stationFailure';
 import { AgentToolCatalog } from './agent-editor/AgentToolCatalog';
 import { InstallPreviewExtensionAccess } from './plugin-management/InstallPreviewExtensionAccess';
 import { InstallPreviewModal } from './plugin-management/InstallPreviewModal';
@@ -453,7 +454,7 @@ export function RegistryView({
         }
         await reloadPluginsMutation.mutateAsync().catch((error) => {
           setMessage(
-            `Installed ${displayName}, but plugin activation could not be refreshed: ${error instanceof Error ? error.message : 'unknown error'}`,
+            `Installed ${displayName}, but plugin activation could not be refreshed: ${describeStationFailure(error).body}`,
           );
         });
         // The server announces the install over SSE too; reloading here makes

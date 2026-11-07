@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
 import { describe, expect, test } from 'vitest';
+import { conversationConnection } from '../components/conversation/__tests__/fixtures';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import {
   assignConversationIdState,
@@ -15,9 +16,110 @@ import {
   reorderQueuedMessageState,
   serializeActiveChats,
 } from '../contexts/active-chats-state';
+import {
+  readRetainedChatTranscript,
+  retainChatTranscript,
+} from '../lib/retained-chat-transcript';
 import type { PlanArtifact } from '../utils/planArtifacts';
 
 describe('active chat state helpers', () => {
+  test('remote retained text survives reload without becoming live messages or authority', () => {
+    const station = conversationConnection('relay');
+    const retained = retainChatTranscript(station.binding, 'conversation', [
+      {
+        role: 'assistant',
+        content: 'answer',
+        contentParts: [
+          { type: 'text', content: 'Before the tool.' },
+          { type: 'tool-invocation', args: { secret: 'tool arguments' } },
+          { type: 'text', content: 'After the tool.' },
+        ],
+      },
+    ]);
+    const chat = createDefaultChatState({
+      agentSlug: 'agent',
+      agentName: 'Agent',
+      title: 'Remote',
+      conversationId: 'conversation',
+      stationBinding: station.binding,
+    });
+    chat.retainedTranscript = retained;
+    const restored = hydrateActiveChats(
+      serializeActiveChats({ tab: chat }),
+    ).tab;
+    expect(restored.retainedTranscript?.messages).toEqual([
+      { role: 'assistant', content: 'Before the tool.' },
+      { role: 'assistant', content: 'After the tool.' },
+    ]);
+    expect(restored.messages ?? []).toEqual([]);
+    expect(JSON.stringify(restored.retainedTranscript)).not.toContain('secret');
+    expect(
+      readRetainedChatTranscript(
+        retained,
+        conversationConnection('direct').binding,
+        'conversation',
+      ),
+    ).toBeUndefined();
+    expect(
+      readRetainedChatTranscript(
+        retained,
+        station.binding,
+        'another-conversation',
+      ),
+    ).toBeUndefined();
+    expect(
+      readRetainedChatTranscript(
+        retained,
+        conversationConnection('host').binding,
+        'conversation',
+      ),
+    ).toBeUndefined();
+  });
+  test('retained text is bounded and discards unsupported persisted material', () => {
+    const station = conversationConnection('relay');
+    const copy = retainChatTranscript(
+      station.binding,
+      'conversation',
+      Array.from({ length: 50 }, (_, i) => ({
+        role: 'assistant' as const,
+        content: `${i}:${'文'.repeat(4000)}`,
+      })),
+    );
+    expect(copy.messages.length).toBeLessThanOrEqual(40);
+    expect(
+      new TextEncoder().encode(copy.messages.map((row) => row.content).join(''))
+        .length,
+    ).toBeLessThanOrEqual(64 * 1024);
+    expect(copy.messages.at(-1)?.content).toContain('49:');
+    expect(
+      readRetainedChatTranscript(
+        {
+          ...copy,
+          messages: [
+            null,
+            { role: 'tool', content: 'private' },
+            { role: 'assistant', content: 'Readable' },
+          ],
+        },
+        station.binding,
+        'conversation',
+      )?.messages,
+    ).toEqual([{ role: 'assistant', content: 'Readable' }]);
+  });
+  test('a host binding alone does not turn an unused host draft into persisted work', () => {
+    const chat = createDefaultChatState({
+      agentSlug: 'planner',
+      agentName: 'Planner',
+      title: 'New chat',
+      stationBinding: {
+        version: 1,
+        environmentId: 'host',
+        stationName: 'Host',
+        affinity: { kind: 'host' },
+      },
+    });
+    expect(serializeActiveChats({ draft: chat })).toEqual([]);
+  });
   test('creates default chat state with metadata merged in', () => {
     expect(
       createDefaultChatState({

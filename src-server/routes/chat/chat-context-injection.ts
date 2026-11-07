@@ -103,6 +103,7 @@ export function totalApproxInjectedTokens(
     (record.guidelines?.approxTokens ?? 0) +
     (record.workflowSteering?.approxTokens ?? 0) +
     (record.conversationFeedback?.approxTokens ?? 0) +
-    (record.ambient?.approxTokens ?? 0)
+    (record.ambient?.approxTokens ?? 0) +
+    (record.memoryBrief?.approxTokens ?? 0)
   );
 }

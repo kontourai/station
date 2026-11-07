@@ -191,18 +191,21 @@
       "lock": "pnpm-lock.yaml",
       "path": "node_modules/node-pty",
       "name": "node-pty",
-      "version": "1.1.0",
-      "integrity": "sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==",
+      "version": "1.2.0-beta.18",
+      "integrity": "sha512-3Rej3788OnasAwoSmTZhlCeUraJ9CQldtL5b571b9+3Nv47+PaxA5VPIGOOs+16OYQePTrC1Lrs8a9/df5WPRg==",
       "hooks": [
         {
           "name": "install",
           "command": "node scripts/prebuild.js || node-gyp rebuild"
         },
-        { "name": "postinstall", "command": "node scripts/post-install.js" }
+        {
+          "name": "postinstall",
+          "command": "node scripts/post-install.js"
+        }
       ],
       "decision": "execute",
       "owner": "station-security",
-      "reason": "Terminal integration needs node-pty and the exact native artifact arrays are loaded and PTY-spawned on each supported platform. Linux may consume the attested, digest-pinned prebuild channel in packaging/node-pty-prebuilds when its manifest pins this version; the artifact arrays must then name prebuilds/linux-* instead of build/Release (enforced by the prebuild consistency check).",
+      "reason": "Pinned published upstream beta supplies synchronized Windows ConPTY handle ownership. Its approved install/postinstall command strings are unchanged; their integrity-bound scripts were reviewed. Linux still approves the source-built addon, and the runner enforces that decision despite upstream prebuilds. Windows ships ConPTY only; exact backend/DLL artifacts remain required, with the real PTY handshake on each supported platform. Source review and macOS or local Windows proof do not establish hosted, ARM64 or Desktop qualification.",
       "platform": { "os": [], "cpu": [] },
       "artifact": {
         "path": "prebuilds/{platform}-{arch}/pty.node",
@@ -218,28 +221,22 @@
           "linux/x64": ["build/Release/pty.node"],
           "linux/arm64": ["build/Release/pty.node"],
           "win32/x64": [
-            "prebuilds/win32-x64/pty.node",
             "prebuilds/win32-x64/conpty.node",
             "prebuilds/win32-x64/conpty_console_list.node",
             "prebuilds/win32-x64/conpty/conpty.dll",
-            "prebuilds/win32-x64/conpty/OpenConsole.exe",
-            "prebuilds/win32-x64/winpty.dll",
-            "prebuilds/win32-x64/winpty-agent.exe"
+            "prebuilds/win32-x64/conpty/OpenConsole.exe"
           ],
           "win32/arm64": [
-            "prebuilds/win32-arm64/pty.node",
             "prebuilds/win32-arm64/conpty.node",
             "prebuilds/win32-arm64/conpty_console_list.node",
             "prebuilds/win32-arm64/conpty/conpty.dll",
-            "prebuilds/win32-arm64/conpty/OpenConsole.exe",
-            "prebuilds/win32-arm64/winpty.dll",
-            "prebuilds/win32-arm64/winpty-agent.exe"
+            "prebuilds/win32-arm64/conpty/OpenConsole.exe"
           ]
         },
         "proof": "node-pty-smoke"
       },
-      "purl": "pkg:npm/node-pty@1.1.0",
-      "reviewedAt": "2026-08-25",
+      "purl": "pkg:npm/node-pty@1.2.0-beta.18",
+      "reviewedAt": "2026-11-05",
       "expiresAt": "2026-11-23",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [

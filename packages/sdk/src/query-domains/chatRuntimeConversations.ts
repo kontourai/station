@@ -15,6 +15,8 @@ import {
   listConversationInventory,
 } from '../client/conversations';
 import type { ApiRequestScope } from '../client/http';
+import type { ConnectionReadTarget } from '../connection-read-target';
+import { captureConnectionReadTarget } from '../connection-read-target';
 import {
   type MutationOptions,
   PERSISTED_QUERY_GC_TIME_MS,
@@ -417,12 +419,14 @@ export async function fetchConversationMessages(
     string,
     { server?: string; toolName?: string; originalName?: string }
   > = {},
+  target?: ConnectionReadTarget,
 ): Promise<ConversationMessage[]> {
-  const apiBase = await _getApiBase();
+  const apiBase = target?.targetApiBase ?? (await _getApiBase());
   const data = await getConversationMessages(
     apiBase,
     agentSlug,
     conversationId,
+    target ? { requestScope: target.requestScope } : undefined,
   );
   return mapConversationMessages(
     data as Parameters<typeof mapConversationMessages>[0],
@@ -484,7 +488,7 @@ export function useConversationsQuery(
 ) {
   return useQuery({
     ...(agentSlug
-      ? conversationQueries.list(agentSlug)
+      ? conversationQueries.list(agentSlug, config?.readTarget)
       : {
           queryKey: ['conversations'],
           queryFn: async () => [],
@@ -507,13 +511,15 @@ export function useConversationsQuery(
 export function useConversationInventoryQuery(
   config?: QueryConfig<ConversationListItem[]>,
 ) {
+  const readTarget = captureConnectionReadTarget(config?.readTarget);
   const queryClient = useQueryClient();
-  const queryKey = conversationQueries.inventory().queryKey;
+  const queryKey = conversationQueries.inventory(readTarget).queryKey;
   const enabled = config?.enabled ?? true;
   const query = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam, signal }) =>
-      fetchConversationInventory(undefined, {
+      fetchConversationInventory(readTarget?.targetApiBase, {
+        ...(readTarget ? { requestScope: readTarget.requestScope } : {}),
         ...(typeof pageParam === 'string' ? { cursor: pageParam } : {}),
         signal,
       }),

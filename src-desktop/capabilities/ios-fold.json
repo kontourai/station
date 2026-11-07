@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "ios-fold",
+  "description": "Read-only hinge geometry and posture for foldable iPhones, so layouts can keep text off the crease. iOS-only: the plugin is registered only there.",
+  "windows": ["main"],
+  "platforms": ["iOS"],
+  "permissions": ["station-fold:default"]
+}

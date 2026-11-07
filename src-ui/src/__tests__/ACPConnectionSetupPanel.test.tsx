@@ -1011,8 +1011,9 @@ describe('ACPConnectionSetupPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain(
-        'Command could not start',
+        'Try again in a moment.',
       );
+      expect(screen.queryByText('Command could not start')).toBeNull();
     });
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry refresh' })).toBeNull();

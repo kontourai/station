@@ -146,7 +146,25 @@
 
     "src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx",
 
-    "src-ui/src/__tests__/ChatDock.engineSwitchGate.test.tsx"
+    "src-ui/src/__tests__/ChatDock.engineSwitchGate.test.tsx",
+
+    "src-ui/src/components/chat-dock/useInboxGroups.ts",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.tsx",
+
+    "src-ui/src/components/chat/TranscriptTurnRail.css",
+
+    "src-ui/src/hooks/useCoarsePointer.ts",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebar.css",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarBoards.css",
+
+    "src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx",
+
+    "src-ui/src/__tests__/ProjectSidebarBoards.coarseGeometry.test.tsx",
+
+    "src-ui/src/views/ProjectSettingsView.css"
   ],
 
   "checks": [

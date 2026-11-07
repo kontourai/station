@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../utils/stationFailure';
 /**
  * PlatformProfileContext — the single first-paint gate that resolves which host
  * Station is running on before the app shell (and its connection seeding) can
@@ -187,8 +188,20 @@ export function nativeProfileBootstrapRecoveryError(): string | undefined {
   return nativeBootstrapRecoveryError;
 }
 
+/**
+ * The shell's answer to "which platform am I", resolved once per page through
+ * the adapter's document-ready boundary. The profile and the fold source share
+ * this initial resolution, so fold adds no capability report of its own.
+ */
+const platformResolution: Promise<PlatformProfile> = resolvePlatformProfile();
+
+/** The compile target this page resolved (`web` or `unknown` included). */
+export function resolvedPlatformTarget(): Promise<PlatformProfile['target']> {
+  return platformResolution.then((profile) => profile.target);
+}
+
 let cachedProfile: PlatformProfile | null = null;
-const profileReady: Promise<PlatformProfile> = resolvePlatformProfile().then(
+const profileReady: Promise<PlatformProfile> = platformResolution.then(
   async (profile) => {
     if (profile.isTauri) {
       const [{ nativeStationProfileStorage }] = await Promise.all([
@@ -254,7 +267,7 @@ let cachedProfileBootstrapError: string | null = null;
 const profileResolution = profileReady.then(
   (profile) => ({ status: 'ok' as const, profile }),
   (error) => {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = describeStationFailure(error).body;
     cachedProfileBootstrapError = message;
     return { status: 'error' as const, message };
   },

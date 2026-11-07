@@ -2,8 +2,8 @@ import { collectRuntimeEventContentRefs } from '@kontourai/station-contracts/run
 import { useResolvedRuntimeEventValueQuery } from '@kontourai/station-sdk/runtime-event-content';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button } from '../Button';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { ErrorState, SkeletonBlock } from '../state';
-import { useChatRequestTarget } from './ChatRequestContext';
 
 /**
  * docs/design/event-content-spill.md: a value Station stored out of line
@@ -21,16 +21,22 @@ export function LoadFullContent<T>({
   value: T;
   children: (resolved: T | undefined) => ReactNode;
 }) {
+  const target = useOptionalConversationConnection();
   // A value whose references change (a later event for the same row) is a
   // new value to load: the request and the result are keyed by its refs.
-  const refsKey = collectRuntimeEventContentRefs(value)
+  const refs = collectRuntimeEventContentRefs(value)
     .map((ref) => ref.ref)
     .join(',');
+  const refsKey = JSON.stringify([
+    target?.apiBase,
+    target?.requestScope?.authorityKey,
+    refs,
+  ]);
   const [requested, setRequested] = useState<string>();
   const [resolved, setResolved] = useState<{ key: string; value: T }>();
   const loadedRef = useRef<HTMLDivElement>(null);
   const focusOnLoad = useRef(false);
-  const spilled = Boolean(threadId) && refsKey.length > 0;
+  const spilled = Boolean(threadId) && refs.length > 0;
   const loaded = resolved?.key === refsKey ? resolved : undefined;
   useEffect(() => {
     // The button the person pressed is gone once the content loads; focus
@@ -80,7 +86,7 @@ function ResolvedValueLoader<T>({
   value: T;
   onLoaded: (resolved: T) => void;
 }) {
-  const target = useChatRequestTarget();
+  const target = useOptionalConversationConnection();
   const query = useResolvedRuntimeEventValueQuery({
     threadId,
     value,

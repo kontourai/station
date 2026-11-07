@@ -778,6 +778,9 @@ export function observePendingPairingApproval(
     );
     if (!record) continue;
     if (record.expiresAt <= now) continue;
+    // A held exchange attempt already left the approval stage: its outcome
+    // needs review, so no surface may describe it as awaiting approval.
+    if (record.exchangeAttempt) continue;
     const span =
       typeof record.requestedAt === 'number'
         ? record.expiresAt - record.requestedAt

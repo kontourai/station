@@ -13,7 +13,8 @@ import type { ITool, RuntimeContext } from '../../../runtime/types.js';
 import { createProjectNativeToolLoader } from '../../../services/projects/project-native-tools.js';
 import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 
-vi.mock('../chat-request-preparation.js', () => ({
+vi.mock('../chat-request-preparation.js', async (importActual) => ({
+  ...(await importActual<typeof import('../chat-request-preparation.js')>()),
   prepareChatRequest: vi.fn(async () => ({
     options: { model: 'gpt-5.4' },
     resolvedProviderConn: null,
@@ -92,6 +93,7 @@ describe('Chat Routes', () => {
   test.each(['station', 'reader'])(
     '/%s/chat retains its registered tools, memory and approval hooks when selecting another model',
     async (publicSlug) => {
+      const configurationRevision = { value: 0 };
       const runtimeKey = publicSlug === 'station' ? 'default' : publicSlug;
       const home = makeTempDir('chat-model-override-');
       const memory = new FileMemoryAdapter({ projectHomeDir: home });
@@ -162,7 +164,7 @@ describe('Chat Routes', () => {
           listProviderConnections: () => [provider],
           resolveModelForProvider: async (_id, model) => model,
         },
-        getAgentConfigurationRevision: () => 0,
+        getAgentConfigurationRevision: () => configurationRevision.value,
         commitAgentConfigurationRead: async (_revision, operation) =>
           operation(),
         framework: {
@@ -243,6 +245,73 @@ describe('Chat Routes', () => {
       }
       expect(ctx.activeAgents.size).toBe(2);
       expect(ctx.activeAgents.get(runtimeKey)).toBe(registered);
+
+      // A memory brief is settled by what happens to the turn: a refusal this route
+      // makes abandons it; otherwise it is handed to the stream, which delivers it.
+      const post = () =>
+        app.request(`/${publicSlug}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input: 'hello',
+            options: { model: 'model-a' },
+          }),
+        });
+      const prepared = (delivery: {
+        delivered: () => void;
+        abandoned: () => void;
+      }) => ({
+        options: { model: 'model-a' },
+        resolvedProviderConn: provider,
+        injectContext: null,
+        ragContext: null,
+        contextInjection: {},
+        memoryBriefDelivery: delivery,
+      });
+      const refused = { delivered: vi.fn(), abandoned: vi.fn() };
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(refused));
+      vi.mocked(resolveChatAgentModelOverride).mockResolvedValueOnce({
+        error: 'A configured provider connection is required.',
+        status: 400,
+      } as never);
+      expect((await post()).status).toBe(400);
+      expect(refused.abandoned).toHaveBeenCalledTimes(1);
+      expect(refused.delivered).not.toHaveBeenCalled();
+
+      const sent = { delivered: vi.fn(), abandoned: vi.fn() };
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(sent));
+      vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
+        realModelOverride.resolveChatAgentModelOverride,
+      );
+      streamPrimaryAgentChat.mockClear();
+      expect((await post()).status).toBe(200);
+      // The stream is the one that reports delivery; the route only hands it over.
+      expect(streamPrimaryAgentChat.mock.calls[0]?.[0].memoryBrief).toBe(sent);
+      expect(sent.abandoned).not.toHaveBeenCalled();
+
+      // The configuration changing while the turn was prepared is refused (409) after
+      // preparation has already reserved the brief: it is still given back.
+      const stale = { delivered: vi.fn(), abandoned: vi.fn() };
+      vi.mocked(prepareChatRequest).mockImplementationOnce(async () => {
+        configurationRevision.value += 1;
+        return prepared(stale);
+      });
+      expect((await post()).status).toBe(409);
+      expect(stale.abandoned).toHaveBeenCalledTimes(1);
+      expect(stale.delivered).not.toHaveBeenCalled();
+      configurationRevision.value = 0;
+
+      // A stream that throws before starting hands nothing over: the brief is abandoned.
+      const broken = { delivered: vi.fn(), abandoned: vi.fn() };
+      vi.mocked(prepareChatRequest).mockResolvedValueOnce(prepared(broken));
+      vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
+        realModelOverride.resolveChatAgentModelOverride,
+      );
+      streamPrimaryAgentChat.mockImplementationOnce(() => {
+        throw new Error('stream refused');
+      });
+      expect((await post()).status).toBe(500);
+      expect(broken.abandoned).toHaveBeenCalledTimes(1);
     },
   );
 

@@ -9,6 +9,7 @@ import {
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { setClientCredentialResolver } from '../client/http';
 import { useOrchestrationSessionActivityQuery } from '../query-domains/chatRuntimeOrchestration';
 import { orchestrationQueries } from '../queryFactories';
 
@@ -45,6 +46,66 @@ function wrapperFor(client: QueryClient) {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  setClientCredentialResolver(undefined);
+});
+
+test('a relay activity read carries source authority and partitions the same child by grant', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const apiBase = 'http://source.test';
+  const targetApiBase = `${apiBase}/api/environments/peers/receiver/chat-api`;
+  let authorityKey = 'source-one';
+  setClientCredentialResolver(async (selector) => {
+    expect(selector?.requestScope).toEqual({ apiBase, authorityKey });
+    return {
+      origin: apiBase,
+      credential: 'fixture-source-credential',
+      requestAuthority: { apiBase, authorityKey, isCurrent: () => true },
+    };
+  });
+  const fetcher = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        `${targetApiBase}/api/orchestration/sessions/child/event-window?direction=newest&turnLimit=1`,
+      );
+      expect(new Headers(init?.headers).get('Authorization')).toBe(
+        'Bearer fixture-source-credential',
+      );
+      return Response.json({ success: true, data: windowFor('child') });
+    },
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const view = renderHook(
+    ({ key }) =>
+      useOrchestrationSessionActivityQuery('child', undefined, {
+        readTarget: {
+          targetApiBase,
+          runtimeKey: key,
+          requestScope: { apiBase, authorityKey: key },
+        },
+      }),
+    { initialProps: { key: authorityKey }, wrapper: wrapperFor(client) },
+  );
+  await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+  const first = view.result.current.data;
+  authorityKey = 'source-two';
+  view.rerender({ key: authorityKey });
+  expect(view.result.current.data).toBeUndefined();
+  await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(
+    client.getQueryData([
+      'orchestration-session-activity',
+      'source-one',
+      'source-one',
+      targetApiBase,
+      'child',
+    ]),
+  ).toBe(first);
+  expect(view.result.current.data).not.toBe(first);
+  view.unmount();
+  client.clear();
 });
 
 test('activity caches are separate from full detail, other sessions, and other servers', async () => {

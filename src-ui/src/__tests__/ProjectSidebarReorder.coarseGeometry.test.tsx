@@ -114,7 +114,7 @@ describe.skipIf(!chromiumAvailable)(
     });
     afterEach(cleanup);
 
-    async function measure(hasTouch: boolean) {
+    async function measure(hasTouch: boolean, theme = 'dark') {
       // Desktop-sized, so the narrow/short mobile drawer rules stay out of it
       // and only the pointer type differs between the two runs.
       const context = await browser.newContext({
@@ -124,7 +124,7 @@ describe.skipIf(!chromiumAvailable)(
       try {
         const page = await context.newPage();
         await page.setContent(
-          `<style>${css}</style><div class="sidebar" style="width:250px">${rowsMarkup()}</div>`,
+          `<html data-theme="${theme}"><style>${css}</style><div class="sidebar" style="width:250px">${rowsMarkup()}</div>`,
         );
         return await page.evaluate(() => {
           const box = (element: Element) => {
@@ -145,6 +145,7 @@ describe.skipIf(!chromiumAvailable)(
             return {
               disclosure: disclosure ? box(disclosure) : null,
               row: box(rowMain),
+              button: box(rowMain.querySelector('.sidebar__project-btn')!),
               handle: handleBox,
               name: box(name),
               opacity: getComputedStyle(handle).opacity,
@@ -204,6 +205,24 @@ describe.skipIf(!chromiumAvailable)(
       expect(row.disclosure!.height).toBeGreaterThanOrEqual(44);
       expect(row.name.right).toBeLessThanOrEqual(row.disclosure!.left);
       expect(row.disclosure!.right).toBeLessThanOrEqual(row.handle.left);
+    }, 120_000);
+
+    test('workspace navigation, disclosure and reorder have separate hit areas in both themes', async () => {
+      for (const theme of ['dark', 'light']) {
+        for (const hasTouch of [false, true]) {
+          const { rows } = await measure(hasTouch, theme);
+          const { button, disclosure, handle } = rows[0];
+          expect(disclosure).not.toBeNull();
+          expect(button.right).toBeLessThanOrEqual(disclosure!.left);
+          expect(disclosure!.right).toBeLessThanOrEqual(handle.left);
+          if (hasTouch) {
+            for (const target of [button, disclosure!, handle]) {
+              expect(target.width).toBeGreaterThanOrEqual(44);
+              expect(target.height).toBeGreaterThanOrEqual(44);
+            }
+          }
+        }
+      }
     }, 120_000);
 
     test('a fine pointer leaves the handle hidden at rest', async () => {

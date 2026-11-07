@@ -1,6 +1,6 @@
-import { stat, symlink } from 'node:fs/promises';
+import { mkdir, rm, stat, symlink } from 'node:fs/promises';
 import * as os from 'node:os';
-import { isAbsolute, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { prepareManagedEngineWorkspace } from '../../infra/managed-engine-workspace.js';
@@ -65,4 +65,21 @@ test('Windows scratch preparation refuses a redirected workspace parent', async 
   await expect(
     prepareNoProjectChatScratch('conversation', join(profile, '.station')),
   ).rejects.toThrow(/symbolic link/);
+});
+
+test('scratch recognition refuses redirected Windows and legacy scratch roots', async () => {
+  const profile = makeTempDir('station-windows-scratch-escape-');
+  vi.mocked(os.platform).mockReturnValue('win32');
+  vi.mocked(os.homedir).mockReturnValue(profile);
+  const home = join(profile, '.station');
+  const scratch = await prepareNoProjectChatScratch('seed', home);
+  const outside = join(profile, 'outside');
+  await mkdir(join(outside, 'chat'), { recursive: true });
+  await mkdir(home, { recursive: true });
+  await rm(dirname(scratch), { recursive: true, force: true });
+  for (const root of [dirname(scratch), join(home, 'scratch')]) {
+    await symlink(outside, root, 'junction');
+    expect(isStationChatFolder(join(root, 'chat'), home)).toBe(false);
+  }
+  expect(isStationChatFolder(join(outside, 'chat'), home)).toBe(false);
 });

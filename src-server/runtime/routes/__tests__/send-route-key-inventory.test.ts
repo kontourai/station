@@ -59,16 +59,23 @@ vi.mock(
     };
   },
 );
-vi.mock('../../../routes/chat/chat-request-preparation.js', () => ({
-  prepareChatRequest: async ({
-    options,
-  }: {
-    options: { clientTurnId?: unknown };
-  }) => {
-    capture.preparedKeys.push(options.clientTurnId);
-    throw new Error('Inventory stopped after observing the pre-effect key.');
-  },
-}));
+vi.mock(
+  '../../../routes/chat/chat-request-preparation.js',
+  async (importActual) => ({
+    // Only the preparation is replaced; the route's other helpers stay real.
+    ...(await importActual<
+      typeof import('../../../routes/chat/chat-request-preparation.js')
+    >()),
+    prepareChatRequest: async ({
+      options,
+    }: {
+      options: { clientTurnId?: unknown };
+    }) => {
+      capture.preparedKeys.push(options.clientTurnId);
+      throw new Error('Inventory stopped after observing the pre-effect key.');
+    },
+  }),
+);
 vi.mock('../runtime-route-support.js', () => {
   const inert = new Proxy({}, { get: () => () => undefined });
   return {

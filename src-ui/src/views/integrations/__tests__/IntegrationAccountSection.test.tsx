@@ -202,7 +202,7 @@ test('retains sign-in recovery after refusal while removing the submitted callba
     target: { value: 'http://localhost/?code=private-code' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Finish sign-in' }));
-  await screen.findByText('Consent has expired. Start sign-in again.');
+  await screen.findByText('Try again in a moment.');
   expect(
     (screen.getByLabelText('Redirected URL') as HTMLInputElement).value,
   ).toBe('');

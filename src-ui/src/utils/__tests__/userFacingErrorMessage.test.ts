@@ -32,15 +32,17 @@ describe('userFacingErrorMessage', () => {
     expect(text).not.toContain('Validation failed');
   });
 
-  test('keeps the message when details carry no reasons', () => {
+  test('hides diagnostic messages when details carry no validation reasons', () => {
     expect(
       userFacingErrorMessage(
         new StationHttpError(409, 'Binding revision changed', {
           details: { current: 4 },
         }),
       ),
-    ).toBe('Binding revision changed');
-    expect(userFacingErrorMessage(new StationHttpError(502))).toBe('HTTP 502');
+    ).toBe('Try again in a moment.');
+    expect(userFacingErrorMessage(new StationHttpError(502))).toBe(
+      'Try again in a moment.',
+    );
   });
 
   // #2708 A-3b: the SDK's family errors that extend Error carry the same
@@ -60,10 +62,10 @@ describe('userFacingErrorMessage', () => {
     );
   });
 
-  test('any other error reads as its message, and a non-error as the shared fallback', () => {
+  test('unknown errors and non-errors use safe shared copy', () => {
     expect(userFacingErrorMessage(new Error('Read-only skill'))).toBe(
-      'Read-only skill',
+      'Try again in a moment.',
     );
-    expect(userFacingErrorMessage('nope')).toBe('Something went wrong.');
+    expect(userFacingErrorMessage('nope')).toBe('Try again in a moment.');
   });
 });

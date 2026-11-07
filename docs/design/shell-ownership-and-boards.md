@@ -167,7 +167,7 @@ account control moved to the footer
 ([pane workspace plan](../plans/pane-workspace.md)); the phone's `⋯` menu keeps
 a Profile row while the drawer is closed.
 
-**Personal Boards** follows Projects and remains visible when empty; its
+**Apps** follows Projects and remains visible when empty; its
 `+` creates the first Board and focuses its name. Confirming that first name
 gives the Board an address from it (`/boards/<name-slug>`, a Board created
 there and the `untitled-board` placeholder removed) and opens it; a rename
@@ -177,6 +177,14 @@ is available. The collapsed rail has one dashboard button that opens the
 personal Board list and its create action. Escape returns focus to that
 button; selecting a Board dismisses the popup. Palette creation with the
 rail collapsed opens the new Board without focusing an invisible rename.
+
+The default-off **Apps library** preview adds **Browse apps** to this section,
+including the collapsed popup and phone drawer. It presents the same personal
+Layout inventory as searchable launch tiles, grouped by recorded plugin source,
+and edits metadata through the existing SDK mutations. Named creation opens the
+Board editor. Layout hosting, plugin admission and owner authority stay in their
+existing boundaries. See [the user journey](../user/personal-boards.md#browse-apps).
+Persistent reordering and instance-shared Boards remain in #2997.
 
 The expanded footer places Schedule and Customize on the left, with an
 icon-only Updates control immediately before the account control on the right.
@@ -203,8 +211,8 @@ backups retain their stored section values for compatibility.
   **Jump to latest** resumes following. Pending decisions stay above the
   transcript, and errors or attention take priority over following. A failed
   conversation-window read shows its error and Retry rather than an empty
-  conversation. The Station-owned detail's live indicator reads the app-wide
-  transcript stream; session metadata and the raw event log stay collapsed.
+  conversation. The Station-owned detail's live indicator reads its owning
+  connection's transcript stream; session metadata and the raw event log stay collapsed.
   Explicit evidence links still open and focus the evidence disclosure.
   Follow-up drafts use the canonical device draft store under the selected
   Station URL and exact session identity. Switching sessions preserves each
@@ -215,10 +223,11 @@ backups retain their stored section values for compatibility.
   the requested identity is admitted. If that read fails, Activity discloses
   that the item is not in the current list, offers Retry, and can return to the
   list through a fresh Activity surface intent; it does not infer deletion.
-  Owners: [`SessionTranscript`](../../src-ui/src/components/session-detail/SessionTranscript.tsx),
+  Owners: [`ConversationBody`](../../src-ui/src/components/conversation/ConversationBody.tsx),
+  [`ConversationReader`](../../src-ui/src/components/conversation/ConversationReader.tsx),
   [`MutableSessionDetail`](../../src-ui/src/components/session-detail/MutableSessionDetail.tsx),
   and [`useSessionTranscriptEvents`](../../src-ui/src/hooks/orchestration/useSessionTranscriptEvents.ts).
-- **Personal Boards** is the project-less section following Projects. The
+- **Apps** is the project-less section following Projects. The
   `+` creates a personal Board, including when none exist. Instance-shared
   Boards remain unbuilt; no shared group is shown without a backing list.
 - **Projects** keep their model. Their live-work count reads the shared

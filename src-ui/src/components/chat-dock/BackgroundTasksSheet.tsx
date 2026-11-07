@@ -1,3 +1,4 @@
+import type { StationConnection } from '../../connections/station-connection';
 // station#1301: Running/Finished panel over the chat's background-task
 // registry, with safe delegate controls and persisted transcript details.
 // Lazy-loaded from ChatDock.tsx — see the note there on why this stays out of
@@ -51,6 +52,7 @@ function writeSectionState(state: SectionState) {
 export interface BackgroundTasksSheetProps {
   chatThreadId: string;
   apiBase?: string;
+  station?: StationConnection;
   anchorRef: RefObject<HTMLElement | null>;
   returnFocusTarget?: HTMLElement | null;
   onOpenTranscript: (threadId: string) => void;
@@ -60,6 +62,7 @@ export interface BackgroundTasksSheetProps {
 export function BackgroundTasksSheet({
   chatThreadId,
   apiBase,
+  station,
   anchorRef,
   returnFocusTarget,
   onOpenTranscript,
@@ -68,7 +71,7 @@ export function BackgroundTasksSheet({
   const agents = useAgents();
   const { running, finished, toolHistoryLimited } = useChatBackgroundTasks(
     chatThreadId,
-    apiBase,
+    station ?? apiBase,
   );
   const [sections, setSections] = useState<SectionState>(readSectionState);
   // The shared elapsed clock for every Running row, only while this sheet is
@@ -123,6 +126,7 @@ export function BackgroundTasksSheet({
                 <TaskRow
                   key={entry.id}
                   entry={entry}
+                  station={station}
                   agents={agents}
                   elapsedMs={backgroundTaskElapsedMs(entry, now)}
                   onOpenTranscript={onOpenTranscript}
@@ -150,6 +154,7 @@ export function BackgroundTasksSheet({
                   <TaskRow
                     key={entry.id}
                     entry={entry}
+                    station={station}
                     agents={agents}
                     elapsedMs={backgroundTaskElapsedMs(entry, now)}
                     outcomeChip={entry.state}

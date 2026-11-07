@@ -28,6 +28,14 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-07T02:12:58Z | nightly-desktop | 0.1.11-nightly.20261107 | `eee2bd0` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42322904674) |
+| 2026-11-07T02:12:55Z | nightly-android | 0.1.11-nightly.20261107 | `eee2bd0` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42322904674) |
+| 2026-11-07T01:25:33Z | nightly-npm | 0.11.0-nightly.20261107.42322904674 | `eee2bd0` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42322904674) |
+| 2026-11-06T21:17:20Z | nightly-npm | 0.11.0-nightly.20261106.42293637428 | `83f8b7e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42293637428) |
+| 2026-11-06T15:39:30Z | nightly-npm | 0.11.0-nightly.20261106.42242672641 | `bdc985a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42242672641) |
+| 2026-11-06T08:43:21Z | nightly-desktop | 0.1.11-nightly.20261106 | `73f13cf` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42180658259) |
+| 2026-11-06T08:43:18Z | nightly-android | 0.1.11-nightly.20261106 | `73f13cf` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42180658259) |
+| 2026-11-06T07:40:34Z | nightly-npm | 0.11.0-nightly.20261106.42180658259 | `73f13cf` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42180658259) |
 | 2026-11-05T20:33:31Z | nightly-android | 0.1.11-nightly.20261105.1 | `b6c3135` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/42089381567) |
 | 2026-11-05T19:16:38Z | nightly-npm | 0.11.0-nightly.20261105.42089381567 | `b6c3135` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42089381567) |
 | 2026-11-05T10:18:38Z | nightly-android | 0.1.11-nightly.2500 | `3876f62` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/41998120703) |
@@ -423,6 +431,276 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-07T02:12:58Z · nightly-desktop · 0.1.11-nightly.20261107
+
+- Ship SHA: `eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb`
+- Artifact built at: `2026-11-07T01:24:49.061Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 42322904674)
+
+### Changelog
+
+Commits since `73f13cf` ([full sha](https://github.com/kontourai/station/commit/73f13cfe8c862552709faeba9dc9e6fab763dab8)):
+
+**Features**
+
+- [#4621](https://github.com/kontourai/station/pull/4621) feat(apps): add a personal Board library and launcher
+- [#4630](https://github.com/kontourai/station/pull/4630) feat(chat): unify local and paired Station conversations
+- [#4619](https://github.com/kontourai/station/pull/4619) feat(projects): link repositories and show owning-Station access
+- [#4620](https://github.com/kontourai/station/pull/4620) feat(ui): group active chats and unify project settings
+
+**Fixes**
+
+- [#4661](https://github.com/kontourai/station/pull/4661) fix(delegation): retain native transcripts for durable Tasks
+- [#4657](https://github.com/kontourai/station/pull/4657) fix(terminal): wait for pending stops during disposal
+- [#4640](https://github.com/kontourai/station/pull/4640) fix(agent-runtime): bound WAL with asynchronous host checkpoints
+- [#4627](https://github.com/kontourai/station/pull/4627) fix(updates): unify status summaries and actionable indicators
+- [#4629](https://github.com/kontourai/station/pull/4629) fix: restore interrupted conversations and make delivery recovery explicit
+
+**Docs**
+
+- [#4643](https://github.com/kontourai/station/pull/4643) docs(tasks): propose resuming ended Tasks after GitHub follow-ups (#4554)
+
+**Other**
+
+- [#4645](https://github.com/kontourai/station/pull/4645) test(lineage): start legacy child before timestamp migration
+- [#4642](https://github.com/kontourai/station/pull/4642) test(home): retain private chat scratch across backup and rollback
+
+## 2026-11-07T02:12:55Z · nightly-android · 0.1.11-nightly.20261107
+
+- Ship SHA: `eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb`
+- Artifact built at: `2026-11-07T01:24:14.291Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 42322904674)
+
+### Changelog
+
+Commits since `73f13cf` ([full sha](https://github.com/kontourai/station/commit/73f13cfe8c862552709faeba9dc9e6fab763dab8)):
+
+**Features**
+
+- [#4621](https://github.com/kontourai/station/pull/4621) feat(apps): add a personal Board library and launcher
+- [#4630](https://github.com/kontourai/station/pull/4630) feat(chat): unify local and paired Station conversations
+- [#4619](https://github.com/kontourai/station/pull/4619) feat(projects): link repositories and show owning-Station access
+- [#4620](https://github.com/kontourai/station/pull/4620) feat(ui): group active chats and unify project settings
+
+**Fixes**
+
+- [#4661](https://github.com/kontourai/station/pull/4661) fix(delegation): retain native transcripts for durable Tasks
+- [#4657](https://github.com/kontourai/station/pull/4657) fix(terminal): wait for pending stops during disposal
+- [#4640](https://github.com/kontourai/station/pull/4640) fix(agent-runtime): bound WAL with asynchronous host checkpoints
+- [#4627](https://github.com/kontourai/station/pull/4627) fix(updates): unify status summaries and actionable indicators
+- [#4629](https://github.com/kontourai/station/pull/4629) fix: restore interrupted conversations and make delivery recovery explicit
+
+**Docs**
+
+- [#4643](https://github.com/kontourai/station/pull/4643) docs(tasks): propose resuming ended Tasks after GitHub follow-ups (#4554)
+
+**Other**
+
+- [#4645](https://github.com/kontourai/station/pull/4645) test(lineage): start legacy child before timestamp migration
+- [#4642](https://github.com/kontourai/station/pull/4642) test(home): retain private chat scratch across backup and rollback
+
+## 2026-11-07T01:25:33Z · nightly-npm · 0.11.0-nightly.20261107.42322904674
+
+- Ship SHA: `eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261107.42322904674 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `83f8b7e` ([full sha](https://github.com/kontourai/station/commit/83f8b7e88a1f443906d0f0ab762a5b550b203a3f)):
+
+**Fixes**
+
+- [#4661](https://github.com/kontourai/station/pull/4661) fix(delegation): retain native transcripts for durable Tasks
+
+## 2026-11-06T21:17:20Z · nightly-npm · 0.11.0-nightly.20261106.42293637428
+
+- Ship SHA: `83f8b7e88a1f443906d0f0ab762a5b550b203a3f`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261106.42293637428 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `bdc985a` ([full sha](https://github.com/kontourai/station/commit/bdc985adba464252a8a1bf812e3e2065542f75f6)):
+
+**Features**
+
+- [#4621](https://github.com/kontourai/station/pull/4621) feat(apps): add a personal Board library and launcher
+
+**Fixes**
+
+- [#4657](https://github.com/kontourai/station/pull/4657) fix(terminal): wait for pending stops during disposal
+- [#4640](https://github.com/kontourai/station/pull/4640) fix(agent-runtime): bound WAL with asynchronous host checkpoints
+- [#4627](https://github.com/kontourai/station/pull/4627) fix(updates): unify status summaries and actionable indicators
+
+**Other**
+
+- [#4645](https://github.com/kontourai/station/pull/4645) test(lineage): start legacy child before timestamp migration
+
+## 2026-11-06T15:39:30Z · nightly-npm · 0.11.0-nightly.20261106.42242672641
+
+- Ship SHA: `bdc985adba464252a8a1bf812e3e2065542f75f6`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261106.42242672641 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `73f13cf` ([full sha](https://github.com/kontourai/station/commit/73f13cfe8c862552709faeba9dc9e6fab763dab8)):
+
+**Features**
+
+- [#4630](https://github.com/kontourai/station/pull/4630) feat(chat): unify local and paired Station conversations
+- [#4619](https://github.com/kontourai/station/pull/4619) feat(projects): link repositories and show owning-Station access
+- [#4620](https://github.com/kontourai/station/pull/4620) feat(ui): group active chats and unify project settings
+
+**Fixes**
+
+- [#4629](https://github.com/kontourai/station/pull/4629) fix: restore interrupted conversations and make delivery recovery explicit
+
+**Docs**
+
+- [#4643](https://github.com/kontourai/station/pull/4643) docs(tasks): propose resuming ended Tasks after GitHub follow-ups (#4554)
+
+**Other**
+
+- [#4642](https://github.com/kontourai/station/pull/4642) test(home): retain private chat scratch across backup and rollback
+
+## 2026-11-06T08:43:21Z · nightly-desktop · 0.1.11-nightly.20261106
+
+- Ship SHA: `73f13cfe8c862552709faeba9dc9e6fab763dab8`
+- Artifact built at: `2026-11-06T07:41:20.540Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 42180658259)
+
+### Changelog
+
+Commits since `970191e` ([full sha](https://github.com/kontourai/station/commit/970191e5e1c4e848415971473e362f79449eca8e)):
+
+**Features**
+
+- [#4609](https://github.com/kontourai/station/pull/4609) feat(knowledge): review, recall and brief private memory (#4484)
+- [#4585](https://github.com/kontourai/station/pull/4585) feat(managed-policy): network, engine, update, capability limits and macOS/Windows policy sources
+- [#4583](https://github.com/kontourai/station/pull/4583) feat(recovery): record turn dispatch origin and continue unattended work after restart
+- [#4571](https://github.com/kontourai/station/pull/4571) feat(tasks): dispatched Tasks honour the Project's worktree isolation (#4507)
+- [#4560](https://github.com/kontourai/station/pull/4560) feat(automation): per-rule observe mode for Automation rules (#4509)
+- [#4573](https://github.com/kontourai/station/pull/4573) feat(releases): show UTC dates in Nightly versions
+- [#4559](https://github.com/kontourai/station/pull/4559) feat(tasks): preview Project capabilities and evidence path
+- [#4602](https://github.com/kontourai/station/pull/4602) feat: retain child work and show result provenance across Station views
+- [#4546](https://github.com/kontourai/station/pull/4546) feat(knowledge): protect private memory and preview erasure targets
+- [#4591](https://github.com/kontourai/station/pull/4591) feat(telemetry): add a Cloudflare Worker Lite receiver with visual dashboards
+- [#4596](https://github.com/kontourai/station/pull/4596) feat(updates): add changelogs, release history and download progress
+- [#4556](https://github.com/kontourai/station/pull/4556) feat(tasks): GitHub follow-ups and lead wake for tracker-backed Tasks (preview)
+- [#4570](https://github.com/kontourai/station/pull/4570) feat(managed-policy): approval-mode ceiling (limits.maxApprovalMode)
+- [#4569](https://github.com/kontourai/station/pull/4569) feat: prioritize interactive engine starts
+
+**Fixes**
+
+- [#4633](https://github.com/kontourai/station/pull/4633) fix(terminal): await startup with synchronized Windows PTY backend
+- [#4622](https://github.com/kontourai/station/pull/4622) fix(mobile): pairing, Tailscale peering, browser and devices on phones, and iPhone Duo
+- [#4634](https://github.com/kontourai/station/pull/4634) fix(codex): keep scratch folders through Station home aliases
+- [#4617](https://github.com/kontourai/station/pull/4617) fix(telemetry): save tiers for namespaced plugin publishers
+- [#4555](https://github.com/kontourai/station/pull/4555) fix(ui): preserve current work and focus across pending actions
+- [#4611](https://github.com/kontourai/station/pull/4611) fix(updates): restore changelog publication and device preference reset
+- [#4540](https://github.com/kontourai/station/pull/4540) fix(ui): recover automation reads and malformed run links
+- [#4567](https://github.com/kontourai/station/pull/4567) fix(skills): preserve search and keyboard focus after removal
+- [#4565](https://github.com/kontourai/station/pull/4565) fix(knowledge): clarify transcript uploads and retain Gallery diagnostics
+- [#4543](https://github.com/kontourai/station/pull/4543) fix(notifications): retain Unsnooze error and retry state
+- [#4607](https://github.com/kontourai/station/pull/4607) fix(ci): bind metadata workflow trust to live main
+- [#4590](https://github.com/kontourai/station/pull/4590) fix(terminal): bind agent commands and restore to execution authority
+- [#4598](https://github.com/kontourai/station/pull/4598) fix(terminal): phone keyboards, hidden-view redraw, touch selection, Windows scripts and Desktop webdriver build
+- [#4597](https://github.com/kontourai/station/pull/4597) fix(ci): verify cancelled metadata workflow against live main
+- [#4542](https://github.com/kontourai/station/pull/4542) fix(ui): announce accent preset selection
+- [#4581](https://github.com/kontourai/station/pull/4581) fix(terminal): bound pending approvals, owner-only journal ACLs on Windows, command custody, output credit and observer views
+- [#4564](https://github.com/kontourai/station/pull/4564) fix(orchestration): retire stale adapter event consumers
+- [#4576](https://github.com/kontourai/station/pull/4576) fix(settings): unblock cross-origin appearance preference saves
+- [#4561](https://github.com/kontourai/station/pull/4561) fix(chat): keep Stop failures with their interrupted turn
+- [#4551](https://github.com/kontourai/station/pull/4551) fix(ui): confirm occupied shortcut default restores
+- [#4574](https://github.com/kontourai/station/pull/4574) fix(chat): name the checks in the restart Continue prompt
+- [#4547](https://github.com/kontourai/station/pull/4547) fix(ui): retain current local restart failure notice
+
+**Docs**
+
+- [#4610](https://github.com/kontourai/station/pull/4610) docs(marketing): align public introductions with the delivery vision
+- [#4594](https://github.com/kontourai/station/pull/4594) docs(marketing): align Station around coding and shared Task rooms
+- [#4588](https://github.com/kontourai/station/pull/4588) docs(contributing): link pull requests back to their agent sessions
+
+**Other**
+
+- [#4623](https://github.com/kontourai/station/pull/4623) build(deps): update semver to 7.8.6
+- [#4578](https://github.com/kontourai/station/pull/4578) test(terminal): qualify ConPTY and Windows journeys
+- [#4613](https://github.com/kontourai/station/pull/4613) build(deps): consolidate open Dependabot updates
+- [#4577](https://github.com/kontourai/station/pull/4577) perf(docs): reuse state and group value bindings during history replay
+- [#4595](https://github.com/kontourai/station/pull/4595) perf(agent-runtime): bound 1300-delta prefix cost (Refs #4467 #3558)
+
+## 2026-11-06T08:43:18Z · nightly-android · 0.1.11-nightly.20261106
+
+- Ship SHA: `73f13cfe8c862552709faeba9dc9e6fab763dab8`
+- Artifact built at: `2026-11-06T07:44:05.155Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 42180658259)
+
+### Changelog
+
+Commits since `b6c3135` ([full sha](https://github.com/kontourai/station/commit/b6c313500d51d189df6bf4e17bc103c04710a013)):
+
+**Features**
+
+- [#4609](https://github.com/kontourai/station/pull/4609) feat(knowledge): review, recall and brief private memory (#4484)
+- [#4585](https://github.com/kontourai/station/pull/4585) feat(managed-policy): network, engine, update, capability limits and macOS/Windows policy sources
+- [#4583](https://github.com/kontourai/station/pull/4583) feat(recovery): record turn dispatch origin and continue unattended work after restart
+
+**Fixes**
+
+- [#4633](https://github.com/kontourai/station/pull/4633) fix(terminal): await startup with synchronized Windows PTY backend
+- [#4622](https://github.com/kontourai/station/pull/4622) fix(mobile): pairing, Tailscale peering, browser and devices on phones, and iPhone Duo
+- [#4634](https://github.com/kontourai/station/pull/4634) fix(codex): keep scratch folders through Station home aliases
+- [#4617](https://github.com/kontourai/station/pull/4617) fix(telemetry): save tiers for namespaced plugin publishers
+- [#4555](https://github.com/kontourai/station/pull/4555) fix(ui): preserve current work and focus across pending actions
+- [#4611](https://github.com/kontourai/station/pull/4611) fix(updates): restore changelog publication and device preference reset
+
+**Other**
+
+- [#4623](https://github.com/kontourai/station/pull/4623) build(deps): update semver to 7.8.6
+- [#4578](https://github.com/kontourai/station/pull/4578) test(terminal): qualify ConPTY and Windows journeys
+- [#4613](https://github.com/kontourai/station/pull/4613) build(deps): consolidate open Dependabot updates
+
+## 2026-11-06T07:40:34Z · nightly-npm · 0.11.0-nightly.20261106.42180658259
+
+- Ship SHA: `73f13cfe8c862552709faeba9dc9e6fab763dab8`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261106.42180658259 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `b6c3135` ([full sha](https://github.com/kontourai/station/commit/b6c313500d51d189df6bf4e17bc103c04710a013)):
+
+**Features**
+
+- [#4609](https://github.com/kontourai/station/pull/4609) feat(knowledge): review, recall and brief private memory (#4484)
+- [#4585](https://github.com/kontourai/station/pull/4585) feat(managed-policy): network, engine, update, capability limits and macOS/Windows policy sources
+- [#4583](https://github.com/kontourai/station/pull/4583) feat(recovery): record turn dispatch origin and continue unattended work after restart
+
+**Fixes**
+
+- [#4633](https://github.com/kontourai/station/pull/4633) fix(terminal): await startup with synchronized Windows PTY backend
+- [#4622](https://github.com/kontourai/station/pull/4622) fix(mobile): pairing, Tailscale peering, browser and devices on phones, and iPhone Duo
+- [#4634](https://github.com/kontourai/station/pull/4634) fix(codex): keep scratch folders through Station home aliases
+- [#4617](https://github.com/kontourai/station/pull/4617) fix(telemetry): save tiers for namespaced plugin publishers
+- [#4555](https://github.com/kontourai/station/pull/4555) fix(ui): preserve current work and focus across pending actions
+- [#4611](https://github.com/kontourai/station/pull/4611) fix(updates): restore changelog publication and device preference reset
+
+**Other**
+
+- [#4623](https://github.com/kontourai/station/pull/4623) build(deps): update semver to 7.8.6
+- [#4578](https://github.com/kontourai/station/pull/4578) test(terminal): qualify ConPTY and Windows journeys
+- [#4613](https://github.com/kontourai/station/pull/4613) build(deps): consolidate open Dependabot updates
 
 ## 2026-11-05T20:33:31Z · nightly-android · 0.1.11-nightly.20261105.1
 

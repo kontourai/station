@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../../utils/stationFailure';
 /**
  * first-run-engines — every decision the "Which agents do you use?" chapter
  * makes, as pure functions (archive#3027).
@@ -449,7 +450,7 @@ export function firstRunEnableFailureOutcome(
     // own name stands in rather than a name nothing ever created.
     agentName: item.name,
     status: 'failed',
-    message: error instanceof Error ? error.message : String(error),
+    message: describeStationFailure(error).body,
   };
 }
 

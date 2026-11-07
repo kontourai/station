@@ -179,7 +179,10 @@ describe('KitCatalog', () => {
     expect(
       screen.getByRole('button', { name: 'Project layout check required' }),
     ).toHaveProperty('disabled', true);
-    expect(screen.getByRole('alert').textContent).toContain('offline');
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Try again in a moment.',
+    );
+    expect(screen.getByRole('alert').textContent).not.toContain('offline');
   });
 
   test('keeps a disabled Kit visible, diagnosed, and non-mutating', () => {

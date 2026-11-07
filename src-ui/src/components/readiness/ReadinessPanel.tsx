@@ -9,6 +9,7 @@ import {
 import { Badge, StatusBadge, toneClass } from '@kontourai/ui/react';
 import type React from 'react';
 import { useState } from 'react';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   readinessStatusTone,
   surfaceClaimTone,
@@ -249,8 +250,9 @@ export function ReadinessPanel({
   const { data, isLoading, isPlaceholderData, error } =
     useReadinessQuery(projectSlug);
   const refresh = useRefreshReadinessMutation(projectSlug);
-  const refreshError =
-    refresh.error instanceof Error ? refresh.error.message : null;
+  const refreshError = refresh.error
+    ? describeStationFailure(refresh.error).body
+    : null;
   // `isPlaceholderData` is true only for the held render of the OUTGOING
   // project's data while the new project's readiness is in flight — it is
   // false for a same-project background refetch. This is the signal that
@@ -289,8 +291,7 @@ export function ReadinessPanel({
       )}
       {!isLoading && error && (
         <p className="readiness-panel__error" role="alert">
-          Readiness unavailable:{' '}
-          {error instanceof Error ? error.message : String(error)}
+          Readiness unavailable: {describeStationFailure(error).body}
         </p>
       )}
       {!isLoading && !error && refreshError && (

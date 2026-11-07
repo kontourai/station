@@ -4,6 +4,7 @@ import { isSessionLifecycleStateAtRest } from '@kontourai/station-contracts/sess
 import { dispatchOrchestrationCommand } from '@kontourai/station-sdk';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import './OwnedWorkCleanup.css';
@@ -64,11 +65,7 @@ export function OwnedWorkCleanup({
         confirmDisabled={!canRelease}
         pending={release.isPending}
         error={
-          release.error
-            ? release.error instanceof Error
-              ? release.error.message
-              : 'Child cleanup could not be released.'
-            : null
+          release.error ? describeStationFailure(release.error).body : null
         }
         onCancel={() => setConfirm(false)}
         onConfirm={() => {
