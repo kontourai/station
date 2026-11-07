@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-07T20:33:43Z | nightly-desktop | 0.1.11-nightly.20261107.2 | `9a16e4c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42407135779) |
+| 2026-11-07T20:33:40Z | nightly-android | 0.1.11-nightly.20261107.2 | `9a16e4c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42407135779) |
+| 2026-11-07T19:50:40Z | nightly-npm | 0.11.0-nightly.20261107.42407135779 | `9a16e4c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42407135779) |
 | 2026-11-07T15:23:23Z | nightly-npm | 0.11.0-nightly.20261107.42384996541 | `d2d1a8b` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42384996541) |
 | 2026-11-07T02:12:58Z | nightly-desktop | 0.1.11-nightly.20261107 | `eee2bd0` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42322904674) |
 | 2026-11-07T02:12:55Z | nightly-android | 0.1.11-nightly.20261107 | `eee2bd0` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42322904674) |
@@ -432,6 +435,81 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-07T20:33:43Z · nightly-desktop · 0.1.11-nightly.20261107.2
+
+- Ship SHA: `9a16e4c1346422704b47721bc6b9ffa8467953d8`
+- Artifact built at: `2026-11-07T19:50:56.467Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 42407135779)
+
+### Changelog
+
+Commits since `eee2bd0` ([full sha](https://github.com/kontourai/station/commit/eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb)):
+
+**Fixes**
+
+- [#4703](https://github.com/kontourai/station/pull/4703) fix(tasks): refresh changed Project Task lists on return
+- [#4667](https://github.com/kontourai/station/pull/4667) fix: unblock remote appearance saves and fit mobile Station names
+- [#4637](https://github.com/kontourai/station/pull/4637) fix(windows): keep chat workspaces outside private Station data
+
+**Docs**
+
+- [#4705](https://github.com/kontourai/station/pull/4705) docs: show the product in the README and Pages hero
+
+**Other**
+
+- [#4700](https://github.com/kontourai/station/pull/4700) perf(verification): stop semantic scans after manifest refusal
+- [#4669](https://github.com/kontourai/station/pull/4669) test: qualify gate CLI and authenticated recovery callers
+
+## 2026-11-07T20:33:40Z · nightly-android · 0.1.11-nightly.20261107.2
+
+- Ship SHA: `9a16e4c1346422704b47721bc6b9ffa8467953d8`
+- Artifact built at: `2026-11-07T19:49:57.029Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 42407135779)
+
+### Changelog
+
+Commits since `eee2bd0` ([full sha](https://github.com/kontourai/station/commit/eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb)):
+
+**Fixes**
+
+- [#4703](https://github.com/kontourai/station/pull/4703) fix(tasks): refresh changed Project Task lists on return
+- [#4667](https://github.com/kontourai/station/pull/4667) fix: unblock remote appearance saves and fit mobile Station names
+- [#4637](https://github.com/kontourai/station/pull/4637) fix(windows): keep chat workspaces outside private Station data
+
+**Docs**
+
+- [#4705](https://github.com/kontourai/station/pull/4705) docs: show the product in the README and Pages hero
+
+**Other**
+
+- [#4700](https://github.com/kontourai/station/pull/4700) perf(verification): stop semantic scans after manifest refusal
+- [#4669](https://github.com/kontourai/station/pull/4669) test: qualify gate CLI and authenticated recovery callers
+
+## 2026-11-07T19:50:40Z · nightly-npm · 0.11.0-nightly.20261107.42407135779
+
+- Ship SHA: `9a16e4c1346422704b47721bc6b9ffa8467953d8`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261107.42407135779 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `d2d1a8b` ([full sha](https://github.com/kontourai/station/commit/d2d1a8bbd9fd9451e16b1509aee9423301d3ec93)):
+
+**Fixes**
+
+- [#4703](https://github.com/kontourai/station/pull/4703) fix(tasks): refresh changed Project Task lists on return
+
+**Docs**
+
+- [#4705](https://github.com/kontourai/station/pull/4705) docs: show the product in the README and Pages hero
+
+**Other**
+
+- [#4700](https://github.com/kontourai/station/pull/4700) perf(verification): stop semantic scans after manifest refusal
 
 ## 2026-11-07T15:23:23Z · nightly-npm · 0.11.0-nightly.20261107.42384996541
 
