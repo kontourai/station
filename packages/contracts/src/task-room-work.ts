@@ -122,6 +122,13 @@ export interface SharedAgentRequest {
   prompt: string;
   target: { kind: 'new-thread' } | { kind: 'thread'; thread: SharedThreadRef };
 }
+/** Equality preconditions for a withdrawal; they convey no authority. */
+export interface SharedWithdrawalCommand extends SharedTaskIdentity {
+  version: typeof TASK_ROOM_SHARED_WORK_VERSION;
+  expectedActorId: string;
+  operationId: string;
+  inputDigest: string;
+}
 export type SharedWorkCapability =
   | {
       version: typeof TASK_ROOM_SHARED_WORK_VERSION;
@@ -203,6 +210,28 @@ function threadFields(value: Record<string, unknown>): boolean {
     timestamp(value.taskCreatedAt) &&
     sharedText(value.conversationId, 160) &&
     sharedText(value.originSessionId, 160)
+  );
+}
+export function isSharedWithdrawalCommand(
+  value: unknown,
+): value is SharedWithdrawalCommand {
+  return (
+    closed(value, [
+      'version',
+      'expectedActorId',
+      'projectId',
+      'taskId',
+      'taskCreatedAt',
+      'operationId',
+      'inputDigest',
+    ]) &&
+    value.version === TASK_ROOM_SHARED_WORK_VERSION &&
+    sharedText(value.expectedActorId, 512) &&
+    sharedText(value.projectId, 160) &&
+    sharedText(value.taskId, 160) &&
+    timestamp(value.taskCreatedAt) &&
+    sharedText(value.operationId, 160) &&
+    digest(value.inputDigest)
   );
 }
 export function isSharedThreadRef(value: unknown): value is SharedThreadRef {

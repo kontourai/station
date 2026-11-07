@@ -3,6 +3,7 @@ import {
   isSharedAgentRequest,
   isSharedResultRef,
   isSharedThreadRef,
+  isSharedWithdrawalCommand,
   type SharedAgentRequest,
   type SharedContextSnapshot,
   type SharedResultRef,
@@ -697,13 +698,26 @@ export async function withdrawSharedTaskRoomRequest(
     return { kind: 'not-sent', reason: 'authority' };
   if (
     !isSharedAgentRequest(input) ||
-    input.taskCreatedAt !== scope.taskCreatedAt
+    input.taskCreatedAt !== scope.taskCreatedAt ||
+    input.context.results.some((ref) => !sameTask(ref, scope)) ||
+    (input.target.kind === 'thread' && !sameTask(input.target.thread, scope))
   )
     return { kind: 'not-sent', reason: 'input' };
   if (options?.signal?.aborted) throw options.signal.reason;
   const intent = structuredClone(input);
   const task = { ...scope };
   const inputDigest = await taskRoomModelOptionsDigest(intent);
+  const command = {
+    version: TASK_ROOM_SHARED_WORK_VERSION,
+    expectedActorId: intent.expectedActorId,
+    projectId: task.projectId,
+    taskId: task.taskId,
+    taskCreatedAt: task.taskCreatedAt,
+    operationId: intent.operationId,
+    inputDigest,
+  };
+  if (!isSharedWithdrawalCommand(command))
+    return { kind: 'not-sent', reason: 'input' };
   if (!options.isCurrent()) return { kind: 'not-sent', reason: 'authority' };
   try {
     const value = await data(
@@ -711,6 +725,7 @@ export async function withdrawSharedTaskRoomRequest(
         `${sharedPath(apiBase, task.taskId)}/${encodeURIComponent(intent.operationId)}`,
         'DELETE',
         options,
+        command,
       ),
     );
     if (
@@ -745,24 +760,26 @@ export async function fetchSharedTaskRoomResult(
     throw new TaskRoomWorkProtocolError('Task request connection changed.');
   if (!isSharedResultRef(reference) || !sameTask(reference, scope))
     throw new TaskRoomWorkProtocolError('Invalid shared result reference.');
+  const task = { ...scope };
+  const captured = structuredClone(reference);
   const query = new URLSearchParams({
-    sequence: String(reference.sequence),
-    proposalDigest: reference.proposalDigest,
-    contentDigest: reference.contentDigest,
+    sequence: String(captured.sequence),
+    proposalDigest: captured.proposalDigest,
+    contentDigest: captured.contentDigest,
   });
   const value = await data(
     await getJson(
-      `${apiBase}/api/tasks/${encodeURIComponent(scope.taskId)}/room/agent-results/${encodeURIComponent(reference.sessionId)}/${encodeURIComponent(reference.turnId)}?${query}`,
+      `${apiBase}/api/tasks/${encodeURIComponent(task.taskId)}/room/agent-results/${encodeURIComponent(captured.sessionId)}/${encodeURIComponent(captured.turnId)}?${query}`,
       options,
     ),
   );
   if (
     !keys(value, ['reference', 'markdown']) ||
-    !same(value.reference, reference) ||
+    !same(value.reference, captured) ||
     typeof value.markdown !== 'string'
   )
     throw new TaskRoomWorkProtocolError('Invalid shared result.');
-  if ((await publishedDigest(value.markdown)) !== reference.contentDigest)
+  if ((await publishedDigest(value.markdown)) !== captured.contentDigest)
     throw new TaskRoomWorkProtocolError('Shared result digest mismatch.');
   if (!options.isCurrent())
     throw new TaskRoomWorkProtocolError('Task request connection changed.');

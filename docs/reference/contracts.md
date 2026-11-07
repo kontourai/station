@@ -2495,7 +2495,10 @@ operation, Agent, exact model, brief revision and digest, selected published
 results, prompt, and new or existing thread. The expected actor is an equality
 precondition; it is not authority. Result content digests cover the published
 UTF-8 Markdown, including any published truncation notice. A reference does not
-grant the private full answer. Unknown request fields are rejected.
+grant the private full answer. Unknown request fields are rejected. The closed
+`SharedWithdrawalCommand` carries the work version, expected actor, Project and
+Task identity including incarnation, operation ID, and original canonical input
+digest. These are equality preconditions, not credentials or authority.
 
 `AgentExecutionConfig.sharedTurns` is an operator-owned, versioned model-only
 declaration with a nonempty unique allowlist. It is separate from Agent audience

@@ -66,3 +66,26 @@ test('shared requests require closed, bounded versioned references', () => {
   ])
     expect(isSharedAgentRequest(invalid)).toBe(false);
 });
+
+test('withdrawal command is closed and binds actor, Task incarnation and intent digest', async () => {
+  const { isSharedWithdrawalCommand } = await import('../task-room-work.js');
+  const command = {
+    version: TASK_ROOM_SHARED_WORK_VERSION,
+    expectedActorId: 'actor',
+    projectId: 'project',
+    taskId: 'task',
+    taskCreatedAt: thread.taskCreatedAt,
+    operationId: 'op',
+    inputDigest: 'a'.repeat(64),
+  };
+  expect(isSharedWithdrawalCommand(command)).toBe(true);
+  for (const value of [
+    { ...command, credential: 'secret' },
+    { ...command, version: 'future' },
+    { ...command, taskCreatedAt: 'bad' },
+    { ...command, expectedActorId: '' },
+    { ...command, inputDigest: 'A'.repeat(64) },
+    { ...command, operationId: '' },
+  ])
+    expect(isSharedWithdrawalCommand(value)).toBe(false);
+});

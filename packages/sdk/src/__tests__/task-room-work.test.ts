@@ -615,19 +615,60 @@ test('shared acknowledgement binds intent and loss remains unconfirmed', async (
   ).toEqual({ kind: 'unconfirmed', operationId: 'op', intent: input });
 });
 
-test('shared discovery cancellation stays visible to the caller', async () => {
+test('shared discovery propagates cancellation after dispatch and accepts an active signal', async () => {
+  sharedAuthority();
   const { fetchSharedTaskRoomCapabilities } = await import(
     '../client/task-room-work'
   );
+  const { TASK_ROOM_SHARED_WORK_VERSION } = await import(
+    '@kontourai/station-contracts/task-room-work'
+  );
   const controller = new AbortController();
-  controller.abort(new Error('cancelled by caller'));
+  const cancellation = new DOMException('caller cancelled', 'AbortError');
+  let dispatched!: () => void;
+  const started = new Promise<void>((resolve) => {
+    dispatched = resolve;
+  });
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(
+    (_url, init) =>
+      new Promise((_resolve, reject) => {
+        dispatched();
+        init?.signal?.addEventListener(
+          'abort',
+          () => reject(init.signal?.reason),
+          { once: true },
+        );
+      }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const options = {
+    signal: controller.signal,
+    requestScope: { apiBase: 'http://station.test', authorityKey: 'a' },
+    isCurrent: () => true,
+  };
+  const pending = fetchSharedTaskRoomCapabilities(
+    'http://station.test',
+    'task',
+    options,
+  );
+  await started;
+  controller.abort(cancellation);
+  await expect(pending).rejects.toBe(cancellation);
+  expect(fetcher).toHaveBeenCalledOnce();
+  fetcher.mockResolvedValueOnce(
+    response({
+      version: TASK_ROOM_SHARED_WORK_VERSION,
+      kind: 'unavailable',
+      reason: 'host',
+    }),
+  );
+  const active = new AbortController();
   await expect(
     fetchSharedTaskRoomCapabilities('http://station.test', 'task', {
-      signal: controller.signal,
-      requestScope: { apiBase: 'http://station.test', authorityKey: 'a' },
-      isCurrent: () => true,
+      ...options,
+      signal: active.signal,
     }),
-  ).rejects.toBeDefined();
+  ).resolves.toMatchObject({ kind: 'unavailable', reason: 'host' });
 });
 
 test('cancellation after shared POST remains unconfirmed', async () => {
@@ -764,4 +805,172 @@ test('personal v1 context keeps accepting additive snapshot fields', async () =>
     'task',
   );
   expect(result.context?.documentRevision).toBe('rev');
+});
+
+test('shared withdrawal sends the frozen Task and intent preconditions', async () => {
+  sharedAuthority();
+  const { withdrawSharedTaskRoomRequest } = await import(
+    '../client/task-room-work'
+  );
+  const { TASK_ROOM_SHARED_WORK_VERSION, TASK_ROOM_SHARED_CONTEXT_VERSION } =
+    await import('@kontourai/station-contracts/task-room-work');
+  const scope = {
+    projectId: 'project',
+    taskId: 'task',
+    taskCreatedAt: incarnation,
+  };
+  const request = {
+    version: TASK_ROOM_SHARED_WORK_VERSION,
+    expectedActorId: 'actor',
+    taskCreatedAt: incarnation,
+    operationId: 'op',
+    agentId: 'agent',
+    modelId: 'model',
+    context: {
+      version: TASK_ROOM_SHARED_CONTEXT_VERSION,
+      brief: { documentRevision: 'rev', digest: 'a'.repeat(64) },
+      results: [],
+    },
+    prompt: 'Hello',
+    target: { kind: 'new-thread' as const },
+  };
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({}));
+  vi.stubGlobal('fetch', fetcher);
+  const options = {
+    requestScope: { apiBase: 'http://station.test', authorityKey: 'a' },
+    isCurrent: () => true,
+  };
+  expect(
+    (
+      await withdrawSharedTaskRoomRequest(
+        'http://station.test',
+        scope,
+        request,
+        options,
+      )
+    ).kind,
+  ).toBe('unconfirmed');
+  expect(fetcher).toHaveBeenCalledOnce();
+  expect(fetcher.mock.calls[0][0]).toBe(
+    'http://station.test/api/tasks/task/room/agent-requests/shared/op',
+  );
+  expect(fetcher.mock.calls[0][1]?.method).toBe('DELETE');
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+    version: TASK_ROOM_SHARED_WORK_VERSION,
+    expectedActorId: 'actor',
+    ...scope,
+    operationId: 'op',
+    inputDigest:
+      '9abed33a631e3318fa62e61c14fa6eb35a859f0eb980a1e3623e2c6ca459e4f2',
+  });
+  expect(
+    (
+      await withdrawSharedTaskRoomRequest(
+        'http://station.test',
+        { ...scope, taskCreatedAt: '2020-01-01T00:00:00.000Z' },
+        request,
+        options,
+      )
+    ).kind,
+  ).toBe('not-sent');
+  expect(fetcher).toHaveBeenCalledOnce();
+});
+
+test('shared result uses the captured publication reference throughout a delayed read', async () => {
+  sharedAuthority();
+  const { fetchSharedTaskRoomResult } = await import(
+    '../client/task-room-work'
+  );
+  const { TASK_ROOM_SHARED_RESULT_VERSION } = await import(
+    '@kontourai/station-contracts/task-room-work'
+  );
+  const scope = {
+    projectId: 'project',
+    taskId: 'task',
+    taskCreatedAt: incarnation,
+  };
+  const reference = {
+    ...scope,
+    conversationId: 'conversation',
+    originSessionId: 'origin',
+    version: TASK_ROOM_SHARED_RESULT_VERSION,
+    sessionId: 'session',
+    turnId: 'turn',
+    sequence: 2,
+    proposalDigest: 'a'.repeat(64),
+    contentDigest:
+      '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+  };
+  const original = structuredClone(reference);
+  let deliver!: (value: Response) => void;
+  let dispatched!: () => void;
+  const started = new Promise<void>((resolve) => {
+    dispatched = resolve;
+  });
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(() => {
+    dispatched();
+    return new Promise<Response>((resolve) => {
+      deliver = resolve;
+    });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const options = {
+    requestScope: { apiBase: 'http://station.test', authorityKey: 'a' },
+    isCurrent: () => true,
+  };
+  const pending = fetchSharedTaskRoomResult(
+    'http://station.test',
+    scope,
+    reference,
+    options,
+  );
+  await started;
+  scope.taskId = 'other';
+  reference.taskId = 'other';
+  reference.contentDigest = 'b'.repeat(64);
+  deliver(response({ reference: original, markdown: 'hello' }));
+  await expect(pending).resolves.toBe('hello');
+  expect(String(fetcher.mock.calls[0][0])).toContain(
+    '/api/tasks/task/room/agent-results/session/turn?',
+  );
+  await expect(
+    fetchSharedTaskRoomResult('http://station.test', scope, original, options),
+  ).rejects.toThrow('Invalid shared result reference');
+  let deliverChanged!: (value: Response) => void;
+  let startChanged!: () => void;
+  const changedStarted = new Promise<void>((resolve) => {
+    startChanged = resolve;
+  });
+  fetcher.mockImplementationOnce(() => {
+    startChanged();
+    return new Promise<Response>((resolve) => {
+      deliverChanged = resolve;
+    });
+  });
+  const mutable = structuredClone(original);
+  const task = { ...scope, taskId: 'task' };
+  const retargeted = fetchSharedTaskRoomResult(
+    'http://station.test',
+    task,
+    mutable,
+    options,
+  );
+  await changedStarted;
+  task.taskId = 'other';
+  mutable.taskId = 'other';
+  mutable.contentDigest =
+    'd67e2e944994496c8d8ec76eed0cf9f09679448d584b532bebf941852a37f5ed';
+  deliverChanged(response({ reference: mutable, markdown: 'changed' }));
+  await expect(retargeted).rejects.toThrow('Invalid shared result');
+  fetcher.mockResolvedValueOnce(
+    response({ reference: original, markdown: 'changed' }),
+  );
+  await expect(
+    fetchSharedTaskRoomResult(
+      'http://station.test',
+      { ...scope, taskId: 'task' },
+      original,
+      options,
+    ),
+  ).rejects.toThrow('digest mismatch');
 });
