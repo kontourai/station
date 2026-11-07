@@ -977,6 +977,7 @@ export function configureRuntimeSupportServices(
   return {
     schedulerService,
     automationLedger,
+    automationStore,
     automationPreview: automationObservation.preview,
     automationActions,
     isolatedRepairs,

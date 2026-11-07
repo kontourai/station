@@ -13,7 +13,10 @@
  * in-terminal short form.
  */
 
-import { AUTOMATION_OPERATOR_SURFACE } from '@kontourai/station-contracts/automation';
+import {
+  AUTOMATION_OPERATOR_OPERATIONS,
+  AUTOMATION_OPERATOR_SURFACE,
+} from '@kontourai/station-contracts/automation';
 import { REVIEW_EVIDENCE_OPERATOR_OPERATIONS } from '@kontourai/station-contracts/review-evidence';
 import { SCHEDULER_OPERATOR_OPERATIONS } from '@kontourai/station-contracts/scheduler';
 import { resolveStationRuntimeContext } from '@kontourai/station-shared/runtime-path-resolver';
@@ -1224,15 +1227,35 @@ const VERBS: Record<string, VerbSpec> = {
   },
   automation: {
     group: 'Core Workspace',
-    summary: 'Read Automation delivery history (observe-only)',
+    summary: 'Manage Automation sources, rules and episodes; read deliveries',
     targets: true,
-    actions: [AUTOMATION_OPERATOR_SURFACE.deliveries.cli],
+    actions: AUTOMATION_OPERATOR_OPERATIONS.map(
+      (operation) => AUTOMATION_OPERATOR_SURFACE[operation].cli,
+    ),
     detail: [
       'station automation deliveries [--limit=<1-200>]',
+      'station automation episodes [--limit=<1-200>]',
+      'station automation retry-episode <rule-id> <episode-id>',
+      'station automation sources',
+      'station automation source-create --data=<json>|--file=<path>',
+      'station automation source-enable <source-id> [--expected-fingerprint=<sha256>]',
+      'station automation source-disable <source-id>',
+      'station automation source-delete <source-id>',
+      'station automation rules',
+      'station automation rule-create --data=<json>|--file=<path>',
+      'station automation rule-update <rule-id> --data=<json>|--file=<path>',
+      'station automation enable <rule-id> [--expected-fingerprint=<sha256>]',
+      'station automation disable <rule-id>',
+      'station automation delete <rule-id>',
       '',
-      'Lists the newest recorded deliveries, newest first (default 50).',
-      'Each row is a bounded projection: outcome, reason, rule and episode',
-      'ids. Station records matches but starts no Automation work yet.',
+      'Deliveries are bounded projections: outcome, reason, rule and episode',
+      'ids. A delivery held by a limit reads suppressed with its reason.',
+      'Changes need the operator in person (never an agent session). This',
+      'surface creates and edits dispatch-task rules only; isolated repair',
+      'rules keep their own surface. Sources are created disabled and rules',
+      'in observe mode. enable/source-enable/rule-update read the current',
+      'configuration fingerprint unless you pin one. retry-episode gives an',
+      'exhausted episode exactly one more attempt under the current rule.',
     ],
   },
   runs: {

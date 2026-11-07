@@ -815,12 +815,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
-  // Epic #3439: Automation reads (S2 mounts only `GET /automations/deliveries`)
-  // return bounded projections — hashed transport keys, outcome codes and
-  // ids, never a payload or secret. The shared ledger is operator management,
+  // Epic #3439: Automation reads return bounded projections — hashed
+  // transport keys, outcome codes, ids and secret-free sources, never a
+  // payload or secret. The shared ledger is operator management.
   // Deliberately NOT a family: `/automations` mutations create and enable
-  // triggers that start agent work, so every mutating method stays unmapped
-  // (refused) until a later slice classifies it on purpose.
+  // triggers that start agent work. #4513 classifies them on purpose as
+  // access management, and the routes additionally require the operator in
+  // person (`operator(request)`), so a paired device's scope alone is never
+  // enough.
   {
     id: '/api/isolated-repairs:operator',
     method: '*',
@@ -835,6 +837,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  ...MUTATING_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: `/automations:${method.toLowerCase()}`,
+      method,
+      prefix: '/automations',
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
     ...READ_METHODS.map(
       (method): PairingScopeRouteRule => ({

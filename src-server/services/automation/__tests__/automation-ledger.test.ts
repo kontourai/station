@@ -153,9 +153,9 @@ describe('AutomationLedger', () => {
       },
     );
 
-    test('a merely received row does not take part in semantic dedupe', () => {
+    test('a duplicate row does not take part in semantic dedupe', () => {
       const store = ledger();
-      delivery(store, 'guid-a', undefined, { outcome: 'received' });
+      delivery(store, 'guid-a', undefined, { outcome: 'duplicate' });
       expect(delivery(store, 'guid-b')).toMatchObject({ kind: 'recorded' });
     });
 
@@ -198,7 +198,7 @@ describe('AutomationLedger', () => {
       const store = ledger(3);
       for (let index = 0; index < 5; index += 1) {
         delivery(store, `guid-${index}`, `workflow_run:${index}:1:completed`, {
-          outcome: 'received',
+          outcome: 'duplicate',
           receivedAt: T0 + index,
         });
       }
@@ -347,7 +347,7 @@ describe('AutomationLedger', () => {
           deliveryKey: recorded.deliveryKey,
           now: T0,
         }),
-      ).toEqual({ kind: 'busy' });
+      ).toEqual({ kind: 'busy', reason: 'episode-active' });
 
       expect(claim.receipt.beginInvocation(T0 + 1)).toBe('applied');
       expect(
@@ -503,7 +503,7 @@ describe('AutomationLedger', () => {
           deliveryKey: recorded.deliveryKey,
           now: T0,
         }),
-      ).toEqual({ kind: 'busy' });
+      ).toEqual({ kind: 'busy', reason: 'episode-active' });
     });
   });
 

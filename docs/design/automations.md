@@ -7,8 +7,11 @@
 > [SQLite ledger](../../src-server/services/automation/automation-ledger.ts),
 > [Task action runtime](../../src-server/runtime/automation-actions-runtime.ts), and
 > [isolated repair controller](../../src-server/services/automation/repair-controller.ts).
-> The operator repair API can create disabled poll sources/rules and enable an
-> exact configuration. The original broader proposal below remains a design;
+> The [operator routes](../../src-server/routes/operations/automations.ts)
+> (#4513) list, create, edit, enable, disable and delete `dispatch-task` rules
+> and poll sources, list open episodes and retry an exhausted one; the
+> operator repair API does the same setup for isolated-repair rules. The
+> original broader proposal below remains a design;
 > it does not describe every currently implemented source, file or UI.
 > See [bounded agent work](../guides/agent-efficiency.md#run-an-isolated-github-repair)
 > for the implemented setup, review, publication and recovery path. Fixtures
@@ -159,7 +162,7 @@ marker. It also closes a real episode the rule left open while `live`, because
 a stale episode would suppress the rule's next failure once it is `live`
 again; closing starts nothing.
 
-Each matched non-notify rule gets one row in `automation_rule_decisions`,
+Each matched rule gets one row in `automation_rule_decisions`,
 keyed by delivery and rule. The row records the mode, an outcome, an optional
 suppression reason, and a snapshot: rule id and name, action kind, Project,
 Agent, and episode id. It never holds instructions or event fields. The
@@ -181,14 +184,14 @@ retained an intent, and the observed delivery still holds its semantic dedupe
 key, so a re-poll of the same run records `duplicate`. Only events that arrive
 afterwards can act.
 
-The policy fingerprint is still the hash of the whole source and rule, so it
-now includes `mode`. Intake retains intents only for `live` rules, so the
+The policy fingerprint includes `mode` (see
+[Policy changes and the start mandate](#policy-changes-and-the-start-mandate)
+for what else it covers). Intake retains intents only for `live` rules, so the
 fingerprint of every retained intent encodes `live`. A rule moved to `observe`
 or `off` no longer matches its fingerprint, and its pending intents are refused
-as `policy_changed`. Both consumers also check `mode === 'live'` directly. The
-cost of hashing `mode` is a one-time effect at upgrade: an intent retained
-before upgrade was hashed over `enabled: true`. If it is still pending when
-first read under `mode`, it is refused as `policy_changed`, not dispatched.
+as `policy_changed`. Both consumers also check `mode === 'live'` directly, and
+both refuse a pending intent whose rule was deleted or now names another
+action kind (#4575), so restoring the identical rule later never revives it.
 
 Limits and gaps:
 
@@ -204,6 +207,95 @@ Limits and gaps:
   preview stays off, its pending intent keeps a matching fingerprint and can
   still dispatch within its 72-hour window. Disable and re-enable behaved the
   same way before this change.
+
+### Policy changes and the start mandate
+
+The policy fingerprint (#4511) covers only authority-bearing fields. From the
+source: its id, repository, whether it is enabled or revoked, and whether it
+grants this rule's exact Project, Agent and action. From the rule: its id,
+source, mode, matcher and action. A rule's or source's name, the rate limit,
+the episode policy, the poll interval, the credential binding and grants for
+other Project/Agent pairs are scheduling or cosmetic: changing them never
+stops admitted work. An intent retained before #4511 carries the earlier
+whole-object fingerprint; it still matches until its rule or source changes in
+any way, which then stops it as before.
+
+The Task runtime classifies a change on every recheck (before Task creation,
+at provider start, at inbox placement, at turn admission and on each tick):
+
+- **Amendment**: only the action's instructions or budget changed, proven by
+  a second fingerprint without those fields that the intent retained at
+  intake. The action adopts the new version: a pending action starts its Task
+  under it, and a running Session gets the new text as its next turn (an
+  internal Automation turn) and continues; the budget supervisor takes the new
+  limits at once. An approval-mode change is not an amendment.
+- **Revocation**: anything else (the rule deleted, disabled, switched to
+  observe or otherwise changed; the source deleted, disabled or revoked; the
+  grant removed; the actions preview turned off; the Project gone). Automatic
+  work stops. Once, the runtime marks the Session `blocked` with the reason,
+  which is how it appears in Needs you, moves the Task to `blocked` and keeps
+  the reason on the intent.
+
+Turn admission refuses every Automation-originated turn after a revocation,
+with the reason. It admits a person's own turn (the server classifies it as
+`interactive` from the authenticated client origin, never from the request)
+under that person's authority: the turn never runs inside the unattended
+principal, the rule's budget supervisor is released, and Ask is recorded when
+the rule pinned Auto and no one has chosen a mode for the conversation. The
+Session then belongs to the person, durably: no Automation turn is admitted
+into it again and no later policy change interrupts it.
+The retained Task/Session binding keeps this boundary after an action settles
+and after a runtime restart. A missing binding or failed hand-over or approval
+write refuses the turn before provider send; it cannot preserve inherited Auto
+as a fallback. The person can retry once persistence is available.
+
+When an action creates its Task it captures an immutable
+`AutomationTaskMandate`: the rule name and id, source, episode (and operator
+retry), the fingerprint at start, the normalized event fields and the action
+snapshot. `GET /api/tasks/:taskId` and `/graph` return it, with amendments,
+any revocation and the hand-over, as `automation` for that exact Task
+incarnation; Task Details shows it as "Started by automation". The isolated
+repair controller keeps the strict rule: any authority change refuses or
+stops a repair, and it captures the same mandate.
+
+Limits: the hand-over is recognized at turn admission, so a person's message
+queued behind a running automation turn takes the Session over when it is
+dispatched, not when it is sent. Recording Ask is skipped for an engine with
+no approval control.
+
+### Operator surface
+
+`AUTOMATION_OPERATOR_SURFACE` (#4513) is served under `/automations`, by the
+SDK (`packages/sdk/src/client/automations.ts`) and by `station automation`.
+Reads (sources, rules, deliveries, episodes) need management access; Station
+Control exposes only those four reads. Every change needs the operator in
+person, the same proof the isolated repair API uses, so an agent session or
+Station Control can never create, widen, enable or retry its own triggers.
+This surface creates and edits `dispatch-task` rules only, and refuses to
+enable a source that grants isolated repair or publication: those keep the
+repair surface and its setup checks. Enabling a rule or source and editing a
+rule name the configuration fingerprint the operator reviewed; disabling and
+deleting narrow authority, need none and stay available while the
+observation preview is off. A source can be deleted only once no rule names
+it.
+
+`retry-episode` gives an exhausted episode exactly one more attempt: its
+attempt ceiling becomes the attempts used plus one, and a new intent (with its
+retry count in its identity, so it is a new Task) is retained under the rule's
+current policy. It is refused for an indeterminate episode (its earlier effect
+is unknown and never replayed), an episode with pending or running work, an
+event older than 72 hours, or a rule that is not `live` or no longer granted.
+
+A held claim writes its reason to the delivery row as `suppressed(reason)`:
+`rate-limited`, `rule-active-limit`, `concurrency-limit` or `episode-active`
+while the action waits (the row moves on when it starts), and
+`episode-exhausted` or `episode-indeterminate` when it never will. A refused
+intent keeps its own reason on the row (`policy_changed`, `stale_event`,
+`admission_refused`), never a generic `policy_unavailable`.
+
+There is no `notify` action: it was validated but never executed, so #4513
+removed it. A stored grant that lists it drops it on read; a stored `notify`
+rule makes the configuration unreadable, which fails closed.
 
 Task creation and Session seeding alone do not start a repair turn. The actions
 runtime submits the framed prompt to the existing durable inbox, retaining the
@@ -402,8 +494,9 @@ directory under [`src-server/services/`](../../src-server/services/).
   string[]> }`. Matching is exact equality only: no regex and no
   expressions.
 - `AutomationAction` is `{ kind: 'dispatch-task'; projectId; agentId;
-  instructions; approvalMode?: 'ask' | 'auto'; budget: AutomationBudget }`,
-  or `{ kind: 'notify'; priority }`, or later `{ kind: 'publish-branch' }`.
+  instructions; approvalMode?: 'ask' | 'auto'; budget: AutomationBudget }`
+  or `{ kind: 'isolated-repair'; … }`. (A proposed `notify` action was
+  removed by #4513; `publish-branch` is a grant, not a rule action.)
 - `AutomationEpisodePolicy` is `{ keyFields: string[]; closeOn?:
   AutomationMatcher; maxAttempts: number }`, where `maxAttempts` defaults
   to 1.
@@ -430,7 +523,7 @@ This introduces no contract break.
   action would reuse: a framed Station turn on the conversation's inbox, as
   [ScheduledConversationRuns](../../src-server/services/scheduling/scheduled-conversation-runs.ts)
   sends it. `SchedulerEvent`s such as `job.failed` become `station-event`
-  sources for `notify`.
+  sources for a future notification action.
 - The monitor Task path is generalized, not copied:
   `MonitorTaskDispatchIntent` becomes `UnattendedTaskEnvelope`, and
   `runWithScheduledPrincipal` becomes `runWithUnattendedPrincipal`.
@@ -549,10 +642,11 @@ episode.
 
 ## 7. Observability
 
-- **Ledger rows per delivery:** `received`, `duplicate`, `refused(reason)`,
-  `ignored`, `no-match`, `matched`, `suppressed(episode-active |
-  rate-limited)`, `started(taskId, sessionId)`, and `failed` or
-  `indeterminate`. Rows hold a bounded projection only: no payloads, no
+- **Ledger rows per delivery:** `duplicate`, `refused(reason)`,
+  `ignored`, `no-match`, `matched`, `suppressed(reason)` (see
+  [Operator surface](#operator-surface)), `started(taskId, sessionId)`, and
+  `failed` or `indeterminate`. There is no `received` row: intake records a
+  delivery and its evaluation in one transaction. Rows hold a bounded projection only: no payloads, no
   secrets, and no GUIDs in clear.
 - **Per-rule decisions per delivery:** `would-start`, `suppressed(reason)` or
   `intent-retained` for each matched `observe` or `live` rule, with a bounded

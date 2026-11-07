@@ -10,12 +10,14 @@
  * Authority follows the inbound-webhook rule: an omitted grant list is an
  * empty grant, never a wildcard. A rule is valid only when its source also
  * grants its action (the "two keys" rule), so neither a source nor a rule
- * alone can start work: a `dispatch-task` rule needs a source grant naming
- * the same `projectId` and `agentId` with `dispatch-task`, and a `notify`
- * rule (which names no Project or Agent) needs some source grant listing
- * `notify`. A revoked or disabled source grants nothing at run time, though
- * its rules stay stored. Sources are created disabled; rules are created in
- * `observe` mode, which records what they would do but never acts.
+ * alone can start work: a rule needs a source grant naming the same
+ * `projectId` and `agentId` with the rule's action kind. A revoked or
+ * disabled source grants nothing at run time, though its rules stay stored.
+ * Sources are created disabled; rules are created in `observe` mode, which
+ * records what they would do but never acts.
+ *
+ * There is no `notify` action (#4513): it was validated but never executed,
+ * so it was removed rather than left as a promise nothing keeps.
  */
 
 /** Current version of every persisted Automation record in this module. */
@@ -32,12 +34,15 @@ export const AUTOMATION_SOURCE_KINDS = [
 
 export type AutomationSourceKind = (typeof AUTOMATION_SOURCE_KINDS)[number];
 
-/** Actions a rule may take. A grant names the subset a source permits. */
+/**
+ * Actions a source may grant. A rule's action is `dispatch-task` or
+ * `isolated-repair`; `publish-branch` is granted for an isolated repair's
+ * separate publication step and is never a rule's own action.
+ */
 export const AUTOMATION_ACTION_KINDS = [
   'dispatch-task',
   'isolated-repair',
   'publish-branch',
-  'notify',
 ] as const;
 
 export type AutomationActionKind = (typeof AUTOMATION_ACTION_KINDS)[number];
@@ -206,11 +211,62 @@ export type AutomationAction =
         maxProviderRequests: number;
         maxWallRuntimeMs: number;
       }>;
-    }>
-  | Readonly<{
-      kind: 'notify';
-      priority: 'low' | 'normal' | 'high' | 'urgent';
     }>;
+
+/**
+ * The immutable authority an automation Task was started under (#4511),
+ * captured once when the action creates its Task and never rewritten. Later
+ * amendments are listed beside it, not folded into it. It carries the
+ * allow-listed normalized event fields only, never a payload.
+ */
+export type AutomationTaskMandate = Readonly<{
+  ruleId: string;
+  /** The rule's name when the Task was created. */
+  ruleName: string;
+  sourceId: string;
+  episodeId: string;
+  /** Operator retries of the episode before this attempt; absent for the first. */
+  retry?: number;
+  /** The authority policy version (fingerprint) the Task started under. */
+  policyFingerprint: string;
+  capturedAt: string;
+  event: Readonly<{
+    type: AutomationEventType;
+    semanticKey: string;
+    occurredAt: string;
+    fields: Readonly<Record<string, string>>;
+  }>;
+  action: AutomationActionIntent['action'];
+}>;
+
+/**
+ * Why a running automation action was stopped by a policy change (#4511).
+ * A revocation stops automatic work; an amendment (instructions or budget
+ * only) does not stop it.
+ */
+export const AUTOMATION_REVOCATION_CAUSES = [
+  'rule-deleted',
+  'rule-disabled',
+  'rule-observing',
+  'rule-changed',
+  'source-deleted',
+  'source-disabled',
+  'source-revoked',
+  'grant-removed',
+  'preview-disabled',
+  'project-unavailable',
+] as const;
+
+export type AutomationRevocationCause =
+  (typeof AUTOMATION_REVOCATION_CAUSES)[number];
+
+/** One amendment adopted by a running or pending action (#4511). */
+export type AutomationAmendment = Readonly<{
+  at: string;
+  policyFingerprint: string;
+  /** Which amendable fields changed. */
+  changed: readonly ('instructions' | 'budget')[];
+}>;
 
 /** Private durable dispatch record; it is never accepted as request authority. */
 export interface AutomationActionIntent {
@@ -220,7 +276,16 @@ export interface AutomationActionIntent {
   episodeKey: string;
   episodeId: string;
   deliveryKey: string;
+  /** Full authority fingerprint, amendable fields included. */
   policyFingerprint: string;
+  /**
+   * Authority fingerprint without the amendable fields (instructions and
+   * budget). Absent on intents retained before #4511: those treat every
+   * change as a revocation.
+   */
+  authorityFingerprint?: string;
+  /** Operator `retry-episode` count; absent (0) for the episode's first intent. */
+  retry?: number;
   event: AutomationEvent;
   action: Extract<
     AutomationAction,
@@ -244,7 +309,35 @@ export interface AutomationActionIntent {
   conversationId?: string;
   turnId?: string;
   reason?: string;
+  /** Captured once, with `taskId`; see {@link AutomationTaskMandate}. */
+  mandate?: AutomationTaskMandate;
+  amendments?: readonly AutomationAmendment[];
+  /** Set when a policy revocation stopped the action (#4511). */
+  revocation?: Readonly<{
+    at: string;
+    cause: AutomationRevocationCause;
+    message: string;
+  }>;
+  /**
+   * A person sent a turn into this action's Session (#4511). From then on the
+   * Session is the person's: the action's budget supervisor no longer applies
+   * to it, and no automation turn is admitted into it.
+   */
+  personTakeoverAt?: string;
 }
+
+/**
+ * The read-only "Started by automation" view of a Task (#4511), derived by
+ * the server from the private intent bound to the Task's exact incarnation.
+ * It is returned by the Task read API and never accepted as input.
+ */
+export type AutomationTaskProjection = Readonly<{
+  mandate: AutomationTaskMandate;
+  state: AutomationActionIntent['state'];
+  amendments: readonly AutomationAmendment[];
+  revocation?: AutomationActionIntent['revocation'];
+  personTakeoverAt?: string;
+}>;
 
 /**
  * Groups related events into one episode so a failure that keeps recurring
@@ -304,9 +397,12 @@ export type AutomationConfiguration = Readonly<{
   rules: readonly AutomationRule[];
 }>;
 
-/** Every recorded outcome for one delivery. The list is closed. */
+/**
+ * Every recorded outcome for one delivery. The list is closed. There is no
+ * `received` outcome (#4513): intake records a delivery and its evaluation
+ * in one transaction, so no row is ever only received.
+ */
 export const AUTOMATION_DELIVERY_OUTCOMES = [
-  'received',
   'duplicate',
   'refused',
   'ignored',
@@ -348,16 +444,23 @@ export const AUTOMATION_REFUSAL_REASONS = [
   'malformed_request',
   'rate_limited',
   'policy_unavailable',
+  /** The rule, its source or its grant changed before the action started. */
+  'policy_changed',
+  /** A consumer's admission (inbox placement, repair setup) refused the action. */
+  'admission_refused',
 ] as const;
 
 export type AutomationRefusalReason =
   (typeof AUTOMATION_REFUSAL_REASONS)[number];
 
 /**
- * Why a matched delivery started nothing. `rule-active-limit` and
- * `concurrency-limit` are recorded only by an `observe` rule's decision: a
- * `live` action held by those limits waits and is admitted later, so they
- * mean "would have waited at the time of evaluation", not a refusal.
+ * Why a matched delivery started nothing (yet). On an `observe` rule's
+ * decision, `rule-active-limit` and `concurrency-limit` mean "would have
+ * waited at the time of evaluation". On a `live` delivery row (#4513) the
+ * action consumer records the reason its claim was held: `rate-limited`,
+ * `rule-active-limit`, `concurrency-limit` and `episode-active` are
+ * transient (the action waits and the row moves on when it starts);
+ * `episode-exhausted` and `episode-indeterminate` are final for that intent.
  */
 export const AUTOMATION_SUPPRESSION_REASONS = [
   'episode-active',
@@ -473,6 +576,60 @@ export type AutomationEpisodeState =
   | 'indeterminate'
   | 'closed';
 
+/** One episode as `GET /automations/episodes` returns it. */
+export type AutomationEpisodeRecord = Readonly<{
+  ruleId: string;
+  episodeId: string;
+  state: AutomationEpisodeState;
+  attemptCount: number;
+  maxAttempts: number;
+  openedAt: string;
+  updatedAt: string;
+}>;
+
+/** `POST /automations/sources`: a disabled `github-poll` source (#4513). */
+export type AutomationPollSourceInput = Readonly<{
+  kind: 'github-poll';
+  name: string;
+  repository: string;
+  credentialSecretBinding?: string;
+  pollIntervalMs?: number;
+  grants?: readonly AutomationGrant[];
+}>;
+
+/**
+ * The editable fields of a `dispatch-task` rule (#4513). `POST
+ * /automations/rules` adds `sourceId`; `PUT /automations/rules/:target`
+ * adds `expectedFingerprint`. A rule's id, source and mode are never edited
+ * here: only enable and disable change its mode.
+ */
+export type AutomationDispatchRuleInput = Readonly<{
+  name: string;
+  match: AutomationMatcher;
+  episode?: AutomationEpisodePolicy;
+  action: Extract<AutomationAction, { kind: 'dispatch-task' }>;
+  rateLimit: Readonly<{ maxStartsPerHour: number }>;
+}>;
+
+/** `POST /automations/episodes/:target/retry` result. */
+export type AutomationEpisodeRetry = Readonly<{
+  ruleId: string;
+  episodeId: string;
+  /** The operator retry count this attempt carries. */
+  retry: number;
+}>;
+
+/** The configuration fingerprint a mutation names as `expectedFingerprint`. */
+export type AutomationRuleList = Readonly<{
+  configurationFingerprint: string;
+  rules: readonly AutomationRule[];
+}>;
+
+export type AutomationSourceList = Readonly<{
+  configurationFingerprint: string;
+  sources: readonly AutomationSourceProjection[];
+}>;
+
 /**
  * Self-imposed ceilings. Published so consumers can explain refusals;
  * changing a value is an explicit contract change.
@@ -529,6 +686,8 @@ export const AUTOMATION_EXECUTION_LIMITS = {
  * Operator-facing Automation verbs. API, SDK and CLI must expose this exact
  * set. Station-control MCP exposes only the read verbs: an agent must never
  * create, widen or enable its own triggers, so a mutation's `mcp` is `null`.
+ * Every mutation is refused unless a person makes it in person (never an
+ * agent session or Station Control).
  */
 export const AUTOMATION_OPERATOR_OPERATIONS = [
   'list-sources',
@@ -538,6 +697,7 @@ export const AUTOMATION_OPERATOR_OPERATIONS = [
   'delete-source',
   'list-rules',
   'create-rule',
+  'update-rule',
   'enable-rule',
   'disable-rule',
   'delete-rule',
@@ -597,6 +757,12 @@ export const AUTOMATION_OPERATOR_SURFACE: Readonly<
     mcp: null,
     method: 'POST',
     path: '/automations/rules',
+  },
+  'update-rule': {
+    cli: 'rule-update',
+    mcp: null,
+    method: 'PUT',
+    path: '/automations/rules/:target',
   },
   'enable-rule': {
     cli: 'enable',

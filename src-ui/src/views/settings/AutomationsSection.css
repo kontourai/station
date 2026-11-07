@@ -1,0 +1,38 @@
+.automations__list {
+  display: grid;
+  gap: var(--k-space-2);
+  margin-block-end: var(--k-space-4);
+}
+
+.automations__heading {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+
+.automations__count {
+  color: var(--k-text-muted);
+  font-weight: 400;
+}
+
+.automations__items {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.automations__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+
+.automations__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}

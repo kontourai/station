@@ -15,6 +15,8 @@ export type SettingsSectionId =
   | 'system'
   | 'feature-previews'
   | 'answer-shares'
+  // #4513: GitHub automation sources, rules, episodes and deliveries.
+  | 'github-automations'
   | 'plugin-visibility'
   // Configuration the Browser and Device panes keep out of their chrome.
   | 'browser-devices'
@@ -108,6 +110,12 @@ export const SETTINGS_SECTIONS = [
   // as a Station-scope section (previews persist on the Station).
   { id: 'feature-previews', title: 'Feature previews', group: 'this-station' },
   { id: 'answer-shares', title: 'Shared answers', group: 'this-station' },
+  // #4513: operator-only, like shared answers; the routes gate it.
+  {
+    id: 'github-automations',
+    title: 'GitHub automations',
+    group: 'this-station',
+  },
   // #2067: which installed plugins each paired person can see. Station scope
   // because the grants live on this Station; operator-only, gated by the
   // route, the same way 'answer-shares' is gated by its own scope tier.
@@ -313,6 +321,12 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Shared answers',
     section: 'answer-shares',
     keywords: ['permalink revoke expire'],
+  },
+  {
+    id: 'github-automations',
+    title: 'GitHub automations',
+    section: 'github-automations',
+    keywords: ['automation rules', 'sources', 'episodes', 'deliveries'],
   },
   {
     id: 'plugin-visibility',
