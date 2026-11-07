@@ -208,15 +208,15 @@ export class AnthropicSealedPreparation {
       sourceRevision: source.source.source_admission_receipt.digest,
       optionsSha256: boundedApiWireOptionsSha256('anthropic', wire),
       sdkPackage: '@ai-sdk/anthropic',
-      sdkVersion: '3.0.135',
+      sdkVersion: '3.0.138',
     };
     const id = `anthropic-${inputTool ? 'input' : 'text'}:${sha(canonicalJson(binding))}`;
     const evidence = {
       authorityKind: 'provider-public-contract' as const,
       authorityRef: 'https://platform.claude.com/docs/en/about-claude/pricing',
       revision: inputTool
-        ? 'sonnet46-input-20261031-sdk30135'
-        : 'sonnet46-text-20261031-sdk30135',
+        ? 'sonnet46-input-20261031-sdk30138'
+        : 'sonnet46-text-20261031-sdk30138',
       sourceSha256s: inputTool ? [...SOURCES, ...INPUT_SOURCES] : SOURCES,
       validFromMs: inputTool ? INPUT_VALID_FROM : VALID_FROM,
       expiresAtMs: EXPIRES,
