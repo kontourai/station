@@ -156,7 +156,7 @@ export async function fetchTaskRoomAgentRequests(
   if (
     value.contextVersion !== undefined &&
     (value.contextVersion !== TASK_ROOM_CONTEXT_VERSION ||
-      (value.context !== null && !sharedBrief(value.context)))
+      (value.context !== null && !contextSnapshot(value.context)))
   )
     throw new TaskRoomWorkProtocolError('Task brief context is unavailable.');
   return {
@@ -646,9 +646,11 @@ export async function fetchSharedTaskRoomRequests(
     input.taskCreatedAt !== scope.taskCreatedAt
   )
     throw new TaskRoomWorkProtocolError('Invalid shared request.');
-  const inputDigest = await taskRoomModelOptionsDigest(input);
+  const intent = structuredClone(input);
+  const task = { ...scope };
+  const inputDigest = await taskRoomModelOptionsDigest(intent);
   const value = await data(
-    await getJson(sharedPath(apiBase, scope.taskId), options),
+    await getJson(sharedPath(apiBase, task.taskId), options),
   );
   if (
     !keys(value, ['version', 'records']) ||
@@ -660,9 +662,9 @@ export async function fetchSharedTaskRoomRequests(
   for (const record of value.records) {
     if (!object(record) || !sharedText(record.operationId, 160))
       throw new TaskRoomWorkProtocolError('Invalid shared request record.');
-    if (record.operationId !== input.operationId) continue;
+    if (record.operationId !== intent.operationId) continue;
     if (
-      !sharedRecord(record, scope, input, inputDigest) ||
+      !sharedRecord(record, task, intent, inputDigest) ||
       !(await snapshotContentMatches(record.context))
     )
       throw new TaskRoomWorkProtocolError('Invalid shared request record.');
@@ -686,12 +688,14 @@ export async function withdrawSharedTaskRoomRequest(
   )
     return { kind: 'not-sent', reason: 'input' };
   if (options?.signal?.aborted) throw options.signal.reason;
-  const inputDigest = await taskRoomModelOptionsDigest(input);
+  const intent = structuredClone(input);
+  const task = { ...scope };
+  const inputDigest = await taskRoomModelOptionsDigest(intent);
   if (!options.isCurrent()) return { kind: 'not-sent', reason: 'authority' };
   try {
     const value = await data(
       await mutateJson(
-        `${sharedPath(apiBase, scope.taskId)}/${encodeURIComponent(input.operationId)}`,
+        `${sharedPath(apiBase, task.taskId)}/${encodeURIComponent(intent.operationId)}`,
         'DELETE',
         options,
       ),
@@ -700,7 +704,7 @@ export async function withdrawSharedTaskRoomRequest(
       keys(value, ['kind', 'record', 'replayed']) &&
       value.kind === 'accepted' &&
       typeof value.replayed === 'boolean' &&
-      sharedRecord(value.record, scope, input, inputDigest) &&
+      sharedRecord(value.record, task, intent, inputDigest) &&
       (await snapshotContentMatches(value.record.context)) &&
       options.isCurrent()
     )
@@ -714,8 +718,8 @@ export async function withdrawSharedTaskRoomRequest(
   }
   return {
     kind: 'unconfirmed',
-    operationId: input.operationId,
-    intent: structuredClone(input),
+    operationId: intent.operationId,
+    intent,
   };
 }
 export async function fetchSharedTaskRoomResult(

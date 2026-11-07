@@ -710,3 +710,33 @@ test('shared lookup refuses a malformed record rather than reporting an empty re
     }),
   ).rejects.toThrow('Invalid shared request record');
 });
+
+test('personal v1 context keeps accepting additive snapshot fields', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        response({
+          version: TASK_ROOM_WORK_VERSION,
+          kind: 'available',
+          records: [],
+          contextVersion: TASK_ROOM_CONTEXT_VERSION,
+          context: {
+            version: TASK_ROOM_CONTEXT_VERSION,
+            digest: 'a'.repeat(64),
+            title: 'Title',
+            description: '',
+            documentRevision: 'rev',
+            text: 'Brief',
+            futureField: 'ignored',
+          },
+        }),
+      ),
+  );
+  const result = await fetchTaskRoomAgentRequests(
+    'http://station.test',
+    'task',
+  );
+  expect(result.context?.documentRevision).toBe('rev');
+});
