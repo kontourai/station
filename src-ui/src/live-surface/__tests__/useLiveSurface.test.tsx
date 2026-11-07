@@ -556,3 +556,261 @@ test('changing only the transport aborts the old frame stream and observes the r
   await waitFor(() => expect(result.current.lease?.epoch).toBe(2));
   unmount();
 });
+
+function deferredResponse() {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+type TransportRequest = {
+  url: string;
+  body: {
+    action?: string;
+    sourceId?: string;
+    events?: { kind: string; text?: string }[];
+  };
+};
+
+function transportForSwap(
+  onRequest: (request: TransportRequest) => Promise<Response>,
+) {
+  const requests: TransportRequest[] = [];
+  const transport = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/frames')) {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              init?.signal?.addEventListener(
+                'abort',
+                () =>
+                  controller.error(new DOMException('aborted', 'AbortError')),
+                { once: true },
+              );
+            },
+          }),
+        );
+      }
+      const request: TransportRequest = {
+        url: url.toString(),
+        body: JSON.parse(String(init?.body)),
+      };
+      requests.push(request);
+      return onRequest(request);
+    },
+  );
+  return { transport, requests };
+}
+
+const swapSourceA = '00000000-0000-4000-8000-000000000001';
+const swapSourceB = '00000000-0000-4000-8000-000000000002';
+const swapLeaseUrl =
+  'http://station.test/api/live-surfaces/first/lease?projectSlug=alpha';
+const swapInputUrl =
+  'http://station.test/api/live-surfaces/first/input?projectSlug=alpha';
+
+function sourceReply(sourceId: string) {
+  return Response.json({ success: true, data: { sourceId } });
+}
+
+function inputReply(epoch: number, code?: 'page-dialog-open' | 'stale-epoch') {
+  return Response.json(
+    {
+      success: !code,
+      data: {
+        ok: !code,
+        ...(code ? { code } : {}),
+        accepted: code ? 0 : 1,
+        lease: {
+          surfaceId: 'first',
+          epoch,
+          holder: null,
+          expiresAt: null,
+        },
+      },
+    },
+    { status: code ? 409 : 200 },
+  );
+}
+
+test('transport swap closes delayed registration on its original transport without sending retired input', async () => {
+  const pendingOpen = deferredResponse();
+  const a = transportForSwap(async ({ body }) => {
+    if (body.action === 'open-input-source') return pendingOpen.promise;
+    if (body.action === 'close-input-source')
+      return Response.json({ success: true });
+    throw new Error('Unexpected A request');
+  });
+  const b = transportForSwap(async ({ body }) => {
+    if (body.action === 'open-input-source') return sourceReply(swapSourceB);
+    if (body.action === 'close-input-source')
+      return Response.json({ success: true });
+    if (body.events) return inputReply(2);
+    throw new Error('Unexpected B request');
+  });
+  const visibilityRef = createRef<Element>();
+  const { result, rerender, unmount } = renderHook(
+    ({ transport }) =>
+      useLiveSurface({
+        apiBase: 'http://station.test',
+        surfaceId: 'first',
+        projectSlug: 'alpha',
+        visibilityRef,
+        onFrame: () => {},
+        transport,
+      }),
+    { initialProps: { transport: a.transport } },
+  );
+  act(() =>
+    result.current.sendInput([{ kind: 'text', text: 'retired action' }]),
+  );
+  await waitFor(() => expect(a.requests).toHaveLength(1));
+  act(() =>
+    result.current.sendInput([{ kind: 'text', text: 'retired queued' }]),
+  );
+  rerender({ transport: b.transport });
+  act(() =>
+    result.current.sendInput([{ kind: 'text', text: 'fresh action' }]),
+  );
+  await waitFor(() => expect(b.requests).toHaveLength(2));
+  await act(async () => {
+    pendingOpen.resolve(sourceReply(swapSourceA));
+    await pendingOpen.promise;
+  });
+  await waitFor(() => expect(a.requests).toHaveLength(2));
+  expect(a.requests).toEqual([
+    { url: swapLeaseUrl, body: { action: 'open-input-source' } },
+    {
+      url: swapLeaseUrl,
+      body: { action: 'close-input-source', sourceId: swapSourceA },
+    },
+  ]);
+  expect(b.requests[0]).toEqual({
+    url: swapLeaseUrl,
+    body: { action: 'open-input-source' },
+  });
+  expect(b.requests[1]).toMatchObject({
+    url: swapInputUrl,
+    body: {
+      sourceId: swapSourceB,
+      events: [{ kind: 'text', text: 'fresh action' }],
+    },
+  });
+  expect(b.requests).toHaveLength(2);
+  unmount();
+});
+
+test('late input response from retired transport cannot disturb replacement input and lease', async () => {
+  const pendingA = deferredResponse();
+  const pendingB = deferredResponse();
+  let bInputCount = 0;
+  const a = transportForSwap(async ({ body }) => {
+    if (body.action === 'open-input-source') return sourceReply(swapSourceA);
+    if (body.action === 'close-input-source')
+      return Response.json({ success: true });
+    if (body.events) return pendingA.promise;
+    throw new Error('Unexpected A request');
+  });
+  const b = transportForSwap(async ({ body }) => {
+    if (body.action === 'open-input-source') return sourceReply(swapSourceB);
+    if (body.action === 'close-input-source')
+      return Response.json({ success: true });
+    if (body.events) {
+      bInputCount += 1;
+      if (bInputCount === 1) return inputReply(2, 'page-dialog-open');
+      if (bInputCount === 2) return pendingB.promise;
+      if (bInputCount === 3) return inputReply(3);
+    }
+    throw new Error('Unexpected B request');
+  });
+  const visibilityRef = createRef<Element>();
+  const { result, rerender, unmount } = renderHook(
+    ({ transport }) =>
+      useLiveSurface({
+        apiBase: 'http://station.test',
+        surfaceId: 'first',
+        projectSlug: 'alpha',
+        visibilityRef,
+        onFrame: () => {},
+        transport,
+      }),
+    { initialProps: { transport: a.transport } },
+  );
+  act(() =>
+    result.current.sendInput([{ kind: 'text', text: 'old in flight' }]),
+  );
+  await waitFor(() => expect(a.requests).toHaveLength(2));
+  act(() =>
+    result.current.sendInput([{ kind: 'text', text: 'old queued' }]),
+  );
+  rerender({ transport: b.transport });
+  await waitFor(() => expect(a.requests).toHaveLength(3));
+  act(() =>
+    result.current.sendInput([{ kind: 'text', text: 'replacement first' }]),
+  );
+  await waitFor(() => expect(result.current.inputNotice).toBe('page-dialog'));
+  expect(result.current.lease?.epoch).toBe(2);
+  act(() =>
+    result.current.sendInput([{ kind: 'text', text: 'replacement pending' }]),
+  );
+  await waitFor(() => expect(bInputCount).toBe(2));
+  act(() =>
+    result.current.sendInput([{ kind: 'text', text: 'replacement queued' }]),
+  );
+  await act(async () => {
+    pendingA.resolve(inputReply(9, 'stale-epoch'));
+    await pendingA.promise;
+  });
+  expect(result.current.lease?.epoch).toBe(2);
+  expect(result.current.inputNotice).toBe('page-dialog');
+  expect(bInputCount).toBe(2);
+  await act(async () => {
+    pendingB.resolve(inputReply(2));
+    await pendingB.promise;
+  });
+  await waitFor(() => expect(bInputCount).toBe(3));
+  expect(a.requests).toEqual([
+    { url: swapLeaseUrl, body: { action: 'open-input-source' } },
+    expect.objectContaining({
+      url: swapInputUrl,
+      body: expect.objectContaining({
+        sourceId: swapSourceA,
+        events: [{ kind: 'text', text: 'old in flight' }],
+      }),
+    }),
+    {
+      url: swapLeaseUrl,
+      body: { action: 'close-input-source', sourceId: swapSourceA },
+    },
+  ]);
+  expect(b.requests[0]).toEqual({
+    url: swapLeaseUrl,
+    body: { action: 'open-input-source' },
+  });
+  expect(
+    b.requests.slice(1).map(({ body }) => ({
+      sourceId: body.sourceId,
+      events: body.events,
+    })),
+  ).toEqual([
+    {
+      sourceId: swapSourceB,
+      events: [{ kind: 'text', text: 'replacement first' }],
+    },
+    {
+      sourceId: swapSourceB,
+      events: [{ kind: 'text', text: 'replacement pending' }],
+    },
+    {
+      sourceId: swapSourceB,
+      events: [{ kind: 'text', text: 'replacement queued' }],
+    },
+  ]);
+  await waitFor(() => expect(result.current.lease?.epoch).toBe(3));
+  expect(result.current.inputNotice).toBeNull();
+  unmount();
+});
