@@ -76,6 +76,10 @@ const CAPABILITY_FIXTURE: Record<
     state: 'disabled',
     reason: 'Native shares are not configured.',
   },
+  'clipboard-image': {
+    state: 'unsupported',
+    reason: 'Clipboard image reads are mobile-only.',
+  },
 };
 
 function validCapabilityReport() {

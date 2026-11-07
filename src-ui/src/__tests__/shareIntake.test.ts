@@ -2,6 +2,7 @@
 
 import { describe, expect, test, vi } from 'vitest';
 import {
+  parseNativeImageList,
   parseNativeSharedImagePayload,
   sharedImagesToFiles,
 } from '../platform/native/share-image';
@@ -143,5 +144,29 @@ describe('receiveSharedImages', () => {
 
     expect(outcome.status).toBe('rejected');
     expect(openPicker).not.toHaveBeenCalled();
+  });
+});
+
+describe('parseNativeImageList', () => {
+  test('an empty native read is an empty list, not a rejection', () => {
+    expect(parseNativeImageList({ files: [] })).toEqual({ files: [] });
+  });
+
+  test('a non-empty read is held to the share payload contract', () => {
+    expect(parseNativeImageList(validPayload(2))).toEqual(validPayload(2));
+    expect(parseNativeImageList(validPayload(6))).toBeNull();
+    expect(
+      parseNativeImageList({
+        files: [
+          { name: 'a.txt', mimeType: 'text/plain', dataUrl: PNG_DATA_URL },
+        ],
+      }),
+    ).toBeNull();
+  });
+
+  test('a reply without a files list is malformed', () => {
+    expect(parseNativeImageList(null)).toBeNull();
+    expect(parseNativeImageList({})).toBeNull();
+    expect(parseNativeImageList({ files: 'none' })).toBeNull();
   });
 });

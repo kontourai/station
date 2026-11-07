@@ -1,18 +1,14 @@
 /**
- * The JS-side entry point for the native share-target → conversation-picker
- * flow.
+ * The JS-side gate for the native share-target → conversation-picker flow.
  *
- * This is deliberately a pure function, not a live subscription: the OS
- * receiver that would eventually call it (Android `ACTION_SEND` intent filter,
- * iOS share extension) is a separate, security-reviewed follow-up. Keeping the
- * intake as a single function makes the whole contract unit-testable with a
- * mocked adapter and payload, without any native host.
+ * The receiver is the station-media-intake plugin's Android `ACTION_SEND`/
+ * `ACTION_SEND_MULTIPLE` image filter; `ShareIntakeController` takes its
+ * pending share and hands the payload here. Keeping the gate a pure function
+ * makes the contract unit-testable with a mocked adapter and payload.
  *
- * The path is gated OFF by the `share-intake` capability. Until a reviewed
- * native receiver reports that capability as `enabled`, {@link receiveSharedImages}
- * short-circuits to an inert `disabled` outcome and never opens the picker, so
- * this ships dead-inert in production while remaining fully exercisable in
- * tests.
+ * The path is gated by the `share-intake` capability, which the native host
+ * reports enabled only on Android. Without it {@link receiveSharedImages}
+ * short-circuits to `disabled` and never opens the picker.
  */
 import {
   type NativeSharedImagePayload,

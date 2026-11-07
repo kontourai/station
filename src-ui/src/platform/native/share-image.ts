@@ -1,10 +1,9 @@
 /**
- * JS-side contract for images arriving through a native share target.
- *
- * The OS-specific receiver (Android `ACTION_SEND` intent filter, iOS share
- * extension) is intentionally out of scope here and gated off by the
- * `share-intake` capability. This module defines only the platform-neutral
- * payload shape that such a receiver must hand to the React app, plus the
+ * JS-side contract for images a native host reads from outside the WebView:
+ * the Android share target (`share-intake`) and the mobile system clipboard
+ * (`clipboard-image`), both owned by the station-media-intake plugin
+ * (`src-desktop/plugins/media-intake`). This module defines the
+ * platform-neutral payload shape that plugin hands to the React app, plus the
  * defensive validation that turns that untrusted payload into `File` objects
  * the existing chat-attachment pipeline already knows how to accept.
  *
@@ -29,7 +28,7 @@ import {
  * mirroring how the browser keeps attachment bytes inline so no local path is
  * ever exposed.
  */
-interface SharedImageFile {
+export interface SharedImageFile {
   name: string;
   mimeType: ChatImageMimeType;
   dataUrl: string;
@@ -86,6 +85,25 @@ export function parseNativeSharedImagePayload(
     files.push(file);
   }
   return { files };
+}
+
+/**
+ * A native read that may find nothing (a clipboard without an image, no
+ * pending share): `{ files: [] }` is an empty list, anything else must pass
+ * {@link parseNativeSharedImagePayload}. `null` when the reply is malformed.
+ */
+export function parseNativeImageList(
+  value: unknown,
+): NativeSharedImagePayload | null {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as { files?: unknown }).files) &&
+    (value as { files: unknown[] }).files.length === 0
+  ) {
+    return { files: [] };
+  }
+  return parseNativeSharedImagePayload(value);
 }
 
 function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {

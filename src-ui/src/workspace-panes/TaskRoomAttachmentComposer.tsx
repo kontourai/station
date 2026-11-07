@@ -2,6 +2,7 @@ import { type ReactNode, useRef } from 'react';
 import { Button } from '../components/Button';
 import { ComposerAttachmentStrip } from '../components/chat/ComposerAttachmentStrip';
 import { useChatPaneFileDrop } from '../hooks/useChatPaneFileDrop';
+import { useClipboardImagePaste } from '../hooks/useClipboardImagePaste';
 import { useFileAttachment } from '../hooks/useFileAttachment';
 import type { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { filesFromDataTransfer } from '../utils/attachment-file-transfer';
@@ -27,6 +28,10 @@ export function TaskRoomAttachmentComposer({
   });
   const { fileInputRef, attachButtonRef, handleFileSelect, openFilePicker } =
     useFileAttachment({ onFilesSelected: attachments.selectFiles });
+  const clipboard = useClipboardImagePaste({
+    onFiles: attachments.selectFiles,
+    onMessage: attachments.setError,
+  });
   return (
     <section
       ref={rootRef}
@@ -79,6 +84,16 @@ export function TaskRoomAttachmentComposer({
       >
         Attach files
       </Button>
+      {clipboard.available && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void clipboard.paste()}
+          disabled={locked || attachments.busy || clipboard.pending}
+        >
+          Paste image
+        </Button>
+      )}
     </section>
   );
 }

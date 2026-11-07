@@ -78,6 +78,12 @@ const WEB_CAPABILITIES: Record<NativeCapabilityId, NativeCapabilityStatus> = {
     state: 'enabled',
     reason: 'PWA share-target URL parameters are handled by the web adapter.',
   },
+  'clipboard-image': {
+    id: 'clipboard-image',
+    state: 'unsupported',
+    reason:
+      'Browsers read clipboard images through navigator.clipboard, not a native host.',
+  },
 };
 
 /**
@@ -291,6 +297,29 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
   }
 
   subscribeToAgentActivityLaunchRoutes(): NativeEventSubscription & {
+    ready: Promise<void>;
+  } {
+    return { dispose() {}, ready: Promise.resolve() };
+  }
+
+  async readClipboardImages(): Promise<NativeCommandResult<never>> {
+    return {
+      status: 'unsupported',
+      command: 'read-clipboard-images',
+      reason: WEB_CAPABILITIES['clipboard-image'].reason,
+    };
+  }
+
+  /** The web adapter's `share-intake` is PWA text; it has no image share. */
+  async takeSharedImages(): Promise<NativeCommandResult<never>> {
+    return {
+      status: 'unsupported',
+      command: 'take-shared-images',
+      reason: 'Shared images arrive only through the native Android app.',
+    };
+  }
+
+  subscribeToSharedImages(): NativeEventSubscription & {
     ready: Promise<void>;
   } {
     return { dispose() {}, ready: Promise.resolve() };

@@ -51,6 +51,7 @@ import { ConversationStopControl } from '../conversation/ConversationStopControl
 import { ArrowDownGlyph } from '../icons/Glyph';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
+import { ClipboardImagePasteButton } from './ClipboardImagePasteButton';
 import { ComposerIconAction } from './ComposerIconAction';
 import {
   appendComposerSessionReference,
@@ -107,6 +108,8 @@ const ComposerAttachmentStrip = React.lazy(() =>
     default: module.ComposerAttachmentStrip,
   })),
 );
+function ignoreMessage(_message: string) {}
+
 const FileAttachmentInput = React.lazy(() =>
   import('./FileAttachmentInput').then((module) => ({
     default: module.FileAttachmentInput,
@@ -570,6 +573,8 @@ export function ChatInputArea({
   onStartNewChat,
 }: ChatInputAreaProps) {
   const textareaDisabled = disabled && !allowDraftWhileDisabled;
+  // Paste image reports through the same channel as the paperclip's notice.
+  const reportClipboardMessage = onAttachUnavailable ?? ignoreMessage;
   useEffect(() => {
     onEnabledChange?.(textareaDisabled ? null : textareaRef.current);
     return () => onEnabledChange?.(null);
@@ -1742,6 +1747,14 @@ export function ChatInputArea({
               onUnavailable={onAttachUnavailable}
             />
           </React.Suspense>
+          {modelSupportsAttachments && (
+            <ClipboardImagePasteButton
+              className="attachment-btn"
+              disabled={disabled}
+              onFiles={selectAttachmentFiles}
+              onMessage={reportClipboardMessage}
+            />
+          )}
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
             <VoiceOrb
               state={voiceState}

@@ -32,6 +32,7 @@ const CAPABILITY_STATES: Record<NativeCapabilityId, NativeCapabilityState> = {
   'native-consent-broker': 'enabled',
   'remote-push': 'unsupported',
   'share-intake': 'disabled',
+  'clipboard-image': 'enabled',
 };
 
 const CAPABILITIES = Object.entries(CAPABILITY_STATES).map(([id, state]) => ({
