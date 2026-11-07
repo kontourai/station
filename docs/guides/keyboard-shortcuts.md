@@ -49,8 +49,8 @@ A command row shows its current shortcut, if it has one, so the palette doubles
 as a way to learn them.
 
 Use the arrow keys to move, Return to run the highlighted item, and Escape or a
-click outside to close; a key legend at the bottom repeats this on devices with
-a keyboard. Running an item usually closes the palette and returns
+click outside to close; a key legend at the bottom repeats this unless the
+device's main pointer is touch. Running an item usually closes the palette and returns
 focus to where you were, including to the header entry if you opened it there. Some items keep it open, such as
 **Reset command history**, which shows whether the reset worked, and a message
 found on another Station, which explains that it cannot be opened here.

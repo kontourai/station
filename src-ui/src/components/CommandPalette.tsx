@@ -39,6 +39,7 @@ import {
 } from '../contexts/open-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useShowSurfacePage } from '../contexts/useShowSurface';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
 import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
@@ -1013,6 +1014,7 @@ export function CommandPalette() {
   );
   const isEmptyQuery = query.trim().length === 0;
   const isMobileLayout = useIsMobile();
+  const coarsePointer = useCoarsePointer();
   // #4694: an empty query is a guided list (Suggestions, Recent, Places, then
   // the rest of the index); a typed query keeps its ranked groups.
   const groups = useMemo(
@@ -1145,46 +1147,50 @@ export function CommandPalette() {
           <Button variant="secondary" onClick={() => setWorkspaceSearch(true)}>
             Workspace search (this Station)
           </Button>
-          {SearchIcon}
-          <input
-            ref={inputRef}
-            // The palette is a modal the user explicitly summoned to type
-            // into; landing anywhere else would be the surprise. Focus is
-            // returned to the opener on close (restoreReturnFocus above).
-            // biome-ignore lint/a11y/noAutofocus: user-invoked modal whose sole purpose is this input.
-            autoFocus
-            className="command-palette__input"
-            type="text"
-            role="combobox"
-            aria-expanded="true"
-            aria-controls="command-palette-listbox"
-            aria-autocomplete="list"
-            aria-label="Search commands and indexed conversation messages"
-            // Focus stays in the input while the arrows move `activeIndex`,
-            // so without this a screen reader announces nothing at all as the
-            // user arrows through results. The option ids already existed and
-            // nothing pointed at them. Undefined — never a dangling id — when
-            // there are no results to point at. Clamped inline, not just via
-            // the post-render effect above: a background query refresh can
-            // shrink the rows while the palette is open, and the effect only
-            // corrects `activeIndex` one render AFTER the attribute would
-            // have pointed at a removed option
-            aria-activedescendant={
-              ordered.length
-                ? `command-palette-option-${Math.min(
-                    activeIndex,
-                    ordered.length - 1,
-                  )}`
-                : undefined
-            }
-            // #4407: the long form was cut off at the palette's width.
-            placeholder="Search commands, projects and chats…"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActiveIndex(0);
-            }}
-          />
+          {/* One wrapping unit: on a narrow palette the field moves to its
+              own line under the button instead of being squeezed (#4694). */}
+          <div className="command-palette__search-field">
+            {SearchIcon}
+            <input
+              ref={inputRef}
+              // The palette is a modal the user explicitly summoned to type
+              // into; landing anywhere else would be the surprise. Focus is
+              // returned to the opener on close (restoreReturnFocus above).
+              // biome-ignore lint/a11y/noAutofocus: user-invoked modal whose sole purpose is this input.
+              autoFocus
+              className="command-palette__input"
+              type="text"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls="command-palette-listbox"
+              aria-autocomplete="list"
+              aria-label="Search commands and indexed conversation messages"
+              // Focus stays in the input while the arrows move `activeIndex`,
+              // so without this a screen reader announces nothing at all as the
+              // user arrows through results. The option ids already existed and
+              // nothing pointed at them. Undefined — never a dangling id — when
+              // there are no results to point at. Clamped inline, not just via
+              // the post-render effect above: a background query refresh can
+              // shrink the rows while the palette is open, and the effect only
+              // corrects `activeIndex` one render AFTER the attribute would
+              // have pointed at a removed option
+              aria-activedescendant={
+                ordered.length
+                  ? `command-palette-option-${Math.min(
+                      activeIndex,
+                      ordered.length - 1,
+                    )}`
+                  : undefined
+              }
+              // #4407: the long form was cut off at the palette's width.
+              placeholder="Search commands, projects and chats…"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActiveIndex(0);
+              }}
+            />
+          </div>
         </div>
 
         {paneNotice && (
@@ -1331,13 +1337,13 @@ export function CommandPalette() {
             ))}
           </ul>
         )}
-        <PaletteKeyLegend />
+        {!coarsePointer && <PaletteKeyLegend />}
       </div>
     </div>
   );
 }
 
-/** #4694: the palette's own keys, shown where a keyboard is likely. */
+/** #4694: the palette's own keys; not drawn for a finger-only pointer. */
 function PaletteKeyLegend() {
   return (
     <ul className="command-palette__legend" aria-label="Palette keys">
@@ -1345,7 +1351,7 @@ function PaletteKeyLegend() {
         <kbd>↑↓</kbd> Move
       </li>
       <li>
-        <kbd>↵</kbd> Open
+        <kbd>Enter</kbd> Open
       </li>
       <li>
         <kbd>Esc</kbd> Close

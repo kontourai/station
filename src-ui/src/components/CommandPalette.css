@@ -28,10 +28,19 @@
 
 .command-palette__input-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-primary);
+}
+
+.command-palette__search-field {
+  display: flex;
+  flex: 1 1 16rem;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .command-palette__search-icon {
@@ -41,6 +50,7 @@
 
 .command-palette__input {
   flex: 1 1 auto;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
@@ -138,7 +148,7 @@
   font-size: var(--k-text-sm);
 }
 
-/* #4694: the palette's own keys. A touch-only device has none of them. */
+/* #4694: the palette's own keys (not rendered for a coarse pointer). */
 .command-palette__legend {
   display: flex;
   flex-wrap: wrap;
@@ -166,25 +176,4 @@
   font-family: var(--k-font-mono);
   font-size: var(--k-text-sm);
   text-align: center;
-}
-
-@media (hover: none) and (pointer: coarse) {
-  .command-palette__legend {
-    display: none;
-  }
-}
-
-/* #4694: the header entry makes the palette reachable on a phone. Let the
-   Workspace search button take its own line there instead of squeezing the
-   search field. */
-@media (max-width: 480px) {
-  .command-palette__input-row {
-    flex-wrap: wrap;
-  }
-  .command-palette__input-row > button:first-child {
-    flex: 1 0 100%;
-  }
-  .command-palette__input {
-    min-width: 0;
-  }
 }
