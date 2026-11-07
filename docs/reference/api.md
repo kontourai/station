@@ -6448,7 +6448,8 @@ observations.
 usage event; the session view keeps the first accepted plan, so after a model switch the two can differ) narrow to receipts with that attribution, both scoped to the
 process run since the latest `session.started`; `groupBy=connection|modelConnection` groups by
 it. Connection ids belong to this Station, so these require `localOnly=1` (400
-otherwise). Sessions that recorded no connection stay unattributed and are
+otherwise). A `connectionId` that is not a valid engine connection id, or a
+`modelConnectionId` that is not a bounded printable key, is also a 400. Sessions that recorded no connection stay unattributed and are
 never inferred from the engine. Because capture counts are per engine, a
 connection-filtered read is at most `partial`. Provider and connection filters
 apply inside the bounded 500-observation selection. Connection attribution is
