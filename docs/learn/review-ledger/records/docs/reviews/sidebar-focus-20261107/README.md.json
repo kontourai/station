@@ -38,7 +38,21 @@
 
     "docs/reviews/sidebar-focus-20261107/throttled-loading.png",
 
-    "docs/reviews/sidebar-focus-20261107/focus-comparison.png"
+    "docs/reviews/sidebar-focus-20261107/focus-comparison.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md",
+
+    "docs/reviews/sidebar-focus-20261107/manager-capture-manifest.json",
+
+    "docs/reviews/sidebar-focus-20261107/manager-dark-1440x900.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-light-1440x900.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-dark-390x844.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-light-390x844.png",
+
+    "docs/reviews/sidebar-focus-20261107/row-editor-dark-390x844.png"
   ],
 
   "checks": [
