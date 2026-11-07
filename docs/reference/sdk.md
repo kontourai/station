@@ -6218,7 +6218,8 @@ are disabled and live status polls only while a login is pending. Quota refresh 
 `@kontourai/station-contracts/engine-accounts`. Quota queries strictly parse
 optional account/credit/model, Claude spending/breakdown/limit metadata and
 response-shape audit fields and bounded hourly allowance history on both
-known and unknown quota variants. `useEngineActivityQuery` accepts an optional
+known and unknown quota variants. `useEngineActivityQuery` takes an engine id
+string and an optional
 credential profile filter: `null` selects the default profile, a string selects
 a saved profile, and an omitted filter includes all engine accounts. Older
 usage without an account observation remains excluded from profile totals. Consumers must not treat unknown quota as zero
@@ -6288,6 +6289,10 @@ The SDK root retains the same hook and fetcher exports.
 `requireRequestScope`, with the same captured-authority rules as the operator
 query. Scoped keys include Station, authority, and the explicit credential-profile
 filter; all accounts, the default profile, and a named profile remain distinct.
+`UsageRollupQuery` also takes any declared usage `provider`, and local
+`connectionId`/`modelConnectionId` filters (with `localOnly`), keyed separately.
+Gate the connection filters on the `usageConnectionFilters` capability: an
+older host ignores them and returns unfiltered totals.
 The Profile receipt panel requires a scope and clears its page position when
 authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
 on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured
