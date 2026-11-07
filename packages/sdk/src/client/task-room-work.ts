@@ -658,7 +658,9 @@ export async function fetchSharedTaskRoomRequests(
     throw new TaskRoomWorkProtocolError('Invalid shared request records.');
   const matches: SharedWorkRecord[] = [];
   for (const record of value.records) {
-    if (!object(record) || record.operationId !== input.operationId) continue;
+    if (!object(record) || !sharedText(record.operationId, 160))
+      throw new TaskRoomWorkProtocolError('Invalid shared request record.');
+    if (record.operationId !== input.operationId) continue;
     if (
       !sharedRecord(record, scope, input, inputDigest) ||
       !(await snapshotContentMatches(record.context))

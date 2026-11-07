@@ -667,3 +667,46 @@ test('cancellation after shared POST remains unconfirmed', async () => {
   });
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+test('shared lookup refuses a malformed record rather than reporting an empty result', async () => {
+  sharedAuthority();
+  const { fetchSharedTaskRoomRequests } = await import(
+    '../client/task-room-work'
+  );
+  const { TASK_ROOM_SHARED_WORK_VERSION, TASK_ROOM_SHARED_CONTEXT_VERSION } =
+    await import('@kontourai/station-contracts/task-room-work');
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        response({ version: TASK_ROOM_SHARED_WORK_VERSION, records: [{}] }),
+      ),
+  );
+  const scope = {
+    projectId: 'project',
+    taskId: 'task',
+    taskCreatedAt: incarnation,
+  };
+  const request = {
+    version: TASK_ROOM_SHARED_WORK_VERSION,
+    expectedActorId: 'actor',
+    taskCreatedAt: incarnation,
+    operationId: 'op',
+    agentId: 'agent',
+    modelId: 'model',
+    context: {
+      version: TASK_ROOM_SHARED_CONTEXT_VERSION,
+      brief: { documentRevision: 'rev', digest: 'a'.repeat(64) },
+      results: [],
+    },
+    prompt: 'Hello',
+    target: { kind: 'new-thread' as const },
+  };
+  await expect(
+    fetchSharedTaskRoomRequests('http://station.test', scope, request, {
+      requestScope: { apiBase: 'http://station.test', authorityKey: 'a' },
+      isCurrent: () => true,
+    }),
+  ).rejects.toThrow('Invalid shared request record');
+});
