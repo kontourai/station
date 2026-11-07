@@ -5682,6 +5682,16 @@ Retry is offered only for a batch the host refused before dispatching any of it
 (`surface-busy`), kept whole as one gesture with the control epoch it was made
 at, and dropped when control changes hands. The registry cannot cancel an arbitrary producer effect already in flight.
 
+Human viewers lazily register an authenticated input source through the existing
+lease route. `useLiveSurface` captures that source and transport for teardown;
+the registry seals the retiring source before cancelling its held input on the
+serialized dispatch chain. A newer source's press is preserved. Failed neutral
+cleanup retains held-input custody and fences further input until whole-surface
+cleanup succeeds. Registration refusal or an invalid source drops pending input;
+only a later user action registers again, without replaying refused events.
+Replacing the transport also reconnects frames. See the
+[wire and recovery contract](../reference/browser-and-devices.md#agent-authority-and-human-input).
+
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the
 Browser; unregistering the generation also cancels and joins its recordings.
