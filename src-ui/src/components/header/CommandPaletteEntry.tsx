@@ -1,6 +1,6 @@
+import { useOptionalShortcutRegistry } from '../../contexts/KeyboardShortcutsContext';
 import { KERNEL_RESERVED_SHORTCUTS } from '../../contexts/kernelReservedShortcuts';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import { SearchGlyph } from '../icons/Glyph';
 
 const LABEL = 'Search or jump to…';
@@ -17,10 +17,12 @@ const LABEL = 'Search or jump to…';
  */
 export function CommandPaletteEntry() {
   const isMobile = useIsMobile();
-  const display = useShortcutDisplay(
-    KERNEL_RESERVED_SHORTCUTS.commandPalette.id,
-  );
-  // The current binding, which Settings can change or clear.
+  const display =
+    useOptionalShortcutRegistry()?.getDisplay(
+      KERNEL_RESERVED_SHORTCUTS.commandPalette.id,
+    ) ?? '';
+  // The current binding, which Settings can change or clear. The header also
+  // renders in fixtures without the shortcut provider; it shows no chord there.
   const chord = display && display !== 'Not set' ? display : '';
   return (
     <button

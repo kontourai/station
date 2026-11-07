@@ -99,37 +99,39 @@ vi.mock('../contexts/KeyboardShortcutsContext', async (importOriginal) => {
     await importOriginal<
       typeof import('../contexts/KeyboardShortcutsContext')
     >();
+  const registry = () => ({
+    getDisplay: (id: string) =>
+      id === 'command-palette'
+        ? actual.formatShortcutChord(['cmd'], 'k', true)
+        : '',
+    getAllShortcuts: () => [
+      {
+        id: 'dock.newChat',
+        key: 't',
+        modifiers: ['cmd'],
+        description: 'New chat',
+        handler: newChat,
+      },
+      {
+        id: 'app.shortcuts',
+        key: '/',
+        modifiers: ['cmd'],
+        description: 'Show keyboard shortcuts',
+        handler: vi.fn(),
+      },
+    ],
+  });
   return {
     formatShortcutChord: actual.formatShortcutChord,
     evaluateShortcutWhen: () => true,
-    useShortcutRegistry: () => ({
-      getDisplay: (id: string) =>
-        id === 'command-palette'
-          ? actual.formatShortcutChord(['cmd'], 'k', true)
-          : '',
-      getAllShortcuts: () => [
-        {
-          id: 'dock.newChat',
-          key: 't',
-          modifiers: ['cmd'],
-          description: 'New chat',
-          handler: newChat,
-        },
-        {
-          id: 'app.shortcuts',
-          key: '/',
-          modifiers: ['cmd'],
-          description: 'Show keyboard shortcuts',
-          handler: vi.fn(),
-        },
-      ],
-    }),
+    useShortcutRegistry: registry,
+    // The header pill reads its chord through the provider-optional hook.
+    useOptionalShortcutRegistry: registry,
   };
 });
 
 // The ⌘K handler is the existing keyboard route; this file drives the pill.
-vi.mock('../hooks/useKeyboardShortcut', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../hooks/useKeyboardShortcut')>()),
+vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: () => {},
 }));
 
