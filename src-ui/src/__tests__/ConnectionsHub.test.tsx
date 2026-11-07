@@ -10,7 +10,7 @@
  * they agree on one state, not that each is individually plausible.
  */
 
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { canonicalConnectionPath } from '../views/connections-hub/connection-sections';
 
@@ -23,8 +23,15 @@ const state: {
   ssh: unknown[];
   /** The Engines read's first fetch is still in flight. */
   enginesLoading: boolean;
+  /** Live ACP bridge connections and registry entries (managed policy). */
+  acpConnections: unknown[];
+  acpRegistry: unknown[];
+  policy: unknown;
 } = {
   enginesLoading: false,
+  acpConnections: [],
+  acpRegistry: [],
+  policy: undefined,
   connections: [],
   engines: [],
   tools: [],
@@ -66,6 +73,16 @@ vi.mock('@kontourai/station-sdk', () => ({
   useGlobalKnowledgeStatusQuery: () => ({ data: state.knowledge }),
   useSshEnvironmentsQuery: () => ({ data: state.ssh }),
   sshEnvironmentsToKnownEnvironments: () => [],
+  useACPConnectionsQuery: () => ({ data: state.acpConnections }),
+  useACPConnectionRegistryQuery: () => ({ data: state.acpRegistry }),
+  useACPConnectionProbeStatusesQuery: () => ({ data: [] }),
+  useACPPublicRegistrySourceQuery: () => ({ data: undefined }),
+  useUnregisteredACPConnectionsQuery: () => ({ data: [] }),
+  recheckACPConnectionRegistry: vi.fn(),
+  refreshACPPublicRegistrySource: vi.fn(),
+}));
+vi.mock('../contexts/ManagedPolicyContext', () => ({
+  useManagedPolicySummary: () => state.policy,
 }));
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ connections: state.savedStations }),
@@ -101,7 +118,10 @@ vi.mock('../views/connections-hub/IntegrationStatusSection', () => ({
   IntegrationStatusSection: () => <div data-testid="integration-status-slot" />,
 }));
 
-import { ConnectionsHub } from '../views/ConnectionsHub';
+import {
+  CONNECTIONS_RESOLVE_WAIT_MS,
+  ConnectionsHub,
+} from '../views/ConnectionsHub';
 import { ConnectionsSectionFrame } from '../views/ConnectionsSectionFrame';
 
 /** The section whose tab carries the rail's "needs attention" dot, if any. */
@@ -133,7 +153,11 @@ describe('the /connections resolver', () => {
     state.savedStations = [];
     state.ssh = [];
     state.enginesLoading = false;
+    state.acpConnections = [];
+    state.acpRegistry = [];
+    state.policy = undefined;
     navigate.mockReset();
+    vi.useRealTimers();
   });
 
   test('lands on Models when nothing needs attention', () => {
@@ -203,6 +227,9 @@ describe('the /connections resolver', () => {
     state.enginesLoading = true;
     const { rerender } = render(<ConnectionsHub />);
     expect(navigate).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('status', { name: 'Loading connections' }),
+    ).toBeTruthy();
 
     state.enginesLoading = false;
     state.engines = [engine('muse', 'Muse Code', { status: 'error' })];
@@ -238,7 +265,9 @@ describe('the /connections resolver', () => {
     expect(navigate).toHaveBeenCalledWith('/connections/engines');
   });
 
-  test('knowledge with a store and no embedding model needs attention', () => {
+  test('knowledge with a store and no embedding model is resting, not attention', () => {
+    // Semantic search is off, which the Knowledge page says; like an
+    // unconnected computer, it is not a fault to send anyone to.
     state.knowledge = {
       vectorDb: { id: 'lancedb-builtin', name: 'Station Built-In' },
       embedding: null,
@@ -249,9 +278,9 @@ describe('the /connections resolver', () => {
         <div />
       </ConnectionsSectionFrame>,
     );
-    expect(railAttentionSection()).toBe('Knowledge');
+    expect(railAttentionSection()).toBeUndefined();
     render(<ConnectionsHub />);
-    expect(navigate).toHaveBeenCalledWith('/connections/knowledge');
+    expect(navigate).toHaveBeenCalledWith('/connections/models');
   });
 
   test('a model whose check failed puts the dot on Models, ahead of engines', () => {
@@ -286,5 +315,91 @@ describe('the /connections resolver', () => {
     expect(railAttentionSection()).toBe('Models');
     render(<ConnectionsHub />);
     expect(navigate).toHaveBeenCalledWith('/connections/models');
+  });
+
+  test('resting model states mark nothing: saved-untested, no catalog, retrying', () => {
+    const evidence = (
+      check: Record<string, unknown>,
+      level = 'catalog-ready',
+    ) => ({
+      evidenceVersion: 1,
+      level,
+      observedAt: '2026-08-20T10:00:00.000Z',
+      freshness: 'fresh',
+      summary: '',
+      smoke: { status: 'not-tested', freshness: 'unknown', turnLimit: 1 },
+      check,
+    });
+    const at = '2026-08-20T10:00:00.000Z';
+    state.connections = [
+      evidence({ status: 'not-checked' }, 'prerequisite-ready'),
+      evidence({ status: 'catalog-unavailable', checkedAt: at }),
+      evidence({ status: 'unreachable', retrying: true, checkedAt: at }),
+    ].map((readinessEvidence, index) => ({
+      id: `model-${index}`,
+      kind: 'model',
+      type: 'openai-compat',
+      name: `Model ${index}`,
+      enabled: true,
+      status: 'ready',
+      capabilities: ['llm'],
+      config: {},
+      prerequisites: [],
+      readinessEvidence,
+    }));
+    render(
+      <ConnectionsSectionFrame sectionId="engines">
+        <div />
+      </ConnectionsSectionFrame>,
+    );
+    expect(railAttentionSection()).toBeUndefined();
+  });
+
+  test('a public-registry ACP agent the policy refuses marks Engines, though its status is ready', () => {
+    state.engines = [
+      engine('opencode', 'OpenCode', { type: 'acp', config: {} }),
+    ];
+    state.acpConnections = [{ id: 'opencode', name: 'OpenCode' }];
+    state.acpRegistry = [
+      { id: 'opencode', installed: true, source: 'registry' },
+    ];
+    state.policy = {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: {},
+      engines: { allowed: ['acp'], acpRegistryAgents: false, pinned: [] },
+    };
+    render(
+      <ConnectionsSectionFrame sectionId="models">
+        <div />
+      </ConnectionsSectionFrame>,
+    );
+    expect(railAttentionSection()).toBe('Engines');
+    render(<ConnectionsHub />);
+    expect(navigate).toHaveBeenCalledWith('/connections/engines');
+  });
+
+  test('a read that never answers does not hold the redirect past the wait', () => {
+    vi.useFakeTimers();
+    state.enginesLoading = true;
+    state.tools = [
+      {
+        id: 'audit-echo',
+        connected: false,
+        probe: { ok: false, toolCount: 0 },
+      },
+    ];
+    render(<ConnectionsHub />);
+    act(() => {
+      vi.advanceTimersByTime(CONNECTIONS_RESOLVE_WAIT_MS - 1);
+    });
+    expect(navigate).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    // Resolves with what is known: Tools has answered with a failed probe.
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith('/connections/tools');
   });
 });

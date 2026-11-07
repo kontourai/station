@@ -110,6 +110,8 @@ const CANONICAL_VIEWS = [
   { type: 'connections-engines' },
   { type: 'connections-engine-edit', id: 'engine' },
   { type: 'connections-engine-edit', id: 'engine', tab: 'usage' },
+  // An id holding `/` is encoded, so it round-trips.
+  { type: 'connections-engine-edit', id: 'team/engine', tab: 'settings' },
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 'tool' },
   { type: 'connections-knowledge' },
@@ -786,6 +788,15 @@ describe('app-shell routing', () => {
         type: 'connections-engine-edit',
         id: 'claude',
       });
+    // A trailing slash is the same route, with a tab too.
+    expect(resolveViewFromPath('/connections/engines/claude/usage/')).toEqual({
+      type: 'connections-engine-edit',
+      id: 'claude',
+      tab: 'usage',
+    });
+    expect(
+      getPathForView({ type: 'connections-engine-edit', id: 'team/engine' }),
+    ).toBe('/connections/engines/team%2Fengine');
     // The add flow's deep link is not an engine id with a tab.
     expect(resolveViewFromPath('/connections/engines/new/opencode')).toEqual({
       type: 'connections-engine-new',

@@ -21,19 +21,27 @@ export function parseResourceDetailPath<Tab extends string>(
   tabs: readonly Tab[],
 ): ResourceDetailRoute<Tab> | null {
   if (!path.startsWith(`${base}/`)) return null;
-  const [id, tab, ...rest] = path.slice(base.length + 1).split('/');
-  if (!id) return null;
-  // A trailing slash after the id is the id alone, as it always was.
-  if (tab === undefined || (tab === '' && rest.length === 0)) return { id };
+  // One trailing slash is the same route, with or without a tab.
+  const rest = path.slice(base.length + 1).replace(/\/$/, '');
+  const [rawId, tab, ...extra] = rest.split('/');
+  if (!rawId) return null;
+  let id: string;
+  try {
+    id = decodeURIComponent(rawId);
+  } catch {
+    return { notFound: true };
+  }
+  if (tab === undefined) return { id };
   const known = tabs.find((candidate) => candidate === tab);
-  if (!known || rest.length > 0) return { notFound: true };
+  if (!known || extra.length > 0) return { notFound: true };
   return { id, tab: known };
 }
 
+/** The id is encoded, so an id holding `/` or `%` round-trips. */
 export function resourceDetailPath(
   base: string,
   id: string,
   tab?: string,
 ): string {
-  return `${base}/${id}${tab ? `/${tab}` : ''}`;
+  return `${base}/${encodeURIComponent(id)}${tab ? `/${tab}` : ''}`;
 }

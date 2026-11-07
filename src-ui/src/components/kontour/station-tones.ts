@@ -1,6 +1,5 @@
 import { type SemanticTone, toneForValue } from '@kontourai/ui/react';
 import type { SessionStateLabel } from '../../utils/session-state';
-import type { ConnectionVerdict } from '../../views/connections-hub/connection-health';
 
 // ─── Station domain → Console Kit semantic tones ──────────────────────────────
 // The single place Station's domain vocabularies map onto Console Kit's
@@ -86,6 +85,18 @@ const SESSION_STATE_TONES: Record<SessionStateLabel, SemanticTone> = {
 export function sessionStateTone(state: SessionStateLabel): SemanticTone {
   return SESSION_STATE_TONES[state];
 }
+
+/**
+ * A connection's verdict (`deriveConnectionHealth` in
+ * `views/connections-hub/connection-health.ts`). Internal scale, never shown
+ * as words: only `ready` means usable now.
+ */
+export type ConnectionVerdict =
+  | 'ready'
+  | 'degraded'
+  | 'failing'
+  | 'setup'
+  | 'off';
 
 const CONNECTION_VERDICT_TONES: Record<ConnectionVerdict, SemanticTone> = {
   ready: 'positive',

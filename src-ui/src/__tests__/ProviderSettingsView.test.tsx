@@ -424,7 +424,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     // The readiness is the row's badge; the subtitle holds facts only, and
     // the row no longer paints an inline status dot as its icon.
     const row = container.querySelector('.split-pane__item')!;
-    expect(row.querySelector('.resource-status-badge')?.textContent).toBe(
+    expect(row.querySelector('.resource-status__badge')?.textContent).toBe(
       'Saved — not verified',
     );
     const subtitle = row.querySelector('.split-pane__item-subtitle');

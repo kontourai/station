@@ -24,6 +24,7 @@ import {
   useIntegrationsQuery,
   useModelConnectionsQuery,
 } from '@kontourai/station-sdk';
+import { useManagedEngineStateFor } from '../../hooks/useManagedEngines';
 import type { ProviderConnection } from '../provider-settings/types';
 import { filterModelProviders } from '../provider-settings/utils';
 import {
@@ -59,6 +60,7 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
   const { data: tools = [] } = toolsQuery;
   const { data: knowledge } = knowledgeQuery;
   const { rows: computers } = useComputerRows();
+  const managedStateFor = useManagedEngineStateFor();
 
   /**
    * Live capture caught both halves of getting the counts wrong: "Models 1"
@@ -89,13 +91,9 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
   };
 
   const needsAttention = (id: ConnectionSectionId): boolean => {
-    // Semantic search needs both halves: a vector store to hold the index
-    // and an embedding model to build it. Without the model, nothing is
-    // searchable even though a store is set.
-    if (id === 'knowledge')
-      return Boolean(
-        knowledge && (!knowledge.vectorDb || !knowledge.embedding),
-      );
+    // A store with no embedding model is a resting state (semantic search
+    // off), like an unconnected computer: the Knowledge page says so.
+    if (id === 'knowledge') return Boolean(knowledge && !knowledge.vectorDb);
     // CI-R3: `connected` is "an agent session currently holds a client",
     // which is false for every tool server — including the built-ins — until
     // a turn runs, so deriving attention from it put a warn dot on a healthy
@@ -108,22 +106,22 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     // connected" for every computer nobody has connected yet — which is a
     // resting state, not a problem to fix.
     if (id === 'computers') return false;
-    // One verdict per connection, the same one its list row shows: a failed
-    // check, an unreachable or degraded engine and an untested model all
-    // need attention, not only a missing prerequisite. Engines the list
-    // does not show (supported, never added) claim nothing here either.
-    // Managed policy is not read here; the rows read it to say "Not
-    // allowed" rather than "Disabled". Either way the verdict is not ready.
+    // The same verdict its list row shows, and its own attention rule
+    // (`ConnectionHealth.needsAttention`): an engine marks whenever it is not
+    // dispatchable, including under managed policy; a model connection only
+    // for something the reader must fix. Engines the list does not show
+    // (supported, never added) claim nothing here either.
     if (id === 'models')
       return models.some(
-        (item) =>
-          deriveConnectionHealth(modelHealthInput(item)).verdict !== 'ready',
+        (item) => deriveConnectionHealth(modelHealthInput(item)).needsAttention,
       );
     return engines
       .filter((engine) => engine.setup?.state !== 'available')
       .some(
         (engine) =>
-          deriveConnectionHealth(engineHealthInput(engine)).verdict !== 'ready',
+          deriveConnectionHealth(engineHealthInput(engine), {
+            policyDisallowed: managedStateFor(engine)?.disallowed === true,
+          }).needsAttention,
       );
   };
 
@@ -132,7 +130,9 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     needsAttention,
     // `isLoading` is a first fetch in flight. A disabled read (no Station
     // to ask) is pending but not loading, and must not hold the redirect
-    // forever. Computers claims no attention, so its read is not waited on.
+    // forever. Computers claims no attention, so its read is not waited on;
+    // the ACP reads behind managed policy are not waited on either, and the
+    // resolver's own time bound covers a slow one.
     settled: [modelsQuery, enginesQuery, toolsQuery, knowledgeQuery].every(
       (query) => !query.isLoading,
     ),

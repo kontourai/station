@@ -116,7 +116,7 @@ describe('deriveConnectionHealth', () => {
       verdict: 'failing',
       label: 'Check failed',
       tone: 'negative',
-      action: { label: 'Check connection', id: 'check' },
+      action: { label: 'Check connection', id: 'check-connection' },
     });
     expect(
       deriveConnectionHealth(
@@ -173,6 +173,7 @@ describe('deriveConnectionHealth', () => {
       verdict: 'ready',
       label: 'Ready',
       tone: 'positive',
+      needsAttention: false,
     });
   });
 
@@ -181,6 +182,79 @@ describe('deriveConnectionHealth', () => {
       verdict: 'ready',
       label: 'Ready',
       tone: 'positive',
+      needsAttention: false,
     });
+  });
+
+  test('the fix id is its label, so a "Set up" fix is never called something else', () => {
+    const health = deriveConnectionHealth(
+      engineHealthInput(
+        engine({
+          status: 'missing_prerequisites',
+          setup: { state: 'configured', detected: true, configured: true },
+        }),
+      ),
+    );
+    expect(health.action).toEqual({ label: 'Set up', id: 'set-up' });
+  });
+
+  test('an engine needs attention whenever it is not dispatchable', () => {
+    for (const health of [
+      deriveConnectionHealth(engineHealthInput(engine({ status: 'degraded' }))),
+      deriveConnectionHealth(engineHealthInput(engine()), {
+        policyDisallowed: true,
+      }),
+      deriveConnectionHealth(
+        engineHealthInput(engine({ readinessEvidence: failedSmoke })),
+      ),
+    ])
+      expect(health.needsAttention).toBe(true);
+    expect(
+      deriveConnectionHealth(engineHealthInput(engine())).needsAttention,
+    ).toBe(false);
+  });
+
+  test('a model needs attention only for something the reader must fix', () => {
+    const attention = (connection: ProviderConnection) =>
+      deriveConnectionHealth(modelHealthInput(connection)).needsAttention;
+    // Resting: saved but untested, reachable without a catalog, retrying.
+    expect(
+      attention(model({ status: 'not-checked' }, 'prerequisite-ready')),
+    ).toBe(false);
+    expect(
+      attention(model({ status: 'catalog-unavailable', checkedAt: OBSERVED })),
+    ).toBe(false);
+    expect(
+      attention(
+        model({ status: 'unreachable', retrying: true, checkedAt: OBSERVED }),
+      ),
+    ).toBe(false);
+    // To fix: refused, unreachable past the grace window, a missing key, off.
+    expect(attention(model({ status: 'failed', checkedAt: OBSERVED }))).toBe(
+      true,
+    );
+    expect(
+      attention(model({ status: 'unreachable', checkedAt: OBSERVED })),
+    ).toBe(true);
+    expect(
+      attention({
+        ...model({ status: 'not-checked' }),
+        status: 'missing_prerequisites',
+        prerequisites: [
+          {
+            id: 'anthropic-api-key',
+            name: 'Anthropic API Key',
+            status: 'missing',
+            category: 'required',
+          },
+        ],
+      } as ProviderConnection),
+    ).toBe(true);
+    expect(
+      attention({
+        ...model({ status: 'passed', checkedAt: OBSERVED }),
+        enabled: false,
+      }),
+    ).toBe(true);
   });
 });

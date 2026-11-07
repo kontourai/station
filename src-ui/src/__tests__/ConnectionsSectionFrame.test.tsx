@@ -75,6 +75,13 @@ vi.mock('@kontourai/station-sdk', () => ({
   useSshEnvironmentsQuery: () => ({ data: state.ssh }),
   // The Computers count now comes from the same fold the body renders
   //so the frame reaches this adapter too.
+  useACPConnectionsQuery: () => ({ data: [] }),
+  useACPConnectionRegistryQuery: () => ({ data: [] }),
+  useACPConnectionProbeStatusesQuery: () => ({ data: [] }),
+  useACPPublicRegistrySourceQuery: () => ({ data: undefined }),
+  useUnregisteredACPConnectionsQuery: () => ({ data: [] }),
+  recheckACPConnectionRegistry: vi.fn(),
+  refreshACPPublicRegistrySource: vi.fn(),
   sshEnvironmentsToKnownEnvironments: (views: { profile: { id: string } }[]) =>
     views.map((view) => ({
       schemaVersion: 1,
@@ -82,6 +89,9 @@ vi.mock('@kontourai/station-sdk', () => ({
       source: 'ssh',
       endpoints: [],
     })),
+}));
+vi.mock('../contexts/ManagedPolicyContext', () => ({
+  useManagedPolicySummary: () => undefined,
 }));
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ connections: state.savedStations }),

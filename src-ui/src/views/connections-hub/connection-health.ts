@@ -1,8 +1,9 @@
 /**
- * One answer to "can I use this connection now?" (connections-overhaul
- * design record, "One readiness derivation"). The section rail, the
- * `/connections` resolver and the Engines and Models list rows read this
- * function, so they cannot disagree about the same connection.
+ * One answer to "can I use this connection now?"
+ * (docs/design/connections-overhaul.md, "One readiness derivation"). The
+ * section rail, the `/connections` resolver, the Engines and Models list rows
+ * and the engine detail read this function, so they cannot disagree about the
+ * same connection.
  *
  * Labels, reasons and fixes are `resolveProviderPresentation`'s recorded,
  * finite readiness words; this only ranks its answer against evidence the
@@ -20,30 +21,33 @@
  */
 
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
-import { connectionVerdictTone } from '../../components/kontour/station-tones';
+import {
+  type ConnectionVerdict,
+  connectionVerdictTone,
+} from '../../components/kontour/station-tones';
 import type { ResourceStatus } from '../../components/resource-hub/resource-status';
 import {
   blockingPrerequisite,
   type ProviderCatalogInput,
   type ProviderReadiness,
-  prerequisiteRemedy,
   resolveProviderPresentation,
 } from '../provider-settings/providerCatalog';
 import type { ProviderConnection } from '../provider-settings/types';
 
-/**
- * Internal verdict scale; never shown as words. Only `ready` means usable
- * now, and everything else needs attention.
- */
-export type ConnectionVerdict =
-  | 'ready'
-  | 'degraded'
-  | 'failing'
-  | 'setup'
-  | 'off';
+export type { ConnectionVerdict };
 
 export interface ConnectionHealth extends ResourceStatus {
   verdict: ConnectionVerdict;
+  /**
+   * Whether the section rail marks this connection and `/connections` may
+   * open its section for it. An engine needs attention whenever it is not
+   * dispatchable. A model connection does only for something the reader
+   * must fix — off, a blocking prerequisite, a refused check, an endpoint
+   * Station has stopped retrying — and not for resting states: saved but
+   * untested, reachable without a catalog, or unreachable inside the retry
+   * grace window, which the server still treats as transient.
+   */
+  needsAttention: boolean;
 }
 
 /**
@@ -116,7 +120,8 @@ export function modelHealthInput(
 }
 
 /** Engine statuses that are observations, not placement. */
-const OBSERVED_ENGINE_STATUSES = new Set(['error', 'disconnected', 'degraded']);
+// `ConnectionStatus` has no `disconnected`; engines report `error`.
+const OBSERVED_ENGINE_STATUSES = new Set(['error', 'degraded']);
 
 type Presentation = ReturnType<typeof resolveProviderPresentation>;
 
@@ -137,6 +142,47 @@ function observedPresentation(
     !OBSERVED_ENGINE_STATUSES.has(input.status)
   )
     return presentation;
+  return statusPresentation(input);
+}
+
+/** "Set up" → "set-up": the fix's id is its label, so the two cannot drift. */
+function actionId(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function health(
+  input: ProviderCatalogInput,
+  verdict: ConnectionVerdict,
+  presentation: Presentation,
+  blocked: boolean,
+): ConnectionHealth {
+  return {
+    verdict,
+    label: presentation.readiness,
+    tone: connectionVerdictTone(verdict),
+    needsAttention:
+      input.kind === 'agent'
+        ? verdict !== 'ready'
+        : verdict === 'off' || verdict === 'failing' || blocked,
+    // Ready needs no reason and offers no fix; "Details" is not a fix.
+    ...(verdict === 'ready'
+      ? {}
+      : {
+          reason: presentation.detail,
+          action: {
+            label: presentation.actionLabel,
+            id: actionId(presentation.actionLabel),
+          },
+        }),
+  };
+}
+
+/** The resolver's answer about an engine's status alone. */
+function statusPresentation(input: ProviderCatalogInput): Presentation {
   return resolveProviderPresentation({
     id: input.id,
     kind: input.kind,
@@ -148,25 +194,6 @@ function observedPresentation(
     ...(input.readOnly ? { readOnly: input.readOnly } : {}),
     setup: null,
   });
-}
-
-function health(
-  verdict: ConnectionVerdict,
-  presentation: Presentation,
-  actionId: string,
-): ConnectionHealth {
-  return {
-    verdict,
-    label: presentation.readiness,
-    tone: connectionVerdictTone(verdict),
-    // Ready needs no reason and offers no fix; "Details" is not a fix.
-    ...(verdict === 'ready'
-      ? {}
-      : {
-          reason: presentation.detail,
-          action: { label: presentation.actionLabel, id: actionId },
-        }),
-  };
 }
 
 /**
@@ -184,17 +211,16 @@ export function deriveConnectionHealth(
       verdict: 'off',
       label: 'Not allowed',
       tone: connectionVerdictTone('off'),
+      needsAttention: true,
       reason: 'Your organization does not allow this engine.',
     };
   const presentation = resolveProviderPresentation(input);
   if (READINESS_VERDICT[presentation.readiness] === 'off')
-    return health('off', presentation, 'enable');
-  const blocker = blockingPrerequisite(input.prerequisites ?? []);
-  if (blocker)
-    return health('setup', presentation, prerequisiteRemedy(blocker));
+    return health(input, 'off', presentation, false);
+  if (blockingPrerequisite(input.prerequisites ?? []))
+    return health(input, 'setup', presentation, true);
   const observed = observedPresentation(input, presentation);
   const verdict = READINESS_VERDICT[observed.readiness];
-  if (verdict === 'failing') return health(verdict, observed, 'check');
   if (
     verdict === 'ready' &&
     input.kind === 'agent' &&
@@ -203,23 +229,14 @@ export function deriveConnectionHealth(
     // The resolver can read Ready from setup placement alone; dispatch
     // reads status. Report the status in the resolver's own words, and
     // never as ready.
-    const byStatus = resolveProviderPresentation({
-      id: input.id,
-      kind: input.kind,
-      type: input.type,
-      name: input.name,
-      enabled: input.enabled,
-      status: input.status,
-      href: input.href,
-      setup: null,
-    });
+    const byStatus = statusPresentation(input);
     const statusVerdict = READINESS_VERDICT[byStatus.readiness];
-    const notReady = statusVerdict === 'ready' ? 'degraded' : statusVerdict;
     return health(
-      notReady,
+      input,
+      statusVerdict === 'ready' ? 'degraded' : statusVerdict,
       byStatus,
-      notReady === 'failing' ? 'check' : 'review',
+      false,
     );
   }
-  return health(verdict, observed, verdict === 'setup' ? 'setup' : 'review');
+  return health(input, verdict, observed, false);
 }

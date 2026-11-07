@@ -32,14 +32,7 @@ import {
   useTestAgentConnectionMutation,
   useUpsertCredentialProfileMutation,
 } from '@kontourai/station-sdk';
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ACPConnectionDetailsField } from '../components/acp-connections/ACPConnectionDetailsField';
 import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
 import { Checkbox } from '../components/Checkbox';
@@ -71,11 +64,7 @@ import {
   useUnregisteredACPConnections,
 } from '../hooks/useACPConnections';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
-import {
-  managedEngineIdFor,
-  managedEngineState,
-  useManagedEngines,
-} from '../hooks/useManagedEngines';
+import { useManagedEngineStateFor } from '../hooks/useManagedEngines';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { AgentSummary, NavigationView } from '../types';
 import {
@@ -100,10 +89,7 @@ import { EngineAccountOverview } from './EngineAccountOverview';
 import { EngineAddFlow, type NotConnectedEngine } from './EngineAddFlow';
 import { EngineProxySettings } from './EngineProxySettings';
 import { NotConnectedEngineDetail } from './NotConnectedEngineDetail';
-import {
-  blockingPrerequisite,
-  resolveProviderPresentation,
-} from './provider-settings/providerCatalog';
+import { blockingPrerequisite } from './provider-settings/providerCatalog';
 import './PluginManagementView.css';
 import './page-layout.css';
 import './editor-layout.css';
@@ -139,10 +125,6 @@ interface AgentConnectionViewProps {
  */
 function isAddedEngine(connection: AgentConnectionViewData): boolean {
   return connection.setup?.state !== 'available';
-}
-
-function enginePresentation(connection: AgentConnectionViewData) {
-  return resolveProviderPresentation(engineHealthInput(connection));
 }
 
 export function AgentConnectionView({
@@ -325,29 +307,7 @@ export function AgentConnectionView({
     : null;
   const selectedAcpConnectionId = selectedAcpConnection?.id ?? null;
   // #4520: what the machine's managed policy says about each engine row.
-  const managedEngines = useManagedEngines();
-  const managedStateFor = useCallback(
-    (connection: AgentConnectionViewData) => {
-      const isAcp = acpBridgeConnections.some(
-        (entry) => entry.id === connection.id,
-      );
-      return managedEngineState(
-        managedEngines,
-        managedEngineIdFor(connectionEngineId(connection), isAcp),
-        {
-          registryAgent:
-            isAcp &&
-            acpRegistryEntries.some(
-              (entry) =>
-                entry.id === connection.id &&
-                entry.installed === true &&
-                entry.source === 'registry',
-            ),
-        },
-      );
-    },
-    [managedEngines, acpBridgeConnections, acpRegistryEntries],
-  );
+  const managedStateFor = useManagedEngineStateFor();
   const selectedManagedState = form ? managedStateFor(form) : null;
 
   // #1054 stopped excluding Station here: the Station engine is a row this
@@ -486,7 +446,14 @@ export function AgentConnectionView({
   const capabilityInventory = (form as AgentConnectionViewData | null)
     ?.capabilityInventory;
   const continuity = (form as AgentConnectionViewData | null)?.continuity;
-  const providerPresentation = form ? enginePresentation(form) : null;
+  // The row's verdict, read again for the selected engine: the Status tile,
+  // the Ready step, Retry check and the readiness notice cannot say Ready
+  // where the row (and dispatch) say otherwise.
+  const health = form
+    ? deriveConnectionHealth(engineHealthInput(form), {
+        policyDisallowed: selectedManagedState?.disallowed === true,
+      })
+    : null;
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const devicePresentation = useDevicePresentation();
   // The SAME derivation the presentation used, not a second copy of it.
@@ -495,13 +462,12 @@ export function AgentConnectionView({
    * Each step is a fact, not a decoration. "Choose" is complete because this
    * page only ever shows an engine that has been added. "Connect" is complete
    * when nothing required is still unmet -- Station can launch it. "Ready" is
-   * the resolver's own verdict, the same one the Status tile and the hub cards
-   * read.
+   * the connection verdict, the same one the Status tile and the row read.
    */
   const engineSetupSteps = [
     { label: 'Choose', complete: true },
     { label: 'Connect', complete: !blocker },
-    { label: 'Ready', complete: providerPresentation?.readiness === 'Ready' },
+    { label: 'Ready', complete: health?.verdict === 'ready' },
   ];
   const visibleModels = runtimeCatalogVisibleModels(form);
   const reportedModelCount = visibleModels.length;
@@ -589,19 +555,18 @@ export function AgentConnectionView({
             {/* Retry check is the repair for a failed check. A Ready engine
                 is checked with Check connection below, so it gets one
                 check action, not two. */}
-            {selectedAcpConnectionId &&
-              providerPresentation?.readiness !== 'Ready' && (
-                <button
-                  type="button"
-                  className="editor-btn"
-                  disabled={reconnectMutation.isPending}
-                  onClick={() =>
-                    reconnectMutation.mutate(selectedAcpConnectionId)
-                  }
-                >
-                  {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
-                </button>
-              )}
+            {selectedAcpConnectionId && health?.verdict !== 'ready' && (
+              <button
+                type="button"
+                className="editor-btn"
+                disabled={reconnectMutation.isPending}
+                onClick={() =>
+                  reconnectMutation.mutate(selectedAcpConnectionId)
+                }
+              >
+                {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
+              </button>
+            )}
           </DetailHeader>
           <div className="agent-editor__section">
             {/*
@@ -645,7 +610,7 @@ export function AgentConnectionView({
             <div className="provider-detail__summary" aria-live="polite">
               <div>
                 <span className="provider-detail__summary-label">Status</span>
-                <strong>{providerPresentation?.readiness}</strong>
+                <strong>{health?.label}</strong>
               </div>
               <div>
                 <span className="provider-detail__summary-label">Models</span>
@@ -697,11 +662,11 @@ export function AgentConnectionView({
             )}
             {/* #4520: a policy-disallowed engine is explained by the managed
                 notice; "turn this on" would offer a fix the policy refuses. */}
-            {providerPresentation?.readiness !== 'Ready' &&
+            {health?.verdict !== 'ready' &&
               !selectedManagedState?.disallowed && (
                 <ConnectionReadinessNotice
-                  readiness={providerPresentation?.readiness ?? ''}
-                  detail={providerPresentation?.detail ?? ''}
+                  readiness={health?.label ?? ''}
+                  detail={health?.reason ?? ''}
                   kind="agent"
                   prerequisites={form.prerequisites}
                   devicePresentation={devicePresentation}

@@ -1,6 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useConnectionSectionSignals } from './connections-hub/connection-section-signals';
+
+/**
+ * How long `/connections` waits for its first reads before resolving with
+ * what it knows. A slow list must not leave the visitor on a blank route.
+ */
+export const CONNECTIONS_RESOLVE_WAIT_MS = 1_500;
 
 /**
  * `/connections` is a resolver, not a sixth scrollable destination.
@@ -14,12 +21,23 @@ import { useConnectionSectionSignals } from './connections-hub/connection-sectio
 export function ConnectionsHub() {
   const { navigate } = useNavigation();
   const { firstNeedingAttention, settled } = useConnectionSectionSignals();
-  // Resolve once the reads have answered: on first render every query is
-  // still pending, nothing "needs attention" yet, and the redirect used to
-  // land on Models before Engines or Knowledge could say otherwise.
+  const [waited, setWaited] = useState(false);
+  const resolved = useRef(false);
   useEffect(() => {
-    if (!settled) return;
+    const timer = setTimeout(
+      () => setWaited(true),
+      CONNECTIONS_RESOLVE_WAIT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, []);
+  // Resolve once, when the reads have answered or the wait is over. On first
+  // render every read is still pending and nothing "needs attention" yet, so
+  // resolving then landed on Models before Engines or Knowledge could say
+  // otherwise. After the wait it resolves with whatever has answered.
+  useEffect(() => {
+    if (resolved.current || (!settled && !waited)) return;
+    resolved.current = true;
     navigate(firstNeedingAttention?.path ?? '/connections/models');
-  }, [settled, firstNeedingAttention?.path, navigate]);
-  return null;
+  }, [settled, waited, firstNeedingAttention?.path, navigate]);
+  return <SkeletonBlock count={3} label="Loading connections" />;
 }

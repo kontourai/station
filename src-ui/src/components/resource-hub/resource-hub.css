@@ -1,17 +1,21 @@
 /*
- * Resource-hub kit presentation (connections-overhaul design record).
+ * Resource-hub kit presentation (docs/design/connections-overhaul.md).
  * Tokens only; no media queries — these rules flow at any width.
  */
 
-/* A row badge sits beside a name, so it drops the published badge's
-   table-cell minimum size and keeps its tone pair and label. */
-.resource-status-badge {
-  min-width: 0;
-  min-height: 0;
+.resource-status {
   display: inline-flex;
-  align-items: center;
-  padding: 0 var(--k-space-2);
-  border-radius: var(--k-radius-sm);
-  line-height: 1.6;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Doubled class: wins over the published `.badge` rule whatever order the
+   stylesheets load in. Truncates rather than wrapping beside a row name. */
+.resource-status__badge.resource-status__badge {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }

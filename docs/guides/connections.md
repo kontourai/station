@@ -37,9 +37,10 @@ members or choose a person's account by fallback. See [the S3 source guide](know
 
 ## Read the connection list
 
-Each row shows one readiness badge beside its name; the line under the name
-holds facts, not the state. Model connections distinguish saved settings from a
-check that actually reached the provider:
+Each Model and Engine row shows one readiness badge beside its name; the line
+under the name holds facts, not the state. An engine whose first add failed is
+listed as **Not connected yet** instead. Model connections distinguish saved
+settings from a check that actually reached the provider:
 
 - **Ready** — the current readiness evidence permits selection; it does not prove every model or tool capability.
 - **Sign in required**, **API key required**, or **Credentials required** — complete the named authentication step.
@@ -51,16 +52,21 @@ check that actually reached the provider:
 - **Setup required** — finish the remaining setup.
 - **Limited** — reduced capabilities; review the details. An engine in this state does not run agents until it reports ready again.
 - **Disabled** — configured but turned off.
-- **Not allowed** — the managed policy does not allow this engine; there is nothing to turn on.
+- **Not allowed** — the managed policy does not allow this engine. It is its own state, not **Disabled**, because there is nothing to turn on.
 - **Unreachable** — configured, but Station cannot reach it.
 
-A section tab carries an attention mark when a Model or Engine row is not
-**Ready**, a tool server's last check failed, or Knowledge is missing its vector
-store or embedding model. Opening
-`/connections` waits for these lists to load, then opens the first section that
-needs attention, or Models when none does. The [readiness
-derivation](../../src-ui/src/views/connections-hub/connection-health.ts) is shared
-by the rows, the marks and that redirect.
+The engine page's Status, its **Ready** step and its readiness notice show the
+same state as its row. A section tab carries an attention mark when an engine
+cannot run agents (including one the managed policy refuses), a model connection
+is turned off, is missing a required key or sign-in, was refused by its last
+check, or cannot be reached after retrying; a tool server's last check
+failed; or Knowledge has no vector store. Saved-but-untested model connections, Knowledge without an embedding
+model, and computers that are not connected are resting states and carry no
+mark. Opening `/connections` shows a loading state until these lists load, or
+for up to 1.5 seconds, then opens the first section that needs
+attention, or Models when none does. The rows, the engine page, the marks and
+that redirect share one [readiness
+derivation](../../src-ui/src/views/connections-hub/connection-health.ts).
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
