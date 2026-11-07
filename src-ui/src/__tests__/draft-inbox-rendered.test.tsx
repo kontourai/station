@@ -10,7 +10,7 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
@@ -20,6 +20,7 @@ import {
   buildActiveChatTaskItems,
   buildHomeWorkItems,
 } from '../views/home/home-view-model';
+import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 const THREAD = 'grok-build:1790099828990';
 const NOW = Date.parse('2026-09-22T20:00:00.000Z');
@@ -95,7 +96,7 @@ function withQueryClient({ children }: { children: ReactNode }) {
 }
 
 function renderInbox(items: ReturnType<typeof panelItems>) {
-  return render(
+  return renderWithIsolatedConnections(
     <ChatDockInboxPanel
       items={items}
       activeChatSessionId={undefined as never}
