@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
@@ -55,7 +55,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, assert, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   awaitSessionAttachmentSettled,
   awaitSessionRecoveryCompleted,
@@ -18902,43 +18902,50 @@ describe('OrchestrationService', () => {
     // Project workingDirectory is persisted with a literal `~` (see
     // terminal-service); adapters spawn/chdir with the value, so the
     // resolver must expand exactly like every other server-side consumer.
-    //
-    // HOME is redirected at the temp dir so the expanded path can actually
-    // exist: since archive#791 the resolver fails closed on a missing directory, and
-    // asserting expansion against a path nobody created would only prove the
-    // two behaviours had been wired together wrongly.
+    // Windows os.homedir() uses USERPROFILE; POSIX uses HOME.
+    const profile = join(tmp, 'profile');
+    mkdirSync(profile);
+    const projectDir = join(profile, 'station-686-tilde');
+    mkdirSync(projectDir);
     const previousHome = process.env.HOME;
-    process.env.HOME = tmp;
-    mkdirSync(join(tmp, 'station-686-tilde'), { recursive: true });
-    configuredProjects.push({
-      slug: 'proj-tilde',
-      workingDirectory: '~/station-686-tilde',
-    });
-    const claudeLocal = new FakeAdapter('claude');
-    const localService = new OrchestrationService({
-      adapterRegistry: createRegistry([claudeLocal]),
-      eventBus,
-      eventStore,
-      listProjects: () => configuredProjects,
-      logger: { debug: vi.fn(), warn: vi.fn() },
-    });
+    const previousUserProfile = process.env.USERPROFILE;
+    try {
+      process.env.HOME = profile;
+      process.env.USERPROFILE = profile;
+      configuredProjects.push({
+        slug: 'proj-tilde',
+        workingDirectory: '~/station-686-tilde',
+      });
+      const claudeLocal = new FakeAdapter('claude');
+      const localService = new OrchestrationService({
+        adapterRegistry: createRegistry([claudeLocal]),
+        eventBus,
+        eventStore,
+        listProjects: () => configuredProjects,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
 
-    await localService.dispatch({
-      type: 'startSession',
-      input: {
-        threadId: 'thread-cwd-tilde',
-        provider: 'claude',
-        modelId: 'claude-sonnet',
-        metadata: { projectSlug: 'proj-tilde' },
-      },
-    });
+      await localService.dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-cwd-tilde',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+          metadata: { projectSlug: 'proj-tilde' },
+        },
+      });
 
-    expect(claudeLocal.startSession).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cwd: join(homedir(), 'station-686-tilde'),
-      }),
-    );
-    process.env.HOME = previousHome;
+      expect(claudeLocal.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cwd: realpathSync.native(projectDir),
+        }),
+      );
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = previousUserProfile;
+    }
   });
 
   test('startSession refuses a project whose working directory no longer exists (#791)', async () => {
@@ -19062,23 +19069,51 @@ describe('OrchestrationService', () => {
       });
     }
 
-    test('a new no-project chat starts its engine in <Station home>/scratch/<conversation>', async () => {
-      const stationHome = tempDir('station-4389-home-');
-      await scratchService(stationHome).dispatch({
-        type: 'startSession',
-        input: {
-          threadId: 'thread-no-slug',
-          provider: 'claude',
-          modelId: 'claude-sonnet',
-        },
-      });
-      const start = claude.startSession.mock.calls.at(-1)?.[0];
-      const scratch = realpathSync(join(stationHome, 'scratch', 'thread-no-slug'));
-      expect(start?.cwd).toBe(scratch);
-      expect(start?.cwd).not.toBe(homedir());
-      expect(statSync(scratch).isDirectory()).toBe(true);
-      // Still Station's choice, not a folder the person bound.
-      expect(start?.cwdDefaulted).toBe(true);
+    test('a new no-project chat starts its engine in its platform-specific scratch workspace', async () => {
+      const profile = tempDir('station-4389-profile-');
+      const stationHome = join(profile, '.station', 'instances', 'test');
+      mkdirSync(stationHome, { recursive: true });
+      const previousHome = process.env.HOME;
+      const previousUserProfile = process.env.USERPROFILE;
+      try {
+        process.env.HOME = profile;
+        process.env.USERPROFILE = profile;
+        await scratchService(stationHome).dispatch({
+          type: 'startSession',
+          input: {
+            threadId: 'thread-no-slug',
+            provider: 'claude',
+            modelId: 'claude-sonnet',
+          },
+        });
+        const start = claude.startSession.mock.calls.at(-1)?.[0];
+        assert(start?.cwd, 'adapter must receive a scratch working directory');
+        const scratch = start.cwd;
+        if (process.platform === 'win32') {
+          expect(relative(realpathSync(profile), scratch).split(sep)).toEqual([
+            '.station-workspaces',
+            expect.stringMatching(/^[0-9a-f]{64}$/),
+            'scratch',
+            'thread-no-slug',
+          ]);
+          expect(
+            relative(realpathSync(stationHome), scratch).startsWith(`..${sep}`),
+          ).toBe(true);
+        } else {
+          expect(scratch).toBe(
+            realpathSync(join(stationHome, 'scratch', 'thread-no-slug')),
+          );
+        }
+        expect(scratch).not.toBe(realpathSync(profile));
+        expect(statSync(scratch).isDirectory()).toBe(true);
+        // Still Station's choice, not a folder the person bound.
+        expect(start?.cwdDefaulted).toBe(true);
+      } finally {
+        if (previousHome === undefined) delete process.env.HOME;
+        else process.env.HOME = previousHome;
+        if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = previousUserProfile;
+      }
     });
 
     test('the Station-level opt-out runs a new no-project chat in the home folder', async () => {
@@ -19197,28 +19232,39 @@ describe('OrchestrationService', () => {
     // the project's stored workingDirectory through verbatim, and Station
     // stores it with a literal `~`. Unexpanded, no chdir can satisfy it and
     // the engine never reaches the project.
+    const profile = join(tmp, 'profile');
+    mkdirSync(profile);
+    const projectDir = join(profile, 'station-1011-supplied');
+    mkdirSync(projectDir);
     const previousHome = process.env.HOME;
-    process.env.HOME = tmp;
-    mkdirSync(join(tmp, 'station-1011-supplied'), { recursive: true });
-    configuredProjects.push({
-      slug: 'proj-supplied-tilde',
-      workingDirectory: '~/station-1011-supplied',
-    });
+    const previousUserProfile = process.env.USERPROFILE;
+    try {
+      process.env.HOME = profile;
+      process.env.USERPROFILE = profile;
+      configuredProjects.push({
+        slug: 'proj-supplied-tilde',
+        workingDirectory: '~/station-1011-supplied',
+      });
 
-    await service.dispatch({
-      type: 'startSession',
-      input: {
-        threadId: 'thread-supplied-tilde',
-        provider: 'claude',
-        modelId: 'claude-sonnet',
-        cwd: '~/station-1011-supplied',
-        metadata: { projectSlug: 'proj-supplied-tilde' },
-      },
-    });
-    expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(
-      join(homedir(), 'station-1011-supplied'),
-    );
-    process.env.HOME = previousHome;
+      await service.dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-supplied-tilde',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+          cwd: '~/station-1011-supplied',
+          metadata: { projectSlug: 'proj-supplied-tilde' },
+        },
+      });
+      expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(
+        realpathSync.native(projectDir),
+      );
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = previousUserProfile;
+    }
   });
 
   test('startSession keeps an explicit cwd inside the bound project (#686)', async () => {
