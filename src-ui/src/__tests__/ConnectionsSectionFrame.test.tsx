@@ -36,6 +36,27 @@ const state: {
   ssh: [],
 };
 const navigate = vi.fn();
+
+/** An engine row in the shape `/api/connections/agents` returns. */
+function engine(
+  id: string,
+  name: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    kind: 'agent',
+    type: id,
+    name,
+    enabled: true,
+    status: 'ready',
+    capabilities: ['agent-runtime'],
+    config: {},
+    prerequisites: [],
+    setup: { state: 'ready', detected: true, configured: true },
+    ...overrides,
+  };
+}
 const viewport = vi.hoisted(() => ({ mobile: false }));
 vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
@@ -172,9 +193,9 @@ describe('ConnectionsSectionFrame', () => {
     state.connections = [];
     state.modelConnections = [];
     state.engines = [
-      { id: 'claude', name: 'Claude Code', enabled: true, status: 'ready' },
-      { id: 'codex', name: 'Codex', enabled: true, status: 'ready' },
-      { id: 'muse', name: 'Muse Code', enabled: true, status: 'ready' },
+      engine('claude', 'Claude Code', { enabled: true }),
+      engine('codex', 'Codex', { enabled: true }),
+      engine('muse', 'Muse Code', { enabled: true }),
     ];
     render(
       <ConnectionsSectionFrame sectionId="engines">

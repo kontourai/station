@@ -73,7 +73,7 @@ function detailRootClassName(
   return `split-pane__right${rightVisible ? ' split-pane__right--visible' : ''}${showMobileDetailSheet ? ' split-pane__right--sheet' : ''}${placement === 'portaled' ? ' split-pane__right--portaled' : ''}`;
 }
 
-interface SplitPaneItem {
+export interface SplitPaneItem {
   id: string;
   name: string;
   subtitle?: React.ReactNode;

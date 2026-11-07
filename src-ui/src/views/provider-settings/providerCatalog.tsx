@@ -306,7 +306,7 @@ interface ProviderCatalogInputBase {
  * callers may attach the one discovery fact the row actually observed, but
  * may not synthesize a three-state setup tuple from it.
  */
-type ProviderCatalogInput =
+export type ProviderCatalogInput =
   | (ProviderCatalogInputBase & {
       setup: AgentConnectionView['setup'];
       discovery?: never;

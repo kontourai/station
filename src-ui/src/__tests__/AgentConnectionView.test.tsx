@@ -2400,6 +2400,47 @@ describe('AgentConnectionView', () => {
         ).toBeTruthy();
     },
   );
+
+  // The row's status is a badge from the one connection verdict; the
+  // subtitle carries facts. A configured engine the server reports as
+  // failing read "Setup required" in the subtitle before.
+  test('engine rows show the verdict as a badge, not subtitle text', async () => {
+    agentConnections = [
+      ...DEFAULT_AGENT_CONNECTIONS,
+      {
+        id: 'muse',
+        kind: 'agent',
+        type: 'muse',
+        name: 'Muse',
+        enabled: true,
+        status: 'error',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: {},
+        setup: { state: 'configured', detected: true, configured: true },
+      },
+    ];
+    const { container } = await render(
+      <AgentConnectionView onNavigate={vi.fn()} />,
+    );
+    const rowFor = (name: string) =>
+      [...container.querySelectorAll('.split-pane__item')].find(
+        (row) =>
+          row.querySelector('.split-pane__item-name-text')?.textContent ===
+          name,
+      )!;
+    const badge = (name: string) =>
+      rowFor(name).querySelector('.resource-status-badge');
+    expect(badge('Codex')?.textContent).toBe('Ready');
+    expect(badge('Muse')?.textContent).toBe('Unreachable');
+    expect(badge('Muse')?.classList.contains('tone-negative')).toBe(true);
+    for (const name of ['Codex', 'Muse']) {
+      const subtitle =
+        rowFor(name).querySelector('.split-pane__item-subtitle')?.textContent ??
+        '';
+      expect(subtitle).not.toMatch(/Ready|Unreachable|Setup required/);
+    }
+  });
 });
 
 test('guided proxy setup saves a reference and checks only saved settings', async () => {

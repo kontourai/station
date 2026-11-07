@@ -13,9 +13,13 @@ import { useConnectionSectionSignals } from './connections-hub/connection-sectio
  */
 export function ConnectionsHub() {
   const { navigate } = useNavigation();
-  const { firstNeedingAttention } = useConnectionSectionSignals();
+  const { firstNeedingAttention, settled } = useConnectionSectionSignals();
+  // Resolve once the reads have answered: on first render every query is
+  // still pending, nothing "needs attention" yet, and the redirect used to
+  // land on Models before Engines or Knowledge could say otherwise.
   useEffect(() => {
+    if (!settled) return;
     navigate(firstNeedingAttention?.path ?? '/connections/models');
-  }, [firstNeedingAttention?.path, navigate]);
+  }, [settled, firstNeedingAttention?.path, navigate]);
   return null;
 }

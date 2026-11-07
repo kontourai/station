@@ -50,10 +50,11 @@ import { EngineSignInPanel } from '../components/engine-sign-in/EngineSignInPane
 import { BrandIcon } from '../components/icons/BrandIcon';
 import {
   ManagedEngineNotice,
-  managedEngineSubtitle,
+  managedEngineFact,
   managedEnvironmentLocked,
 } from '../components/ManagedEngineNotice';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { resourceRow } from '../components/resource-hub/resource-row';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { CONNECTIONS_ENGINES_PANE_ID } from '../components/split-pane-metrics';
 import {
@@ -91,6 +92,10 @@ import { formatBytes } from '../utils/formatBytes';
 import { describeStationFailure } from '../utils/stationFailure';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
+import {
+  deriveConnectionHealth,
+  engineHealthInput,
+} from './connections-hub/connection-health';
 import { EngineAccountOverview } from './EngineAccountOverview';
 import { EngineAddFlow, type NotConnectedEngine } from './EngineAddFlow';
 import { EngineProxySettings } from './EngineProxySettings';
@@ -137,18 +142,7 @@ function isAddedEngine(connection: AgentConnectionViewData): boolean {
 }
 
 function enginePresentation(connection: AgentConnectionViewData) {
-  return resolveProviderPresentation({
-    id: connection.id,
-    kind: 'agent',
-    type: connection.type,
-    name: connection.name,
-    enabled: connection.enabled,
-    status: connection.status,
-    prerequisites: connection.prerequisites,
-    readinessEvidence: connection.readinessEvidence,
-    setup: connection.setup,
-    href: '',
-  });
+  return resolveProviderPresentation(engineHealthInput(connection));
 }
 
 export function AgentConnectionView({
@@ -394,28 +388,37 @@ export function AgentConnectionView({
             connection.type.toLowerCase().includes(query)
           );
         })
-        .map((connection) => ({
-          id: connection.id,
-          name:
-            connection.config.modelRoute &&
-            typeof connection.config.modelRoute === 'object' &&
-            'label' in connection.config.modelRoute
-              ? `${connection.name} · via ${String(connection.config.modelRoute.label)}`
-              : connection.name,
-          // The third segment used to be `connectionTypeLabel(type)`, which
-          // either repeated the row's own name ("Claude Code · Claude Code")
-          // or printed a slug for a type the map had missed ("muse").
-          // The row is already named; the subtitle says what is true of it.
-          subtitle: `${managedEngineSubtitle(managedStateFor(connection))}${enginePresentation(connection).readiness} · ${runtimeCatalogSourceSentence(connection.runtimeCatalog?.source ?? 'none')}`,
-          icon: (
-            <BrandIcon
-              name={connection.name}
-              id={connection.id}
-              engineId={connectionEngineId(connection)}
-              size={22}
-            />
-          ),
-        })),
+        .map((connection) => {
+          const managed = managedStateFor(connection);
+          return resourceRow({
+            id: connection.id,
+            name:
+              connection.config.modelRoute &&
+              typeof connection.config.modelRoute === 'object' &&
+              'label' in connection.config.modelRoute
+                ? `${connection.name} · via ${String(connection.config.modelRoute.label)}`
+                : connection.name,
+            // The rail and the resolver read this same verdict.
+            status: deriveConnectionHealth(engineHealthInput(connection), {
+              policyDisallowed: managed?.disallowed === true,
+            }),
+            // The row is already named; the facts say what is true of it.
+            facts: [
+              managedEngineFact(managed),
+              runtimeCatalogSourceSentence(
+                connection.runtimeCatalog?.source ?? 'none',
+              ),
+            ],
+            icon: (
+              <BrandIcon
+                name={connection.name}
+                id={connection.id}
+                engineId={connectionEngineId(connection)}
+                size={22}
+              />
+            ),
+          });
+        }),
       // A failed first add is listed beside the engines, never as one: its
       // row says so, and its page offers only the repairs.
       ...notConnected

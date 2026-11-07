@@ -27,6 +27,11 @@ import {
 import type { ProviderConnection } from '../provider-settings/types';
 import { filterModelProviders } from '../provider-settings/utils';
 import {
+  deriveConnectionHealth,
+  engineHealthInput,
+  modelHealthInput,
+} from './connection-health';
+import {
   CONNECTION_SECTIONS,
   type ConnectionSectionId,
 } from './connection-sections';
@@ -37,13 +42,22 @@ interface ConnectionSectionSignals {
   needsAttention: (id: ConnectionSectionId) => boolean;
   /** The section `/connections` resolves to, or undefined when none needs it. */
   firstNeedingAttention: (typeof CONNECTION_SECTIONS)[number] | undefined;
+  /**
+   * Every read attention depends on has answered (data or error). Before
+   * that, "nothing needs attention" only means "nothing has loaded yet".
+   */
+  settled: boolean;
 }
 
 export function useConnectionSectionSignals(): ConnectionSectionSignals {
-  const { data: connections = [] } = useModelConnectionsQuery();
-  const { data: engines = [] } = useEngineConnectionsQuery();
-  const { data: tools = [] } = useIntegrationsQuery();
-  const { data: knowledge } = useGlobalKnowledgeStatusQuery();
+  const modelsQuery = useModelConnectionsQuery();
+  const enginesQuery = useEngineConnectionsQuery();
+  const toolsQuery = useIntegrationsQuery();
+  const knowledgeQuery = useGlobalKnowledgeStatusQuery();
+  const { data: connections = [] } = modelsQuery;
+  const { data: engines = [] } = enginesQuery;
+  const { data: tools = [] } = toolsQuery;
+  const { data: knowledge } = knowledgeQuery;
   const { rows: computers } = useComputerRows();
 
   /**
@@ -75,7 +89,13 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
   };
 
   const needsAttention = (id: ConnectionSectionId): boolean => {
-    if (id === 'knowledge') return Boolean(knowledge && !knowledge.vectorDb);
+    // Semantic search needs both halves: a vector store to hold the index
+    // and an embedding model to build it. Without the model, nothing is
+    // searchable even though a store is set.
+    if (id === 'knowledge')
+      return Boolean(
+        knowledge && (!knowledge.vectorDb || !knowledge.embedding),
+      );
     // CI-R3: `connected` is "an agent session currently holds a client",
     // which is false for every tool server — including the built-ins — until
     // a turn runs, so deriving attention from it put a warn dot on a healthy
@@ -88,15 +108,34 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     // connected" for every computer nobody has connected yet — which is a
     // resting state, not a problem to fix.
     if (id === 'computers') return false;
-    const list = id === 'models' ? models : engines;
-    return list.some(
-      (item) => !item.enabled || item.status === 'missing_prerequisites',
-    );
+    // One verdict per connection, the same one its list row shows: a failed
+    // check, an unreachable or degraded engine and an untested model all
+    // need attention, not only a missing prerequisite. Engines the list
+    // does not show (supported, never added) claim nothing here either.
+    // Managed policy is not read here; the rows read it to say "Not
+    // allowed" rather than "Disabled". Either way the verdict is not ready.
+    if (id === 'models')
+      return models.some(
+        (item) =>
+          deriveConnectionHealth(modelHealthInput(item)).verdict !== 'ready',
+      );
+    return engines
+      .filter((engine) => engine.setup?.state !== 'available')
+      .some(
+        (engine) =>
+          deriveConnectionHealth(engineHealthInput(engine)).verdict !== 'ready',
+      );
   };
 
   return {
     count,
     needsAttention,
+    // `isLoading` is a first fetch in flight. A disabled read (no Station
+    // to ask) is pending but not loading, and must not hold the redirect
+    // forever. Computers claims no attention, so its read is not waited on.
+    settled: [modelsQuery, enginesQuery, toolsQuery, knowledgeQuery].every(
+      (query) => !query.isLoading,
+    ),
     firstNeedingAttention: CONNECTION_SECTIONS.find((section) =>
       needsAttention(section.id),
     ),

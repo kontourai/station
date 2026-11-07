@@ -21,7 +21,10 @@ const state: {
   knowledge: unknown;
   savedStations: unknown[];
   ssh: unknown[];
+  /** The Engines read's first fetch is still in flight. */
+  enginesLoading: boolean;
 } = {
+  enginesLoading: false,
   connections: [],
   engines: [],
   tools: [],
@@ -31,10 +34,34 @@ const state: {
 };
 const navigate = vi.fn();
 
+/** An engine row in the shape `/api/connections/agents` returns. */
+function engine(
+  id: string,
+  name: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    kind: 'agent',
+    type: id,
+    name,
+    enabled: true,
+    status: 'ready',
+    capabilities: ['agent-runtime'],
+    config: {},
+    prerequisites: [],
+    setup: { state: 'ready', detected: true, configured: true },
+    ...overrides,
+  };
+}
+
 vi.mock('@kontourai/station-sdk', () => ({
   useConnectionsQuery: () => ({ data: state.connections }),
   useModelConnectionsQuery: () => ({ data: state.connections }),
-  useEngineConnectionsQuery: () => ({ data: state.engines }),
+  useEngineConnectionsQuery: () =>
+    state.enginesLoading
+      ? { data: undefined, isLoading: true, isPending: true }
+      : { data: state.engines, isLoading: false, isPending: false },
   useIntegrationsQuery: () => ({ data: state.tools }),
   useGlobalKnowledgeStatusQuery: () => ({ data: state.knowledge }),
   useSshEnvironmentsQuery: () => ({ data: state.ssh }),
@@ -105,6 +132,7 @@ describe('the /connections resolver', () => {
     state.knowledge = undefined;
     state.savedStations = [];
     state.ssh = [];
+    state.enginesLoading = false;
     navigate.mockReset();
   });
 
@@ -139,9 +167,7 @@ describe('the /connections resolver', () => {
     // the rail reads `/api/connections/agents`. A disabled engine present in
     // one and absent from the other made them disagree about whether
     // anything needed attention at all.
-    state.engines = [
-      { id: 'codex', name: 'Codex', enabled: false, status: 'ready' },
-    ];
+    state.engines = [engine('codex', 'Codex', { enabled: false })];
 
     render(
       <ConnectionsSectionFrame sectionId="models">
@@ -169,5 +195,96 @@ describe('the /connections resolver', () => {
     ];
     render(<ConnectionsHub />);
     expect(navigate).toHaveBeenCalledWith('/connections/tools');
+  });
+
+  test('waits for the reads before resolving, instead of landing on Models', () => {
+    // On first render every read is pending, so "nothing needs attention"
+    // was true and the redirect fired for Models before Engines answered.
+    state.enginesLoading = true;
+    const { rerender } = render(<ConnectionsHub />);
+    expect(navigate).not.toHaveBeenCalled();
+
+    state.enginesLoading = false;
+    state.engines = [engine('muse', 'Muse Code', { status: 'error' })];
+    rerender(<ConnectionsHub />);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith('/connections/engines');
+  });
+
+  test('an engine the server reports failing needs attention', () => {
+    state.engines = [
+      engine('muse', 'Muse Code', {
+        status: 'error',
+        setup: { state: 'configured', detected: true, configured: true },
+      }),
+    ];
+    render(<ConnectionsHub />);
+    expect(navigate).toHaveBeenCalledWith('/connections/engines');
+  });
+
+  test('a degraded engine needs attention; a supported, never-added one does not', () => {
+    state.engines = [
+      engine('muse', 'Muse Code', {
+        status: 'missing_prerequisites',
+        setup: { state: 'available', detected: true, configured: false },
+      }),
+    ];
+    render(<ConnectionsHub />);
+    expect(navigate).toHaveBeenCalledWith('/connections/models');
+
+    navigate.mockReset();
+    state.engines = [engine('muse', 'Muse Code', { status: 'degraded' })];
+    render(<ConnectionsHub />);
+    expect(navigate).toHaveBeenCalledWith('/connections/engines');
+  });
+
+  test('knowledge with a store and no embedding model needs attention', () => {
+    state.knowledge = {
+      vectorDb: { id: 'lancedb-builtin', name: 'Station Built-In' },
+      embedding: null,
+      stats: { totalDocuments: 0, totalChunks: 0, projectCount: 0 },
+    };
+    render(
+      <ConnectionsSectionFrame sectionId="models">
+        <div />
+      </ConnectionsSectionFrame>,
+    );
+    expect(railAttentionSection()).toBe('Knowledge');
+    render(<ConnectionsHub />);
+    expect(navigate).toHaveBeenCalledWith('/connections/knowledge');
+  });
+
+  test('a model whose check failed puts the dot on Models, ahead of engines', () => {
+    state.connections = [
+      {
+        id: 'anthropic-1',
+        kind: 'model',
+        type: 'anthropic',
+        name: 'Anthropic',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['llm'],
+        config: {},
+        prerequisites: [],
+        readinessEvidence: {
+          evidenceVersion: 1,
+          level: 'catalog-ready',
+          observedAt: '2026-08-20T10:00:00.000Z',
+          freshness: 'fresh',
+          summary: '',
+          smoke: { status: 'not-tested', freshness: 'unknown', turnLimit: 1 },
+          check: { status: 'failed', checkedAt: '2026-08-20T10:00:00.000Z' },
+        },
+      },
+    ];
+    state.engines = [engine('muse', 'Muse Code', { status: 'degraded' })];
+    render(
+      <ConnectionsSectionFrame sectionId="engines">
+        <div />
+      </ConnectionsSectionFrame>,
+    );
+    expect(railAttentionSection()).toBe('Models');
+    render(<ConnectionsHub />);
+    expect(navigate).toHaveBeenCalledWith('/connections/models');
   });
 });
