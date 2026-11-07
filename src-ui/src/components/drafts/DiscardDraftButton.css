@@ -22,6 +22,9 @@
   min-height: 44px;
 }
 
-.menu-row.discard-draft__cancel {
+button.menu-row.discard-draft__cancel,
+button.menu-row.discard-draft__cancel:hover,
+button.menu-row.discard-draft__cancel:focus-visible {
   color: var(--k-text);
+  background: var(--k-panel-raised);
 }
