@@ -2348,11 +2348,11 @@ describe('device pairing routes', () => {
  */
 describe('managed limit without remote clients (#4519)', () => {
   test('GET /api/pairing/devices reports an earlier device as suspended by the policy, not revoked, and lifting the limit clears it', async () => {
-    const before = createHarness();
+    const before = await createHarness();
     const phone = await pairDevice(before, 'Casey phone');
     const auth = { headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` } };
 
-    const limited = createHarness({
+    const limited = await createHarness({
       homeDir: before.homeDir,
       managedLocalClientsOnly: 'Acme',
     });
@@ -2374,7 +2374,7 @@ describe('managed limit without remote clients (#4519)', () => {
       personalTokens: 0,
     });
 
-    const lifted = createHarness({ homeDir: before.homeDir });
+    const lifted = await createHarness({ homeDir: before.homeDir });
     const restored = (await (
       await lifted.request('/api/pairing/devices', auth)
     ).json()) as { devices: PairedDevice[] };

@@ -210,6 +210,7 @@ async function cancelStartedStrandsStream(agent: IAgent) {
 
 async function cancelPendingStrandsStream(agent: IAgent) {
   const peer = await new StrandsFramework().createTempAgent({
+    purpose: 'utility',
     name: 'independent-stream',
     instructions: 'Answer briefly.',
     tools: [],
@@ -374,6 +375,7 @@ test.each(['volt', 'strands'] as const)(
     const framework =
       kind === 'volt' ? new VoltAgentFramework() : new StrandsFramework();
     const agent = await framework.createTempAgent({
+      purpose: 'utility',
       name: 'physical-test',
       instructions: 'Answer briefly.',
       model:
