@@ -706,10 +706,12 @@ and shows all work anywhere else. If work needs
 you outside the filter, choose **Show all** from the notice.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
-from inbox**. On mobile, use the row’s Details menu; with **Sheet gestures
-preview** enabled in Settings → Advanced → Developer tools, swipe left to
-reveal the clock and × controls. The clock opens Snooze duration choices; ×
-dismisses the conversation. Dismissal leaves running work and history intact.
+from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
+details. With **Sheet gestures preview** enabled in Settings → Advanced →
+Developer tools, swipe left to reveal labelled actions; the row follows your
+finger and snaps open when released. Only one row's actions stay revealed.
+**Snooze** opens duration choices, and **Dismiss** hides the conversation.
+Swiping itself never runs an action. Dismissal leaves running work and history intact.
 Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
 or search the inbox, find matching **Dismissed** results, and choose
 **Restore to inbox**.
@@ -718,6 +720,16 @@ changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
 Hidden **Third-party** sessions stay hidden through external updates until you
 restore them or bring them into Station.
+
+If this browser cannot save Snooze, the choice still holds for the current
+page session. Saved snoozes update other open tabs of this browser.
+
+**Discard draft** deletes an unstarted server Draft across devices. It first
+shows **Draft will be discarded** with **Undo** for eight seconds. Undo keeps
+the Draft; leaving that control or switching Station or account also cancels
+the pending deletion. After the window, Station asks the server to discard it
+and shows any refusal. Discarding an **unsent draft** instead clears the text
+you typed on this device.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**

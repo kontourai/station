@@ -1,6 +1,13 @@
 import { dispatchOrchestrationCommandWithReceipt } from '@kontourai/station-sdk';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useIsMutating,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { Button } from '../Button';
 import { DiscardGlyph } from '../icons/Glyph';
 import './DiscardDraftButton.css';
 
@@ -17,10 +24,43 @@ import './DiscardDraftButton.css';
  * unmounted — the host's focus move and tab teardown would silently not run.
  */
 function useDiscardDraft(
+  threadId: string,
   onDiscarded: ((action: HTMLButtonElement) => void) | undefined,
   closeSessionIds: readonly string[],
 ) {
   const queryClient = useQueryClient();
+  const scope = useHostRequestAuthorityScope();
+  const mutationKey = [
+    'discard-draft',
+    scope?.apiBase,
+    scope?.authorityKey,
+    threadId,
+  ];
+  const pending = useIsMutating({ mutationKey, exact: true }) > 0;
+  const [waiting, setWaiting] = useState(false);
+  const mounted = useRef(true);
+  const generation = useRef(0);
+  const delay = useRef<{
+    timer: ReturnType<typeof setTimeout>;
+    finish: (proceed: boolean) => void;
+  } | null>(null);
+  const cancel = useCallback(() => {
+    const current = delay.current;
+    delay.current = null;
+    if (current) {
+      clearTimeout(current.timer);
+      current.finish(false);
+    }
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ownership changes cancel the previous authority's deferred delete.
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      generation.current += 1;
+      cancel();
+    };
+  }, [cancel, scope?.apiBase, scope?.authorityKey, threadId]);
   const refetchSessions = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ['orchestration-sessions'] }),
@@ -28,18 +68,56 @@ function useDiscardDraft(
         queryKey: ['orchestration-sessions-loaded'],
       }),
     ]);
-  return useMutation({
-    mutationFn: ({
+  const mutation = useMutation({
+    mutationKey,
+    mutationFn: async ({
       threadId,
+      scope: captured,
+      generation: started,
     }: {
       threadId: string;
       action: HTMLButtonElement;
-    }) =>
-      dispatchOrchestrationCommandWithReceipt({
-        type: 'discardDraft',
-        threadId,
-      }),
-    onSuccess: (_result, { threadId, action }) => {
+      scope: NonNullable<typeof scope>;
+      generation: number;
+      closeSessionIds: readonly string[];
+    }) => {
+      if (
+        !mounted.current ||
+        generation.current !== started ||
+        !captured.isCurrent()
+      )
+        return false;
+      setWaiting(true);
+      const proceed = await new Promise<boolean>((finish) => {
+        delay.current = {
+          timer: setTimeout(() => {
+            delay.current = null;
+            finish(true);
+          }, 8000),
+          finish,
+        };
+      });
+      if (mounted.current && generation.current === started) setWaiting(false);
+      if (
+        !proceed ||
+        !mounted.current ||
+        generation.current !== started ||
+        !captured.isCurrent()
+      )
+        return false;
+      await dispatchOrchestrationCommandWithReceipt(
+        { type: 'discardDraft', threadId },
+        captured.apiBase,
+        undefined,
+        { requestScope: captured },
+      );
+      return true;
+    },
+    onSuccess: (
+      discarded,
+      { threadId, action, scope: captured, closeSessionIds },
+    ) => {
+      if (!discarded || !captured.isCurrent()) return;
       onDiscarded?.(action);
       // #2312 review: whichever surface discarded it, a tab this device
       // still has open on the Draft now names a deleted session — and a send
@@ -59,8 +137,35 @@ function useDiscardDraft(
       }
       return refetchSessions();
     },
-    onError: () => refetchSessions(),
+    onError: (_error, { scope: captured }) => {
+      if (captured.isCurrent()) return refetchSessions();
+    },
   });
+  return {
+    ...mutation,
+    waiting:
+      waiting &&
+      mutation.variables?.scope.apiBase === scope?.apiBase &&
+      mutation.variables?.scope.authorityKey === scope?.authorityKey &&
+      mutation.variables?.threadId === threadId,
+    pending,
+    available: !!scope?.isCurrent(),
+    undo: cancel,
+    start: (action: HTMLButtonElement) => {
+      if (
+        !scope?.isCurrent() ||
+        queryClient.isMutating({ mutationKey, exact: true })
+      )
+        return;
+      mutation.mutate({
+        threadId,
+        action,
+        scope,
+        generation: generation.current,
+        closeSessionIds,
+      });
+    },
+  };
 }
 
 /** More local chats than one device ever holds for one session. */
@@ -84,9 +189,8 @@ export const DISCARD_DRAFT_FAILED =
 
 /**
  * The row action, shared by the dock inbox, the mobile switcher, Home and
- * Sessions. No confirmation: a Draft holds no transcript by the server's own
- * definition (it refuses anything that does), and the inbox's other row
- * actions (close, snooze) act at once too.
+ * Sessions. Undo cancels an eight-second wait before the server delete;
+ * leaving the surface or changing authority cancels that wait too.
  */
 export function DiscardDraftButton({
   threadId,
@@ -114,27 +218,43 @@ export function DiscardDraftButton({
    */
   onDiscarded?: (action: HTMLButtonElement) => void;
 }) {
-  const discard = useDiscardDraft(onDiscarded, closeSessionIds);
+  const discard = useDiscardDraft(threadId, onDiscarded, closeSessionIds);
+  const button = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <button
-        type="button"
+      <Button
+        ref={button}
         className={className}
         aria-label={`Discard draft ${title}`}
         title="Discard draft"
         // aria-disabled, not disabled: a disabled button drops focus, and the
         // inbox shows its row actions only while the row holds focus or hover
         // — the pending state and a failure would vanish with it.
-        aria-disabled={discard.isPending || undefined}
+        aria-disabled={discard.pending || !discard.available || undefined}
+        aria-busy={discard.isPending || undefined}
         onClick={(event) => {
-          if (discard.isPending) return;
-          discard.mutate({ threadId, action: event.currentTarget });
+          discard.start(event.currentTarget);
         }}
       >
         <DiscardGlyph />
         {label}
-      </button>
-      {discard.isError && (
+      </Button>
+      {discard.waiting && (
+        <span className="discard-draft__undo" role="status">
+          <span>Draft will be discarded</span>
+          <Button
+            variant="ghost"
+            aria-label={`Undo discard of ${title}`}
+            onClick={() => {
+              discard.undo();
+              button.current?.focus();
+            }}
+          >
+            Undo
+          </Button>
+        </span>
+      )}
+      {discard.isError && discard.variables?.scope.isCurrent() && (
         <span className="discard-draft__error" role="alert">
           {discardFailureText(discard.error)}
         </span>
