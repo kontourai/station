@@ -108,8 +108,6 @@ const ComposerAttachmentStrip = React.lazy(() =>
     default: module.ComposerAttachmentStrip,
   })),
 );
-function ignoreMessage(_message: string) {}
-
 const FileAttachmentInput = React.lazy(() =>
   import('./FileAttachmentInput').then((module) => ({
     default: module.FileAttachmentInput,
@@ -299,7 +297,12 @@ interface ChatInputAreaProps {
   removalUnblocksSend?: boolean;
   /** Why nothing can be attached; tapping the paperclip reports it. */
   attachUnavailableReason?: string;
-  onAttachUnavailable?: (reason: string) => void;
+  /**
+   * Shows why nothing was attached: the paperclip's reason and Paste image's
+   * failures (no image on the clipboard, a refused read). Required so a
+   * composer cannot render Paste image with nowhere to report.
+   */
+  onAttachUnavailable: (reason: string) => void;
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   sendBlockedReason?: string;
   /**
@@ -573,8 +576,6 @@ export function ChatInputArea({
   onStartNewChat,
 }: ChatInputAreaProps) {
   const textareaDisabled = disabled && !allowDraftWhileDisabled;
-  // Paste image reports through the same channel as the paperclip's notice.
-  const reportClipboardMessage = onAttachUnavailable ?? ignoreMessage;
   useEffect(() => {
     onEnabledChange?.(textareaDisabled ? null : textareaRef.current);
     return () => onEnabledChange?.(null);
@@ -1752,7 +1753,7 @@ export function ChatInputArea({
               className="attachment-btn"
               disabled={disabled}
               onFiles={selectAttachmentFiles}
-              onMessage={reportClipboardMessage}
+              onMessage={onAttachUnavailable}
             />
           )}
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (

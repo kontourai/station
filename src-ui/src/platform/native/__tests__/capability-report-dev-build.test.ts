@@ -32,6 +32,7 @@ const CAPABILITY_STATES: Record<NativeCapabilityId, NativeCapabilityState> = {
   'native-consent-broker': 'enabled',
   'remote-push': 'unsupported',
   'share-intake': 'disabled',
+  'image-share-intake': 'enabled',
   'clipboard-image': 'enabled',
 };
 

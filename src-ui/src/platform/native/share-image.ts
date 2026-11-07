@@ -16,6 +16,7 @@
  */
 import {
   CHAT_ATTACHMENT_MAX_COUNT,
+  CHAT_ATTACHMENT_MAX_NAME_LENGTH,
   CHAT_IMAGE_MIME_TYPES,
   type ChatImageMimeType,
   parseChatAttachmentDataUrl,
@@ -40,6 +41,13 @@ export interface NativeSharedImagePayload {
 
 const IMAGE_MIME_TYPE_SET = new Set<string>(CHAT_IMAGE_MIME_TYPES);
 
+/**
+ * Path separators, control (Cc), format (Cf: bidi overrides, zero-width
+ * characters) and line/paragraph separators (Zl, Zp) can disguise or split a
+ * name. The native plugin replaces such names; one arriving here is refused.
+ */
+const UNSAFE_NAME = /[/\\\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+
 function parseSharedImageFile(value: unknown): SharedImageFile | null {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Record<string, unknown>;
@@ -47,6 +55,8 @@ function parseSharedImageFile(value: unknown): SharedImageFile | null {
   if (
     typeof name !== 'string' ||
     name.trim().length === 0 ||
+    name.length > CHAT_ATTACHMENT_MAX_NAME_LENGTH ||
+    UNSAFE_NAME.test(name) ||
     typeof mimeType !== 'string' ||
     !IMAGE_MIME_TYPE_SET.has(mimeType) ||
     typeof dataUrl !== 'string'

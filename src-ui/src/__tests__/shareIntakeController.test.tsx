@@ -12,7 +12,11 @@ import type {
   NativeImageList,
 } from '../platform/native/types';
 
-const native = vi.hoisted(() => ({ adapter: null as unknown }));
+const native = vi.hoisted(() => ({
+  adapter: null as unknown,
+  /** Each rendered picker's own onClose, newest last. */
+  closers: [] as Array<() => void>,
+}));
 
 vi.mock('../platform/native', () => ({
   get nativePlatformPromise() {
@@ -29,11 +33,20 @@ vi.mock('../hooks/useShareToConversation', () => ({
   useShareToConversation: () => vi.fn(),
 }));
 vi.mock('../components/chat/ShareTargetPickerModal', () => ({
-  ShareTargetPickerModal: ({ sharedFiles }: { sharedFiles: File[] }) => (
-    <div role="dialog" aria-label="Share to">
-      {sharedFiles.map((file) => file.name).join(',')}
-    </div>
-  ),
+  ShareTargetPickerModal: ({
+    sharedFiles,
+    onClose,
+  }: {
+    sharedFiles: File[];
+    onClose: () => void;
+  }) => {
+    native.closers.push(onClose);
+    return (
+      <div role="dialog" aria-label="Share to">
+        {sharedFiles.map((file) => file.name).join(',')}
+      </div>
+    );
+  },
 }));
 
 import {
@@ -60,7 +73,11 @@ function fakeAdapter(
     markReady = resolve;
   });
   const adapter = {
-    capability: (id: 'share-intake') => ({ id, state, reason: 'fixture' }),
+    capability: (id: 'image-share-intake') => ({
+      id,
+      state,
+      reason: 'fixture',
+    }),
     takeSharedImages: vi.fn(async () => {
       events.push('take');
       return takes.shift() ?? { status: 'ok' as const, value: { files: [] } };
@@ -87,7 +104,7 @@ const settle = () => act(async () => {});
 afterEach(cleanup);
 
 describe('subscribeToSharedImageIntake', () => {
-  test('a host without share-intake is never subscribed to or taken from', async () => {
+  test('a host without image-share-intake is never subscribed to or taken from', async () => {
     const host = fakeAdapter('disabled', [{ status: 'ok', value: SHARED }]);
     const openPicker = vi.fn();
     subscribeToSharedImageIntake(host.adapter, openPicker, vi.fn());
@@ -166,6 +183,19 @@ describe('subscribeToSharedImageIntake', () => {
   });
 });
 
+describe('the web adapter', () => {
+  test('PWA text share-intake does not subscribe to or take native images', async () => {
+    const { WebNativePlatformAdapter } = await import('../platform/native/web');
+    const web = new WebNativePlatformAdapter();
+    const take = vi.spyOn(web, 'takeSharedImages');
+    const subscribe = vi.spyOn(web, 'subscribeToSharedImages');
+    subscribeToSharedImageIntake(web, vi.fn(), vi.fn());
+    await settle();
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(take).not.toHaveBeenCalled();
+  });
+});
+
 describe('ShareIntakeController', () => {
   test('opens the picker with images shared before the app was listening', async () => {
     const host = fakeAdapter('enabled', [{ status: 'ok', value: SHARED }]);
@@ -177,7 +207,7 @@ describe('ShareIntakeController', () => {
     ).toBe('one.png,two.png');
   });
 
-  test('renders nothing and takes nothing where share-intake is disabled', async () => {
+  test('renders nothing and takes nothing where image-share-intake is disabled', async () => {
     const host = fakeAdapter('disabled', [{ status: 'ok', value: SHARED }]);
     native.adapter = host.adapter;
     host.markReady();
@@ -185,5 +215,34 @@ describe('ShareIntakeController', () => {
     await settle();
     expect(host.adapter.takeSharedImages).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('a share that arrives while the picker is busy waits for it, then opens', async () => {
+    const SECOND: NativeImageList = {
+      files: [{ name: 'three.png', mimeType: 'image/png', dataUrl: PNG }],
+    };
+    const host = fakeAdapter('enabled', [
+      { status: 'ok', value: SHARED },
+      { status: 'ok', value: SECOND },
+    ]);
+    native.adapter = host.adapter;
+    native.closers = [];
+    host.markReady();
+    render(<ShareIntakeController />);
+    const dialog = await screen.findByRole('dialog', { name: 'Share to' });
+    expect(dialog.textContent).toBe('one.png,two.png');
+    const closeFirst = native.closers.at(-1)!;
+    // The second share lands while the first picker is still finishing.
+    host.nudge();
+    await settle();
+    expect(screen.getByRole('dialog').textContent).toBe('one.png,two.png');
+    // The first picker's in-flight share completes and closes it.
+    await act(async () => closeFirst());
+    expect(
+      (await screen.findByRole('dialog', { name: 'Share to' })).textContent,
+    ).toBe('three.png');
+    // Closing the first picker again does not dismiss the second.
+    await act(async () => closeFirst());
+    expect(screen.getByRole('dialog').textContent).toBe('three.png');
   });
 });

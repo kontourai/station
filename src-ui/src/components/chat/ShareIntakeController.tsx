@@ -34,15 +34,17 @@ type ShareIntakeAdapter = Pick<
  * arrives while it runs is announced. Listening first means a share between
  * the two is either already pending or announced (the
  * `AgentActivityLaunchRoutes` pattern). Nothing is subscribed unless the host
- * reports `share-intake` enabled; {@link receiveSharedImages} checks the gate
- * again before parsing.
+ * reports `image-share-intake` enabled (not `share-intake`, which is PWA
+ * text on the web); {@link receiveSharedImages} checks the gate again before
+ * parsing.
  */
 export function subscribeToSharedImageIntake(
   adapter: ShareIntakeAdapter,
   openPicker: (files: File[]) => void,
   reportError: (message: string) => void,
 ): () => void {
-  if (adapter.capability('share-intake').state !== 'enabled') return () => {};
+  if (adapter.capability('image-share-intake').state !== 'enabled')
+    return () => {};
   let disposed = false;
   const take = () => {
     void adapter.takeSharedImages().then((result) => {
@@ -73,18 +75,28 @@ export function subscribeToSharedImageIntake(
 
 /**
  * Owns the native share-target → conversation-picker flow and mounts it once in
- * the chat dock. The Android app reports `share-intake` enabled; elsewhere the
- * subscription is never made and the lazy picker chunk is never fetched.
+ * the chat dock. The Android app reports `image-share-intake` enabled;
+ * elsewhere the subscription is never made and the lazy picker chunk is never
+ * fetched.
  */
 export function ShareIntakeController() {
   const agents = useAgents();
   const { apiBase } = useApiBase();
   const toast = useToast(true);
   const shareToConversation = useShareToConversation(apiBase);
-  const [sharedFiles, setSharedFiles] = useState<File[] | null>(null);
+  // Shares wait their turn: one arriving while a picker is open (and may be
+  // mid-share) is queued, never swapped into that picker.
+  const [shares, setShares] = useState<Array<{ id: number; files: File[] }>>(
+    [],
+  );
+  const nextShareId = useRef(0);
 
   // Keep the latest callbacks without re-subscribing.
-  const openPickerRef = useRef((files: File[]) => setSharedFiles(files));
+  const openPickerRef = useRef((files: File[]) => {
+    nextShareId.current += 1;
+    const id = nextShareId.current;
+    setShares((queued) => [...queued, { id, files }]);
+  });
   const reportErrorRef = useRef<(message: string) => void>(() => {});
   reportErrorRef.current = (message: string) => {
     toast?.showToast(message);
@@ -114,10 +126,13 @@ export function ShareIntakeController() {
     [shareToConversation],
   );
 
-  if (sharedFiles === null) return null;
+  const current = shares[0];
+  if (!current) return null;
 
   return (
     <LazyBoundary
+      // A fresh picker per share: no search, mode or pending state carries over.
+      key={current.id}
       load={loadShareTargetPickerModal}
       componentProps={{
         isOpen: true,
@@ -125,10 +140,14 @@ export function ShareIntakeController() {
           slug: agent.slug,
           name: agent.name,
         })),
-        sharedFiles,
+        sharedFiles: current.files,
         attachmentCapabilities: { images: true, files: true },
         onShareToConversation: handleShareToConversation,
-        onClose: () => setSharedFiles(null),
+        // Closes only this share's picker, even when it finishes late.
+        onClose: () =>
+          setShares((queued) =>
+            queued.filter((share) => share.id !== current.id),
+          ),
       }}
       pending={null}
     />

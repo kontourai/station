@@ -28,6 +28,7 @@ export type NativeCapabilityId =
   | 'native-consent-broker'
   | 'remote-push'
   | 'share-intake'
+  | 'image-share-intake'
   | 'clipboard-image';
 
 export interface NativeCapabilityStatus {
@@ -549,7 +550,7 @@ export interface NativePlatformAdapter {
    * Called (with no payload) when images are shared while the app runs; the
    * listener then calls `takeSharedImages`. Same `ready` contract as
    * {@link subscribeToAgentActivityLaunchRoutes}; a no-op subscription,
-   * already ready, unless `share-intake` is enabled on this host.
+   * already ready, unless `image-share-intake` is enabled on this host.
    */
   subscribeToSharedImages(
     listener: () => void,

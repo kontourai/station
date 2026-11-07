@@ -78,6 +78,11 @@ const WEB_CAPABILITIES: Record<NativeCapabilityId, NativeCapabilityStatus> = {
     state: 'enabled',
     reason: 'PWA share-target URL parameters are handled by the web adapter.',
   },
+  'image-share-intake': {
+    id: 'image-share-intake',
+    state: 'unsupported',
+    reason: 'Shared images arrive only through the native Android app.',
+  },
   'clipboard-image': {
     id: 'clipboard-image',
     state: 'unsupported',
@@ -310,12 +315,11 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
     };
   }
 
-  /** The web adapter's `share-intake` is PWA text; it has no image share. */
   async takeSharedImages(): Promise<NativeCommandResult<never>> {
     return {
       status: 'unsupported',
       command: 'take-shared-images',
-      reason: 'Shared images arrive only through the native Android app.',
+      reason: WEB_CAPABILITIES['image-share-intake'].reason,
     };
   }
 

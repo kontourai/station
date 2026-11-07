@@ -147,6 +147,36 @@ describe('receiveSharedImages', () => {
   });
 });
 
+describe('shared image names', () => {
+  test.each([
+    ['right-to-left override', 'cat\u202egnp.exe'],
+    ['zero-width space', 'a\u200bb.png'],
+    ['line separator', 'a\u2028b.png'],
+    ['paragraph separator', 'a\u2029b.png'],
+    ['C1 control', 'a\u0085b.png'],
+    ['path separator', '../a.png'],
+  ])('refuses a name with a %s', (_label, name) => {
+    expect(
+      parseNativeSharedImagePayload({
+        files: [{ name, mimeType: 'image/png', dataUrl: PNG_DATA_URL }],
+      }),
+    ).toBeNull();
+  });
+
+  test('keeps an ordinary non-ASCII name', () => {
+    const payload = {
+      files: [
+        {
+          name: 'caf\u00e9 \u5199\u771f.png',
+          mimeType: 'image/png',
+          dataUrl: PNG_DATA_URL,
+        },
+      ],
+    };
+    expect(parseNativeSharedImagePayload(payload)).toEqual(payload);
+  });
+});
+
 describe('parseNativeImageList', () => {
   test('an empty native read is an empty list, not a rejection', () => {
     expect(parseNativeImageList({ files: [] })).toEqual({ files: [] });

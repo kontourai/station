@@ -28,7 +28,7 @@ function adapter(
     async invoke<T>(command: string) {
       if (command === 'native_capability_report') {
         return completeNativeCapabilityReport('android', {
-          'share-intake': { state: states.shareIntake ?? 'disabled' },
+          'image-share-intake': { state: states.shareIntake ?? 'disabled' },
           'clipboard-image': { state: states.clipboard ?? 'disabled' },
         }) as T;
       }
@@ -125,7 +125,7 @@ describe('Tauri media-intake adapter', () => {
     expect(host.registered).toEqual([]);
   });
 
-  it('listens for the sharedImages nudge only where share-intake is enabled', async () => {
+  it('listens for the sharedImages nudge only where image-share-intake is enabled', async () => {
     const host = adapter({ shareIntake: 'enabled' });
     await host.instance.getCapabilityReport();
     let nudges = 0;
@@ -144,14 +144,14 @@ describe('Tauri media-intake adapter', () => {
     expect(host.unregistered()).toBe(1);
   });
 
-  it('accepts an older shell report without clipboard-image, leaving it disabled', async () => {
+  it('accepts an older shell report without the media-intake ids, leaving them disabled', async () => {
     const instance = new TauriNativePlatformAdapter({
       async invoke<T>() {
         const report = completeNativeCapabilityReport('android');
         return {
           ...report,
           capabilities: report.capabilities.filter(
-            ({ id }) => id !== 'clipboard-image',
+            ({ id }) => id !== 'clipboard-image' && id !== 'image-share-intake',
           ),
         } as T;
       },
@@ -161,11 +161,15 @@ describe('Tauri media-intake adapter', () => {
       status: 'ok',
     });
     expect(instance.capability('clipboard-image').state).toBe('disabled');
+    expect(instance.capability('image-share-intake').state).toBe('disabled');
   });
 
   it('the web adapter has no native image reads', async () => {
     const web = new WebNativePlatformAdapter();
     expect(web.capability('clipboard-image').state).toBe('unsupported');
+    expect(web.capability('image-share-intake').state).toBe('unsupported');
+    // PWA text shares are the web's share-intake; they are not image shares.
+    expect(web.capability('share-intake').state).toBe('enabled');
     await expect(web.readClipboardImages()).resolves.toMatchObject({
       status: 'unsupported',
     });

@@ -159,6 +159,12 @@ const INITIAL_TAURI_CAPABILITIES: Record<
     id: 'share-intake',
     state: 'disabled',
     reason:
+      'No reviewed native share-target or deep-link receiver is enabled yet.',
+  },
+  'image-share-intake': {
+    id: 'image-share-intake',
+    state: 'disabled',
+    reason:
       'The native host must report its image share target before it is used.',
   },
   'clipboard-image': {
@@ -181,10 +187,11 @@ const CAPABILITY_IDS: NativeCapabilityId[] = [
   'native-consent-broker',
   'remote-push',
   'share-intake',
+  'image-share-intake',
   'clipboard-image',
 ];
-// `native-consent-broker` and `clipboard-image` are deliberately NOT
-// required: a UI served by a newer Station must still verify an older
+// `native-consent-broker`, `image-share-intake` and `clipboard-image` are
+// deliberately NOT required: a UI served by a newer Station must still verify an older
 // shell's report (archive#3677).
 const REQUIRED_CAPABILITY_IDS: NativeCapabilityId[] = [
   'capability-report',
@@ -1488,7 +1495,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   takeSharedImages(): Promise<NativeCommandResult<NativeImageList>> {
     return this.mediaIntakeCommand(
       'take-shared-images',
-      'share-intake',
+      'image-share-intake',
       'take_shared_images',
     );
   }
@@ -1500,7 +1507,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     let unlisten: UnlistenFn | undefined;
     const addPluginListener = this.bridge.addPluginListener;
     if (
-      this.capabilities['share-intake'].state !== 'enabled' ||
+      this.capabilities['image-share-intake'].state !== 'enabled' ||
       !addPluginListener
     )
       return { dispose() {}, ready: Promise.resolve() };
@@ -1529,7 +1536,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   /** The host's own report decides whether the plugin is called at all. */
   private async mediaIntakeCommand(
     command: NativeCommandName,
-    capabilityId: 'clipboard-image' | 'share-intake',
+    capabilityId: 'clipboard-image' | 'image-share-intake',
     pluginCommand: string,
   ): Promise<NativeCommandResult<NativeImageList>> {
     const capability = this.capabilities[capabilityId];

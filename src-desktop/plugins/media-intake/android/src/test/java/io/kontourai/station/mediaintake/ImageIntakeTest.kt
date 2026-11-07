@@ -5,6 +5,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.Base64
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -23,6 +24,7 @@ class ImageIntakeTest {
   ): List<IntakeImage> = readIntakeImages(
     sources.keys.toList(),
     "pasted-image",
+    admit = { true },
     open = { key -> sources.getValue(key)?.let { ByteArrayInputStream(it) } },
     displayName = { names[it] },
     encodeBase64 = { Base64.getEncoder().encodeToString(it) },
@@ -143,6 +145,15 @@ class ImageIntakeTest {
   }
 
   @Test
+  fun replacesNamesWithFormatOrSeparatorCharacters() {
+    // Right-to-left override, zero-width space, line and paragraph separators, NEL.
+    for (unsafe in listOf("cat\u202Egnp.exe", "a\u200Bb.png", "a\u2028b.png", "a\u2029b.png", "a\u0085b.png")) {
+      assertEquals(unsafe, "shared-image-1.png", intakeImageName(unsafe, "shared-image", 0, "image/png"))
+    }
+    assertEquals("caf\u00e9.png", intakeImageName("caf\u00e9.png", "shared-image", 0, "image/png"))
+  }
+
+  @Test
   fun readBoundedStopsPastTheLimit() {
     assertEquals(3, readBounded(ByteArrayInputStream(ByteArray(3)), 3)!!.size)
     assertNull(readBounded(ByteArrayInputStream(ByteArray(4)), 3))
@@ -150,6 +161,141 @@ class ImageIntakeTest {
 
   private fun readIntakeImagesOrMessage(open: (String) -> InputStream?): String =
     refusal {
-      readIntakeImages(listOf("a"), "pasted-image", open, { null }, { Base64.getEncoder().encodeToString(it) })
+      readIntakeImages(listOf("a"), "pasted-image", { true }, open, { null }, { Base64.getEncoder().encodeToString(it) })
     }
+
+  // --- Share adoption ---------------------------------------------------
+
+  private val noTaken = emptyList<String>()
+
+  private fun decide(
+    action: String? = ACTION_SEND,
+    type: String? = "image/png",
+    fromHistory: Boolean = false,
+    launchIntent: Boolean = true,
+    taken: List<String> = noTaken,
+    extras: () -> Pair<String?, List<String?>?> = { "content://media/1" to null },
+  ) = shareDecision(action, type, fromHistory, launchIntent, extras, { streams -> shareKey(7, streams) }, taken)
+
+  @Test
+  fun checksActionAndTypeBeforeReadingExtras() {
+    val unread: () -> Pair<String?, List<String?>?> = { throw AssertionError("extras read before shape check") }
+    assertEquals(ShareDecision.Ignore, decide(action = "android.intent.action.MAIN", extras = unread))
+    assertEquals(ShareDecision.Ignore, decide(type = "text/plain", extras = unread))
+    assertEquals(ShareDecision.Ignore, decide(type = null, extras = unread))
+  }
+
+  @Test
+  fun aShareRelaunchedFromRecentsIsIgnored() {
+    assertEquals(ShareDecision.Ignore, decide(fromHistory = true))
+    assertTrue(decide(fromHistory = false) is ShareDecision.Adopt)
+  }
+
+  @Test
+  fun extrasThatFailToUnpackAreNotAShare() {
+    assertEquals(
+      ShareDecision.Ignore,
+      decide(extras = { throw RuntimeException("BadParcelableException") }),
+    )
+    assertEquals(ShareDecision.Ignore, decide(extras = { null to null }))
+  }
+
+  @Test
+  fun aRestoredLaunchIntentWhoseShareWasTakenIsNotReplayed() {
+    val adopted = decide() as ShareDecision.Adopt
+    assertEquals(listOf("content://media/1"), adopted.streams)
+    val taken = rememberTaken(noTaken, adopted.key)
+    // Process death: the activity is recreated with the original share.
+    assertEquals(ShareDecision.Ignore, decide(launchIntent = true, taken = taken))
+    // The same images shared again while running are a new share.
+    assertTrue(decide(launchIntent = false, taken = taken) is ShareDecision.Adopt)
+  }
+
+  @Test
+  fun aNewerShareIsAdoptedWithItsOwnKey() {
+    val first = decide() as ShareDecision.Adopt
+    val second = decide(extras = { "content://media/2" to null }) as ShareDecision.Adopt
+    assertTrue(first.key != second.key)
+    assertEquals(listOf("content://media/2"), second.streams)
+  }
+
+  @Test
+  fun aShareOverTheCountIsRefusedNotTruncated() {
+    val six = (1..6).map { "content://media/$it" }
+    val decision = decide(action = ACTION_SEND_MULTIPLE, extras = { null to six })
+    assertTrue(decision is ShareDecision.Refuse)
+    assertEquals(TOO_MANY_IMAGES, (decision as ShareDecision.Refuse).message)
+    val five = (1..5).map { "content://media/$it" }
+    assertEquals(five, (decide(action = ACTION_SEND_MULTIPLE, extras = { null to five }) as ShareDecision.Adopt).streams)
+  }
+
+  @Test
+  fun shareKeysDependOnTaskAndStreamsAndStayBounded() {
+    assertEquals(shareKey(3, listOf("a")), shareKey(3, listOf("a")))
+    assertTrue(shareKey(3, listOf("a")) != shareKey(4, listOf("a")))
+    assertTrue(shareKey(3, listOf("a")) != shareKey(3, listOf("b")))
+    var taken = noTaken
+    for (index in 1..(MAX_TAKEN_SHARES + 4)) taken = rememberTaken(taken, "k$index")
+    assertEquals(MAX_TAKEN_SHARES, taken.size)
+    assertEquals("k${MAX_TAKEN_SHARES + 4}", taken.last())
+    assertEquals(listOf("a", "b"), rememberTaken(listOf("b", "a"), "b"))
+  }
+
+  // --- URI guard --------------------------------------------------------
+
+  private val own = setOf("io.kontourai.station.fileprovider", "io.kontourai.station.androidx-startup")
+
+  @Test
+  fun admitsOnlyContentFromAnotherAppsProvider() {
+    assertTrue(admitIntakeUri("content", "media", own))
+    assertTrue(admitIntakeUri("CONTENT", "com.google.android.apps.photos.contentprovider", own))
+    assertFalse(admitIntakeUri("file", "", own))
+    assertFalse(admitIntakeUri("file", null, own))
+    assertFalse(admitIntakeUri(null, "media", own))
+    assertFalse(admitIntakeUri("https", "example.com", own))
+    assertFalse(admitIntakeUri("content", null, own))
+    assertFalse(admitIntakeUri("content", " ", own))
+  }
+
+  @Test
+  fun refusesStationsOwnProviders() {
+    assertFalse(admitIntakeUri("content", "io.kontourai.station.fileprovider", own))
+    assertFalse(admitIntakeUri("content", "IO.KONTOURAI.STATION.FILEPROVIDER", own))
+    // A user-qualified authority (`content://0@authority/...`) names the same provider.
+    assertFalse(admitIntakeUri("content", "0@io.kontourai.station.fileprovider", own))
+  }
+
+  @Test
+  fun aSourceThatIsNotAdmittedRefusesTheReadBeforeAnythingIsOpened() {
+    val opened = mutableListOf<String>()
+    val message = refusal {
+      readIntakeImages(
+        listOf("content://media/1", "file:///data/data/io.kontourai.station/cache/x.png"),
+        "shared-image",
+        admit = { it.startsWith("content://") },
+        open = { opened.add(it); ByteArrayInputStream(png) },
+        displayName = { null },
+        encodeBase64 = { Base64.getEncoder().encodeToString(it) },
+      )
+    }
+    assertTrue(message.contains("only reads images another app shares"))
+    assertEquals(emptyList<String>(), opened)
+  }
+
+  // --- Clipboard filter -------------------------------------------------
+
+  @Test
+  fun aMixedClipPastesTheImagesAndSkipsTheRest() {
+    val items = listOf("img" to "image/png", "doc" to "application/pdf", "img2" to "IMAGE/JPEG")
+    assertEquals(listOf("img", "img2"), clipboardImageItems(items, listOf("image/png", "application/pdf")))
+  }
+
+  @Test
+  fun anUntypedItemCountsOnlyWhenTheClipDeclaresImagesAlone() {
+    val items = listOf("a" to null as String?)
+    assertEquals(listOf("a"), clipboardImageItems(items, listOf("image/png")))
+    assertEquals(emptyList<String>(), clipboardImageItems(items, listOf("image/png", "text/plain")))
+    assertEquals(emptyList<String>(), clipboardImageItems(items, emptyList()))
+    assertEquals(emptyList<String>(), clipboardImageItems(listOf("t" to "text/plain"), listOf("text/plain")))
+  }
 }

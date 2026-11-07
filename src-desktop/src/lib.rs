@@ -234,17 +234,19 @@ fn remote_push_capability(
 
 /// The image share target is the media-intake plugin's Android receiver
 /// (`ACTION_SEND`/`ACTION_SEND_MULTIPLE` with `image/*`). iOS needs a Share
-/// Extension that is not built yet, and desktop has no share target.
-fn share_intake_capability(android: bool) -> NativeCapabilityStatus {
+/// Extension that is not built yet, and desktop has no share target. Its own
+/// id keeps it apart from `share-intake`, which names text shares (the web
+/// adapter's PWA share URLs); no native host receives text shares.
+fn image_share_intake_capability(android: bool) -> NativeCapabilityStatus {
     if android {
         NativeCapabilityStatus {
-            id: "share-intake",
+            id: "image-share-intake",
             state: "enabled",
             reason: "Images shared from another Android app open Station's conversation picker.",
         }
     } else {
         NativeCapabilityStatus {
-            id: "share-intake",
+            id: "image-share-intake",
             state: "disabled",
             reason: "Only the Android app receives shared images; iOS needs a Share Extension that is not built yet.",
         }
@@ -283,7 +285,12 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
             state: "enabled",
             reason: "Tauri core can deliver typed host events to the platform adapter.",
         },
-        share_intake_capability(cfg!(target_os = "android")),
+        NativeCapabilityStatus {
+            id: "share-intake",
+            state: "disabled",
+            reason: "No native host receives shared text; shared images use image-share-intake.",
+        },
+        image_share_intake_capability(cfg!(target_os = "android")),
         clipboard_image_capability(cfg!(mobile)),
     ];
 
@@ -24453,10 +24460,11 @@ mod tests {
 
         assert!(states.contains(&("capability-report", "enabled")));
         assert!(states.contains(&("host-event-bridge", "enabled")));
-        #[cfg(target_os = "android")]
-        assert!(states.contains(&("share-intake", "enabled")));
-        #[cfg(not(target_os = "android"))]
         assert!(states.contains(&("share-intake", "disabled")));
+        #[cfg(target_os = "android")]
+        assert!(states.contains(&("image-share-intake", "enabled")));
+        #[cfg(not(target_os = "android"))]
+        assert!(states.contains(&("image-share-intake", "disabled")));
         #[cfg(mobile)]
         assert!(states.contains(&("clipboard-image", "enabled")));
         #[cfg(not(mobile))]
@@ -24483,14 +24491,14 @@ mod tests {
     }
 
     #[test]
-    fn share_intake_is_enabled_only_on_android_and_clipboard_images_only_on_mobile() {
-        assert_eq!(share_intake_capability(true).state, "enabled");
-        assert_eq!(share_intake_capability(false).state, "disabled");
+    fn image_share_intake_is_enabled_only_on_android_and_clipboard_images_only_on_mobile() {
+        assert_eq!(image_share_intake_capability(true).state, "enabled");
+        assert_eq!(image_share_intake_capability(false).state, "disabled");
         assert_eq!(clipboard_image_capability(true).state, "enabled");
         assert_eq!(clipboard_image_capability(false).state, "unsupported");
         for status in [
-            share_intake_capability(true),
-            share_intake_capability(false),
+            image_share_intake_capability(true),
+            image_share_intake_capability(false),
             clipboard_image_capability(true),
             clipboard_image_capability(false),
         ] {

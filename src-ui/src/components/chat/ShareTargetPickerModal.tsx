@@ -138,7 +138,7 @@ function ShareTargetProjectList({
 
 /**
  * Android-Messages-style "Share to…" picker, opened by `ShareIntakeController`
- * when images are shared into the Android app (`share-intake`). It lists
+ * when images are shared into the Android app (`image-share-intake`). It lists
  * recent conversations across the available agents and, on selection, drops
  * the shared image(s) into that conversation's composer through the shared
  * `readChatAttachmentFiles` pipeline — the same MIME/size/capability

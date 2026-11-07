@@ -72,12 +72,24 @@ const REQUIRED_TEST_CASES = Object.freeze({
     'anOlderRetractCannotCancelANewerReShow',
     'onlyItsOwnStationKindAndRegistrationOpenIt',
   ],
-  // The share receiver's intent shape and the contract's refusal bounds.
+  // The share receiver's adoption decision, its URI guard and the contract's
+  // refusal bounds.
   'io.kontourai.station.mediaintake.ImageIntakeTest': [
     'nonImageOrNonShareIntentsYieldNothing',
     'refusesMoreThanTheContractCountRatherThanTruncating',
     'refusesAnImageOverTheByteLimit',
     'refusesASetOverTheTotalByteLimit',
+    'checksActionAndTypeBeforeReadingExtras',
+    'aShareRelaunchedFromRecentsIsIgnored',
+    'extrasThatFailToUnpackAreNotAShare',
+    'aRestoredLaunchIntentWhoseShareWasTakenIsNotReplayed',
+    'aNewerShareIsAdoptedWithItsOwnKey',
+    'aShareOverTheCountIsRefusedNotTruncated',
+    'admitsOnlyContentFromAnotherAppsProvider',
+    'refusesStationsOwnProviders',
+    'aSourceThatIsNotAdmittedRefusesTheReadBeforeAnythingIsOpened',
+    'aMixedClipPastesTheImagesAndSkipsTheRest',
+    'replacesNamesWithFormatOrSeparatorCharacters',
   ],
 });
 
