@@ -147,7 +147,10 @@ export function useInboxSwipe(
       if (Math.abs(dx) >= 40) setOpen(dx < 0);
     },
     onPointerCancel: cancel,
-    onLostPointerCapture: cancel,
+    onLostPointerCapture: (event: PointerEvent<HTMLElement>) => {
+      // Touch capture transfers from the row button to its gesture host.
+      if (event.target === event.currentTarget) cancel();
+    },
     onClickCapture: (event: MouseEvent<HTMLElement>) => {
       if (
         event.detail === 0 ||

@@ -58,7 +58,9 @@ vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
       : null,
 }));
 
-const discardCommand = vi.hoisted(() => vi.fn(async () => ({})));
+const discardCommand = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<object>>(async () => ({})),
+);
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   dispatchOrchestrationCommandWithReceipt: discardCommand,

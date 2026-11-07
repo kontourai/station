@@ -198,6 +198,15 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       await page.evaluate(() => (window as unknown as { opens: number }).opens),
     ).toBe(0);
     await rail
+      .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
+      .focus();
+    await page.keyboard.press('Escape');
+    expect(
+      await row.evaluate((element) => document.activeElement === element),
+    ).toBe(true);
+    await rail.waitFor({ state: 'hidden' });
+    await swipe(cdp, page, -90);
+    await rail
       .getByRole('button', { name: 'Dismiss Review the inbox from inbox' })
       .click();
     await page

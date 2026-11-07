@@ -132,6 +132,29 @@ describe('draft discard recovery', () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
+  it('keeps late success bookkeeping but does not call a retired surface', async () => {
+    let resolveCommand!: (value: unknown) => void;
+    dispatch.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCommand = resolve;
+      }),
+    );
+    const discarded = vi.fn();
+    const invalidate = vi.spyOn(cache, 'invalidateQueries');
+    const view = render(button('Draft A', discarded), { wrapper });
+    await clickDiscard();
+    await advance(8000);
+    expect(dispatch).toHaveBeenCalledOnce();
+    view.unmount();
+    await act(async () => {
+      resolveCommand({ receipt: { status: 'accepted' }, result: null });
+    });
+    expect(discarded).not.toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['orchestration-sessions'],
+    });
+  });
+
   it('cancels when authority expires before dispatch, even without a render', async () => {
     render(button(), { wrapper });
     await clickDiscard();

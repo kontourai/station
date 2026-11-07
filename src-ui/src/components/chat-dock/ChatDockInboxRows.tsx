@@ -595,7 +595,10 @@ export function InboxRow({
   detailsOpenRef.current = detailsOpen;
   const fromSheet = (action: (trigger: HTMLButtonElement) => void) => {
     setDetailsOpen(false);
-    if (detailsTriggerRef.current) action(detailsTriggerRef.current);
+    if (detailsTriggerRef.current) {
+      detailsTriggerRef.current.focus();
+      action(detailsTriggerRef.current);
+    }
   };
   const composerDraftSessionId =
     hasUnsentDraft && item.chatSessionId ? item.chatSessionId : undefined;
@@ -682,6 +685,7 @@ export function InboxRow({
   const openDetails = () => {
     swipe.close();
     setDetailsOpen(true);
+    return true;
   };
   const renderDiscard = (
     action: Extract<InboxRowAction, { kind: 'discard' }>,
@@ -814,7 +818,16 @@ export function InboxRow({
           event.target instanceof Node &&
           event.currentTarget.contains(event.target)
         ) {
+          event.preventDefault();
           event.stopPropagation();
+          if (
+            event.target instanceof Element &&
+            event.target.closest('.inbox-row__swipe-actions')
+          ) {
+            event.currentTarget
+              .querySelector<HTMLButtonElement>('.inbox-row__open')
+              ?.focus();
+          }
           swipe.close();
         }
       }}

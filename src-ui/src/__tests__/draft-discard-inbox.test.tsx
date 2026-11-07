@@ -149,10 +149,14 @@ function accepted(threadId: string) {
   };
 }
 
-async function discardAfterUndoWindow(button: HTMLElement) {
+async function discardAfterUndoWindow(
+  button: HTMLElement,
+  during?: () => void,
+) {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   fireEvent.click(button);
   await act(async () => {});
+  during?.();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(8000);
   });
@@ -165,6 +169,32 @@ describe('#2312 discarding Drafts from the inbox', () => {
     deviceSettingsStore.reloadFromStorage();
     dispatch.mockReset();
     queryClient = new QueryClient();
+  });
+
+  it('retains Search focus after a delayed discard while still closing its open tab', async () => {
+    dispatch.mockResolvedValue(accepted(FRESH.threadId));
+    const rows = items([FRESH, WORKED], {
+      [FRESH.threadId]: {
+        agentSlug: 'fresh-agent',
+        status: 'idle',
+        orchestrationSessionStarted: true,
+        currentSessionId: FRESH.threadId,
+        conversationId: FRESH.threadId,
+        createdAt: NOW - 23 * HOUR,
+        messages: [],
+      },
+    });
+    const { onCloseChat } = renderPanel(rows, [FRESH.threadId]);
+    const search = screen.getByRole('searchbox', { name: 'Search inbox' });
+    const discard = screen.getByRole('button', {
+      name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
+    });
+    discard.focus();
+    await discardAfterUndoWindow(discard, () => search.focus());
+    await waitFor(() =>
+      expect(onCloseChat).toHaveBeenCalledWith(FRESH.threadId),
+    );
+    expect(document.activeElement).toBe(search);
   });
 
   it('an orchestration-only Draft is discarded by the server command, and the session list is re-read', async () => {

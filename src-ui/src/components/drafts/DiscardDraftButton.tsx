@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { Button } from '../Button';
-import { DiscardGlyph } from '../icons/Glyph';
+import { DiscardGlyph, ReturnGlyph } from '../icons/Glyph';
 import './DiscardDraftButton.css';
 
 /**
@@ -115,10 +115,21 @@ function useDiscardDraft(
     },
     onSuccess: (
       discarded,
-      { threadId, action, scope: captured, closeSessionIds },
+      {
+        threadId,
+        action,
+        scope: captured,
+        generation: started,
+        closeSessionIds,
+      },
     ) => {
       if (!discarded || !captured.isCurrent()) return;
-      onDiscarded?.(action);
+      if (
+        mounted.current &&
+        generation.current === started &&
+        action.isConnected
+      )
+        onDiscarded?.(action);
       // #2312 review: whichever surface discarded it, a tab this device
       // still has open on the Draft now names a deleted session — and a send
       // from it would silently start a new one. The dock hosts close it with
@@ -219,39 +230,47 @@ export function DiscardDraftButton({
   onDiscarded?: (action: HTMLButtonElement) => void;
 }) {
   const discard = useDiscardDraft(threadId, onDiscarded, closeSessionIds);
-  const button = useRef<HTMLButtonElement>(null);
   return (
     <>
       <Button
-        ref={button}
-        className={className}
-        aria-label={`Discard draft ${title}`}
-        title="Discard draft"
+        className={`${className}${discard.waiting ? ' discard-draft__cancel' : ''}`}
+        aria-label={
+          discard.waiting
+            ? `Undo discard of ${title}`
+            : `Discard draft ${title}`
+        }
+        title={
+          discard.waiting
+            ? 'Undo draft discard'
+            : discard.available
+              ? 'Discard draft'
+              : 'Connect to this Station to discard the draft'
+        }
         // aria-disabled, not disabled: a disabled button drops focus, and the
         // inbox shows its row actions only while the row holds focus or hover
         // — the pending state and a failure would vanish with it.
-        aria-disabled={discard.pending || !discard.available || undefined}
-        aria-busy={discard.isPending || undefined}
+        aria-disabled={
+          (!discard.waiting && discard.pending) ||
+          !discard.available ||
+          undefined
+        }
+        aria-busy={(!discard.waiting && discard.isPending) || undefined}
         onClick={(event) => {
-          discard.start(event.currentTarget);
+          if (discard.waiting) {
+            discard.undo();
+            event.currentTarget.focus();
+          } else discard.start(event.currentTarget);
         }}
       >
-        <DiscardGlyph />
-        {label}
+        {discard.waiting ? <ReturnGlyph /> : <DiscardGlyph />}
+        {discard.waiting ? 'Undo' : label}
       </Button>
       {discard.waiting && (
-        <span className="discard-draft__undo" role="status">
-          <span>Draft will be discarded</span>
-          <Button
-            variant="ghost"
-            aria-label={`Undo discard of ${title}`}
-            onClick={() => {
-              discard.undo();
-              button.current?.focus();
-            }}
-          >
-            Undo
-          </Button>
+        <span
+          className={label ? 'discard-draft__undo' : 'sr-only'}
+          role="status"
+        >
+          Draft will be discarded
         </span>
       )}
       {discard.isError && discard.variables?.scope.isCurrent() && (

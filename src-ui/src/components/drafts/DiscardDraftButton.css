@@ -17,6 +17,7 @@
   font-size: var(--k-text-sm);
 }
 
-.discard-draft__undo > button {
+.discard-draft__cancel {
+  min-width: 44px;
   min-height: 44px;
 }

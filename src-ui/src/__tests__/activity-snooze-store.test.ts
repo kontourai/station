@@ -36,6 +36,15 @@ describe('snooze persistence', () => {
       new: NOW + 200,
     });
     expect(store.readSnoozes(NOW, 'person-b')).toEqual({});
+    const key = localStorage.key(0)!;
+    window.dispatchEvent(
+      new StorageEvent('storage', { key, storageArea: sessionStorage }),
+    );
+    expect(observed).toHaveLength(1);
+    expect(store.readSnoozes(NOW, 'person-a')).toEqual({
+      existing: NOW + 100,
+      new: NOW + 200,
+    });
   });
 
   it('retains unsnooze and identity migration while writes fail, then persists the session state', () => {

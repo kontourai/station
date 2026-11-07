@@ -725,7 +725,9 @@ If this browser cannot save Snooze, the choice still holds for the current
 page session. Saved snoozes update other open tabs of this browser.
 
 **Discard draft** deletes an unstarted server Draft across devices. It first
-shows **Draft will be discarded** with **Undo** for eight seconds. Undo keeps
+offers **Undo** for eight seconds and announces **Draft will be discarded**.
+The Undo button replaces the row's discard shortcut; the Details sheet also
+shows the pending message. Undo keeps
 the Draft; leaving that control or switching Station or account also cancels
 the pending deletion. After the window, Station asks the server to discard it
 and shows any refusal. Discarding an **unsent draft** instead clears the text

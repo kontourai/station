@@ -62,6 +62,7 @@ function isSnoozeKey(key: string): boolean {
 }
 
 function onStorage(event: StorageEvent) {
+  if (event.storageArea && event.storageArea !== localStorage) return;
   if (event.key !== null && !isSnoozeKey(event.key)) return;
   if (event.key === null) snapshots.clear();
   else snapshots.delete(event.key);
