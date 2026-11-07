@@ -23,7 +23,7 @@ describe('mobile drawer close touch target', () => {
   });
   afterEach(cleanup);
 
-  test('Close navigation is at least 44x44 and its center hit-tests to the button', async () => {
+  test('drawer header controls are at least 44x44, disjoint and hit-testable', async () => {
     const { container } = render(
       <ProjectSidebarHeader
         appName="Station"
@@ -49,14 +49,23 @@ describe('mobile drawer close touch target', () => {
       expect(box!.width).toBeGreaterThanOrEqual(44);
       expect(box!.height).toBeGreaterThanOrEqual(44);
 
-      // Check the control center and a point outside the viewport; a missing
-      // element must never be accepted as a hit.
+      const home = page.getByRole('button', { name: 'Station v0.1.2 home' });
+      const homeBox = await home.boundingBox();
+      expect(homeBox).not.toBeNull();
+      expect(homeBox!.width).toBeGreaterThanOrEqual(44);
+      expect(homeBox!.height).toBeGreaterThanOrEqual(44);
+      expect(homeBox!.x + homeBox!.width).toBeLessThanOrEqual(box!.x);
+
+      // Check both control centers and a point outside the viewport.
       const hit = await page.evaluate(
-        ([cx, cy]) => ({
+        ([cx, cy, hx, hy]) => ({
           center: Boolean(
             document
               .elementFromPoint(cx, cy)
               ?.closest('.sidebar__mobile-close'),
+          ),
+          home: Boolean(
+            document.elementFromPoint(hx, hy)?.closest('.sidebar__home-button'),
           ),
           outside: Boolean(
             document
@@ -64,9 +73,14 @@ describe('mobile drawer close touch target', () => {
               ?.closest('.sidebar__mobile-close'),
           ),
         }),
-        [box!.x + box!.width / 2, box!.y + box!.height / 2],
+        [
+          box!.x + box!.width / 2,
+          box!.y + box!.height / 2,
+          homeBox!.x + homeBox!.width / 2,
+          homeBox!.y + homeBox!.height / 2,
+        ],
       );
-      expect(hit).toEqual({ center: true, outside: false });
+      expect(hit).toEqual({ center: true, home: true, outside: false });
 
       // Only the hit target grew; the visible glyph stays 16px.
       const glyph = await close.locator('svg').boundingBox();

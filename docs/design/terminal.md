@@ -21,6 +21,12 @@ workload. [InProcessShellHost](../../src-server/services/terminal/shell-host.ts)
 journal, and the core reads it through the workload protocol (see Shell host
 below); otherwise the service owns both.
 
+The adapter admits a Windows launch only after node-pty publishes a positive
+PID on its pinned output-pipe readiness signal. This works without application
+output. Early exit, pipe failure, or the five-second startup bound rejects the
+launch before PID tracking; cancellation closes its owned native allocation and
+pipes. The dependency's worker callback fences late readiness after cancellation.
+
 A personal-operator HTTP control seam at
 `/api/projects/:slug/terminal-sessions` exercises the production service without
 shipping another emulator. It supports project bindings and `thread:<id>`
@@ -42,7 +48,9 @@ close endpoint still used the legacy service; Delivery 6 removed it.
 Session metadata and journal output survive disposal and a new service instance.
 In-process shells do not survive server exit, and restored sessions are ended
 and never execute their old input again. Supervisor workloads do survive (see
-Shell host). Opening with a legacy terminal id imports
+Shell host). Disposal waits for in-process stops already in progress before
+flushing journals and persisting; a failed or timed-out stop is reported.
+Opening with a legacy terminal id imports
 a provenance-bound history filename once and retains the mapping in the durable
 record. The legacy writer emits a receipt only for a fresh file or a previously
 verified receipt; it records the Project id captured when the shell opened,
@@ -82,7 +90,7 @@ Incomplete/corrupt disk segments make that journal unavailable. A 1 MiB writer
 queue bounds pending output. NodePtyProcess forwards node-pty pause/resume;
 a backend that ignores backpressure or an explicitly undersized queue can
 still exceed that hard bound. Such overload is latched and uses the same owned
-HUP-to-KILL escalation as close. This is distinct from an ordinary burst under
+termination path as close. This is distinct from an ordinary burst under
 default limits. The real PTY suite sends 8 MiB through disk and memory modes,
 checks continued shell life and retained bounds (memory mode need not pause), then recreates the disk-backed
 service and reads its journal after clean disposal. This provides
@@ -309,30 +317,28 @@ still refuses signals; a missing binding never becomes successful cleanup.
 The backend is pinned to node-pty `1.2.0-beta.18`, whose Windows native handle
 registry is synchronized across spawn and exit threads. This pin is a published
 prerelease. Managed Linux installs retain the approved source-build path;
-upstream Linux prebuilds are not selected by directory presence. Its Windows
-connection is asynchronous:
-the adapter waits for the output pipe and a valid PID before publishing the
-process or tracking its workload. A startup exit is refused; the backend already
-owns cleanup when no PID was published. Readiness waits for pipe wiring rather
-than first output. The existing cleanup deadline is unchanged. It then ends
-the shell's process tree with
-`taskkill /T /F` before the ConPTY closes, as the supervisor's workload host does: closing a
+upstream Linux prebuilds are not selected by directory presence. On Windows the operation ends the shell's process tree with `taskkill /T /F`
+before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
-stop (#3994). After a successful `taskkill` both hosts wait for the exit;
-a session whose cleanup misses its six second deadline reports which of
-these steps was still pending (the output pipe, the tree kill, the exit
-event, the last output).
-The pinned node-pty releases its output-reader worker in `kill()`, and that
-call first lists the console's processes through
-a helper that cannot attach once the shell has gone, then five seconds later
-can signal the old shell PID, which Windows may have reused.
-On a started shell's exit, the adapter calls `kill()` with that listing
-answered empty. Before the exit, `kill()` is only
-the fallback for a tree `taskkill` could not end, which is reported.
+stop (#3994). After a successful `taskkill` both hosts wait for the exit.
+A session whose cleanup misses its six second deadline reports the tree kill
+and its result, the exit event, the last output and whether output was paused.
+After an admitted shell exits, the adapter releases it at most once and closes
+its owned pipes, including for a silent or paused process. Its console process
+listing is answered empty: after exit the listing helper cannot attach, and its
+delayed fallback could signal a reused shell PID (#3994). A PID-zero startup
+failure already released by the producer does not receive a second native kill;
+positive-PID failure cleanup retains one release owner. Before exit, public
+`kill()` remains only the reported fallback for a tree `taskkill` that could not
+end the shell.
 `taskkill` follows
 parent links, so a descendant whose parent already exited is not found
 (from its documented behavior; not exercised here).
+Station pins published `node-pty@1.2.0-beta.18` because its native Windows prebuilds include the [PTY-handle locking repair](https://github.com/microsoft/node-pty/pull/922). The 1.1.0 backend concurrently erased and read its global handle vector without synchronization; patching only JavaScript cannot repair that native race. This does not identify a hosted worker crash without its native dump.
+
+The [managed Windows lifecycle patch](../../patches/node-pty-1.2.0-beta.18.patch) observes socket close independently of pipe readiness and cancels pending startup or releases the native console without waiting for first output. Since the new backend starts asynchronously, the adapter waits for a positive PID before workload tracking, pauses reads until its first data subscriber, and retains an observed exit for a late subscriber. Startup failures reject and release the owned worker. The [adapter tests](../../src-server/adapters/__tests__/node-pty-adapter.test.ts) exercise initial output/exit, invalid-directory refusal, and real first-output notification held across termination. The process-group cleanup deadline remains unchanged.
+
 The real PTY tests qualify macOS cleanup of the tested descendants and, on
 ConPTY, of an attached, a `windowsHide` and a detached descendant. Other POSIX
 hosts and already-daemonized workloads are not newly qualified;
@@ -1244,35 +1250,31 @@ clipboard was not read back. On Windows, a Station with no Job guard (the
 Desktop app's bundled server stages none yet) still runs commands without a
 Job, so there Stop does not reach a descendant whose parent already exited.
 Replay at recorded sizes was checked with cmd.exe on ConPTY and a synthetic
-repaint, not with full-screen programs or other shells. On Windows a forked Vitest worker
-running a terminal process suite has exited without an error, a report or a
-log line, at most once in three runs and under a different suite each time
-(the retention suite in run 41973735929, the socket suite about 37 seconds
-in, in run 42017221712). On the Windows machine above it happened once in
-four full floor runs, in the retention suite in an invocation of its own
-after five other terminal suites, and not in six runs of that suite alone.
-A hosted run and three local floor runs that recorded every test, PTY spawn,
-kill and exit and `taskkill` all passed (42020043935), and the cause is not
-found. The floor
-([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
-therefore runs each terminal process suite in a Vitest invocation of its own,
-so a dead worker hides no other suite's results; the floor still fails, and
-nothing retries it. Since #4626 a failed invocation also keeps how each
-worker ended (exit code or signal, and whether Vitest had asked it to stop:
-Vitest ends every worker it is done with by SIGTERM), any Node fatal-error
-report and the Application log's crash entries, and the hosted job uploads
-them; Vitest itself reports only "Worker exited unexpectedly". On
-2026-11-05/06 that message appeared in six of nine failed hosted floor runs
-of other branches (including a merge-queue candidate for main), five of
-them in the retention suite's invocation about 14 to 18 seconds in, after
-"revocation refuses the next input" passed. Separately, "Terminal
-process-group cleanup did not settle" (a shell's cleanup missing its six
-second deadline) failed the retention suite on two other branches and the
-socket suite's credit-backpressure case on this one; the error now names
-the step still pending: the tree kill and its result, node-pty's exit event
-(on Windows it follows node-pty's flush of ConPTY output, re-armed by each
-chunk), the last output and whether output was paused. Neither cause is
-established. The screen reader mode has not been used with real
+repaint, not with full-screen programs or other shells. Earlier Windows floors
+lost a forked worker without an assertion or diagnostic. Issue #4626 now records
+the captured access violation (`0xc0000005`) and a controlled reproduction in
+node-pty 1.1's unsynchronized native handle-table removal. The exact
+1.2.0-beta.18 dependency includes the upstream locking and cancellation fixes;
+the Windows adapter suite checks positive-PID admission, an isolated concurrent
+exit/resize child, paused silent exit cleanup, and late vendor readiness after
+cancellation. Qualification of a specific run remains tied to its recorded
+source and installed binary.
+
+The floor ([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
+continues to run every isolated terminal suite, fails any crash, and never
+retries it. Coordinator PID/code/signal records remain in the Windows artifact.
+A failed invocation also retains how each worker ended and whether Vitest had
+asked it to stop (its normal SIGTERM teardown), any Node fatal-error report,
+and the Application log's crash entries. Vitest itself reports only "Worker
+exited unexpectedly".
+
+Separately, "Terminal process-group cleanup did not settle" (a shell's cleanup
+missing its six second deadline) failed the retention suite on two other
+branches and the socket suite's credit-backpressure case on this one. The
+error now names the step still pending: the tree kill and its result,
+node-pty's exit event, the last output and whether output was paused. The cause
+of those cleanup-deadline failures remains unestablished; the native race
+evidence does not attribute them. The screen reader mode has not been used with real
 assistive technology (VoiceOver, NVDA, TalkBack; the Windows machine above
 has no NVDA), and the manual screen reader pass listed above has not
 happened. The browser broker (DataChannel) route is unsupported by design,

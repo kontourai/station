@@ -2434,6 +2434,8 @@ This owner records when a provider call may have crossed into an external effect
 
 The exact raw observation read checks every field, including false eligibility and an absent boundary. Retirement writes a validated full witness on the same existing `orchestration_prepared_turns` audit row before deleting its boundary. Event insertion, witness, deletion and linked fences share the append savepoint, so an outer rollback restores all of them. There is no second terminal store or independent commit. Complete-set contradiction after a committed deletion makes later acknowledgement stale and holds new result-delivery effects or definitive handoff status. Those reads validate the actual current boundary or its same-audit retirement preimage against the canonical complete scope in one read transaction. They do not recreate a fence or retract an earlier release. Retained witnesses can grow until explicit thread deletion, and dedup retention can make acknowledgement stale.
 
+Stopping an unstarted, lineage-reserved successor does not create a session projection. On boot, legacy closed successor stubs with only exit/warning events, default Station-owned control, no model, folder, cursor, tenant binding or attachment/continuation/retention metadata, and no command receipt or turn intent are removed from the projection. Their lineage and events remain intact, so continuation can retry the reserved identity without granting access to an ownerless session.
+
 **Projection and coordination.** Read-only possible-effect projection and physical observation use the same pure terminal decision. SQL provider-ID/time cleanup applies only to inputless legacy rows. Create and engine-opened acceptance precompose cleanup in their owning writer transaction before kernel dispatch; participant admission never issues another command. Pending retries propagate whole-transaction loss before cleanup can issue another statement or dispatch. Polling uses a deferred read, drains no pending transition and writes no witness. Writer cleanup drains existing private retries before selecting current marker-bearing boundary targets; it collects complete terminal facts only for applicable threads. A no-target cleanup does not read unrelated terminal payloads. Boot cleanup precedes raw dead-owner recovery. Session-wide termination preserves the persisted global-sequence fence and NULL legacy timestamp fallback. Station's own shutdown exit (`reason: 'orchestration_shutdown'`) keeps only turn rows (sent and engine-opened) that may have reached their engine (invoking, accepted or indeterminate): such a turn keeps its row at a graceful stop, and the next boot's interrupted-turn recovery settles it as after a crash. Every other row, an unresolved session start or a sent turn that never invoked among them, retires as on any exit, since that recovery settles nothing else. Recovery's own events project over the closed session row rather than a blank one, so the conversation keeps its folder and engine cursor and continues as after any stop. A retained invocation fence alone does not establish an interrupted turn:
 recovery suppresses its notices when that turn has a recorded successful
 completion, while preserving captured input's fence when the native completion
@@ -4648,6 +4650,75 @@ enforcement evidence.
 
 ## OutboundDispatchModule
 
+### Station connection ownership
+
+The [connection registry](../../src-ui/src/connections/station-connection-registry.ts)
+leases one authority-bound host, direct or relayed connection. The
+[resolver](../../src-ui/src/connections/resolve-station-connection.ts) prefers a
+verified direct candidate for new chats; a persisted binding pins the original
+principal and route. [StationConnectionsContext](../../src-ui/src/connections/StationConnectionsContext.tsx)
+retires leases at the authority boundary. No surface switches the selected profile
+to borrow its credential. Native preparation still requires that profile's exact
+host binding; missing custody and unsupported broker routes are unavailable.
+JS fixtures do not establish installed-shell qualification.
+
+[ConversationBody](../../src-ui/src/components/conversation/ConversationBody.tsx),
+[useConversationController](../../src-ui/src/components/conversation/useConversationController.ts)
+and the [transport](../../src-ui/src/components/conversation/conversation-transport.ts)
+own the dock, Activity, attached-session and coding-tab conversation composition.
+Record density changes framing; the adapters retain read-only access and explicit
+continuation into an owned child. [SharedTaskHistoryList](../../src-ui/src/components/conversation/SharedTaskHistoryList.tsx)
+receives owner/member/guest history projections and paging ports without changing
+their publication or redaction rules. [useInboxPanelController](../../src-ui/src/components/chat-dock/useInboxPanelController.ts)
+owns activation currency, search, snooze, dismissal and undo for both Inbox shells.
+
+The owning connection also scopes the managed approval-policy summary; remote
+controls never inherit the host's ceiling. Shared Stop awaits its action and
+retains translated failures, including a failed Task-stop confirmation. Child-work
+snapshots, retained reporter aliases and result notices stay in their Station
+partition; a structured tool return can replace a provider summary while retaining
+result provenance. [Merge integration fixtures](../../src-ui/src/components/conversation/__tests__/merge-integration.test.tsx)
+exercise these boundaries without qualifying native shells or physical devices.
+
+[describeStationFailure](../../src-ui/src/utils/stationFailure.ts) translates request
+failures at this boundary, composing provider repair policy with source/target
+attribution. A relay refusal needs the source-authored observation, current lease,
+expected target and original mutation key before it proves non-delivery. Unknown
+response text remains diagnostic. Locally authored validation and fixed domain
+translations use [StationUiError](../../src-ui/src/utils/StationUiError.ts) to retain
+actionable copy without promoting caught diagnostics into UI text. This marker
+does not prove delivery or refusal. The [surface manifest](../../scripts/conversation-surfaces.json)
+registers shared owners and error publishers; its exact host/domain and diagnostic
+contracts are structural scope declarations, not permission or runtime evidence.
+
+[Orchestration streams](../../src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts)
+and [work observation](../../src-ui/src/contexts/work-observation.ts) partition
+runtime state by Station and authority. Peer snapshots cannot prune host chats,
+and peer streams cannot publish general host-shell events. Retirement fences late
+responses/chunks and clears only the retired partition; host authority teardown
+clears all runtime partitions. Bounded initial history and SSE resume replace
+the former peer transcript polling loop.
+
+Outbox rows, claims, terminal evidence and lookup/flush operations carry Station,
+principal and conversation identity. Edit, reorder, merge, undo and discard controls
+pass that same Station and conversation to the durable queue. Dismissing an
+unsent message removes its matching durable copy, without touching colliding
+host or other-conversation keys. The [mounted queue tests](../../src-ui/src/__tests__/OutboundQueuedMessages.station.test.tsx)
+exercise these actions against persisted queue state.
+
+[OutboundQueueFlushMount](../../src-ui/src/hooks/OutboundQueueFlushMount.tsx)
+keeps a stable supervisor per retained connection; a host flusher cannot adopt a
+peer row. Remote uncertain work requires explicit delivery lookup, not automatic
+replay. Legacy rows without an original namespace remain held. The
+[legacy recovery view](../../src-ui/src/components/conversation/LegacyConversationRecovery.tsx)
+requires source confirmation before durable import, then commits the canonical chat
+before activation. Preview off retains content/drafts while stopping remote work.
+
+The [real browser specs](../../tests/station-connection-chat.spec.ts) and
+[surface adoption spec](../../tests/conversation-surfaces.spec.ts) use disposable
+Stations and a deterministic HTTP provider. Their execution receipts, rather than
+file presence or structural drift scans, establish the exercised journey limits.
+
 An offline message is a draft until transport may have started it. After that, the [durable browser queue](../../src-ui/src/lib/outboundQueue.ts) retains evidence instead of silently resending. The [flush hook](../../src-ui/src/hooks/useOutboundQueueFlush.ts) supplies the live conversation and send adapter.
 
 **Interface.** `outboundDispatch.enqueue(intent)`, `flush(transport)`, `open()`, projection subscription, and the safe pre-effect `edit`, `retry`, `discard`, reorder, merge, and unmerge operations, plus the user's explicit `dismissUnconfirmed` and the read-only `rowStatus` and `retiredKeys` (which the projection uses to drop a discarded message's bubble, and record a started one, in every window), form the UI's durable outbound Interface. `recordUnanswered(intent, error)` records a request that already ran without a receipt as `invoking`, released for lookup, even when it had no live row. `beginLive(intent)` records a composer or queue-drain send `invoking` (`origin: 'live'`) before its request and returns the send's hold on that row (`accepted`, `refused`, `undeliverable`, `unanswered`, `indeterminate`, `hold`, `notSent`, `observed`); `reconcile(lookup, { station })` and `check(clientTurnId, lookup)` settle rows by Station's delivery lookup; `syncHeld(intents)` keeps the durable copies of a renderer's held follow-ups (`heldBy`). `flush` supplies a state-bound `OutboundDispatchClaim` to its transport Adapter. The adapter returns `accepted(providerTurnId)`, `queued`, `not-invoked`, or `deferred`. A durable inbox `queued` receipt retires the browser row without waiting for a provider turn. The last two are pre-provider outcomes: `not-invoked` consumes an attempt, while a temporary `deferred` gate does not. After invocation it throws or records `indeterminate`. It receives neither IndexedDB storage nor a claim token, and callers cannot place a provider turn id on an intent.
@@ -4662,7 +4733,7 @@ When its queue projection clears, it also removes stale automatic-retry notices
 while preserving unrelated interruption messages.
 
 - **States and outcomes.** The Module persists `pending → invoking` before transport. An explicit `not-invoked` outcome may return an intent to `pending` or `failed`; `deferred` restores it to `pending` without consuming an attempt and blocks that Session for the current flush; accepted transport becomes `accepted` with its exact provider turn id. A structured foreground indeterminate outcome, any transport throw or abort after invocation begins, or any post-effect persistence uncertainty is `may-have-started` evidence. `invoking`, `accepted`, and `may-have-started` are never replayed blindly and are never aged out or evicted; `invoking` and `accepted` block later work in the same session. A `may-have-started` row no longer blocks later rows of its session.
-- **Settling an `invoking` row.** The one way back from `invoking` is Station's own answer: `reconcile` takes an `invoking` row whose renderer is gone (its Web Lock is no longer held; on a platform without Web Locks, a row older than `OUTBOUND_ORPHAN_GRACE_MS`), asks the delivery lookup about its exact key, and applies the answer — `not-received` returns it to `pending` for replay with the SAME key, `started` removes it, `received` leaves it to be asked again with backoff, `indeterminate`/`expired`/`unknown` make it `may-have-started`. A failed lookup, or an answer naming another key, changes nothing. `check` is the user's version for one row and stops (`failed`) instead of resending when a `may-have-started` row proves never received.
+- **Settling an `invoking` row.** The one way back from `invoking` is Station's own answer: `reconcile` takes an `invoking` row whose renderer is gone (its Web Lock is no longer held; on a platform without Web Locks, a row older than `OUTBOUND_ORPHAN_GRACE_MS`), asks the delivery lookup about its exact key, and applies the answer — `not-received` returns it to `pending` for replay with the SAME key, `started` removes it, `received` leaves it to be asked again with backoff, `indeterminate`/`expired`/`unknown` make it `may-have-started`. A failed lookup, or an answer naming another key, never authorizes replay. After three consecutive failed lookups, automatic checks pause in `may-have-started`; the message and failure reason remain visible. A valid answer resets the failure count. Refresh delivery makes one explicit lookup and reports its result without resending; Copy message preserves a way to recover the text. `check` is the user's version for one row and always stops (`failed`) instead of resending when the lookup proves never received; Retry is a separate explicit action.
 - **Composer and queue-drain sends.** A composer send's row follows Station's own answer (its envelope): a refusal removes it; may-have-started keeps it `may-have-started`; a busy-engine refusal keeps it as a held follow-up; anything else, including a non-Station response, releases its claim so `reconcile` settles it by the lookup at the next pass. A queue-drain send's row differs: a definitive refusal (Station's own 4xx that a retry would repeat) keeps it as a not-sent (`failed`) record, may-have-started keeps it `may-have-started`, and any other failure returns it to the queue as its held copy. A live row is hidden from projection (`liveInFlight`) while its own renderer waits on it, and so is a held copy. `beginLive` refuses a key whose row is on its way or possibly started (`OutboundRowInFlightError`), and neither the composer nor the queue drain sends it then; a re-send from the same renderer adopts that renderer's own late-landing `invoking` row instead. A refused queued follow-up's not-sent record carries the send's key, so the projection lists it once and its dismissal discards the durable copy.
 - **Held copies.** A held copy (`pending` with `heldBy`) is never sent automatically: the live queue that holds it sends it under the same key, or the user does (`sendHeld`) once it is listed. The projection hides only copies this renderer's queue shows (`heldHere`) and lists every other one (another window's, or one that closed) first, with Send and Discard only (Edit, Merge and Reorder are refused on a held copy); a held copy never holds back later rows, and nothing releases one by a timer or a liveness guess. `syncHeld` takes over an earlier pending copy of a key its queue holds again (a reload restores the queue under a new renderer), and the flush hook syncs after each `reconcile`, before the flush, so a send that was mid-drain at a reload is taken back by the restored queue rather than also flushed.
 - **Retired keys.** Discarding a row, or Station accepting its send, retires its key in the shared state: no held copy is re-created for a retired key and `beginLive` refuses one (`OutboundKeyRetiredError`), so a Discard in any window is honoured by the holder's queue and a delivered message leaves no ghost copy.
@@ -5876,6 +5947,13 @@ content in docked Boards and promoted Project Layouts. Legacy Layout tabs are
 retained. Live sections read scoped Task, attention, recent-work and Project
 queries; the Board persists configuration rather than copies of their records.
 
+The preview-gated [Apps library](../../src-ui/src/views/apps/AppsLibrary.tsx)
+is a discovery and metadata surface over the existing personal-layout queries
+and mutations. The sidebar owns its entry and canonical Board navigation;
+[details editing](../../src-ui/src/views/apps/AppDetailsDialog.tsx) sends only
+name, icon and description. It does not replace dashboard configuration or plugin
+hosting. The existing layout routes retain owner and plugin authority.
+
 See [Personal Boards](../user/personal-boards.md) and the
 [SDK contract](../reference/sdk.md#personal-board-authoring). Route tests cover
 ownership, revision conflicts, publication, rename and move. Browser journeys
@@ -6825,6 +6903,7 @@ freezes and terminates discovered owned job-control groups. The
 opens real PTYs through HTTP admission, checks both configured Project roots and
 refuses cross-Project/binding access. Its credential fixture is not live pairing
 or account admission qualification.
+Windows ConPTY uses pinned published node-pty 1.2.0-beta.18 prebuilds with the upstream native handle-vector mutex repair, plus the managed [lifecycle patch](../../patches/node-pty-1.2.0-beta.18.patch). The adapter waits for a positive PID before workload tracking, pauses startup reads until a data subscriber, retains an observed exit for a late subscriber, and rejects failed startup. Close observation and release do not depend on first output. The [adapter tests](../../src-server/adapters/__tests__/node-pty-adapter.test.ts) cover initial output/exit, invalid-directory refusal, and termination with first output held, without increasing the cleanup bound.
 The [socket suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts)
 qualifies real PTY/socket resume, credit, scope refusals and resize ordering;
 its injected identity seam does not qualify live pairing or remote egress. The

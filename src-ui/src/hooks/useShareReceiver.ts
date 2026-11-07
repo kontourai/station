@@ -11,6 +11,7 @@
 import { useEffect } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { nativePlatformPromise } from '../platform/native';
+import { describeStationFailure } from '../utils/stationFailure';
 
 interface UseShareReceiverOptions {
   /** Whether to watch for incoming shares. */
@@ -37,7 +38,7 @@ export function useShareReceiver({
             onShare(event.text);
           },
           (error) => {
-            showToast(error.message);
+            showToast(describeStationFailure(error).body);
           },
         );
         disposeSubscription = () => subscription.dispose();

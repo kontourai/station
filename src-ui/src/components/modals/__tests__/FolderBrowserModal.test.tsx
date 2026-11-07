@@ -336,7 +336,7 @@ describe('FolderBrowserModal', () => {
       />,
     );
 
-    expect(screen.getByText('Permission denied')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
   });
 
   test('renders a loading skeleton instead of entries while the query is in flight', () => {

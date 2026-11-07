@@ -218,7 +218,7 @@ vi.mock('../../../contexts/ActiveChatsContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useActiveChatActions: () => ({
     updateChat,
-    removeChat: vi.fn(),
+    removeChat: activeChatsStore.removeChat.bind(activeChatsStore),
     initChat: vi.fn(),
   }),
 }));
@@ -337,6 +337,7 @@ afterEach(async () => {
   acknowledgeCalls.length = 0;
   activeChatsStore.removeChat('chat-a');
   activeChatsStore.removeChat('chat-b');
+  activeChatsStore.removeChat('late-saved-tab');
   openConversationAction.mockReset().mockResolvedValue(null);
   showSurface = undefined;
   deviceSettingsStore.reset('chatDockProjectSlug');
@@ -1540,9 +1541,24 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
     let hydration: Parameters<ReturnType<typeof useOpenConversation>>[8];
     openConversationAction.mockImplementationOnce((...args) => {
       hydration = args[8];
+      activeChatsStore.initChat('late-saved-tab', {
+        agentSlug: agentId('assistant'),
+        agentName: 'Assistant',
+        title: 'Hydrating saved chat',
+        conversationId: 'saved-conversation',
+        projectSlug: 'pulse',
+      });
       hydration!.initialized('late-saved-tab');
       return new Promise<string>((resolve) => {
-        finishOpen = resolve;
+        finishOpen = (id) => {
+          if (hydration!.current())
+            activeChatsStore.updateChat(id, {
+              messages: [
+                { role: 'assistant', content: 'Hydrated saved history' },
+              ],
+            });
+          resolve(id);
+        };
       });
     });
     navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
@@ -1589,6 +1605,12 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
       );
     expect(hydration!.current()).toBe(true);
     await act(async () => finishOpen!('late-saved-tab'));
+    expect(
+      activeChatsStore.getSnapshot()['late-saved-tab']?.conversationId,
+    ).toBe('saved-conversation');
+    expect(activeChatsStore.getSnapshot()['late-saved-tab']?.messages).toEqual([
+      { role: 'assistant', content: 'Hydrated saved history' },
+    ]);
     if (next === 'another-chat')
       expect(navigationStore.getSnapshot().activeChat).toBe('chat-b');
     else if (next === 'same-loading-chat')

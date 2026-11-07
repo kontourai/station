@@ -518,6 +518,30 @@ The mutation cases `ci-health-concurrency-threshold`, `ci-health-reentry-commits
 
 ## Running Tests
 
+### Conversation surface evidence
+
+`node scripts/conversation-boundary-gate.mjs` checks shared owner consumption,
+explicit authority, control/capability drift and raw failure sinks, including
+durable publishers and `String(error)`. The conversation baseline is empty.
+Exact manifest contracts distinguish host/domain composition and diagnostic
+Details from conversation policy; a changed fingerprint is reviewed again.
+`failureSurfaces` registers error publishers without misclassifying settings or
+other host views as conversation adapters.
+
+Run the gate's known-bad/control tests and the affected consumer tests. The
+browser route is `tests/conversation-surfaces.spec.ts`: local/direct/relay controls,
+owner/member/guest history, attached continuation and desktop/mobile Inbox.
+Typecheck browser fixtures with `npm run typecheck:e2e` and run
+`npm run test:fixtures:check` before the product and smoke-live lanes. Those runners
+require their supported POSIX host; Windows component fixtures do not qualify
+runtime authentication, process settlement or a native shell.
+
+For component captures use production components and CSS, typed domain/failed
+request fixtures and ordinary user actions. Capture 390/1440 pixels in light/dark,
+retain geometry and PNGs outside source, and open every image. State whether a
+capture shows a complete parent or its shared error region; neither substitutes
+for the actual failed-request or two-Station journey.
+
 ### Default implementation loop
 
 ```bash
@@ -983,13 +1007,21 @@ suite with the launch builder's cases: package managers' batch shims run
 through cmd.exe, and an approved command reaches cmd with its quotes as shown
 (#3994). [`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs)
 runs each terminal process suite in a Vitest invocation of its own after the
-other files, so a forked worker that dies (an open,
-intermittent fault recorded in the terminal design's NOT_VERIFIED) hides no
+other files, so a forked worker that dies (the fault tracked in #4626) hides no
 other suite's results; every invocation runs, and any failure fails the floor
-without a retry. A failed invocation leaves its crash evidence in
-`.kontourai/verification-output/windows-portable-floor/`, which the job
-uploads: how each Vitest worker ended (exit code or signal), Node fatal-error
-reports, and the Application log's crash entries since it started (#4626). A ConPTY cannot change
+without a retry. Its coordinator records fork PIDs, numeric and hexadecimal
+exit codes, and signals in `.kontourai/verification-output/windows-workers-*.jsonl`;
+the Windows verification artifact retains those records even when the floor
+fails. The observer does not consume worker exceptions or change verdicts.
+A failed invocation also leaves its crash evidence in
+`.kontourai/verification-output/windows-portable-floor/`, which the job uploads:
+how each Vitest worker ended and whether Vitest had asked it to stop, Node
+fatal-error reports, and the Application log's crash entries since it started
+(#4626). The adapter suite also runs in the floor: its owned children cover
+concurrent native exits/resizes, paused silent-reader retirement, and vendor
+cancellation. Issue #4626 records the captured access violation, handle-table
+reproduction, and dependency repair; retained source/binary receipts establish
+each run's qualification. A ConPTY cannot change
 parents, so Windows is where that design is load-bearing.
 Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or

@@ -69,9 +69,7 @@ test('turns an unavailable authority into visible feedback without an unhandled 
       vi.fn(),
     ),
   ).resolves.toBeUndefined();
-  expect(notify).toHaveBeenLastCalledWith(
-    'History authorization is no longer current.',
-  );
+  expect(notify).toHaveBeenLastCalledWith('Try again in a moment.');
   expect(dismiss).toHaveBeenCalledWith('loading-toast');
   expect(open).not.toHaveBeenCalled();
 });

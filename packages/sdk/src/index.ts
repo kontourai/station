@@ -1634,6 +1634,7 @@ export type {
 export {
   AgentToolsRequestError,
   agentQueries,
+  type ConnectionReadTarget,
   conversationQueries,
   isAgentToolsActivatingError,
   knowledgeQueries,

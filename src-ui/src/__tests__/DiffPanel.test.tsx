@@ -314,7 +314,8 @@ describe('DiffPanel', () => {
       error: { message: 'boom' },
     };
     render(<DiffPanel workingDir="/repo" projectSlug="project" />);
-    expect(screen.getByText('boom')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('boom')).toBeNull();
   });
 
   test('shows "No changes" for an empty patch', () => {

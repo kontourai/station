@@ -6,6 +6,7 @@ import { decideSdkBarrelScope } from '../check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from '../check-prepush-static-gates.mjs';
 import {
   gatePlan,
+  gateReport,
   gateScopes,
   veritasGuidanceForPaths,
   veritasGuidanceRules,
@@ -55,6 +56,23 @@ function runJson(args: string[]) {
 }
 
 describe('gate-for report', () => {
+  it('routes conversation changes through the scanner classifier and prints its executable checks', () => {
+    const changedPaths = ['scripts/conversation-surfaces.json'];
+    const plan = gatePlan({ changedPaths, baseSha });
+    expect(plan.conversationBoundaryCommands).toContain(
+      'node scripts/conversation-boundary-gate.mjs',
+    );
+    expect(plan.conversationBoundaryCommands.join('\n')).toContain(
+      'conversation-boundary-gate.test.ts',
+    );
+    const report = gateReport({ changedPaths, baseSha });
+    for (const command of plan.conversationBoundaryCommands)
+      expect(report).toContain(command);
+    expect(
+      gatePlan({ changedPaths: ['docs/README.md'], baseSha })
+        .conversationBoundaryCommands,
+    ).toEqual([]);
+  });
   it.each([
     'src-server/services/orchestration/session-turn-boundary-binding.ts',
     'packages/monument/src/session-boundary.ts',

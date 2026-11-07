@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { openExternalLink } from '../../platform/openExternalLink';
+import { describeStationFailure } from '../../utils/stationFailure';
 import type { OverflowAction } from '../ActionOverflowMenu';
 import { IconButton } from '../IconButton';
 import { ArrowRightGlyph, PlusGlyph, RefreshGlyph } from '../icons/Glyph';
@@ -151,7 +152,7 @@ export function PullRequestsPanel({
     return (
       <Note
         tone="error"
-        text={context.error.message}
+        text={describeStationFailure(context.error).body}
         onRetry={() => void context.refetch()}
       />
     );
@@ -205,7 +206,7 @@ export function PullRequestsPanel({
     return (
       <Note
         tone="error"
-        text={pullRequests.error.message}
+        text={describeStationFailure(pullRequests.error).body}
         onRetry={() => void pullRequests.refetch()}
       />
     );

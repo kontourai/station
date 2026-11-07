@@ -129,21 +129,78 @@
   padding-bottom: calc(var(--k-space-5) + var(--dock-bottom-clearance));
 }
 
+/* Sources own their scrollport between the header and the shell's dock reserve. */
+.route-transition:has(> .project-settings--sources) {
+  min-height: 0;
+  overflow: hidden;
+}
+.project-settings--sources,
+.project-settings--sources .project-settings__layout {
+  overflow: hidden;
+}
+.project-settings--sources .project-settings__body {
+  margin-bottom: 0;
+  padding-bottom: var(--k-space-5);
+  scroll-padding-block: var(--k-space-4);
+}
+
 /* The body is a vertical flex scroller. Without an explicit non-shrinking
    basis, every section compresses until only its header remains visible. */
-.project-settings__body > .page-section {
+.project-settings__body > .project-settings__panel {
   flex: 0 0 auto;
   width: 100%;
   max-width: 960px;
   align-self: center;
   box-sizing: border-box;
+}
+.project-settings__panel[hidden] {
+  display: none;
+}
+.project-settings__panel > .page-section {
+  width: 100%;
   border-radius: var(--k-radius-md);
   box-shadow: none;
 }
-.project-settings__section-nav {
-  margin: var(--k-space-3) var(--k-space-5) 0;
-  flex-shrink: 0;
+.project-settings__layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  gap: var(--k-space-4);
 }
+.project-settings__layout > .section-navigation {
+  flex: 0 0 190px;
+  position: static;
+  max-height: 100%;
+  margin: 0;
+  padding: var(--k-space-4) 0 var(--k-space-4) var(--k-space-5);
+  border: 0;
+}
+.project-settings__layout .section-navigation__links {
+  position: static;
+  max-height: none;
+  padding-right: 0;
+  border: 0;
+}
+.project-settings__layout .page__tab {
+  padding: var(--k-space-3);
+  font-size: var(--k-text-md);
+}
+.project-settings__layout > .project-settings__body {
+  min-height: 0;
+  max-width: none;
+}
+.project-settings__identity-path.station-path {
+  direction: ltr;
+  white-space: normal;
+}
+.project-settings__identity-path .station-path__value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+}
+
 .page-section.knowledge-section {
   padding: 0;
   border-bottom: 1px solid var(--border-primary);
@@ -177,40 +234,6 @@
   padding: var(--k-space-3) var(--k-space-4);
   font-size: var(--k-text-md);
   border-radius: var(--k-radius-control);
-}
-.project-settings__path-pills {
-  margin-top: 0.9rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-}
-/* A pill never outgrows the field (#2799): its label stays on one line and
-   the path inside wraps at any character, so the whole value stays readable.
-   The radius is the control radius, not a full round — a wrapped pill is
-   several lines tall. */
-.project-settings__path-pill {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  align-items: baseline;
-  gap: 0.35rem;
-  padding: 0.35rem 0.65rem;
-  border-radius: var(--k-radius-md);
-  white-space: nowrap;
-  background: color-mix(
-    in srgb,
-    var(--bg-secondary) 86%,
-    var(--surface-lift) 14%
-  );
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--k-text-sm);
-}
-.project-settings__path-pill code {
-  min-width: 0;
-  color: var(--text-primary);
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 /* #2799: PageSection's actions slot never shrinks (it holds buttons), so an
    unbreakable working directory in the identity preview took the whole row
@@ -261,28 +284,10 @@
   gap: 0.65rem;
 }
 .project-settings__identity-path {
-  margin-top: 0.3rem;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.76rem;
-  line-height: 1.5;
-  /* One line of inline text, cut at its START: an rtl line overflows on the
-     left and puts the ellipsis there, so the leaf folder stays in view and a
-     cut path always shows "…". A path that fits starts at the left. The
-     parent and leaf are inline spans (not flex items), so the path reads and
-     copies as one string. The whole path is also the element's title. */
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  direction: rtl;
-  text-align: left;
-}
-.project-settings__identity-path--unset {
-  white-space: normal;
-  direction: ltr;
-}
-.project-settings__identity-path-leaf {
-  color: var(--text-secondary);
+  margin-top: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
 }
 .project-settings__identity-card {
   padding: var(--k-space-4);
@@ -379,18 +384,25 @@
     padding: var(--k-space-3);
     padding-bottom: calc(var(--k-space-3) + var(--dock-bottom-clearance));
   }
-  /* archive#4463: the scrollbar affordance that used to
-     live here moved to the shared `.section-nav` rule in page-layout.css, so
-     a higher-specificity hide can never silently outrank it again. Only this
-     host's own inset/scroll-padding stays local. */
-  .project-settings__section-nav {
-    margin-inline: var(--k-space-3);
-    padding-bottom: 0.4rem;
-    scroll-padding-inline: 0.5rem;
-  }
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+@media (max-width: 768px), (pointer: coarse) {
+  .project-settings__layout {
+    flex-direction: column;
+    gap: 0;
+  }
+  .project-settings__layout > .section-navigation {
+    flex: 0 0 auto;
+    overflow: visible;
+    padding: 0 var(--k-space-3);
+  }
+  .project-settings__layout > .project-settings__body {
+    padding-top: 0;
+  }
+  .project-settings__layout .section-navigation__picker select {
+    min-height: 44px;
+  }
+
   /* Stop the identity preview / path strings from forcing horizontal scroll */
   .project-settings__identity-preview,
   .project-settings__identity-card,

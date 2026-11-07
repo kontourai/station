@@ -1357,6 +1357,8 @@ describe('dependency lifecycle policy', () => {
     }
   });
 
+  // This child-hook boundary exercises Linux selection on non-Linux hosts;
+  // the native matrix below proves compilation with the real upstream script.
   it.each([
     {
       mode: 'source policy',
@@ -1377,6 +1379,13 @@ describe('dependency lifecycle policy', () => {
       expected: 'true',
     },
     {
+      mode: 'same-name non-terminal proof',
+      source: true,
+      optOut: 'false',
+      proof: 'no-build-fallback',
+      expected: 'false',
+    },
+    {
       mode: 'source policy overrides false',
       source: true,
       optOut: 'false',
@@ -1384,7 +1393,7 @@ describe('dependency lifecycle policy', () => {
     },
   ])(
     'executes a Linux native hook with the approved build mode: $mode',
-    ({ source, optOut, expected }) => {
+    ({ source, optOut, expected, proof = 'node-pty-smoke' }) => {
       const fixtureRoot = makeTempDir('station-native-mode-');
       const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -1421,7 +1430,7 @@ describe('dependency lifecycle policy', () => {
                 ],
                 artifact: {
                   path: 'build/Release/pty.node',
-                  proof: 'node-pty-smoke',
+                  proof,
                   platforms: {
                     [`linux/${process.arch}`]: [
                       source
@@ -1439,6 +1448,7 @@ describe('dependency lifecycle policy', () => {
           JSON.parse(readFileSync(resolve(packageRoot, 'mode.json'), 'utf8'))
             .source,
         ).toBe(expected);
+        expect(process.env.npm_config_build_from_source).toBe(optOut);
       } finally {
         Object.defineProperty(process, 'platform', platform);
         vi.unstubAllEnvs();
@@ -1564,16 +1574,23 @@ describe('dependency lifecycle policy', () => {
     }
   });
 
-  it.skipIf(process.platform !== 'linux')(
-    'builds a reviewed native hook from the CI Node headers without a header download',
-    () => {
+  it
+    .skipIf(process.platform !== 'linux')
+    .each(['generic', 'source', 'pinned'] as const)(
+    'honors reviewed native source/prebuild policy with CI headers (%s)',
+    (mode) => {
       const fixtureRoot = makeTempDir('station-native-headers-');
-      const packageRoot = resolve(fixtureRoot, 'node_modules/header-probe');
+      const name = mode === 'generic' ? 'header-probe' : 'node-pty';
+      const target = mode === 'generic' ? 'header_probe' : 'pty';
+      const packageRoot = resolve(fixtureRoot, 'node_modules', name);
+      const prebuild = `prebuilds/linux-${process.arch}/pty.node`;
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const variables = [
         'GITHUB_ACTIONS',
         'npm_config_nodedir',
         'npm_config_devdir',
         'npm_config_disturl',
+        'npm_config_build_from_source',
       ];
       const original = variables.map((key) => [key, process.env[key]] as const);
       try {
@@ -1582,19 +1599,56 @@ describe('dependency lifecycle policy', () => {
         writeFileSync(
           resolve(packageRoot, 'package.json'),
           JSON.stringify({
-            name: 'header-probe',
+            name,
             version: '1.0.0',
             scripts: { install: hook },
           }),
         );
-        writeFileSync(
-          resolve(packageRoot, 'scripts/prebuild.js'),
-          'process.exit(1);',
-        );
+        if (mode === 'generic') {
+          writeFileSync(
+            resolve(packageRoot, 'scripts/prebuild.js'),
+            "require('node:fs').writeFileSync('source-option.marker', process.env.npm_config_build_from_source); process.exit(1);",
+          );
+        } else {
+          copyFileSync(
+            resolve(root, 'node_modules/node-pty/scripts/prebuild.js'),
+            resolve(packageRoot, 'scripts/prebuild.js'),
+          );
+          mkdirSync(resolve(packageRoot, `prebuilds/linux-${process.arch}`), {
+            recursive: true,
+          });
+          const archivePrebuild = Buffer.from(
+            'archive binary is not source-build approval',
+          );
+          writeFileSync(resolve(packageRoot, prebuild), archivePrebuild);
+          const manifestDir = resolve(
+            fixtureRoot,
+            'packaging/node-pty-prebuilds',
+          );
+          mkdirSync(manifestDir, { recursive: true });
+          writeFileSync(
+            resolve(manifestDir, 'manifest.json'),
+            JSON.stringify({
+              schemaVersion: 1,
+              package: 'node-pty',
+              version: '1.0.0',
+              artifacts:
+                mode === 'pinned'
+                  ? {
+                      [`linux-${process.arch}`]: {
+                        sha256: createHash('sha256')
+                          .update(archivePrebuild)
+                          .digest('hex'),
+                      },
+                    }
+                  : {},
+            }),
+          );
+        }
         writeFileSync(
           resolve(packageRoot, 'binding.gyp'),
           JSON.stringify({
-            targets: [{ target_name: 'header_probe', sources: ['probe.cc'] }],
+            targets: [{ target_name: target, sources: ['probe.cc'] }],
           }),
         );
         writeFileSync(
@@ -1602,6 +1656,7 @@ describe('dependency lifecycle policy', () => {
           '#include <node.h>\nNODE_MODULE_INIT() {}\n',
         );
         process.env.GITHUB_ACTIONS = 'true';
+        process.env.npm_config_build_from_source = 'false';
         delete process.env.npm_config_nodedir;
         process.env.npm_config_devdir = resolve(
           fixtureRoot,
@@ -1614,39 +1669,56 @@ describe('dependency lifecycle policy', () => {
               {
                 scope: 'root',
                 lock: 'package-lock.json',
-                path: 'node_modules/header-probe',
-                name: 'header-probe',
+                path: `node_modules/${name}`,
+                name,
                 version: '1.0.0',
                 decision: 'execute',
                 platform: { os: [], cpu: [] },
                 hooks: [{ name: 'install', command: hook }],
                 artifact: {
-                  path: 'build/Release/header_probe.node',
-                  proof: 'fixture',
+                  path:
+                    mode === 'pinned'
+                      ? prebuild
+                      : `build/Release/${target}.node`,
+                  proof: mode === 'generic' ? 'fixture' : 'node-pty-smoke',
                 },
               },
             ],
           },
           { cwd: fixtureRoot },
         );
-        execFileSync(
-          process.execPath,
-          [
-            '-e',
-            'require(process.argv[1])',
-            resolve(packageRoot, 'build/Release/header_probe.node'),
-          ],
-          {
-            windowsHide: true,
-            timeout: 10_000,
-            stdio: 'ignore',
-          },
-        );
+        expect(process.env.npm_config_build_from_source).toBe('false');
+        if (mode === 'generic') {
+          expect(
+            readFileSync(resolve(packageRoot, 'source-option.marker'), 'utf8'),
+          ).toBe('false');
+        }
+        const built = resolve(packageRoot, `build/Release/${target}.node`);
+        if (mode === 'pinned') {
+          expect(existsSync(built)).toBe(false);
+          expect(readFileSync(resolve(packageRoot, prebuild), 'utf8')).toBe(
+            'archive binary is not source-build approval',
+          );
+        } else {
+          expect(existsSync(built)).toBe(true);
+          execFileSync(
+            process.execPath,
+            ['-e', 'require(process.argv[1])', built],
+            {
+              windowsHide: true,
+              timeout: 10_000,
+              stdio: 'ignore',
+            },
+          );
+          if (mode === 'source')
+            expect(existsSync(resolve(packageRoot, 'prebuilds'))).toBe(false);
+        }
         expect(
-          existsSync(resolve(packageRoot, 'build/Release/header_probe.node')),
-        ).toBe(true);
+          warn.mock.calls.some((call) => String(call[0]).includes('DEGRADED')),
+        ).toBe(false);
         expect(existsSync(process.env.npm_config_devdir)).toBe(false);
       } finally {
+        warn.mockRestore();
         for (const [key, value] of original) {
           if (value === undefined) delete process.env[key];
           else process.env[key] = value;
@@ -1789,7 +1861,7 @@ describe('dependency lifecycle policy', () => {
       mkdirSync(packageRoot, { recursive: true });
       writeFileSync(
         resolve(packageRoot, 'package.json'),
-        JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.18' }),
+        JSON.stringify({ name: 'node-pty', version: ptyEntry().version }),
       );
       const artifactDir = resolve(
         fixtureRoot,
@@ -1805,7 +1877,7 @@ describe('dependency lifecycle policy', () => {
         JSON.stringify({
           schemaVersion: 1,
           package: 'node-pty',
-          version: '1.2.0-beta.18',
+          version: ptyEntry().version,
           artifacts: { 'linux-arm64': { sha256 } },
         }),
       );
@@ -1828,6 +1900,59 @@ describe('dependency lifecycle policy', () => {
         rmSync(fixtureRoot, { recursive: true, force: true });
       }
     });
+
+    it('removes an unapproved bundled Linux target so the install hook must compile', () => {
+      const { fixtureRoot, packageRoot } = stagingFixture();
+      const bundled = resolve(packageRoot, 'prebuilds/linux-x64');
+      const other = resolve(packageRoot, 'prebuilds/darwin-arm64');
+      try {
+        mkdirSync(bundled, { recursive: true });
+        mkdirSync(other, { recursive: true });
+        writeFileSync(
+          resolve(bundled, 'pty.node'),
+          'unapproved upstream binary',
+        );
+        writeFileSync(resolve(other, 'pty.node'), 'other platform');
+        const result = stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+          platform: 'linux',
+          arch: 'x64',
+          env: {},
+        });
+        expect(result.staged).toBe(false);
+        expect(existsSync(bundled)).toBe(false);
+        expect(readFileSync(resolve(other, 'pty.node'), 'utf8')).toBe(
+          'other platform',
+        );
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it.skipIf(process.platform === 'win32')(
+      'refuses a redirected unapproved target without deleting outside the package',
+      () => {
+        const { fixtureRoot, packageRoot } = stagingFixture();
+        const outside = resolve(fixtureRoot, 'outside');
+        try {
+          mkdirSync(outside);
+          writeFileSync(resolve(outside, 'pty.node'), 'retained');
+          mkdirSync(resolve(packageRoot, 'prebuilds'));
+          symlinkSync(outside, resolve(packageRoot, 'prebuilds/linux-x64'));
+          expect(() =>
+            stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+              platform: 'linux',
+              arch: 'x64',
+              env: {},
+            }),
+          ).toThrow(/redirected by a symlink/);
+          expect(readFileSync(resolve(outside, 'pty.node'), 'utf8')).toBe(
+            'retained',
+          );
+        } finally {
+          rmSync(fixtureRoot, { recursive: true, force: true });
+        }
+      },
+    );
 
     it('aborts on a digest mismatch instead of staging a tampered artifact', () => {
       const { fixtureRoot, packageRoot } = stagingFixture({
@@ -1949,7 +2074,7 @@ describe('dependency lifecycle policy', () => {
         mkdirSync(resolve(helper, '..'), { recursive: true });
         writeFileSync(
           resolve(packageRoot, 'package.json'),
-          JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+          JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.18' }),
         );
         writeFileSync(helper, '#!/bin/sh\nexit 0\n');
         chmodSync(helper, 0o644);
@@ -2081,7 +2206,7 @@ describe('dependency lifecycle policy', () => {
       });
       writeFileSync(
         resolve(packageRoot, 'package.json'),
-        JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+        JSON.stringify({ name: 'node-pty', version: '1.2.0-beta.18' }),
       );
       writeFileSync(helper, '#!/bin/sh\nexit 0\n');
       symlinkSync(

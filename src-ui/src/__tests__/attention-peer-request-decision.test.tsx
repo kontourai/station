@@ -192,14 +192,15 @@ describe('Notifications inbox: a paired-Station approval', () => {
 
   test("a paired Station's refusal is shown, not swallowed", async () => {
     respond.mockRejectedValue(
-      new Error(
-        'The paired Station refused this decision: the access this Station holds there does not allow answering its requests.',
-      ),
+      Object.assign(new Error('private_scope_diagnostic'), {
+        status: 403,
+        stationEnvelope: true,
+      }),
     );
     renderPage();
     fireEvent.click(within(card()).getByRole('button', { name: 'Allow' }));
     expect((await within(card()).findByRole('alert')).textContent).toContain(
-      'The paired Station refused this decision',
+      "Station didn't accept this message.",
     );
   });
 
@@ -392,9 +393,10 @@ describe('Notifications inbox: a paired-Station input question (bound answers)',
 
   test('a changed request comes back as a visible refusal', async () => {
     continueTask.mockRejectedValue(
-      new Error(
-        'The input request changed or was answered. Refresh and answer the current request.',
-      ),
+      Object.assign(new Error('private_request_changed'), {
+        status: 409,
+        stationEnvelope: true,
+      }),
     );
     attention = { items: [peerQuestion()], pendingCount: 1 };
     renderPage();
@@ -407,7 +409,10 @@ describe('Notifications inbox: a paired-Station input question (bound answers)',
     );
     expect(
       (await within(questionCard()).findByRole('alert')).textContent,
-    ).toContain('The input request changed');
+    ).toContain('Try again in a moment.');
+    expect(questionCard().textContent).not.toMatch(
+      /private_request_changed|could not confirm/i,
+    );
   });
 
   test('a paired-Station refusal flag also withholds Allow/Deny', () => {

@@ -29,6 +29,12 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
 import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
+import type { ChatStationBindingV1 } from '../connections/station-connection';
+import {
+  type StationStateSource,
+  stationPartitionKey,
+  stationStateKey,
+} from '../connections/station-state';
 import type {
   OrchestrationEvent,
   OrchestrationSnapshotPayload,
@@ -997,7 +1003,8 @@ export class BackgroundTasksStore {
   private partitions = new Map<string, BackgroundTasksState>();
   private listeners = new Set<() => void>();
   private retainedPartitions = new Map<string, number>();
-  private openChatThreads: Record<string, true> | undefined;
+  private openChatThreads = new Map<string, Record<string, true>>();
+  private partitionOwners = new Map<string, string>();
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -1005,20 +1012,25 @@ export class BackgroundTasksStore {
       this.listeners.delete(listener);
     };
   };
-  getSnapshot = (apiBase = ''): BackgroundTasksState =>
-    this.partitions.get(apiBase) ?? EMPTY_BACKGROUND_TASKS_STATE;
+  getSnapshot = (source?: StationStateSource): BackgroundTasksState =>
+    this.partitions.get(stationPartitionKey(source)) ??
+    EMPTY_BACKGROUND_TASKS_STATE;
   private stateFor(apiBase: string): BackgroundTasksState {
+    const open = this.openChatThreads.get(
+      this.partitionOwners.get(apiBase) ?? 'host',
+    );
     return (
       this.partitions.get(apiBase) ??
-      (this.openChatThreads === undefined
+      (open === undefined
         ? EMPTY_BACKGROUND_TASKS_STATE
         : {
             ...EMPTY_BACKGROUND_TASKS_STATE,
-            openChatThreads: this.openChatThreads,
+            openChatThreads: open,
           })
     );
   }
-  retainPartition(apiBase: string): () => void {
+  retainPartition(source: StationStateSource): () => void {
+    const apiBase = stationPartitionKey(source);
     this.retainedPartitions.set(
       apiBase,
       (this.retainedPartitions.get(apiBase) ?? 0) + 1,
@@ -1057,25 +1069,48 @@ export class BackgroundTasksStore {
           (entry) => entry.state === 'running',
         ),
     );
-    for (const [key] of inactive.slice(0, Math.max(0, inactive.length - 4)))
+    for (const [key] of inactive.slice(0, Math.max(0, inactive.length - 4))) {
       this.partitions.delete(key);
+      this.partitionOwners.delete(key);
+    }
     this.listeners.forEach((listener) => listener());
   }
-  ingest(event: OrchestrationEvent, apiBase = '') {
+  ingest(event: OrchestrationEvent, source?: StationStateSource) {
+    if (typeof source === 'object' && !source.isCurrent()) return;
+    const apiBase = stationPartitionKey(source);
+    this.partitionOwners.set(
+      apiBase,
+      stationStateKey(typeof source === 'object' ? source.binding : undefined),
+    );
     const previous = this.stateFor(apiBase);
     const next = ingestBackgroundTaskEvent(previous, event);
     if (next !== previous) this.commit(apiBase, next);
   }
-  reconcileSnapshot(payload: OrchestrationSnapshotPayload, apiBase = '') {
+  reconcileSnapshot(
+    payload: OrchestrationSnapshotPayload,
+    source?: StationStateSource,
+  ) {
+    if (typeof source === 'object' && !source.isCurrent()) return;
+    const apiBase = stationPartitionKey(source);
+    this.partitionOwners.set(
+      apiBase,
+      stationStateKey(typeof source === 'object' ? source.binding : undefined),
+    );
     const previous = this.stateFor(apiBase);
     const next = reconcileBackgroundTasksSnapshot(previous, payload);
     if (next !== previous) this.commit(apiBase, next);
   }
   bindProviderReporter(
-    apiBase: string,
+    source: StationStateSource,
     reporterThreadId: string,
     chatThreadId: string,
   ) {
+    if (typeof source === 'object' && !source.isCurrent()) return;
+    const apiBase = stationPartitionKey(source);
+    this.partitionOwners.set(
+      apiBase,
+      stationStateKey(typeof source === 'object' ? source.binding : undefined),
+    );
     const previous = this.stateFor(apiBase);
     let aliases = previous.providerReporters ?? {};
     if (aliases[reporterThreadId] !== chatThreadId)
@@ -1112,7 +1147,16 @@ export class BackgroundTasksStore {
         .map((item) => item.reporterThreadId),
     );
   }
-  reconcileProviderReporters(apiBase: string, threadIds: ReadonlySet<string>) {
+  reconcileProviderReporters(
+    source: StationStateSource,
+    threadIds: ReadonlySet<string>,
+  ) {
+    if (typeof source === 'object' && !source.isCurrent()) return;
+    const apiBase = stationPartitionKey(source);
+    this.partitionOwners.set(
+      apiBase,
+      stationStateKey(typeof source === 'object' ? source.binding : undefined),
+    );
     const previous = this.stateFor(apiBase);
     if (!previous.providerReporters) return;
     const needed = this.neededProviderReporters(apiBase);
@@ -1127,11 +1171,13 @@ export class BackgroundTasksStore {
     });
   }
   /** Preserve live routing; completed history belongs only to open chats. */
-  forgetChat(chatThreadId: string) {
-    const open = { ...this.openChatThreads };
+  forgetChat(chatThreadId: string, binding?: ChatStationBindingV1) {
+    const owner = stationStateKey(binding);
+    const open = { ...this.openChatThreads.get(owner) };
     delete open[chatThreadId];
-    this.openChatThreads = open;
+    this.openChatThreads.set(owner, open);
     for (const apiBase of [...this.partitions.keys()]) {
+      if ((this.partitionOwners.get(apiBase) ?? 'host') !== owner) continue;
       const state = this.partitions.get(apiBase);
       if (!state) continue;
       const openChatThreads = { ...state.openChatThreads };
@@ -1165,10 +1211,13 @@ export class BackgroundTasksStore {
       });
     }
   }
-  retainChat(chatThreadId: string) {
-    if (this.openChatThreads?.[chatThreadId]) return;
-    this.openChatThreads = { ...this.openChatThreads, [chatThreadId]: true };
+  retainChat(chatThreadId: string, binding?: ChatStationBindingV1) {
+    const owner = stationStateKey(binding);
+    const open = this.openChatThreads.get(owner);
+    if (open?.[chatThreadId]) return;
+    this.openChatThreads.set(owner, { ...open, [chatThreadId]: true });
     for (const apiBase of [...this.partitions.keys()]) {
+      if ((this.partitionOwners.get(apiBase) ?? 'host') !== owner) continue;
       const state = this.partitions.get(apiBase);
       if (!state) continue;
       this.commit(apiBase, {
@@ -1181,7 +1230,8 @@ export class BackgroundTasksStore {
   reset() {
     this.partitions.clear();
     this.retainedPartitions.clear();
-    this.openChatThreads = undefined;
+    this.openChatThreads.clear();
+    this.partitionOwners.clear();
   }
 }
 

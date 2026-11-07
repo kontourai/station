@@ -1,21 +1,27 @@
+import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID,
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
+import { WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-device-pane';
 import {
   WORKSPACE_PLAN_PANE_DESCRIPTOR_ID,
   WORKSPACE_READINESS_PANE_DESCRIPTOR_ID,
   WORKSPACE_TRUST_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-file-preview';
+import { WORKSPACE_LAYOUT_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-layout-pane';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
 import type {
   WorkspacePaneHostDocumentV1,
   WorkspacePaneHostScope,
 } from '@kontourai/station-contracts/workspace-pane-host';
+import { WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-pull-request-pane';
+import { WORKSPACE_TERMINAL_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-terminal-pane';
 import { Tooltip } from '@kontourai/ui/react';
 import {
   type CSSProperties,
@@ -76,14 +82,21 @@ import {
   ArrowDownGlyph,
   ArrowLeftGlyph,
   ArrowRightGlyph,
+  BoardGlyph,
+  BranchGlyph,
+  CameraGlyph,
+  ChartGlyph,
   CheckGlyph,
   CloseGlyph,
   CodeGlyph,
+  DatabaseGlyph,
   DiffGlyph,
   DocumentGlyph,
   FolderGlyph,
   GlobeGlyph,
   MessageGlyph,
+  PeopleGlyph,
+  PhoneGlyph,
   PlusGlyph,
   ShieldGlyph,
   TargetGlyph,
@@ -1318,7 +1331,7 @@ export function CodingWorkbench({
                 onClick={() => setToolPickerOpen(true)}
               >
                 {page === 'drill-in' && drilledIn ? (
-                  railGlyph(drilledIn.descriptorId)
+                  railGlyph(drilledIn.descriptorId, drillInLabel)
                 ) : (
                   <MessageGlyph />
                 )}
@@ -1707,7 +1720,7 @@ export function CodingWorkbench({
                   openView(instance, activatedByKeyboard(event));
                 }}
               >
-                {railGlyph(instance.descriptorId)}
+                {railGlyph(instance.descriptorId, paneLabel(instance))}
                 <span>{paneLabel(instance)}</span>
                 {badges[instance.descriptorId] === undefined ? null : (
                   <span className="coding-workbench__tool-count">
@@ -1944,12 +1957,13 @@ const CenterChat = memo(function CenterChat({
 });
 
 /** A glyph per built-in drill-in; anything else draws the generic pane mark. */
-function railGlyph(descriptorId: string): ReactNode {
+function railGlyph(descriptorId: string, label: string): ReactNode {
   switch (descriptorId) {
     case WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID:
       return <DiffGlyph />;
     case WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID:
       return <FolderGlyph />;
+    case WORKSPACE_TERMINAL_PANE_DESCRIPTOR_ID:
     case WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID:
       return <TerminalGlyph />;
     case WORKSPACE_PLAN_PANE_DESCRIPTOR_ID:
@@ -1959,11 +1973,30 @@ function railGlyph(descriptorId: string): ReactNode {
     case WORKSPACE_TRUST_PANE_DESCRIPTOR_ID:
       return <ShieldGlyph />;
     case WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR_ID:
+      if (/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(label))
+        return <CameraGlyph />;
+      if (/\.(csv|tsv|json|jsonl)$/i.test(label)) return <DatabaseGlyph />;
+      if (/\.(tsx?|jsx?|py|rs|go|sh|css|html?|ya?ml|toml)$/i.test(label))
+        return <CodeGlyph />;
       return <DocumentGlyph />;
     case WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID:
       return <GlobeGlyph />;
+    case WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID:
+      return <PhoneGlyph />;
+    case WORKSPACE_AGENTS_PANE_DESCRIPTOR_ID:
+      return <PeopleGlyph />;
+    case WORKSPACE_ACTIVITY_PANE_DESCRIPTOR_ID:
+      return <ChartGlyph />;
+    case WORKSPACE_LAYOUT_PANE_DESCRIPTOR_ID:
+      return <BoardGlyph />;
+    case WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR_ID:
+      return <BranchGlyph />;
     default:
-      return <CodeGlyph />;
+      return (
+        <span className="coding-workbench__rail-initials" aria-hidden="true">
+          {label.trim().slice(0, 2).toLocaleUpperCase()}
+        </span>
+      );
   }
 }
 
@@ -2010,6 +2043,15 @@ function CodingViewRail({
             ? label
             : `${label}, ${count} changed ${count === 1 ? 'file' : 'files'}`;
         const panelId = pressed?.[instance.instanceId];
+        const siblings = instances.filter(
+          (pane) => pane.descriptorId === instance.descriptorId,
+        );
+        const ordinal =
+          siblings.length > 1
+            ? siblings.findIndex(
+                (pane) => pane.instanceId === instance.instanceId,
+              ) + 1
+            : undefined;
         // The tooltip says the whole of what the name abbreviates (a
         // preview's full path, #3047); the accessible name stays the name.
         const detail = paneDetail?.(instance) ?? null;
@@ -2037,7 +2079,15 @@ function CodingViewRail({
                 onOpenView(instance, activatedByKeyboard(event))
               }
             >
-              {railGlyph(instance.descriptorId)}
+              {railGlyph(instance.descriptorId, label)}
+              {ordinal === undefined ? null : (
+                <span
+                  className="coding-workbench__rail-ordinal"
+                  aria-hidden="true"
+                >
+                  {ordinal}
+                </span>
+              )}
               {count === undefined ? null : (
                 <span
                   className="coding-workbench__rail-count"

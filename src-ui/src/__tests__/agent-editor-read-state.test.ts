@@ -12,7 +12,8 @@ describe('agent editor read state', () => {
         isCreating: false,
       }),
     ).toMatchObject({
-      blockingLoadError: 'Failed to fetch agent',
+      blockingLoadError:
+        'Could not reach Station. Check the connection, then try again.',
       notFound: false,
       visibleRefreshError: null,
     });
@@ -30,7 +31,7 @@ describe('agent editor read state', () => {
     ).toMatchObject({
       blockingLoadError: null,
       notFound: false,
-      visibleRefreshError: 'Connection lost',
+      visibleRefreshError: 'Try again in a moment.',
     });
   });
 
@@ -38,7 +39,7 @@ describe('agent editor read state', () => {
     expect(
       resolveAgentEditorReadState({
         hasLoadedAgent: false,
-        loadError: 'Agent not found',
+        loadError: new Error('Agent not found'),
         isPending: false,
         isFetching: false,
         isCreating: false,

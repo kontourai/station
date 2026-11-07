@@ -549,7 +549,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     ).toBeNull();
   });
 
-  test('a rejected New chat surfaces its reason instead of dying silently', async () => {
+  test('a rejected New chat surfaces safe recovery instead of dying silently', async () => {
     const { NewChatUnavailableError } = await import(
       '../components/chat-dock/newChatErrors'
     );
@@ -593,8 +593,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     await waitFor(() =>
       expect(addEphemeralSpy).toHaveBeenCalledWith(session.id, {
         role: 'system',
-        content:
-          '[SYSTEM_EVENT] Could not start a new chat: agent "codex" is not available on this device',
+        content: '[SYSTEM_EVENT] Try again in a moment.',
       }),
     );
   });
@@ -890,9 +889,12 @@ describe('ChatDockBody memory-exhaustion marker', () => {
           { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
         ),
       ).toBeTruthy();
-      expect(
-        screen.queryByText(/Run memory-heavy checks sequentially/),
-      ).toBeNull();
+      const diagnostic = screen.getByText(
+        /Run memory-heavy checks sequentially/,
+      );
+      const disclosure = diagnostic.closest('details');
+      expect(disclosure).not.toBeNull();
+      expect(disclosure?.open).toBe(false);
       expect(screen.queryByText(/Continue picks the task up/)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
     });

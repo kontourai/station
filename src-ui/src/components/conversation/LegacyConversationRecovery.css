@@ -1,0 +1,25 @@
+.legacy-conversation-recovery {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.legacy-conversation-recovery__messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.legacy-conversation-recovery__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}

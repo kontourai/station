@@ -257,6 +257,43 @@ describe('answerOrchestrationRequest', () => {
 });
 
 describe('docs/design/event-content-spill.md: allow digests', () => {
+  test('two relayed Stations sharing source credentials cannot share a viewed-content proof', async () => {
+    const resolve = vi.mocked(resolveOrchestrationRequest);
+    resolve.mockReset();
+    resolve.mockResolvedValue(undefined);
+    const source = {
+      apiBase: 'http://source.test',
+      authorityKey: 'source-device',
+    };
+    const first = 'http://source.test/api/environments/peers/first/chat-api';
+    const second = 'http://source.test/api/environments/peers/second/chat-api';
+    const digest = `sha256-${'2'.repeat(64)}`;
+    const shared = {
+      ...request,
+      requestId: 'proof-request',
+      requestScope: source,
+    };
+    recordViewedContentDigest(
+      shared.threadId,
+      shared.requestEventId,
+      digest,
+      source.authorityKey,
+      first,
+    );
+    try {
+      await answerOrchestrationRequest(second, shared);
+      expect(resolve.mock.calls[0]?.[0]).not.toHaveProperty(
+        'viewedContentDigest',
+      );
+      await answerOrchestrationRequest(first, shared);
+      expect(resolve.mock.calls[1]?.[0]).toMatchObject({
+        viewedContentDigest: digest,
+      });
+    } finally {
+      forgetApprovalAnswer(shared.threadId, shared.requestId);
+    }
+  });
+
   test('sends the recorded digest and reloads the content after a 409', async () => {
     const resolve = vi.mocked(resolveOrchestrationRequest);
     resolve.mockReset();

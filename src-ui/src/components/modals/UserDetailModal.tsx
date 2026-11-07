@@ -1,4 +1,5 @@
 import { useUserQuery } from '@kontourai/station-sdk';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -30,7 +31,7 @@ export function UserDetailModal({
     error: queryError,
     refetch,
   } = useUserQuery(alias);
-  const error = queryError?.message || null;
+  const error = queryError ? describeStationFailure(queryError).body : null;
 
   const hasDetails =
     person &&

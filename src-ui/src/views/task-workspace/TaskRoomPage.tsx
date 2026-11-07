@@ -28,6 +28,7 @@ import { PageFrameActions, usePageHeader } from '../../components/page-frame';
 import { Empty, SkeletonBlock, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ProjectTaskRoomPresence } from '../../workspace-panes/ProjectTaskRoomPresence';
 import { ProjectTaskSharingControl } from '../project-page/ProjectTaskSharingControl';
 import { TaskOutputRow } from './TaskOutputsSection';
@@ -97,7 +98,7 @@ export function TaskRoomHeader({
       setEditing(false);
       void cache.invalidateQueries({ queryKey: ['task-graph', task.id] });
     },
-    onError: (error) => setNotice(error.message),
+    onError: (error) => setNotice(describeStationFailure(error).body),
   });
   const header = useMemo(
     () => ({
@@ -204,7 +205,9 @@ export function TaskRoomHeader({
                     queryKey: ['task-graph', task.id],
                   }),
                 )
-                .catch((error: Error) => setNotice(error.message));
+                .catch((error: Error) =>
+                  setNotice(describeStationFailure(error).body),
+                );
             },
           }))}
         />

@@ -7,6 +7,7 @@ import {
 } from '../../contexts/scheduler-job-dialog-store';
 import { useReconcilingCatalogRefresh } from '../../hooks/useNewChatSelectionModel';
 import { useSchedulerProviders } from '../../hooks/useScheduler';
+import { StationUiError } from '../../utils/StationUiError';
 import { useNewChatSetupReturn } from '../modals/useNewChatSetupReturn';
 import { JobFormModal } from './JobFormModal';
 
@@ -39,7 +40,7 @@ function SchedulerJobDialog({
     revalidate: async () => {
       const result = await agents.refetch({ throwOnError: true });
       if (result.data?.catalogState === 'reconciling')
-        throw new Error(
+        throw new StationUiError(
           'Could not verify current agent setup while Station updates its catalog.',
         );
     },

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { conversationConnection } from '../../../components/conversation/__tests__/fixtures';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import type { OrchestrationEvent } from '../types';
@@ -31,6 +32,78 @@ function event(
 }
 
 describe('production orchestration event seam — buffered delivery', () => {
+  test.each(['direct', 'relay'] as const)(
+    '%s lifecycle boundaries settle their own tab without reaching a colliding host tab',
+    (route) => {
+      const station = conversationConnection(route);
+      activeChatsStore.initChat('remote-buffered-tab', {
+        agentSlug: 'claude',
+        agentName: 'Claude',
+        title: 'Receiver',
+        conversationId: THREAD_ID,
+        currentSessionId: THREAD_ID,
+        stationBinding: station.binding,
+      });
+      activeChatsStore.updateChat('remote-buffered-tab', {
+        status: 'sending',
+        sendAwaitingTurnStart: true,
+      });
+      const binding = {
+        conversationId: THREAD_ID,
+        currentSessionId: THREAD_ID,
+      };
+      handleOrchestrationEvent(
+        station.targetApiBase,
+        event('turn.started', { prompt: 'Receiver prompt' }),
+        undefined,
+        binding,
+        1,
+        station,
+      );
+      expect(
+        activeChatsStore.getSnapshot()['remote-buffered-tab']
+          .orchestrationTurnOpen,
+      ).toBe(true);
+      handleOrchestrationEvent(
+        station.targetApiBase,
+        event('content.text-delta', {
+          itemId: 'answer',
+          delta: 'Receiver answer',
+        }),
+        undefined,
+        binding,
+        2,
+        station,
+      );
+      // An unrelated store notification must not retire the buffered owner.
+      activeChatsStore.updateChat(THREAD_ID, { input: 'Host draft' });
+      handleOrchestrationEvent(
+        station.targetApiBase,
+        event('turn.completed'),
+        undefined,
+        binding,
+        3,
+        station,
+      );
+      expect(
+        activeChatsStore.getSnapshot()['remote-buffered-tab'],
+      ).toMatchObject({
+        status: 'idle',
+        orchestrationTurnOpen: false,
+        sendAwaitingTurnStart: undefined,
+      });
+      expect(
+        activeChatsStore.getSnapshot()['remote-buffered-tab'].messages,
+      ).toContainEqual(expect.objectContaining({ content: 'Receiver answer' }));
+      expect(
+        activeChatsStore.getSnapshot()[THREAD_ID].messages,
+      ).toBeUndefined();
+      expect(
+        activeChatsStore.getSnapshot()[THREAD_ID].orchestrationTurnOpen,
+      ).toBeUndefined();
+      activeChatsStore.removeChat('remote-buffered-tab');
+    },
+  );
   beforeEach(async () => {
     recordReplayRuntime.mockClear();
     activeChatsStore.removeChat(THREAD_ID);
@@ -57,6 +130,7 @@ describe('production orchestration event seam — buffered delivery', () => {
   });
 
   afterEach(() => {
+    activeChatsStore.removeChat('remote-buffered-tab');
     settleSemanticDeliveryBuffer(API_BASE);
     activeChatsStore.removeChat(THREAD_ID);
     deviceSettingsStore.reset('featureSettings');

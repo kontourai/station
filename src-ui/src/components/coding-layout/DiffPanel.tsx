@@ -34,6 +34,7 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { DiffCommentThread } from './DiffCommentThread';
 import './DiffPanel.css';
 import { createPortal } from 'react-dom';
@@ -311,7 +312,7 @@ export function DiffPanel({
     <ObservedDiffPanel
       diff={diff}
       loading={loading}
-      error={queryError?.message || null}
+      error={queryError ? describeStationFailure(queryError).body : null}
       onRetry={() => void refetch()}
       observationKey={workingDir}
       projectSlug={projectSlug}

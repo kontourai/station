@@ -180,6 +180,175 @@ export async function fetchRemoteStation(
   });
 }
 
+/** A live response owns its upstream until completion, cancellation or authority loss. */
+export async function streamRemoteStation(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  current: () => boolean,
+): Promise<Response> {
+  const abort = new AbortController();
+  const assertCurrent = () => {
+    if (!current() || init.signal?.aborted || abort.signal.aborted)
+      throw new Error('Station response authority ended');
+  };
+  let timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    abort.abort();
+  }, timeoutMs);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let closed = false;
+  let output: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let idle: ReturnType<typeof setInterval> | undefined;
+  const cleanup = () => {
+    clearTimeout(deadline);
+    if (idle !== undefined) clearInterval(idle);
+    init.signal?.removeEventListener('abort', disconnected);
+  };
+  const stop = (reason: unknown) => {
+    if (closed) return;
+    closed = true;
+    cleanup();
+    abort.abort(reason);
+    void reader
+      ?.cancel(reason)
+      .catch(() => {})
+      .finally(() => reader?.releaseLock());
+    output?.error(reason);
+  };
+  const disconnected = () => stop(new Error('Station client disconnected'));
+  init.signal?.addEventListener('abort', disconnected, { once: true });
+  try {
+    assertCurrent();
+    const response = await fetch(url, {
+      ...init,
+      signal: abort.signal,
+      redirect: 'error',
+      credentials: 'omit',
+    });
+    clearTimeout(deadline);
+    assertCurrent();
+    const headers = new Headers(response.headers);
+    headers.set(RELAYED_RESPONSE_HEADER, '1');
+    if (!response.body) {
+      closed = true;
+      cleanup();
+      return new Response(null, { status: response.status, headers });
+    }
+    reader = response.body.getReader();
+    const body = new ReadableStream<Uint8Array>(
+      {
+        start(controller) {
+          output = controller;
+          // Revocation must also cut a peer that has gone idle indefinitely.
+          idle = setInterval(() => {
+            try {
+              assertCurrent();
+            } catch (error) {
+              stop(error);
+            }
+          }, 250);
+          idle.unref();
+        },
+        async pull(controller) {
+          if (closed) return;
+          try {
+            assertCurrent();
+            const next = await reader!.read();
+            if (closed) return;
+            assertCurrent();
+            if (next.done) {
+              closed = true;
+              cleanup();
+              reader!.releaseLock();
+              controller.close();
+            } else {
+              controller.enqueue(next.value);
+            }
+          } catch (error) {
+            stop(error);
+          }
+        },
+        cancel(reason) {
+          output = undefined;
+          stop(reason);
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  } catch (error) {
+    stop(error);
+    if (timedOut)
+      throw new RemoteStationTimeoutError(
+        timeoutMs,
+        !['GET', 'HEAD'].includes(init.method ?? 'GET'),
+      );
+    throw error;
+  }
+}
+
+/** Bounded binary/JSON replies use the live guard without decoding attachment bytes. */
+export async function fetchRemoteStationBytes(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  current: () => boolean,
+  maxBytes: number,
+): Promise<Response> {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const response = await streamRemoteStation(
+    url,
+    {
+      ...init,
+      signal: init.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
+    },
+    timeoutMs,
+    current,
+  );
+  const reader = response.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    if (reader)
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) break;
+        total += next.value.byteLength;
+        if (total > maxBytes)
+          throw new Error('Station response exceeded its byte limit');
+        chunks.push(next.value);
+      }
+    if (!current()) throw new Error('Station response authority ended');
+  } catch (error) {
+    await reader?.cancel(error).catch(() => {});
+    throw error;
+  } finally {
+    reader?.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const headers = new Headers(response.headers);
+  headers.set('Content-Length', String(total));
+  return new Response(
+    [204, 205, 304].includes(response.status) ? null : bytes,
+    {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    },
+  );
+}
+
 const minted = new WeakSet<object>();
 
 /** True only for a target this seam produced. */

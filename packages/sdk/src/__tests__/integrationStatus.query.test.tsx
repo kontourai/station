@@ -13,6 +13,12 @@ const response = (reason: string) =>
         {
           connectionId: 'github',
           provider: 'github',
+          authentication: {
+            state: 'signed-in',
+            observedAt: 1234,
+            account: reason.replace(' ', '-'),
+            scopes: ['repo'],
+          },
           actions: [
             {
               action: 'read',
@@ -48,10 +54,10 @@ test.each([false, true])(
     );
     const view = renderHook(
       ({ apiBase }) =>
-        useIntegrationStatusQuery(
-          apiBase,
-          optIn ? { keepPreviousData: true } : undefined,
-        ),
+        useIntegrationStatusQuery(apiBase, {
+          includeGithubAuthentication: true,
+          ...(optIn ? { keepPreviousData: true } : {}),
+        }),
       { initialProps: { apiBase: 'https://a.example' }, wrapper },
     );
     try {
@@ -63,6 +69,9 @@ test.each([false, true])(
       view.rerender({ apiBase: 'https://b.example' });
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
       expect(view.result.current.data).toBeUndefined();
+      expect(
+        view.result.current.data?.connections[0]?.authentication,
+      ).toBeUndefined();
       expect(view.result.current.isPlaceholderData).toBe(false);
       await act(async () => {
         release(response('station b'));

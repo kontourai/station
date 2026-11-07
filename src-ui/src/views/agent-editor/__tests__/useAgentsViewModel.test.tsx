@@ -877,7 +877,7 @@ describe('persisted detail remains authoritative while the collection reconciles
 
     expect(result.current.selectedAgent).toBeUndefined();
     expect(result.current.form.name).toBe('');
-    expect(result.current.loadError).toBe('Refresh failed');
+    expect(result.current.loadError).toBe('Try again in a moment.');
     await act(async () => {
       await result.current.handleSave();
     });
@@ -1107,7 +1107,7 @@ describe('persisted detail remains authoritative while the collection reconciles
       rerender();
     });
     expect(result.current.selectedAgent?.slug).toBe('writer');
-    expect(result.current.error).toBe('Later refresh failed');
+    expect(result.current.error).toBe('Try again in a moment.');
   });
 
   test('an exact loaded custom Agent restores its actions without a collection row', () => {

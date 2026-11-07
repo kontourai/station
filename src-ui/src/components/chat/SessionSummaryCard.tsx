@@ -9,6 +9,7 @@ import { useMutationState } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { ChatSession } from '../../types';
 import { log } from '../../utils/logger';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
 
 interface GenerateRunState {
@@ -72,10 +73,9 @@ export function SessionSummaryCard({
       conversationId: (
         mutation.state.variables as { conversationId?: string } | undefined
       )?.conversationId,
-      errorMessage:
-        mutation.state.error instanceof Error
-          ? mutation.state.error.message
-          : undefined,
+      errorMessage: mutation.state.error
+        ? describeStationFailure(mutation.state.error).body
+        : undefined,
       submittedAt: mutation.state.submittedAt ?? 0,
     }),
   });

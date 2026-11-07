@@ -43,6 +43,7 @@ import {
   useNavigationActions,
 } from '../../../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../../../contexts/ProjectsContext';
+import { StationUiError } from '../../../utils/StationUiError';
 import { ReviewCommentsRail, type ReviewFilter } from './ReviewCommentsRail';
 import { ReviewDocumentView } from './ReviewDocumentView';
 import { ReviewImageView } from './ReviewImageView';
@@ -104,7 +105,7 @@ async function inlineAction<T>(action: () => Promise<T>): Promise<T> {
   try {
     return await action();
   } catch (error) {
-    throw new Error(reviewError(error));
+    throw new StationUiError(reviewError(error));
   }
 }
 

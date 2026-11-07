@@ -777,3 +777,364 @@ test('legacy Board tabs retain their active fallback when entering authoring and
       ).toBe(200);
   }
 });
+
+for (const width of [390, 1440]) {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`Apps library creates, edits, launches and deletes a Board at ${width}px in ${colorScheme}`, async ({
+      page,
+      authenticatedRequest,
+    }, testInfo) => {
+      const name = `Release desk ${width} ${colorScheme} ${Date.now()}`;
+      const catalogResponse = await authenticatedRequest.get(
+        `${API}/api/feature-previews`,
+      );
+      expect(catalogResponse.ok()).toBe(true);
+      const catalog = await catalogResponse.json();
+      const preview = catalog.data.find(
+        (entry: { id: string }) => entry.id === 'apps-library',
+      );
+      expect(preview).toBeDefined();
+      let slug: string | undefined;
+      let returnSlug: string | undefined;
+      const openLibrary = async () => {
+        if (width === 390)
+          await page
+            .getByRole('button', { name: 'Toggle menu', exact: true })
+            .click();
+        await page
+          .getByRole('button', { name: 'Browse apps', exact: true })
+          .click();
+        await expect(
+          page.getByRole('dialog', { name: 'Apps', exact: true }),
+        ).toBeVisible();
+      };
+      try {
+        expect(
+          (
+            await authenticatedRequest.put(
+              `${API}/api/feature-previews/apps-library`,
+              {
+                data: { enabled: true },
+              },
+            )
+          ).ok(),
+        ).toBe(true);
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme });
+        await page.goto('/');
+        await dismissSetupLauncher(page);
+        await openLibrary();
+        const library = page.getByRole('dialog', { name: 'Apps', exact: true });
+        await expect(
+          library.getByText('Make room for your work', { exact: true }),
+        ).toBeVisible();
+        await page.screenshot({
+          path: testInfo.outputPath('apps-library-before-create.png'),
+          fullPage: true,
+        });
+        await library
+          .getByRole('button', { name: 'New Board', exact: true })
+          .click();
+        await page.keyboard.press('Escape');
+        await expect(library).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(library).toBeHidden();
+        const launcher = page.getByRole('button', {
+          name: 'Browse apps',
+          exact: true,
+        });
+        await expect(launcher).toBeFocused();
+        await launcher.click();
+        await library
+          .getByRole('button', { name: 'New Board', exact: true })
+          .click();
+        const details = page.getByRole('dialog', {
+          name: 'New Board',
+          exact: true,
+        });
+        await details.getByLabel('Name', { exact: true }).fill(name);
+        await details.getByLabel('Icon', { exact: true }).fill('🌿');
+        await details
+          .getByRole('textbox', { name: 'Description', exact: true })
+          .fill('Release decisions and useful links.');
+        const createdResponse = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/api/me/layouts' &&
+            response.request().method() === 'POST',
+        );
+        await details
+          .getByRole('button', { name: 'Create Board', exact: true })
+          .click();
+        const created = await createdResponse;
+        expect(created.status()).toBe(201);
+        slug = (await created.json()).data.slug;
+        expect(slug).toBeTruthy();
+        await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
+        await expect(
+          page.getByRole('button', { name: /Daily brief/ }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('dialog', { name: 'Unsaved Changes' }),
+        ).toHaveCount(0);
+        const projectPicker = page.getByRole('combobox', {
+          name: 'Project for a Project watch',
+          exact: true,
+        });
+        await expect(projectPicker).toHaveCSS('color-scheme', colorScheme);
+        await page.evaluate(async () => {
+          await Promise.all(
+            document
+              .getAnimations()
+              .filter(
+                (animation) =>
+                  animation.playState === 'running' &&
+                  animation.effect?.getTiming().iterations !== Infinity &&
+                  animation.timeline === document.timeline,
+              )
+              .map((animation) => animation.finished.catch(() => {})),
+          );
+        });
+        const pickerBox = await projectPicker.boundingBox();
+        expect(pickerBox).not.toBeNull();
+        expect(pickerBox!.height).toBeGreaterThanOrEqual(44);
+        expect(pickerBox!.x).toBeGreaterThanOrEqual(0);
+        expect(pickerBox!.x + pickerBox!.width).toBeLessThanOrEqual(width);
+        await page.screenshot({
+          path: testInfo.outputPath('apps-board-host.png'),
+          fullPage: true,
+          animations: 'disabled',
+        });
+        await openLibrary();
+        await library.getByLabel('Search apps').fill(name);
+        let launch = library.getByRole('button', {
+          name: `${name} Personal Board Release decisions and useful links.`,
+          exact: true,
+        });
+        await expect(launch).toContainText(
+          'Release decisions and useful links.',
+        );
+        await expect(launch).toContainText('🌿');
+        const box = await launch.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+        await page.screenshot({
+          path: testInfo.outputPath('apps-library-populated.png'),
+          fullPage: true,
+        });
+        await library
+          .getByRole('button', { name: `Edit ${name} details`, exact: true })
+          .click();
+        const edit = page.getByRole('dialog', {
+          name: 'Edit app details',
+          exact: true,
+        });
+        await edit
+          .getByRole('textbox', { name: 'Description', exact: true })
+          .fill('Release watch, ready to open.');
+        if (width === 1440 && colorScheme === 'light') {
+          await page.setViewportSize({ width: 390, height: 900 });
+          await expect(
+            edit.getByRole('textbox', { name: 'Description', exact: true }),
+          ).toHaveValue('Release watch, ready to open.');
+          await page.setViewportSize({ width, height: 900 });
+          await expect(
+            edit.getByRole('textbox', { name: 'Description', exact: true }),
+          ).toHaveValue('Release watch, ready to open.');
+        }
+        await edit
+          .getByRole('button', { name: 'Save details', exact: true })
+          .click();
+        launch = library.getByRole('button', {
+          name: `${name} Personal Board Release watch, ready to open.`,
+          exact: true,
+        });
+        await expect(launch).toContainText('Release watch, ready to open.');
+        await launch.click();
+        await expect(page).toHaveURL(new RegExp(`/boards/${slug}$`));
+        await page.goto(`/boards/${slug}${width === 390 ? '/' : ''}`);
+        await page.getByRole('button', { name: /Daily brief/ }).click();
+        await page
+          .getByLabel('Board name', { exact: true })
+          .fill('Unsaved release desk');
+        await openLibrary();
+        await library.getByLabel('Search apps').fill(name);
+        await expect(
+          library.getByRole('button', {
+            name: `${name} Personal Board Release watch, ready to open.`,
+            exact: true,
+          }),
+        ).toContainText('Release watch, ready to open.');
+        await library
+          .getByRole('button', { name: `Delete ${name}`, exact: true })
+          .click();
+        const confirm = page.getByRole('dialog', {
+          name: 'Delete Board?',
+          exact: true,
+        });
+        await confirm
+          .getByRole('button', { name: 'Cancel', exact: true })
+          .click();
+        await expect(
+          library.getByRole('button', {
+            name: `${name} Personal Board Release watch, ready to open.`,
+            exact: true,
+          }),
+        ).toBeVisible();
+        await library
+          .getByRole('button', { name: `Delete ${name}`, exact: true })
+          .click();
+        await confirm
+          .getByRole('button', { name: 'Delete Board', exact: true })
+          .click();
+        const discard = page.getByRole('dialog', {
+          name: 'Unsaved Changes',
+          exact: true,
+        });
+        await expect(discard).toBeVisible();
+        expect(
+          (
+            await authenticatedRequest.get(`${API}/api/me/layouts/${slug}`)
+          ).status(),
+        ).toBe(200);
+        await discard
+          .getByRole('button', { name: 'Cancel', exact: true })
+          .click();
+        await expect(page).toHaveURL(new RegExp(`/boards/${slug}/?$`));
+        await expect(
+          page.getByLabel('Board name', { exact: true }),
+        ).toHaveValue('Unsaved release desk');
+        await expect(confirm).toBeVisible();
+        await confirm
+          .getByRole('button', { name: 'Delete Board', exact: true })
+          .click();
+        await expect(discard).toBeVisible();
+        await discard
+          .getByRole('button', { name: 'Discard', exact: true })
+          .click();
+        await expect(page).toHaveURL(/\/$/);
+        await expect(
+          library.getByRole('button', {
+            name: `${name} Personal Board Release watch, ready to open.`,
+            exact: true,
+          }),
+        ).toHaveCount(0);
+        expect(
+          (
+            await authenticatedRequest.get(`${API}/api/me/layouts/${slug}`)
+          ).status(),
+        ).toBe(404);
+        slug = undefined;
+
+        const raceSlug = `response-race-${width}-${colorScheme}-${Date.now()}`;
+        const raceName = `Response race ${width} ${colorScheme}`;
+        returnSlug = `response-return-${width}-${colorScheme}-${Date.now()}`;
+        expect(
+          (
+            await authenticatedRequest.post(`${API}/api/me/layouts`, {
+              data: { slug: returnSlug, name: 'Return destination' },
+            })
+          ).status(),
+        ).toBe(201);
+        slug = raceSlug;
+        expect(
+          (
+            await authenticatedRequest.post(`${API}/api/me/layouts`, {
+              data: { slug: raceSlug, name: raceName },
+            })
+          ).status(),
+        ).toBe(201);
+        await page.goto(`/boards/${returnSlug}`);
+        await expect(page).toHaveURL(new RegExp(`/boards/${returnSlug}$`));
+        await openLibrary();
+        await library
+          .getByRole('button', {
+            name: `${raceName} Personal Board`,
+            exact: true,
+          })
+          .click();
+        await expect(page).toHaveURL(new RegExp(`/boards/${raceSlug}$`));
+        await openLibrary();
+        await library
+          .getByRole('button', { name: `Delete ${raceName}`, exact: true })
+          .click();
+        let release!: () => void;
+        let responseStatus: number | undefined;
+        const deliverResponse = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        await page.route(`**/api/me/layouts/${raceSlug}`, async (route) => {
+          if (route.request().method() !== 'DELETE') {
+            await route.continue();
+            return;
+          }
+          const response = await route.fetch();
+          const body = await response.body();
+          responseStatus = response.status();
+          await deliverResponse;
+          await route.fulfill({ response, body });
+        });
+        try {
+          await confirm
+            .getByRole('button', { name: 'Delete Board', exact: true })
+            .click();
+          await expect.poll(() => responseStatus).toBe(200);
+          expect(
+            (
+              await authenticatedRequest.get(
+                `${API}/api/me/layouts/${raceSlug}`,
+              )
+            ).status(),
+          ).toBe(404);
+          await page.goBack();
+          await expect(page).toHaveURL(new RegExp(`/boards/${returnSlug}$`));
+          release();
+          await expect(confirm).toBeHidden();
+          await expect(library).toBeVisible();
+          await expect(page).toHaveURL(new RegExp(`/boards/${returnSlug}$`));
+          await expect(
+            library.getByRole('button', {
+              name: `${raceName} Personal Board`,
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          expect(
+            (
+              await authenticatedRequest.get(
+                `${API}/api/me/layouts/${returnSlug}`,
+              )
+            ).status(),
+          ).toBe(200);
+          slug = undefined;
+        } finally {
+          release();
+          await page.unrouteAll({ behavior: 'wait' });
+        }
+      } finally {
+        if (slug) {
+          const cleanup = await authenticatedRequest.delete(
+            `${API}/api/me/layouts/${slug}`,
+          );
+          expect([200, 404]).toContain(cleanup.status());
+        }
+        if (returnSlug) {
+          const cleanup = await authenticatedRequest.delete(
+            `${API}/api/me/layouts/${returnSlug}`,
+          );
+          expect([200, 404]).toContain(cleanup.status());
+        }
+        expect(
+          (
+            await authenticatedRequest.put(
+              `${API}/api/feature-previews/apps-library`,
+              {
+                data: { enabled: preview.enabled },
+              },
+            )
+          ).ok(),
+        ).toBe(true);
+      }
+    });
+  }
+}

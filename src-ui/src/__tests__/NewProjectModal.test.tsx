@@ -5,6 +5,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
+  cleanup,
   fireEvent,
   render as renderView,
   screen,
@@ -12,6 +13,10 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+vi.mock('../hooks/useActiveStationName', () => ({
+  useActiveStationName: () => 'Kontour Station',
+}));
 
 const queryClients: QueryClient[] = [];
 function render(ui: Parameters<typeof renderView>[0]) {
@@ -23,8 +28,13 @@ function render(ui: Parameters<typeof renderView>[0]) {
     ),
   });
 }
-afterEach(() => {
+afterEach(async () => {
+  cleanup();
   for (const client of queryClients.splice(0)) client.clear();
+  // A following dialog must not inherit this case's asynchronous Back cleanup.
+  await waitFor(() =>
+    expect(window.history.state?.__stationDialog).toBeUndefined(),
+  );
 });
 
 const platformProfileState = vi.hoisted(() => ({
@@ -1106,7 +1116,7 @@ describe('NewProjectModal starter layout picker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
-      expect(screen.getByText('Starter could not apply')).toBeTruthy(),
+      expect(screen.getByText('Try again in a moment.')).toBeTruthy(),
     );
     expect(localStorage.getItem('recentLayouts')).toBeNull();
     expect(setProjectMock).not.toHaveBeenCalled();
@@ -1725,7 +1735,9 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Failed to fetch');
+    expect(alert.textContent).toBe(
+      'Could not reach Station. Check the connection, then try again.',
+    );
     expect(createProjectMock).not.toHaveBeenCalled();
     // No verdict about the path: the input must not claim invalidity and the
     // retry control must stay live.

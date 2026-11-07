@@ -117,6 +117,11 @@ export function planFloorInvocations(args) {
 /**
  * Runs every invocation in order and returns each one's outcome; a failure
  * never stops the ones after it.
+ * @param {string[][]} invocations
+ * @param {object} options
+ * @param {string} options.root
+ * @param {(command: string, args: string[], options: import('node:child_process').SpawnSyncOptions) => Pick<import('node:child_process').SpawnSyncReturns<Buffer>, 'status' | 'signal' | 'error'>} [options.spawnSync]
+ * @param {(message: string) => void} [options.log]
  */
 export function runFloorInvocations(
   invocations,
@@ -135,6 +140,9 @@ export function runFloorInvocations(
   },
 ) {
   const vitest = join(root, 'node_modules', 'vitest', 'vitest.mjs');
+  const observer = pathToFileURL(
+    join(root, 'scripts', 'lib', 'windows-worker-diagnostics.mjs'),
+  ).href;
   return invocations.map((args, index) => {
     const files = args.filter((arg) => arg !== 'run' && !arg.startsWith('-'));
     log(`\n[windows-portable-floor] vitest ${files.join(' ')}`);
@@ -145,7 +153,14 @@ export function runFloorInvocations(
     const started = new Date();
     const result = spawnSync(
       process.execPath,
-      ['--import', pathToFileURL(WORKER_EXITS).href, vitest, ...args],
+      [
+        '--import',
+        pathToFileURL(WORKER_EXITS).href,
+        '--import',
+        observer,
+        vitest,
+        ...args,
+      ],
       {
         cwd: root,
         stdio: 'inherit',

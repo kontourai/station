@@ -3,6 +3,7 @@ import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { copyToClipboard } from '../../lib/clipboard';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   PluginPublishError,
   type PluginPublishInspection,
@@ -308,7 +309,7 @@ export function PluginPublishDialog({
 
         {publish.error && failure?.code !== 'secrets' && (
           <div className="plugin-publish__alert" role="alert">
-            <p>{publish.error.message}</p>
+            <p>{describeStationFailure(publish.error).body}</p>
             {(failure?.paths.length ?? 0) > 0 && (
               <ul>
                 {failure?.paths.map((path) => (

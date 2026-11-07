@@ -474,14 +474,22 @@ describe('RegistryView', () => {
         </QueryClientProvider>,
       );
       try {
-        await screen.findByText('Catalog offline');
+        await screen.findByText('Try again in a moment.');
+        expect(screen.queryByText('Catalog offline')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Retry catalog' }));
-        await screen.findByText('Still offline');
+        await waitFor(() => {
+          expect(catalogRecovery.fetch).toHaveBeenCalledTimes(2);
+          expect(
+            screen.getByRole('button', { name: 'Retry catalog' }),
+          ).toHaveProperty('disabled', false);
+        });
+        expect(screen.getByText('Try again in a moment.')).toBeTruthy();
+        expect(screen.queryByText('Still offline')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Retry catalog' }));
         await screen.findByRole('button', {
           name: `View ${registryItems[tab][0]!.displayName} details`,
         });
-        expect(screen.queryByText('Still offline')).toBeNull();
+        expect(screen.queryByText('Try again in a moment.')).toBeNull();
         expect(catalogRecovery.fetch).toHaveBeenCalledTimes(3);
       } finally {
         unmount();

@@ -415,6 +415,17 @@ use the real private store's writer and reader before calling the pure
 `importLegacyDiscordConfiguration` projection. This is contract preparation,
 not a completed runtime migration.
 
+`IntegrationConnectionStatus.authentication` is an opt-in GitHub-only
+`GitHubCliAuthentication` observation, not a grant. Its state is `signed-in`,
+`failed` or `unknown`, with a nonnegative safe-integer `observedAt` in Unix
+milliseconds. Only a signed-in observation can retain optional `account` and
+`scopes`. Accounts follow the bounded GitHub login shape (39 characters, plus an
+optional bot suffix); up to 32 distinct scopes each contain at most 64 lower-case
+letters/digits/hyphens/underscores separated by colons. Known token prefixes are refused. Extra fields, duplicate scopes,
+credential-shaped scope strings and failed observations retaining account facts
+are refused. The server omits this field from legacy requests; the explicit
+metadata read is operator-only and preview-gated.
+
 All new `parseChat*` and `parseIntegration*` functions return `null` for invalid
 input and extra keys, including nested records. They refuse max+1 without
 truncating. Text uses well-formed Unicode and UTF-16 code units: IDs and probe

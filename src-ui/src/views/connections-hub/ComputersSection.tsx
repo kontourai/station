@@ -1,3 +1,4 @@
+import { describeStationFailure } from '../../utils/stationFailure';
 import { RelayOperatorPanel } from './RelayOperatorPanel';
 /**
  * Computers — one list, one row shape, for every computer this Station knows
@@ -80,10 +81,7 @@ function SshForwardState({
   const launcherError =
     launcher.data?.phase === 'failed' ? launcher.data.error : undefined;
   const launcherUnknown = launcher.isError
-    ? (launcher.error instanceof Error
-        ? launcher.error.message
-        : String(launcher.error)
-      ).includes('not found')
+    ? describeStationFailure(launcher.error).body.includes('not found')
     : false;
   if (!forward) return null;
   const warning = sshForwardProvenanceWarning(
@@ -171,9 +169,7 @@ export function ComputersSection() {
     try {
       await (action === 'connect' ? connect : disconnect).mutateAsync(id);
     } catch (cause) {
-      setActionError(
-        cause instanceof Error ? cause.message : 'Computer action failed',
-      );
+      setActionError(describeStationFailure(cause).body);
     } finally {
       setActiveAction(null);
     }
@@ -190,9 +186,7 @@ export function ComputersSection() {
       }
       setRemoveTarget(null);
     } catch (cause) {
-      setActionError(
-        cause instanceof Error ? cause.message : 'Could not remove computer',
-      );
+      setActionError(describeStationFailure(cause).body);
     }
   }
 

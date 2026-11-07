@@ -90,6 +90,7 @@ overrides:
   socks>ip-address: ^10.5.1
   "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
+  "node-pty@1.2.0-beta.18": patches/node-pty-1.2.0-beta.18.patch
   "@vitest/runner@4.1.12": patches/vitest-runner-4.1.12.patch
   "@homebridge/ciao@1.3.12": patches/homebridge-ciao-1.3.12.patch
   "@modelcontextprotocol/client@2.4.0": patches/modelcontextprotocol-client-2.4.0.patch

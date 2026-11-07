@@ -292,7 +292,8 @@ describe('browser broker route acceptance', () => {
       credential: 'lab-turn-secret',
     });
 
-    expect(await screen.findByText('TURN storage is full')).toBeTruthy();
+    expect(await screen.findByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('TURN storage is full')).toBeNull();
     expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
     expect(mocks.redeem).not.toHaveBeenCalled();
   });
@@ -589,7 +590,8 @@ describe('browser broker route acceptance', () => {
     mocks.removeAuthority.mockRejectedValue(new Error('Custody unavailable'));
     render(<BrowserRelayRoutes />);
     fireEvent.click(screen.getByRole('button', { name: 'Forget route' }));
-    expect(await screen.findByText('Custody unavailable')).toBeTruthy();
+    expect(await screen.findByText('Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText('Custody unavailable')).toBeNull();
     expect(mocks.forget).not.toHaveBeenCalled();
     expect(mocks.removeConnection).not.toHaveBeenCalled();
   });

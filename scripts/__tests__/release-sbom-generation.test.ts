@@ -431,17 +431,20 @@ describe('release SBOM generation', () => {
     expect(lifecycle.purlsByScope).toEqual({
       portable: [
         'pkg:npm/esbuild@0.28.2',
-        'pkg:npm/node-pty@1.1.0',
+        'pkg:npm/koffi@3.3.6',
+        'pkg:npm/node-pty@1.2.0-beta.18',
         'pkg:npm/protobufjs@7.6.5',
       ],
       desktop: [
         'pkg:npm/esbuild@0.28.2',
-        'pkg:npm/node-pty@1.1.0',
+        'pkg:npm/koffi@3.3.6',
+        'pkg:npm/node-pty@1.2.0-beta.18',
         'pkg:npm/protobufjs@7.6.5',
       ],
       mobile: [
         'pkg:npm/esbuild@0.28.2',
-        'pkg:npm/node-pty@1.1.0',
+        'pkg:npm/koffi@3.3.6',
+        'pkg:npm/node-pty@1.2.0-beta.18',
         'pkg:npm/protobufjs@7.6.5',
       ],
       // Production includes shared's esbuild and better-auth's locked optional
@@ -451,8 +454,9 @@ describe('release SBOM generation', () => {
         'pkg:npm/cpu-features@0.0.10',
         'pkg:npm/esbuild@0.25.12',
         'pkg:npm/esbuild@0.28.2',
+        'pkg:npm/koffi@3.3.6',
         'pkg:npm/libxmljs2@0.37.0',
-        'pkg:npm/node-pty@1.1.0',
+        'pkg:npm/node-pty@1.2.0-beta.18',
         'pkg:npm/protobufjs@7.6.5',
         'pkg:npm/ssh2@1.17.0',
       ],

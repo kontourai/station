@@ -237,6 +237,10 @@ Use `.tap-target` for compact interactive controls; the local floor is 44 by
 44 CSS pixels. Preserve visible keyboard focus. These CSS rules do not prove
 actual hit area after transforms, overlays or clipping.
 
+The sidebar's narrow drawer keeps Home, add and Board-menu controls at the same
+floor, even with a fine pointer. Board navigation and its menu use separate
+flex slots so their targets do not overlap.
+
 Record discovered modal-like surfaces in
 [responsive-surfaces.json](../ui/responsive-surfaces.json) and action surfaces in
 [responsive-action-surfaces.txt](../ui/responsive-action-surfaces.txt). New
@@ -481,8 +485,11 @@ trailing click cannot open the conversation. Details and long press retain the
 same actions with the preview off.
 
 Dismissal is browser-local inbox visibility, separate from tab teardown, stopping
-work, or deleting a draft. The Dismissed section offers Restore. Lifecycle changes
-use the existing debounce; running progress does not restore a dismissed row.
+work, or deleting a draft. Inbox search reveals matching dismissed items and
+their Restore action. Lifecycle changes use the existing debounce; running
+progress does not restore a dismissed row. Hidden Third-party sessions stay
+hidden through external updates and return to normal status handling when
+adopted into Station.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,

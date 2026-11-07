@@ -339,7 +339,7 @@ test('terminates an agent terminal after its chat view detached and exposes a re
   await screen.findByRole('alert');
   expect(screen.getByRole('tab', { name: 'Agent: alpha' })).toBeTruthy();
   expect(screen.getByRole('alert').textContent).toContain(
-    'Station is unavailable',
+    'Try again in a moment.',
   );
 
   fireEvent.click(screen.getByRole('button', { name: 'Retry close' }));
