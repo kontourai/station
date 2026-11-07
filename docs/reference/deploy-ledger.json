@@ -1,5 +1,37 @@
 [
   {
+    "timestampUtc": "2026-11-07T15:23:23Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261107.42384996541",
+    "sha": "d2d1a8bbd9fd9451e16b1509aee9423301d3ec93",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42384996541",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261107.42384996541 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4667](https://github.com/kontourai/station/pull/4667) fix: unblock remote appearance saves and fit mobile Station names",
+          "[#4637](https://github.com/kontourai/station/pull/4637) fix(windows): keep chat workspaces outside private Station data"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4669](https://github.com/kontourai/station/pull/4669) test: qualify gate CLI and authenticated recovery callers"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-11-07T02:12:58Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261107",
