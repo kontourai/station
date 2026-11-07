@@ -28,9 +28,10 @@
     {
       "product": "corpus",
       "via": [
-        "@kontourai/corpus-store"
+        "@kontourai/corpus-store",
+        "@kontourai/corpus"
       ],
-      "for": "Store private memory records and create proposals through Corpus contracts."
+      "for": "Store private memory records and create proposals through Corpus Store contracts; route external documentation impact through the public Corpus content contract."
     },
     {
       "product": "datum",

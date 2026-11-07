@@ -25,6 +25,40 @@ import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
 import { writeReviewLedger } from './helpers/review-ledger-fixture.js';
 
 const makeTempDir = trackTempDirs();
+
+it('uses Corpus relationships to route changed product files to portable external content targets', () => {
+  const { root } = fixture();
+  writeFileSync(
+    join(root, 'corpus-content.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      repository: 'example/product',
+      relationships: [
+        {
+          id: 'privacy',
+          covers: ['src-server/**'],
+          targets: [
+            'https://github.com/example/website/blob/main/privacy.astro',
+          ],
+        },
+      ],
+    }),
+  );
+  const report = readDocumentationImpact({
+    root,
+    changedPaths: ['src-server/new-data-flow.ts'],
+  });
+  expect(report.externalSurfaces).toEqual([
+    {
+      id: 'privacy',
+      targets: ['https://github.com/example/website/blob/main/privacy.astro'],
+      changedBy: ['src-server/new-data-flow.ts'],
+    },
+  ]);
+  expect(formatDocumentationImpact(report)).toContain(
+    'External content (privacy)',
+  );
+});
 // Impact and catch-up must not depend on the freshness mode (#2934).
 forbidAmbientFreshnessMode();
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
