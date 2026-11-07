@@ -19,6 +19,36 @@ landing; they do not qualify the remaining branch. Group, lineage, context-sync
 and finalizer/recovery work remains here. Neither production qualification flag
 is enabled.
 
+### Finalizer and installed SDK checkpoint (2026-11-07)
+
+The standalone durable Task transcript repair landed in
+[PR #4661](https://github.com/kontourai/station/pull/4661) as
+`eee2bd01acebf99a3e96b2ab031b72d6c8cb18cb`. It does not deliver this remaining
+branch.
+
+At `14f3d9cacccd6a6dd5a3dc70ae52110048ba521d`, all 18 cases in the sealed
+Anthropic preparation and four finalizer files pass together. The finalizer
+scenarios retain their 60-second limits. Initial fixture authority issuance and
+derivation now share the Home scope used by production. Cleanup readback opens
+a fresh runtime after the original runtime has shut down; it cannot reuse a
+released publication lease.
+
+The managed frozen install passes. It restores the declared Survey 8.4.0 and
+Koffi dependencies and installs Anthropic SDK 3.0.138. The sealed owner now binds
+the reviewed SDK bytes and reports that exact version. The installed-version
+regression first failed with eight controls passing, then passes with the
+finalizer selection. Pricing sources, validity dates, model, wire restrictions,
+tools and effects were not widened. These controlled-date tests do not renew
+expired provider evidence or qualify current live execution.
+
+Server-test types pass at `e5572c90a1e1`; 146 pairing and physical-model fixture
+cases also pass there. Those receipts are not silently reassigned to a later
+head. Final documentation truth, current-head readiness, combined delivery
+review, inherited authority and native wrong-ACK/retry qualification remain
+unfinished. Both production qualification flags remain false.
+
+### Earlier recorded-group and runtime checkpoints
+
 At `6ccc4c54667159f371549fdde321121b96a94620`, the recorded-group inspector
 has an explicit UI action for an authorized group ID, exact preset binding,
 Session/output references, retained dependencies, Flow and context-sync metadata.
@@ -144,15 +174,17 @@ allocation and effect-time enforcement for finite token/cost/attempt budgets,
 mutable resources and credential restrictions. The published Flow contract is
 available; carrying envelope metadata cannot supply those missing owners.
 Inherited native requests must remain incomplete until enforcement exists.
-The finalizer selection reproduces one unchanged 60-second timeout with eight
-controls passing. A separate diagnostic CPU profile reproduces it; no timeout
+An earlier finalizer selection reproduced one unchanged 60-second timeout with
+eight controls passing. A separate diagnostic CPU profile reproduced it; no timeout
 or qualification guard is relaxed. A fixture-only candidate then used the real
 per-command publication owner and shared transaction facades; independent
 source review found no lifetime or authority blocker, but the unchanged
 60-second scenario still timed out. The candidate is retained separately at
 `/tmp/child-work-finalizer-scoped-fixture-candidate.patch`; the committed fixture
-was restored byte-exactly. No performance or full-caller success is claimed.
-Whole-epic delivery remains NOT_READY.
+was restored byte-exactly. That historical failure is retained; the newer
+finalizer/SDK checkpoint above records the subsequent controlled caller passes
+without attributing a causal performance improvement. Whole-epic delivery
+remains NOT_READY.
 
 ### Durable native Task retention and basic live ACK checkpoint
 
