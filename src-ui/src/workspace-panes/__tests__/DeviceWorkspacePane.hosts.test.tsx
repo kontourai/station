@@ -6,7 +6,8 @@
  * names that host. With none, no picker appears at all.
  */
 
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import type { MobileDeviceSession } from '@kontourai/station-contracts/mobile-device';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../hooks/useActiveProject', () => ({
@@ -26,12 +27,14 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { DeviceWorkspacePane } from '../DeviceWorkspacePane';
+import { devicePaneStateStorageKey } from '../devicePaneStateStorage';
 import {
   authorizeScope,
   click,
   IOS_DEVICE,
   readyInventory,
   renderInQueryClient,
+  sessionFor,
   stubDeviceFetch,
   unavailableInventory,
 } from './deviceWorkspacePaneHarness';
@@ -116,6 +119,113 @@ describe('the device host picker (#1973)', () => {
       .map((key) => localStorage.getItem(key) ?? '')
       .find((value) => value.includes(REMOTE_IOS.deviceId));
     expect(stored && JSON.parse(stored).hostId).toBe(REMOTE);
+  });
+
+  test('a late local Open response does not replace the selected SSH host', async () => {
+    let resolveOpen!: (session: MobileDeviceSession) => void;
+    const pendingOpen = new Promise<MobileDeviceSession>((resolve) => {
+      resolveOpen = resolve;
+    });
+    const log = stubDeviceFetch({
+      hosts: HOSTS,
+      open: () => pendingOpen,
+      remoteInventory: {
+        [REMOTE]: { ...readyInventory([REMOTE_IOS]), hostId: REMOTE },
+      },
+    });
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await click(
+      await screen.findByRole('button', { name: 'Open iPhone 17 Pro' }),
+    );
+    await waitFor(() =>
+      expect(
+        log.requests.some(
+          (request) =>
+            request.method === 'POST' &&
+            request.url.includes(
+              `/hosts/local/devices/ios/${IOS_DEVICE.deviceId}/sessions`,
+            ),
+        ),
+      ).toBe(true),
+    );
+    await click(screen.getByRole('button', { name: 'Studio Mac' }));
+    await screen.findByText('Studio iPhone');
+
+    await act(async () => resolveOpen(sessionFor(IOS_DEVICE)));
+
+    expect(screen.queryByRole('toolbar', { name: /controls/ })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Studio Mac' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(log.streams).toHaveLength(0);
+    expect(
+      localStorage.getItem(
+        devicePaneStateStorageKey({
+          apiBase: 'http://station.test',
+          authorityKey: 'authority-1',
+        }),
+      ) ?? '',
+    ).not.toContain(IOS_DEVICE.deviceId);
+  });
+
+  test('a newer remote Open keeps its pending state and wins over an older local response', async () => {
+    let resolveLocal!: (session: MobileDeviceSession) => void;
+    let resolveRemote!: (session: MobileDeviceSession) => void;
+    const localOpen = new Promise<MobileDeviceSession>((resolve) => {
+      resolveLocal = resolve;
+    });
+    const remoteOpen = new Promise<MobileDeviceSession>((resolve) => {
+      resolveRemote = resolve;
+    });
+    const log = stubDeviceFetch({
+      hosts: HOSTS,
+      open: ({ deviceId }) =>
+        deviceId === IOS_DEVICE.deviceId ? localOpen : remoteOpen,
+      remoteInventory: {
+        [REMOTE]: { ...readyInventory([REMOTE_IOS]), hostId: REMOTE },
+      },
+    });
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await click(
+      await screen.findByRole('button', { name: 'Open iPhone 17 Pro' }),
+    );
+    await click(screen.getByRole('button', { name: 'Studio Mac' }));
+    const openRemote = await screen.findByRole('button', {
+      name: 'Open Studio iPhone',
+    });
+    expect(openRemote).toHaveProperty('disabled', false);
+    await click(openRemote);
+    await waitFor(() =>
+      expect(
+        log.requests.some(
+          (request) =>
+            request.method === 'POST' &&
+            request.url.includes(
+              `/hosts/${REMOTE}/devices/ios/${REMOTE_IOS.deviceId}/sessions`,
+            ),
+        ),
+      ).toBe(true),
+    );
+
+    await act(async () => resolveLocal(sessionFor(IOS_DEVICE)));
+    expect(screen.queryByRole('toolbar', { name: /controls/ })).toBeNull();
+    expect(screen.getAllByText('Opening device…').length).toBeGreaterThan(0);
+
+    await act(async () => resolveRemote(sessionFor(REMOTE_IOS)));
+    expect(
+      await screen.findByRole('toolbar', { name: 'Studio iPhone controls' }),
+    ).toBeTruthy();
+    const stored = localStorage.getItem(
+      devicePaneStateStorageKey({
+        apiBase: 'http://station.test',
+        authorityKey: 'authority-1',
+      }),
+    );
+    expect(stored).toContain(REMOTE_IOS.deviceId);
+    expect(stored).toContain(REMOTE);
+    expect(stored).not.toContain(IOS_DEVICE.deviceId);
   });
 
   test('an SSH host the operator has not enabled says so, not the local setup wizard', async () => {

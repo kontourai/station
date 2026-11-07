@@ -343,6 +343,15 @@ function DeviceWorkspacePaneSurface({
   const [pending, setPending] = useState<Pending | null>(null);
   const [failure, setFailure] = useState<DeviceOutcomeCopy | null>(null);
   const [ended, setEnded] = useState<string | null>(null);
+  const latestOpen = useRef<symbol | null>(null);
+  const hostRef = useRef(hostId);
+  hostRef.current = hostId;
+  useEffect(
+    () => () => {
+      latestOpen.current = null;
+    },
+    [],
+  );
 
   // Rejoin the remembered device's session when this pane mounts and one is
   // open (D6: a session outlives the pane that opened it).
@@ -382,6 +391,8 @@ function DeviceWorkspacePaneSurface({
             scope.authorityKey !== requestScope.authorityKey)
         )
           return;
+        latestOpen.current = null;
+        setPending(null);
         setFailure(null);
         setEnded(null);
         setBooting(null);
@@ -458,15 +469,28 @@ function DeviceWorkspacePaneSurface({
 
   /** Open (or join) the session on a RUNNING device. */
   async function openRunning(device: MobileDeviceSummary) {
+    if (device.hostId !== hostRef.current || projectSlug !== projectRef.current)
+      return;
+    const attempt = Symbol('device-open');
+    latestOpen.current = attempt;
+    const isCurrent = () =>
+      latestOpen.current === attempt &&
+      hostRef.current === device.hostId &&
+      projectRef.current === projectSlug;
     try {
       setPending({ device, phase: 'opening' });
       const session = await open.mutateAsync(targetOf(device));
+      if (!isCurrent()) return;
       writeDevicePaneState(devicePaneStorage(), requestScope, session);
       setActive({ session, since: Date.now() });
     } catch (error) {
-      setFailure(describeDeviceActionFailure(error, device.name));
+      if (isCurrent())
+        setFailure(describeDeviceActionFailure(error, device.name));
     } finally {
-      setPending(null);
+      if (latestOpen.current === attempt) {
+        latestOpen.current = null;
+        setPending(null);
+      }
     }
   }
 
@@ -628,6 +652,8 @@ function DeviceWorkspacePaneSurface({
         hosts={hosts.data ?? []}
         onPick={(next) => {
           if (next === hostId) return;
+          latestOpen.current = null;
+          setPending(null);
           setFailure(null);
           setEnded(null);
           setBooting(null);
