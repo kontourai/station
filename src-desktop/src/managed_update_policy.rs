@@ -215,7 +215,9 @@ fn macos_profile_present(root: &Path) -> bool {
 /// as present: the shell fails closed when it cannot tell.
 #[cfg(windows)]
 fn windows_policy_key_present(subkey: &str) -> bool {
-    use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS};
+    use windows_sys::Win32::Foundation::{
+        ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS,
+    };
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_WOW64_64KEY,
     };
@@ -967,12 +969,12 @@ mod tests {
         let policy = load_with_device_management(device_managed, false, &system, None, None);
         assert_eq!(policy, InstalledPolicy::DeviceManaged);
         let route = route(&policy, "stable", &[STABLE.to_string()]);
-        assert_eq!(
-            route,
-            UpdateRoute::Refused(DEVICE_MANAGED_SENTENCE.into())
-        );
+        assert_eq!(route, UpdateRoute::Refused(DEVICE_MANAGED_SENTENCE.into()));
         assert!(!download_allowed(&route, STABLE));
-        assert!(!download_allowed(&route, "https://mirror.example/station/stable-desktop/latest.json"));
+        assert!(!download_allowed(
+            &route,
+            "https://mirror.example/station/stable-desktop/latest.json"
+        ));
         // Without device management the same file is read as before.
         assert!(matches!(
             load_with_device_management(false, false, &system, None, None),
