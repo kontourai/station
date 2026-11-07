@@ -58,6 +58,8 @@ export function useInboxSwipe(
   useEffect(() => {
     if (!open) return;
     const outside = (event: Event) => {
+      // An owned popup portals outside the row and returns focus to its trigger.
+      if (row.current?.querySelector('[aria-expanded="true"]')) return;
       if (event.target instanceof Node && !row.current?.contains(event.target))
         close();
     };

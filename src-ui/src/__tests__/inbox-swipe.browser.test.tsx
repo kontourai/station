@@ -233,6 +233,16 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await rail
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
+    await page.getByRole('menuitem', { name: '1 hour', exact: true }).waitFor();
+    await page.keyboard.press('Escape');
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.activeElement?.getAttribute('aria-label')),
+      )
+      .toBe('Snooze Review the inbox');
+    await rail
+      .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
+      .click();
     await page.getByRole('menuitem', { name: '1 hour', exact: true }).click();
     await page.getByRole('button', { name: 'Snoozed · 1' }).click();
     expect(
