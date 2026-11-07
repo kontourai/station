@@ -37,8 +37,9 @@ members or choose a person's account by fallback. See [the S3 source guide](know
 
 ## Read the connection list
 
-Each row shows one readiness state and a next action. Model connections distinguish
-saved settings from a check that actually reached the provider:
+Each row shows one readiness badge beside its name; the line under the name
+holds facts, not the state. Model connections distinguish saved settings from a
+check that actually reached the provider:
 
 - **Ready** — the current readiness evidence permits selection; it does not prove every model or tool capability.
 - **Sign in required**, **API key required**, or **Credentials required** — complete the named authentication step.
@@ -48,9 +49,18 @@ saved settings from a check that actually reached the provider:
 - **Unreachable — retrying** or **Cannot reach provider** — the latest reachability check failed; the former retains a recent pass within the retry grace period.
 - **Found, not connected** — Station observed a service-specific setup signal; connect it to Station.
 - **Setup required** — finish the remaining setup.
-- **Limited** — usable with reduced capabilities; review the details.
+- **Limited** — reduced capabilities; review the details. An engine in this state does not run agents until it reports ready again.
 - **Disabled** — configured but turned off.
+- **Not allowed** — the managed policy does not allow this engine; there is nothing to turn on.
 - **Unreachable** — configured, but Station cannot reach it.
+
+A section tab carries an attention mark when a Model or Engine row is not
+**Ready**, a tool server's last check failed, or Knowledge is missing its vector
+store or embedding model. Opening
+`/connections` waits for these lists to load, then opens the first section that
+needs attention, or Models when none does. The [readiness
+derivation](../../src-ui/src/views/connections-hub/connection-health.ts) is shared
+by the rows, the marks and that redirect.
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
