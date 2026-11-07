@@ -37,11 +37,12 @@ function renderModal(
 ) {
   const store = new ConnectionStore({ storage: memoryAdapter() });
   store.add('Remote Station', 'https://station.example.test');
-  return render(
+  const close = vi.fn();
+  const view = render(
     <ConnectionsProvider store={store}>
       <ConnectionManagerModal
         isOpen={isOpen}
-        onClose={vi.fn()}
+        onClose={close}
         checkHealth={vi.fn(async () => false)}
         listFooterContent={listFooterContent}
         onConnectStation={onConnectStation}
@@ -49,6 +50,7 @@ function renderModal(
     </ConnectionsProvider>,
     renderOptions,
   );
+  return { ...view, close };
 }
 
 afterEach(() => {
@@ -61,6 +63,31 @@ afterEach(() => {
 // closed, and the real body — not the loading placeholder — is what appears once
 // the modal opens.
 describe('ConnectionManagerModal lazy body', () => {
+  it('Escape closes Station actions before requesting the manager close', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ requests: [] })),
+    );
+    await import('../react/ConnectionManagerModalContent');
+    const view = renderModal(true);
+    const more = await screen.findByRole('button', {
+      name: 'More actions for Remote Station',
+    });
+    fireEvent.click(more);
+    const action = screen.getByRole('menuitem', { name: 'Check reachability' });
+    expect(document.activeElement).toBe(action);
+    fireEvent.keyDown(action, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(view.close).not.toHaveBeenCalled();
+    await act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    expect(document.activeElement).toBe(more);
+    fireEvent.keyDown(more, { key: 'Escape' });
+    expect(view.close).toHaveBeenCalledOnce();
+  });
+
   it('retains the opener across StrictMode replay without restoring focus while open', async () => {
     vi.stubGlobal(
       'fetch',
