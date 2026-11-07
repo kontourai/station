@@ -719,10 +719,7 @@ loads the selected family's stylesheet, stamps `data-color-theme*` and
 with `data-color-theme-failed` and is requested again only when the selection
 changes or on `retryColorTheme()`), records the rendered appearance in
 [appearance-cache.ts](../../src-ui/src/lib/appearance-cache.ts), and stays
-bound to the settings store from `main.tsx`. The same binding applies the
-density and motion choices through
-[display-preferences.ts](../../src-ui/src/lib/display-preferences.ts)
-([density and motion](../guides/theming.md#density-and-motion)).
+bound to the settings store from `main.tsx`.
 [branding-theme.ts](../../src-ui/src/lib/branding-theme.ts) re-rates a
 white-label brand on the theme's surfaces.
 
