@@ -1770,17 +1770,25 @@ describe('AgentConnectionView', () => {
    * user had typed. Re-rendering with a NEW query object is exactly what the
    * effect keyed on.
    */
-  test('a refetch of the same engine does not discard an unsaved edit', async () => {
+  test('refresh guidance follows unsaved edits through refetch and save recovery', async () => {
     connectionQueryData = museMissingBinaryConnection();
 
     const { rerender } = await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
 
+    const refresh = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Refresh models',
+    });
+    expect(refresh.disabled).toBe(false);
+    expect(screen.queryByText('Save changes before refreshing.')).toBeNull();
+
     fireEvent.click(screen.getByText('Advanced'));
     const nameInput = screen.getByLabelText('Name') as HTMLInputElement;
     fireEvent.change(nameInput, { target: { value: 'My Muse' } });
     expect(nameInput.value).toBe('My Muse');
+    expect(refresh.disabled).toBe(true);
+    expect(screen.getByText('Save changes before refreshing.')).toBeTruthy();
 
     // A fresh object from the server, same connection: what an invalidation
     // produces.
@@ -1792,6 +1800,22 @@ describe('AgentConnectionView', () => {
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
       'My Muse',
     );
+    expect(refresh.disabled).toBe(true);
+    expect(screen.getByText('Save changes before refreshing.')).toBeTruthy();
+
+    saveFailure = new Error('The settings could not be saved.');
+    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(nameInput.value).toBe('My Muse');
+    expect(refresh.disabled).toBe(true);
+    expect(screen.getByText('Save changes before refreshing.')).toBeTruthy();
+
+    saveFailure = null;
+    saveResult = { ...museMissingBinaryConnection(), name: 'My Muse' };
+    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(refresh.disabled).toBe(false);
+    expect(screen.queryByText('Save changes before refreshing.')).toBeNull();
   });
 
   test('selecting another engine while dirty asks before navigating', async () => {
