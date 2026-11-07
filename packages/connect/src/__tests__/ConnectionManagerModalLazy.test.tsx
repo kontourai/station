@@ -54,7 +54,10 @@ afterEach(() => {
 // the modal opens.
 describe('ConnectionManagerModal lazy body', () => {
   it('moves focus into the dialog before inerting and hiding the focused background', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ requests: [] })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ requests: [] })),
+    );
     await import('../react/ConnectionManagerModalContent');
     const background = document.createElement('div');
     const trigger = document.createElement('button');

@@ -248,7 +248,9 @@ export function ConnectionManagerModalContent({
       inert: boolean;
       ariaHidden: string | null;
     }> = [];
-    let activeBranch: HTMLElement | null = dialog?.contains(document.activeElement)
+    let activeBranch: HTMLElement | null = dialog?.contains(
+      document.activeElement,
+    )
       ? overlay
       : null;
     while (activeBranch?.parentElement) {
