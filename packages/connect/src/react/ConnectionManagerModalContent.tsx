@@ -98,7 +98,9 @@ export function ConnectionManagerModalContent({
 }: ConnectionManagerModalContentProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement[]>([]);
+  const previousFocusRef = useRef<HTMLElement[] | null>(null);
+  const previousFocusTargetRef = useRef<HTMLElement | null>(null);
+  const returnFocusFrameRef = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const visualViewportStyle = useResponsiveVisualViewport();
@@ -230,9 +232,21 @@ export function ConnectionManagerModalContent({
   }, [panel, refreshCandidates, cancelCandidates]);
 
   useLayoutEffect(() => {
+    if (returnFocusFrameRef.current !== null) {
+      cancelAnimationFrame(returnFocusFrameRef.current);
+      returnFocusFrameRef.current = null;
+    }
     // The trigger and every ancestor, captured while all of them are still
     // attached — see `@kontourai/station-shared/return-focus`.
-    previousFocusRef.current = captureReturnFocus(returnFocusTarget);
+    // Effect replay starts with focus inside the dialog, so retain the opener.
+    if (
+      previousFocusRef.current === null ||
+      (returnFocusTarget &&
+        returnFocusTarget !== previousFocusTargetRef.current)
+    ) {
+      previousFocusRef.current = captureReturnFocus(returnFocusTarget);
+      previousFocusTargetRef.current = returnFocusTarget ?? null;
+    }
     const overlay = overlayRef.current;
     const dialog = dialogRef.current;
     if (dialog) {
@@ -319,9 +333,8 @@ export function ConnectionManagerModalContent({
       // in Chromium only: every surviving ancestor is still `inert`, refuses
       // focus, and the walk runs out. Do not "simplify" this to
       // `applyReturnFocus`.
-      const chain = previousFocusRef.current;
-      previousFocusRef.current = [];
-      restoreReturnFocus(chain, overlay);
+      const chain = previousFocusRef.current ?? [];
+      returnFocusFrameRef.current = restoreReturnFocus(chain, overlay);
     };
   }, [returnFocusTarget]);
 

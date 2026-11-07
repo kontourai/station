@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  type RenderOptions,
+  render,
+  screen,
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionStore } from '../core/ConnectionStore';
@@ -27,6 +33,7 @@ function renderModal(
   isOpen: boolean,
   listFooterContent?: ReactNode,
   onConnectStation?: () => void,
+  renderOptions?: Pick<RenderOptions, 'reactStrictMode'>,
 ) {
   const store = new ConnectionStore({ storage: memoryAdapter() });
   store.add('Remote Station', 'https://station.example.test');
@@ -40,6 +47,7 @@ function renderModal(
         onConnectStation={onConnectStation}
       />
     </ConnectionsProvider>,
+    renderOptions,
   );
 }
 
@@ -53,6 +61,34 @@ afterEach(() => {
 // closed, and the real body — not the loading placeholder — is what appears once
 // the modal opens.
 describe('ConnectionManagerModal lazy body', () => {
+  it('retains the opener across StrictMode replay without restoring focus while open', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ requests: [] })),
+    );
+    await import('../react/ConnectionManagerModalContent');
+    const trigger = document.createElement('button');
+    document.body.append(trigger);
+    trigger.focus();
+    const nextFrame = () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const view = renderModal(true, undefined, undefined, {
+      reactStrictMode: true,
+    });
+    try {
+      await screen.findByRole('button', { name: 'Close Station manager' });
+      const dialog = screen.getByRole('dialog');
+      await act(nextFrame);
+      expect(dialog.contains(document.activeElement)).toBe(true);
+      view.unmount();
+      await act(nextFrame);
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      view.unmount();
+      trigger.remove();
+    }
+  });
+
   it('moves focus into the dialog before inerting and hiding the focused background', async () => {
     vi.stubGlobal(
       'fetch',
