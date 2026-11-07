@@ -132,7 +132,7 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   troubleshootPrepare: true,
   // #4710: GET /api/analytics/usage-rollup (src-server/routes/operations/
   // analytics.ts) filters by `connectionId`/`modelConnectionId` and accepts
-  // any engine id. An older host ignores the connection filters and would
+  // every declared usage provider. An older host ignores the connection filters and would
   // answer unfiltered totals, so clients send them only on this flag.
   usageConnectionFilters: true,
 };

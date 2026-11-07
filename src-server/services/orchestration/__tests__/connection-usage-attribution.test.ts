@@ -188,7 +188,9 @@ describe('usage attribution to connections', () => {
       'local',
       { from: day, to: day },
     );
-    const byTurn = new Map(receipts.map((receipt) => [receipt.turnId, receipt]));
+    const byTurn = new Map(
+      receipts.map((receipt) => [receipt.turnId, receipt]),
+    );
     expect(byTurn.get('attributed-turn')).toMatchObject({
       provider: 'bedrock',
       connectionId: 'bedrock-work',
@@ -279,9 +281,7 @@ describe('usage attribution to connections', () => {
 
     const all = await app.request(rollupPath({ provider: 'bedrock' }));
     expect(all.status).toBe(200);
-    expect(
-      (await readJson<{ data: UsageRollup }>(all)).data.rows,
-    ).toEqual([
+    expect((await readJson<{ data: UsageRollup }>(all)).data.rows).toEqual([
       expect.objectContaining({ provider: 'bedrock', inputTokens: 140 }),
     ]);
 
@@ -305,9 +305,9 @@ describe('usage attribution to connections', () => {
     const byModel = await app.request(
       rollupPath({ modelConnectionId: 'model-conn-2' }),
     );
-    expect(
-      (await readJson<{ data: UsageRollup }>(byModel)).data.rows,
-    ).toEqual([expect.objectContaining({ inputTokens: 30 })]);
+    expect((await readJson<{ data: UsageRollup }>(byModel)).data.rows).toEqual([
+      expect.objectContaining({ inputTokens: 30 }),
+    ]);
 
     const grouped = await app.request(rollupPath({ groupBy: 'connection' }));
     expect(grouped.status).toBe(200);
@@ -326,9 +326,17 @@ describe('usage attribution to connections', () => {
     for (const query of [
       { provider: 'Not An Engine' },
       { provider: 'bedrock;drop' },
+      // A typo, a connection id, or an engine that reports no usage.
+      { provider: 'claud' },
+      { provider: 'bedrock-work' },
+      { provider: 'station-agent' },
       { connectionId: 'Bad Id' },
       { modelConnectionId: 'has space' },
       { groupBy: 'account' },
+      // Connection ids are this Station's; they never combine with peers.
+      { connectionId: 'bedrock-work', localOnly: '0' },
+      { modelConnectionId: 'model-conn-1', localOnly: '0' },
+      { groupBy: 'connection', localOnly: '0' },
     ]) {
       const refused = await app.request(rollupPath(query));
       expect(refused.status, JSON.stringify(query)).toBe(400);
@@ -350,7 +358,7 @@ describe('usage attribution to connections', () => {
     expect(unfiltered.data.coverage[0].state).toBe('complete');
     for (const filter of [
       { provider: 'opencode' },
-      { provider: 'station-agent' },
+      { provider: 'acp' },
       { connectionId: 'never-used' },
     ]) {
       const response = await app.request(rollupPath(filter));
@@ -411,5 +419,72 @@ describe('usage attribution to connections', () => {
           'engine reports context occupancy only, not token or cost totals',
       }),
     ]);
+  });
+  test('a busy engine or connection cannot crowd a quiet one out of the bounded window', async () => {
+    startAttributedSession(store, 'busy', {
+      connectionId: 'bedrock-busy',
+      modelConnectionId: 'model-conn-busy',
+    });
+    for (let index = 0; index < 501; index += 1)
+      store.appendEvent({
+        eventId: `busy-usage-${index}`,
+        provider: 'bedrock',
+        threadId: 'busy',
+        turnId: 'busy-turn',
+        createdAt: new Date().toISOString(),
+        method: 'token-usage.updated',
+        promptTokens: 1,
+        completionTokens: 0,
+      });
+    // Observed after the busy window filled the 500-observation bound.
+    startAttributedSession(store, 'quiet', {
+      connectionId: 'bedrock-quiet',
+      modelConnectionId: 'model-conn-quiet',
+    });
+    completeTurn(store, 'quiet', 'quiet-turn', 7);
+    startLegacySession(store, 'quiet-claude', 'claude');
+    completeTurn(store, 'quiet-claude', 'quiet-claude-turn', 9, 'claude');
+    const app = usageRoute(store, home);
+    for (const [filter, inputTokens] of [
+      [{ connectionId: 'bedrock-quiet' }, 7],
+      [{ modelConnectionId: 'model-conn-quiet' }, 7],
+      [{ provider: 'claude' }, 9],
+    ] as const) {
+      const response = await app.request(rollupPath(filter));
+      expect(response.status, JSON.stringify(filter)).toBe(200);
+      const body = await readJson<{ data: UsageRollup }>(response);
+      expect(body.data.rows, JSON.stringify(filter)).toEqual([
+        expect.objectContaining({ inputTokens }),
+      ]);
+      expect(body.data.coverage[0].state, JSON.stringify(filter)).not.toBe(
+        'unknown',
+      );
+    }
+  });
+
+  test('peer transfer keeps its receipt shape without connection attribution', async () => {
+    startAttributedSession(store, 'transfer', {
+      connectionId: 'bedrock-work',
+      modelConnectionId: 'model-conn-1',
+    });
+    completeTurn(store, 'transfer', 'transfer-turn', 10);
+    const app = usageRoute(store, home);
+    const local = await readJson<{ data: UsageRollup }>(
+      await app.request(rollupPath()),
+    );
+    expect(local.data.receipts[0]).toMatchObject({
+      connectionId: 'bedrock-work',
+    });
+    const transfer = await readJson<{ data: UsageRollup }>(
+      await app.request(rollupPath({ includeAggregate: '1' })),
+    );
+    expect(transfer.data.aggregateReceipts).toHaveLength(1);
+    for (const receipt of [
+      ...transfer.data.receipts,
+      ...(transfer.data.aggregateReceipts ?? []),
+    ]) {
+      expect(receipt).not.toHaveProperty('connectionId');
+      expect(receipt).not.toHaveProperty('modelConnectionId');
+    }
   });
 });

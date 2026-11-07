@@ -30,14 +30,17 @@ export { fetchStationUsage, type StationUsageOverview } from './station-usage';
 
 export interface UsageRollupQuery {
   /**
-   * Any engine id. A host without the `usageConnectionFilters` capability
-   * refuses ids other than `claude` and `codex` with a 400; a current host
-   * answers unknown coverage for an engine with no receipts.
+   * A provider kind the host declares usage semantics for (`claude`,
+   * `codex`, `bedrock`, `ollama`, `muse`, `opencode`, `acp`); any other id is
+   * a 400. A host without the `usageConnectionFilters` capability accepts
+   * only `claude` and `codex`. A declared kind with no receipts answers
+   * unknown coverage.
    */
   provider?: string;
   credentialProfileRef?: string | null;
   /**
-   * Engine connection the session recorded. Send it only to a host with the
+   * Engine connection the session recorded. Requires `localOnly`, since
+   * connection ids are per Station. Send it only to a host with the
    * `usageConnectionFilters` capability: an older host ignores it and
    * answers unfiltered totals.
    */

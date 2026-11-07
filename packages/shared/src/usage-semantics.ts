@@ -88,6 +88,20 @@ export function providerReportsContextOccupancyOnly(provider: string): boolean {
   return CONTEXT_OCCUPANCY_ONLY_PROVIDERS.has(provider);
 }
 
+/**
+ * Whether a provider kind is declared to emit `token-usage.updated` at all:
+ * a declared usage scope, or declared context-occupancy-only. Everything else
+ * (a typo, a connection id, an engine that reports no usage) is not a usage
+ * provider, so a usage filter naming it is refused rather than answered with
+ * an empty total.
+ */
+export function isDeclaredUsageProvider(provider: string): boolean {
+  return (
+    PROVIDER_USAGE_SCOPE.has(provider) ||
+    CONTEXT_OCCUPANCY_ONLY_PROVIDERS.has(provider)
+  );
+}
+
 /** `undefined` means nobody has declared this provider's usage scope. */
 export function providerUsageScope(
   provider: string,

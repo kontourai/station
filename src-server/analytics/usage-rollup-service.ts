@@ -213,9 +213,7 @@ export class UsageRollupService {
               ? narrowed
                 ? narrowedCoverage(
                     result.coverage,
-                    (result.aggregateReceipts ?? result.receipts).some(
-                      matches,
-                    ),
+                    (result.aggregateReceipts ?? result.receipts).some(matches),
                     connectionFiltered,
                   )
                 : result.coverage
@@ -700,13 +698,17 @@ function parseReceipt(value: unknown, stationId: string): UsageReceipt {
     'conversationId',
     'taskId',
     'accountKey',
-    'connectionId',
-    'modelConnectionId',
   ])
     if (receipt[key] !== undefined && typeof receipt[key] !== 'string')
       throw new Error('invalid usage receipt field');
+  const {
+    connectionId: _connectionId,
+    modelConnectionId: _modelConnectionId,
+    ...peerReceipt
+  } = receipt as unknown as Omit<UsageReceipt, 'pricing'>;
   return {
-    ...(receipt as unknown as Omit<UsageReceipt, 'pricing'>),
+    // A peer's connection ids name its own configuration, never this one's.
+    ...peerReceipt,
     // A peer's opaque retail extension is not locally reviewed tariff evidence.
     retailEquivalent: undefined,
     pricing: parsedPricing,

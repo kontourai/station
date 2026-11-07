@@ -894,6 +894,16 @@ export interface SessionNamingParent {
   stationDerived: boolean;
 }
 
+/**
+ * Narrowing applied inside the bounded receipt selection, so a busy engine or
+ * connection cannot fill the window's limit and crowd a quiet one out.
+ */
+export interface UsageReceiptFilter {
+  provider?: string;
+  connectionId?: string;
+  modelConnectionId?: string;
+}
+
 /** One `token-usage.updated` row with the receipt facts joined onto it. */
 export interface UsageReceiptEventRow {
   event: PersistedRuntimeEvent;
@@ -8165,11 +8175,15 @@ export class EventStore {
     to: string;
     after?: { observedAt: string; eventId: string };
     limit: number;
+    filter?: UsageReceiptFilter;
   }): UsageReceiptEventRow[] {
     const owners = usageOwnerPlaceholders(options.ownerUserIds);
+    const filter = options.filter ?? {};
+    // The connection columns are derived per row, so they are filtered on the
+    // projected selection before its order and limit apply.
     const rows = this.db
       .prepare(
-        `${USAGE_RECEIPT_EVENT_SELECT}
+        `SELECT * FROM (${USAGE_RECEIPT_EVENT_SELECT}
            FROM orchestration_events e
            INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
            LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
@@ -8177,8 +8191,11 @@ export class EventStore {
             AND e.observed_at >= ? AND e.observed_at <= ?
             AND h.owner_user_id IN (${owners})
             AND (? IS NULL OR h.tenant_id = ?)
-            AND (? IS NULL OR e.observed_at > ? OR (e.observed_at = ? AND e.id > ?))
-          ORDER BY e.observed_at ASC, e.id ASC
+            AND (? IS NULL OR e.provider = ?)
+            AND (? IS NULL OR e.observed_at > ? OR (e.observed_at = ? AND e.id > ?)))
+          WHERE (? IS NULL OR connection_id = ?)
+            AND (? IS NULL OR model_connection_id = ?)
+          ORDER BY observed_at ASC, id ASC
           LIMIT ?`,
       )
       .all(
@@ -8187,10 +8204,16 @@ export class EventStore {
         ...options.ownerUserIds,
         options.tenantId ?? null,
         options.tenantId ?? null,
+        filter.provider ?? null,
+        filter.provider ?? null,
         options.after?.observedAt ?? null,
         options.after?.observedAt ?? null,
         options.after?.observedAt ?? null,
         options.after?.eventId ?? null,
+        filter.connectionId ?? null,
+        filter.connectionId ?? null,
+        filter.modelConnectionId ?? null,
+        filter.modelConnectionId ?? null,
         options.limit + 1,
       ) as any[];
     const costSegments = this.cumulativeCostSegmentsFor(
@@ -8222,8 +8245,7 @@ export class EventStore {
       ...(typeof row.connection_id === 'string' && row.connection_id
         ? { connectionId: row.connection_id }
         : {}),
-      ...(typeof row.model_connection_id === 'string' &&
-      row.model_connection_id
+      ...(typeof row.model_connection_id === 'string' && row.model_connection_id
         ? { modelConnectionId: row.model_connection_id }
         : {}),
       ...(costSegment !== undefined ? { costSegment } : {}),

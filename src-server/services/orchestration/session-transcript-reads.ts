@@ -22,7 +22,11 @@ import {
   CatalogUsagePricingSnapshotReader,
   stampUsageReceiptPrice,
 } from '../../analytics/usage-pricing-snapshot-reader.js';
-import type { EventStore, UsageReceiptEventRow } from './event-store.js';
+import type {
+  EventStore,
+  UsageReceiptEventRow,
+  UsageReceiptFilter,
+} from './event-store.js';
 import { createIsolatedSessionTranscriptSearch } from './isolated-session-transcript-search.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists — and it avoids adding ANOTHER copy of the read-scope
@@ -362,6 +366,7 @@ export class SessionTranscriptReads {
       cursor?: string;
       pageSize?: number;
       aggregate?: boolean;
+      filter?: UsageReceiptFilter;
     },
   ): {
     receipts: UsageReceipt[];
@@ -405,6 +410,7 @@ export class SessionTranscriptReads {
       to: request.to,
       ...(after ? { after } : {}),
       limit: pageSize,
+      ...(request.filter ? { filter: request.filter } : {}),
     });
     const page = rows.slice(0, pageSize);
     // The windowed rollup counts only Station-observed receipts; a legacy row
