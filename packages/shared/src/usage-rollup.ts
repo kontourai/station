@@ -76,6 +76,11 @@ function keyFor(
                 : groupBy === 'modelConnection'
                   ? receipt.modelConnectionId
                   : receipt.provider;
+  // A connection id is configuration text and may be any word, including
+  // `unattributed`; its keys quote the id so a real id never shares the
+  // bucket for usage that recorded none.
+  if (groupBy === 'connection' || groupBy === 'modelConnection')
+    return `${groupBy}:${JSON.stringify(part ?? null)}`;
   return `${groupBy ?? 'provider'}:${part ?? 'unattributed'}`;
 }
 

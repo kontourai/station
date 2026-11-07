@@ -66,15 +66,15 @@ export interface UsageReceipt {
   /** Opaque engine/profile attribution; absent means the account is unknown. */
   accountKey?: string;
   /**
-   * The engine connection the session recorded at start. Absent means the
-   * session recorded none (including every pre-attribution session); it is
-   * never inferred from `provider`.
+   * The engine connection this process recorded at start. Absent means it
+   * recorded none (including every pre-attribution session); it is never
+   * inferred from `provider`.
    */
   connectionId?: string;
   /**
-   * The model connection of a Station-resolved launch plan the engine
-   * accepted. Absent when the engine chose its own model or nothing was
-   * recorded.
+   * The model connection of the accepted Station-resolved launch plan in
+   * effect at this usage, within the same process. Absent when the engine
+   * chose its own model or nothing was recorded.
    */
   modelConnectionId?: string;
   threadId?: string;

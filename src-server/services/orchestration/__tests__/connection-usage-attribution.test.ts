@@ -12,7 +12,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { readAuthorizedUsageExport } from '../../../analytics/usage-export-reader.js';
 import { createAnalyticsRoutes } from '../../../routes/operations/analytics.js';
-import { EventStore } from '../event-store.js';
+import { EventStore, usageReceiptEventsSql } from '../event-store.js';
 import { SessionTranscriptReads } from '../session-transcript-reads.js';
 
 const makeTempDir = trackTempDirs();
@@ -173,6 +173,14 @@ describe('usage attribution to connections', () => {
     store = new EventStore(join(home, 'events.sqlite'));
   });
   afterEach(() => store.close());
+  const readReceipts = () => {
+    const day = new Date().toISOString().slice(0, 10);
+    return usageReads(store).listUsageReceipts(
+      sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
+      'local',
+      { from: day, to: day },
+    ).receipts;
+  };
 
   test('receipts carry the recorded engine and model connection; legacy sessions stay unattributed', () => {
     startAttributedSession(store, 'attributed', {
@@ -202,36 +210,132 @@ describe('usage attribution to connections', () => {
     expect(legacy).not.toHaveProperty('modelConnectionId');
   });
 
-  test('an engine-selected first plan names no model connection, even after a later Station-resolved one', () => {
-    startLegacySession(store, 'engine-chose');
+  test('the launch plan in effect at each usage event names its model connection', () => {
+    startAttributedSession(store, 'switching', {
+      connectionId: 'bedrock-work',
+      modelConnectionId: 'model-conn-a',
+    });
+    completeTurn(store, 'switching', 'turn-a', 1);
+    // A mid-thread model change: the adapter records a new accepted plan
+    // (bedrock-adapter.ts, model application), then a declared engine choice.
     for (const [index, plan] of [
-      { kind: 'engine-selected', evidence: 'adapter-declared' },
       {
         kind: 'station-resolved',
-        modelConnectionId: 'model-conn-later',
+        modelConnectionId: 'model-conn-b',
         modelId: 'model-b',
         evidence: 'catalog-accepted',
       },
-    ].entries())
+      // A plan the adapter has not accepted does not take effect.
+      {
+        kind: 'station-resolved',
+        modelConnectionId: 'model-conn-pending',
+        modelId: 'model-c',
+        evidence: 'catalog-pending',
+      },
+      { kind: 'engine-selected', evidence: 'adapter-declared' },
+    ].entries()) {
       store.appendEvent({
-        eventId: `engine-chose-configured-${index}`,
+        eventId: `switching-configured-${index}`,
         provider: 'bedrock',
-        threadId: 'engine-chose',
-        sessionId: 'engine-chose',
+        threadId: 'switching',
+        sessionId: 'switching',
         createdAt: new Date().toISOString(),
         method: 'session.configured',
         model: 'model-b',
         metadata: { [MODEL_LAUNCH_PLAN_METADATA_KEY]: plan },
       });
-    completeTurn(store, 'engine-chose', 'engine-chose-turn', 5);
-    const day = new Date().toISOString().slice(0, 10);
-    const [receipt] = usageReads(store).listUsageReceipts(
-      sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
-      'local',
-      { from: day, to: day },
-    ).receipts;
-    expect(receipt?.turnId).toBe('engine-chose-turn');
-    expect(receipt).not.toHaveProperty('modelConnectionId');
+      completeTurn(store, 'switching', `turn-plan-${index}`, 1);
+    }
+    const plans = Object.fromEntries(
+      readReceipts().map((receipt) => [
+        receipt.turnId,
+        receipt.modelConnectionId ?? null,
+      ]),
+    );
+    expect(plans).toEqual({
+      'turn-a': 'model-conn-a',
+      'turn-plan-0': 'model-conn-b',
+      'turn-plan-1': 'model-conn-b',
+      'turn-plan-2': null,
+    });
+  });
+
+  test('attribution belongs to the process epoch: a restart that records none or another connection replaces it', () => {
+    startAttributedSession(store, 'restarted', {
+      connectionId: 'bedrock-work',
+      modelConnectionId: 'model-conn-1',
+    });
+    completeTurn(store, 'restarted', 'first-epoch', 1);
+    // A restart whose start recorded no connection and no plan.
+    store.appendEvent({
+      eventId: 'restarted-started-2',
+      provider: 'bedrock',
+      threadId: 'restarted',
+      sessionId: 'restarted',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      initialState: 'created',
+      metadata: { userId: OWNER, cwd: '/work' },
+    });
+    completeTurn(store, 'restarted', 'bare-epoch', 1);
+    // A restart on another connection, without a reconfiguration.
+    store.appendEvent({
+      eventId: 'restarted-started-3',
+      provider: 'bedrock',
+      threadId: 'restarted',
+      sessionId: 'restarted',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      initialState: 'created',
+      metadata: { userId: OWNER, cwd: '/work', connectionId: 'bedrock-home' },
+    });
+    completeTurn(store, 'restarted', 'home-epoch', 1);
+    const byTurn = new Map(
+      readReceipts().map((receipt) => [receipt.turnId, receipt]),
+    );
+    expect(byTurn.get('first-epoch')).toMatchObject({
+      connectionId: 'bedrock-work',
+      modelConnectionId: 'model-conn-1',
+    });
+    expect(byTurn.get('bare-epoch')).toBeDefined();
+    expect(byTurn.get('bare-epoch')).not.toHaveProperty('connectionId');
+    expect(byTurn.get('bare-epoch')).not.toHaveProperty('modelConnectionId');
+    expect(byTurn.get('home-epoch')?.connectionId).toBe('bedrock-home');
+    expect(byTurn.get('home-epoch')).not.toHaveProperty('modelConnectionId');
+  });
+
+  test('a connection filter selects its threads by index, never projecting other threads', () => {
+    const db = (
+      store as unknown as {
+        db: { prepare(sql: string): { all(...values: unknown[]): unknown[] } };
+      }
+    ).db;
+    const plan = (filter: Parameters<typeof usageReceiptEventsSql>[1]) =>
+      (
+        db
+          .prepare(`EXPLAIN QUERY PLAN ${usageReceiptEventsSql(1, filter)}`)
+          .all() as { detail: string }[]
+      ).map((row) => row.detail);
+    for (const filter of [
+      { connectionId: 'bedrock-work' },
+      { modelConnectionId: 'model-conn-1' },
+    ]) {
+      const steps = plan(filter);
+      // Candidate threads come from an indexed lookup of configuration rows.
+      expect(steps, JSON.stringify(filter)).toContain(
+        'SEARCH candidate USING INDEX idx_events_method (method=?)',
+      );
+      // Every attribution lookup is an equality on (thread, method), not a
+      // walk of the thread's history through its sequence index.
+      const lookups = steps.filter((step) =>
+        /^SEARCH (attribution|started) /.test(step),
+      );
+      expect(lookups.length, JSON.stringify(filter)).toBeGreaterThanOrEqual(3);
+      for (const step of lookups)
+        expect(step).toMatch(
+          /USING INDEX idx_events_history_projection \(thread_id=\? AND method=\? AND sequence/,
+        );
+    }
   });
 
   test('the export wire stays the closed schema-1 shape for attributed sessions', () => {
@@ -277,12 +381,18 @@ describe('usage attribution to connections', () => {
     completeTurn(store, 'home', 'home-turn', 30);
     startLegacySession(store, 'legacy');
     completeTurn(store, 'legacy', 'legacy-turn', 100);
+    // A real connection may be called `unattributed`.
+    startAttributedSession(store, 'literal', {
+      connectionId: 'unattributed',
+      modelConnectionId: 'model-conn-3',
+    });
+    completeTurn(store, 'literal', 'literal-turn', 1000);
     const app = usageRoute(store, home);
 
     const all = await app.request(rollupPath({ provider: 'bedrock' }));
     expect(all.status).toBe(200);
     expect((await readJson<{ data: UsageRollup }>(all)).data.rows).toEqual([
-      expect.objectContaining({ provider: 'bedrock', inputTokens: 140 }),
+      expect.objectContaining({ provider: 'bedrock', inputTokens: 1140 }),
     ]);
 
     const work = await app.request(
@@ -315,13 +425,17 @@ describe('usage attribution to connections', () => {
     expect(
       Object.fromEntries(rows.map((row) => [row.key, row.inputTokens])),
     ).toEqual({
-      'connection:bedrock-work': 10,
-      'connection:bedrock-home': 30,
-      'connection:unattributed': 100,
+      'connection:"bedrock-work"': 10,
+      'connection:"bedrock-home"': 30,
+      'connection:"unattributed"': 1000,
+      'connection:null': 100,
     });
     expect(
-      rows.find((row) => row.key === 'connection:bedrock-work')?.connectionId,
-    ).toBe('bedrock-work');
+      rows.find((row) => row.key === 'connection:"unattributed"')?.connectionId,
+    ).toBe('unattributed');
+    expect(
+      rows.find((row) => row.key === 'connection:null'),
+    ).not.toHaveProperty('connectionId');
 
     for (const query of [
       { provider: 'Not An Engine' },
