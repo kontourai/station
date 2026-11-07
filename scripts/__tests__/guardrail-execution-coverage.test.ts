@@ -160,6 +160,10 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'component-style-hygiene.mjs',
     'scripts/__tests__/component-style-hygiene.process.test.ts',
   ],
+  [
+    'conversation-boundary-gate.mjs',
+    'scripts/__tests__/conversation-boundary-gate.test.ts',
+  ],
   ['run-biome.mjs', 'scripts/__tests__/run-biome.process.test.ts'],
   ['cli-doc-parity.mjs', 'scripts/__tests__/cli-doc-parity.test.ts'],
   ['cli-mcp-parity.mjs', 'scripts/__tests__/cli-mcp-parity.test.ts'],
