@@ -102,7 +102,9 @@ test('Manage hands the manager a surviving header opener', async () => {
     const trigger = screen.getByRole('button', { name: /^Choose Station/ });
     trigger.focus();
     fireEvent.click(trigger);
-    const manage = await screen.findByRole('menuitem', { name: 'Manage Stations' });
+    const manage = await screen.findByRole('menuitem', {
+      name: 'Manage Stations',
+    });
     manage.focus();
     fireEvent.click(manage);
     expect(onOpenConnections).toHaveBeenCalledOnce();

@@ -63,6 +63,36 @@ afterEach(() => {
 // closed, and the real body — not the loading placeholder — is what appears once
 // the modal opens.
 describe('ConnectionManagerModal lazy body', () => {
+  it.each(['Save', 'Cancel'])(
+    'keeps focus in the Station row through editing and %s',
+    async (action) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json({ requests: [] })),
+      );
+      await import('../react/ConnectionManagerModalContent');
+      renderModal(true);
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'View details for Remote Station',
+        }),
+      );
+      const edit = screen.getByRole('button', { name: 'Edit Station' });
+      edit.focus();
+      fireEvent.click(edit);
+      const name = screen.getByRole('textbox', { name: 'Station name' });
+      expect(document.activeElement).toBe(name);
+      fireEvent.change(name, { target: { value: 'Renamed Station' } });
+      const finish = screen.getByRole('button', { name: action });
+      finish.focus();
+      fireEvent.click(finish);
+      const row = await screen.findByRole('button', {
+        name: `View details for ${action === 'Save' ? 'Renamed Station' : 'Remote Station'}`,
+      });
+      expect(document.activeElement).toBe(row);
+    },
+  );
+
   it('Escape closes Station actions before requesting the manager close', async () => {
     vi.stubGlobal(
       'fetch',
