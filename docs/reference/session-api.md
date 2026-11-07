@@ -921,7 +921,7 @@ requests through simulated process streams; they are not a live Codex receipt.
   "threadId": "string, required, min length 1",
   "requestId": "string, required, min length 1 — from the request.opened event",
   "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'",
-  "sessionGrantScope": "'server', optional, only with acceptForSession",
+  "sessionGrantScope": "'server' | 'rule', optional, only with acceptForSession",
   "expectedRequestEventId": "string, optional — the exact request.opened event answered",
   "viewedContentDigest": "'sha256-<hex>', required to allow a request with spilledContent"
 }
@@ -1079,6 +1079,16 @@ not read the field, and a Station that predates it, grant the one tool. The
 inbox offers it as the `acceptForSessionServer` action, which sends the same
 typed decision. The delegated-task respond route does not accept the field.
 
+`sessionGrantScope: 'rule'` narrows an `acceptForSession` answer to the Bash
+command prefixes the engine suggested. A Claude Session offers it on a plain
+Bash call whose suggestions carry one or two `addRules` allow rules for Bash
+in prefix form (`npm ls *` or `npm ls:*`); an exact-command rule offers
+nothing. The adapter forwards only those rules, with `destination:
+'session'`, so the engine allows later matching commands itself, and Station
+mints no tool grant. A `rule` answer to a request that offered none is a
+one-call accept, never a wider grant. The inbox offers it as the
+`acceptForSessionRule` action.
+
 A Claude Session also treats these as escalations that always prompt, even
 under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox
 network-host ask (`SandboxNetworkAccess`), which offers no session option and
@@ -1117,12 +1127,13 @@ to forward.
 - Every PowerShell ask. PowerShell wraps an ordinary command and one with a
   security warning in the same `subcommandResults` shape.
 - A chained Bash command (`subcommandResults`: `a && b`, `a; b`, a pipeline)
-  whose request carries `classifier_approvable`, any `decisionReason` text, a
-  `matchedAskRule`, a blocked path, a directory suggestion, a sandbox
-  override or an ask flag.
-- An ask of type `other` whose reason is not exactly `This command requires
-  approval`, the text Claude Code 2.1.278 sends for an ordinary single Bash
-  command.
+  whose request carries `classifier_approvable`, a `matchedAskRule`, a
+  blocked path, a directory suggestion, a sandbox override or an ask flag.
+- An ask of type `other` on a tool other than Bash whose reason is not
+  exactly `This command requires approval`. A Bash ask of type `other` is a
+  plain call with any reason: the engine's Bash command-analysis warnings
+  ("A variable in this command can't be checked before it runs", …) say a
+  command-prefix rule cannot be checked, and a whole-tool grant checks none.
 - An ask whose request Station could not read. This fails closed: a changed
   or missing request costs a prompt, never a grant.
 

@@ -32,7 +32,7 @@ export function ApprovalSheetProvider({
   apiBase?: string;
   onApprove(
     request: PendingApprovalRequest,
-    action: 'once' | 'trust' | 'trust-server' | 'deny',
+    action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
   ): Promise<ToolApprovalOutcome>;
   children: ReactNode;
   onCheck?: (

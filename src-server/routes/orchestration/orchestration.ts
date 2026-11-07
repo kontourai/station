@@ -541,9 +541,11 @@ const respondToRequestCommandSchema = z.object({
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
   // Typed, optional: an older client omits it and keeps the per-tool grant.
-  // Only an `acceptForSession` answer reads it, and only an authentic
-  // Station browser request honours it (the adapter's grant computation).
-  sessionGrantScope: z.literal('server').optional(),
+  // Only an `acceptForSession` answer reads it, and only a request that
+  // offered the scope honours it (the adapter's grant computation): `server`
+  // for an authentic Station browser call, `rule` for a Claude Bash ask with
+  // suggested command prefixes.
+  sessionGrantScope: z.enum(['server', 'rule']).optional(),
   // docs/design/event-content-spill.md: proof the client loaded a spilled
   // request's full content before allowing it. Checked by the service.
   viewedContentDigest: z

@@ -103,7 +103,7 @@ export function PendingApprovalStrip({
   settled?: boolean;
   onApprove: (
     request: PendingApprovalRequest,
-    action: 'once' | 'trust' | 'trust-server' | 'deny',
+    action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
   ) => Promise<ToolApprovalOutcome>;
 }) {
   const announcement = useNewApprovalAnnouncement(requests, settled);
