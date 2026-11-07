@@ -32,6 +32,14 @@ Markdown, and checks every emitted HTML file for broken or escaping relative
 links. It writes disposable output to `dist-pages/`; do not edit that directory
 by hand.
 
+Product images on the home page are not separate captures. The build copies
+the screens named in `PAGES_GALLERY_SCREENS` (`scripts/build-github-pages.mjs`)
+from the committed screenshot-gallery baseline in `tests/screenshots.baseline/`
+to `media/<screen>.png`, so they change when that baseline is regenerated. The
+root README embeds the same baseline images. A renamed, dropped, or volatile
+baseline screen fails the build or `product-docs-source-links.test.ts`. The
+`og:image` and `twitter:image` URLs point at the published `media/` copy.
+
 Rendered headings have section IDs from their visible text, using the same
 heading rules as the learning reader. Repeated headings receive unique numeric
 suffixes within each document. Links such as the getting-started guide's
