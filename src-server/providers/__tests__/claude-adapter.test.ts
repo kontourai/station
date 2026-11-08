@@ -13309,14 +13309,24 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
 
   async function runningChild(
     threadId: string,
-    options: { endOnClose?: boolean; streamStopGraceMs?: number } = {},
+    options: {
+      endOnClose?: boolean;
+      streamStopGraceMs?: number;
+      engineExitStreamGraceMs?: number;
+    } = {},
   ) {
     const query = endableQuery({ endOnClose: options.endOnClose });
     mockQuery.mockReturnValue(query);
-    const adapter = new ClaudeAdapter(
-      options.streamStopGraceMs !== undefined
+    const adapterOptions = {
+      ...(options.streamStopGraceMs !== undefined
         ? { streamStopGraceMs: options.streamStopGraceMs }
-        : undefined,
+        : {}),
+      ...(options.engineExitStreamGraceMs !== undefined
+        ? { engineExitStreamGraceMs: options.engineExitStreamGraceMs }
+        : {}),
+    };
+    const adapter = new ClaudeAdapter(
+      Object.keys(adapterOptions).length > 0 ? adapterOptions : undefined,
     );
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({ provider: 'claude', threadId });
@@ -13477,6 +13487,98 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     if (!child) throw new Error('no fake engine spawned');
     return child;
   }
+
+  // The SDK's stream (streaming input mode) neither ends nor throws after its
+  // `claude` process is SIGKILLed (reproduced against the real SDK). Before
+  // this, a memory-killed engine left no failure, no exit and no interrupted
+  // work: the session stayed `ready` and the inbox looked idle.
+  test('an engine killed while its stream stays open ends the session: children interrupted, failure, then exit', async () => {
+    const threadId = 'thread-engine-killed-silent-stream';
+    const { adapter, until, seen } = await runningChild(threadId, {
+      engineExitStreamGraceMs: 20,
+    });
+    const engine = spawnEngine();
+    // Killed, and the stream says nothing: no crash, no end.
+    engine.exit(null, 'SIGKILL');
+    engine.closeStderr();
+    const exited = await until((event) => event.method === 'session.exited');
+    expect(exited).toMatchObject({ reason: 'process-exit' });
+    expect(childSettles(seen)).toEqual(['unresolved:engine-exit']);
+    const failure = seen.find((event) => event.method === 'runtime.error');
+    expect(failure).toMatchObject({
+      code: 'claude-engine-exited',
+      kind: 'engine_crashed',
+      // The turn the background work belongs to, though it already ended.
+      turnId: expect.any(String),
+      message: expect.stringContaining('terminated by signal SIGKILL'),
+    });
+    const order = (method: string) =>
+      seen.findIndex((event) => event.method === method);
+    expect(order('runtime.error')).toBeLessThan(order('session.exited'));
+    expect(
+      seen.findIndex(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'settle',
+      ),
+    ).toBeLessThan(order('runtime.error'));
+    expect(await adapter.hasSession(threadId)).toBe(false);
+  });
+
+  test('an engine killed for memory reports memory exhaustion, which hands the chat to the continuation', async () => {
+    const threadId = 'thread-engine-memory-killed';
+    const outcome = vi
+      .spyOn(childWorkload, 'childWorkloadOutcome')
+      .mockReturnValue(
+        Promise.resolve({
+          result: 'oom-kill-in-scope',
+          oomKills: 1,
+          unreportedOomKills: 1,
+          memoryPeakBytes: 4450 * 1024 * 1024,
+          memoryMaxBytes: 4620 * 1024 * 1024,
+        }),
+      );
+    try {
+      const { until, seen } = await runningChild(threadId, {
+        engineExitStreamGraceMs: 20,
+      });
+      const engine = spawnEngine();
+      engine.exit(null, 'SIGKILL');
+      engine.closeStderr();
+      expect(
+        await until((event) => event.method === 'session.exited'),
+      ).toMatchObject({ reason: 'memory-exhausted' });
+      expect(
+        seen.find((event) => event.method === 'runtime.error'),
+      ).toMatchObject({
+        code: 'engine-memory-exhausted',
+        message: expect.stringContaining('Claude ran out of memory'),
+        details: {
+          exitSignal: 'SIGKILL',
+          workload: expect.objectContaining({ unreportedOomKills: 1 }),
+        },
+      });
+    } finally {
+      outcome.mockRestore();
+    }
+  });
+
+  test('a deliberate stop is never reported as an engine death', async () => {
+    const threadId = 'thread-engine-stopped-not-died';
+    const { adapter, until, seen } = await runningChild(threadId, {
+      engineExitStreamGraceMs: 20,
+    });
+    const engine = spawnEngine();
+    const stopped = adapter.stopSession(threadId);
+    engine.exit(null, 'SIGTERM');
+    engine.closeStderr();
+    await stopped;
+    await until((event) => event.method === 'session.exited');
+    expect(seen.some((event) => event.method === 'runtime.error')).toBe(false);
+    expect(
+      seen.filter((event) => event.method === 'session.exited'),
+    ).toHaveLength(1);
+  });
 
   test('the engine process dying settles the running child interrupted, not unresolved', async () => {
     const threadId = 'thread-child-process-death';

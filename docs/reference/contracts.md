@@ -2507,3 +2507,25 @@ qualification limits.
 defaulting to `true`. It controls the installed app’s first-launch changelog
 after an upgrade; it does not control update downloads, installation, or
 release availability.
+
+### Shared Task agent request contracts
+
+`task-room-work` also declares separately negotiated shared work, context, and
+result versions. Shared requests bind an expected actor, Task incarnation,
+operation, Agent, exact model, brief revision and digest, selected published
+results, prompt, and new or existing thread. The expected actor is an equality
+precondition; it is not authority. Result content digests cover the published
+UTF-8 Markdown, including any published truncation notice. A reference does not
+grant the private full answer. Unknown request fields are rejected. The closed
+`SharedWithdrawalCommand` carries the work version, expected actor, Project and
+Task identity including incarnation, operation ID, and original canonical input
+digest. These are equality preconditions, not credentials or authority. A closed
+`SharedWorkRefusalReply` adds `kind: not-sent` and a bounded refusal reason to
+that identity. A future receiver may issue it only before durable acceptance or
+mutation; it is an attestation, not a credential.
+
+`AgentExecutionConfig.sharedTurns` is an operator-owned, versioned model-only
+declaration with a nonempty unique allowlist. It is separate from Agent audience
+and Project execute permission. It neither provides compute consent by itself
+nor establishes runtime confinement. Shared routes and admission are not
+implemented by these declarations.

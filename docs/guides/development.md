@@ -427,9 +427,16 @@ an `oom_kill` no listener was told about, or a scope systemd reports as
 and peak and `session.exited` reason `memory-exhausted`. A signal alone does
 not prove OOM; an unknown count (a scope systemd already collected) leaves
 the cause unknown, and the turn and interrupted tool/child rows still settle.
-Claude Code runs in the same scopes and is told its budget, but its adapter
-does not yet read these counts: a Claude command kill is reported only by
-Claude, and Claude's own memory death is not classified as such.
+Claude Code runs in the same scopes and is told its budget. A Claude command
+kill is reported only by Claude. Claude's own death is classified the same way
+as Codex's: `engine-memory-exhausted` and reason `memory-exhausted` for a
+memory kill, otherwise `claude-engine-exited` and reason `process-exit`. The
+adapter observes the `claude` process's exit itself, because the SDK's message
+stream (streaming input mode) neither ends nor throws after a SIGKILL. An exit
+without a stop closes a stream still open 2 seconds later, then settles open
+work as interrupted, publishes the failure on the turn its work belongs to
+(the newest dispatched turn when a background subagent outlived it), and
+publishes `session.exited`.
 
 #### What engines are told
 

@@ -508,9 +508,15 @@ export function HeaderActions({
             onForget: (connection) => forgetConnection(connection.id),
             canForget: (connection) => canForgetConnection(connection.id),
             onClose: () => setConnectionMenuOpen(false),
-            onManage: onOpenConnections,
+            onManage: () => {
+              connectionButtonRef.current?.focus();
+              onOpenConnections();
+            },
             onPairPhone: hasLocalStationForProfile(profile)
-              ? () => openConnectionsModal({ mode: 'pair-host' })
+              ? () => {
+                  connectionButtonRef.current?.focus();
+                  openConnectionsModal({ mode: 'pair-host' });
+                }
               : undefined,
           }}
           pending={null}
