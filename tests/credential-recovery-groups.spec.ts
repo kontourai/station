@@ -274,18 +274,8 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     const fixture = await seedCredentialRecoveryRoutes(page);
-    await page.goto('/connections/engines/claude');
-
-    // archive#1359 moved implementation-level engine controls behind the detail
-    // view's Advanced disclosure. Credential profiles remain available there;
-    // open the intentional disclosure rather than treating the new default
-    // presentation as a missing recovery surface.
-    const advanced = page.locator('details.provider-detail__advanced');
-    await expect(advanced).toBeVisible();
-    // Its own summary, not a nested one: each credential entry's enrolment
-    // block renders a `Show sign-in command` <details> inside this one
-    // (`views/CredentialProfileEnrolment.tsx:68-69`).
-    await advanced.locator('> summary').click();
+    // #4710: credential entries live on the engine's Settings tab.
+    await page.goto('/connections/engines/claude/settings');
 
     await expect(
       page.getByRole('heading', { name: 'Credential entries' }),
@@ -308,11 +298,6 @@ for (const viewport of [
     // while a candidate is pending.
     delete fixture.recovery.application.pendingProfileRef;
     await page.reload();
-    await expect(advanced).toBeVisible();
-    // Its own summary, not a nested one: each credential entry's enrolment
-    // block renders a `Show sign-in command` <details> inside this one
-    // (`views/CredentialProfileEnrolment.tsx:68-69`).
-    await advanced.locator('> summary').click();
     await expect(
       page.getByRole('heading', { name: 'Credential entries' }),
     ).toBeVisible();
@@ -388,24 +373,19 @@ test('unsupported credential profile capability fails closed', async ({
   page,
 }) => {
   await seedCredentialRecoveryRoutes(page, { capability: 'unsupported' });
-  await page.goto('/connections/engines/claude');
-
-  const advanced = page.locator('details.provider-detail__advanced');
-  await expect(advanced).toBeVisible();
-  // Its own summary, not a nested one: each credential entry's enrolment
-  // block renders a `Show sign-in command` <details> inside this one.
-  await advanced.locator('> summary').click();
+  await page.goto('/connections/engines/claude/settings');
   const recovery = page.locator('.credential-recovery');
 
+  // The fact, and none of the controls an engine cannot apply (#4710).
   await expect(
-    recovery.getByText('Not supported', { exact: true }),
+    recovery.getByText('Not supported by this engine.', { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('checkbox', {
       name: /Automatically try an enrolled credential entry/,
     }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Apply manually' }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
 });

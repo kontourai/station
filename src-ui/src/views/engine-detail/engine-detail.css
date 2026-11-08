@@ -1,0 +1,112 @@
+/* Engine detail tabs (docs/design/connections-overhaul.md). Tokens only. */
+
+.engine-overview__note {
+  display: block;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.engine-overview__dependents {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.engine-overview__dependents ul,
+.engine-settings__commands,
+.engine-settings__prerequisites {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--k-space-2);
+}
+
+.engine-models {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+.engine-models__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--k-space-3);
+}
+.engine-models__toolbar > :first-child {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.engine-models__source {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+/* The table scrolls inside its own box; the page never scrolls sideways. */
+.engine-models__table {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.engine-models__table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--k-text-sm);
+}
+.engine-models__table th,
+.engine-models__table td {
+  text-align: left;
+  padding: var(--k-space-2);
+  border-bottom: 1px solid var(--k-line);
+  overflow-wrap: anywhere;
+}
+.engine-models__table th {
+  color: var(--k-text-muted);
+  font-weight: 600;
+}
+
+.engine-settings__form,
+.engine-settings__about,
+.engine-settings__actions,
+.engine-settings__danger {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+.engine-settings__about,
+.engine-settings__danger {
+  border-top: 1px solid var(--k-line);
+  padding-top: var(--k-space-4);
+}
+.engine-settings__danger h3 {
+  color: var(--k-negative);
+}
+.engine-settings__danger > button {
+  justify-self: start;
+}
+.engine-settings__disclosure summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+  font-weight: 600;
+}
+.engine-settings__disclosure summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.engine-settings__prerequisite-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  font-weight: 600;
+}
+.engine-settings__steps {
+  margin: var(--k-space-1) 0 0;
+  padding-left: var(--k-space-5);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.engine-settings__guide {
+  display: inline-block;
+  margin-top: var(--k-space-1);
+  margin-right: var(--k-space-3);
+  font-size: var(--k-text-sm);
+  color: var(--k-action);
+}

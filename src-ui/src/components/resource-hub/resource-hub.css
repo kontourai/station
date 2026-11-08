@@ -19,3 +19,191 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Detail scaffold: header, reason, route tabs, one panel. */
+.resource-detail {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+.resource-detail__reason {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.resource-detail__panel {
+  min-width: 0;
+}
+.resource-detail__panel h3 {
+  margin: 0;
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+
+/* Facts: label beside value, wrapping to stacked when narrow. */
+.fact-list {
+  margin: 0;
+  display: grid;
+  gap: var(--k-space-2);
+}
+.fact-list__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  justify-content: space-between;
+  min-width: 0;
+}
+.fact-list dt {
+  color: var(--k-text-muted);
+}
+.fact-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+/* Allowance meter: the text carries the value; the bar only reinforces it. */
+.resource-meter {
+  display: grid;
+  gap: var(--k-space-1);
+}
+.resource-meter__heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--k-space-2);
+}
+.resource-meter__heading strong {
+  font-size: var(--k-text-xl);
+}
+.resource-meter small {
+  display: block;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.resource-meter meter {
+  width: 100%;
+  height: 12px;
+  accent-color: var(--k-action);
+}
+.resource-meter meter::-webkit-meter-bar {
+  background: var(--k-line-strong);
+  border: 0;
+}
+.resource-meter meter::-webkit-meter-optimum-value {
+  background: var(--k-action);
+}
+.resource-meter meter::-moz-meter-bar {
+  background: var(--k-action);
+}
+
+.metric-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: var(--k-space-2);
+}
+.metric-tiles .metric {
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+.metric-tiles .metric span {
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+.metric-tiles .metric strong {
+  font-size: var(--k-text-xl);
+  overflow-wrap: anywhere;
+}
+
+.daily-bars {
+  margin: 0;
+}
+.daily-bars figcaption {
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  margin-bottom: var(--k-space-2);
+}
+.daily-bars__chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 80px;
+}
+.daily-bars__chart > span {
+  flex: 1;
+  min-width: 2px;
+  background: var(--k-action);
+  border-radius: 3px 3px 0 0;
+}
+.daily-bars__chart > span[data-unreported] {
+  background: var(--k-line-strong);
+}
+.daily-bars__axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  margin-top: var(--k-space-1);
+}
+
+.usage-panel {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+.usage-panel small {
+  display: block;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.usage-panel__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+.usage-panel__period,
+.usage-panel__measure {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+/* A radio group drawn as chips; the native radio keeps keyboard and state. */
+.usage-panel__choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+.usage-panel__choice.is-active {
+  border-color: var(--k-action);
+}
+.usage-panel__choice:focus-within {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.usage-panel__currency {
+  display: grid;
+  gap: var(--k-space-1);
+  font-size: var(--k-text-sm);
+}
+.usage-panel__details summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+  font-weight: 600;
+}
+.usage-panel__details summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}

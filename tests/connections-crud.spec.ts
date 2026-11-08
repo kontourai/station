@@ -1328,11 +1328,8 @@ test.describe('Connections CRUD', () => {
       page.getByRole('button', { name: 'Save', exact: true }),
     ).toBeVisible();
 
-    await page.goto('/connections/engines/codex');
-    await page.getByText('Advanced', { exact: true }).click();
-    // By accessible name: inside the Advanced disclosure the old
-    // `.editor-field .editor-input` also matches the read-only Type/Status/
-    // Catalog cells.
+    // #4710: the engine's editable settings are its Settings tab.
+    await page.goto('/connections/engines/codex/settings');
     const engineName = page.getByRole('textbox', { name: 'Name' });
     await engineName.fill('Codex Runtime Updated');
     await page.getByRole('button', { name: 'Save', exact: true }).click();

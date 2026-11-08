@@ -7,8 +7,14 @@ export function EngineProxySettings({
   onChange,
   onManageModels,
   managedLocked = false,
+  ambientOrigin,
 }: {
   connection: AgentConnectionView;
+  /**
+   * The endpoint the engine inherits from Station's environment when no
+   * proxy is chosen: "Your account" alone would not be the whole story.
+   */
+  ambientOrigin?: string;
   /** #4520: the managed policy owns the launch environment; not applied. */
   managedLocked?: boolean;
   onChange: (config: Record<string, unknown>) => void;
@@ -65,6 +71,11 @@ export function EngineProxySettings({
             ? 'Custom CLI settings are active. Choosing your account or a saved proxy replaces those connection settings.'
             : 'Use your existing CLI account, or choose a proxy saved under Models.'}
       </p>
+      {!selected && !custom && ambientOrigin && (
+        <p className="editor-help">
+          {`Station's environment sends this engine to ${ambientOrigin}.`}
+        </p>
+      )}
       <Button variant="ghost" onClick={onManageModels}>
         Manage proxies in Models
       </Button>

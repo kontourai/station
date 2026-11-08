@@ -1,10 +1,7 @@
 import type {
   EngineAccountProviderMoney,
-  EngineAccountUsageHistory,
   EngineAccountUsageMetadata,
 } from '@kontourai/station-contracts/engine-accounts';
-import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
-import { getAuthorityObservation } from '@kontourai/station-sdk/authority-observation';
 import {
   type EngineAccount,
   useCreateEngineAccountMutation,
@@ -12,18 +9,24 @@ import {
   useEngineAccountLoginQuery,
   useEngineAccountsQuery,
   useEngineAccountUsageQuery,
-  useEngineActivityQuery,
 } from '@kontourai/station-sdk/engine-accounts';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { ResponsiveSurfaceActions } from '../components/ResponsiveDialogSurface';
-import { Empty, SkeletonBlock } from '../components/state';
-import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { FactList } from '../components/resource-hub/FactList';
+import { Meter } from '../components/resource-hub/Meter';
+import {
+  describeReadFailure,
+  Empty,
+  ErrorState,
+  SkeletonBlock,
+} from '../components/state';
+import type { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useCoarseNow } from '../hooks/useCoarseNow';
 import { openExternalLink } from '../platform/openExternalLink';
 import { describeStationFailure } from '../utils/stationFailure';
+import { useEngineAccountAccess } from './engine-detail/useEngineAccountAccess';
 import './EngineAccountOverview.css';
 
 export function EngineAccountOverview({
@@ -33,37 +36,19 @@ export function EngineAccountOverview({
   connectionId: string;
   engine: 'claude' | 'codex';
 }) {
-  const scope = useHostRequestAuthorityScope();
-  const authority = useQuery({
-    queryKey: ['engine-account-authority', scope?.apiBase, scope?.authorityKey],
-    queryFn: ({ signal }) => {
-      if (!scope) throw new Error('Connect to this Station.');
-      return getAuthorityObservation(scope.apiBase, {
-        requestScope: scope,
-        signal,
-      });
-    },
-    enabled: !!scope,
-    staleTime: 0,
-    gcTime: 0,
-    retry: false,
-  });
+  const { scope, authority, canManage, canLogin } = useEngineAccountAccess();
   if (!scope) return <p>Connect to this Station to view accounts.</p>;
   if (authority.isLoading)
     return <SkeletonBlock count={2} label="Loading account access" />;
   if (authority.isError || !authority.data)
     return (
-      <div role="alert">
-        Account access could not be checked.{' '}
-        <Button onClick={() => void authority.refetch()}>Retry</Button>
-      </div>
+      <ErrorState
+        variant="compact"
+        title="Account access could not be checked"
+        description={describeReadFailure(authority.error)}
+        action={<Button onClick={() => void authority.refetch()}>Retry</Button>}
+      />
     );
-  const grant = authority.data.grant;
-  const canManage =
-    grant.kind === 'operator' || grant.grantedScopes.includes('access:manage');
-  const canLogin =
-    grant.kind === 'operator' || grant.grantedScopes.includes('engine:login');
-  const canReadActivity = canManage;
   return (
     <AccountPage
       key={`${scope.apiBase}:${scope.authorityKey}:${connectionId}`}
@@ -72,7 +57,6 @@ export function EngineAccountOverview({
       scope={scope}
       canManage={canManage}
       canLogin={canLogin}
-      canReadActivity={canReadActivity}
     />
   );
 }
@@ -83,23 +67,17 @@ function AccountPage({
   scope,
   canManage,
   canLogin,
-  canReadActivity,
 }: {
   connectionId: string;
   engine: 'claude' | 'codex';
   scope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
   canManage: boolean;
   canLogin: boolean;
-  canReadActivity: boolean;
 }) {
   const [selected, setSelected] = useState<string | null | undefined>();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [notice, setNotice] = useState('');
-  const [activityScope, setActivityScope] = useState<'account' | 'engine'>(
-    'engine',
-  );
-  const [days, setDays] = useState<7 | 30>(7);
   const now = useCoarseNow(undefined, {
     intervalMs: 60_000,
     enabled: canManage,
@@ -121,18 +99,10 @@ function AccountPage({
     scope,
     !!account && canManage,
   );
-  const activity = useEngineActivityQuery(
-    engine,
-    days,
-    scope,
-    canReadActivity,
-    activityScope === 'account' ? ref : undefined,
-  );
   const create = useCreateEngineAccountMutation(connectionId, scope);
   const refresh = () => {
     void accounts.refetch();
     if (canManage) void usage.refetch();
-    if (canReadActivity) void activity.refetch();
   };
   if (!canManage && !canLogin)
     return (
@@ -152,7 +122,7 @@ function AccountPage({
   return (
     <section
       className="engine-account-overview"
-      aria-label={`${engine === 'codex' ? 'Codex' : 'Claude'} account and usage`}
+      aria-label={`${engine === 'codex' ? 'Codex' : 'Claude'} accounts`}
     >
       <div className="engine-account-overview__toolbar">
         <label>
@@ -274,17 +244,11 @@ function AccountPage({
         ) : usage.data?.status === 'ok' ? (
           <>
             {usage.data.windows.map((window) => (
-              <div className="engine-account-overview__limit" key={window.id}>
-                <div>
-                  <span>{window.label}</span>
-                  <strong>{remainingPercent(window.usedPercent)}% left</strong>
-                </div>
-                <meter
-                  min={0}
-                  max={100}
-                  value={100 - window.usedPercent}
-                  aria-label={`${window.label}: ${remainingPercent(window.usedPercent)}% remaining`}
-                />
+              <Meter
+                key={window.id}
+                label={window.label}
+                usedPercent={window.usedPercent}
+              >
                 {window.resetsAt && (
                   <small>
                     {resetCountdown(window.resetsAt, now)} · Resets{' '}
@@ -314,7 +278,7 @@ function AccountPage({
                           : 'Availability not reported'}
                   </small>
                 )}
-              </div>
+              </Meter>
             ))}
             {usage.data.exhausted && (
               <p role="status">
@@ -342,56 +306,6 @@ function AccountPage({
             <AccountMetadata metadata={usage.data.metadata} />
           )}
       </section>
-      {canManage && usage.data?.history && (
-        <AllowanceHistory history={usage.data.history} days={days} now={now} />
-      )}
-      <div className="engine-account-overview__activity">
-        <div className="engine-account-overview__activity-heading">
-          <h3>Activity</h3>
-          <fieldset aria-label="Activity period">
-            {([7, 30] as const).map((value) => (
-              <Button
-                key={value}
-                aria-pressed={days === value}
-                onClick={() => setDays(value)}
-              >
-                {value} days
-              </Button>
-            ))}
-          </fieldset>
-        </div>
-        <label>
-          Activity for
-          <select
-            value={activityScope}
-            onChange={(event) =>
-              setActivityScope(
-                event.target.value === 'engine' ? 'engine' : 'account',
-              )
-            }
-          >
-            <option value="account">Selected account</option>
-            <option value="engine">All engine accounts</option>
-          </select>
-        </label>
-        <small>
-          {activityScope === 'engine'
-            ? 'This Station · this engine · all accounts'
-            : 'This Station · selected profile · attributed runs'}
-        </small>
-        {!canReadActivity ? (
-          <p>Activity requires credential-management permission.</p>
-        ) : activity.isLoading ? (
-          <SkeletonBlock count={2} label="Loading activity" />
-        ) : activity.isError ? (
-          <p role="alert">
-            Activity could not be loaded.{' '}
-            <Button onClick={() => void activity.refetch()}>Retry</Button>
-          </p>
-        ) : activity.data ? (
-          <Activity data={activity.data} engine={engine} />
-        ) : null}
-      </div>
     </section>
   );
 }
@@ -605,16 +519,7 @@ function resetCountdown(at: string, now: number): string {
 type FactRow = [string, string | number | undefined];
 
 function Facts({ rows }: { rows: FactRow[] }) {
-  return (
-    <dl className="engine-account-overview__facts">
-      {rows.map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>{value ?? 'Not reported'}</dd>
-        </div>
-      ))}
-    </dl>
-  );
+  return <FactList facts={rows.map(([label, value]) => ({ label, value }))} />;
 }
 function providerMoney(
   value: EngineAccountProviderMoney | undefined,
@@ -878,490 +783,6 @@ function AccountMetadata({
           are outside this audit.
         </small>
       </details>
-    </>
-  );
-}
-
-const percentFormatter = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 1,
-});
-function remainingPercent(usedPercent: number): string {
-  const remaining = 100 - usedPercent;
-  return remaining > 0 && remaining < 0.1
-    ? '<0.1'
-    : percentFormatter.format(remaining);
-}
-function historyWindowKey(
-  window: EngineAccountUsageHistory['observations'][number]['windows'][number],
-): string {
-  return JSON.stringify([
-    window.id,
-    window.label,
-    window.durationSeconds ?? null,
-  ]);
-}
-function historyDuration(seconds: number | undefined): string {
-  if (seconds === undefined) return 'duration unknown';
-  const [value, unit]: [number, string] =
-    seconds >= 86400
-      ? [seconds / 86400, 'd']
-      : seconds >= 3600
-        ? [seconds / 3600, 'h']
-        : seconds >= 60
-          ? [seconds / 60, 'm']
-          : [seconds, 's'];
-  return `${percentFormatter.format(value)}${unit}`;
-}
-function AllowanceHistory({
-  history,
-  days,
-  now,
-}: {
-  history: EngineAccountUsageHistory;
-  days: 7 | 30;
-  now: number;
-}) {
-  const [selected, setSelected] = useState('');
-  const [tableOpen, setTableOpen] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(50);
-  const points = history.observations.filter(
-    (point) => Date.parse(point.fetchedAt) >= now - days * 86400000,
-  );
-  const windows = new Map(
-    [...points]
-      .reverse()
-      .flatMap((point) =>
-        point.windows.map(
-          (window) => [historyWindowKey(window), window] as const,
-        ),
-      ),
-  );
-  const labelCounts = new Map<string, number>();
-  for (const window of windows.values())
-    labelCounts.set(window.label, (labelCounts.get(window.label) ?? 0) + 1);
-  const labels = new Map(
-    [...windows].map(
-      ([key, window]) =>
-        [
-          key,
-          (labelCounts.get(window.label) ?? 0) > 1
-            ? `${window.label} · ${historyDuration(window.durationSeconds)}`
-            : window.label,
-        ] as const,
-    ),
-  );
-  const optionCounts = new Map<string, number>();
-  for (const label of labels.values())
-    optionCounts.set(label, (optionCounts.get(label) ?? 0) + 1);
-  for (const [index, [key, label]] of [...labels].entries())
-    if ((optionCounts.get(label) ?? 0) > 1)
-      labels.set(key, `${label} · series ${index + 1}`);
-  const id = windows.has(selected) ? selected : windows.keys().next().value;
-  const observations = points.map((point) => ({
-    fetchedAt: point.fetchedAt,
-    window:
-      point.status === 'ok'
-        ? point.windows.find((window) => historyWindowKey(window) === id)
-        : undefined,
-  }));
-  return (
-    <section
-      className="engine-account-overview__activity"
-      aria-label="Allowance history"
-    >
-      <div className="engine-account-overview__activity-heading">
-        <h3>Allowance history</h3>
-        {windows.size > 0 && (
-          <label>
-            Limit
-            <select
-              value={id}
-              onChange={(event) => setSelected(event.target.value)}
-            >
-              {[...labels].map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
-      {history.status === 'unavailable' ? (
-        <p role="status">
-          History could not be saved. Current limits are still available.
-        </p>
-      ) : !observations.length ? (
-        <Empty
-          variant="compact"
-          label="History starts here"
-          description="Refresh this account to capture allowance observations."
-        />
-      ) : (
-        <>
-          <figure>
-            <figcaption>
-              {labels.get(id ?? '') ?? 'Allowance'} · remaining at each
-              observation · {days} days
-            </figcaption>
-            <svg
-              className="engine-account-overview__history-chart"
-              viewBox={`0 0 ${Math.max(1, observations.length)} 100`}
-              preserveAspectRatio="none"
-              role="img"
-              aria-label={`${labels.get(id ?? '') ?? 'Allowance'} remaining history, ${observations.length} hourly observations`}
-            >
-              {observations.map((point, index) => {
-                const remaining = point.window
-                  ? 100 - point.window.usedPercent
-                  : 0;
-                return (
-                  <rect
-                    key={point.fetchedAt}
-                    x={index}
-                    y={100 - Math.max(2, remaining)}
-                    width={0.8}
-                    height={Math.max(2, remaining)}
-                    data-unreported={!point.window || undefined}
-                  >
-                    <title>{`${new Date(point.fetchedAt).toLocaleString()}: ${point.window ? `${remainingPercent(point.window.usedPercent)}% remaining` : 'Not reported'}`}</title>
-                  </rect>
-                );
-              })}
-            </svg>
-            <div className="engine-account-overview__axis">
-              <span>
-                {new Date(observations[0]!.fetchedAt).toLocaleDateString()}
-              </span>
-              <span>
-                {new Date(observations.at(-1)!.fetchedAt).toLocaleDateString()}
-              </span>
-            </div>
-          </figure>
-          <details onToggle={(event) => setTableOpen(event.currentTarget.open)}>
-            <summary>View observations</summary>
-            {tableOpen && (
-              <div className="engine-account-overview__history-table">
-                <table>
-                  <caption>
-                    Last {history.retentionDays} days at capture. Gaps are
-                    unreported; closed profiles are not automatically purged.
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th>Observed</th>
-                      <th>Remaining</th>
-                      <th>Reset</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...observations]
-                      .reverse()
-                      .slice(0, visibleCount)
-                      .map((point) => (
-                        <tr key={point.fetchedAt}>
-                          <td>{new Date(point.fetchedAt).toLocaleString()}</td>
-                          <td>
-                            {point.window
-                              ? `${remainingPercent(point.window.usedPercent)}%`
-                              : 'Not reported'}
-                          </td>
-                          <td>
-                            {point.window?.resetsAt
-                              ? new Date(point.window.resetsAt).toLocaleString()
-                              : 'Not reported'}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-                {visibleCount < observations.length && (
-                  <Button
-                    onClick={() => setVisibleCount((count) => count + 50)}
-                  >
-                    Show older observations
-                  </Button>
-                )}
-              </div>
-            )}
-          </details>
-        </>
-      )}
-      <small>Hourly snapshots · captured on page refresh</small>
-    </section>
-  );
-}
-function Activity({ data, engine }: { data: UsageRollup; engine: string }) {
-  const [currency, setCurrency] = useState('USD');
-  const [metric, setMetric] = useState<
-    'auto' | 'tokens' | 'reported' | 'estimated'
-  >('auto');
-  const rows = data.rows.filter((row) => row.provider === engine);
-  if (!rows.length)
-    return (
-      <Empty
-        variant="compact"
-        label={
-          data.coverage.some((c) => c.state !== 'complete')
-            ? 'Activity unavailable'
-            : 'Activity will appear here'
-        }
-        description={
-          data.coverage.some((c) => c.state !== 'complete')
-            ? 'No activity was returned. Some sources could not be read.'
-            : 'Runs through this Station are recorded here.'
-        }
-      />
-    );
-  const tokens = rows.reduce(
-    (sum, row) => sum + (row.inputTokens ?? 0) + (row.outputTokens ?? 0),
-    0,
-  );
-  const reported = rows.flatMap((row) =>
-    row.reportedCost ? [row.reportedCost] : (row.reportedCostBuckets ?? []),
-  );
-  const estimates = rows.flatMap((row) =>
-    row.estimatedCost ? [row.estimatedCost] : (row.estimatedCostBuckets ?? []),
-  );
-  const amountLabel = (amount: number, currency: string) =>
-    currency === 'USD'
-      ? `$${amount.toFixed(2)}`
-      : `${currency} ${amount.toFixed(2)}`;
-  const costTotal = (items: Array<{ amount: number; currency: string }>) => {
-    const totals = new Map<string, number>();
-    for (const item of items)
-      totals.set(item.currency, (totals.get(item.currency) ?? 0) + item.amount);
-    return (
-      [...totals]
-        .map(([currency, amount]) => amountLabel(amount, currency))
-        .join(' · ') || '—'
-    );
-  };
-  const costSource =
-    metric === 'reported' || metric === 'estimated'
-      ? metric
-      : reported.length
-        ? 'reported'
-        : 'estimated';
-  const chartCosts = costSource === 'reported' ? reported : estimates;
-  const currencies = [...new Set(chartCosts.map((item) => item.currency))];
-  const chartCurrency = currencies.includes(currency)
-    ? currency
-    : (currencies[0] ?? 'USD');
-  const costAvailable =
-    metric !== 'tokens' && (metric !== 'auto' || chartCosts.length > 0);
-  const firstDay = Date.parse(data.window.from);
-  const dayCount = Math.min(
-    30,
-    Math.round((Date.parse(data.window.to) - firstDay) / 86400000) + 1,
-  );
-  const chartRows = Array.from({ length: dayCount }, (_, index) => {
-    const day = new Date(firstDay + index * 86400000)
-      .toISOString()
-      .slice(0, 10);
-    return { day, row: rows.find((row) => row.day === day) };
-  });
-  const values = chartRows.map(({ row }) => {
-    if (!row) return undefined;
-    const cost =
-      costSource === 'reported' ? row.reportedCost : row.estimatedCost;
-    const buckets =
-      costSource === 'reported'
-        ? row.reportedCostBuckets
-        : row.estimatedCostBuckets;
-    const amounts = (cost ? [cost] : (buckets ?? [])).filter(
-      (item) => item.currency === chartCurrency,
-    );
-    return costAvailable
-      ? amounts.length
-        ? amounts.reduce((sum, item) => sum + item.amount, 0)
-        : undefined
-      : row.inputTokens === undefined && row.outputTokens === undefined
-        ? undefined
-        : (row.inputTokens ?? 0) + (row.outputTokens ?? 0);
-  });
-  const peak = Math.max(...values.map((value) => value ?? 0), 1);
-  const partial = data.coverage.some(
-    (c) =>
-      c.droppedReceiptCount ||
-      c.state === 'offline' ||
-      c.state === 'stale' ||
-      c.state === 'unknown' ||
-      c.state === 'partial' ||
-      c.providers?.some((p) => p.provider === engine && p.state !== 'complete'),
-  );
-  return (
-    <>
-      <div className="engine-account-overview__metrics">
-        <div>
-          <span>Tokens</span>
-          <strong>
-            {rows.some(
-              (row) =>
-                row.inputTokens !== undefined || row.outputTokens !== undefined,
-            )
-              ? tokens.toLocaleString()
-              : '—'}
-          </strong>
-        </div>
-        <div>
-          <span>Reported cost</span>
-          <strong>{costTotal(reported)}</strong>
-        </div>
-        <div>
-          <span>Estimated cost</span>
-          <strong>{costTotal(estimates)}</strong>
-        </div>
-      </div>
-      <fieldset aria-label="Trend measure">
-        {(['tokens', 'reported', 'estimated'] as const).map((value) => (
-          <Button
-            key={value}
-            aria-pressed={
-              metric === value ||
-              (metric === 'auto' &&
-                (costAvailable ? costSource === value : value === 'tokens'))
-            }
-            onClick={() => setMetric(value)}
-          >
-            {value === 'tokens'
-              ? 'Tokens'
-              : value === 'reported'
-                ? 'Reported cost'
-                : 'Estimated cost'}
-          </Button>
-        ))}
-      </fieldset>
-      {costAvailable && currencies.length > 1 && (
-        <label>
-          Currency
-          <select
-            value={chartCurrency}
-            onChange={(event) => setCurrency(event.target.value)}
-          >
-            {currencies.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {costAvailable && !chartCosts.length && (
-        <small>No {costSource} cost observations in this period.</small>
-      )}
-      <figure>
-        <figcaption>
-          Daily {costAvailable ? `${costSource} cost` : 'tokens'}
-        </figcaption>
-        {costAvailable && <small>{chartCurrency}</small>}
-        <div
-          className="engine-account-overview__chart"
-          role="img"
-          aria-label={`${engine} daily ${costAvailable ? `${costSource} cost` : 'tokens'} from ${data.window.from} to ${data.window.to}`}
-        >
-          {chartRows.map(({ day }, index) => (
-            <span
-              key={day}
-              title={`${day}: ${values[index] === undefined ? 'Not reported' : costAvailable ? amountLabel(values[index]!, chartCurrency) : values[index]?.toLocaleString()}`}
-              data-unreported={values[index] === undefined || undefined}
-              style={{
-                height: `${Math.max(2, ((values[index] ?? 0) / peak) * 100)}%`,
-              }}
-            />
-          ))}
-        </div>
-        <div className="engine-account-overview__axis">
-          <span>{data.window.from}</span>
-          <span>{data.window.to}</span>
-        </div>
-      </figure>
-      <details>
-        <summary>Token breakdown & capture coverage</summary>
-        <small>
-          Totals include reported values only. Missing token categories and
-          turns remain gaps.
-        </small>
-        <Facts
-          rows={[
-            ...(
-              [
-                'inputTokens',
-                'outputTokens',
-                'cacheReadTokens',
-                'cacheWriteTokens',
-              ] as const
-            ).map((key, index): [string, string | undefined] => [
-              [
-                'Input tokens',
-                'Output tokens',
-                'Cache read tokens',
-                'Cache write tokens',
-              ][index]!,
-              rows.some((row) => row[key] !== undefined)
-                ? rows
-                    .reduce((sum, row) => sum + (row[key] ?? 0), 0)
-                    .toLocaleString()
-                : undefined,
-            ]),
-            [
-              'Usage receipts',
-              rows
-                .reduce((sum, row) => sum + row.receiptCount, 0)
-                .toLocaleString(),
-            ],
-            [
-              'Pricing',
-              [...new Set(rows.map((row) => row.pricingStatus))].join(', '),
-            ],
-            [
-              'Estimate sources',
-              [
-                ...new Set(
-                  estimates
-                    .map((item) => item.pricingSnapshotSource)
-                    .filter(Boolean),
-                ),
-              ].join(', ') || undefined,
-            ],
-            [
-              'Pricing snapshots',
-              [
-                ...new Set(estimates.map((item) => item.pricingSnapshotId)),
-              ].join(', ') || undefined,
-            ],
-          ]}
-        />
-        {data.coverage.map((coverage, index) => (
-          <Facts
-            key={`${coverage.stationId}:${index}`}
-            rows={[
-              ['Capture status', coverage.state],
-              ['Source freshness', coverage.freshness],
-              ['Source observed through', coverage.observedThrough],
-              ['Source observed turns', coverage.observedTurnCount],
-              ['Source turns with usage', coverage.usageReportedTurnCount],
-              ['Source reason', coverage.reason],
-              ['Dropped receipts', coverage.droppedReceiptCount],
-              ...(coverage.providers
-                ?.filter((provider) => provider.provider === engine)
-                .flatMap((provider): FactRow[] => [
-                  ['Provider capture', provider.state],
-                  ['Observed turns', provider.observedTurnCount],
-                  ['Turns with usage', provider.usageReportedTurnCount],
-                  ['Freshness', provider.freshness],
-                  ['Observed through', provider.observedThrough],
-                  ['Reason', provider.reason],
-                ]) ?? []),
-            ]}
-          />
-        ))}
-      </details>
-      {partial && <small>Some activity is missing.</small>}
-      <small>
-        Reported and estimated costs are separate. Subscription allowance is not
-        a bill.
-      </small>
     </>
   );
 }

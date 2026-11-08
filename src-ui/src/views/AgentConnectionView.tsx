@@ -2,60 +2,44 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import type {
-  CredentialProfile,
-  CredentialProfileApplicationProjection,
-} from '@kontourai/station-contracts/connection-recovery';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import type {
-  AgentConnectionView as AgentConnectionViewData,
-  ConnectionConfig,
-} from '@kontourai/station-contracts/tool';
+import type { AgentConnectionView as AgentConnectionViewData } from '@kontourai/station-contracts/tool';
 import {
   useAgentConnectionCatalogQuery,
   useAgentConnectionQuery,
-  useAppHomeProfileQuery,
-  useApplyCredentialProfileMutation,
-  useClearAppHomeProfileMutation,
-  useCredentialRecoveryQuery,
   useDeleteAgentConnectionMutation,
-  useDeleteCredentialProfileMutation,
   useEngineConnectionsQuery,
-  useImportAppHomeSnapshotMutation,
-  useImportCredentialProfileSnapshotMutation,
   useReconnectACPConnectionMutation,
   useSaveAgentConnectionMutation,
-  useSetCredentialProfileEnrollmentMutation,
-  useSetCredentialRecoveryAutomaticPolicyMutation,
-  useSkillsQuery,
   useSmokeAgentConnectionMutation,
   useTestAgentConnectionMutation,
-  useUpsertCredentialProfileMutation,
 } from '@kontourai/station-sdk';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import { ACPConnectionDetailsField } from '../components/acp-connections/ACPConnectionDetailsField';
 import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
-import { Checkbox } from '../components/Checkbox';
+import { Button } from '../components/Button';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
-import { DetailHeader } from '../components/DetailHeader';
 import { PublicRegistryUpdateNotice } from '../components/engine-install/PublicRegistry';
+import { registryEntryDiscovery } from '../components/engine-install/registryEntryDiscovery';
 import { EngineSignInPanel } from '../components/engine-sign-in/EngineSignInPanel';
 import { BrandIcon } from '../components/icons/BrandIcon';
+import { connectionVerdictTone } from '../components/kontour/station-tones';
 import {
   ManagedEngineNotice,
   managedEngineFact,
   managedEnvironmentLocked,
 } from '../components/ManagedEngineNotice';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import {
+  ResourceDetail,
+  type ResourceDetailTab,
+} from '../components/resource-hub/ResourceDetail';
 import { resourceRow } from '../components/resource-hub/resource-row';
+import { useResourceEditor } from '../components/resource-hub/useResourceEditor';
+import type { SplitPaneItem } from '../components/SplitPaneLayout';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { CONNECTIONS_ENGINES_PANE_ID } from '../components/split-pane-metrics';
-import {
-  describeReadFailure,
-  Empty,
-  ErrorState,
-  SkeletonBlock,
-} from '../components/state';
+import { Empty } from '../components/state';
 import {
   type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
@@ -65,29 +49,31 @@ import {
 } from '../hooks/useACPConnections';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import { useManagedEngineStateFor } from '../hooks/useManagedEngines';
-import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { AgentSummary, NavigationView } from '../types';
+import { agentsUsingEngine } from '../utils/engineDependents';
 import {
-  capabilityLabel,
   connectionEngineId,
-  connectionStatusLabel,
-  prerequisiteCategoryLabel,
-  prerequisiteStatusLabel,
-  runtimeCatalogSourceLabel,
   runtimeCatalogSourceSentence,
-  runtimeCatalogVisibleModels,
 } from '../utils/execution';
-import { formatBytes } from '../utils/formatBytes';
 import { describeStationFailure } from '../utils/stationFailure';
-import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
 import {
+  type ConnectionHealth,
   deriveConnectionHealth,
   engineHealthInput,
 } from './connections-hub/connection-health';
+import type { EngineDetailTab } from './connections-hub/connection-sections';
 import { EngineAccountOverview } from './EngineAccountOverview';
 import { EngineAddFlow, type NotConnectedEngine } from './EngineAddFlow';
 import { EngineProxySettings } from './EngineProxySettings';
+import { EngineModelsTab } from './engine-detail/EngineModelsTab';
+import { EngineOverviewTab } from './engine-detail/EngineOverviewTab';
+import {
+  AppHomeProfileField,
+  ClaudeSkillsMaterializationField,
+} from './engine-detail/EngineSettingsFields';
+import { EngineSettingsTab } from './engine-detail/EngineSettingsTab';
+import { EngineUsageTab } from './engine-detail/EngineUsageTab';
 import { NotConnectedEngineDetail } from './NotConnectedEngineDetail';
 import { blockingPrerequisite } from './provider-settings/providerCatalog';
 import './PluginManagementView.css';
@@ -96,12 +82,14 @@ import './editor-layout.css';
 
 interface AgentConnectionViewProps {
   selectedRuntimeId?: EngineConnectionId | string;
+  /** The detail's route tab; absent opens Overview. */
+  selectedTab?: EngineDetailTab;
   /**
    * With the add route: the catalogue entry to open on its confirm step
    * (`/connections/engines/new/<id>`; `custom` opens the custom form).
    */
   addChoiceId?: string;
-  /** Agents, for an engine's connection details. */
+  /** Agents, for an engine's dependents. */
   agents?: AgentSummary[];
   onNavigate: (view: NavigationView) => void;
 }
@@ -127,14 +115,54 @@ function isAddedEngine(connection: AgentConnectionViewData): boolean {
   return connection.setup?.state !== 'available';
 }
 
+/** Prefix for a detected engine's list row; it is not a saved connection. */
+const FOUND_ROW_PREFIX = 'found:';
+
+const FOUND_STATUS = {
+  label: 'Found, not connected',
+  tone: connectionVerdictTone('setup'),
+} as const;
+
+/** Claude Code and Codex hold sign-in accounts; other engines do not. */
+function hasAccounts(
+  connection: AgentConnectionViewData,
+): connection is AgentConnectionViewData & { type: 'claude' | 'codex' } {
+  return connection.type === 'claude' || connection.type === 'codex';
+}
+
+function engineTabs(
+  connection: AgentConnectionViewData,
+): Array<ResourceDetailTab<EngineDetailTab>> {
+  return [
+    { key: 'overview', label: 'Overview' },
+    { key: 'usage', label: 'Usage' },
+    { key: 'models', label: 'Models' },
+    ...(hasAccounts(connection)
+      ? [{ key: 'accounts' as const, label: 'Accounts' }]
+      : []),
+    { key: 'settings', label: 'Settings' },
+  ];
+}
+
+function cloneConnection(
+  connection: AgentConnectionViewData,
+): AgentConnectionViewData {
+  return {
+    ...connection,
+    capabilities: [...connection.capabilities],
+    config: { ...connection.config },
+    prerequisites: [...connection.prerequisites],
+  };
+}
+
 export function AgentConnectionView({
   selectedRuntimeId,
+  selectedTab,
   addChoiceId,
   agents = [],
   onNavigate,
 }: AgentConnectionViewProps) {
   const [search, setSearch] = useState('');
-  const [form, setForm] = useState<AgentConnectionViewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   /**
    * The section frame owns this section's single add action (design P3), and
@@ -210,61 +238,26 @@ export function AgentConnectionView({
     },
   );
 
-  const [dirty, setDirty] = useState(false);
-  const { guard, DiscardModal } = useUnsavedGuard(dirty);
-  const seededConnectionId = useRef<string | null>(null);
-
-  function guardedNavigate(view: NavigationView) {
-    guard(() => onNavigate(view));
-  }
-
-  useEffect(() => {
-    if (!runtime) {
-      setForm(null);
-      setDirty(false);
-      seededConnectionId.current = null;
-      setError(null);
-      return;
-    }
-    /*
-     * A refetch used to overwrite the form unconditionally, so pressing
-     * "Re-check prerequisites" -- or any background invalidation, or the
-     * five-minute stale window elapsing -- silently discarded whatever the user
-     * had typed. The server copy wins only when the user has not edited this
-     * connection; selecting a DIFFERENT engine always re-seeds, which is what
-     * the id comparison distinguishes.
-     *
-     * Deliberately not a merge: reconciling a stale edit against a changed
-     * server record is a conflict, and quietly picking a winner per field is
-     * how you get a form that is neither.
-     */
-    // Re-seeding is keyed on which connection the form was last seeded FROM,
-    // not on the form's current contents: selecting a different engine must
-    // always re-seed even mid-edit, while a refetch of the same one must not.
-    if (seededConnectionId.current === runtime.id && dirty) {
-      setError(null);
-      return;
-    }
-    seededConnectionId.current = runtime.id;
-    setForm({
-      ...runtime,
-      capabilities: [...runtime.capabilities],
-      config: { ...runtime.config },
-      prerequisites: [...runtime.prerequisites],
-    });
-    setDirty(false);
-    setError(null);
-  }, [runtime, dirty]);
+  // One editable copy of the selected engine. The route tab is not part of
+  // the route identity, so switching tabs keeps this mounted and its edits.
+  const editor = useResourceEditor<AgentConnectionViewData>({
+    source: (runtime as AgentConnectionViewData | undefined) ?? null,
+    identity: (connection) => connection.id,
+    clone: cloneConnection,
+  });
+  const form = editor.draft;
 
   const saveMutation = useSaveAgentConnectionMutation({
-    onSuccess: (saved) => {
-      setForm(saved);
-      // Saved edits are no longer unsaved: the next refetch must be allowed to
-      // re-seed, or the form would pin itself to a stale copy forever.
-      setDirty(false);
-      seededConnectionId.current = saved.id;
+    onSuccess: (saved: AgentConnectionViewData) => {
+      editor.saved(saved);
       setError(null);
-      onNavigate({ type: 'connections-engine-edit', id: saved.id });
+      editor.stayWithin(() =>
+        onNavigate({
+          type: 'connections-engine-edit',
+          id: saved.id,
+          ...(selectedTab ? { tab: selectedTab } : {}),
+        }),
+      );
     },
     onError: (mutationError: Error) => {
       setError(describeStationFailure(mutationError).body);
@@ -337,17 +330,72 @@ export function AgentConnectionView({
     () => externalEngines.filter(isAddedEngine),
     [externalEngines],
   );
-  const items = useMemo(
-    () => [
+  /**
+   * Engines Station found on this computer that nobody has connected: the
+   * same catalogue entries Add labels "Found, not connected". Listing one
+   * configures nothing; its Connect opens that entry's Add result in place.
+   */
+  const foundEngines = useMemo(
+    () =>
+      // Without the engine list, an added engine would read as found.
+      runtimesError
+        ? []
+        : [
+            ...availableEngines
+              .filter(
+                (connection) =>
+                  deriveConnectionHealth(engineHealthInput(connection))
+                    .label === 'Found, not connected',
+              )
+              .map((connection) => ({
+                id: connection.id,
+                name: connection.name,
+                icon: (
+                  <BrandIcon
+                    name={connection.name}
+                    id={connection.id}
+                    engineId={connectionEngineId(connection)}
+                    size={22}
+                  />
+                ),
+              })),
+            ...availableCommandEntries
+              // Public registry listings stay in Add's own group: being on
+              // PATH does not make a third-party listing one of Station's.
+              .filter(
+                (entry) =>
+                  entry.source !== 'registry' &&
+                  registryEntryDiscovery(entry) === 'detected-unconfigured',
+              )
+              .map((entry) => ({
+                id: entry.id,
+                name: entry.name,
+                icon: (
+                  <ConnectionIcon
+                    icon={entry.icon}
+                    name={entry.name}
+                    id={entry.id}
+                    size={22}
+                  />
+                ),
+              })),
+          ],
+    [availableEngines, availableCommandEntries, runtimesError],
+  );
+  const connectFound = useCallback(
+    (providerId: string) =>
+      onNavigate({ type: 'connections-engine-new', providerId }),
+    [onNavigate],
+  );
+  const items = useMemo<SplitPaneItem[]>(() => {
+    const query = search.toLowerCase();
+    const matches = (name: string, type = '') =>
+      !search ||
+      name.toLowerCase().includes(query) ||
+      type.toLowerCase().includes(query);
+    return [
       ...addedEngines
-        .filter((connection) => {
-          if (!search) return true;
-          const query = search.toLowerCase();
-          return (
-            connection.name.toLowerCase().includes(query) ||
-            connection.type.toLowerCase().includes(query)
-          );
-        })
+        .filter((connection) => matches(connection.name, connection.type))
         .map((connection) => {
           const managed = managedStateFor(connection);
           return resourceRow({
@@ -382,11 +430,7 @@ export function AgentConnectionView({
       // A failed first add is listed beside the engines, never as one: its
       // row says so, and its page offers only the repairs.
       ...notConnected
-        .filter(
-          ({ connection }) =>
-            !search ||
-            connection.name.toLowerCase().includes(search.toLowerCase()),
-        )
+        .filter(({ connection }) => matches(connection.name))
         .map(({ connection }) => ({
           id: connection.id,
           name: connection.name,
@@ -400,9 +444,33 @@ export function AgentConnectionView({
             />
           ),
         })),
-    ],
-    [addedEngines, notConnected, search, managedStateFor],
-  );
+      ...foundEngines
+        .filter((engine) => matches(engine.name))
+        .map((engine) => ({
+          ...resourceRow({
+            id: `${FOUND_ROW_PREFIX}${engine.id}`,
+            name: engine.name,
+            icon: engine.icon,
+            status: FOUND_STATUS,
+          }),
+          trailing: (
+            <Button
+              aria-label={`Connect ${engine.name}`}
+              onClick={() => connectFound(engine.id)}
+            >
+              Connect
+            </Button>
+          ),
+        })),
+    ];
+  }, [
+    addedEngines,
+    notConnected,
+    foundEngines,
+    search,
+    managedStateFor,
+    connectFound,
+  ]);
   const selectedNotConnected =
     repair && repair.engine.connection.id === selectedRuntimeId
       ? repair.engine
@@ -410,45 +478,23 @@ export function AgentConnectionView({
           ({ connection }) => connection.id === selectedRuntimeId,
         );
 
-  function setField<K extends keyof ConnectionConfig>(
+  function setDraftField<K extends keyof AgentConnectionViewData>(
     key: K,
-    value: ConnectionConfig[K],
+    value: AgentConnectionViewData[K],
   ) {
-    setDirty(true);
-    setForm((current) => (current ? { ...current, [key]: value } : current));
+    editor.update((current) => ({ ...current, [key]: value }));
   }
 
   function setConfigField(key: string, value: unknown) {
-    setDirty(true);
-    setForm((current) =>
-      current
-        ? {
-            ...current,
-            config: {
-              ...current.config,
-              [key]: value,
-            },
-          }
-        : current,
-    );
+    editor.update((current) => ({
+      ...current,
+      config: { ...current.config, [key]: value },
+    }));
   }
 
-  const providerLabel = form
-    ? typeof form.config?.providerLabel === 'string' &&
-      form.config.providerLabel.trim()
-      ? form.config.providerLabel
-      : form.name.trim() ||
-        engineDisplayLabel(connectionEngineId(form) ?? form.type) ||
-        form.type
-    : '';
-  const runtimeCatalog = (form as AgentConnectionViewData | null)
-    ?.runtimeCatalog;
-  const capabilityInventory = (form as AgentConnectionViewData | null)
-    ?.capabilityInventory;
-  const continuity = (form as AgentConnectionViewData | null)?.continuity;
-  // The row's verdict, read again for the selected engine: the Status tile,
-  // the Ready step, Retry check and the readiness notice cannot say Ready
-  // where the row (and dispatch) say otherwise.
+  // The row's verdict, read again for the selected engine: the header, its
+  // one fix and the readiness instructions cannot say Ready where the row
+  // (and dispatch) say otherwise.
   const health = form
     ? deriveConnectionHealth(engineHealthInput(form), {
         policyDisallowed: selectedManagedState?.disallowed === true,
@@ -456,21 +502,284 @@ export function AgentConnectionView({
     : null;
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const devicePresentation = useDevicePresentation();
-  // The SAME derivation the presentation used, not a second copy of it.
   const blocker = form ? blockingPrerequisite(form.prerequisites) : undefined;
-  /*
-   * Each step is a fact, not a decoration. "Choose" is complete because this
-   * page only ever shows an engine that has been added. "Connect" is complete
-   * when nothing required is still unmet -- Station can launch it. "Ready" is
-   * the connection verdict, the same one the Status tile and the row read.
+  const tabs = form ? engineTabs(form) : [];
+  // A tab this engine does not have (Accounts on a command engine) opens
+  // Overview rather than an empty panel.
+  const activeTab: EngineDetailTab =
+    selectedTab && tabs.some((tab) => tab.key === selectedTab)
+      ? selectedTab
+      : 'overview';
+
+  function selectTab(tab: EngineDetailTab) {
+    if (!form || tab === activeTab) return;
+    // Same engine, same editor: the edits stay, so this guard does not ask.
+    editor.stayWithin(() =>
+      onNavigate({
+        type: 'connections-engine-edit',
+        id: form.id,
+        ...(tab === 'overview' ? {} : { tab }),
+      }),
+    );
+  }
+
+  const save = () => {
+    if (form) saveMutation.mutate({ connection: form, isNew: false });
+  };
+  const check = () => {
+    if (form)
+      testMutation.mutate({ id: engineConnectionId(form.id), confirmed: true });
+  };
+
+  /**
+   * At most one fix in the header, and only one this page can perform. A
+   * policy refusal has none; a command engine's failed handshake is retried;
+   * Claude Code and Codex sign in on Accounts; a turned-off engine turns on.
+   * Install and setup instructions are on Overview instead.
    */
-  const engineSetupSteps = [
-    { label: 'Choose', complete: true },
-    { label: 'Connect', complete: !blocker },
-    { label: 'Ready', complete: health?.verdict === 'ready' },
-  ];
-  const visibleModels = runtimeCatalogVisibleModels(form);
-  const reportedModelCount = visibleModels.length;
+  function fixAction(
+    current: AgentConnectionViewData,
+    verdict: ConnectionHealth,
+  ) {
+    if (verdict.verdict === 'ready' || selectedManagedState?.disallowed)
+      return undefined;
+    if (verdict.action?.id === 'enable')
+      return (
+        <Button
+          variant="primary"
+          disabled={saveMutation.isPending}
+          onClick={() =>
+            saveMutation.mutate({
+              connection: { ...current, enabled: true },
+              isNew: false,
+            })
+          }
+        >
+          Enable
+        </Button>
+      );
+    if (selectedAcpConnectionId)
+      return (
+        <Button
+          disabled={reconnectMutation.isPending}
+          onClick={() => reconnectMutation.mutate(selectedAcpConnectionId)}
+        >
+          {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
+        </Button>
+      );
+    if (verdict.action?.id === 'sign-in' && hasAccounts(current))
+      return (
+        <Button variant="primary" onClick={() => selectTab('accounts')}>
+          Sign in
+        </Button>
+      );
+    if (verdict.action?.id === 'check-connection')
+      return (
+        <Button
+          disabled={testMutation.isPending || editor.dirty}
+          onClick={check}
+        >
+          {testMutation.isPending ? 'Checking…' : 'Check connection'}
+        </Button>
+      );
+    return undefined;
+  }
+
+  function renderTab(current: AgentConnectionViewData): ReactNode {
+    const savedCopy =
+      (runtime as AgentConnectionViewData | undefined) ?? current;
+    switch (activeTab) {
+      case 'usage':
+        return <EngineUsageTab connection={savedCopy} />;
+      case 'models':
+        return (
+          <EngineModelsTab
+            connection={current}
+            defaultModel={String(current.config.defaultModel || '')}
+            onDefaultModelChange={(id) => setConfigField('defaultModel', id)}
+            refreshDisabled={editor.dirty}
+            refreshing={refreshMutation.isPending}
+            onRefresh={() => refreshMutation.mutate(current.id)}
+          />
+        );
+      case 'accounts':
+        return hasAccounts(current) ? (
+          current.config.proxyConnectionId ? (
+            <Empty
+              variant="compact"
+              label="Accounts are not used while routed through a proxy"
+              description="Runs use the saved proxy's key instead."
+            />
+          ) : (
+            <EngineAccountOverview
+              connectionId={current.id}
+              engine={current.type}
+            />
+          )
+        ) : null;
+      case 'settings':
+        return renderSettings(current);
+      default:
+        return (
+          <EngineOverviewTab
+            connection={savedCopy}
+            defaultModel={String(savedCopy.config.defaultModel || '')}
+            managedFact={managedEngineFact(selectedManagedState)}
+            dependents={agentsUsingEngine(agents, current.id)}
+            onOpenAgent={(slug) => onNavigate({ type: 'agent-edit', slug })}
+            notices={
+              <>
+                <ManagedEngineNotice state={selectedManagedState} />
+                <PublicRegistryUpdateNotice
+                  entry={acpRegistryEntries.find(
+                    (entry) => entry.installed && entry.id === current.id,
+                  )}
+                />
+                {selectedAcpConnectionId && (
+                  <EngineSignInPanel
+                    connectionId={selectedAcpConnectionId}
+                    onSignedIn={() =>
+                      reconnectMutation.mutate(selectedAcpConnectionId)
+                    }
+                  />
+                )}
+                {/* #4520: a policy-disallowed engine is explained by the
+                    managed notice; its instructions would be a fix the
+                    policy refuses. */}
+                {health?.verdict !== 'ready' &&
+                  !selectedManagedState?.disallowed &&
+                  blocker && (
+                    <ConnectionReadinessNotice
+                      readiness={health?.label ?? ''}
+                      detail={health?.reason ?? ''}
+                      kind="agent"
+                      prerequisites={current.prerequisites}
+                      devicePresentation={devicePresentation}
+                      verdictShown
+                    />
+                  )}
+                {error && <p className="editor-error">{error}</p>}
+              </>
+            }
+          />
+        );
+    }
+  }
+
+  function renderSettings(current: AgentConnectionViewData) {
+    const engineLabel =
+      engineDisplayLabel(connectionEngineId(current) ?? current.type) ??
+      current.name;
+    const observation = current.routeObservation;
+    return (
+      <>
+        <EngineSettingsTab
+          draft={current}
+          dirty={editor.dirty}
+          onNameChange={(name) => setDraftField('name', name)}
+          onEnabledChange={(enabled) => setDraftField('enabled', enabled)}
+          routing={
+            hasAccounts(current) ? (
+              <EngineProxySettings
+                managedLocked={managedEnvironmentLocked(selectedManagedState)}
+                connection={current}
+                onChange={(config) => setDraftField('config', config)}
+                onManageModels={() =>
+                  onNavigate({ type: 'connections-models' })
+                }
+                {...(observation?.kind === 'ambient' && observation.origin
+                  ? { ambientOrigin: observation.origin }
+                  : {})}
+              />
+            ) : undefined
+          }
+          skills={
+            current.type === 'claude' ? (
+              <ClaudeSkillsMaterializationField
+                selectedSkillIds={
+                  Array.isArray(current.config.provideSkills)
+                    ? current.config.provideSkills.filter(
+                        (id): id is string => typeof id === 'string',
+                      )
+                    : []
+                }
+                onChange={(ids) => setConfigField('provideSkills', ids)}
+              />
+            ) : undefined
+          }
+          appHome={
+            hasAccounts(current) ? (
+              <CredentialProfileAccess connectionId={current.id} managementOnly>
+                <AppHomeProfileField
+                  connectionId={current.id}
+                  engineLabel={engineLabel}
+                  useAppHome={current.config.useAppHome === true}
+                  onToggle={(value) => setConfigField('useAppHome', value)}
+                />
+              </CredentialProfileAccess>
+            ) : undefined
+          }
+          connectionDetails={
+            selectedAcpConnection ? (
+              <ACPConnectionDetailsField
+                connection={selectedAcpConnection}
+                agents={agents}
+              />
+            ) : undefined
+          }
+          saving={saveMutation.isPending}
+          onSave={save}
+          checking={testMutation.isPending}
+          onCheck={check}
+          checkResult={
+            <>
+              {/*
+               * This used to print "Healthy · <status>" from a boolean
+               * derived from the prerequisites -- a restatement presented as
+               * a verdict from a check that never ran. The header is the
+               * verdict; this says only that the check answered.
+               */}
+              {testMutation.data &&
+                testMutation.data.smoke.testedAt ===
+                  current.readinessEvidence?.smoke.testedAt && (
+                  <p className="editor-help" role="status">
+                    {testMutation.data.smoke.status === 'passed'
+                      ? 'Connected — your engine answered successfully.'
+                      : 'Couldn’t connect. Check the connection settings, then try again.'}
+                  </p>
+                )}
+              {testMutation.error && (
+                <p className="editor-error">
+                  {describeStationFailure(testMutation.error).body}
+                </p>
+              )}
+            </>
+          }
+          error={error ? <p className="editor-error">{error}</p> : undefined}
+          resetting={resetMutation.isPending}
+          onReset={() => setConfirmResetOpen(true)}
+        />
+        {/*
+         * "Reset to defaults" is a DELETE. It removes the settings override
+         * and calls `agentRegistry.unregister`, which drops the engine out of
+         * the list entirely, so it confirms and says so.
+         */}
+        <ConfirmModal
+          isOpen={confirmResetOpen}
+          title="Reset this engine"
+          message={`Removes ${current.name}'s saved settings and disconnects it. This cannot be undone.`}
+          confirmLabel="Reset"
+          cancelLabel="Cancel"
+          variant="danger"
+          onCancel={() => setConfirmResetOpen(false)}
+          onConfirm={() => {
+            setConfirmResetOpen(false);
+            resetMutation.mutate(engineConnectionId(current.id));
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <SplitPaneLayout
@@ -484,13 +793,13 @@ export function AgentConnectionView({
       breadcrumbLinks={
         selectedRuntimeId
           ? {
-              connections: () => guardedNavigate({ type: 'connections' }),
+              connections: () => onNavigate({ type: 'connections' }),
               engines: () =>
-                guardedNavigate({
+                onNavigate({
                   type: 'connections-engines',
                 } as NavigationView),
             }
-          : { connections: () => guardedNavigate({ type: 'connections' }) }
+          : { connections: () => onNavigate({ type: 'connections' }) }
       }
       title="Engines"
       subtitle="Connect installed engines for chats and delegated work"
@@ -501,23 +810,32 @@ export function AgentConnectionView({
       selectedId={isAddRoute ? null : (selectedRuntimeId ?? null)}
       onSelect={(id) => {
         if (id === selectedRuntimeId) return;
+        if (id.startsWith(FOUND_ROW_PREFIX)) {
+          connectFound(id.slice(FOUND_ROW_PREFIX.length));
+          return;
+        }
         setRepair(null);
-        guardedNavigate({ type: 'connections-engine-edit', id });
+        // A route change: the editor's registered guard asks, once.
+        onNavigate({ type: 'connections-engine-edit', id });
       }}
       onDeselect={() => {
         setRepair(null);
-        guardedNavigate({ type: 'connections-engines' } as NavigationView);
+        onNavigate({ type: 'connections-engines' } as NavigationView);
       }}
       onSearch={setSearch}
       searchValue={search}
       listFilteredEmptyNoun="engines"
-      collectionEmpty={addedEngines.length === 0 && notConnected.length === 0}
+      collectionEmpty={
+        addedEngines.length === 0 &&
+        notConnected.length === 0 &&
+        foundEngines.length === 0
+      }
       /* empty-state action: the section frame's "Add engine" is adjacent. Copy
          stays action-shaped (matching the sibling providers list) rather than
          a bespoke "No engines yet" — the state-primitives ratchet exists to
          stop every view minting its own "No X" restatement of its noun. */
       listEmptyTitle="Add an engine to get started"
-      listEmptyDescription="Detected and supported engines appear here once one is connected."
+      listEmptyDescription="Engines Station finds on this computer appear here too."
       emptyTitle="Select an engine"
       emptyDescription="Select an engine to review its status and setup."
       emptyContent={
@@ -539,9 +857,10 @@ export function AgentConnectionView({
       unselectedDetailOpen={isAddRoute}
       searchPlaceholder="Search engines..."
     >
-      {form && repair?.engine.connection.id !== selectedRuntimeId ? (
+      {form && health && repair?.engine.connection.id !== selectedRuntimeId ? (
         <div className="editor-layout">
-          <DetailHeader
+          <ResourceDetail
+            id={`engine-${form.id}`}
             title={form.name}
             icon={
               <BrandIcon
@@ -551,552 +870,15 @@ export function AgentConnectionView({
                 size={28}
               />
             }
+            status={health}
+            fix={fixAction(form, health)}
+            tabs={tabs}
+            activeTab={activeTab}
+            onSelectTab={selectTab}
+            tabsLabel={`${form.name} sections`}
           >
-            {/* Retry check is the repair for a failed check. A Ready engine
-                is checked with Check connection below, so it gets one
-                check action, not two; a policy refusal has no repair. */}
-            {selectedAcpConnectionId &&
-              health?.verdict !== 'ready' &&
-              !selectedManagedState?.disallowed && (
-              <button
-                type="button"
-                className="editor-btn"
-                disabled={reconnectMutation.isPending}
-                onClick={() =>
-                  reconnectMutation.mutate(selectedAcpConnectionId)
-                }
-              >
-                {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
-              </button>
-            )}
-          </DetailHeader>
-          <div className="agent-editor__section">
-            {/*
-             * Three static spans used to sit here with the first hardcoded
-             * complete, so the rail read "Choose" forever and a fully working
-             * engine displayed exactly what a broken one did. Each step is now
-             * the fact it names. The sibling model-connection form fixed the
-             * identical markup under RT-18; this is that fix, applied to the
-             * page it was never applied to.
-             */}
-            <nav
-              className="provider-detail__progress"
-              aria-label="Engine setup"
-            >
-              {engineSetupSteps.map((step, index) => (
-                <Fragment key={step.label}>
-                  {index > 0 && <span aria-hidden="true">→</span>}
-                  <span
-                    className={`provider-detail__progress-step${
-                      step.complete
-                        ? ' provider-detail__progress-step--complete'
-                        : ''
-                    }`}
-                    // Announced, not left to a colour and a private class
-                    // name. Exactly one step carries it: the first incomplete.
-                    aria-current={
-                      !step.complete &&
-                      engineSetupSteps
-                        .slice(0, index)
-                        .every((earlier) => earlier.complete)
-                        ? 'step'
-                        : undefined
-                    }
-                  >
-                    {step.label}
-                  </span>
-                </Fragment>
-              ))}
-            </nav>
-
-            <div className="provider-detail__summary" aria-live="polite">
-              <div>
-                <span className="provider-detail__summary-label">Status</span>
-                <strong>{health?.label}</strong>
-              </div>
-              <div>
-                <span className="provider-detail__summary-label">Models</span>
-                <strong>
-                  {reportedModelCount > 0 ? reportedModelCount : 'Not reported'}
-                </strong>
-              </div>
-              {/*
-               * A "Last check" tile stood here and was a constant. Only a
-               * model connection ever gets `lastCheckedAt` written
-               * (`connection-service.ts` sets it behind `kind === 'model'`),
-               * so for an engine it is permanently null and the tile read
-               * "Not checked" forever, beside a button that could not change
-               * it. A constant rendered as a measurement is worse than an
-               * absent one, so it is absent.
-               */}
-            </div>
-
-            <ManagedEngineNotice state={selectedManagedState} />
-            {(form.type === 'claude' || form.type === 'codex') && (
-              <EngineProxySettings
-                managedLocked={managedEnvironmentLocked(selectedManagedState)}
-                connection={form}
-                onChange={(config) => setField('config', config)}
-                onManageModels={() =>
-                  onNavigate({ type: 'connections-models' })
-                }
-              />
-            )}
-            {!form.config.proxyConnectionId &&
-              (form.type === 'claude' || form.type === 'codex') && (
-                <EngineAccountOverview
-                  connectionId={form.id}
-                  engine={form.type}
-                />
-              )}
-            <PublicRegistryUpdateNotice
-              entry={acpRegistryEntries.find(
-                (entry) => entry.installed && entry.id === form.id,
-              )}
-            />
-            {selectedAcpConnectionId && (
-              <EngineSignInPanel
-                connectionId={selectedAcpConnectionId}
-                onSignedIn={() =>
-                  reconnectMutation.mutate(selectedAcpConnectionId)
-                }
-              />
-            )}
-            {/* #4520: a policy-disallowed engine is explained by the managed
-                notice; "turn this on" would offer a fix the policy refuses. */}
-            {health?.verdict !== 'ready' &&
-              !selectedManagedState?.disallowed && (
-                <ConnectionReadinessNotice
-                  readiness={health?.label ?? ''}
-                  detail={health?.reason ?? ''}
-                  kind="agent"
-                  prerequisites={form.prerequisites}
-                  devicePresentation={devicePresentation}
-                />
-              )}
-
-            <div className="editor-field">
-              <label className="editor-label" htmlFor="agent-default-model">
-                Default model
-              </label>
-              <select
-                id="agent-default-model"
-                className="editor-input"
-                value={String(form.config.defaultModel || '')}
-                onChange={(event) =>
-                  setConfigField('defaultModel', event.target.value)
-                }
-              >
-                <option value="">Let the engine choose</option>
-                {Boolean(form.config.defaultModel) &&
-                  !runtimeCatalogVisibleModels(form).some(
-                    (model) => model.id === form.config.defaultModel,
-                  ) && (
-                    <option value={String(form.config.defaultModel)}>
-                      {String(form.config.defaultModel)} (not currently listed)
-                    </option>
-                  )}
-                {runtimeCatalogVisibleModels(form).map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-              <p className="editor-help">Save changes before refreshing.</p>
-              <button
-                type="button"
-                className="editor-btn"
-                onClick={() => refreshMutation.mutate(form.id)}
-                disabled={dirty || refreshMutation.isPending}
-              >
-                Refresh models
-              </button>
-            </div>
-
-            <details className="provider-detail__advanced">
-              <summary>Advanced</summary>
-              <div className="provider-detail__advanced-fields">
-                <div className="editor-field">
-                  <label className="editor-label" htmlFor="agent-provider-name">
-                    Name
-                  </label>
-                  <input
-                    id="agent-provider-name"
-                    className="editor-input"
-                    value={form.name}
-                    onChange={(event) => setField('name', event.target.value)}
-                  />
-                </div>
-
-                <div className="editor-field">
-                  <span className="editor-label">Type</span>
-                  <div className="editor-input editor-input--readonly">
-                    {engineDisplayLabel(
-                      connectionEngineId(form) ?? form.type,
-                    ) ?? form.type}
-                  </div>
-                </div>
-
-                <div className="editor-field">
-                  <span className="editor-label">Status</span>
-                  <div className="editor-input editor-input--readonly">
-                    {connectionStatusLabel(form.status)}
-                  </div>
-                </div>
-
-                <div className="editor-field">
-                  <span className="editor-label">Catalog</span>
-                  <div className="editor-input editor-input--readonly">
-                    {runtimeCatalogSourceLabel(
-                      runtimeCatalog?.source ?? 'none',
-                    )}
-                  </div>
-                  {runtimeCatalog?.reason && (
-                    <p className="editor-help">{runtimeCatalog.reason}</p>
-                  )}
-                </div>
-
-                <div className="editor-field">
-                  <span className="editor-label">Model backend</span>
-                  <div
-                    className="editor-input"
-                    style={{
-                      background: 'var(--bg-tertiary)',
-                      cursor: 'default',
-                    }}
-                  >
-                    {providerLabel || 'Unknown'}
-                  </div>
-                </div>
-
-                <div className="editor-field">
-                  <label className="editor-label" htmlFor="runtime-enabled">
-                    Enabled
-                  </label>
-                  <label className="editor-checkbox">
-                    <input
-                      id="runtime-enabled"
-                      type="checkbox"
-                      checked={form.enabled}
-                      onChange={(event) =>
-                        setField('enabled', event.target.checked)
-                      }
-                    />
-                    <span>
-                      Expose this engine in Connections and agent setup
-                    </span>
-                  </label>
-                </div>
-
-                <div className="editor-field">
-                  <span className="editor-label">Capabilities</span>
-                  <div className="plugins__caps">
-                    {form.capabilities.map((capability) => (
-                      <span key={capability} className="plugins__cap">
-                        {capabilityLabel(capability)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="editor-field">
-                  <span className="editor-label">Description</span>
-                  <p className="editor-help">
-                    {form.description || 'No description available.'}
-                  </p>
-                </div>
-
-                <div className="editor-field">
-                  <span className="editor-label">Continuity</span>
-                  <p className="editor-help">
-                    {continuity
-                      ? [
-                          continuity.resume === 'same-session'
-                            ? 'Can continue this execution session when its engine supports it.'
-                            : 'Cannot resume an existing execution session.',
-                          continuity.fork === 'native'
-                            ? 'Can create an engine-native conversation branch.'
-                            : continuity.fork === 'replay-seed'
-                              ? 'Can start a new conversation from Station’s transcript. It does not carry engine cursor, tool, or approval state.'
-                              : 'Cannot create an engine-native branch.',
-                          continuity.rewind === 'in-place'
-                            ? 'Can rewind this execution session in place.'
-                            : 'Cannot rewind an execution session in place.',
-                        ].join(' ')
-                      : 'No native continuity capability declared by this connection.'}
-                  </p>
-                </div>
-
-                {form.type === 'claude' && (
-                  <ClaudeSkillsMaterializationField
-                    selectedSkillIds={
-                      Array.isArray(form.config.provideSkills)
-                        ? form.config.provideSkills.filter(
-                            (id): id is string => typeof id === 'string',
-                          )
-                        : []
-                    }
-                    onChange={(ids) => setConfigField('provideSkills', ids)}
-                  />
-                )}
-
-                {(form.type === 'claude' || form.type === 'codex') && (
-                  <CredentialProfileAccess
-                    connectionId={form.id}
-                    managementOnly
-                  >
-                    <AppHomeProfileField
-                      connectionId={form.id}
-                      engineLabel={
-                        engineDisplayLabel(
-                          connectionEngineId(form) ?? form.type,
-                        ) ?? form.name
-                      }
-                      useAppHome={form.config.useAppHome === true}
-                      onToggle={(value) => setConfigField('useAppHome', value)}
-                    />
-                  </CredentialProfileAccess>
-                )}
-
-                {runtimeCatalog && (
-                  <div className="editor-field">
-                    <span className="editor-label">Models</span>
-                    <p className="editor-help">
-                      {visibleModels.length > 0
-                        ? runtimeCatalog.source === 'built-in'
-                          ? `${visibleModels.length} built-in models available.`
-                          : `${visibleModels.length} live or cached models available.`
-                        : 'No models reported.'}
-                    </p>
-                    <div className="plugins__caps">
-                      {visibleModels.map((model) => (
-                        <span key={model.id} className="plugins__cap">
-                          {model.name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {capabilityInventory && (
-                  <div className="editor-field">
-                    <span className="editor-label">Capabilities</span>
-                    <p className="editor-help">
-                      {capabilityInventory.displayName} ·{' '}
-                      {capabilityInventory.freshness} inventory ·{' '}
-                      {capabilityInventory.status}
-                    </p>
-                    {capabilityInventory.message && (
-                      <p className="editor-help">
-                        {capabilityInventory.message}
-                      </p>
-                    )}
-                    {capabilityInventory.models.length > 0 && (
-                      <>
-                        <div className="editor-label">Models</div>
-                        <div className="plugins__caps">
-                          {capabilityInventory.models.map((model) => (
-                            <span key={model.id} className="plugins__cap">
-                              {model.name}
-                            </span>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                    {capabilityInventory.slashCommands.length > 0 && (
-                      <>
-                        <div className="editor-label">Native Commands</div>
-                        <div className="plugins__registry-list">
-                          {capabilityInventory.slashCommands.map((command) => (
-                            <div
-                              key={command.id}
-                              className="plugins__registry-item"
-                            >
-                              <div className="plugins__registry-info">
-                                <div className="plugins__registry-name">
-                                  {command.name}
-                                  <span className="plugins__cap plugins__cap--ref">
-                                    read-only
-                                  </span>
-                                </div>
-                                {command.description && (
-                                  <div className="plugins__registry-desc">
-                                    {command.description}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                <div className="editor-field">
-                  <span className="editor-label">Prerequisites</span>
-                  {form.prerequisites.length > 0 ? (
-                    <div className="plugins__registry-list">
-                      {form.prerequisites.map((item) => (
-                        <div key={item.id} className="plugins__registry-item">
-                          <div className="plugins__registry-info">
-                            <div className="plugins__registry-name">
-                              {item.name}
-                              <span className="plugins__cap plugins__cap--ref">
-                                {prerequisiteCategoryLabel(item.category)}
-                              </span>
-                              <span
-                                className={`plugins__cap plugins__cap--ref ${item.status === 'installed' ? 'plugins__cap--ok' : 'plugins__cap--error'}`}
-                              >
-                                {prerequisiteStatusLabel(item.status)}
-                              </span>
-                            </div>
-                            {item.description && (
-                              <div className="plugins__registry-desc">
-                                {item.description}
-                              </div>
-                            )}
-                            {item.installGuide && (
-                              <div style={{ marginTop: 8 }}>
-                                <ol
-                                  style={{
-                                    margin: '4px 0 0',
-                                    paddingLeft: 20,
-                                    fontSize: 12,
-                                    color: 'var(--text-secondary)',
-                                  }}
-                                >
-                                  {item.installGuide.steps.map((step, i) => (
-                                    <li key={i} style={{ marginBottom: 4 }}>
-                                      {step}
-                                    </li>
-                                  ))}
-                                </ol>
-                                {item.installGuide.links?.map((link, i) => (
-                                  <a
-                                    key={i}
-                                    href={link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                      display: 'inline-block',
-                                      marginTop: 4,
-                                      marginRight: 12,
-                                      fontSize: 12,
-                                      color: 'var(--accent-primary)',
-                                    }}
-                                  >
-                                    Documentation →
-                                  </a>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="editor-help">No prerequisites reported.</p>
-                  )}
-                </div>
-                {selectedAcpConnection && (
-                  <ACPConnectionDetailsField
-                    connection={selectedAcpConnection}
-                    agents={agents}
-                  />
-                )}
-                <div className="editor-field">
-                  <button
-                    type="button"
-                    className="editor-btn editor-btn--ghost"
-                    onClick={() => setConfirmResetOpen(true)}
-                    disabled={saveMutation.isPending || resetMutation.isPending}
-                  >
-                    {resetMutation.isPending
-                      ? 'Resetting…'
-                      : 'Reset to defaults'}
-                  </button>
-                </div>
-              </div>
-            </details>
-
-            {/*
-             * "Reset to defaults" is a DELETE. It removes the settings
-             * override and calls `agentRegistry.unregister`, which drops the
-             * engine out of the list entirely -- and it had no confirmation,
-             * while "Clear this app home" five fields away, which is less
-             * destructive, did. The label also said nothing about losing the
-             * connection, so the message says it.
-             */}
-            <ConfirmModal
-              isOpen={confirmResetOpen}
-              title="Reset this engine"
-              message={`Removes ${form.name}'s saved settings and disconnects it. This cannot be undone.`}
-              confirmLabel="Reset"
-              cancelLabel="Cancel"
-              onCancel={() => setConfirmResetOpen(false)}
-              onConfirm={() => {
-                setConfirmResetOpen(false);
-                resetMutation.mutate(engineConnectionId(form.id));
-              }}
-            />
-
-            <div className="editor-field">
-              <span className="editor-label">Actions</span>
-              <div className="editor-row">
-                <button
-                  type="button"
-                  className="editor-btn"
-                  onClick={() =>
-                    saveMutation.mutate({ connection: form, isNew: false })
-                  }
-                  disabled={saveMutation.isPending || resetMutation.isPending}
-                >
-                  {saveMutation.isPending ? 'Saving…' : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  className="editor-btn"
-                  onClick={() =>
-                    testMutation.mutate({
-                      id: engineConnectionId(form.id),
-                      confirmed: true,
-                    })
-                  }
-                  disabled={testMutation.isPending || dirty}
-                >
-                  {testMutation.isPending ? 'Checking…' : 'Check connection'}
-                </button>
-              </div>
-              {/*
-               * This used to print "Healthy · <status>" from a boolean the
-               * agent branch derived from the prerequisites already rendered
-               * above -- a restatement presented as a verdict from a check
-               * that never ran. Status and the readiness notice are the live
-               * region; they update from the refetch. All this needs to say is
-               * that the refetch happened.
-               */}
-              <p className="editor-help">
-                Sends one short message (uses a little model allowance). Save
-                changes first.
-              </p>
-              {testMutation.data &&
-                testMutation.data.smoke.testedAt ===
-                  form.readinessEvidence?.smoke.testedAt && (
-                  <p className="editor-help">
-                    {testMutation.data.smoke.status === 'passed'
-                      ? 'Connected — your engine answered successfully.'
-                      : 'Couldn’t connect. Check the connection settings, then try again.'}
-                  </p>
-                )}
-              {testMutation.error && (
-                <p className="editor-error">
-                  {describeStationFailure(testMutation.error).body}
-                </p>
-              )}
-              {error && <p className="editor-error">{error}</p>}
-            </div>
-          </div>
+            {renderTab(form)}
+          </ResourceDetail>
         </div>
       ) : selectedNotConnected ? (
         <NotConnectedEngineDetail
@@ -1120,863 +902,7 @@ export function AgentConnectionView({
           label="Select an engine to review its status and setup."
         />
       )}
-      <DiscardModal />
+      <editor.DiscardModal />
     </SplitPaneLayout>
   );
-}
-
-/**
- * Skills materialization opt-in (docs/design/connections-onboarding.md §5):
- * an accessible multiselect of installed Station skills, scoped to the
- * claude connection only. Off by default — nothing is selected
- * until the user checks a box, and the resulting id list is only persisted
- * when the surrounding form's "Save Changes" button is pressed (mirrors how
- * Default Model above is edited, unlike the ACP tool-servers modal's
- * auto-save-per-toggle pattern).
- */
-function ClaudeSkillsMaterializationField({
-  selectedSkillIds,
-  onChange,
-}: {
-  selectedSkillIds: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const { data: skills = [] } = useSkillsQuery() as {
-    data?: Array<{ name: string; description?: string }>;
-  };
-
-  function toggleSkill(id: string, checked: boolean) {
-    onChange(
-      checked
-        ? [...new Set([...selectedSkillIds, id])]
-        : selectedSkillIds.filter((existing) => existing !== id),
-    );
-  }
-
-  return (
-    <div className="editor-field">
-      <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
-        <legend className="editor-label" style={{ padding: 0 }}>
-          Skills materialization
-        </legend>
-        <p className="editor-help">
-          Checked skills are copied into the session's{' '}
-          <code>.claude/skills/</code> and removed when it ends.
-        </p>
-        {skills.length === 0 ? (
-          <p className="editor-help">
-            No skills installed yet — install one from the Registry.
-          </p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {skills.map((skill) => (
-              <Checkbox
-                key={skill.name}
-                id={`claude-skill-${skill.name}`}
-                checked={selectedSkillIds.includes(skill.name)}
-                onChange={(checked) => toggleSkill(skill.name, checked)}
-              >
-                {skill.name}
-                {skill.description ? ` — ${skill.description}` : ''}
-              </Checkbox>
-            ))}
-          </div>
-        )}
-      </fieldset>
-    </div>
-  );
-}
-
-/**
- * App-home profile opt-in (#896,
- * docs/design/agent-engine-unification.md §6.1's overlay model): a
- * Station-managed config home for the connection's sessions, off by
- * default. Parameterized over `engineLabel` (#896  — claude
- * and codex both render this field). Import is a separate,
- * explicit user action — never triggered by the toggle or a form save —
- * and always renders its copied/skipped report, never silent.
- */
-function AppHomeProfileField({
-  connectionId,
-  engineLabel,
-  useAppHome,
-  onToggle,
-}: {
-  connectionId: string;
-  engineLabel: string;
-  useAppHome: boolean;
-  onToggle: (value: boolean) => void;
-}) {
-  const [includeCredentials, setIncludeCredentials] = useState(false);
-  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
-  // Read-only status peek (docs/design/agent-engine-unification.md §6.1) —
-  // fetched regardless of the toggle so a profile left over from a prior
-  // opt-in still shows its usage report and clear action after the toggle
-  // is turned back off.
-  const { data: status } = useAppHomeProfileQuery(connectionId);
-  const importMutation = useImportAppHomeSnapshotMutation();
-  const clearMutation = useClearAppHomeProfileMutation();
-
-  return (
-    <div className="editor-field">
-      <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
-        <legend className="editor-label" style={{ padding: 0 }}>
-          App home
-        </legend>
-        <Checkbox
-          id={`${connectionId}-use-app-home`}
-          checked={useAppHome}
-          onChange={onToggle}
-        >
-          Run sessions in a Station-managed app home
-        </Checkbox>
-        <p className="editor-help">
-          Leaves your global {engineLabel} settings untouched. Uses{' '}
-          <code>~/.station/app-homes/{connectionId}</code>.
-        </p>
-        {useAppHome && (
-          <div style={{ marginTop: 8 }}>
-            {status && (
-              <p className="editor-help">
-                {status.exists
-                  ? `Contents: ${status.seededFrom === 'global-import' ? 'imported snapshot' : 'empty'} · Sign-in: ${status.authState}${status.keychainAuthPossible ? ' · macOS Keychain sign-in also works' : ''}`
-                  : 'Created on the first session with this on.'}
-              </p>
-            )}
-            <label
-              className="editor-checkbox"
-              htmlFor={`${connectionId}-app-home-include-credentials`}
-            >
-              <input
-                id={`${connectionId}-app-home-include-credentials`}
-                type="checkbox"
-                checked={includeCredentials}
-                onChange={(event) =>
-                  setIncludeCredentials(event.target.checked)
-                }
-              />
-              <span>Include sign-in credentials</span>
-            </label>
-            <div className="editor-row">
-              <button
-                type="button"
-                className="editor-btn"
-                disabled={importMutation.isPending}
-                onClick={() =>
-                  importMutation.mutate({
-                    id: connectionId,
-                    includeCredentials,
-                  })
-                }
-              >
-                {importMutation.isPending
-                  ? 'Importing…'
-                  : `Import a snapshot of your global ${engineLabel} settings`}
-              </button>
-            </div>
-            {importMutation.data && (
-              <p className="editor-help">
-                Copied:{' '}
-                {importMutation.data.copied.length > 0
-                  ? importMutation.data.copied.join(', ')
-                  : 'nothing'}
-                {importMutation.data.skipped.length > 0 && (
-                  <>
-                    {' '}
-                    · Skipped:{' '}
-                    {importMutation.data.skipped
-                      .map((entry) => `${entry.path} (${entry.reason})`)
-                      .join(', ')}
-                  </>
-                )}
-                {!importMutation.data.provenanceUpdated && (
-                  <> · Not marked as imported.</>
-                )}
-              </p>
-            )}
-            {importMutation.error && (
-              <p className="editor-error">
-                {describeStationFailure(importMutation.error).body}
-              </p>
-            )}
-          </div>
-        )}
-        <CredentialRecoveryField
-          connectionId={connectionId}
-          engineLabel={engineLabel}
-        />
-        {status?.exists && status.usage && (
-          <div style={{ marginTop: 8 }}>
-            <p className="editor-help">
-              {`Using ${formatBytes(status.usage.sizeBytes)} across ${status.usage.entryCount}${status.usage.truncated ? '+' : ''} items.`}
-            </p>
-            <div className="editor-row">
-              <button
-                type="button"
-                className="editor-btn"
-                disabled={useAppHome || clearMutation.isPending}
-                title={
-                  useAppHome
-                    ? 'Turn the app home off and save before clearing it.'
-                    : undefined
-                }
-                onClick={() => setConfirmClearOpen(true)}
-              >
-                {clearMutation.isPending ? 'Clearing…' : 'Clear this app home'}
-              </button>
-            </div>
-            {useAppHome && (
-              <p className="editor-help">
-                Turn the app home off and save before clearing it.
-              </p>
-            )}
-            {clearMutation.error && (
-              <p className="editor-error">
-                {describeStationFailure(clearMutation.error).body}
-              </p>
-            )}
-          </div>
-        )}
-      </fieldset>
-      <ConfirmModal
-        isOpen={confirmClearOpen}
-        title="Clear app home"
-        message={`Deletes ~/.station/app-homes/${connectionId}, including imported settings. This cannot be undone.`}
-        confirmLabel="Clear"
-        cancelLabel="Cancel"
-        variant="danger"
-        onConfirm={() => {
-          setConfirmClearOpen(false);
-          clearMutation.mutate(connectionId);
-        }}
-        onCancel={() => setConfirmClearOpen(false)}
-      />
-    </div>
-  );
-}
-
-/**
- * Credential profiles are an explicit layer over an app home: refs are opaque
- * handles for Station's managed profile directories, while labels are only a
- * management convenience. This view deliberately never receives or renders
- * credential values, account identities, or filesystem paths.
- */
-function CredentialRecoveryField({
-  connectionId,
-  engineLabel,
-}: {
-  connectionId: string;
-  engineLabel: string;
-}) {
-  return (
-    <CredentialRecoveryLayout
-      connectionId={connectionId}
-      engineLabel={engineLabel}
-      state={useCredentialRecoveryState(connectionId)}
-    />
-  );
-}
-
-function useCredentialRecoveryState(connectionId: string) {
-  const [profileToApply, setProfileToApply] = useState<string | null>(null);
-  const {
-    data: recovery,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useCredentialRecoveryQuery(connectionId);
-  const upsertMutation = useUpsertCredentialProfileMutation();
-  const deleteMutation = useDeleteCredentialProfileMutation();
-  const enrollmentMutation = useSetCredentialProfileEnrollmentMutation();
-  const policyMutation = useSetCredentialRecoveryAutomaticPolicyMutation();
-  const importMutation = useImportCredentialProfileSnapshotMutation();
-  const applyMutation = useApplyCredentialProfileMutation();
-  const hasCompleteRecoveryState =
-    recovery != null &&
-    !Array.isArray(recovery) &&
-    recovery.group != null &&
-    recovery.policy != null &&
-    recovery.application != null;
-
-  return {
-    recovery,
-    isLoading,
-    isError,
-    error,
-    refetch,
-    profiles: recovery?.profiles ?? [],
-    enrolledProfileRefs: recovery?.group?.enrolledProfileRefs ?? [],
-    automatic: recovery?.policy?.automatic === true,
-    unsupported:
-      !hasCompleteRecoveryState ||
-      recovery?.application?.capability !== 'restart_resume',
-    pendingRef: recovery?.application?.pendingProfileRef,
-    applyingRef: applyMutation.isPending ? profileToApply : null,
-    outcome: applyMutation.data?.outcome ?? recovery?.application?.outcome,
-    errors: [
-      upsertMutation.error,
-      deleteMutation.error,
-      enrollmentMutation.error,
-      policyMutation.error,
-      importMutation.error,
-      applyMutation.error,
-    ],
-    profileToApply,
-    importResult: importMutation.data,
-    importPending: importMutation.isPending,
-    policyPending: policyMutation.isPending,
-    profileMutating: {
-      upsert: upsertMutation.isPending,
-      remove: deleteMutation.isPending,
-      enrollment: enrollmentMutation.isPending,
-    },
-    upsert: (ref: string, label: string | undefined, onSuccess?: () => void) =>
-      upsertMutation.mutate({ id: connectionId, ref, label }, { onSuccess }),
-    remove: (ref: string) => deleteMutation.mutate({ id: connectionId, ref }),
-    setEnrollment: (ref: string, enrolled: boolean) =>
-      enrollmentMutation.mutate({ id: connectionId, ref, enrolled }),
-    setAutomatic: (automatic: boolean) =>
-      policyMutation.mutate({ id: connectionId, automatic }),
-    importProfile: (ref: string, includeCredentials: boolean) =>
-      importMutation.mutate({ id: connectionId, ref, includeCredentials }),
-    requestApply: setProfileToApply,
-    cancelApply: () => setProfileToApply(null),
-    confirmApply: () => {
-      if (profileToApply) {
-        applyMutation.mutate({
-          id: connectionId,
-          ref: profileToApply,
-          confirmed: true,
-        });
-      }
-      setProfileToApply(null);
-    },
-  };
-}
-
-function CredentialRecoveryLayout({
-  connectionId,
-  engineLabel,
-  state,
-}: {
-  connectionId: string;
-  engineLabel: string;
-  state: ReturnType<typeof useCredentialRecoveryState>;
-}) {
-  return (
-    <section
-      className="credential-recovery"
-      aria-labelledby={`${connectionId}-credential-profiles-heading`}
-    >
-      <div>
-        <h3
-          id={`${connectionId}-credential-profiles-heading`}
-          className="editor-label"
-        >
-          Credential entries
-        </h3>
-        <p className="editor-help">
-          References only; Station doesn't store or show credentials here.
-        </p>
-      </div>
-
-      <CredentialRecoveryStatus application={state.recovery?.application} />
-      <CredentialRecoveryManagement
-        connectionId={connectionId}
-        engineLabel={engineLabel}
-        state={state}
-      />
-      <CredentialRecoveryFeedback
-        outcome={state.outcome}
-        errors={state.errors}
-      />
-      <CredentialProfileApplyConfirmation state={state} />
-    </section>
-  );
-}
-
-function CredentialRecoveryManagement({
-  connectionId,
-  engineLabel,
-  state,
-}: {
-  connectionId: string;
-  engineLabel: string;
-  state: ReturnType<typeof useCredentialRecoveryState>;
-}) {
-  if (state.isLoading) {
-    return <SkeletonBlock count={2} label="Loading credential entries" />;
-  }
-  // archive#771: this used to fall straight through to the (empty) management
-  // UI on a settled error, reading as "no credential entries" instead of "the
-  // read failed". A retry that never had cached data has nothing to preserve.
-  if (state.isError && !state.recovery) {
-    return (
-      <ErrorState
-        title="Couldn't load credential entries"
-        description={describeReadFailure(state.error)}
-        action={
-          <button type="button" onClick={() => state.refetch()}>
-            Retry
-          </button>
-        }
-      />
-    );
-  }
-  return (
-    <>
-      <CredentialProfileEditor connectionId={connectionId} state={state} />
-      <CredentialProfileProvisioning
-        connectionId={connectionId}
-        engineLabel={engineLabel}
-        profiles={state.profiles}
-        pending={state.importPending}
-        result={state.importResult}
-        onImport={state.importProfile}
-      />
-      <CredentialRecoveryPolicy
-        connectionId={connectionId}
-        automatic={state.automatic}
-        unsupported={state.unsupported}
-        pending={state.policyPending}
-        onChange={state.setAutomatic}
-      />
-    </>
-  );
-}
-
-function CredentialRecoveryFeedback({
-  outcome,
-  errors,
-}: {
-  outcome?: string;
-  errors: unknown[];
-}) {
-  const isFailure =
-    outcome === 'failed' ||
-    outcome === 'rolled_back' ||
-    outcome === 'rejected' ||
-    outcome === 'unsupported';
-  return (
-    <>
-      {outcome && (
-        <p
-          className={`credential-recovery__outcome${isFailure ? ' credential-recovery__outcome--failure' : ''}`}
-          role={isFailure ? 'alert' : 'status'}
-        >
-          {isFailure
-            ? `Credential application ${outcome === 'rolled_back' ? 'was rolled back' : 'did not complete'}; the active credential was not changed.`
-            : `Credential application: ${outcome.replaceAll('_', ' ')}.`}
-        </p>
-      )}
-      <CredentialRecoveryErrors errors={errors} />
-    </>
-  );
-}
-
-function CredentialProfileApplyConfirmation({
-  state,
-}: {
-  state: ReturnType<typeof useCredentialRecoveryState>;
-}) {
-  return (
-    <ConfirmModal
-      isOpen={state.profileToApply !== null}
-      title="Apply credential entry"
-      message="Verifying uses one potentially billable engine turn. If it fails, the current credential stays active."
-      confirmLabel="Apply and verify"
-      cancelLabel="Cancel"
-      variant="warning"
-      onConfirm={state.confirmApply}
-      onCancel={state.cancelApply}
-    />
-  );
-}
-
-function CredentialRecoveryStatus({
-  application,
-}: {
-  application?: CredentialProfileApplicationProjection;
-}) {
-  const capability = application?.capability ?? 'unsupported';
-  return (
-    <div className="credential-recovery__status" aria-live="polite">
-      <span className="plugins__cap plugins__cap--ref">
-        {capability === 'restart_resume'
-          ? 'Restart and resume'
-          : capability === 'hot_apply'
-            ? 'Apply without restart'
-            : 'Not supported'}
-      </span>
-      {application?.activeProfileRef && (
-        <span className="credential-recovery__status-value">
-          Active: {application.activeProfileRef}
-        </span>
-      )}
-      {application?.pendingProfileRef && (
-        <span className="credential-recovery__status-value">
-          Pending verification: {application.pendingProfileRef}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function CredentialProfileEditor({
-  connectionId,
-  state,
-}: {
-  connectionId: string;
-  state: ReturnType<typeof useCredentialRecoveryState>;
-}) {
-  return (
-    <>
-      <CredentialProfileList connectionId={connectionId} state={state} />
-      <CredentialProfileCreateForm
-        pending={state.profileMutating.upsert}
-        onUpsert={state.upsert}
-      />
-    </>
-  );
-}
-
-function CredentialProfileList({
-  connectionId,
-  state,
-}: {
-  connectionId: string;
-  state: ReturnType<typeof useCredentialRecoveryState>;
-}) {
-  const { profiles } = state;
-  return (
-    <>
-      <div className="credential-recovery__profile-list">
-        {profiles.map((profile) => (
-          <CredentialProfileRow
-            connectionId={connectionId}
-            key={profile.ref}
-            profile={profile}
-            state={state}
-          />
-        ))}
-      </div>
-      {profiles.length === 0 && (
-        <p className="credential-recovery__notice">
-          No credential entries added yet.
-        </p>
-      )}
-    </>
-  );
-}
-
-function CredentialProfileRow({
-  connectionId,
-  profile,
-  state,
-}: {
-  connectionId: string;
-  profile: CredentialProfile;
-  state: ReturnType<typeof useCredentialRecoveryState>;
-}) {
-  const enrolled = state.enrolledProfileRefs.includes(profile.ref);
-  return (
-    <div className="credential-recovery__profile">
-      <div className="credential-recovery__profile-copy">
-        <CredentialProfileMetadata profile={profile} state={state} />
-        <CredentialProfileEnrolment
-          connectionId={connectionId}
-          profileRef={profile.ref}
-        />
-        <Checkbox
-          id={`${connectionId}-credential-profile-${profile.ref}-enrolled`}
-          checked={enrolled}
-          onChange={(enabled) => state.setEnrollment(profile.ref, enabled)}
-          disabled={state.profileMutating.enrollment}
-        >
-          Allow automatic recovery selection
-        </Checkbox>
-      </div>
-      <CredentialProfileActions profile={profile} state={state} />
-    </div>
-  );
-}
-
-function CredentialProfileMetadata({
-  profile,
-  state,
-}: {
-  profile: CredentialProfile;
-  state: ReturnType<typeof useCredentialRecoveryState>;
-}) {
-  const [label, setLabel] = useState(profile.label ?? '');
-  return (
-    <>
-      <div className="credential-recovery__profile-name">
-        {profile.label || profile.ref}
-      </div>
-      {profile.label && (
-        <p className="credential-recovery__profile-ref">Ref: {profile.ref}</p>
-      )}
-      <CredentialProfileLabelEditor
-        label={label}
-        pending={state.profileMutating.upsert}
-        profileRef={profile.ref}
-        onChange={setLabel}
-        onSave={() => state.upsert(profile.ref, label.trim() || undefined)}
-      />
-    </>
-  );
-}
-
-function CredentialProfileLabelEditor({
-  label,
-  pending,
-  profileRef,
-  onChange,
-  onSave,
-}: {
-  label: string;
-  pending: boolean;
-  profileRef: string;
-  onChange: (value: string) => void;
-  onSave: () => void;
-}) {
-  return (
-    <div className="credential-recovery__profile-actions">
-      <input
-        className="editor-input"
-        aria-label={`Label for ${profileRef}`}
-        value={label}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="Management label"
-      />
-      <button
-        type="button"
-        className="editor-btn editor-btn--ghost"
-        disabled={pending}
-        onClick={onSave}
-      >
-        Save label
-      </button>
-    </div>
-  );
-}
-
-function CredentialProfileActions({
-  profile,
-  state,
-}: {
-  profile: CredentialProfile;
-  state: ReturnType<typeof useCredentialRecoveryState>;
-}) {
-  const applyDisabled =
-    state.unsupported ||
-    state.applyingRef !== null ||
-    Boolean(state.pendingRef);
-  return (
-    <div className="credential-recovery__profile-actions">
-      <button
-        type="button"
-        className="editor-btn"
-        disabled={applyDisabled}
-        onClick={() => state.requestApply(profile.ref)}
-      >
-        {state.applyingRef === profile.ref ? 'Applying…' : 'Apply manually'}
-      </button>
-      <button
-        type="button"
-        className="editor-btn editor-btn--ghost"
-        disabled={state.profileMutating.remove || Boolean(state.pendingRef)}
-        onClick={() => state.remove(profile.ref)}
-      >
-        Remove
-      </button>
-    </div>
-  );
-}
-
-function CredentialProfileCreateForm({
-  pending,
-  onUpsert,
-}: {
-  pending: boolean;
-  onUpsert: (
-    ref: string,
-    label: string | undefined,
-    onSuccess?: () => void,
-  ) => void;
-}) {
-  const [profileRef, setProfileRef] = useState('');
-  const [profileLabel, setProfileLabel] = useState('');
-  const addProfile = () => {
-    const ref = profileRef.trim();
-    if (!ref) return;
-    onUpsert(ref, profileLabel.trim() || undefined, () => {
-      setProfileRef('');
-      setProfileLabel('');
-    });
-  };
-
-  return (
-    <div className="credential-recovery__add-row">
-      <input
-        className="editor-input"
-        aria-label="Credential entry reference"
-        value={profileRef}
-        onChange={(event) => setProfileRef(event.target.value)}
-        placeholder="Credential reference"
-      />
-      <input
-        className="editor-input"
-        aria-label="Credential entry label"
-        value={profileLabel}
-        onChange={(event) => setProfileLabel(event.target.value)}
-        placeholder="Management label (optional)"
-      />
-      <button
-        type="button"
-        className="editor-btn"
-        disabled={pending || profileRef.trim().length === 0}
-        onClick={addProfile}
-      >
-        {pending ? 'Adding…' : 'Add credential entry'}
-      </button>
-    </div>
-  );
-}
-
-function CredentialProfileProvisioning({
-  connectionId,
-  engineLabel,
-  profiles,
-  pending,
-  result,
-  onImport,
-}: {
-  connectionId: string;
-  engineLabel: string;
-  profiles: CredentialProfile[];
-  pending: boolean;
-  result?: {
-    copied: string[];
-    skipped: Array<unknown>;
-    provenanceUpdated: boolean;
-  };
-  onImport: (ref: string, includeCredentials: boolean) => void;
-}) {
-  const [includeCredentials, setIncludeCredentials] = useState(false);
-  return (
-    <fieldset>
-      <legend className="editor-label">Provisioning import</legend>
-      <p className="editor-help">
-        Imports the entry’s global {engineLabel} snapshot. Credentials are
-        excluded unless checked below.
-      </p>
-      <Checkbox
-        id={`${connectionId}-credential-profile-include-credentials`}
-        checked={includeCredentials}
-        onChange={setIncludeCredentials}
-      >
-        Include selected credential entry sign-in credentials
-      </Checkbox>
-      <div className="credential-recovery__profile-actions">
-        {profiles.map((profile) => (
-          <button
-            key={profile.ref}
-            type="button"
-            className="editor-btn editor-btn--ghost"
-            disabled={pending}
-            onClick={() => onImport(profile.ref, includeCredentials)}
-          >
-            {pending
-              ? 'Importing…'
-              : `Import into ${profile.label || profile.ref}`}
-          </button>
-        ))}
-      </div>
-      {result && <CredentialProfileImportResult result={result} />}
-    </fieldset>
-  );
-}
-
-function CredentialProfileImportResult({
-  result,
-}: {
-  result: {
-    copied: string[];
-    skipped: Array<unknown>;
-    provenanceUpdated: boolean;
-  };
-}) {
-  return (
-    <p
-      className="credential-recovery__outcome"
-      role="status"
-      aria-label="Credential entry provisioning import result"
-    >
-      Provisioning import completed: {result.copied.length}{' '}
-      {result.copied.length === 1 ? 'item' : 'items'} copied;{' '}
-      {result.skipped.length} {result.skipped.length === 1 ? 'item' : 'items'}{' '}
-      skipped.{' '}
-      {result.provenanceUpdated
-        ? 'This credential entry is marked as imported.'
-        : 'This credential entry was not marked as imported because nothing was copied.'}
-    </p>
-  );
-}
-
-function CredentialRecoveryPolicy({
-  connectionId,
-  automatic,
-  unsupported,
-  pending,
-  onChange,
-}: {
-  connectionId: string;
-  automatic: boolean;
-  unsupported: boolean;
-  pending: boolean;
-  onChange: (enabled: boolean) => void;
-}) {
-  return (
-    <fieldset>
-      <legend className="editor-label">Automatic recovery</legend>
-      <Checkbox
-        id={`${connectionId}-credential-recovery-automatic`}
-        checked={automatic}
-        onChange={onChange}
-        disabled={unsupported || pending}
-      >
-        Automatically try an enrolled credential entry after an account-scoped
-        capacity or rate-limit failure
-      </Checkbox>
-      <p className="editor-help">
-        Only enrolled entries are tried.
-        {unsupported
-          ? ' This engine does not declare a safe application capability.'
-          : ''}
-      </p>
-    </fieldset>
-  );
-}
-
-function CredentialRecoveryErrors({ errors }: { errors: unknown[] }) {
-  const messages = [
-    ...new Set(errors.map(mutationErrorMessage).filter(Boolean)),
-  ];
-  return messages.length > 0 ? (
-    <div className="credential-recovery__errors" aria-live="assertive">
-      {messages.map((message) => (
-        <p className="editor-error" role="alert" key={message}>
-          {message}
-        </p>
-      ))}
-    </div>
-  ) : null;
-}
-
-function mutationErrorMessage(error: unknown): string | null {
-  if (!error) return null;
-  return describeStationFailure(error).body;
 }

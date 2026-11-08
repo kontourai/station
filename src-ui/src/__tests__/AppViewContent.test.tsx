@@ -38,7 +38,11 @@ vi.mock('../pages/ProfilePage', () => ({
   ProfilePage: () => <div>Profile</div>,
 }));
 vi.mock('../views/AgentConnectionView', () => ({
-  AgentConnectionView: () => <div>AgentConnection</div>,
+  AgentConnectionView: (props: { selectedTab?: string }) => (
+    <div data-testid="agent-connection">
+      AgentConnection {props.selectedTab ?? 'overview'}
+    </div>
+  ),
 }));
 vi.mock('../views/AgentsView', () => ({
   AgentsView: () => (
@@ -424,5 +428,29 @@ describe('AppViewContent — Agents surface continuity', () => {
         .querySelector('[data-route-key]')
         ?.getAttribute('data-route-key'),
     ).toBe('agent-edit:a');
+  });
+
+  test("an engine detail's route tab reaches the view without remounting it", async () => {
+    const { rerender } = render(
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'connections-engine-edit', id: 'claude' }}
+      />,
+    );
+    const detail = await screen.findByTestId('agent-connection');
+    expect(detail.textContent).toBe('AgentConnection overview');
+    rerender(
+      <AppViewContent
+        {...baseProps}
+        currentView={{
+          type: 'connections-engine-edit',
+          id: 'claude',
+          tab: 'settings',
+        }}
+      />,
+    );
+    // The same element: unsaved settings live in the mounted view.
+    expect(screen.getByTestId('agent-connection')).toBe(detail);
+    expect(detail.textContent).toBe('AgentConnection settings');
   });
 });

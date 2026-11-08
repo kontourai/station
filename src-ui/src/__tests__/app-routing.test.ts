@@ -7,6 +7,7 @@ import {
   resolveViewFromPath,
 } from '../app-shell/routing';
 import type { NavigationView } from '../types';
+import { ENGINE_DETAIL_TABS } from '../views/connections-hub/connection-sections';
 
 const LEGACY_PATH_CASES = [
   // #928: Activity's standalone placement is gone, so both retired spellings
@@ -806,6 +807,26 @@ describe('app-shell routing', () => {
       type: 'connections-engine-edit',
       id: 'new',
     });
+  });
+
+  test('every engine detail tab round-trips through its path', () => {
+    for (const tab of ENGINE_DETAIL_TABS) {
+      const view = {
+        type: 'connections-engine-edit',
+        id: 'codex',
+        tab,
+      } as const;
+      const path = getPathForView(view);
+      expect(path).toBe(`/connections/engines/codex/${tab}`);
+      expect(resolveViewFromPath(path!)).toEqual(view);
+    }
+    expect(ENGINE_DETAIL_TABS).toEqual([
+      'overview',
+      'usage',
+      'models',
+      'accounts',
+      'settings',
+    ]);
   });
 
   test('getPathForView emits /registry/:tab when a tab is set', () => {

@@ -1,0 +1,83 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+
+interface ResourceEditorOptions<T> {
+  /** The server copy; `null`/`undefined` while nothing is selected or read. */
+  source: T | null | undefined;
+  /** Which resource `source` is. A new identity always re-seeds. */
+  identity: (source: T) => string;
+  /** A draft the edits may mutate without touching the server copy. */
+  clone: (source: T) => T;
+}
+
+/**
+ * One editable copy of a server resource: seeded from `source`, marked dirty
+ * by `update`, registered with `useUnsavedGuard`, and cleaned by `saved` or
+ * `reset`.
+ *
+ * Seeding: selecting a different resource always re-seeds, even mid-edit; a
+ * refetch of the same one replaces the draft only while it is clean. The
+ * server copy is not merged into unsaved edits: reconciling a stale edit
+ * against a changed record is a conflict, and picking a winner per field
+ * makes a form that is neither.
+ */
+export function useResourceEditor<T>({
+  source,
+  identity,
+  clone,
+}: ResourceEditorOptions<T>) {
+  const [draft, setDraft] = useState<T | null>(() =>
+    source ? clone(source) : null,
+  );
+  const [dirty, setDirty] = useState(false);
+  const seededId = useRef<string | null>(source ? identity(source) : null);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const helpers = useRef({ identity, clone });
+  helpers.current = { identity, clone };
+  const { guard, stayWithin, DiscardModal } = useUnsavedGuard(dirty);
+
+  useEffect(() => {
+    if (!source) {
+      seededId.current = null;
+      setDraft(null);
+      setDirty(false);
+      return;
+    }
+    const id = helpers.current.identity(source);
+    if (id === seededId.current && dirtyRef.current) return;
+    seededId.current = id;
+    setDraft(helpers.current.clone(source));
+    setDirty(false);
+  }, [source]);
+
+  const update = useCallback((change: (current: T) => T) => {
+    setDirty(true);
+    setDraft((current) => (current ? change(current) : current));
+  }, []);
+
+  /** The server accepted the draft: it is the clean copy now. */
+  const saved = useCallback((result: T) => {
+    seededId.current = helpers.current.identity(result);
+    setDraft(helpers.current.clone(result));
+    setDirty(false);
+  }, []);
+
+  const reset = useCallback(() => {
+    setDraft(source ? helpers.current.clone(source) : null);
+    setDirty(false);
+  }, [source]);
+
+  return {
+    draft,
+    dirty,
+    update,
+    saved,
+    reset,
+    /** Ask before a local action that would discard unsaved edits. */
+    guard,
+    /** A route change that keeps this editor mounted (a detail tab). */
+    stayWithin,
+    DiscardModal,
+  };
+}

@@ -63,6 +63,26 @@ export function useUnsavedGuard(dirty: boolean, onDiscard?: () => boolean) {
     [dirty],
   );
 
+  // Route changes `stayWithin` starts keep this surface mounted (a detail's
+  // route tabs), so they pass this guard; every other guard still asks.
+  // Navigation runs its guards synchronously, so a depth counter is enough.
+  const within = useRef(0);
+  const routeGuard = useCallback(
+    (cb: () => void, cancelled?: () => void) => {
+      if (within.current > 0) cb();
+      else guard(cb, cancelled);
+    },
+    [guard],
+  );
+  const stayWithin = useCallback((navigation: () => void) => {
+    within.current += 1;
+    try {
+      navigation();
+    } finally {
+      within.current -= 1;
+    }
+  }, []);
+
   // In-app route changes arbitrate through the same dirty-state decision and
   // modal as local selections. Registration precedes route unmount, so a
   // navigation cannot discard the component before the user decides.
@@ -70,10 +90,10 @@ export function useUnsavedGuard(dirty: boolean, onDiscard?: () => boolean) {
     if (!dirty) return;
     return navigationStore.registerNavigationGuard(
       navigationGuardId.current,
-      guard,
+      routeGuard,
       owner,
     );
-  }, [dirty, guard, owner]);
+  }, [dirty, routeGuard, owner]);
 
   const onConfirm = useCallback(() => {
     if (discard.current?.() === false) return;
@@ -126,6 +146,11 @@ export function useUnsavedGuard(dirty: boolean, onDiscard?: () => boolean) {
 
   return {
     guard,
+    /**
+     * Runs a route change that stays on this surface (it does not unmount
+     * the dirty state) without asking this guard.
+     */
+    stayWithin,
     DiscardModal,
     navigationGuard: { identity: navigationGuardId.current, owner },
   };

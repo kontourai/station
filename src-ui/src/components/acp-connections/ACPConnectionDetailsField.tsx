@@ -2,6 +2,7 @@ import { useUpdateACPConnectionMutation } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import type { ACPConnectionInfo } from '../../hooks/useACPConnections';
 import type { AgentSummary } from '../../types';
+import { agentsUsingEngine } from '../../utils/engineDependents';
 import { ACPConnectionDetailModal } from './ACPConnectionDetailModal';
 
 /**
@@ -34,9 +35,7 @@ export function ACPConnectionDetailsField({
       {open && (
         <ACPConnectionDetailModal
           conn={connection}
-          agents={agents.filter((agent) =>
-            agent.slug.startsWith(`${connection.id}-`),
-          )}
+          agents={agentsUsingEngine(agents, connection.id)}
           onClose={() => setOpen(false)}
           {...(connection.source !== 'plugin'
             ? {

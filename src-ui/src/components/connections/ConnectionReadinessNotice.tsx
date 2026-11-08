@@ -40,6 +40,12 @@ interface ConnectionReadinessNoticeProps {
   /** The server's own readiness observation, where this connection has one. */
   evidence?: ConnectionReadinessEvidence | undefined;
   devicePresentation: DevicePresentation | undefined;
+  /**
+   * The page header already shows the verdict and its reason, so the notice
+   * carries only what follows from them: the evidence, the host action and
+   * the install steps.
+   */
+  verdictShown?: boolean;
 }
 
 export function ConnectionReadinessNotice({
@@ -49,6 +55,7 @@ export function ConnectionReadinessNotice({
   prerequisites,
   evidence,
   devicePresentation,
+  verdictShown = false,
 }: ConnectionReadinessNoticeProps) {
   const blocker = blockingPrerequisite(prerequisites);
   const steps = blocker?.installGuide?.steps ?? [];
@@ -59,8 +66,12 @@ export function ConnectionReadinessNotice({
 
   return (
     <div className="provider-detail__notice" role="status">
-      <strong>{readiness}</strong>
-      <span>{detail}</span>
+      {!verdictShown && (
+        <>
+          <strong>{readiness}</strong>
+          <span>{detail}</span>
+        </>
+      )}
       {summary && <span>{summary}</span>}
       {evidence?.action && <span>{evidence.action}</span>}
       {blocker && (

@@ -321,6 +321,7 @@ function AppViewContentBody({
       <ConnectionsSectionFrame sectionId="engines">
         <AgentConnectionView
           selectedRuntimeId={currentView.id}
+          {...(currentView.tab ? { selectedTab: currentView.tab } : {})}
           agents={agents}
           onNavigate={onNavigate}
         />

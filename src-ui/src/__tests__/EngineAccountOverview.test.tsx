@@ -17,7 +17,9 @@ vi.mock('../platform/openExternalLink', () => ({
   openExternalLink: (url: string) => openLink(url),
 }));
 
+import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { EngineAccountOverview } from '../views/EngineAccountOverview';
+import { EngineUsageTab } from '../views/engine-detail/EngineUsageTab';
 
 afterEach(() => {
   setClientCredentialResolver(undefined);
@@ -30,7 +32,7 @@ test.each([
   ['claude', false],
   ['codex', false],
 ] as const)(
-  'the %s account page completes sign-in with management access=%s',
+  'the %s Accounts and Usage tabs complete sign-in with management access=%s',
   async (engine, management) => {
     const client = new QueryClient({
       defaultOptions: {
@@ -325,9 +327,17 @@ test.each([
         throw new Error(`Unexpected request ${method} ${u.pathname}`);
       },
     }));
+    // The engine detail's Accounts and Usage tabs, over one query cache as
+    // they are when the reader moves between them.
+    const connection = {
+      id: engine,
+      type: engine,
+      name: engine,
+    } as unknown as AgentConnectionView;
     const mounted = render(
       <QueryClientProvider client={client}>
         <EngineAccountOverview engine={engine} connectionId={engine} />
+        <EngineUsageTab connection={connection} />
       </QueryClientProvider>,
     );
     if (management) {
@@ -407,17 +417,23 @@ test.each([
     expect(
       screen.getByText('This Station · this engine · all accounts'),
     ).toBeTruthy();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Activity for' }), {
-      target: { value: 'account' },
-    });
     fireEvent.change(screen.getByRole('combobox', { name: 'Account' }), {
       target: { value: 'work' },
     });
     if (management) {
       await screen.findByText('20% left');
+      // Usage reads its own account choice; history follows it.
+      fireEvent.change(screen.getByRole('combobox', { name: 'Usage for' }), {
+        target: { value: 'work' },
+      });
       fireEvent.click(screen.getByText('View observations'));
       expect((await screen.findByRole('table')).textContent).toContain('30%');
       expect(screen.getByRole('table').textContent).not.toContain('90%');
+    } else {
+      expect(
+        screen.getByText('Usage needs credential-management access'),
+      ).toBeTruthy();
+      expect(screen.queryByRole('combobox', { name: 'Usage for' })).toBeNull();
     }
     const signIn = await screen.findByRole('button', { name: 'Sign in' });
     await waitFor(() => expect(signIn).toHaveProperty('disabled', false));
@@ -464,15 +480,15 @@ test.each([
         ),
       ).toBeTruthy();
       mixedCurrencies = true;
-      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await client.invalidateQueries({ queryKey: ['engine-activity'] });
       await screen.findByText('$2.00 · EUR 3.00');
       fireEvent.change(screen.getByRole('combobox', { name: 'Currency' }), {
         target: { value: 'EUR' },
       });
       expect(screen.getByTitle('2026-09-30: EUR 3.00')).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'Tokens' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Tokens' }));
       expect(screen.getByText('Daily tokens')).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'Estimated cost' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Estimated cost' }));
       expect(
         screen.getByText('No estimated cost observations in this period.'),
       ).toBeTruthy();
@@ -484,12 +500,14 @@ test.each([
         0,
       );
     }
-    expect(
-      screen.getByText('This Station · selected profile · attributed runs'),
-    ).toBeTruthy();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Activity for' }), {
-      target: { value: 'engine' },
-    });
+    if (management) {
+      expect(
+        screen.getByText('This Station · selected account · attributed runs'),
+      ).toBeTruthy();
+      fireEvent.change(screen.getByRole('combobox', { name: 'Usage for' }), {
+        target: { value: '*' },
+      });
+    }
     expect(
       screen.getByText('This Station · this engine · all accounts'),
     ).toBeTruthy();

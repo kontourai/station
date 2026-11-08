@@ -137,7 +137,8 @@ export const KNOWN_DIRTY_STATE_EDITORS = [
   'src-ui/src/views/agent-editor/AgentEditorWorkflows.tsx',
   'src-ui/src/views/agent-editor/AgentToolDiscovery.tsx',
   'src-ui/src/views/KnowledgeConnectionView.tsx',
-  'src-ui/src/views/AgentConnectionView.tsx',
+  // AgentConnectionView's engine editor (#4710 slice 3).
+  'src-ui/src/components/resource-hub/useResourceEditor.ts',
   'src-ui/src/views/ProviderSettingsView.tsx',
   'src-ui/src/views/SettingsView.tsx',
   'src-ui/src/views/integrations/SecretBindingsSection.tsx',
