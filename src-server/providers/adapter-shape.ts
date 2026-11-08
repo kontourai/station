@@ -475,6 +475,17 @@ export interface ProviderAdapterShape {
     threadId: string,
     options?: { signal?: AbortSignal },
   ): Promise<void>;
+  /**
+   * Whether the live engine cannot apply this turn's resolved `modelOptions`
+   * but a fresh start of the same session would: Claude's full access, whose
+   * permission grant the engine only takes at spawn. Orchestration then
+   * relaunches the idle engine in place, from its resume cursor, before the
+   * turn. Absent or `false`: the turn goes to the live engine as is.
+   */
+  turnNeedsEngineRelaunch?(
+    threadId: string,
+    modelOptions: Record<string, unknown> | undefined,
+  ): boolean;
   sendTurn(input: ProviderSendTurnInput): Promise<ProviderTurnStartResult>;
   interruptTurn(
     threadId: string,
