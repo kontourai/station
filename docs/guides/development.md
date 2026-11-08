@@ -250,6 +250,22 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   server runs under `scripts/dev-server-watch.mts` (`tsx watch` cannot poll).
   Polling costs some CPU; leave it off where native watching works.
 
+### Free scripted turns
+
+Do not pay for a model just to watch a turn render.
+`node scripts/dev-scripted-model.mjs --port=4417` starts a loopback-only,
+Ollama-compatible server whose models are scripted scenarios:
+`scripted-showcase` (Markdown with a list, table and code block),
+`scripted-echo`, `scripted-long`, `scripted-truncated` (finish reason
+`length`) and `scripted-error` (fails mid-stream). In the dev instance, add an
+Ollama connection under Connections with base URL `http://127.0.0.1:4417` and
+pick a scenario as the model. The turn then runs through the real Ollama
+adapter, orchestration, persistence and live stream; only the model is
+replaced. It offers no tools, so a scripted turn never asks Station to run
+anything. Add the connection only to an isolated dev home, never your own.
+`--delay-ms` sets the pause between streamed pieces (default 25). Use a real
+provider's cheapest model when the test needs real model behavior.
+
 ### Linux service workload budgets
 
 When the server runs inside a `station-*.service` user unit on Linux,
