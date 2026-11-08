@@ -7,3 +7,48 @@
   height: var(--k-space-4);
   flex: 0 0 var(--k-space-4);
 }
+
+/* #4694: the visible command palette entry. A field-shaped pill on wider
+   screens; on a phone it is one more 44px toolbar glyph (chat.css lifts
+   `.app-toolbar__icon-btn` to the touch floor). */
+.app-toolbar__palette-entry:not(.app-toolbar__palette-entry--compact) {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  min-height: 32px;
+  margin-inline-end: var(--k-space-2);
+  padding: 0 var(--k-space-2) 0 var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+
+.app-toolbar__palette-entry:not(.app-toolbar__palette-entry--compact):hover {
+  border-color: var(--k-line-strong);
+  color: var(--k-text);
+}
+
+.app-toolbar__palette-entry > svg {
+  flex: 0 0 auto;
+}
+
+.app-toolbar__palette-entry-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-toolbar__palette-entry-chord {
+  flex: 0 0 auto;
+  padding: 0 var(--k-space-1);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+}
