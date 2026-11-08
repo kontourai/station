@@ -109,6 +109,17 @@ tools. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 
+Child fan-out is the one denial Station also enforces server-side for every
+engine. A delegated child that calls `delegate_task` or `send_message` is
+refused at the routes behind them (`POST /api/orchestration/delegations`, and
+`/chat`, `/chat/delegated` and `/chat/background`) with `403` and
+`delegated_tool_blocked`, before the depth limit is read. The decision uses the
+calling session's own recorded delegation context and the built-in denial list,
+so an Agent's `allowedTools` cannot re-allow it. It needs a verified
+station-control caller: a Codex URL token, an ACP header token or the Claude
+in-process server. A shell `station` CLI run under an operator credential is not
+that caller, so this is not coverage of every way a child could start work.
+
 ### Codex approval policy and reviewer
 
 The session-level engine Ask mode is separate from the authored per-tool Ask
