@@ -22,6 +22,13 @@ function render(ui: Parameters<typeof renderView>[0]) {
     ),
   });
 }
+
+function moveFocusToBody() {
+  const temporary = document.createElement('button');
+  document.body.append(temporary);
+  temporary.focus();
+  temporary.remove();
+}
 const mocks = vi.hoisted(() => ({
   brief: {
     version: 'station.task-room-context/v1' as const,
@@ -384,7 +391,7 @@ test.each(['committed', 'duplicate'] as const)(
     expect(textbox.matches(':disabled')).toBe(true);
     // Model focus falling to body while the disabled input is pending; jsdom
     // does not reproduce the browser's disable-driven focus loss.
-    act(() => textbox.blur());
+    act(() => moveFocusToBody());
     expect(document.activeElement).toBe(document.body);
     await act(async () => acknowledge({ kind }));
     expect(textbox.matches(':disabled')).toBe(false);
@@ -407,7 +414,7 @@ test('waits until the human mutation releases its pending lock before restoring 
   fireEvent.change(textbox, { target: { value: 'Hello team' } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
   await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-  act(() => textbox.blur());
+  act(() => moveFocusToBody());
   mocks.messagePending = true;
   view.rerender(<TaskRoomComposer {...props} />);
   await act(async () => acknowledge({ kind: 'committed' }));
@@ -438,7 +445,7 @@ test.each(['refused', 'unknown'] as const)(
     fireEvent.change(textbox, { target: { value: 'Keep this draft' } });
     fireEvent.keyDown(textbox, { key: 'Enter' });
     await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-    act(() => textbox.blur());
+    act(() => moveFocusToBody());
     await act(async () => finish());
     expect(document.activeElement).toBe(document.body);
     expect((textbox as HTMLTextAreaElement).value).toBe('Keep this draft');
@@ -483,7 +490,7 @@ test.each(['task', 'authority', 'authority-roundtrip', 'unmount'] as const)(
     fireEvent.change(original, { target: { value: 'Hello team' } });
     fireEvent.keyDown(original, { key: 'Enter' });
     await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-    act(() => original.blur());
+    act(() => moveFocusToBody());
     if (change === 'unmount') {
       view.unmount();
       render(<TaskRoomComposer {...props} taskId="task-2" />);
@@ -518,7 +525,7 @@ test('a new incarnation of the same Task cannot receive focus from an earlier se
   fireEvent.change(textbox, { target: { value: 'Original incarnation' } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
   await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-  act(() => textbox.blur());
+  act(() => moveFocusToBody());
   view.rerender(
     <TaskRoomComposer {...props} taskCreatedAt="2026-10-01T00:00:00.000Z" />,
   );
@@ -546,7 +553,7 @@ test('a revoked captured authority cannot restore focus after acknowledgement', 
     fireEvent.change(textbox, { target: { value: 'Original authority' } });
     fireEvent.keyDown(textbox, { key: 'Enter' });
     await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-    act(() => textbox.blur());
+    act(() => moveFocusToBody());
     current = false;
     await act(async () => acknowledge({ kind: 'committed' }));
     expect(document.activeElement).toBe(document.body);
@@ -570,7 +577,7 @@ test('a pending restoration is canceled after an authority round trip before unl
   fireEvent.change(textbox, { target: { value: 'Original authority' } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
   await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-  act(() => textbox.blur());
+  act(() => moveFocusToBody());
   mocks.messagePending = true;
   view.rerender(<TaskRoomComposer {...props} />);
   await act(async () => acknowledge({ kind: 'committed' }));
