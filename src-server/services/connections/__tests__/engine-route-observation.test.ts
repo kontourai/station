@@ -1,5 +1,10 @@
+import {
+  parseManagedPolicyDocument,
+  summarizeManagedPolicy,
+} from '@kontourai/station-contracts/managed-policy';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { installManagedEngineLimits } from '../../../security/managed-engine-limits.js';
 import { observeEngineRoute } from '../engine-route-observation.js';
 import { createConnectionServiceForTest } from './connection-service-test-helper.js';
 
@@ -15,12 +20,42 @@ const proxy: ProviderConnectionConfig = {
   },
 };
 
+/** The test runner's own environment must not decide the route. */
+function clearRouteEnv() {
+  for (const name of [
+    'ANTHROPIC_BASE_URL',
+    'OPENAI_BASE_URL',
+    'CLAUDE_CODE_USE_BEDROCK',
+    'CLAUDE_CODE_USE_VERTEX',
+    'anthropic_base_url',
+  ])
+    vi.stubEnv(name, undefined);
+}
+
+function installPin(instances: unknown) {
+  const parsed = parseManagedPolicyDocument({
+    schemaVersion: 1,
+    organization: 'Acme',
+    limits: { engines: { instances } },
+  });
+  if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+  installManagedEngineLimits({
+    document: parsed.document,
+    summary: summarizeManagedPolicy(parsed.document),
+  });
+}
+
+beforeEach(clearRouteEnv);
+afterEach(() => {
+  vi.unstubAllEnvs();
+  installManagedEngineLimits(null);
+});
+
 describe('observeEngineRoute', () => {
   test('a saved proxy is the route, named, with its origin only', () => {
+    vi.stubEnv('ANTHROPIC_BASE_URL', 'https://ignored.example');
     expect(
-      observeEngineRoute('claude', { proxyConnectionId: proxy.id }, [proxy], {
-        ANTHROPIC_BASE_URL: 'https://ignored.example',
-      }),
+      observeEngineRoute('claude', { proxyConnectionId: proxy.id }, [proxy]),
     ).toEqual({
       kind: 'proxy',
       origin: 'https://proxy.example:8317',
@@ -34,12 +69,15 @@ describe('observeEngineRoute', () => {
   ] as const)(
     'an inherited %s endpoint is ambient, with userinfo, path and query removed',
     (engine, name) => {
-      const observed = observeEngineRoute(engine, {}, [], {
-        [name]: 'https://user:secret@gateway.example:9443/v1/proxy?token=abc',
-      });
+      vi.stubEnv(
+        name,
+        'https://user:secret@gateway.example:9443/v1/proxy?token=abc',
+      );
+      const observed = observeEngineRoute(engine, {}, []);
       expect(observed).toEqual({
         kind: 'ambient',
         origin: 'https://gateway.example:9443',
+        source: 'station',
       });
       const text = JSON.stringify(observed);
       for (const leaked of ['user', 'secret', 'token', 'abc', '/v1'])
@@ -48,25 +86,25 @@ describe('observeEngineRoute', () => {
   );
 
   test('the connection env wins over the inherited one, and an empty value masks it', () => {
+    vi.stubEnv('ANTHROPIC_BASE_URL', 'https://inherited.example');
     expect(
       observeEngineRoute(
         'claude',
         { env: { ANTHROPIC_BASE_URL: 'http://localhost:4000/anthropic' } },
         [],
-        { ANTHROPIC_BASE_URL: 'https://inherited.example' },
       ),
-    ).toEqual({ kind: 'ambient', origin: 'http://localhost:4000' });
+    ).toEqual({
+      kind: 'ambient',
+      origin: 'http://localhost:4000',
+      source: 'connection',
+    });
     expect(
-      observeEngineRoute('claude', { env: { ANTHROPIC_BASE_URL: '' } }, [], {
-        ANTHROPIC_BASE_URL: 'https://inherited.example',
-      }),
+      observeEngineRoute('claude', { env: { ANTHROPIC_BASE_URL: '' } }, []),
     ).toEqual({ kind: 'account' });
   });
 
-  test('no endpoint override reads the account', () => {
-    expect(observeEngineRoute('codex', {}, [], {})).toEqual({
-      kind: 'account',
-    });
+  test('no endpoint override in the launch is account (an unobserved route)', () => {
+    expect(observeEngineRoute('codex', {}, [])).toEqual({ kind: 'account' });
   });
 
   test.each([
@@ -75,16 +113,96 @@ describe('observeEngineRoute', () => {
     ['the Bedrock switch', {}, { CLAUDE_CODE_USE_BEDROCK: '1' }],
     ['a saved proxy the launch refuses', { proxyConnectionId: 'missing' }, {}],
   ])('%s is unknown, never the account', (_, config, env) => {
-    expect(observeEngineRoute('claude', config, [proxy], env)).toEqual({
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    expect(observeEngineRoute('claude', config, [proxy])).toEqual({
       kind: 'unknown',
+    });
+  });
+
+  test('on Windows a differently cased variable is still the endpoint', () => {
+    vi.stubEnv('anthropic_base_url', 'https://gateway.example/v1');
+    expect(observeEngineRoute('claude', {}, [], 'win32')).toEqual({
+      kind: 'ambient',
+      origin: 'https://gateway.example',
+      source: 'station',
     });
   });
 });
 
-describe('engine connection projection', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
+describe('observeEngineRoute under a managed policy', () => {
+  test('a locked pinned endpoint is the route, from the policy, over the connection and the proxy', () => {
+    installPin({
+      claude: {
+        locked: true,
+        environment: { ANTHROPIC_BASE_URL: 'https://gw.acme.example/v1' },
+      },
+    });
+    vi.stubEnv('ANTHROPIC_BASE_URL', 'https://inherited.example');
+    for (const config of [
+      { env: { ANTHROPIC_BASE_URL: 'https://user.example' } },
+      { proxyConnectionId: proxy.id },
+    ])
+      expect(observeEngineRoute('claude', config, [proxy])).toEqual({
+        kind: 'ambient',
+        origin: 'https://gw.acme.example',
+        source: 'policy',
+      });
   });
+
+  test('an unlocked pinned endpoint only fills a variable nothing set', () => {
+    installPin({
+      claude: {
+        locked: false,
+        environment: { ANTHROPIC_BASE_URL: 'https://gw.acme.example' },
+      },
+    });
+    expect(observeEngineRoute('claude', {}, [])).toEqual({
+      kind: 'ambient',
+      origin: 'https://gw.acme.example',
+      source: 'policy',
+    });
+    vi.stubEnv('ANTHROPIC_BASE_URL', 'https://inherited.example');
+    expect(observeEngineRoute('claude', {}, [])).toEqual({
+      kind: 'ambient',
+      origin: 'https://inherited.example',
+      source: 'station',
+    });
+  });
+
+  test('a locked pin on Windows replaces every case variant of the variable', () => {
+    installPin({
+      claude: {
+        locked: true,
+        environment: { ANTHROPIC_BASE_URL: 'https://gw.acme.example' },
+      },
+    });
+    vi.stubEnv('anthropic_base_url', 'https://inherited.example');
+    expect(observeEngineRoute('claude', {}, [], 'win32')).toEqual({
+      kind: 'ambient',
+      origin: 'https://gw.acme.example',
+      source: 'policy',
+    });
+  });
+
+  test('a pinned Codex provider argument is unknown, even over a saved proxy', () => {
+    installPin({
+      codex: { locked: false, launchArgs: ['-c', 'model_provider="acme"'] },
+    });
+    expect(observeEngineRoute('codex', {}, [])).toEqual({ kind: 'unknown' });
+    expect(
+      observeEngineRoute('codex', { proxyConnectionId: proxy.id }, [proxy]),
+    ).toEqual({ kind: 'unknown' });
+  });
+
+  test('pinned arguments that choose no provider leave the route alone', () => {
+    installPin({
+      codex: { locked: true, launchArgs: ['-c', 'approval_policy="never"'] },
+    });
+    expect(observeEngineRoute('codex', {}, [])).toEqual({ kind: 'account' });
+  });
+});
+
+describe('engine connection projection', () => {
 
   function serviceFor(engine: 'claude' | 'codex', config: object) {
     return createConnectionServiceForTest(
@@ -128,6 +246,7 @@ describe('engine connection projection', () => {
     expect(connection?.routeObservation).toEqual({
       kind: 'ambient',
       origin: 'https://gateway.internal.example',
+      source: 'station',
     });
     expect(JSON.stringify(connection)).not.toContain('hunter2');
   });
@@ -144,10 +263,7 @@ describe('engine connection projection', () => {
     });
   });
 
-  test('an engine with no endpoint override reads the account', async () => {
-    vi.stubEnv('ANTHROPIC_BASE_URL', '');
-    vi.stubEnv('CLAUDE_CODE_USE_BEDROCK', '');
-    vi.stubEnv('CLAUDE_CODE_USE_VERTEX', '');
+  test('an engine with no endpoint override in the launch reads account', async () => {
     const [connection] = await serviceFor(
       'claude',
       {},

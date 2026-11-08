@@ -275,7 +275,9 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     const fixture = await seedCredentialRecoveryRoutes(page);
     // #4710: credential entries live on the engine's Settings tab.
-    await page.goto('/connections/engines/claude/settings');
+    await page.goto('/connections/engines/claude');
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    await expect(page).toHaveURL(/\/connections\/engines\/claude\/settings$/);
 
     await expect(
       page.getByRole('heading', { name: 'Credential entries' }),
@@ -373,19 +375,20 @@ test('unsupported credential profile capability fails closed', async ({
   page,
 }) => {
   await seedCredentialRecoveryRoutes(page, { capability: 'unsupported' });
-  await page.goto('/connections/engines/claude/settings');
+  await page.goto('/connections/engines/claude');
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/\/connections\/engines\/claude\/settings$/);
   const recovery = page.locator('.credential-recovery');
 
-  // The fact, and none of the controls an engine cannot apply (#4710).
   await expect(
-    recovery.getByText('Not supported by this engine.', { exact: true }),
+    recovery.getByText('Not supported', { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('checkbox', {
       name: /Automatically try an enrolled credential entry/,
     }),
-  ).toHaveCount(0);
+  ).toBeDisabled();
   await expect(
     page.getByRole('button', { name: 'Apply manually' }),
-  ).toHaveCount(0);
+  ).toBeDisabled();
 });

@@ -4,6 +4,7 @@ import {
   getLegacyPathRedirect,
   getParentView,
   getPathForView,
+  isSameRecordTabTraversal,
   resolveViewFromPath,
 } from '../app-shell/routing';
 import type { NavigationView } from '../types';
@@ -807,6 +808,26 @@ describe('app-shell routing', () => {
       type: 'connections-engine-edit',
       id: 'new',
     });
+  });
+
+  test('only a move between one engine record\'s tabs is a same-record traversal', () => {
+    const same = [
+      ['/connections/engines/claude', '/connections/engines/claude/settings'],
+      ['/connections/engines/claude/usage', '/connections/engines/claude/models'],
+      ['/connections/engines/team%2Fx/usage', '/connections/engines/team%2Fx'],
+    ];
+    for (const [from, to] of same)
+      expect(isSameRecordTabTraversal(from!, to!)).toBe(true);
+    const different = [
+      ['/connections/engines/claude/settings', '/connections/engines/codex'],
+      ['/connections/engines/claude', '/connections/engines'],
+      ['/connections/engines/claude', '/connections/engines/new/claude'],
+      ['/connections/models/a', '/connections/models/a'],
+      ['/connections/engines/claude', '/connections/engines/claude'],
+      ['/connections/engines/claude', '/connections/engines/claude/bogus'],
+    ];
+    for (const [from, to] of different)
+      expect(isSameRecordTabTraversal(from!, to!)).toBe(false);
   });
 
   test('every engine detail tab round-trips through its path', () => {

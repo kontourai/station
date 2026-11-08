@@ -98,7 +98,10 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 ## Read an engine's page
 
 An engine's page has tabs, each with its own address
-(`/connections/engines/<id>/<tab>`); switching tabs keeps unsaved settings.
+(`/connections/engines/<id>/<tab>`). Switching tabs, or going Back and
+Forward between them, keeps unsaved settings without asking; while there are
+unsaved edits every tab shows **Save** and **Discard**. Leaving the engine asks.
+What **Check connection** or a header fix reported shows under the header.
 
 - **Overview** — the route the engine actually uses, its default model, where
   its model list comes from, any managed policy, the last **Check connection**
@@ -106,22 +109,25 @@ An engine's page has tabs, each with its own address
   appear here when the engine needs them.
 - **Usage** — Station-observed usage over 7 or 30 days. Claude Code and Codex
   are read by engine kind, with an account filter and allowance history. Other
-  engines are read by connection, on a Station that supports that filter. A
-  command engine reports context use only, so it shows no totals. Usage needs
+  engines are read by connection, on a Station that supports that filter;
+  runs from before Station recorded each run's engine are not in those
+  figures. A command engine reports context use only, so it shows no totals. Usage needs
   `access:manage`; without it the tab says so.
 - **Models** — a searchable list with the default marked, and **Refresh
-  models**. The default is saved with **Save** on **Settings**.
+  models**. The default is saved with **Save**.
 - **Accounts** (Claude Code and Codex) — accounts, sign-in and per-account
   allowance.
-- **Settings** — name, routing, app home, skills and credential entries (only
-  where the engine can apply them), then the engine's own declarations as
-  facts, and **Reset** last.
+- **Settings** — name, routing, app home, skills and credential entries (an
+  engine that cannot apply an entry still lists, adds and removes them; only
+  applying is off), then the engine's own declarations as facts, and **Reset**
+  last.
 
-The route is observed from the environment Station starts the engine with:
-your account, a saved proxy, or an endpoint inherited from Station's own
-environment (its origin only). Station does not read the engine's settings
-files, so **Your account** says those can still change it; an endpoint
-Station cannot name reads **Route unknown**
+The route is observed from the launch Station gives the engine, including a
+managed policy's pinned settings: a saved proxy, or an endpoint set by the
+engine's saved settings, the policy or Station's own environment (its origin
+only). Station does not read the engine's settings files, so with no override
+the route reads **Route unknown** with that reason; an override Station cannot
+name reads **Route unknown** too
 ([observation](../../src-server/services/connections/engine-route-observation.ts)).
 
 ## Sign an engine profile in from a device
@@ -219,8 +225,8 @@ precedence, both readers reported no unmapped non-null field paths or audit
 truncation for those account responses. Claude spending, breakdown, active-limit
 and extra-usage shapes are live-observed as well as fixture-validated. Other plans and provider endpoints remain outside this observation.
 
-The engine's **Usage** tab shows 7 or 30 days of this engine's runs on this
-Station, across all its accounts. With more than one account, **Usage for**
+The engine's **Usage** tab shows 7 or 30 days of runs on this Station by every
+connection of this engine kind, across all accounts. With more than one account, **Usage for**
 narrows it to one account. New
 Claude and Codex sessions record an opaque account key from the profile actually
 resolved for the process. Raw profile references are not published in runtime
@@ -1113,7 +1119,7 @@ tested against a stand-in engine that speaks the same protocol.
 In **Models**, save an OpenAI-compatible connection with the proxy address and key.
 Then open **Engines → Claude Code** or **Engines → Codex** → **Settings**, select
 that connection under **Connect through**, and save. Choose a **Default model** on
-**Models** and save it with **Save** on **Settings**. **Check connection** sends one short message and reports whether
+**Models** and save it with **Save**. **Check connection** sends one short message and reports whether
 the engine answered. A failed check is shown as **Check failed**; a model catalog
 alone does not override that result. **Refresh models** refreshes the catalog.
 

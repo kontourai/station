@@ -298,6 +298,25 @@ function isRegistryCatalogTab(value: string): value is RegistryCatalogTab {
   return (REGISTRY_TABS as readonly string[]).includes(value);
 }
 
+/**
+ * Whether moving from `from` to `to` changes only a route tab inside one
+ * mounted record: the engine detail's tabs (`/connections/engines/<id>/<tab>`).
+ * `routeIdentity` leaves that tab out for the same reason, so the record, its
+ * editor and its unsaved settings stay mounted across the move, and an
+ * unsaved-changes guard has nothing to protect. Clicks and Back/Forward both
+ * use this one rule (`navigation-store.ts`).
+ */
+export function isSameRecordTabTraversal(from: string, to: string): boolean {
+  if (from === to) return false;
+  const a = resolveViewFromPath(from);
+  const b = resolveViewFromPath(to);
+  return (
+    a.type === 'connections-engine-edit' &&
+    b.type === 'connections-engine-edit' &&
+    a.id === b.id
+  );
+}
+
 export function resolveViewFromPath(
   path: string,
   _options?: {

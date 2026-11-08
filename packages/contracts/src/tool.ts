@@ -908,9 +908,11 @@ export interface AgentConnectionView extends ConnectionConfig {
 
 /**
  * - `proxy`: the saved proxy connection Station applies (`label` is its name).
- * - `ambient`: an endpoint variable in the child's env, inherited or saved.
- * - `account`: no endpoint override in that env. Engine settings files are
- *   not read, so they can still route the engine.
+ * - `ambient`: an endpoint variable in the child's env; `source` names the
+ *   layer that set it.
+ * - `account`: no endpoint override in Station's launch. Engine settings
+ *   files are not read and can still route the engine, so a client must not
+ *   present this as the account; it is an unobserved route.
  * - `unknown`: an override exists that Station cannot name.
  *
  * `origin` is scheme, host and port only: never userinfo, path or query.
@@ -919,6 +921,11 @@ export interface EngineRouteObservation {
   kind: 'account' | 'proxy' | 'ambient' | 'unknown';
   origin?: string;
   label?: string;
+  /**
+   * `ambient` only: the connection's saved env, the managed policy, or
+   * Station's own environment.
+   */
+  source?: 'connection' | 'policy' | 'station';
 }
 
 export interface AgentConnectionSettings {

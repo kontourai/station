@@ -366,12 +366,6 @@ function CredentialRecoveryLayout({
   engineLabel: string;
   state: ReturnType<typeof useCredentialRecoveryState>;
 }) {
-  // An engine that cannot apply an entry gets the fact, not a form of live
-  // controls under a "Not supported" label.
-  const unsupported =
-    !state.isLoading &&
-    !(state.isError && !state.recovery) &&
-    state.unsupported;
   return (
     <section
       className="credential-recovery"
@@ -385,26 +379,21 @@ function CredentialRecoveryLayout({
           Credential entries
         </h3>
         <p className="editor-help">
-          {unsupported
-            ? 'Not supported by this engine.'
-            : "References only; Station doesn't store or show credentials here."}
+          References only; Station doesn't store or show credentials here.
         </p>
       </div>
-      {!unsupported && (
-        <>
-          <CredentialRecoveryStatus application={state.recovery?.application} />
-          <CredentialRecoveryManagement
-            connectionId={connectionId}
-            engineLabel={engineLabel}
-            state={state}
-          />
-          <CredentialRecoveryFeedback
-            outcome={state.outcome}
-            errors={state.errors}
-          />
-          <CredentialProfileApplyConfirmation state={state} />
-        </>
-      )}
+
+      <CredentialRecoveryStatus application={state.recovery?.application} />
+      <CredentialRecoveryManagement
+        connectionId={connectionId}
+        engineLabel={engineLabel}
+        state={state}
+      />
+      <CredentialRecoveryFeedback
+        outcome={state.outcome}
+        errors={state.errors}
+      />
+      <CredentialProfileApplyConfirmation state={state} />
     </section>
   );
 }
@@ -451,6 +440,7 @@ function CredentialRecoveryManagement({
       <CredentialRecoveryPolicy
         connectionId={connectionId}
         automatic={state.automatic}
+        unsupported={state.unsupported}
         pending={state.policyPending}
         onChange={state.setAutomatic}
       />
@@ -841,11 +831,13 @@ function CredentialProfileImportResult({
 function CredentialRecoveryPolicy({
   connectionId,
   automatic,
+  unsupported,
   pending,
   onChange,
 }: {
   connectionId: string;
   automatic: boolean;
+  unsupported: boolean;
   pending: boolean;
   onChange: (enabled: boolean) => void;
 }) {
@@ -856,12 +848,17 @@ function CredentialRecoveryPolicy({
         id={`${connectionId}-credential-recovery-automatic`}
         checked={automatic}
         onChange={onChange}
-        disabled={pending}
+        disabled={unsupported || pending}
       >
         Automatically try an enrolled credential entry after an account-scoped
         capacity or rate-limit failure
       </Checkbox>
-      <p className="editor-help">Only enrolled entries are tried.</p>
+      <p className="editor-help">
+        Only enrolled entries are tried.
+        {unsupported
+          ? ' This engine does not declare a safe application capability.'
+          : ''}
+      </p>
     </fieldset>
   );
 }

@@ -35,7 +35,12 @@ export function useResourceEditor<T>({
   dirtyRef.current = dirty;
   const helpers = useRef({ identity, clone });
   helpers.current = { identity, clone };
-  const { guard, stayWithin, DiscardModal } = useUnsavedGuard(dirty);
+  // Discard means discard: the draft returns to the server copy, so the
+  // navigation that asked continues from a clean editor.
+  const discard = useRef(() => true);
+  const { guard, DiscardModal } = useUnsavedGuard(dirty, () =>
+    discard.current(),
+  );
 
   useEffect(() => {
     if (!source) {
@@ -67,6 +72,10 @@ export function useResourceEditor<T>({
     setDraft(source ? helpers.current.clone(source) : null);
     setDirty(false);
   }, [source]);
+  discard.current = () => {
+    reset();
+    return true;
+  };
 
   return {
     draft,
@@ -74,10 +83,12 @@ export function useResourceEditor<T>({
     update,
     saved,
     reset,
-    /** Ask before a local action that would discard unsaved edits. */
+    /**
+     * Ask before a local action that would discard unsaved edits. Route
+     * changes ask by themselves; a route tab inside the same record does not
+     * (`isSameRecordTabTraversal`).
+     */
     guard,
-    /** A route change that keeps this editor mounted (a detail tab). */
-    stayWithin,
     DiscardModal,
   };
 }

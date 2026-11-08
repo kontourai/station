@@ -3,7 +3,10 @@ import {
   type SurfaceDeepLinkIntent,
 } from '@kontourai/station-contracts/surface-deep-link';
 import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
-import { getLegacyPathRedirect } from '../app-shell/routing';
+import {
+  getLegacyPathRedirect,
+  isSameRecordTabTraversal,
+} from '../app-shell/routing';
 import {
   DIALOG_HISTORY_KEY,
   setCollapsedDialogEntryAdopter,
@@ -537,7 +540,8 @@ class NavigationStore {
         !this.navigationGuardBypass &&
         this.navigationGuards.size > 0 &&
         targetIndex !== undefined &&
-        !isSameMountedSettingsTraversal
+        !isSameMountedSettingsTraversal &&
+        !isSameRecordTabTraversal(this.state.pathname, newState.pathname)
       ) {
         const delta = targetIndex - this.historyIndex;
         if (delta !== 0) {
@@ -714,7 +718,11 @@ class NavigationStore {
   wouldNavigationGuardBlock(pathname: string): boolean {
     if (this.navigationGuards.size === 0) return false;
     const target = parseNavigationTarget(pathname, window.location.href);
-    return target.pathname !== window.location.pathname;
+    // A route tab inside the same mounted record leaves nothing unsaved.
+    return (
+      target.pathname !== window.location.pathname &&
+      !isSameRecordTabTraversal(window.location.pathname, target.pathname)
+    );
   }
 
   /**

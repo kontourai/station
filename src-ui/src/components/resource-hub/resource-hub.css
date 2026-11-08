@@ -34,6 +34,33 @@
 .resource-detail__panel {
   min-width: 0;
 }
+/* A kept-mounted panel stays out of layout; the stack recipe sets display. */
+.resource-detail__panel[hidden] {
+  display: none;
+}
+.resource-detail__notice {
+  display: grid;
+  gap: var(--k-space-1);
+  font-size: var(--k-text-sm);
+}
+.resource-detail__notice p {
+  margin: 0;
+}
+.resource-detail__unsaved {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-caution);
+  border-radius: var(--k-radius-md);
+  background: var(--k-caution-soft);
+}
+.resource-detail__unsaved p {
+  margin: 0;
+  font-weight: 600;
+}
 .resource-detail__panel h3 {
   margin: 0;
   font-size: var(--k-text-md);
@@ -137,7 +164,34 @@
   border-radius: 3px 3px 0 0;
 }
 .daily-bars__chart > span[data-unreported] {
-  background: var(--k-line-strong);
+  /* Unreported is outlined and dashed, never a short solid bar: the shape
+     says it, not the colour. A reported zero is a thin solid stub. */
+  background: transparent;
+  border: 1px dashed var(--k-line-strong);
+  border-bottom-style: solid;
+}
+.daily-bars__table {
+  overflow-x: auto;
+}
+.daily-bars__table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--k-text-sm);
+}
+.daily-bars__table th,
+.daily-bars__table td {
+  text-align: left;
+  padding: var(--k-space-1) var(--k-space-2);
+  border-bottom: 1px solid var(--k-line);
+}
+.daily-bars__details summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+}
+.daily-bars__details summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
 }
 .daily-bars__axis {
   display: flex;

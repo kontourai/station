@@ -2554,10 +2554,16 @@ OpenAI-compatible Model connection; its current address/key are resolved at
 launch. `config.modelRoute` is a secret-free discovery projection, not an
 editable credential. Selecting a missing/disabled proxy refuses launch.
 Claude/Codex rows also carry `routeObservation` (`account`, `proxy`, `ambient`
-or `unknown`), read from the env the engine child receives: the server's
-environment under the connection's launch env. `origin` is scheme, host and port
-only. It is readable wherever the row is; a saved proxy's full address already
-is. Engine settings files are not read, so `account` can still be rerouted by them.
+or `unknown`), read from the launch the engine child gets: the server's
+environment under the connection's launch env, with the managed policy's pinned
+arguments and environment merged as the spawn merges them. `ambient` names its
+`source` (`connection`, `policy` or `station`); `origin` is scheme, host and port
+only. A pinned Codex provider argument reads `unknown`. Engine settings files are
+not read, so clients present `account` as an unobserved route, not as the account.
+Access: the row is read at the `/api/connections` family's scope, which already
+returns the connection's saved `config.env` verbatim, so the observation is not
+withheld further. A `station` or `policy` origin is host configuration that row
+did not show before; it is limited to the origin for that reason.
 
 A cached catalog, built-in selector, prerequisite check, and successful smoke
 are different facts. Preserve the returned source/freshness/completeness fields;

@@ -7,7 +7,8 @@ import {
 } from '@kontourai/station-sdk/engine-accounts';
 import { useUsageRollupQuery } from '@kontourai/station-sdk/usage-rollup-query';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { Field, Select } from '@kontourai/ui/react';
+import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import {
   type UsageDays,
@@ -161,6 +162,7 @@ function ConnectionUsage({
       days={days}
       onDaysChange={onDaysChange}
       scope="This Station · this engine"
+      unattributed="Runs recorded before Station tracked each run's engine are not counted here."
       label={connection.name}
     />
   );
@@ -180,6 +182,9 @@ function AccountEngineUsage({
   onDaysChange: (days: UsageDays) => void;
 }) {
   const gate = accessState(access);
+  const pickerId = useId();
+  // Read by engine kind: every connection of this kind is in these figures.
+  const kindLabel = engine === 'codex' ? 'Codex' : 'Claude Code';
   const scope = access.scope ?? NO_SCOPE;
   const reads = !gate && !!access.scope;
   // `undefined`: every account of this engine.
@@ -219,14 +224,14 @@ function AccountEngineUsage({
         label={engine}
         scope={
           selected === undefined
-            ? 'This Station · this engine · all accounts'
-            : 'This Station · selected account · attributed runs'
+            ? `This Station · every ${kindLabel} connection · all accounts`
+            : `This Station · every ${kindLabel} connection · selected account`
         }
         controls={
           !gate && known.length > 1 ? (
-            <label className="usage-panel__currency">
-              Usage for
-              <select
+            <Field label="Usage for" htmlFor={pickerId}>
+              <Select
+                id={pickerId}
                 value={selected === undefined ? '*' : (selected ?? '')}
                 onChange={(event) =>
                   setAccountRef(
@@ -235,18 +240,15 @@ function AccountEngineUsage({
                       : event.target.value || null,
                   )
                 }
-              >
-                <option value="*">All accounts</option>
-                {known.map((account) => (
-                  <option
-                    key={account.ref ?? 'default'}
-                    value={account.ref ?? ''}
-                  >
-                    {account.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={[
+                  { label: 'All accounts', value: '*' },
+                  ...known.map((account) => ({
+                    label: account.label,
+                    value: account.ref ?? '',
+                  })),
+                ]}
+              />
+            </Field>
           ) : null
         }
       />

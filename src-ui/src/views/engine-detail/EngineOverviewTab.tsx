@@ -44,17 +44,14 @@ export function EngineOverviewTab({
         facts={[
           route !== null && {
             label: 'Route',
-            value:
-              connection.routeObservation?.kind === 'account' ? (
-                <>
-                  {route}
-                  <small className="engine-overview__note">
-                    Engine settings files can still change this.
-                  </small>
-                </>
-              ) : (
-                route
-              ),
+            value: route.note ? (
+              <>
+                {route.value}
+                <small className="engine-overview__note">{route.note}</small>
+              </>
+            ) : (
+              route.value
+            ),
           },
           {
             label: 'Default model',

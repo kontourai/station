@@ -9,6 +9,10 @@
   display: grid;
   gap: var(--k-space-2);
 }
+/* Each agent is a link-styled action; it keeps the 44px touch target. */
+.engine-overview__dependents li > button {
+  min-height: 44px;
+}
 .engine-overview__dependents ul,
 .engine-settings__commands,
 .engine-settings__prerequisites {
@@ -104,7 +108,9 @@
   font-size: var(--k-text-sm);
 }
 .engine-settings__guide {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   margin-top: var(--k-space-1);
   margin-right: var(--k-space-3);
   font-size: var(--k-text-sm);

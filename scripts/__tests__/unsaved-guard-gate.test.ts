@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   findDirtyStateDeclarations,
+  findHostsMissingDiscardModal,
+  KNOWN_EDITOR_HOSTS,
   findMissingGuardImports,
   runEditorMembershipCheck,
   scanForBannedConfirmPrompt,
@@ -173,6 +177,35 @@ describe('unsaved-guard-gate', () => {
         readFile: readFileFromMap(files),
       });
       expect(result.staleExclusions).toEqual(['no-longer-dirty.tsx']);
+    });
+  });
+
+  describe('findHostsMissingDiscardModal', () => {
+    it('flags a host that drops the editor dialog and passes one that renders it', () => {
+      const files: Record<string, string> = {
+        'renders.tsx': 'return <><Detail /><editor.DiscardModal /></>;',
+        'dropped.tsx': 'const { DiscardModal } = editor; return <Detail />;',
+      };
+      expect(
+        findHostsMissingDiscardModal(
+          ['renders.tsx', 'dropped.tsx'],
+          readFileFromMap(files),
+        ),
+      ).toEqual(['dropped.tsx']);
+    });
+
+    it('the engine page renders its editor dialog today', () => {
+      expect(KNOWN_EDITOR_HOSTS).toEqual([
+        'src-ui/src/views/AgentConnectionView.tsx',
+      ]);
+      expect(
+        findHostsMissingDiscardModal(KNOWN_EDITOR_HOSTS, (file) =>
+          readFileSync(
+            fileURLToPath(new URL(`../../${file}`, import.meta.url)),
+            'utf8',
+          ),
+        ),
+      ).toEqual([]);
     });
   });
 });

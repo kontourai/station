@@ -76,16 +76,13 @@ export function EngineModelsTab({
             ))}
           </Select>
         </Field>
-        <Button
-          onClick={onRefresh}
-          disabled={refreshDisabled || refreshing}
-          title={
-            refreshDisabled ? 'Save changes before refreshing.' : undefined
-          }
-        >
+        <Button onClick={onRefresh} disabled={refreshDisabled || refreshing}>
           {refreshing ? 'Refreshing…' : 'Refresh models'}
         </Button>
       </div>
+      {refreshDisabled && (
+        <p className="editor-help">Save changes before refreshing.</p>
+      )}
       <p className="engine-models__source">
         {`${models.length} ${models.length === 1 ? 'model' : 'models'} · ${engineCatalogSourceLabel(connection)}`}
         {connection.runtimeCatalog?.reason

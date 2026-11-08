@@ -3,6 +3,7 @@ import type {
   UsageRollup,
   UsageRollupRow,
 } from '@kontourai/station-contracts/usage-rollup';
+import { Field, Select } from '@kontourai/ui/react';
 import { type ReactNode, useId, useState } from 'react';
 import { Button } from '../Button';
 import {
@@ -79,6 +80,7 @@ export function UsagePanel({
   onDaysChange,
   provider,
   scope,
+  unattributed,
   controls,
   label,
 }: {
@@ -89,6 +91,12 @@ export function UsagePanel({
   provider?: string;
   /** What the figures cover ("This Station · this engine"). */
   scope?: string;
+  /**
+   * For a read scoped to one connection: runs recorded before Station kept
+   * the connection on usage receipts belong to none, so they are missing
+   * here rather than counted as zero.
+   */
+  unattributed?: string;
   /** Scope controls beside the period, such as an account picker. */
   controls?: ReactNode;
   /** The chart's subject in its accessible name. */
@@ -120,6 +128,7 @@ export function UsagePanel({
       </div>
       {controls}
       {scope && <small>{scope}</small>}
+      {unattributed && <small>{unattributed}</small>}
       {state.kind === 'loading' ? (
         <SkeletonBlock count={2} label="Loading usage" />
       ) : state.kind === 'access-denied' ? (
@@ -148,7 +157,12 @@ export function UsagePanel({
           action={<Button onClick={state.onRetry}>Retry</Button>}
         />
       ) : (
-        <UsageFigures data={state.data} provider={provider} label={label} />
+        <UsageFigures
+          data={state.data}
+          provider={provider}
+          label={label}
+          unattributed={unattributed}
+        />
       )}
     </section>
   );
@@ -158,14 +172,17 @@ function UsageFigures({
   data,
   provider,
   label,
+  unattributed,
 }: {
   data: UsageRollup;
   provider?: string;
   label: string;
+  unattributed?: string;
 }) {
   const [currency, setCurrency] = useState('USD');
   const [measure, setMeasure] = useState<Measure>('auto');
   const measureGroup = useId();
+  const currencyId = useId();
   const rows = data.rows.filter(
     (row) => provider === undefined || row.provider === provider,
   );
@@ -179,7 +196,7 @@ function UsageFigures({
         description={
           incomplete
             ? 'No usage was returned. Some sources could not be read.'
-            : 'Runs through this Station are recorded here.'
+            : (unattributed ?? 'Runs through this Station are recorded here.')
         }
       />
     );
@@ -288,19 +305,14 @@ function UsageFigures({
         ))}
       </fieldset>
       {costShown && currencies.length > 1 && (
-        <label className="usage-panel__currency">
-          Currency
-          <select
+        <Field label="Currency" htmlFor={currencyId}>
+          <Select
+            id={currencyId}
             value={chartCurrency}
             onChange={(event) => setCurrency(event.target.value)}
-          >
-            {currencies.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={currencies.map((item) => ({ label: item, value: item }))}
+          />
+        </Field>
       )}
       {costShown && !chartCosts.length && (
         <small>No {costSource} cost observations in this period.</small>

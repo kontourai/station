@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { navigationStore } from '../../../contexts/navigation-store';
 import { useResourceEditor } from '../useResourceEditor';
@@ -41,9 +47,7 @@ function Editor({ source }: { source: Resource | null }) {
       </button>
       <button
         type="button"
-        onClick={() =>
-          editor.stayWithin(() => navigationStore.navigate('/things/a/usage'))
-        }
+        onClick={() => navigationStore.navigate('/connections/engines/a/usage')}
       >
         Same resource tab
       </button>
@@ -109,24 +113,39 @@ describe('useResourceEditor', () => {
   });
 
   test('while dirty, leaving asks; a route change within the resource does not', () => {
-    act(() => navigationStore.navigate('/things/a'));
+    act(() => navigationStore.navigate('/connections/engines/a'));
     render(<Editor source={{ id: 'a', name: 'Server' }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Same resource tab' }));
     expect(screen.queryByText('Unsaved Changes')).toBeNull();
-    expect(window.location.pathname).toBe('/things/a/usage');
+    expect(window.location.pathname).toBe('/connections/engines/a/usage');
     expect(draft()).toBe('Edited');
 
     fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
     expect(screen.getByText('Unsaved Changes')).toBeTruthy();
-    expect(window.location.pathname).toBe('/things/a/usage');
+    expect(window.location.pathname).toBe('/connections/engines/a/usage');
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(window.location.pathname).toBe('/elsewhere');
+    // Discard discarded: the draft is the server copy again.
+    expect([draft(), dirty()]).toEqual(['Server', 'false']);
+  });
+
+  test('Back between tabs of the same record does not ask', async () => {
+    act(() => navigationStore.navigate('/connections/engines/a'));
+    act(() => navigationStore.navigate('/connections/engines/a/settings'));
+    render(<Editor source={{ id: 'a', name: 'Server' }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    act(() => window.history.back());
+    await waitFor(() =>
+      expect(window.location.pathname).toBe('/connections/engines/a'),
+    );
+    expect(screen.queryByText('Unsaved Changes')).toBeNull();
+    expect(draft()).toBe('Edited');
   });
 
   test('a clean editor registers no guard', () => {
-    act(() => navigationStore.navigate('/things/a'));
+    act(() => navigationStore.navigate('/connections/engines/a'));
     render(<Editor source={{ id: 'a', name: 'Server' }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
     expect(screen.queryByText('Unsaved Changes')).toBeNull();

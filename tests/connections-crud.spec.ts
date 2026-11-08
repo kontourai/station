@@ -1329,7 +1329,9 @@ test.describe('Connections CRUD', () => {
     ).toBeVisible();
 
     // #4710: the engine's editable settings are its Settings tab.
-    await page.goto('/connections/engines/codex/settings');
+    await page.goto('/connections/engines/codex');
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    await expect(page).toHaveURL(/\/connections\/engines\/codex\/settings$/);
     const engineName = page.getByRole('textbox', { name: 'Name' });
     await engineName.fill('Codex Runtime Updated');
     await page.getByRole('button', { name: 'Save', exact: true }).click();

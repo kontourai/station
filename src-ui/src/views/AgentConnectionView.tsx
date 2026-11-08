@@ -14,7 +14,13 @@ import {
   useSmokeAgentConnectionMutation,
   useTestAgentConnectionMutation,
 } from '@kontourai/station-sdk';
-import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { ACPConnectionDetailsField } from '../components/acp-connections/ACPConnectionDetailsField';
 import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
 import { Button } from '../components/Button';
@@ -74,6 +80,7 @@ import {
 } from './engine-detail/EngineSettingsFields';
 import { EngineSettingsTab } from './engine-detail/EngineSettingsTab';
 import { EngineUsageTab } from './engine-detail/EngineUsageTab';
+import { ambientRouteNote } from './engine-detail/engine-facts';
 import { NotConnectedEngineDetail } from './NotConnectedEngineDetail';
 import { blockingPrerequisite } from './provider-settings/providerCatalog';
 import './PluginManagementView.css';
@@ -122,6 +129,8 @@ const FOUND_STATUS = {
   label: 'Found, not connected',
   tone: connectionVerdictTone('setup'),
 } as const;
+
+const SETTINGS_KEPT_MOUNTED = ['settings'] as const;
 
 /** Claude Code and Codex hold sign-in accounts; other engines do not. */
 function hasAccounts(
@@ -246,18 +255,20 @@ export function AgentConnectionView({
     clone: cloneConnection,
   });
   const form = editor.draft;
+  // A message about one engine is not about the next one.
+  useEffect(() => {
+    setError(null);
+  }, [selectedEngineConnectionId]);
 
   const saveMutation = useSaveAgentConnectionMutation({
     onSuccess: (saved: AgentConnectionViewData) => {
       editor.saved(saved);
       setError(null);
-      editor.stayWithin(() =>
-        onNavigate({
-          type: 'connections-engine-edit',
-          id: saved.id,
-          ...(selectedTab ? { tab: selectedTab } : {}),
-        }),
-      );
+      onNavigate({
+        type: 'connections-engine-edit',
+        id: saved.id,
+        ...(selectedTab ? { tab: selectedTab } : {}),
+      });
     },
     onError: (mutationError: Error) => {
       setError(describeStationFailure(mutationError).body);
@@ -342,10 +353,11 @@ export function AgentConnectionView({
         ? []
         : [
             ...availableEngines
+              // The server's own placement: detected here, not added.
               .filter(
                 (connection) =>
-                  deriveConnectionHealth(engineHealthInput(connection))
-                    .label === 'Found, not connected',
+                  connection.setup?.state === 'available' &&
+                  connection.setup.detected === true,
               )
               .map((connection) => ({
                 id: connection.id,
@@ -513,14 +525,13 @@ export function AgentConnectionView({
 
   function selectTab(tab: EngineDetailTab) {
     if (!form || tab === activeTab) return;
-    // Same engine, same editor: the edits stay, so this guard does not ask.
-    editor.stayWithin(() =>
-      onNavigate({
-        type: 'connections-engine-edit',
-        id: form.id,
-        ...(tab === 'overview' ? {} : { tab }),
-      }),
-    );
+    // Same engine, same editor: the navigation store lets a route tab of
+    // one record through its unsaved guard (`isSameRecordTabTraversal`).
+    onNavigate({
+      type: 'connections-engine-edit',
+      id: form.id,
+      ...(tab === 'overview' ? {} : { tab }),
+    });
   }
 
   const save = () => {
@@ -585,10 +596,60 @@ export function AgentConnectionView({
     return undefined;
   }
 
-  function renderTab(current: AgentConnectionViewData): ReactNode {
+  /**
+   * What the header's fix and Check connection reported, and what a check
+   * costs: on every tab, beside the action, once. Settings states the cost
+   * beside its own Check connection.
+   */
+  function fixNotice(
+    current: AgentConnectionViewData,
+    verdict: ConnectionHealth,
+  ): ReactNode {
+    const checkInHeader = verdict.action?.id === 'check-connection';
+    const testedHere =
+      testMutation.variables?.id === engineConnectionId(current.id);
+    const result =
+      testMutation.data &&
+      testedHere &&
+      testMutation.data.smoke.testedAt ===
+        current.readinessEvidence?.smoke.testedAt
+        ? testMutation.data.smoke.status === 'passed'
+          ? 'Connected — your engine answered successfully.'
+          : 'Couldn’t connect. Check the connection settings, then try again.'
+        : null;
+    const parts = [
+      checkInHeader && activeTab !== 'settings' && (
+        <p key="cost" className="editor-help">
+          Check connection sends one short message (uses a little model
+          allowance).
+        </p>
+      ),
+      result && (
+        <p key="result" className="editor-help" role="status">
+          {result}
+        </p>
+      ),
+      testMutation.error && testedHere && (
+        <p key="check-error" className="editor-error">
+          {describeStationFailure(testMutation.error).body}
+        </p>
+      ),
+      error && (
+        <p key="error" className="editor-error">
+          {error}
+        </p>
+      ),
+    ].filter(Boolean);
+    return parts.length ? <>{parts}</> : undefined;
+  }
+
+  function renderTab(
+    tab: EngineDetailTab,
+    current: AgentConnectionViewData,
+  ): ReactNode {
     const savedCopy =
       (runtime as AgentConnectionViewData | undefined) ?? current;
-    switch (activeTab) {
+    switch (tab) {
       case 'usage':
         return <EngineUsageTab connection={savedCopy} />;
       case 'models':
@@ -658,7 +719,6 @@ export function AgentConnectionView({
                       verdictShown
                     />
                   )}
-                {error && <p className="editor-error">{error}</p>}
               </>
             }
           />
@@ -687,8 +747,8 @@ export function AgentConnectionView({
                 onManageModels={() =>
                   onNavigate({ type: 'connections-models' })
                 }
-                {...(observation?.kind === 'ambient' && observation.origin
-                  ? { ambientOrigin: observation.origin }
+                {...(ambientRouteNote(observation)
+                  ? { ambientNote: ambientRouteNote(observation) }
                   : {})}
               />
             ) : undefined
@@ -728,34 +788,8 @@ export function AgentConnectionView({
             ) : undefined
           }
           saving={saveMutation.isPending}
-          onSave={save}
           checking={testMutation.isPending}
           onCheck={check}
-          checkResult={
-            <>
-              {/*
-               * This used to print "Healthy · <status>" from a boolean
-               * derived from the prerequisites -- a restatement presented as
-               * a verdict from a check that never ran. The header is the
-               * verdict; this says only that the check answered.
-               */}
-              {testMutation.data &&
-                testMutation.data.smoke.testedAt ===
-                  current.readinessEvidence?.smoke.testedAt && (
-                  <p className="editor-help" role="status">
-                    {testMutation.data.smoke.status === 'passed'
-                      ? 'Connected — your engine answered successfully.'
-                      : 'Couldn’t connect. Check the connection settings, then try again.'}
-                  </p>
-                )}
-              {testMutation.error && (
-                <p className="editor-error">
-                  {describeStationFailure(testMutation.error).body}
-                </p>
-              )}
-            </>
-          }
-          error={error ? <p className="editor-error">{error}</p> : undefined}
           resetting={resetMutation.isPending}
           onReset={() => setConfirmResetOpen(true)}
         />
@@ -860,6 +894,8 @@ export function AgentConnectionView({
       {form && health && repair?.engine.connection.id !== selectedRuntimeId ? (
         <div className="editor-layout">
           <ResourceDetail
+            // Another engine is another page: no field state carries over.
+            key={form.id}
             id={`engine-${form.id}`}
             title={form.name}
             icon={
@@ -872,13 +908,25 @@ export function AgentConnectionView({
             }
             status={health}
             fix={fixAction(form, health)}
+            fixNotice={fixNotice(form, health)}
+            {...(editor.dirty
+              ? {
+                  unsaved: {
+                    saving: saveMutation.isPending,
+                    onSave: save,
+                    onDiscard: editor.reset,
+                  },
+                }
+              : {})}
             tabs={tabs}
             activeTab={activeTab}
             onSelectTab={selectTab}
             tabsLabel={`${form.name} sections`}
-          >
-            {renderTab(form)}
-          </ResourceDetail>
+            renderPanel={(tab) => renderTab(tab, form)}
+            // Settings holds field state outside the editor (a half-typed
+            // credential entry, an import's include-credentials choice).
+            keepMounted={SETTINGS_KEPT_MOUNTED}
+          />
         </div>
       ) : selectedNotConnected ? (
         <NotConnectedEngineDetail

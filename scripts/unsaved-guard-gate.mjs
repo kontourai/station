@@ -147,6 +147,21 @@ export const KNOWN_DIRTY_STATE_EDITORS = [
   'src-ui/src/views/settings/WorkloadBudgetSettings.tsx',
 ];
 
+// Views whose dirty state lives in a shared editor hook (`useResourceEditor`)
+// rather than in the file. The hook imports useUnsavedGuard and is listed
+// above; the host must still render its DiscardModal, or the guard asks with
+// no dialog to answer and every navigation away stalls.
+export const KNOWN_EDITOR_HOSTS = ['src-ui/src/views/AgentConnectionView.tsx'];
+
+const DISCARD_MODAL_RENDER_PATTERN = /<\s*[\w.]*DiscardModal\b/;
+
+/** Editor hosts that do not render a `DiscardModal` element. */
+export function findHostsMissingDiscardModal(files, readFile) {
+  return files.filter(
+    (file) => !DISCARD_MODAL_RENDER_PATTERN.test(readFile(file)),
+  );
+}
+
 // Non-editor false positives for the heuristic below. Starts empty by
 // design (see file header) — every entry must be a reasoned exception, and
 // stale entries (no longer matching any current heuristic finding) fail the
@@ -300,6 +315,18 @@ function main() {
       candidateFiles,
       readFile,
     });
+
+  const hostsMissingModal = findHostsMissingDiscardModal(
+    KNOWN_EDITOR_HOSTS,
+    readFile,
+  );
+  if (hostsMissingModal.length > 0) {
+    failed = true;
+    console.error(
+      `\nFAIL: ${hostsMissingModal.length} editor host(s) do not render the editor's DiscardModal:\n`,
+    );
+    for (const file of hostsMissingModal) console.error(`  ${file}`);
+  }
 
   if (missingImports.length > 0) {
     failed = true;

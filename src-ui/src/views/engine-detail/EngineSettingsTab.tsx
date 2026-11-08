@@ -51,10 +51,28 @@ function AboutEngine({ connection }: { connection: AgentConnectionView }) {
           },
           inventory && {
             label: 'Inventory',
-            value: [inventory.freshness, inventory.status].join(' · '),
+            value: [
+              inventory.displayName,
+              `${inventory.freshness} inventory`,
+              inventory.status,
+            ].join(' · '),
+          },
+          !!inventory?.message && {
+            label: 'Inventory note',
+            value: inventory.message,
           },
         ]}
       />
+      {!!inventory?.models.length && (
+        <details className="engine-settings__disclosure">
+          <summary>{`Inventory models (${inventory.models.length})`}</summary>
+          <ul className="engine-settings__commands">
+            {inventory.models.map((model) => (
+              <li key={model.id}>{model.name}</li>
+            ))}
+          </ul>
+        </details>
+      )}
       {commands.length > 0 && (
         <details className="engine-settings__disclosure">
           <summary>{`Native commands (${commands.length})`}</summary>
@@ -129,7 +147,8 @@ function EnginePrerequisites({
 
 /**
  * What the reader can change about an engine, then what it declares, then
- * Reset. Saved together by Save; Check connection runs on saved settings.
+ * Reset. The detail's unsaved-changes bar saves the edits; Check connection
+ * runs on saved settings, and its result shows under the page header.
  */
 export function EngineSettingsTab({
   draft,
@@ -141,11 +160,8 @@ export function EngineSettingsTab({
   skills,
   connectionDetails,
   saving,
-  onSave,
   checking,
   onCheck,
-  checkResult,
-  error,
   resetting,
   onReset,
 }: {
@@ -158,11 +174,8 @@ export function EngineSettingsTab({
   skills?: ReactNode;
   connectionDetails?: ReactNode;
   saving: boolean;
-  onSave: () => void;
   checking: boolean;
   onCheck: () => void;
-  checkResult?: ReactNode;
-  error?: ReactNode;
   resetting: boolean;
   onReset: () => void;
 }) {
@@ -192,15 +205,6 @@ export function EngineSettingsTab({
           label="Engine settings actions"
           overflowLabel="More engine actions"
           primary={
-            <Button
-              variant="primary"
-              onClick={onSave}
-              disabled={saving || resetting}
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </Button>
-          }
-          secondary={
             <Button onClick={onCheck} disabled={checking || dirty}>
               {checking ? 'Checking…' : 'Check connection'}
             </Button>
@@ -211,8 +215,6 @@ export function EngineSettingsTab({
             ? 'Save changes before checking. A check sends one short message.'
             : 'Check connection sends one short message (uses a little model allowance).'}
         </p>
-        {checkResult}
-        {error}
       </div>
       <AboutEngine connection={draft} />
       {connectionDetails}
