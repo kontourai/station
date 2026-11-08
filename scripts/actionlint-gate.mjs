@@ -598,6 +598,7 @@ const EXACT_TARGET_SKIP_GUARDS = Object.freeze({
   'manual-completion-diagnostics': `\${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (needs['full-regression'].result == 'success' || needs['full-regression'].result == 'failure') }}`,
 });
 const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
+  '.github/workflows/agent-context-budget.yml',
   '.github/workflows/build-ios.yml',
   '.github/workflows/ci.yml',
   '.github/workflows/desktop-clean-checkout.yml',

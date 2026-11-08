@@ -7,10 +7,13 @@ name: "PR: Agent context budget"
 # purpose, a maintainer adds the agent-context-increase label
 # (docs/guides/testing.md#agent-context-budget).
 #
-# Reads two JSON files and runs no candidate code: a sparse checkout of the
-# PR head and of main, then jq. No install, no build.
+# A base-controlled pull_request_target workflow that runs no candidate code:
+# it sparse-checks-out only the head's JSON and reads main's copy through the
+# contents API with a read-only token, then compares them with jq. The head
+# file is untrusted, so it must be an object of integer byte counts with plain
+# identifier keys before anything from it reaches the log.
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
@@ -26,30 +29,31 @@ jobs:
     name: Agent context budget
     runs-on: ubuntu-22.04
     timeout-minutes: 5
-    env:
-      BUDGET: src-server/runtime/agents/agent-context-budget.json
-      ALLOW_INCREASE: ${{ contains(github.event.pull_request.labels.*.name, 'agent-context-increase') }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout pull request budget
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
           path: head
           sparse-checkout: src-server/runtime/agents/agent-context-budget.json
           sparse-checkout-cone-mode: false
 
-      - name: Checkout main budget
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: main
-          path: main
-          sparse-checkout: src-server/runtime/agents/agent-context-budget.json
-          sparse-checkout-cone-mode: false
-
       - name: Compare with main
+        env:
+          BUDGET: src-server/runtime/agents/agent-context-budget.json
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ALLOW_INCREASE: ${{ contains(github.event.pull_request.labels.*.name, 'agent-context-increase') }}
         run: |
-          if [ ! -f "main/$BUDGET" ]; then
+          valid='type == "object" and (to_entries | all(
+            (.key | test("^[A-Za-z][A-Za-z0-9]{0,63}$")) and
+            (.value | type == "number" and . >= 0 and . == floor)))'
+          if ! gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$REPO/contents/$BUDGET?ref=main" > main.json 2>/dev/null; then
             echo "main has no agent context budget yet."
             exit 0
           fi
@@ -58,7 +62,11 @@ jobs:
             [ "$ALLOW_INCREASE" = "true" ] && exit 0
             exit 1
           fi
-          grown=$(jq -r --slurpfile main "main/$BUDGET" '
+          if ! jq -e "$valid" "head/$BUDGET" > /dev/null 2>&1; then
+            echo "::error::$BUDGET must be a JSON object of non-negative integer byte counts with identifier keys."
+            exit 1
+          fi
+          grown=$(jq -r --slurpfile main main.json '
             to_entries[]
             | select($main[0][.key] == null or .value > $main[0][.key])
             | "\(.key): \($main[0][.key] // "new") -> \(.value)"
