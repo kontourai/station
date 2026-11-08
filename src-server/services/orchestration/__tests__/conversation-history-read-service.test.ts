@@ -261,7 +261,7 @@ describe('ConversationHistoryReadService', () => {
           'same-conversation',
           'station-a',
         )
-        .map((row: { detail: string }) => row.detail)
+        .map((row) => String(row.detail))
         .join('\n');
       expect(plan).toContain(
         'SEARCH e USING INDEX idx_events_accepted_model (thread_id=?)',
