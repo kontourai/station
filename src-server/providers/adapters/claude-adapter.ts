@@ -199,6 +199,7 @@ import {
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   reportClaudePermissionMode,
+  settleOpenClaudeTasks,
   settleUnresolvedClaudeToolCalls,
   withdrawnSubagentPermissionResult,
 } from './claude-adapter-events.js';
@@ -3591,6 +3592,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return this.sessions.has(threadId);
   }
 
+  /**
+   * A task the engine started and has not reported an end for. Read from
+   * the engine's own task frames, not the child-work registry, so a gap in
+   * that record can never let an idle park stop a working engine.
+   */
+  hasOpenEngineWork(threadId: string): boolean {
+    const tasks = this.sessions.get(threadId)?.activeTasks;
+    if (!tasks) return false;
+    for (const task of tasks.values()) {
+      if (!task.unresolvedPublished) return true;
+    }
+    return false;
+  }
+
   async stopAll(): Promise<void> {
     try {
       await Promise.all(
@@ -4840,6 +4855,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         agentId: taskId,
       });
     }
+    // Before the tool-call settle: a task woken after its first terminal
+    // re-opened a call that settle skips (see `settleOpenClaudeTasks`).
+    settleOpenClaudeTasks({
+      provider: this.provider,
+      record: record as ClaudeMessageState,
+      publish,
+    });
     settleUnresolvedClaudeToolCalls({
       provider: this.provider,
       record: record as ClaudeMessageState,

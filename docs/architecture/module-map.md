@@ -2187,7 +2187,11 @@ context delivery not yet completed on the current Session.
 
 `OrchestrationService` parks an at-rest engine left unused past
 `idleSessionParkAfterMs`, provided it is at rest, has no active turn or reported running child work,
-has a saved resume cursor, and is not known to lack resume support.
+has a saved resume cursor, and is not known to lack resume support. "Unused" is
+measured from the later of the session row's `updatedAt` and the engine's latest
+event, so a backgrounded subagent's progress keeps its engine. An adapter that
+implements `hasOpenEngineWork` also vetoes the park while its engine still runs a
+task it never reported an end for, whatever the child-work record says.
 Parking stops the process but absorbs its exit, so the session stays dormant
 rather than ending: the next turn restarts it in place. No worktree, claim or
 room effect fires.
@@ -4667,7 +4671,12 @@ read from cgroup v2 files, including each scope's kernel `oom_kill` count
 normally killed). Orchestration's first-turn composition adds the
 budget statement for adapters declaring `workloadScope: 'engine-process'` and
 the [memory-exhaustion recovery note](../../src-server/services/orchestration/memory-exhaustion-recovery.ts)
-for a successor of a memory-killed Session; the
+for a successor of a memory-killed Session. Otherwise, the first turn after any
+engine ended with work still running gets the
+[interrupted-work recovery note](../../src-server/services/orchestration/interrupted-work-recovery.ts):
+the calls settled `unresolved` since the latest `turn.started` of the
+predecessor (for a successor) or of the Session itself (after an in-place
+restart). The
 [continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)
 sends that successor's turn through the conversation inbox, automatically
 (capped) or on a person's Continue, once per dead turn. The
