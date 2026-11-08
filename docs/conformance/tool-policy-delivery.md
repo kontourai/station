@@ -699,7 +699,12 @@ The conversation opens one approval sheet for its current tool requests. It
 shows each command in full and gives each request its own decision controls.
 Closing the sheet hides it without answering; that prompt remains dismissed
 until Answer or Needs approval reopens it. A newly opened prompt can open the
-sheet again. Sending and failure state survive hiding the sheet.
+sheet again. Sending and failure state survive hiding the sheet. When Station
+answers a decision with "already settled", the view missed that request's
+resolution: the sheet drops the request and its count at once and refetches
+the conversation's history, which brings in the resolution and any request
+opened since, instead of keeping the settled request on screen with live
+controls.
 
 Approval toasts send the selected decision. If the originating conversation
 is already visible, its layout stays in place; otherwise the action opens it. Accepted approval actions in notification history and Attention also
