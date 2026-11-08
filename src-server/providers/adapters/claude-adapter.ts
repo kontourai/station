@@ -2580,6 +2580,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return announce();
   }
 
+  /**
+   * Full access on a session spawned without the bypass grant (one that
+   * started with no Station mode, see `hostBypassGrant`): `sendTurn` would
+   * refuse the escalation, but a fresh start at `never` takes the grant. Not
+   * where the engine refuses that grant at all (root outside a sandbox), so
+   * the relaunch would fail to start.
+   */
+  turnNeedsEngineRelaunch(
+    threadId: string,
+    modelOptions: Record<string, unknown> | undefined,
+  ): boolean {
+    const record = this.sessions.get(threadId);
+    return (
+      record !== undefined &&
+      !record.allowsBypassPermissions &&
+      !record.confinementPending &&
+      this.resolvePermissionMode(modelOptions) === 'bypassPermissions' &&
+      !claudeRefusesBypassGrant()
+    );
+  }
+
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
