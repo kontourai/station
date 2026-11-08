@@ -13,6 +13,7 @@ import {
   useTaskRoomAgentRequestsQuery,
 } from '@kontourai/station-sdk/project-task-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { applyReturnFocus } from '@kontourai/station-shared/return-focus';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
@@ -157,9 +158,19 @@ export function TaskRoomComposer({
     setDraftOwner(owner),
   );
   const currentOwner = useRef(owner);
-  currentOwner.current = owner;
+  const ownerGeneration = useRef(0);
+  if (currentOwner.current !== owner) {
+    currentOwner.current = owner;
+    ownerGeneration.current += 1;
+  }
   const connectionChanged = draftOwner !== undefined && draftOwner !== owner;
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const [returnToMessage, setReturnToMessage] = useState<{
+    element: HTMLTextAreaElement;
+    owner: string;
+    generation: number;
+    isCurrent: () => boolean;
+  }>();
   const id = useId();
   const discardRecovery = () => {
     if (
@@ -257,6 +268,23 @@ export function TaskRoomComposer({
     !!unconfirmedMessage ||
     connectionChanged ||
     recoveryHeld;
+  useLayoutEffect(() => {
+    if (!returnToMessage) return;
+    if (
+      returnToMessage.owner !== owner ||
+      returnToMessage.generation !== ownerGeneration.current ||
+      !returnToMessage.isCurrent() ||
+      !scope?.isCurrent() ||
+      !writable ||
+      textarea.current !== returnToMessage.element
+    ) {
+      setReturnToMessage(undefined);
+      return;
+    }
+    if (locked) return;
+    setReturnToMessage(undefined);
+    applyReturnFocus([returnToMessage.element], returnToMessage.element);
+  }, [returnToMessage, owner, scope, writable, locked]);
   const candidates = [
     ...(options.isError ? [] : (options.data?.targets ?? [])).map((target) => ({
       ...target,
@@ -335,6 +363,9 @@ export function TaskRoomComposer({
       !scope?.isCurrent()
     )
       return;
+    const focusedMessage =
+      document.activeElement === textarea.current ? textarea.current : null;
+    const sendGeneration = ownerGeneration.current;
     setNotice('');
     sendInFlight.current = true;
     setPreparing(true);
@@ -577,10 +608,19 @@ export function TaskRoomComposer({
         if (
           !mounted.current ||
           currentOwner.current !== owner ||
+          ownerGeneration.current !== sendGeneration ||
           !scope.isCurrent()
         )
           return;
         if (outcome.kind === 'committed' || outcome.kind === 'duplicate') {
+          if (focusedMessage) {
+            setReturnToMessage({
+              element: focusedMessage,
+              owner,
+              generation: sendGeneration,
+              isCurrent: () => scope.isCurrent(),
+            });
+          }
           setDraft((current) => (current === draft ? '' : current));
           setLeadingPerson(undefined);
           attachments.clear();
