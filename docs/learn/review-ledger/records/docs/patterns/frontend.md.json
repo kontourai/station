@@ -120,7 +120,9 @@
 
     "src-ui/src/components/ActionRow.tsx",
 
-    "src-ui/src/components/ActionRow.css"
+    "src-ui/src/components/ActionRow.css",
+
+    "src-ui/src/hooks/useUnsavedGuard.tsx"
   ],
 
   "checks": [

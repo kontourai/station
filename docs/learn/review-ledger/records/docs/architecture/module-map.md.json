@@ -1708,7 +1708,9 @@
 
     "src-ui/src/connections/__tests__/station-state-partitions.test.ts",
 
-    "src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts"
+    "src-ui/src/__tests__/ensureOrchestrationEventStream.test.ts",
+
+    "src-server/services/connections/engine-route-observation.ts"
   ],
 
   "checks": [

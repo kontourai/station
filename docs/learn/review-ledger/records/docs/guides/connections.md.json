@@ -454,7 +454,21 @@
 
     "src-ui/src/views/connections-hub/connection-health.ts",
 
-    "src-ui/src/views/connections-hub/connection-section-signals.ts"
+    "src-ui/src/views/connections-hub/connection-section-signals.ts",
+
+    "src-server/services/connections/engine-route-observation.ts",
+
+    "src-ui/src/views/engine-detail/EngineOverviewTab.tsx",
+
+    "src-ui/src/views/engine-detail/EngineUsageTab.tsx",
+
+    "src-ui/src/views/engine-detail/EngineModelsTab.tsx",
+
+    "src-ui/src/views/engine-detail/EngineSettingsTab.tsx",
+
+    "src-ui/src/views/engine-detail/EngineAllowanceHistory.tsx",
+
+    "src-ui/src/components/resource-hub/UsagePanel.tsx"
   ],
 
   "checks": [
