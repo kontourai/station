@@ -253,6 +253,7 @@ export function AgentConnectionView({
     source: (runtime as AgentConnectionViewData | undefined) ?? null,
     identity: (connection) => connection.id,
     clone: cloneConnection,
+    isSaving: () => saveMutation.isPending,
   });
   const form = editor.draft;
   // A message about one engine is not about the next one.
@@ -342,9 +343,10 @@ export function AgentConnectionView({
     [externalEngines],
   );
   /**
-   * Engines Station found on this computer that nobody has connected: the
-   * same catalogue entries Add labels "Found, not connected". Listing one
-   * configures nothing; its Connect opens that entry's Add result in place.
+   * Engines Station found on this computer that nobody has added, by the
+   * server's setup placement (detected, not added). Add may label one
+   * differently when a prerequisite blocks it. Listing one configures
+   * nothing; its Connect opens that entry's Add result in place.
    */
   const foundEngines = useMemo(
     () =>

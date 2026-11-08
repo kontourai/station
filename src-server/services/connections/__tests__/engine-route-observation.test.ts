@@ -194,6 +194,27 @@ describe('observeEngineRoute under a managed policy', () => {
     ).toEqual({ kind: 'unknown' });
   });
 
+  test('pinned arguments that can choose a route make it unknown', () => {
+    for (const launchArgs of [
+      ['--config=model_provider=acme'],
+      ['-p', 'work'],
+      ['--profile=work'],
+    ]) {
+      installPin({ codex: { locked: true, launchArgs } });
+      expect(observeEngineRoute('codex', {}, [])).toEqual({ kind: 'unknown' });
+    }
+    installPin({
+      claude: {
+        locked: true,
+        launchArgs: [
+          '--settings',
+          '{"env":{"ANTHROPIC_BASE_URL":"https://gw.acme.example"}}',
+        ],
+      },
+    });
+    expect(observeEngineRoute('claude', {}, [])).toEqual({ kind: 'unknown' });
+  });
+
   test('pinned arguments that choose no provider leave the route alone', () => {
     installPin({
       codex: { locked: true, launchArgs: ['-c', 'approval_policy="never"'] },

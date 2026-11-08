@@ -46,6 +46,11 @@
 .resource-detail__notice p {
   margin: 0;
 }
+/* Empty, the live region leaves the flow (no stray gap) but stays in the
+   accessibility tree, so its first message is announced. */
+.resource-detail__notice:empty {
+  position: absolute;
+}
 .resource-detail__unsaved {
   display: flex;
   flex-wrap: wrap;
@@ -166,9 +171,9 @@
 .daily-bars__chart > span[data-unreported] {
   /* Unreported is outlined and dashed, never a short solid bar: the shape
      says it, not the colour. A reported zero is a thin solid stub. */
+  height: 100%;
   background: transparent;
   border: 1px dashed var(--k-line-strong);
-  border-bottom-style: solid;
 }
 .daily-bars__table {
   overflow-x: auto;

@@ -47,9 +47,13 @@ export function DailyBars({
             key={bar.day}
             title={`${bar.day}: ${barText(bar)}`}
             data-unreported={bar.value === undefined || undefined}
-            style={{
-              height: `${Math.max(2, ((bar.value ?? 0) / peak) * 100)}%`,
-            }}
+            // An unreported day spans the chart as an empty dashed column (CSS),
+            // so it cannot be mistaken for a reported zero's thin solid stub.
+            style={
+              bar.value === undefined
+                ? undefined
+                : { height: `${Math.max(2, (bar.value / peak) * 100)}%` }
+            }
           />
         ))}
       </div>

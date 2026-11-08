@@ -82,11 +82,11 @@ export function ResourceDetail<Tab extends string>({
       {status.reason && (
         <p className="resource-detail__reason">{status.reason}</p>
       )}
-      {fixNotice && (
-        <div className="resource-detail__notice" aria-live="polite">
-          {fixNotice}
-        </div>
-      )}
+      {/* Always mounted: a live region that mounts with its content is often
+          not announced. */}
+      <div className="resource-detail__notice" aria-live="polite">
+        {fixNotice}
+      </div>
       {unsaved && (
         <div
           className="resource-detail__unsaved"

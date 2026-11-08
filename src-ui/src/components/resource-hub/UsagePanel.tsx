@@ -196,7 +196,9 @@ function UsageFigures({
         description={
           incomplete
             ? 'No usage was returned. Some sources could not be read.'
-            : (unattributed ?? 'Runs through this Station are recorded here.')
+            : unattributed
+              ? undefined
+              : 'Runs through this Station are recorded here.'
         }
       />
     );

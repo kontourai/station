@@ -8,6 +8,11 @@ interface ResourceEditorOptions<T> {
   identity: (source: T) => string;
   /** A draft the edits may mutate without touching the server copy. */
   clone: (source: T) => T;
+  /**
+   * True while a save is in flight. Discard is refused then: the save could
+   * still land after the navigation and pull the reader back to this record.
+   */
+  isSaving?: () => boolean;
 }
 
 /**
@@ -25,6 +30,7 @@ export function useResourceEditor<T>({
   source,
   identity,
   clone,
+  isSaving,
 }: ResourceEditorOptions<T>) {
   const [draft, setDraft] = useState<T | null>(() =>
     source ? clone(source) : null,
@@ -33,8 +39,8 @@ export function useResourceEditor<T>({
   const seededId = useRef<string | null>(source ? identity(source) : null);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
-  const helpers = useRef({ identity, clone });
-  helpers.current = { identity, clone };
+  const helpers = useRef({ identity, clone, isSaving });
+  helpers.current = { identity, clone, isSaving };
   // Discard means discard: the draft returns to the server copy, so the
   // navigation that asked continues from a clean editor.
   const discard = useRef(() => true);
@@ -73,6 +79,7 @@ export function useResourceEditor<T>({
     setDirty(false);
   }, [source]);
   discard.current = () => {
+    if (helpers.current.isSaving?.()) return false;
     reset();
     return true;
   };

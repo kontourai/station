@@ -24,7 +24,11 @@ const CLOUD_SWITCH_ENV = {
   codex: [],
 } as const;
 /** Codex `-c` keys that choose a provider or its endpoint. */
-const CODEX_ROUTE_ARG = /(^|[\s"'])(model_provider|model_providers|openai_base_url)\b/;
+const ROUTE_ARG = {
+  claude: /^--settings(=|$)/,
+  codex:
+    /(^|[\s"'=])(model_provider|model_providers|openai_base_url)\b|^(-p|--profile)(=|$)/,
+} as const;
 
 /**
  * Where an engine child's model traffic goes, from the launch the adapter
@@ -66,8 +70,12 @@ export function observeEngineRoute(
     'station',
     platform,
   );
+  // Pinned launch arguments that can choose the route make it unknown rather
+  // than a guess: Claude `--settings` (it can carry an env block), Codex
+  // provider config in either `-c key=…` or `--config=key=…` form, and a
+  // Codex profile, which can select any provider.
   const pinnedArgs = launch.args.slice(proxyLaunch.args.length);
-  if (engine === 'codex' && pinnedArgs.some((arg) => CODEX_ROUTE_ARG.test(arg)))
+  if (pinnedArgs.some((arg) => ROUTE_ARG[engine].test(arg)))
     return { kind: 'unknown' };
   const name = ENDPOINT_ENV[engine];
   const read = (env: Record<string, string | undefined> | undefined, key: string) =>
