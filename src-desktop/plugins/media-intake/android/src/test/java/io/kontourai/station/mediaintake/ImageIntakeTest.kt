@@ -175,7 +175,7 @@ class ImageIntakeTest {
     launchIntent: Boolean = true,
     taken: List<String> = noTaken,
     extras: () -> Pair<String?, List<String?>?> = { "content://media/1" to null },
-  ) = shareDecision(action, type, fromHistory, launchIntent, extras, { streams -> shareKey(7, streams) }, taken)
+  ) = shareDecision(action, type, fromHistory, launchIntent, extras, { streams -> shareKey(1, 7, streams) }, taken)
 
   @Test
   fun checksActionAndTypeBeforeReadingExtras() {
@@ -231,9 +231,9 @@ class ImageIntakeTest {
 
   @Test
   fun shareKeysDependOnTaskAndStreamsAndStayBounded() {
-    assertEquals(shareKey(3, listOf("a")), shareKey(3, listOf("a")))
-    assertTrue(shareKey(3, listOf("a")) != shareKey(4, listOf("a")))
-    assertTrue(shareKey(3, listOf("a")) != shareKey(3, listOf("b")))
+    assertEquals(shareKey(1, 3, listOf("a")), shareKey(1, 3, listOf("a")))
+    assertTrue(shareKey(1, 3, listOf("a")) != shareKey(1, 4, listOf("a")))
+    assertTrue(shareKey(1, 3, listOf("a")) != shareKey(1, 3, listOf("b")))
     var taken = noTaken
     for (index in 1..(MAX_TAKEN_SHARES + 4)) taken = rememberTaken(taken, "k$index")
     assertEquals(MAX_TAKEN_SHARES, taken.size)

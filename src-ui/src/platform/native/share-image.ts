@@ -1,7 +1,7 @@
 /**
  * JS-side contract for images a native host reads from outside the WebView:
- * the Android share target (`share-intake`) and the mobile system clipboard
- * (`clipboard-image`), both owned by the station-media-intake plugin
+ * the Android share target (`image-share-intake`) and the mobile system
+ * clipboard (`clipboard-image`), both owned by the station-media-intake plugin
  * (`src-desktop/plugins/media-intake`). This module defines the
  * platform-neutral payload shape that plugin hands to the React app, plus the
  * defensive validation that turns that untrusted payload into `File` objects

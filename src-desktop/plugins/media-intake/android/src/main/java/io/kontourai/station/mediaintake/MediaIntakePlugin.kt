@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.util.Base64
 import android.webkit.WebView
 import app.tauri.annotation.Command
@@ -24,84 +25,64 @@ private const val TAKEN_KEYS = "taken_shares"
 
 /**
  * Clipboard image reads and the image share target. Both commands resolve
- * `{ files: [{ name, mimeType, dataUrl }] }` through [readIntakeImages], or
+ * `{ files: [{ name, mimeType, dataUrl }] }` through [IntakeSources], or
  * reject with a message the web layer shows.
  *
  * The share follows the agent-activity launch-route pattern: `load` adopts
- * the intent that started the app, `onNewIntent` adopts one that arrives
- * while it runs and triggers [SHARED_IMAGES_EVENT], and
- * [takeSharedImages] returns the pending share once. Only the URIs are kept
- * until then; reading waits for the take so a cold start never blocks on a
- * content provider. Every decision is [shareDecision]; a taken share's key is
- * remembered across processes so a restored launch intent is not replayed.
+ * the intent that started the app (or a share MainActivity buffered before
+ * this plugin loaded), `onNewIntent` adopts one that arrives while it runs and
+ * triggers [SHARED_IMAGES_EVENT], and [takeSharedImages] returns the pending
+ * share once. Every decision lives in [ShareIntakeSession] and
+ * [IntakeSources]; this class only turns Android types into their inputs.
  */
 @TauriPlugin
 class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
   private val reads = Executors.newSingleThreadExecutor()
-  private val lock = Any()
 
-  /** The latest share's URIs, or why it was refused, until taken. */
-  private var pendingUris: List<Uri>? = null
-  private var pendingRefusal: String? = null
-  private var pendingKey: String? = null
+  private val session = ShareIntakeSession<Uri>(
+    taken = object : TakenShares {
+      private val store get() = activity.getSharedPreferences(TAKEN_PREFERENCES, Context.MODE_PRIVATE)
+      override fun keys() = store.getString(TAKEN_KEYS, null)?.split('\n')?.filter { it.isNotEmpty() } ?: emptyList()
+      override fun save(keys: List<String>) {
+        store.edit().putString(TAKEN_KEYS, keys.joinToString("\n")).apply()
+      }
+    },
+    key = { streams -> shareKey(bootCount(), activity.taskId, streams.map { it.toString() }) },
+  )
 
-  private val takenStore get() = activity.getSharedPreferences(TAKEN_PREFERENCES, Context.MODE_PRIVATE)
+  private val sources = IntakeSources<Uri>(
+    ownAuthorities = {
+      @Suppress("DEPRECATION")
+      val info = activity.packageManager.getPackageInfo(activity.packageName, PackageManager.GET_PROVIDERS)
+      info.providers.orEmpty().flatMap { it.authority.orEmpty().split(';') }.filter { it.isNotBlank() }.toSet()
+    },
+    scheme = { it.scheme },
+    authority = { it.authority },
+  )
 
-  private fun takenKeys(): List<String> =
-    takenStore.getString(TAKEN_KEYS, null)?.split('\n')?.filter { it.isNotEmpty() } ?: emptyList()
-
-  /** Station's own provider authorities, which a sender must not name. */
-  private val ownAuthorities: Set<String> by lazy {
-    @Suppress("DEPRECATION")
-    val providers = try {
-      activity.packageManager.getPackageInfo(activity.packageName, PackageManager.GET_PROVIDERS).providers
+  /** -1 when the platform will not say; a share then keys on its task alone. */
+  private fun bootCount(): Int =
+    try {
+      Settings.Global.getInt(activity.contentResolver, Settings.Global.BOOT_COUNT, -1)
     } catch (_: Exception) {
-      null
+      -1
     }
-    providers.orEmpty().flatMap { it.authority.orEmpty().split(';') }.filter { it.isNotBlank() }.toSet()
-  }
 
   override fun load(webView: WebView) {
-    adoptShare(activity.intent, launchIntent = true)
+    session.onLoad(activity.intent?.let(::facts), ShareIntentBuffer.intents.take()?.let(::facts))
   }
 
   override fun onNewIntent(intent: Intent) {
-    if (adoptShare(intent, launchIntent = false)) trigger(SHARED_IMAGES_EVENT, JSObject())
+    // MainActivity buffered this same intent before Tauri forwarded it here.
+    ShareIntentBuffer.intents.discard(intent)
+    if (session.onNewIntent(facts(intent))) trigger(SHARED_IMAGES_EVENT, JSObject())
   }
 
-  /** Applies [shareDecision]; a newer share replaces an untaken one. */
-  private fun adoptShare(intent: Intent?, launchIntent: Boolean): Boolean {
-    if (intent == null) return false
-    val decision = shareDecision(
-      intent.action,
-      intent.type,
-      launchedFromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0,
-      launchIntent = launchIntent,
-      readExtras = { streamExtra(intent) to streamListExtra(intent) },
-      key = { streams -> shareKey(activity.taskId, streams.map { it.toString() }) },
-      taken = takenKeys(),
-    )
-    synchronized(lock) {
-      when (decision) {
-        is ShareDecision.Ignore -> return false
-        is ShareDecision.Refuse -> {
-          pendingUris = null
-          pendingRefusal = decision.message
-          pendingKey = decision.key
-        }
-        is ShareDecision.Adopt -> {
-          pendingUris = decision.streams
-          pendingRefusal = null
-          pendingKey = decision.key
-        }
-      }
-    }
-    return true
-  }
-
-  private fun markTaken(key: String) {
-    takenStore.edit().putString(TAKEN_KEYS, rememberTaken(takenKeys(), key).joinToString("\n")).apply()
-  }
+  private fun facts(intent: Intent) = IntentFacts(
+    intent.action,
+    intent.type,
+    (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0,
+  ) { streamExtra(intent) to streamListExtra(intent) }
 
   @Suppress("DEPRECATION")
   private fun streamExtra(intent: Intent): Uri? =
@@ -113,25 +94,13 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
     if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
     else intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
 
-  /**
-   * Returns and clears the pending share: `{ files: [] }` when there is none.
-   * Taking marks the share taken, whatever the read then finds, so a
-   * restored launch intent carrying it is ignored.
-   */
+  /** Returns and clears the pending share: `{ files: [] }` when there is none. */
   @Command
   fun takeSharedImages(invoke: Invoke) {
-    val (uris, refusal, key) = synchronized(lock) {
-      val taken = Triple(pendingUris, pendingRefusal, pendingKey)
-      pendingUris = null
-      pendingRefusal = null
-      pendingKey = null
-      taken
-    }
-    key?.let { markTaken(it) }
-    when {
-      refusal != null -> invoke.reject(refusal)
-      uris == null -> invoke.resolve(filesResult(emptyList()))
-      else -> readOffMainThread(invoke, "shared-image") { uris }
+    when (val share = session.take()) {
+      is PendingShare.None -> invoke.resolve(filesResult(emptyList()))
+      is PendingShare.Refused -> invoke.reject(share.message)
+      is PendingShare.Streams -> readOffMainThread(invoke, "shared-image") { share.streams }
     }
   }
 
@@ -144,25 +113,22 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
       if (clip == null) {
         emptyList()
       } else {
-        val resolver = activity.contentResolver
-        clipboardImageItems(
-          (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri }.map { uri ->
-            uri to (if (admitted(uri)) try { resolver.getType(uri) } catch (_: Exception) { null } else null)
-          },
+        sources.clipboardItems(
+          (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri },
+          { activity.contentResolver.getType(it) },
           (0 until clip.description.mimeTypeCount).map { clip.description.getMimeType(it) },
         )
       }
     }
   }
 
-  private fun readOffMainThread(invoke: Invoke, prefix: String, sources: () -> List<Uri>) {
+  private fun readOffMainThread(invoke: Invoke, prefix: String, uris: () -> List<Uri>) {
     reads.execute {
       try {
         val resolver = activity.contentResolver
-        val images = readIntakeImages(
-          sources(),
+        val images = sources.read(
+          uris(),
           prefix,
-          admit = ::admitted,
           open = { resolver.openInputStream(it) },
           displayName = { uri ->
             resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -179,8 +145,6 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
       }
     }
   }
-
-  private fun admitted(uri: Uri): Boolean = admitIntakeUri(uri.scheme, uri.authority, ownAuthorities)
 
   private fun filesResult(images: List<IntakeImage>): JSObject {
     val files = JSArray()

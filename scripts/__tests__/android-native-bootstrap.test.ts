@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  activityWithShareIntentBuffer,
   activityWithTauriOnCreate,
   androidNamespace,
   applyAndroidNativeBootstrap,
@@ -135,6 +136,8 @@ describe('Android native bootstrap', () => {
         'override fun onCreate(savedInstanceState: Bundle?)',
       );
       expect(activity).toContain('super.onCreate(savedInstanceState)');
+      expectShareBuffer(activity);
+      expect(readFileSync(activityPath, 'utf8')).toBe(activity);
       expect(existsSync(bridgePath)).toBe(false);
     },
   );
@@ -260,5 +263,54 @@ describe('image share target', () => {
     expect(() =>
       manifestWithImageShareTarget('<manifest><application /></manifest>'),
     ).toThrow(/one generated Android MainActivity/);
+  });
+});
+
+/** The override records the intent and buffers it before Tauri forwards it. */
+function expectShareBuffer(activity: string) {
+  expect(activity).toMatch(/^import android\.content\.Intent$/m);
+  expect(activity).toMatch(
+    /^import io\.kontourai\.station\.mediaintake\.ShareIntentBuffer$/m,
+  );
+  const body =
+    /override fun onNewIntent\(intent: Intent\) \{\n\s*setIntent\(intent\)\n\s*ShareIntentBuffer\.offer\(intent\)\n\s*super\.onNewIntent\(intent\)\n\s*\}/;
+  expect(activity).toMatch(body);
+  expect(activity.match(/override fun onNewIntent/g)).toHaveLength(1);
+}
+
+describe('MainActivity share buffer', () => {
+  const generated =
+    'package io.kontourai.station.beta\n\nimport android.os.Bundle\n\nclass MainActivity : TauriActivity() {\n  override fun onCreate(savedInstanceState: Bundle?) {\n    super.onCreate(savedInstanceState)\n  }\n}\n';
+
+  it('adds one onNewIntent that buffers before Tauri forwards, once', () => {
+    const once = activityWithShareIntentBuffer(
+      generated,
+      'io.kontourai.station.beta',
+    );
+    expectShareBuffer(once);
+    expect(
+      activityWithShareIntentBuffer(once, 'io.kontourai.station.beta'),
+    ).toBe(once);
+  });
+
+  it('keeps the checked-in MainActivity as the bootstrap writes it', () => {
+    const source = readFileSync(
+      'src-desktop/gen/android/app/src/main/java/io/kontourai/station/MainActivity.kt',
+      'utf8',
+    );
+    expectShareBuffer(source);
+    expect(activityWithShareIntentBuffer(source, 'io.kontourai.station')).toBe(
+      source,
+    );
+  });
+
+  it('refuses an unmanaged onNewIntent rather than adding a second', () => {
+    const custom = generated.replace(
+      '\n}\n',
+      '\n  override fun onNewIntent(intent: Intent) {\n    super.onNewIntent(intent)\n  }\n}\n',
+    );
+    expect(() =>
+      activityWithShareIntentBuffer(custom, 'io.kontourai.station.beta'),
+    ).toThrow(/Unmanaged MainActivity onNewIntent/);
   });
 });

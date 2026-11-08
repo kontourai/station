@@ -90,6 +90,20 @@ const REQUIRED_TEST_CASES = Object.freeze({
     'aSourceThatIsNotAdmittedRefusesTheReadBeforeAnythingIsOpened',
     'aMixedClipPastesTheImagesAndSkipsTheRest',
     'replacesNamesWithFormatOrSeparatorCharacters',
+    'shareKeysDependOnTaskAndStreamsAndStayBounded',
+    'anUntypedItemCountsOnlyWhenTheClipDeclaresImagesAlone',
+  ],
+  // The plugin's wiring: launch vs fresh adoption, marking taken, the URI
+  // guard on every read and its fail-closed lookup, the startup buffer.
+  'io.kontourai.station.mediaintake.ShareIntakeSessionTest': [
+    'loadAdoptsTheLaunchIntentAsALaunch',
+    'loadTreatsABufferedShareAsFresh',
+    'takingAShareRecordsItAsTakenOnce',
+    'shareKeysDependOnTheBoot',
+    'everyReadIsHeldToTheUriGuard',
+    'aFailedOwnProviderLookupRefusesEverySource',
+    'theClipboardNeverAsksTypesOfSourcesItWouldRefuse',
+    'theBufferKeepsTheLatestUntilTakenAndDropsOnlyWhatWasDelivered',
   ],
 });
 

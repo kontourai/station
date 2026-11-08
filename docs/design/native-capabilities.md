@@ -27,7 +27,9 @@ The boundary reports `enabled`, `disabled`, `unsupported`, or
 or error result. Tauri's `native_capability_report` command reports its actual
 compile target and Station-enabled states. Before that report is read,
 desktop-tray remains `disabled` rather than being guessed from the JavaScript
-host.
+host. The adapter skips a capability id it does not know (a newer shell's),
+but rejects the whole report for a malformed entry, a repeated id or a
+missing required id; an id the shell omits stays at its initial state.
 
 | Capability | Web/PWA | Current Tauri host | Notes |
 | --- | --- | --- | --- |
@@ -84,7 +86,8 @@ defined in [`share-image.ts`](../../src-ui/src/platform/native/share-image.ts).
 - **Sources.** Android opens a URI only when it is `content://` from another
   app's provider. `file://` URIs and Station's own provider authorities (its
   FileProvider exposes the cache directory) are refused before anything is
-  opened, because Station reads them with its own permissions.
+  opened, because Station reads them with its own permissions. When Station
+  cannot list its own provider authorities, every source is refused.
 - **Clipboard (`clipboard-image`).** Android reads the primary clip's image
   URIs through `ContentResolver`, judging each item by its own type, so a clip
   that mixes an image with a PDF pastes the image; iOS reads admitted
@@ -95,14 +98,19 @@ defined in [`share-image.ts`](../../src-ui/src/platform/native/share-image.ts).
 - **Share target (`image-share-intake`).** Android's generated MainActivity
   carries an `image/*` filter for `ACTION_SEND` and `ACTION_SEND_MULTIPLE`; the
   channel bootstrap (`scripts/apply-android-native-bootstrap.mjs`) restores it
-  after `tauri android init`. The plugin adopts the launch intent's share in
-  `load` (cold start) and a share delivered to `onNewIntent` (running), which
-  alone triggers `sharedImages`; it keeps only the URIs, and
+  after `tauri android init`, and gives MainActivity an `onNewIntent` that
+  records the intent (`setIntent`) and offers it to the plugin's buffer
+  before Tauri forwards it: Tauri forwards a new intent only to plugins
+  already loaded, and after process death a share can arrive first. The
+  plugin adopts, in `load`, a buffered share as a fresh share or else the
+  launch intent's share, and a share delivered to `onNewIntent` (running),
+  which alone triggers `sharedImages`; it keeps only the URIs, and
   `take_shared_images` returns the share once, read through the same URI path
   as the clipboard. The action and type are checked before any extra is
   unpacked, and extras that fail to unpack are not a share. A share relaunched
-  from Recents is ignored. Taking a share records a hash of its task and URIs
-  (the last 16, in app preferences), and a launch intent whose share was
+  from Recents is ignored. Taking a share records a hash of the boot count,
+  its task and its URIs (the last 16, in app preferences), and a launch
+  intent whose share was
   already taken is ignored: Android recreates the activity with the original
   share after process death, and removing the extra only changes one
   process's copy. Sharing the same images again while Station runs is a new

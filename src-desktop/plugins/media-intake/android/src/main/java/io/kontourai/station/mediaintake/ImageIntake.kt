@@ -113,10 +113,14 @@ internal fun <T> shareDecision(
   return ShareDecision.Adopt(streams, shareKey)
 }
 
-/** A share's identity: its task and its streams, hashed so no URI is stored. */
-internal fun shareKey(taskId: Int, streams: List<String>): String {
+/**
+ * A share's identity: the boot, its task and its streams, hashed so no URI is
+ * stored. The boot count keeps a task id reused after a reboot from matching
+ * an earlier boot's taken share.
+ */
+internal fun shareKey(bootCount: Int, taskId: Int, streams: List<String>): String {
   val digest = MessageDigest.getInstance("SHA-256")
-    .digest((listOf(taskId.toString()) + streams).joinToString("\n").toByteArray(Charsets.UTF_8))
+    .digest((listOf(bootCount.toString(), taskId.toString()) + streams).joinToString("\n").toByteArray(Charsets.UTF_8))
   return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
 

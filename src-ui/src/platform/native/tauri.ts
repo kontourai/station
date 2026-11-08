@@ -375,12 +375,26 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     return null;
   }
 
-  const capabilities = candidate.capabilities.filter(
+  // Every entry must be an object with a string id, and ids must not repeat.
+  // An id this UI does not know (a newer shell's capability) is skipped, not
+  // fatal; an entry for a known id must be well formed.
+  const entries = candidate.capabilities;
+  const allIds: string[] = [];
+  for (const entry of entries) {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      typeof (entry as { id?: unknown }).id !== 'string'
+    )
+      return null;
+    allIds.push((entry as { id: string }).id);
+  }
+  if (new Set(allIds).size !== allIds.length) return null;
+  const known = entries.filter((entry: { id: string }) =>
+    CAPABILITY_IDS.includes(entry.id as NativeCapabilityId),
+  );
+  const capabilities = known.filter(
     (capability): capability is NativeCapabilityStatus =>
-      typeof capability === 'object' &&
-      capability !== null &&
-      typeof capability.id === 'string' &&
-      CAPABILITY_IDS.includes(capability.id as NativeCapabilityId) &&
       typeof capability.state === 'string' &&
       CAPABILITY_STATES.has(capability.state) &&
       typeof capability.reason === 'string' &&
@@ -388,8 +402,7 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
   );
   const ids = capabilities.map(({ id }) => id);
   if (
-    capabilities.length !== candidate.capabilities.length ||
-    new Set(ids).size !== capabilities.length ||
+    capabilities.length !== known.length ||
     !REQUIRED_CAPABILITY_IDS.every((id) => ids.includes(id))
   ) {
     return null;

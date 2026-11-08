@@ -96,6 +96,69 @@ export function activityWithTauriOnCreate(source, packageName) {
   );
 }
 
+const SHARE_BUFFER_MARKER =
+  '// STATION IMAGE SHARE BUFFER. AUTO-GENERATED. DO NOT REMOVE.';
+const SHARE_BUFFER_IMPORT =
+  'io.kontourai.station.mediaintake.ShareIntentBuffer';
+const SHARE_BUFFER_BLOCK = `  ${SHARE_BUFFER_MARKER}
+  // Tauri forwards a new intent only to plugins already loaded and never
+  // updates the activity's intent. After process death a share can arrive
+  // before the media-intake plugin loads, so keep it for that plugin.
+  override fun onNewIntent(intent: Intent) {
+    setIntent(intent)
+    ShareIntentBuffer.offer(intent)
+    super.onNewIntent(intent)
+  }
+  ${SHARE_BUFFER_MARKER}`;
+
+/**
+ * Give the generated MainActivity an onNewIntent that records the intent
+ * (setIntent) and offers it to the media-intake plugin's buffer before Tauri
+ * forwards it. Marker-managed and idempotent; refuses an unmanaged override.
+ */
+export function activityWithShareIntentBuffer(source, packageName) {
+  if (!source.startsWith(`package ${packageName}`)) {
+    throw new Error(`MainActivity.kt does not declare package ${packageName}.`);
+  }
+  const pieces = source.split(SHARE_BUFFER_MARKER);
+  if (pieces.length !== 1 && pieces.length !== 3)
+    throw new Error('Malformed MainActivity share buffer markers.');
+  let next = source;
+  if (pieces.length === 3) {
+    if (source.includes(SHARE_BUFFER_BLOCK)) {
+      next = source;
+    } else {
+      next = pieces[0].replace(/ *$/, '') + pieces[2].replace(/^\n/, '');
+    }
+  }
+  if (!next.includes(SHARE_BUFFER_BLOCK)) {
+    if (/override fun onNewIntent\(/.test(next))
+      throw new Error(
+        'Unmanaged MainActivity onNewIntent; refusing to add a second one.',
+      );
+    const end = next.lastIndexOf('}');
+    if (end < 0 || !/class MainActivity\s*:\s*TauriActivity\(\)/.test(next))
+      throw new Error('Expected one Android MainActivity.');
+    next = `${next.slice(0, end).replace(/\s*$/, '')}\n\n${SHARE_BUFFER_BLOCK}\n}\n`;
+  }
+  for (const imported of ['android.content.Intent', SHARE_BUFFER_IMPORT])
+    next = withImportAfterLast(next, imported);
+  return next;
+}
+
+/** Add an import after the existing ones (or after `package`), once. */
+function withImportAfterLast(source, imported) {
+  const line = `import ${imported}`;
+  if (source.split('\n').includes(line)) return source;
+  const imports = [...source.matchAll(/^import [^\n]+$/gm)];
+  if (imports.length > 0) {
+    const last = imports.at(-1);
+    const at = last.index + last[0].length;
+    return `${source.slice(0, at)}\n${line}${source.slice(at)}`;
+  }
+  return source.replace(/^(package [^\n]+\n)/, `$1\n${line}\n`);
+}
+
 /** Restore camera and voice declarations after Tauri regenerates AndroidManifest.xml. */
 export function manifestWithMediaPermissions(source) {
   if (
@@ -299,6 +362,9 @@ export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
   const next = activityWithTauriOnCreate(current, namespace);
   if (next !== current) writeFileSync(activityPath, next);
   applyAndroidInsets(activityPath, namespace);
+  const withInsets = readFileSync(activityPath, 'utf8');
+  const withBuffer = activityWithShareIntentBuffer(withInsets, namespace);
+  if (withBuffer !== withInsets) writeFileSync(activityPath, withBuffer);
 
   // A bridge left by an earlier bootstrap would invite the double
   // initialization back; the generated project must not carry one.

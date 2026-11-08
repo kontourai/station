@@ -40,8 +40,8 @@ func sniffImageMimeType(_ data: Data) -> String? {
 }
 
 /// Clipboard image reads. `takeSharedImages` answers an empty list until the
-/// iOS Share Extension lands; the web layer reports `share-intake` disabled
-/// on iOS, so it is not called in practice.
+/// iOS Share Extension lands; the native host reports `image-share-intake`
+/// disabled on iOS, so the web layer does not call it in practice.
 class MediaIntakePlugin: Plugin {
   @objc public func takeSharedImages(_ invoke: Invoke) {
     invoke.resolve(["files": []])
