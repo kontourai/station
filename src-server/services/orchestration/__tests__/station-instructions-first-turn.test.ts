@@ -348,4 +348,44 @@ describe('Station orchestration instructions on the first turn', () => {
       (await send(second, listed, 'thread-listed', 'Hello'))?.input,
     ).toContain(listedText);
   });
+
+  test('withheld when engine recovery before the first turn reports station-control undelivered', async () => {
+    const adapter = new FakeCodexAdapter();
+    const orchestration = start(adapter);
+    await startSession(orchestration, 'thread-recovered');
+    const text = receiptText('thread-recovered');
+    // The engine is lost before any turn; the recovered start reports
+    // station-control undelivered, so the first turn must not name its tools.
+    adapter.sessions.delete('thread-recovered');
+    adapter.toolServersReport = {
+      source: 'agent',
+      requested: ['station-control'],
+      delivered: [],
+      undelivered: [
+        {
+          capability: 'toolServers',
+          id: 'station-control',
+          reason: 'unsupported-transport',
+        },
+      ],
+    };
+    const startsBefore = eventStore
+      .listEvents('thread-recovered')
+      .filter((event) => event.method === 'session.started').length;
+    const first = await send(
+      orchestration,
+      adapter,
+      'thread-recovered',
+      'Hello',
+    );
+    // Non-vacuous: recovery really restarted the engine and logged its report.
+    expect(
+      eventStore
+        .listEvents('thread-recovered')
+        .filter((event) => event.method === 'session.started').length,
+    ).toBeGreaterThan(startsBefore);
+    expect(first?.input).toContain(AUTHORED_PROMPT);
+    expect(first?.input).not.toContain(text);
+    expect(first?.input).not.toContain('<station_instructions>');
+  });
 });

@@ -9195,6 +9195,7 @@ export class OrchestrationService {
             current?.session.provider;
           if (turnEngine !== undefined)
             assertEngineAllowedByManagedPolicy(turnEngine);
+          let engineMaterialized = false;
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: submittedInput.threadId,
             threadProviders: this.threadProviders,
@@ -9212,12 +9213,14 @@ export class OrchestrationService {
             // admission authorizes the spawn it may need (the service
             // rechecks and verifies at the spawn effect); without one a
             // marked thread refuses before spawning.
-            materializeSession: (threadId) =>
-              this.materializeRecoveredSession(
+            materializeSession: (threadId) => {
+              engineMaterialized = true;
+              return this.materializeRecoveredSession(
                 threadId,
                 undefined,
                 internal?.receiverExecutionAdmission,
-              ),
+              );
+            },
           });
           const {
             invocationId: _untrustedInvocationId,
@@ -9243,8 +9246,21 @@ export class OrchestrationService {
             : undefined;
           // Station's orchestration instructions ride the same first turn,
           // right after the authored prompt (preview-gated at resolution).
-          const pendingStationGuide = current
-            ? pendingStationInstructions(current.events)
+          // Whether station-control reached the engine is a delivery fact of
+          // the engine that runs this turn: a recovery that just started one
+          // logged a fresh report after `current` was read, so decide on the
+          // log as it stands now.
+          const stationGuideEvents =
+            current && engineMaterialized
+              ? ((
+                  await this.readSession(
+                    submittedInput.threadId,
+                    INTERNAL_SESSION_READ_SCOPE,
+                  )
+                )?.events ?? current.events)
+              : current?.events;
+          const pendingStationGuide = stationGuideEvents
+            ? pendingStationInstructions(stationGuideEvents)
             : undefined;
           // Epic #4003: a Session dispatched for a Task gets its Task brief
           // the same way, on the same genuine first turn, on every engine:
