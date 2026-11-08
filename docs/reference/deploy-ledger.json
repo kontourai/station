@@ -1,5 +1,46 @@
 [
   {
+    "timestampUtc": "2026-11-08T02:55:20Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261108.42439714880",
+    "sha": "be0ece31868ebe2193d3015c1d41432ed4e493a7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42439714880",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261108.42439714880 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "9a16e4c1346422704b47721bc6b9ffa8467953d8",
+      "groups": {
+        "feat": [
+          "[#4711](https://github.com/kontourai/station/pull/4711) feat(ui): unify inbox actions and add recoverable touch triage",
+          "[#4709](https://github.com/kontourai/station/pull/4709) feat(palette): visible entry, guided empty state and key legend"
+        ],
+        "fix": [
+          "[#4714](https://github.com/kontourai/station/pull/4714) fix: keep woken subagents running and tell engines what a restart interrupted",
+          "[#4702](https://github.com/kontourai/station/pull/4702) fix(connections): show save guidance only for unsaved engine edits",
+          "[#4713](https://github.com/kontourai/station/pull/4713) fix(telemetry): use signed-in insights and explain sparse public results",
+          "[#4707](https://github.com/kontourai/station/pull/4707) fix: serialize Flow report references with portable slashes",
+          "[#4708](https://github.com/kontourai/station/pull/4708) fix: verify exact named cases in focused test runs",
+          "[#4704](https://github.com/kontourai/station/pull/4704) fix(web): keep offline recovery actions clear of Chat"
+        ],
+        "ci": [],
+        "docs": [
+          "[#4618](https://github.com/kontourai/station/pull/4618) docs: track public product content through Corpus"
+        ],
+        "other": [
+          "[#4706](https://github.com/kontourai/station/pull/4706) test(verification): isolate parity history fixtures"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
     "timestampUtc": "2026-11-07T20:33:43Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261107.2",
