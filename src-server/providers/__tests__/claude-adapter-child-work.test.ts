@@ -502,6 +502,68 @@ describe('#2457 Claude child work, replayed from real captures', () => {
     expect(items[1].parent?.toolCallId).not.toBe(items[2].parent?.toolCallId);
   });
 
+  test('a backgrounded agent woken again under its ORIGINAL tool_use_id is a new running child each time', () => {
+    // A backgrounded agent that ends its turn waiting on its own background
+    // command settles; the command's notification then wakes it under the
+    // tool_use_id that started it. The second such wake collided with the
+    // first re-run's key and was dropped, so the agent worked on while
+    // Station listed no running child (and an idle park stopped its engine).
+    const lines = loadClaudeTaskCapture('nested-agent');
+    const [, inner, rerun] = expectedChildIds('nested-agent');
+    const rerunCall = rerun.slice(inner.length + 1);
+    const taskFrame = (line: (typeof lines)[number]) =>
+      line.message as
+        | { subtype?: string; task_id?: string; tool_use_id?: string }
+        | undefined;
+    const restartAt = lines.findIndex(
+      (line) =>
+        taskFrame(line)?.subtype === 'task_started' &&
+        taskFrame(line)?.tool_use_id === rerunCall,
+    );
+    const terminals = lines.filter(
+      (line, index) =>
+        index > restartAt &&
+        taskFrame(line)?.task_id === inner &&
+        (taskFrame(line)?.subtype === 'task_notification' ||
+          taskFrame(line)?.subtype === 'task_updated'),
+    );
+    // Premise, from the capture: the re-run starts and settles.
+    expect(restartAt).toBeGreaterThan(0);
+    expect(terminals.length).toBeGreaterThan(0);
+    const lastTerminal = lines.lastIndexOf(terminals.at(-1)!);
+    const wake = lines[restartAt];
+    const appendWakes = (captured: typeof lines) => [
+      ...captured.slice(0, lastTerminal + 1),
+      wake,
+      ...terminals,
+      wake,
+      ...terminals,
+      ...captured.slice(lastTerminal + 1),
+    ];
+    const { events } = replayClaudeTaskCapture('nested-agent', {
+      rewrite: appendWakes,
+    });
+    const deltas = deltasOf(events);
+    for (const woken of [`${rerun}:2`, `${rerun}:3`]) {
+      expect(statusHistory(deltas, woken)).toEqual(['running', 'completed']);
+    }
+    // Mid-wake (before its terminal), the woken run is the running child,
+    // and a stop addressed to it reaches the engine as the SDK task_id.
+    const { events: midWake, record } = replayClaudeTaskCapture(
+      'nested-agent',
+      { rewrite: appendWakes, stopAfterLine: lastTerminal + 1 },
+    );
+    expect(
+      itemsOf(midWake)
+        .filter((item) => item.status === 'running')
+        .map((item) => item.childId),
+    ).toContain(`${rerun}:2`);
+    expect(resolveClaudeChildStop(record, `${rerun}:2`)).toEqual({
+      taskId: inner,
+      childId: `${rerun}:2`,
+    });
+  });
+
   test('#2457 R4: a stop addressed to a re-run reaches the engine as its SDK task_id', () => {
     const lines = loadClaudeTaskCapture('nested-agent');
     const [, inner, rerun] = expectedChildIds('nested-agent');

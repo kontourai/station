@@ -62,7 +62,10 @@ import type { ProviderSession } from '../adapter-shape.js';
  *   (captured: `nested-agent`). The contract never revives a settled child,
  *   so a re-run of a settled `task_id` is a child of its own, keyed
  *   `${task_id}:${tool_use_id}`. The FIRST run keeps the bare `task_id`, the
- *   key pre-#2457 history carries. Frames name only the `task_id`, so they
+ *   key pre-#2457 history carries. A backgrounded agent that settled while
+ *   waiting on its own background command is woken again under its ORIGINAL
+ *   `tool_use_id`; a wake whose key is already taken by a settled run gets
+ *   `${task_id}:${tool_use_id}:${n}` (n = 2, 3, …). Frames name only the `task_id`, so they
  *   are routed to that id's current run, and a stop addressed to a re-run's
  *   key reaches the engine as its `task_id` (`resolveClaudeChildStop`).
  *   Accepted limitation: only SEQUENTIAL re-runs are modelled (all the
@@ -320,8 +323,20 @@ export function observeClaudeTaskStarted(
   const previous = itemFor(context.record, childId);
   if (previous?.status === 'running') return;
   if (previous) {
-    childId = `${message.task_id}:${message.tool_use_id ?? context.createdAt}`;
-    if (itemFor(context.record, childId)) return;
+    // A backgrounded agent that settled while waiting on its own background
+    // command is woken by that command's notification under its ORIGINAL
+    // `tool_use_id`, so a second wake lands on the key its first re-run
+    // already holds. Each wake is still a new run: dropping it left the
+    // agent working with no running child, and an idle park then stopped
+    // its engine mid-task.
+    const base = `${message.task_id}:${message.tool_use_id ?? context.createdAt}`;
+    childId = base;
+    for (let run = 2; ; run += 1) {
+      const existing = itemFor(context.record, childId);
+      if (!existing) break;
+      if (existing.status === 'running') return;
+      childId = `${base}:${run}`;
+    }
     state.runs.set(message.task_id, childId);
   }
   const parent: ChildWorkParent = {};

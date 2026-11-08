@@ -343,4 +343,131 @@ describe('Station first-turn workload context', () => {
       (await send(orchestration, adapter, successor, 'Again'))?.input,
     ).toBe('Again');
   });
+
+  describe('the interrupted-work recovery note', () => {
+    // A backgrounded subagent outlives its turn. When its engine ends (a
+    // stop, a shutdown, a crash) the adapter settles its call `unresolved`,
+    // but the next engine's conversation still shows the agent started, and
+    // its completion notice can never arrive: without this note the agent
+    // told the user the work was "still running" and waited on it forever.
+    const publishInterruptedAgent = (
+      adapter: FakeAdapter,
+      threadId: string,
+      turnId: string,
+    ) => {
+      adapter.publish({
+        method: 'tool.started',
+        threadId,
+        turnId,
+        itemId: 'toolu-lane-2',
+        toolCallId: 'toolu-lane-2',
+        toolName: 'Task (general-purpose)',
+        arguments: {
+          description: 'Lane 2: palette entry #4694',
+          task_type: 'local_agent',
+        },
+      });
+      adapter.publish({
+        method: 'tool.started',
+        threadId,
+        turnId,
+        itemId: 'toolu-quick',
+        toolCallId: 'toolu-quick',
+        toolName: 'Bash',
+        arguments: { command: 'git status' },
+      });
+      adapter.publish({
+        method: 'tool.completed',
+        threadId,
+        turnId,
+        itemId: 'toolu-quick',
+        toolCallId: 'toolu-quick',
+        toolName: 'Bash',
+        status: 'completed',
+        output: 'clean',
+      });
+      // The engine ends after the turn: its open Task settles with no turn.
+      adapter.publish({
+        method: 'tool.completed',
+        threadId,
+        itemId: 'toolu-lane-2',
+        toolCallId: 'toolu-lane-2',
+        toolName: 'Task (general-purpose)',
+        status: 'unresolved',
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      });
+    };
+
+    test('a successor Session is told which work its predecessor left running', async () => {
+      const adapter = new FakeAdapter(false);
+      const orchestration = start(adapter, undefined);
+      const conversationId = 'conversation-interrupted';
+      await startSession(orchestration, conversationId);
+      await send(orchestration, adapter, conversationId, 'Drive the lanes');
+      publishInterruptedAgent(
+        adapter,
+        conversationId,
+        `${conversationId}-turn-1`,
+      );
+      await waitFor(() =>
+        eventStore
+          .listEvents(conversationId)
+          .some(
+            (event) =>
+              event.method === 'tool.completed' &&
+              (event.payload as { status?: string }).status === 'unresolved',
+          ),
+      );
+
+      const successor = `${conversationId}:session:${randomUUID()}`;
+      eventStore.reserveNextConversationSession({
+        conversationId,
+        predecessorSessionId: conversationId,
+        proposedSessionId: successor,
+        createdAt: new Date().toISOString(),
+      });
+      await startSession(orchestration, successor);
+      const resumed = await send(orchestration, adapter, successor, 'Status?');
+      expect(resumed?.displayInput).toBe('Status?');
+      expect(resumed?.input).toContain('## Station recovery note');
+      expect(resumed?.input).toContain(
+        'no completion notice for it will arrive',
+      );
+      expect(resumed?.input).toContain('- `Lane 2: palette entry #4694`');
+      expect(resumed?.input).not.toContain('git status');
+      expect(resumed?.input.endsWith('\nStatus?')).toBe(true);
+      // Told once: the next turn's window has nothing unresolved.
+      expect(
+        (await send(orchestration, adapter, successor, 'Next'))?.input,
+      ).toBe('Next');
+    });
+
+    test('a Session whose own engine ended is told on its next turn, and only that turn', async () => {
+      const adapter = new FakeAdapter(false);
+      const orchestration = start(adapter, undefined);
+      const threadId = 'thread-restarted-in-place';
+      await startSession(orchestration, threadId);
+      expect(
+        (await send(orchestration, adapter, threadId, 'Work'))?.input,
+      ).toBe('Work');
+      publishInterruptedAgent(adapter, threadId, `${threadId}-turn-1`);
+      await waitFor(() =>
+        eventStore
+          .listEvents(threadId)
+          .some(
+            (event) =>
+              event.method === 'tool.completed' &&
+              (event.payload as { status?: string }).status === 'unresolved',
+          ),
+      );
+      const next = await send(orchestration, adapter, threadId, 'Status?');
+      expect(next?.input).toContain('## Station recovery note');
+      expect(next?.input).toContain('- `Lane 2: palette entry #4694`');
+      expect(next?.input.endsWith('\nStatus?')).toBe(true);
+      expect(
+        (await send(orchestration, adapter, threadId, 'Again'))?.input,
+      ).toBe('Again');
+    });
+  });
 });

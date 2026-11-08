@@ -12636,6 +12636,86 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
     });
   });
 
+  // A backgrounded agent that ended its turn waiting on its own background
+  // command settles, then that command's notification wakes it under the
+  // SAME tool call. Its call was already marked terminal, so the session-end
+  // settle skipped it: the card stayed running after the engine stopped, and
+  // nothing told an idle park the engine was still busy.
+  test('a backgrounded agent woken after its terminal holds the engine open, and settles unresolved when the session ends', async () => {
+    const threadId = 'thread-woken-agent';
+    const query = createEndableMockQuery();
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({ provider: 'claude', threadId });
+    await adapter.sendTurn({ threadId, input: 'work' });
+    await nextOf(iterator, 'turn.started');
+    const agentFrame = (subtype: string, extra: Record<string, unknown>) => ({
+      type: 'system',
+      subtype,
+      task_id: 'agent-lane-2',
+      tool_use_id: 'toolu-agent',
+      uuid: `${subtype}-${Math.random()}`,
+      session_id: threadId,
+      ...extra,
+    });
+    const started = agentFrame('task_started', {
+      description: 'Lane 2',
+      subagent_type: 'general-purpose',
+      is_backgrounded: true,
+      spawn_depth: 1,
+      task_type: 'local_agent',
+    });
+    query.push({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu-agent', name: 'Task', input: {} },
+        ],
+      },
+      uuid: 'assistant-agent',
+      session_id: threadId,
+    });
+    await nextOf(iterator, 'tool.started');
+    query.push(started);
+    await nextOf(iterator, 'child-work.updated');
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+    query.push(
+      agentFrame('task_notification', {
+        status: 'completed',
+        summary: "I'll wait for the notification.",
+      }),
+    );
+    expect(await nextOf(iterator, 'tool.completed')).toMatchObject({
+      toolCallId: 'toolu-agent',
+      status: 'success',
+    });
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
+
+    // Woken by its own command's notification: the same call, working again.
+    query.push({ ...started, uuid: 'task_started-wake' });
+    await nextOf(iterator, 'tool.started');
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+
+    await adapter.stopSession(threadId);
+    const seen = await drainUntilQuiet(iterator);
+    expect(
+      seen.filter(
+        (event) =>
+          event.method === 'tool.completed' &&
+          event.toolCallId === 'toolu-agent',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        toolName: 'Task (general-purpose)',
+        status: 'unresolved',
+      }),
+    ]);
+    expect(seen.map((event) => event.method)).toContain('session.exited');
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
+  });
+
   test('a completed TURN leaves the open call alone — only the session settles it', async () => {
     const query = createEndableMockQuery();
     const { iterator } = await openCallOn('thread-unresolved-turn', query);

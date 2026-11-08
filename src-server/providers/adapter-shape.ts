@@ -556,6 +556,14 @@ export interface ProviderAdapterShape {
    * genuinely survives restarts may truthfully report `true`.
    */
   hasSession(threadId: string): Promise<boolean>;
+  /**
+   * Whether the live engine for the thread still runs work past its turn
+   * that dies with its process: background tasks, subagents, and commands
+   * it has not reported an end for. An idle park never stops such an
+   * engine, whatever Station's own child-work record says. Absent: the
+   * adapter cannot tell, and the child-work record alone decides.
+   */
+  hasOpenEngineWork?(threadId: string): boolean;
   stopAll(): Promise<void>;
   /** Implementations must settle pending reads when the signal is aborted. */
   streamEvents(

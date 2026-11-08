@@ -495,6 +495,15 @@ Station without the route answers 404 and the client sends the short
 continuation as an ordinary message. Ordinary connection recovery still treats
 a memory kill as manual and never replays the prompt.
 
+Any other engine end with work still running (a stop, a Station shutdown, a
+crash) gets a lighter note on the next turn, whether that turn runs in a
+successor Session or in the same Session restarted in place. It lists the
+calls the ended engine settled as `unresolved` (a backgrounded subagent is named
+by its description) and tells the agent that they are not running, that no
+completion notice will arrive, and to check what they left behind. Without it,
+the resumed conversation still shows a backgrounded subagent as started, and
+the agent reports it as running and waits for it.
+
 `npm run lint:check` and `lint:fix` share one Biome slot per OS user across
 worktrees and use at most two Biome worker threads. This prevents overlapping
 repository-wide lint runs inside one engine's memory budget. The holder keeps
