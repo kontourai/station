@@ -2768,6 +2768,7 @@ export function createOrchestrationRoutes(
             409,
           )
         : undefined;
+    const receivedAt = performance.now();
     try {
       const {
         delegation: claimedDelegation,
@@ -3352,6 +3353,20 @@ export function createOrchestrationRoutes(
           stagedBindingForRelease,
         );
       }
+      // A refusal with no closed code reaches the client only as generic
+      // "try again" copy, and nothing else records it: name it here, or the
+      // failure cannot be diagnosed afterwards.
+      if (!errorCode(error))
+        (deps.logger.warn ?? deps.logger.debug)(
+          'Foreground chat message refused without a failure code',
+          {
+            conversationId: (getBody(c) as { conversationId?: unknown })
+              .conversationId,
+            errorName: error instanceof Error ? error.name : typeof error,
+            error: errorMessage(error).slice(0, 500),
+            elapsedMs: Math.round(performance.now() - receivedAt),
+          },
+        );
       return c.json(
         {
           success: false,
