@@ -67,6 +67,13 @@ function lineBreaks(data: string): number {
   return data.match(/\n/g)?.length ?? 0;
 }
 
+/** Output keeps its UTF-8 budget; empty resize data still costs metadata. */
+function retainedRecordBytes(record: JournalRecord): number {
+  return record.resize
+    ? Buffer.byteLength(`${JSON.stringify(record)}\n`)
+    : Math.max(1, Buffer.byteLength(record.data));
+}
+
 export function resolveTerminalJournalOptions(
   input: Partial<TerminalJournalOptions> = {},
 ): TerminalJournalOptions {
@@ -188,8 +195,18 @@ export class TerminalJournal {
       return Promise.reject(new Error('Terminal journal retired'));
     if (this.failure) return Promise.reject(this.failure);
     const resize = sizeSchema.parse({ cols, rows });
+    const bytes = retainedRecordBytes({
+      seq: Number.MAX_SAFE_INTEGER,
+      data: '',
+      resize,
+    });
+    if (this.queuedBytes + bytes > this.options.maxPendingBytes) {
+      this.failure = new Error('Terminal journal writer overloaded');
+      return Promise.reject(this.failure);
+    }
+    this.queuedBytes += bytes;
     const task = new Promise<void>((resolve, reject) => {
-      this.pendingAppends.push({ resize, bytes: 0, resolve, reject });
+      this.pendingAppends.push({ resize, bytes, resolve, reject });
     });
     if (!this.appendScheduled) this.scheduleAppends();
     return task;
@@ -283,7 +300,7 @@ export class TerminalJournal {
     let bytes = 0;
     const take = (record: JournalRecord) => {
       if (record.seq <= start) return true;
-      const size = Buffer.byteLength(record.data);
+      const size = retainedRecordBytes(record);
       if (bytes + size > maxReadBytes) return false;
       records.push(record);
       bytes += size;
@@ -361,6 +378,7 @@ export class TerminalJournal {
     let records: JournalRecord[] = [];
     let encoded = '';
     let bytes = 0;
+    let memoryBytes = 0;
     let lines = 0;
     const flush = async () => {
       if (!records.length) return;
@@ -379,6 +397,7 @@ export class TerminalJournal {
       records = [];
       encoded = '';
       bytes = 0;
+      memoryBytes = 0;
       lines = 0;
       await this.compact();
     };
@@ -387,6 +406,7 @@ export class TerminalJournal {
       records.push(record);
       encoded += text;
       bytes += Buffer.byteLength(text);
+      memoryBytes += retainedRecordBytes(record);
       lines += lineBreaks(record.data);
       if (record.resize) size = record.resize;
     };
@@ -404,6 +424,20 @@ export class TerminalJournal {
       };
       const length = Buffer.byteLength(`${JSON.stringify(record)}\n`);
       const newlines = lineBreaks(item.data);
+      const exceedsTail = () =>
+        this.tailBytes + memoryBytes + retainedRecordBytes(record) >
+          this.options.tailBytes ||
+        this.tailLines + lines + newlines + (item.data.endsWith('\n') ? 0 : 1) >
+          this.options.tailLines;
+      if (!this.options.persist && size && !item.resize && exceedsTail()) {
+        await flush();
+        // Memory-only retention drops whole replay windows, just as disk
+        // retention drops segments. Restate the grid before the new output.
+        if (exceedsTail()) {
+          push({ seq: this.nextSeq, data: '', resize: size });
+          record = { ...record, seq: this.nextSeq + records.length };
+        }
+      }
       if (
         this.options.persist &&
         (this.sealed ||
@@ -437,17 +471,24 @@ export class TerminalJournal {
   private remember(record: JournalRecord): void {
     if (record.resize) this.size = record.resize;
     this.tail.push(record);
-    this.tailBytes += Buffer.byteLength(record.data);
+    this.tailBytes += retainedRecordBytes(record);
     this.tailLines += lineBreaks(record.data);
     while (
       this.tailBytes > this.options.tailBytes ||
       this.tailLines + (this.tail.at(-1)?.data.endsWith('\n') ? 0 : 1) >
         this.options.tailLines
     ) {
-      const first = this.tail.shift()!;
-      this.tailBytes -= Buffer.byteLength(first.data);
-      this.tailLines -= lineBreaks(first.data);
+      const first = this.forgetTailRecord();
+      if (!this.options.persist && first.resize)
+        while (this.tail[0] && !this.tail[0].resize) this.forgetTailRecord();
     }
+  }
+
+  private forgetTailRecord(): JournalRecord {
+    const first = this.tail.shift()!;
+    this.tailBytes -= retainedRecordBytes(first);
+    this.tailLines -= lineBreaks(first.data);
+    return first;
   }
 
   private async compact(): Promise<void> {
@@ -469,9 +510,7 @@ export class TerminalJournal {
       this.tail[0] &&
       this.tail[0].seq < firstSeq
     ) {
-      const first = this.tail.shift()!;
-      this.tailBytes -= Buffer.byteLength(first.data);
-      this.tailLines -= lineBreaks(first.data);
+      this.forgetTailRecord();
     }
   }
 

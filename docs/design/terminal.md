@@ -760,9 +760,10 @@ for a new size, and replayed at another size that repaint lands on lines that
 had scrolled; the view therefore parses replayed output at its recorded size
 and then returns to its own. Journals written before resize records replay as
 before, at the view's size. An older Station cannot read a journal with
-resize records. With history off, the in-memory tail drops its oldest
-records one by one, so its oldest output can replay at the view's size until
-the next recorded resize.
+resize records. Resize metadata counts against the pending-write, memory and
+read budgets. With history off, the tail evicts whole older replay windows
+and restates the effective size before retained output, so replay keeps its
+recorded grid even after the original resize has been evicted.
 
 Retention is configurable in Settings › Host options (implemented, #3994):
 
