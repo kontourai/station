@@ -343,13 +343,22 @@ function resolveStationInstructions(args: {
     provider === 'muse'
       ? provider
       : 'other';
+  // Device tools are bound-only, so the custody-filtered `controlTools` never
+  // holds them. Codex gets them through its own bound channel
+  // (`station-bound-tools`, offered at thread start unless the control server
+  // is coordinator-derived), narrowed by the same allow/disable lists; name
+  // exactly those, and only when that channel is on.
+  const channelDeviceTools =
+    boundChannel && !control.coordinatorDerived
+      ? [...effectiveStationControlTools(control, catalog, 'bound')].filter(
+          (name) => name.startsWith('device_'),
+        )
+      : [];
   const composed = composeStationInstructions({
-    controlTools,
+    controlTools: new Set([...controlTools, ...channelDeviceTools]),
     browser: browserAllowed && (provider === 'claude' || boundChannel),
     devices: boundChannel
-      ? effectiveStationControlTools(control, catalog, 'bound').has(
-          'device_open',
-        )
+      ? channelDeviceTools.includes('device_open')
       : controlTools.has('device_open'),
     delegated: Boolean(input.metadata?.delegation),
     harness,

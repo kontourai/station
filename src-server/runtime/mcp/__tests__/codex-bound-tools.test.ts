@@ -11,6 +11,8 @@ import { createBrowserPrincipalAuthorizer } from '../../../services/browser/brow
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import { bindCodexToolRequest } from '../codex-bound-request.js';
 import { resolveStationControlCallerForRequest } from '../station-control-caller.js';
+import { effectiveStationControlTools } from '../../agents/station-orchestration-instructions.js';
+import { stationControlToolCatalog } from '../../../tools/station-control-mcp-server.js';
 import { createCodexBoundToolServer } from '../station-control-in-process.js';
 import {
   mintStationControlMcpToken,
@@ -563,5 +565,29 @@ test('bound catalog dispatches device logs and Task recording through their auth
     expect(recordToTask).toHaveBeenCalledOnce();
   } finally {
     await server.close();
+  }
+});
+
+test('the Codex bound channel registers every device tool the orchestration text may name', async () => {
+  const channel = await createCodexBoundToolServer({
+    sessionId: 'bound-device-names',
+    includeBrowser: false,
+    includeDevices: true,
+    dispatch: async () => new Response('{}'),
+    isCurrent: () => true,
+  });
+  try {
+    const offered = new Set(channel.tools.map((tool) => tool.name));
+    const nameable = [
+      ...effectiveStationControlTools(
+        {},
+        stationControlToolCatalog().map((tool) => tool.name),
+        'bound',
+      ),
+    ].filter((name) => name.startsWith('device_'));
+    expect(nameable).toContain('device_open');
+    for (const name of nameable) expect(offered.has(name)).toBe(true);
+  } finally {
+    await channel.close();
   }
 });
