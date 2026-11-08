@@ -15,7 +15,6 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
-import { TaskRelationshipError } from '../../../services/projects/task-relationship-state.js';
 import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-module.js';
 import { createTaskInboxProjection } from '../task-inbox-projection.js';
 import { createTaskRelationshipAuthority } from '../task-relationship-authority.js';
@@ -25,7 +24,10 @@ const closers: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of closers.splice(0)) await close();
 });
-async function fixture(current: () => boolean = () => true) {
+async function fixture(
+  current: () => boolean = () => true,
+  readable: () => boolean = () => true,
+) {
   const home = temp('relationship-authority-');
   const storage = new FileStorageAdapter(home);
   const project = {
@@ -95,7 +97,7 @@ async function fixture(current: () => boolean = () => true) {
         undefined,
       ),
     current: () => live && current(),
-    mayRead: () => live,
+    mayRead: () => live && readable(),
     mayEdit: () => live,
   });
   const work = new TaskRoomWorkModule(join(home, 'room-requests.json'));
@@ -462,15 +464,20 @@ test('Task list groups authorized independent room requests and linked chats wit
 });
 
 test('task list omits chats whose Task admission disappeared and propagates unexpected failures', async () => {
-  const h = await fixture();
+  let readable = true;
+  const h = await fixture(
+    () => true,
+    () => readable,
+  );
   expect((await h.link('chat')).status).toBe(200);
-  const prepare = vi.spyOn(h.adapters, 'authorityForRequest');
-  prepare.mockRejectedValueOnce(new TaskRelationshipError('unavailable'));
+  readable = false;
   const response = await h.app.request('/api/tasks');
   expect(response.status).toBe(200);
   expect((await response.json()).data).toEqual([
     expect.objectContaining({ id: h.task.id, workChatConversationIds: [] }),
   ]);
+  readable = true;
+  const prepare = vi.spyOn(h.adapters, 'authorityForRequest');
   prepare.mockRejectedValueOnce(new Error('store unreadable'));
   expect((await h.app.request('/api/tasks')).status).toBe(500);
   prepare.mockRestore();
