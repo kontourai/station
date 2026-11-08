@@ -22,6 +22,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.agentConnectionId` | Saved engine connection binding; absence selects Station's engine |
 | `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |
 | `execution.modelId` | Explicit model preference on that execution binding |
+| `execution.sharedTurns` | Optional operator declaration for separately negotiated shared model-only turns; shared execution is not yet available |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | (Station guidance) | With the `station-orchestration-instructions` Feature Preview on, Agents offered `station-control` also get Station-written guidance on using it, kept separate from `prompt`. See [orchestration instructions](self-configuring-agent.md#orchestration-instructions) |
 | `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
