@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -228,6 +229,17 @@ describe('ConversationHistoryReadService', () => {
     const reader = new ConversationHistoryReadService(
       readServiceOptions(eventStore),
     );
+    const database = (eventStore as unknown as { db: DatabaseSync }).db;
+    const prepare = database.prepare.bind(database);
+    const modelQueries: string[] = [];
+    const prepared = vi.spyOn(database, 'prepare').mockImplementation((sql) => {
+      if (
+        String(sql).includes('AS model') &&
+        String(sql).includes('appliedModel')
+      )
+        modelQueries.push(String(sql));
+      return prepare(sql);
+    });
     const page = reader.list({
       authority: sessionReadAuthorityFromRequest(
         'owner-alpha',
@@ -237,6 +249,28 @@ describe('ConversationHistoryReadService', () => {
       limit: 10,
     });
 
+    prepared.mockRestore();
+    expect(modelQueries.length).toBeGreaterThan(0);
+    for (const sql of modelQueries) {
+      const plan = database
+        .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+        .all(
+          'same-conversation',
+          'same-conversation',
+          'same-conversation',
+          'same-conversation',
+          'station-a',
+        )
+        .map((row: { detail: string }) => row.detail)
+        .join('\n');
+      expect(plan).toContain(
+        'SEARCH e USING INDEX idx_events_accepted_model (thread_id=?)',
+      );
+      expect(plan).toContain(
+        'SEARCH orchestration_events USING INDEX idx_events_conversation_identity',
+      );
+      expect(plan).not.toContain('SCAN e');
+    }
     expect(page.items).toEqual([
       expect.objectContaining({
         id: 'same-conversation',

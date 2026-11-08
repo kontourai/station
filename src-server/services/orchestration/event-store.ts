@@ -11621,11 +11621,23 @@ export class EventStore {
   }): string | undefined {
     const row = this.db
       .prepare(
-        `SELECT json_extract(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') AS model
-         FROM orchestration_events e
+        `WITH candidates(thread_id) AS (
+           SELECT session_id FROM orchestration_conversation_sessions
+           WHERE conversation_id = ?
+           UNION SELECT ?
+           UNION
+           SELECT thread_id FROM orchestration_events INDEXED BY idx_events_conversation_identity
+           WHERE method IN ('session.started', 'session.configured')
+             AND json_valid(payload)
+             AND json_type(payload, '$.metadata.conversationId') = 'text'
+             AND json_extract(payload, '$.metadata.conversationId') = ?
+         )
+         SELECT json_extract(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') AS model
+         FROM orchestration_events e INDEXED BY idx_events_accepted_model
          LEFT JOIN orchestration_conversation_sessions cs
            ON cs.session_id = e.thread_id
-         WHERE e.method IN ('session.started', 'session.configured', 'turn.started')
+         WHERE e.thread_id IN (SELECT thread_id FROM candidates)
+           AND e.method IN ('session.started', 'session.configured', 'turn.started')
            AND json_valid(e.payload)
            AND json_type(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') = 'text'
            AND COALESCE(
@@ -11655,9 +11667,13 @@ export class EventStore {
          ORDER BY e.created_at DESC, e.global_sequence DESC
          LIMIT 1`,
       )
-      .get(input.conversationId, input.environmentId ?? '') as
-      | { model: string }
-      | undefined;
+      .get(
+        input.conversationId,
+        input.conversationId,
+        input.conversationId,
+        input.conversationId,
+        input.environmentId ?? '',
+      ) as { model: string } | undefined;
     return typeof row?.model === 'string' && row.model.trim()
       ? row.model.trim()
       : undefined;

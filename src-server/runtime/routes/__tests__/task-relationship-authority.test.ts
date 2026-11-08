@@ -15,6 +15,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { TaskRelationshipError } from '../../../services/projects/task-relationship-state.js';
 import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-module.js';
 import { createTaskInboxProjection } from '../task-inbox-projection.js';
 import { createTaskRelationshipAuthority } from '../task-relationship-authority.js';
@@ -458,4 +459,27 @@ test('Task list groups authorized independent room requests and linked chats wit
     },
   );
   expect((await read('owner')).workChatConversationIds).toEqual([]);
+});
+
+test('task list omits chats whose Task admission disappeared and propagates unexpected failures', async () => {
+  const h = await fixture();
+  expect((await h.link('chat')).status).toBe(200);
+  const prepare = vi.spyOn(h.adapters, 'authorityForRequest');
+  prepare.mockRejectedValueOnce(new TaskRelationshipError('unavailable'));
+  const response = await h.app.request('/api/tasks');
+  expect(response.status).toBe(200);
+  expect((await response.json()).data).toEqual([
+    expect.objectContaining({ id: h.task.id, workChatConversationIds: [] }),
+  ]);
+  prepare.mockRejectedValueOnce(new Error('store unreadable'));
+  expect((await h.app.request('/api/tasks')).status).toBe(500);
+  prepare.mockRestore();
+  const restored = await h.app.request('/api/tasks');
+  expect(restored.status).toBe(200);
+  expect((await restored.json()).data).toEqual([
+    expect.objectContaining({
+      id: h.task.id,
+      workChatConversationIds: ['chat'],
+    }),
+  ]);
 });
