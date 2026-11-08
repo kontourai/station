@@ -179,6 +179,7 @@ import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import {
   assertExecutionOverrideDelivery,
+  confirmStationInstructionsDelivery,
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import {
@@ -1493,6 +1494,24 @@ async function coordinatorMcpDeadline<T>(operation: Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Whether Station's orchestration instructions are appended to this session's
+ * system prompt: an authored prompt to append after, instructions to append,
+ * and the built-in station-control server in the servers the session is
+ * actually given. One predicate for the options and the delivery receipt, so
+ * the two cannot disagree.
+ */
+function claudeStationInstructionsAppended(
+  input: Pick<ProviderSessionStartInput, 'agent'>,
+  servers: Record<string, McpServerConfig> | undefined,
+): boolean {
+  return Boolean(
+    input.agent?.systemPrompt &&
+      input.agent.stationInstructions &&
+      servers?.['station-control'] !== undefined,
+  );
+}
+
 export class ClaudeAdapter implements ProviderAdapterShape {
   readonly coordinatorToolsRefresh = true as const;
   coordinatorToolsNeedSuccessor(threadId: string): boolean {
@@ -2478,6 +2497,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           provider: this.provider,
           channel: 'flag',
         });
+      }
+
+      if (input.agent?.stationInstructions) {
+        configuredMetadata = confirmStationInstructionsDelivery(
+          configuredMetadata,
+          claudeStationInstructionsAppended(input, record.mcpServers),
+        );
       }
 
       configuredMetadata[MODEL_SELECTION_RECEIPT_METADATA_KEY] =
@@ -4230,12 +4256,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // authored prompt keep byte-identical options (option entirely
       // unset). A bare-string value would instead REPLACE the prompt and
       // strip the engine's own behavior — rejected.
+      //
+      // Station orchestration instructions ride the same append, after the
+      // authored prompt, and only when station-control is in the servers this
+      // session is actually given (`claudeStationInstructionsAppended`). They
+      // never create the append: that would flip an Agent with no authored
+      // prompt onto the claude_code preset, so that case uses the first turn.
       ...(input.agent?.systemPrompt
         ? {
             systemPrompt: {
               type: 'preset' as const,
               preset: 'claude_code' as const,
-              append: input.agent.systemPrompt,
+              append: claudeStationInstructionsAppended(input, {
+                ...mcpServers,
+                ...builtinServers,
+              })
+                ? `${input.agent.systemPrompt}\n\n${input.agent.stationInstructions}`
+                : input.agent.systemPrompt,
             },
           }
         : {}),
