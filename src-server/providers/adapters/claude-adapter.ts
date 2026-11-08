@@ -59,6 +59,10 @@ import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
+import {
+  type ChildWorkloadOutcome,
+  childWorkloadMemoryExhausted,
+} from '@kontourai/station-shared/child-workload';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import {
   externalMcpToolApprovalIdentity,
@@ -124,6 +128,7 @@ import {
   providerOps,
 } from '../../telemetry/metrics.js';
 import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
+import { raceWithSignal } from '../../utils/bounded-async.js';
 import {
   childProcessEnvironment,
   scrubBootInternalSecrets,
@@ -212,11 +217,6 @@ import {
   mapPermissionModeToApprovalMode,
   resolveClaudePermissionMode,
 } from './claude-approval-mode.js';
-import {
-  type ChildWorkloadOutcome,
-  childWorkloadMemoryExhausted,
-} from '@kontourai/station-shared/child-workload';
-import { raceWithSignal } from '../../utils/bounded-async.js';
 import {
   type ClaudeEngineExit,
   type ClaudeEngineProcess,
@@ -5006,7 +5006,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       } catch {
         // Already closed: the stream is ending by itself.
       }
-    }, this.options.engineExitStreamGraceMs ?? CLAUDE_ENGINE_EXIT_STREAM_GRACE_MS);
+    }, this.options.engineExitStreamGraceMs ??
+      CLAUDE_ENGINE_EXIT_STREAM_GRACE_MS);
     timer.unref?.();
   }
 
