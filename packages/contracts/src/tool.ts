@@ -899,6 +899,26 @@ export interface AgentConnectionView extends ConnectionConfig {
    * differently.
    */
   controlPlaneObservation?: ControlPlaneObservation;
+  /**
+   * Claude Code and Codex only: where the engine child's model traffic goes,
+   * read from the env Station launches it with. Absent on other engines.
+   */
+  routeObservation?: EngineRouteObservation;
+}
+
+/**
+ * - `proxy`: the saved proxy connection Station applies (`label` is its name).
+ * - `ambient`: an endpoint variable in the child's env, inherited or saved.
+ * - `account`: no endpoint override in that env. Engine settings files are
+ *   not read, so they can still route the engine.
+ * - `unknown`: an override exists that Station cannot name.
+ *
+ * `origin` is scheme, host and port only: never userinfo, path or query.
+ */
+export interface EngineRouteObservation {
+  kind: 'account' | 'proxy' | 'ambient' | 'unknown';
+  origin?: string;
+  label?: string;
 }
 
 export interface AgentConnectionSettings {

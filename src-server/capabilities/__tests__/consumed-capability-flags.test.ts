@@ -20,6 +20,7 @@ import { MemoryReviewService } from '../../knowledge-store/memory-review.js';
 import { MemoryRootManager } from '../../knowledge-store/memory-root.js';
 import { createPeerChatRoutes } from '../../routes/environments/peer-chat-routes.js';
 import { createMemoryRoutes } from '../../routes/knowledge/memory-routes.js';
+import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -501,6 +502,35 @@ const CONSUMED_FLAGS: Record<
       );
     return response.status === 200;
   },
+  // GET /usage-rollup applies `connectionId` to the read it forwards, and
+  // insists the scope is this Station's own (an older host ignores both).
+  usageConnectionFilters: async () => {
+    const read = vi.fn(async () => ({
+      window: { from: '2026-10-01', to: '2026-10-07' },
+      rows: [],
+      receipts: [],
+      coverage: [],
+    }));
+    const routes = createAnalyticsRoutes(
+      undefined,
+      { read } as never,
+      () => ({ kind: 'owner' }) as never,
+    );
+    const filtered = await routes.request(
+      '/usage-rollup?days=7&connectionId=opencode&localOnly=1&groupBy=day',
+    );
+    const unscoped = await routes.request(
+      '/usage-rollup?days=7&connectionId=opencode',
+    );
+    const calls = read.mock.calls as unknown as Array<
+      [{ connectionId?: string }]
+    >;
+    return (
+      filtered.status === 200 &&
+      calls[0]?.[0].connectionId === 'opencode' &&
+      unscoped.status === 400
+    );
+  },
   // GET /events honours Last-Event-ID: a cursor inside the gap replays the
   // missed event instead of sending a fresh snapshot.
   eventStreamResume: async (deployment) => {
@@ -585,6 +615,7 @@ describe('consumed capability flags match what their routes serve', () => {
     connectionRoutes: { personal: true, hosted: false },
     coordinatorSession: { personal: true, hosted: false },
     troubleshootPrepare: { personal: true, hosted: true },
+    usageConnectionFilters: { personal: true, hosted: true },
   };
 
   test('every flag a deployment withdraws has a row', () => {

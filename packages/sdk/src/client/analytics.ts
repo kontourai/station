@@ -23,10 +23,25 @@ import type {
   UsageRollupGroupBy,
 } from '@kontourai/station-contracts/usage-rollup';
 import { envelopeError } from './api-error-message';
+import { hasCapability } from './capability';
 import { type ClientRequestOptions, getJson } from './http';
+import { readPublicStationCapabilities } from './publicStationCapabilities';
 import { unlessDeadline } from './request-deadline';
 
 export { fetchStationUsage, type StationUsageOverview } from './station-usage';
+
+/**
+ * Whether the host applies `UsageRollupQuery.connectionId` and
+ * `modelConnectionId` (`usageConnectionFilters`). An older host ignores them
+ * and answers unfiltered totals. `null`: its public handshake could not be
+ * read.
+ */
+export async function readUsageConnectionFiltersCapability(
+  apiBase: string,
+): Promise<boolean | null> {
+  const handshake = await readPublicStationCapabilities(apiBase);
+  return handshake ? hasCapability(handshake, 'usageConnectionFilters') : null;
+}
 
 export interface UsageRollupQuery {
   /**

@@ -70,6 +70,7 @@ import {
   type EngineProxyRoute,
   resolveEngineProxy,
 } from './engine-proxy-routing.js';
+import { observeEngineRoute } from './engine-route-observation.js';
 
 type CredentialProfileApplicationSettlement =
   | { kind: 'staged' }
@@ -1522,7 +1523,7 @@ export class ConnectionService {
       const projected = failure
         ? applyRuntimeAuthenticationFailure(engineRuntime, failure)
         : engineRuntime;
-      return this.withReadinessEvidence(
+      const withEvidence = this.withReadinessEvidence(
         projected,
         this.runtimeConnectionFingerprint(
           projected,
@@ -1531,6 +1532,18 @@ export class ConnectionService {
           options.adapters ?? this.getProviderAdapters(),
         ),
       );
+      // After the evidence fingerprint: where traffic goes is disclosure,
+      // not readiness, and must not invalidate a recorded check.
+      return withEvidence.type === 'claude' || withEvidence.type === 'codex'
+        ? {
+            ...withEvidence,
+            routeObservation: observeEngineRoute(
+              withEvidence.type,
+              engineRuntime.config,
+              this.providerService.listProviderConnections(),
+            ),
+          }
+        : withEvidence;
     });
     return projected;
   }
