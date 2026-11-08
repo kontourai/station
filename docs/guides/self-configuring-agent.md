@@ -1034,7 +1034,10 @@ Delivery depends on the engine:
   `system-prompt-append`. An Agent with no authored prompt is not given an
   append, because that would switch Claude to its preset prompt; it uses the
   first-turn channel instead.
-- Codex, ACP and Muse: prepended to the Session's first message (receipt channel
+- Muse and any other engine without a Station Control caller assurance get
+  no instructions. Muse is never given `station-control`, so there is no tool to
+  describe, and Station composes nothing for it.
+- Codex and ACP: prepended to the Session's first message (receipt channel
   `first-turn`), after the Agent prompt. Codex has no `additionalContext` channel
   here; the existing first-message path is used.
 - A resumed engine thread is not re-sent the first-turn text, a Session's second
