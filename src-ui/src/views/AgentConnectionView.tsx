@@ -732,7 +732,9 @@ export function AgentConnectionView({
                   </option>
                 ))}
               </select>
-              <p className="editor-help">Save changes before refreshing.</p>
+              {dirty && (
+                <p className="editor-help">Save changes before refreshing.</p>
+              )}
               <button
                 type="button"
                 className="editor-btn"

@@ -1321,6 +1321,7 @@ export class StationRuntime {
   /** #4305: gates the Settings control, not deployment configuration. */
   private accountSharingSettingPreview!: FeaturePreviewSelector;
   private codexBoundToolsPreview?: FeaturePreviewSelector;
+  private stationInstructionsPreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1748,6 +1749,12 @@ export class StationRuntime {
       this.bindChatHostImagesPreview();
       this.bindMemberPasskeysPreview();
       this.bindAccountSharingSettingPreview();
+      this.stationInstructionsPreview = this.featurePreviews.bind({
+        id: 'station-orchestration-instructions',
+        label: 'Station orchestration instructions',
+        description:
+          'Tell Agents on Claude, Codex and ACP engines when and how to use Station orchestration tools such as delegate_task. Adds a few thousand characters to the first turn or system prompt of each new Session.',
+      });
       if (
         !isHostedTenantExecutionRequired() &&
         !loadHostedTenantRegistryFromEnvironment()
@@ -4433,6 +4440,16 @@ export class StationRuntime {
                   : undefined,
             );
           },
+          stationInstructionsEnabled: () =>
+            this.stationInstructionsPreview?.select({
+              enabled: () => true,
+              disabled: () => false,
+            }) ?? false,
+          codexBoundToolsEnabled: () =>
+            this.codexBoundToolsPreview?.select({
+              enabled: () => true,
+              disabled: () => false,
+            }) ?? false,
           resolveProjectToolServers: async (input) => {
             const slug = input.metadata?.projectSlug;
             if (typeof slug !== 'string' || !slug) return [];

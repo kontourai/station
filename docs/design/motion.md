@@ -23,6 +23,13 @@ hard-coded durations/easings and `transition: all` are rejected by
 | Perpetual status | Motion may indicate live work but cannot be the only status signal. Stop after one iteration under reduced motion. | `--motion-status-spin`, `--motion-status-pulse`, or `--motion-status-breathe`; `--ease-linear` for rotation |
 | Status arrival | A status that appears or changes state lands with a small overshoot (the chat status pill, a lifecycle chip). One shot; transform and opacity only. | `--motion-base` or `--motion-slow`, `--ease-spring` |
 
+Inbox rows follow the finger without a transition while swiping. After release,
+the row snaps open or closed with the shared entrance/exit tokens. Newly mounted
+rows, including an inbox dismissal restored with Undo, have a short opacity and
+position entrance; revealed action icons have one bounded arrival. These effects
+communicate placement, not command success. No stagger delays or repeated motion
+are added, and reduced motion keeps the final row and action states visible.
+
 ## Property contract
 
 Prefer compositor-friendly `transform` and `opacity`. Color, border-color,

@@ -57,6 +57,8 @@ class RecordingAdapter implements ProviderAdapterShape {
    * re-checks when no preflight ran.
    */
   startRefusal: Error | undefined;
+  /** Set: sessions resume from this cursor, so an idle engine is parkable. */
+  resumeCursor: unknown;
 
   async preflightStart(): Promise<void> {
     if (this.startRefusal) throw this.startRefusal;
@@ -92,6 +94,9 @@ class RecordingAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: input.threadId,
       status: 'ready',
+      ...(this.resumeCursor === undefined || this.resumeCursor === null
+        ? {}
+        : { resumeCursor: this.resumeCursor }),
       createdAt: now,
       updatedAt: now,
     };
@@ -114,8 +119,22 @@ class RecordingAdapter implements ProviderAdapterShape {
     return { outcome: 'no-active-turn' } as const;
   }
   async respondToRequest(): Promise<void> {}
+  readonly stops: string[] = [];
   async stopSession(threadId: string): Promise<void> {
+    this.stops.push(threadId);
     this.sessions.delete(threadId);
+    // Like every real adapter: stopping an engine publishes its exit (only
+    // for the resumable sessions the park tests use).
+    if (this.resumeCursor === undefined || this.resumeCursor === null) return;
+    this.events.push({
+      eventId: `${threadId}:exited:${this.stops.length}`,
+      provider: this.provider,
+      threadId,
+      sessionId: threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+      reason: 'stopped',
+    } as CanonicalRuntimeEvent);
   }
   async listSessions(): Promise<ProviderSession[]> {
     return [...this.sessions.values()];
@@ -563,6 +582,121 @@ describe('server-ordered approval posture (#2436)', () => {
     await turn('t-dormant');
     expect(claude.starts.at(-1)?.threadId).toBe('t-dormant');
     expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
+  });
+
+  describe('full access picked mid-chat on an engine spawned without its grant', () => {
+    // Like Claude started with no Station mode: the live engine takes full
+    // access only once a start at `never` spawned it with the grant.
+    /** A turn the engine then finishes, as a real one does. */
+    async function finishedTurn(threadId: string) {
+      await turn(threadId);
+      const turnId = `turn-${claude.turns.length}`;
+      const invocationId = claude.turns.at(-1)?.invocationId;
+      const identity = {
+        provider: 'claude' as const,
+        threadId,
+        turnId,
+        ...(invocationId ? { invocationId } : {}),
+      };
+      claude.events.push({
+        ...identity,
+        eventId: `${threadId}:${turnId}:started`,
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: 'go',
+      } as CanonicalRuntimeEvent);
+      claude.events.push({
+        ...identity,
+        eventId: `${threadId}:${turnId}:completed`,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(
+          store
+            .listEvents(threadId)
+            .some(
+              (row) =>
+                row.payload.method === 'turn.completed' &&
+                row.payload.turnId === turnId,
+            ),
+        ).toBe(true),
+      );
+    }
+
+    function grantOnlyAtSpawn(
+      adapter: RecordingAdapter,
+      resumeCursor: unknown = { cursor: 'resume-native' },
+    ) {
+      adapter.resumeCursor = resumeCursor;
+      const granted = new Set<string>();
+      const startSession = adapter.startSession.bind(adapter);
+      adapter.startSession = async (input) => {
+        if (input.modelOptions?.approvalMode === 'never')
+          granted.add(input.threadId);
+        else granted.delete(input.threadId);
+        return startSession(input);
+      };
+      Object.assign(adapter, {
+        turnNeedsEngineRelaunch: (
+          threadId: string,
+          modelOptions: Record<string, unknown> | undefined,
+        ) => modelOptions?.approvalMode === 'never' && !granted.has(threadId),
+      });
+    }
+
+    test('the next turn relaunches the idle engine in place at the recorded full access', async () => {
+      grantOnlyAtSpawn(claude);
+      await start('t-relaunch', 'claude', undefined, undefined, {
+        operator: true,
+      });
+      await finishedTurn('t-relaunch');
+      expect(claude.starts).toHaveLength(1);
+      expect(claude.starts[0]?.modelOptions?.approvalMode).toBeUndefined();
+
+      await decide('t-relaunch', 'never', phone);
+      await finishedTurn('t-relaunch');
+
+      expect(claude.stops).toEqual(['t-relaunch']);
+      expect(claude.starts).toHaveLength(2);
+      expect(claude.starts[1]).toMatchObject({
+        threadId: 't-relaunch',
+        modelOptions: { approvalMode: 'never' },
+        resumeCursor: { cursor: 'resume-native' },
+      });
+      expect(claude.turns.map((t) => t.threadId)).toEqual([
+        't-relaunch',
+        't-relaunch',
+      ]);
+      expect(claude.lastTurnMode()).toBe('never');
+      // The relaunch is a park, not an ending.
+      expect(
+        store
+          .listEvents('t-relaunch')
+          .some((row) => row.payload.method === 'session.exited'),
+      ).toBe(false);
+
+      // Granted now: the following turn reuses the relaunched engine.
+      await turn('t-relaunch');
+      expect(claude.starts).toHaveLength(2);
+      expect(claude.stops).toHaveLength(1);
+    });
+
+    test('an engine that cannot resume keeps running, and the turn goes to it unchanged', async () => {
+      // No resume cursor: a relaunch would lose the conversation.
+      grantOnlyAtSpawn(claude, null);
+      await start('t-relaunch-unresumable', 'claude', undefined, undefined, {
+        operator: true,
+      });
+      await finishedTurn('t-relaunch-unresumable');
+      await decide('t-relaunch-unresumable', 'never', phone);
+      await finishedTurn('t-relaunch-unresumable');
+
+      expect(claude.stops).toEqual([]);
+      expect(claude.starts).toHaveLength(1);
+      expect(claude.lastTurnMode()).toBe('never');
+    });
   });
 
   test('Codex takes the recorded posture on every turn start', async () => {
