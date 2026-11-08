@@ -2570,6 +2570,12 @@ function taskCapabilityScreens(): Screen[] {
       let request: ReturnType<typeof createAuthenticatedE2ERequest>;
       let previousEnabled = false;
       let previewChanged = false;
+      let reviewPreviousEnabled = false;
+      let reviewChanged = false;
+      let releasePreview!: () => void;
+      let previewRequested!: Promise<void>;
+      let previewRoute: ((route: Route) => Promise<void>) | undefined;
+      let pageForCleanup: Page | undefined;
       let projectCreated = false;
       const screen: Screen = {
         name: `task-capabilities-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
@@ -2577,6 +2583,7 @@ function taskCapabilityScreens(): Screen[] {
         path: '/',
         viewport,
         async beforeGoto(page) {
+          pageForCleanup = page;
           request = createAuthenticatedE2ERequest(page.request);
           const previews = await request.get(
             `${resolveE2EApiBase()}/api/feature-previews`,
@@ -2588,6 +2595,17 @@ function taskCapabilityScreens(): Screen[] {
           );
           expect(preview).toBeDefined();
           previousEnabled = preview.enabled;
+          const reviewPreview = catalog.data.find(
+            (entry: { id: string }) => entry.id === 'task-review',
+          );
+          expect(reviewPreview).toBeDefined();
+          reviewPreviousEnabled = reviewPreview.enabled;
+          const enabledReview = await request.put(
+            `${resolveE2EApiBase()}/api/feature-previews/task-review`,
+            { data: { enabled: true } },
+          );
+          expect(enabledReview.ok()).toBe(true);
+          reviewChanged = true;
           const enabled = await request.put(
             `${resolveE2EApiBase()}/api/feature-previews/task-capabilities`,
             { data: { enabled: true } },
@@ -2611,6 +2629,21 @@ function taskCapabilityScreens(): Screen[] {
           const created = await task.json();
           expect(created.data.id).toBeTruthy();
           screen.path = `/tasks/${encodeURIComponent(created.data.id)}?taskView=overview`;
+          let requested!: () => void;
+          previewRequested = new Promise<void>((resolveRequested) => {
+            requested = resolveRequested;
+          });
+          const release = new Promise<void>((resolveRelease) => {
+            releasePreview = resolveRelease;
+          });
+          previewRoute = async (route) => {
+            if (route.request().method() !== 'GET') return route.continue();
+            const response = await route.fetch();
+            requested();
+            await release;
+            await route.fulfill({ response });
+          };
+          await page.route('**/api/feature-previews', previewRoute);
         },
         async afterGoto(page) {
           await page.evaluate(
@@ -2657,8 +2690,9 @@ function taskCapabilityScreens(): Screen[] {
                 strip.scrollLeft = 0;
               });
               writeFileSync(
-                resolve(
-                  'gallery',
+                join(
+                  GALLERY_DIR,
+                  GALLERY_DIAGNOSTICS,
                   `task-tabs-${theme}-${width}-clipped-injected.png`,
                 ),
                 await page.screenshot({
@@ -2683,8 +2717,9 @@ function taskCapabilityScreens(): Screen[] {
                 readingPosition,
               );
               writeFileSync(
-                resolve(
-                  'gallery',
+                join(
+                  GALLERY_DIR,
+                  GALLERY_DIAGNOSTICS,
                   `task-tabs-${theme}-${width}-focus-revealed.png`,
                 ),
                 await page.screenshot({
@@ -2732,6 +2767,32 @@ function taskCapabilityScreens(): Screen[] {
             await cdp.detach();
             await page.setViewportSize(viewport);
           }
+          await previewRequested;
+          await expect(tabs.getByRole('tab', { name: 'Review' })).toHaveCount(
+            0,
+          );
+          releasePreview();
+          const review = tabs.getByRole('tab', { name: 'Review' });
+          await expect(review).toBeVisible();
+          await expect(details).toHaveAttribute('aria-selected', 'true');
+          await visibleWithinStrip();
+          await tabs.getByRole('tab', { name: 'Conversation' }).click();
+          await page.keyboard.press('ArrowRight');
+          await expect(review).toBeFocused();
+          await expect(review).toHaveAttribute('aria-selected', 'true');
+          await expect(page).toHaveURL(/taskView=review/);
+          await page.keyboard.press('ArrowRight');
+          await expect(page).toHaveURL(/taskView=work-chats/);
+          await page.keyboard.press('ArrowLeft');
+          await expect(page).toHaveURL(/taskView=review/);
+          await page.goto(screen.path);
+          await page.goBack();
+          await expect(page).toHaveURL(/taskView=review/);
+          await expect(review).toHaveAttribute('aria-selected', 'true');
+          await page.goForward();
+          await expect(page).toHaveURL(/taskView=overview/);
+          await expect(overview).toHaveAttribute('aria-selected', 'true');
+          await overview.focus();
           await page.keyboard.press('Home');
           await expect(overview).toBeFocused();
           await expect(overview).toHaveAttribute('aria-selected', 'true');
@@ -2790,6 +2851,19 @@ function taskCapabilityScreens(): Screen[] {
               expect(deleted.ok()).toBe(true);
             }
           } finally {
+            releasePreview?.();
+            if (previewRoute)
+              await pageForCleanup?.unroute(
+                '**/api/feature-previews',
+                previewRoute,
+              );
+            if (reviewChanged) {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/task-review`,
+                { data: { enabled: reviewPreviousEnabled } },
+              );
+              expect(restored.ok()).toBe(true);
+            }
             if (previewChanged) {
               const restored = await request.put(
                 `${resolveE2EApiBase()}/api/feature-previews/task-capabilities`,
