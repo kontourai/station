@@ -1,7 +1,4 @@
-// The private owner dashboard at /insights. A static page: it asks once for
-// the operator key, keeps it in this origin's localStorage, and sends it as
-// a Bearer header to GET /v1/operator/lite/insights. Nothing here is
-// authorization; the Worker checks the key on every request.
+// Read-only insights use the signed Cloudflare Access session.
 import {
   DASHBOARD_KIT_JS,
   DASHBOARD_STYLE,
@@ -12,11 +9,8 @@ export const INSIGHTS_HTML = `<!doctype html>
 <meta name="robots" content="noindex"><title>Station insights</title><style>${DASHBOARD_STYLE}</style>
 <script src="/insights/insights.js" defer></script></head><body><main>
 <header class="top"><div><h1>Station insights</h1>
-<p class="sub">Exact daily counts from the Lite receiver · one ping per active install per day (UTC)</p></div>
-<div><span class="muted" id="updated"></span> <button id="signout" hidden>Forget key</button></div></header>
-<form id="unlock" hidden><p class="sub">Enter the operator key to view insights. It stays in this browser.</p>
-<input id="key" type="password" autocomplete="off" placeholder="sto_…" aria-label="Operator key"> <button class="primary" type="submit">Open</button>
-<p class="muted" id="unlock-status" role="status"></p></form>
+<p class="sub">Received daily usage reports (UTC). These count pings, not verified people or unique installations.</p></div>
+<div><span class="muted" id="updated"></span> <a href="/cdn-cgi/access/logout">Sign out</a></div></header>
 <p class="muted" id="status" role="status"></p>
 <div id="tiles" class="tiles"></div>
 <div id="charts" class="grid"></div>
@@ -24,10 +18,9 @@ export const INSIGHTS_HTML = `<!doctype html>
 
 const PAGE_JS = String.raw`
 (function () {
-  var C = window.StationCharts, STORE = 'station-insights-operator-key';
-  var form = document.getElementById('unlock'), input = document.getElementById('key');
+  var C = window.StationCharts;
   var status = document.getElementById('status'), tiles = document.getElementById('tiles'), charts = document.getElementById('charts');
-  var signout = document.getElementById('signout'), updated = document.getElementById('updated');
+  var updated = document.getElementById('updated');
 
   function addDays(day, n) { return new Date(Date.parse(day + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10); }
   function weekStart(day) { var wd = new Date(day + 'T00:00:00Z').getUTCDay(); return addDays(day, -((wd + 6) % 7)); }
@@ -76,38 +69,39 @@ const PAGE_JS = String.raw`
     days.forEach(function (day, i) { if (day >= thisWeek) wau += weekFlag[i]; if (day.slice(0, 7) === thisMonth) mau += monthFlag[i]; });
     var installs = fresh.reduce(function (s, v) { return s + v; }, 0);
 
-    C.stat(tiles, 'Active installs today', C.full(t[n - 1]), 'So far · UTC day ' + C.shortDay(today), true);
-    C.stat(tiles, 'Yesterday', C.full(n > 1 ? t[n - 2] : 0), 'Active installs');
-    C.stat(tiles, 'This week', C.full(wau), 'Weekly actives so far');
-    C.stat(tiles, 'This month', C.full(mau), 'Monthly actives so far');
-    C.stat(tiles, 'New installs', C.full(sumLast(fresh, 7)), 'Last 7 days');
-    C.stat(tiles, 'Installs counted', C.full(installs), 'Since ' + C.shortDay(days[0]));
+    C.stat(tiles, 'Reports in window', C.full(t.reduce(function (sum, value) { return sum + value; }, 0)), 'Since ' + C.shortDay(days[0]));
+    C.stat(tiles, 'Reports received today', C.full(t[n - 1]), 'So far · UTC day ' + C.shortDay(today), true);
+    C.stat(tiles, 'Yesterday', C.full(n > 1 ? t[n - 2] : 0), 'Usage reports');
+    C.stat(tiles, 'First activity this week', C.full(wau), 'Reports marked first active this week');
+    C.stat(tiles, 'First activity this month', C.full(mau), 'Reports marked first active this month');
+    C.stat(tiles, 'New-install reports', C.full(sumLast(fresh, 7)), 'Last 7 days');
+    C.stat(tiles, 'New-install reports in window', C.full(installs), 'Since ' + C.shortDay(days[0]));
 
-    var dauCard = C.card(charts, 'Daily active installs', 'Last ' + last90 + ' days · today is partial (dashed)', 'wide');
-    C.lineChart(dauCard.body, { labels: labels90, series: [{ name: 'Active installs', values: dau, cls: 's1' }], partialLast: true, height: 240, ariaLabel: 'Daily active installs' });
-    C.table(dauCard.body, ['Day', 'Active installs'], labels90.map(function (d, i) { return [d, C.full(dau[i])]; }).reverse());
+    var dauCard = C.card(charts, 'Daily usage reports', 'Last ' + last90 + ' days · today is partial (dashed)', 'wide');
+    C.lineChart(dauCard.body, { labels: labels90, series: [{ name: 'Usage reports', values: dau, cls: 's1' }], partialLast: true, height: 240, ariaLabel: 'Daily usage reports' });
+    C.table(dauCard.body, ['Day', 'Usage reports'], labels90.map(function (d, i) { return [d, C.full(dau[i])]; }).reverse());
 
     var weeks = grouped(days, weekFlag, weekStart);
     // Only weeks the window covers in full, plus the open current week.
     var wi = weeks.keys.map(function (k, i) { return i; }).filter(function (i) { return weeks.keys[i] >= days[0]; }).slice(-12);
-    var wauCard = C.card(charts, 'Weekly actives', 'Installs first active in each ISO week · current week is partial');
-    C.columnChart(wauCard.body, { labels: wi.map(function (i) { return weeks.keys[i]; }), values: wi.map(function (i) { return weeks.values[i]; }), partial: [wi.length - 1], labelCount: 6, titleFormat: function (w) { return 'Week of ' + C.shortDay(w); }, unit: 'installs', ariaLabel: 'Weekly actives' });
+    var wauCard = C.card(charts, 'First activity by week', 'Reports marked first active in each ISO week · current week is partial');
+    C.columnChart(wauCard.body, { labels: wi.map(function (i) { return weeks.keys[i]; }), values: wi.map(function (i) { return weeks.values[i]; }), partial: [wi.length - 1], labelCount: 6, titleFormat: function (w) { return 'Week of ' + C.shortDay(w); }, unit: 'reports', ariaLabel: 'First activity by week' });
     var months = grouped(days, monthFlag, function (d) { return d.slice(0, 7); });
-    var mauCard = C.card(charts, 'Monthly actives', 'Installs first active in each month · current month is partial');
-    C.columnChart(mauCard.body, { labels: months.keys, values: months.values, partial: [months.keys.length - 1], labelCount: 4, labelFormat: C.monthLabel, titleFormat: C.monthLabel, unit: 'installs', ariaLabel: 'Monthly actives' });
+    var mauCard = C.card(charts, 'First activity by month', 'Reports marked first active in each month · current month is partial');
+    C.columnChart(mauCard.body, { labels: months.keys, values: months.values, partial: [months.keys.length - 1], labelCount: 4, labelFormat: C.monthLabel, titleFormat: C.monthLabel, unit: 'reports', ariaLabel: 'First activity by month' });
 
-    var newCard = C.card(charts, 'New installs per day', 'Pings with install age 0 days · last ' + last90 + ' days');
-    C.columnChart(newCard.body, { labels: labels90, values: fresh.slice(-last90), partial: [last90 - 1], unit: 'new installs', ariaLabel: 'New installs per day' });
+    var newCard = C.card(charts, 'New-install reports per day', 'Pings with install age 0 days · last ' + last90 + ' days');
+    C.columnChart(newCard.body, { labels: labels90, values: fresh.slice(-last90), partial: [last90 - 1], unit: 'reports', ariaLabel: 'New-install reports per day' });
     var running = 0, cumulative = fresh.map(function (v) { running += v; return running; });
-    var cumCard = C.card(charts, 'Cumulative installs', 'New installs counted since ' + C.shortDay(days[0]));
-    C.lineChart(cumCard.body, { labels: days, series: [{ name: 'Installs', values: cumulative, cls: 's1' }], partialLast: true, ariaLabel: 'Cumulative installs' });
+    var cumCard = C.card(charts, 'Cumulative new-install reports', 'New-install reports since ' + C.shortDay(days[0]));
+    C.lineChart(cumCard.body, { labels: days, series: [{ name: 'Reports', values: cumulative, cls: 's1' }], partialLast: true, ariaLabel: 'Cumulative new-install reports' });
 
     // Half-width panels pair up; an odd one out spans the row.
     var halves = [];
     var engines = totalsOver(data, 'engines_used_today', 30).filter(function (r) { return r.label !== 'none'; });
     var engineMentions = engines.reduce(function (s, r) { return s + r.value; }, 0);
-    halves.push({ title: 'Favorite harness', caption: 'Share of engine use across active install-days · last 30 days',
-      draw: function (body) { C.barList(body, withShare(engines, engineMentions), { share: true, unit: 'install-days' }); } });
+    halves.push({ title: 'Reported harnesses', caption: 'Share of engine use across received reports · last 30 days',
+      draw: function (body) { C.barList(body, withShare(engines, engineMentions), { share: true, unit: 'reports' }); } });
 
     // Every per-engine bucket dimension (values 'engine:bucket'), token
     // throughput first. A dimension appears once the contract adds it.
@@ -129,10 +123,10 @@ const PAGE_JS = String.raw`
         return {
           token: token,
           title: token ? 'Token throughput by engine' : dimension === 'engine_connect_failures' ? 'Connection failures by engine' : dimension.replace(/_/g, ' '),
-          caption: (token ? 'Daily input-plus-output token bucket' : 'Daily bucket') + ' per engine · install-days, last 30 days',
+          caption: (token ? 'Daily input-plus-output token bucket' : 'Daily bucket') + ' per engine · received reports, last 30 days',
           draw: function (body) {
             C.segmentRows(body, Object.keys(rows).map(function (k) { return rows[k]; }).sort(function (a, b) { return b.total - a.total; }),
-              Object.keys(buckets).sort(function (a, b) { return bucketBound(a) - bucketBound(b); }), { unit: 'install-days' });
+              Object.keys(buckets).sort(function (a, b) { return bucketBound(a) - bucketBound(b); }), { unit: 'reports' });
           }
         };
       });
@@ -140,11 +134,11 @@ const PAGE_JS = String.raw`
 
     var week = 7;
     var versions = totalsOver(data, 'version', week), vWhole = versions.reduce(function (s, r) { return s + r.value; }, 0);
-    halves.push({ title: 'Version adoption', caption: 'Share of active install-days by version · last 7 days',
-      draw: function (body) { C.barList(body, withShare(topWithOther(versions, 8), vWhole), { share: true, unit: 'install-days' }); } });
+    halves.push({ title: 'Version adoption', caption: 'Share of received reports by version · last 7 days',
+      draw: function (body) { C.barList(body, withShare(topWithOther(versions, 8), vWhole), { share: true, unit: 'reports' }); } });
     var surfaces = totalsOver(data, 'surfaces_today', week).filter(function (r) { return r.label !== 'none'; });
-    halves.push({ title: 'Surfaces used', caption: 'Share of active install-days using each surface · last 7 days',
-      draw: function (body) { C.barList(body, withShare(surfaces, sumLast(t, week)), { share: true, unit: 'install-days' }); } });
+    halves.push({ title: 'Surfaces used', caption: 'Share of received reports using each surface · last 7 days',
+      draw: function (body) { C.barList(body, withShare(surfaces, sumLast(t, week)), { share: true, unit: 'reports' }); } });
     perEngine.filter(function (panel) { return !panel.token; }).forEach(function (panel) { halves.push(panel); });
     if (data.feedback.length) {
       var fb = {};
@@ -159,44 +153,32 @@ const PAGE_JS = String.raw`
 
     [['platform', 'Platform'], ['arch', 'Architecture'], ['channel', 'Release channel']].forEach(function (pair) {
       var rows = totalsOver(data, pair[0], week), whole = rows.reduce(function (s, r) { return s + r.value; }, 0);
-      var card = C.card(charts, pair[1], 'Share of active install-days · last 7 days', 'third');
-      C.barList(card.body, withShare(topWithOther(rows, 8), whole), { share: true, unit: 'install-days' });
+      var card = C.card(charts, pair[1], 'Share of received reports · last 7 days', 'third');
+      C.barList(card.body, withShare(topWithOther(rows, 8), whole), { share: true, unit: 'reports' });
     });
     updated.textContent = 'Updated ' + new Date().toISOString().slice(11, 16) + ' UTC';
   }
 
-  function locked(message) {
-    tiles.replaceChildren(); charts.replaceChildren(); status.textContent = '';
-    form.hidden = false; signout.hidden = true;
-    document.getElementById('unlock-status').textContent = message || '';
-    input.focus();
-  }
   function open() {
-    var key = localStorage.getItem(STORE);
-    if (!key) return locked();
-    form.hidden = true; signout.hidden = false;
+    // Storage may be disabled; legacy-key cleanup must not block session reads.
+    try { localStorage.removeItem('station-insights-operator-key'); } catch {}
     status.textContent = charts.childElementCount ? '' : 'Loading…';
-    fetch('/v1/operator/lite/insights', { headers: { authorization: 'Bearer ' + key }, credentials: 'omit', cache: 'no-store' })
+    fetch('/insights/data', { credentials: 'same-origin', cache: 'no-store' })
       .then(function (r) {
-        if (r.status === 401) { localStorage.removeItem(STORE); locked('That key was not accepted.'); return null; }
+        if (r.status === 401 || r.redirected) { status.textContent = 'Your sign-in has expired. Reload this page to sign in again.'; return null; }
+        if (r.status === 503) { status.textContent = 'Private insights sign-in is not configured. Contact the operator.'; return null; }
         if (!r.ok) throw new Error('unavailable');
         return r.json();
       })
       .then(function (data) {
         if (!data) return;
-        status.textContent = '';
+        var received = data.totals.reduce(function (sum, value) { return sum + value; }, 0);
+        status.textContent = received ? 'Received reports are shown below. Overall delivery coverage has not been verified.' : 'No usage reports have been received in this window. Check source provisioning and the endpoint embedded in the running build.';
         render(data);
         C.onResize(function () { render(data); });
       })
       .catch(function () { status.textContent = 'Insights are unavailable. Try again later.'; });
   }
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    var key = input.value.trim();
-    if (!/^sto_[A-Za-z0-9_-]{43}$/.test(key)) { document.getElementById('unlock-status').textContent = 'An operator key starts with sto_ and has 47 characters.'; return; }
-    localStorage.setItem(STORE, key); input.value = ''; open();
-  });
-  signout.addEventListener('click', function () { localStorage.removeItem(STORE); locked(); });
   open();
 })();
 `;

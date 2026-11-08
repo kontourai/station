@@ -24,6 +24,12 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
+`dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
+accepts `{ requestScope }` as its fourth argument. Pass a captured
+`requestScope` when a command follows a delayed confirmation or Undo window;
+authority checks apply through credential resolution, dispatch and reading the
+receipt. This does not make a server command reversible.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
