@@ -574,6 +574,8 @@ function TaskWorkspaceContent({
     if (clippedLeft < 0) strip.scrollLeft += clippedLeft;
     else if (clippedRight > 0) strip.scrollLeft += clippedRight;
   }, []);
+  // The selected tab or its position can change when Review becomes available.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selection and tab insertion change the DOM geometry.
   useLayoutEffect(() => {
     const selected = tabStripRef.current?.querySelector<HTMLElement>(
       '[role="tab"][aria-selected="true"]',

@@ -2618,6 +2618,87 @@ function taskCapabilityScreens(): Screen[] {
               document.documentElement.setAttribute('data-theme', selected),
             theme,
           );
+          const testInfo = test.info();
+          const tabs = page.getByRole('tablist', { name: 'Task views' });
+          const overview = tabs.getByRole('tab', { name: 'Overview' });
+          const details = tabs.getByRole('tab', { name: 'Details' });
+          const visibleWithinStrip = async () => {
+            const strip = await tabs.boundingBox();
+            const tab = await details.boundingBox();
+            expect(strip).not.toBeNull();
+            expect(tab).not.toBeNull();
+            expect(tab!.x).toBeGreaterThanOrEqual(strip!.x);
+            expect(tab!.x + tab!.width).toBeLessThanOrEqual(
+              strip!.x + strip!.width,
+            );
+          };
+          await overview.focus();
+          const readingPosition = await page.evaluate(() => window.scrollY);
+          await page.keyboard.press('End');
+          await expect(details).toBeFocused();
+          await expect(details).toHaveAttribute('aria-selected', 'true');
+          await expect(page).toHaveURL(/taskView=details/);
+          await visibleWithinStrip();
+          const detailsPanel = page.getByRole('tabpanel', { name: 'Details' });
+          await detailsPanel.evaluate((panel) => {
+            panel.scrollTop = 100;
+          });
+          const panelScroll = await detailsPanel.evaluate(
+            (panel) => panel.scrollTop,
+          );
+          expect(panelScroll).toBeGreaterThan(0);
+          expect(await page.evaluate(() => window.scrollY)).toBe(
+            readingPosition,
+          );
+          if (viewport.width === MOBILE.width) {
+            for (const width of [390, 393]) {
+              await page.setViewportSize({ width, height: viewport.height });
+              await tabs.evaluate((strip) => {
+                strip.scrollLeft = 0;
+              });
+              writeFileSync(
+                resolve(
+                  'gallery',
+                  `task-tabs-${theme}-${width}-clipped-injected.png`,
+                ),
+                await page.screenshot({
+                  path: testInfo.outputPath(
+                    `task-tabs-${theme}-${width}-clipped-injected.png`,
+                  ),
+                }),
+              );
+              await page.keyboard.press('Shift+Tab');
+              await page.keyboard.press('Tab');
+              await expect(details).toBeFocused();
+              await expect(details).toHaveAttribute('aria-selected', 'true');
+              expect(
+                await detailsPanel.evaluate((panel) => panel.scrollTop),
+              ).toBe(panelScroll);
+              await visibleWithinStrip();
+              const outline = await details.evaluate(
+                (button) => getComputedStyle(button).outlineWidth,
+              );
+              expect(Number.parseFloat(outline)).toBeGreaterThan(0);
+              expect(await page.evaluate(() => window.scrollY)).toBe(
+                readingPosition,
+              );
+              writeFileSync(
+                resolve(
+                  'gallery',
+                  `task-tabs-${theme}-${width}-focus-revealed.png`,
+                ),
+                await page.screenshot({
+                  path: testInfo.outputPath(
+                    `task-tabs-${theme}-${width}-focus-revealed.png`,
+                  ),
+                }),
+              );
+            }
+            await page.setViewportSize(viewport);
+          }
+          await page.keyboard.press('Home');
+          await expect(overview).toBeFocused();
+          await expect(overview).toHaveAttribute('aria-selected', 'true');
           const panel = page.getByRole('region', {
             name: 'Capabilities and evidence',
           });
