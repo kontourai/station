@@ -1042,7 +1042,8 @@ Delivery depends on the engine:
   the engine.
 
 The receipt is recorded under `stationInstructions` in the Session's capability
-delivery metadata (`sections`, `digest`, `channel`). Toggling the preview applies
+delivery metadata (`sections`, `digest`, `channel`; `delivered` only for the
+Claude append, see [contracts](../reference/contracts.md#station-orchestration-instructions-receipt)). Toggling the preview applies
 to Sessions started afterwards.
 
 ## Example agent
@@ -1128,6 +1129,16 @@ The `_delegation` argument a model writes into `delegate_task` or
 `send_message` is ignored. A session already at the depth limit is refused
 before any child starts, on every engine.
 
+A delegated child that calls `delegate_task` or `send_message` is refused
+earlier and at any depth, not only at the last one: the routes behind them
+answer `403` with `delegated_tool_blocked` before the depth limit is read.
+The decision uses the calling session's own recorded context and the built-in
+denials below, so an Agent's `allowedTools` cannot re-allow them, and it applies
+on every engine whose call carries a verified station-control caller (see
+[tool-policy delivery](../conformance/tool-policy-delivery.md)). The
+[orchestration instructions](#orchestration-instructions) never tell a
+delegated child to use either tool.
+
 The default policy is `maxDepth` 2, `denyApprovals`, and the built-in
 denials in `BUILTIN_DELEGATION_DENIALS`
 ([`agent.ts`](../../packages/contracts/src/agent.ts)): `send_message`,
@@ -1139,8 +1150,9 @@ dropped any context, so every `delegate_task` child started as an unrestricted
 root, including children of Station's own engine and of the default Agents
 (`station`, `claude`, `codex`). A `send_message` child on another engine
 carried whatever context the model wrote, or none. Every such child now gets
-lineage and the default policy. Where Station's pre-tool policy is delivered,
-the built-in denials prevent a delegated child from:
+lineage and the default policy. Where Station's pre-tool policy is delivered
+(and, for delegating or messaging further, at the server routes as described
+above), the built-in denials prevent a delegated child from:
 
 - calling the matching create, update, delete, add, or remove station-control tools;
 - starting a scheduled job with `run_job`, or delegating or messaging further;
