@@ -1042,7 +1042,18 @@ Delivery depends on the engine:
   here; the existing first-message path is used.
 - A resumed engine thread is not re-sent the first-turn text, a Session's second
   turn never repeats it, and it is withheld when `station-control` did not reach
-  the engine.
+  the engine. When the engine is recovered just before the first turn, that
+  check reads the delivery report written by the recovery.
+- Codex gets device guidance only while the `codex-bound-browser-device-tools`
+  preview is on and the bound channel offers `device_open`.
+
+Known limitations while this is a preview: the delivery check reads the event
+log, so a delivery report that has not yet been stored, or a recovery done by
+another caller, can leave the first turn deciding from the earlier report.
+Switching the bound-tools preview off between Session setup and engine start
+can likewise leave device guidance for tools the engine never received. In each
+case the effect is guidance that names a tool which then refuses, or guidance
+that is missing; access is never widened.
 
 The receipt is recorded under `stationInstructions` in the Session's capability
 delivery metadata (`sections`, `digest`, `channel`; `delivered` only for the
