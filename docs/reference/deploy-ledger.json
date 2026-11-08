@@ -1,5 +1,38 @@
 [
   {
+    "timestampUtc": "2026-11-08T16:31:52Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261108.42499366611",
+    "sha": "38fd175a281fc0fb7b0671c3aa1b4cf55609de79",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42499366611",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261108.42499366611 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "be0ece31868ebe2193d3015c1d41432ed4e493a7",
+      "groups": {
+        "feat": [
+          "[#4716](https://github.com/kontourai/station/pull/4716) feat(agents): capability-gated Station orchestration instructions"
+        ],
+        "fix": [
+          "[#4719](https://github.com/kontourai/station/pull/4719) fix(orchestration): log foreground sends refused without a failure code",
+          "[#4718](https://github.com/kontourai/station/pull/4718) fix(ui): keep a host chat's event stream and drop settled approvals from the sheet",
+          "[#4715](https://github.com/kontourai/station/pull/4715) fix(orchestration): relaunch Claude in place to apply mid-chat full access"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-11-08T03:42:11Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261108",
