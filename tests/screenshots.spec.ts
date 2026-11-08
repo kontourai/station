@@ -2730,41 +2730,56 @@ function taskCapabilityScreens(): Screen[] {
               );
             }
             const cdp = await page.context().newCDPSession(page);
-            await cdp.send('Emulation.setTouchEmulationEnabled', {
-              enabled: true,
-            });
-            for (const width of [390, 393]) {
-              await page.setViewportSize({ width, height: viewport.height });
-              const box = await tabs.boundingBox();
-              expect(box).not.toBeNull();
-              await tabs.evaluate((strip) => {
-                strip.scrollLeft = 0;
+            let touchFailure: unknown;
+            try {
+              await cdp.send('Emulation.setTouchEmulationEnabled', {
+                enabled: true,
               });
-              const y = box!.y + box!.height / 2;
-              await cdp.send('Input.dispatchTouchEvent', {
-                type: 'touchStart',
-                touchPoints: [{ x: box!.x + box!.width - 35, y }],
-              });
-              await cdp.send('Input.dispatchTouchEvent', {
-                type: 'touchMove',
-                touchPoints: [{ x: box!.x + 35, y }],
-              });
-              await cdp.send('Input.dispatchTouchEvent', {
-                type: 'touchEnd',
-                touchPoints: [],
-              });
-              await expect
-                .poll(() => tabs.evaluate((strip) => strip.scrollLeft))
-                .toBeGreaterThan(0);
-              await expect(details).toHaveAttribute('aria-selected', 'true');
-              expect(
-                await detailsPanel.evaluate((panel) => panel.scrollTop),
-              ).toBe(panelScroll);
+              for (const width of [390, 393]) {
+                await page.setViewportSize({ width, height: viewport.height });
+                const box = await tabs.boundingBox();
+                expect(box).not.toBeNull();
+                await tabs.evaluate((strip) => {
+                  strip.scrollLeft = 0;
+                });
+                const y = box!.y + box!.height / 2;
+                await cdp.send('Input.dispatchTouchEvent', {
+                  type: 'touchStart',
+                  touchPoints: [{ x: box!.x + box!.width - 35, y }],
+                });
+                await cdp.send('Input.dispatchTouchEvent', {
+                  type: 'touchMove',
+                  touchPoints: [{ x: box!.x + 35, y }],
+                });
+                await cdp.send('Input.dispatchTouchEvent', {
+                  type: 'touchEnd',
+                  touchPoints: [],
+                });
+                await expect
+                  .poll(() => tabs.evaluate((strip) => strip.scrollLeft))
+                  .toBeGreaterThan(0);
+                await expect(details).toHaveAttribute('aria-selected', 'true');
+                expect(
+                  await detailsPanel.evaluate((panel) => panel.scrollTop),
+                ).toBe(panelScroll);
+              }
+            } catch (error) {
+              touchFailure = error;
+            } finally {
+              try {
+                await cdp.send('Emulation.setTouchEmulationEnabled', {
+                  enabled: false,
+                });
+              } catch (error) {
+                touchFailure ??= error;
+              }
+              try {
+                await cdp.detach();
+              } catch (error) {
+                touchFailure ??= error;
+              }
             }
-            await cdp.send('Emulation.setTouchEmulationEnabled', {
-              enabled: false,
-            });
-            await cdp.detach();
+            if (touchFailure) throw touchFailure;
             await page.setViewportSize(viewport);
           }
           await previewRequested;
@@ -2808,16 +2823,16 @@ function taskCapabilityScreens(): Screen[] {
           reviewChanged = false;
           if (!reviewPreviousEnabled) {
             await page.goto(screen.path);
-            await page.evaluate(
-              (selected) =>
-                document.documentElement.setAttribute('data-theme', selected),
-              theme,
-            );
             await expect(tabs.getByRole('tab', { name: 'Review' })).toHaveCount(
               0,
             );
             await expect(overview).toHaveAttribute('aria-selected', 'true');
           }
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
           const panel = page.getByRole('region', {
             name: 'Capabilities and evidence',
           });
