@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-08T03:42:09Z | nightly-android | 0.1.11-nightly.20261108 | `be0ece3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42439714880) |
 | 2026-11-08T02:55:20Z | nightly-npm | 0.11.0-nightly.20261108.42439714880 | `be0ece3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42439714880) |
 | 2026-11-07T20:33:43Z | nightly-desktop | 0.1.11-nightly.20261107.2 | `9a16e4c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42407135779) |
 | 2026-11-07T20:33:40Z | nightly-android | 0.1.11-nightly.20261107.2 | `9a16e4c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42407135779) |
@@ -436,6 +437,39 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-08T03:42:09Z · nightly-android · 0.1.11-nightly.20261108
+
+- Ship SHA: `be0ece31868ebe2193d3015c1d41432ed4e493a7`
+- Artifact built at: `2026-11-08T02:54:28.178Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 42439714880)
+
+### Changelog
+
+Commits since `9a16e4c` ([full sha](https://github.com/kontourai/station/commit/9a16e4c1346422704b47721bc6b9ffa8467953d8)):
+
+**Features**
+
+- [#4711](https://github.com/kontourai/station/pull/4711) feat(ui): unify inbox actions and add recoverable touch triage
+- [#4709](https://github.com/kontourai/station/pull/4709) feat(palette): visible entry, guided empty state and key legend
+
+**Fixes**
+
+- [#4714](https://github.com/kontourai/station/pull/4714) fix: keep woken subagents running and tell engines what a restart interrupted
+- [#4702](https://github.com/kontourai/station/pull/4702) fix(connections): show save guidance only for unsaved engine edits
+- [#4713](https://github.com/kontourai/station/pull/4713) fix(telemetry): use signed-in insights and explain sparse public results
+- [#4707](https://github.com/kontourai/station/pull/4707) fix: serialize Flow report references with portable slashes
+- [#4708](https://github.com/kontourai/station/pull/4708) fix: verify exact named cases in focused test runs
+- [#4704](https://github.com/kontourai/station/pull/4704) fix(web): keep offline recovery actions clear of Chat
+
+**Docs**
+
+- [#4618](https://github.com/kontourai/station/pull/4618) docs: track public product content through Corpus
+
+**Other**
+
+- [#4706](https://github.com/kontourai/station/pull/4706) test(verification): isolate parity history fixtures
 
 ## 2026-11-08T02:55:20Z · nightly-npm · 0.11.0-nightly.20261108.42439714880
 
