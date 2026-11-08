@@ -200,9 +200,8 @@ async function createFinalizer(signal: AbortSignal): Promise<FinalizerFixture> {
       withReportRoundsPublication(
         { participant, home: h.f.home, signal },
         (publication) =>
-          publication.withHome(
-            { owner: writer, current },
-            (scope) => work(createAuthority(scope), scope),
+          publication.withHome({ owner: writer, current }, (scope) =>
+            work(createAuthority(scope), scope),
           ),
       );
     await withAuthority(async (authority, scope) => {

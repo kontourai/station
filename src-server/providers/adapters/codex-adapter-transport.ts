@@ -1655,7 +1655,8 @@ export function resolveCodexSpawnContext(
   const launch = managedEngineLaunch(
     'codex',
     {
-      command: managedEngineBinaryPath('codex') ?? findCliBinary('codex') ?? 'codex',
+      command:
+        managedEngineBinaryPath('codex') ?? findCliBinary('codex') ?? 'codex',
       args: ['app-server', ...extraArgs],
       env: { ...process.env, PATH: resolveAugmentedPathSync(), ...extraEnv },
     },
@@ -1688,7 +1689,11 @@ export function spawnCodexProcess(
   /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`), never env-supplied. */
   tmpDir?: string,
 ): ChildProcessWithoutNullStreams {
-  const { binary, args, env } = resolveCodexSpawnContext(extraEnv, tmpDir, extraArgs);
+  const { binary, args, env } = resolveCodexSpawnContext(
+    extraEnv,
+    tmpDir,
+    extraArgs,
+  );
   const invocation = cliInvocation(binary, args);
   // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
   // config overrides (codex-mcp-passthrough.ts) — appended AFTER

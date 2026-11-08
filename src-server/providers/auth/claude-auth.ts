@@ -2,8 +2,8 @@ import { execFile } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
-import { claudeKeychainScope } from './claude-keychain-authentication.js';
 import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
+import { claudeKeychainScope } from './claude-keychain-authentication.js';
 import type { CliAuthState, CliCommandResult } from './cli-auth.js';
 
 type ClaudeCredentials = {

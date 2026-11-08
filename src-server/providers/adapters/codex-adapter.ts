@@ -1084,7 +1084,10 @@ export class CodexAdapter implements ProviderAdapterShape {
         profileRef: home?.profileRef ?? null,
         env,
         hash,
-        routed: Boolean(launch.route) || spawn.args.length !== 1 || spawn.args[0] !== 'app-server',
+        routed:
+          Boolean(launch.route) ||
+          spawn.args.length !== 1 ||
+          spawn.args[0] !== 'app-server',
       };
     };
     const before = await context();
@@ -2325,7 +2328,11 @@ export class CodexAdapter implements ProviderAdapterShape {
       input.threadId,
     );
     if (authenticatedLaunch) {
-      const actual = resolveCodexSpawnContext(sessionSpawnEnv, sessionTmpDir, spawnArgs);
+      const actual = resolveCodexSpawnContext(
+        sessionSpawnEnv,
+        sessionTmpDir,
+        spawnArgs,
+      );
       const authenticationEnv = { ...actual.env };
       delete authenticationEnv[WORKLOAD_SESSION_ENV];
       const invocation = cliInvocation(actual.binary, actual.args);
