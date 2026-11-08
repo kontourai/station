@@ -423,6 +423,18 @@ describe('delegated child', () => {
     expect(child).toContain('may not use `delegate_task` or `send_message`');
   });
 
+  test('the devices section does not advise delegating device work to a delegated child', () => {
+    const parent = compose(caps());
+    const parentDevices =
+      parent.sections.find((s) => s.id === 'devices')?.text ?? '';
+    expect(parentDevices).toContain('When you delegate device work');
+    const child = compose(caps({ delegated: true }));
+    const childDevices =
+      child.sections.find((s) => s.id === 'devices')?.text ?? '';
+    expect(childDevices).toContain('`device_open`');
+    expect(childDevices).not.toContain('delegate');
+  });
+
   test('says nothing about delegation when neither tool is offered', () => {
     const tools = new Set(['wait_session', 'notify_user']);
     const r = compose(caps({ delegated: true, controlTools: tools }));
