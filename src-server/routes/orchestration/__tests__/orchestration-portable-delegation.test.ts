@@ -374,16 +374,19 @@ describe('delegated child fan-out (delegated_tool_blocked)', () => {
   test.each([
     ['/chat/delegated', claimedMessageBody],
     ['/chat', messageBody],
-  ])('a delegated child calling %s (send_message) is refused 403 before dispatch', async (route, body) => {
-    const { app, executeForegroundMessage } = appFor(childStarted);
-    const res = await post(app, route, body);
-    expect(res.status).toBe(403);
-    expect(await res.json()).toMatchObject({
-      success: false,
-      code: 'delegated_tool_blocked',
-    });
-    expect(executeForegroundMessage).not.toHaveBeenCalled();
-  });
+  ])(
+    'a delegated child calling %s (send_message) is refused 403 before dispatch',
+    async (route, body) => {
+      const { app, executeForegroundMessage } = appFor(childStarted);
+      const res = await post(app, route, body);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        code: 'delegated_tool_blocked',
+      });
+      expect(executeForegroundMessage).not.toHaveBeenCalled();
+    },
+  );
 
   test('a root caller is not refused on either route (control)', async () => {
     const { app, delegateTask, executeForegroundMessage } = appFor({

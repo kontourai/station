@@ -289,8 +289,9 @@ describe('createSessionAgentResolver', () => {
     const result = await resolver(baseInput());
     expect(result.agent?.toolServers).toEqual([]);
     expect(
-      (result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as any)
-        ?.toolServers.undelivered,
+      (result.metadata as Record<string, any>)[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ]?.toolServers.undelivered,
     ).toEqual([
       { capability: 'toolServers', id: 'parked', reason: 'disabled' },
     ]);
@@ -1636,8 +1637,9 @@ describe('Station orchestration instructions (resolution receipt)', () => {
     expect(receipt.firstTurnText).toBeUndefined();
     // The authored prompt's own receipt is untouched: never reads as Agent text.
     expect(
-      (result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as any)
-        .systemPrompt,
+      (result.metadata as Record<string, any>)[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ].systemPrompt,
     ).toEqual({
       source: 'agent',
       requested: ['agent-prompt'],
@@ -1670,8 +1672,9 @@ describe('Station orchestration instructions (resolution receipt)', () => {
       expect(receipt.sections.length).toBeGreaterThan(0);
       // The authored prompt keeps its own first-turn receipt.
       expect(
-        (result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as any)
-          .systemPrompt.firstTurnInstructions,
+        (result.metadata as Record<string, any>)[
+          SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+        ].systemPrompt.firstTurnInstructions,
       ).toBe('Authored.');
     },
   );
@@ -1696,17 +1699,19 @@ describe('Station orchestration instructions (resolution receipt)', () => {
 
   test('Codex with both previews on names the device tools its bound channel offers; device preview off names none', async () => {
     const on = receiptOf(
-      await resolverFor({ prompt: '' }, { codexBound: () => true })(
-        baseInput({ provider: 'codex' }),
-      ),
+      await resolverFor(
+        { prompt: '' },
+        { codexBound: () => true },
+      )(baseInput({ provider: 'codex' })),
     );
     expect(on.sections).toContain('devices');
     expect(on.firstTurnText).toContain('`device_open`');
 
     const off = receiptOf(
-      await resolverFor({ prompt: '' }, { codexBound: () => false })(
-        baseInput({ provider: 'codex' }),
-      ),
+      await resolverFor(
+        { prompt: '' },
+        { codexBound: () => false },
+      )(baseInput({ provider: 'codex' })),
     );
     expect(off.sections).not.toContain('devices');
     expect(off.firstTurnText).not.toContain('device_open');

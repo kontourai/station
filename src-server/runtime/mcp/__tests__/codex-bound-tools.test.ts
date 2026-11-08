@@ -8,11 +8,11 @@ import { createBrowserAgentRoutes } from '../../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../../routes/device-agent.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { createBrowserPrincipalAuthorizer } from '../../../services/browser/browser-agent-authority.js';
+import { stationControlToolCatalog } from '../../../tools/station-control-mcp-server.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
+import { effectiveStationControlTools } from '../../agents/station-orchestration-instructions.js';
 import { bindCodexToolRequest } from '../codex-bound-request.js';
 import { resolveStationControlCallerForRequest } from '../station-control-caller.js';
-import { effectiveStationControlTools } from '../../agents/station-orchestration-instructions.js';
-import { stationControlToolCatalog } from '../../../tools/station-control-mcp-server.js';
 import { createCodexBoundToolServer } from '../station-control-in-process.js';
 import {
   mintStationControlMcpToken,

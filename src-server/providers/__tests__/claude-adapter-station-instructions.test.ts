@@ -212,26 +212,29 @@ describe('Claude station instructions append', () => {
 });
 
 describe('confirmStationInstructionsDelivery', () => {
-  test.each([true, false])('sets delivered %s on an existing receipt only', (delivered) => {
-    const metadata = {
-      other: 1,
-      [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
-        agentSlug: 'a',
-        stationInstructions: RECEIPT,
-      },
-    };
+  test.each([true, false])(
+    'sets delivered %s on an existing receipt only',
+    (delivered) => {
+      const metadata = {
+        other: 1,
+        [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
+          agentSlug: 'a',
+          stationInstructions: RECEIPT,
+        },
+      };
 
-    const next = confirmStationInstructionsDelivery(metadata, delivered);
+      const next = confirmStationInstructionsDelivery(metadata, delivered);
 
-    expect(next).toEqual({
-      other: 1,
-      [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
-        agentSlug: 'a',
-        stationInstructions: { ...RECEIPT, delivered },
-      },
-    });
-    expect(RECEIPT).not.toHaveProperty('delivered');
-  });
+      expect(next).toEqual({
+        other: 1,
+        [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
+          agentSlug: 'a',
+          stationInstructions: { ...RECEIPT, delivered },
+        },
+      });
+      expect(RECEIPT).not.toHaveProperty('delivered');
+    },
+  );
 
   test('returns metadata untouched when there is no receipt', () => {
     const noDelivery = { other: 1 };

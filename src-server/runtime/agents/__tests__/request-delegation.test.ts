@@ -75,9 +75,10 @@ describe('createRequestDelegationResolver child fan-out', () => {
     'an Agent allowedTools that names %s cannot re-allow the built-in denial',
     async (tool) => {
       await expect(
-        resolver(
-          childRecord({ allowedTools: [`station-control_${tool}`] }),
-        )(request, { tool }),
+        resolver(childRecord({ allowedTools: [`station-control_${tool}`] }))(
+          request,
+          { tool },
+        ),
       ).rejects.toMatchObject({ code: 'delegated_tool_blocked' });
     },
   );
@@ -93,13 +94,16 @@ describe('createRequestDelegationResolver child fan-out', () => {
     },
   );
 
-  test.each(TOOLS)('a root caller may %s and gets a depth-1 child', async (tool) => {
-    const resolved = await resolver({ agentSlug: 'root-agent' })(request, {
-      tool,
-    });
-    expect(resolved).toMatchObject({
-      provenance: 'caller-derived',
-      context: { mode: 'isolated-child', depth: 1 },
-    });
-  });
+  test.each(TOOLS)(
+    'a root caller may %s and gets a depth-1 child',
+    async (tool) => {
+      const resolved = await resolver({ agentSlug: 'root-agent' })(request, {
+        tool,
+      });
+      expect(resolved).toMatchObject({
+        provenance: 'caller-derived',
+        context: { mode: 'isolated-child', depth: 1 },
+      });
+    },
+  );
 });
