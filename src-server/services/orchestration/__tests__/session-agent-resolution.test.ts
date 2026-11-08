@@ -11,11 +11,17 @@ import {
   createRuntimeSelfIntegration,
 } from '../../../runtime/agents/runtime-default-agent.js';
 import {
+  composeStationInstructions,
+  effectiveStationControlTools,
+  stationControlAssuranceFor,
+} from '../../../runtime/agents/station-orchestration-instructions.js';
+import {
   builtinStationControlServerPath,
   stationDocsRuntimeIdentity,
 } from '../../../runtime/bootstrap/station-control-runtime-env.js';
 import { agentCapabilityUndelivered } from '../../../telemetry/metrics.js';
 import { delegatedCapabilityDelivery } from '../../../tools/station-control-delegation.js';
+import { stationControlToolCatalog } from '../../../tools/station-control-mcp-server.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -1551,5 +1557,247 @@ describe('createSessionAgentResolver', () => {
       ] as any;
       expect(report?.modelFieldWarning).toBeUndefined();
     });
+  });
+});
+
+describe('Station orchestration instructions (resolution receipt)', () => {
+  const catalog = () => stationControlToolCatalog().map((tool) => tool.name);
+
+  function resolverFor(
+    spec: Partial<AgentSpec>,
+    options: {
+      enabled?: () => boolean;
+      codexBound?: () => boolean;
+    } = {},
+  ) {
+    const { selfIntegration } = createRuntimeSelfIntegration();
+    return createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({ tools: { mcpServers: ['station-control'] }, ...spec }),
+      resolveToolServer: async (id) =>
+        id === 'station-control'
+          ? ({
+              ...selfIntegration,
+              command: 'node',
+              args: [builtinStationControlServerPath()],
+              env: { STATION_PORT: '7777' },
+            } as ToolDef)
+          : null,
+      resolveSkillDir: async () => null,
+      stationInstructionsEnabled: options.enabled ?? (() => true),
+      codexBoundToolsEnabled: options.codexBound,
+    });
+  }
+
+  const receiptOf = (result: ProviderSessionStartInput) =>
+    (
+      result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as
+        | { stationInstructions?: any; systemPrompt?: any }
+        | undefined
+    )?.stationInstructions;
+
+  function composedFor(provider: 'claude' | 'codex', allowed?: string[]) {
+    const assurance = stationControlAssuranceFor(provider)!;
+    return composeStationInstructions({
+      controlTools: effectiveStationControlTools(
+        { allowedTools: allowed },
+        catalog(),
+        assurance,
+      ),
+      browser: provider === 'claude',
+      devices: effectiveStationControlTools(
+        { allowedTools: allowed },
+        catalog(),
+        assurance,
+      ).has('device_open'),
+      delegated: false,
+      harness: provider,
+      toolSearch: provider === 'claude',
+      progressiveFamilies: false,
+    });
+  }
+
+  test('Claude with an authored prompt appends: definition.stationInstructions plus a system-prompt-append receipt', async () => {
+    const result = await resolverFor({ prompt: 'Authored.' })(
+      baseInput({ provider: 'claude' }),
+    );
+    const composed = composedFor('claude');
+    expect(composed).toBeDefined();
+    expect(result.agent?.systemPrompt).toBe('Authored.');
+    expect(result.agent?.stationInstructions).toBe(composed?.text);
+    const receipt = receiptOf(result);
+    expect(receipt).toMatchObject({
+      version: 1,
+      channel: 'system-prompt-append',
+      digest: composed?.digest,
+    });
+    expect(receipt.sections.length).toBeGreaterThan(0);
+    expect(receipt.sections).toEqual(composed?.sections.map((s) => s.id));
+    expect(receipt.firstTurnText).toBeUndefined();
+    // The authored prompt's own receipt is untouched: never reads as Agent text.
+    expect(
+      (result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as any)
+        .systemPrompt,
+    ).toEqual({
+      source: 'agent',
+      requested: ['agent-prompt'],
+      undelivered: [],
+    });
+  });
+
+  test('Claude with NO authored prompt uses first-turn only and never sets an append', async () => {
+    const result = await resolverFor({ prompt: '' })(
+      baseInput({ provider: 'claude' }),
+    );
+    expect(result.agent?.systemPrompt).toBeUndefined();
+    expect(result.agent?.stationInstructions).toBeUndefined();
+    const receipt = receiptOf(result);
+    expect(receipt.channel).toBe('first-turn');
+    expect(receipt.sections.length).toBeGreaterThan(0);
+    expect(receipt.firstTurnText).toContain(composedFor('claude')?.text);
+  });
+
+  test.each(['codex', 'acp'] as const)(
+    '%s receipts the first-turn channel and never attaches stationInstructions',
+    async (provider) => {
+      const result = await resolverFor({ prompt: 'Authored.' })(
+        baseInput({ provider }),
+      );
+      expect(result.agent?.stationInstructions).toBeUndefined();
+      const receipt = receiptOf(result);
+      expect(receipt.channel).toBe('first-turn');
+      expect(receipt.firstTurnText).toEqual(expect.any(String));
+      expect(receipt.sections.length).toBeGreaterThan(0);
+      // The authored prompt keeps its own first-turn receipt.
+      expect(
+        (result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as any)
+          .systemPrompt.firstTurnInstructions,
+      ).toBe('Authored.');
+    },
+  );
+
+  test('Codex text names no tool its bearer-exposed assurance hides', async () => {
+    const result = await resolverFor({ prompt: '' })(
+      baseInput({ provider: 'codex' }),
+    );
+    const receipt = receiptOf(result);
+    const offered = effectiveStationControlTools(
+      {},
+      catalog(),
+      'bearer-exposed',
+    );
+    const hidden = catalog().filter((name) => !offered.has(name));
+    // Guard against a vacuous pass: bound-only tools do exist in the catalog.
+    expect(hidden.length).toBeGreaterThan(0);
+    for (const name of hidden)
+      expect(receipt.firstTurnText).not.toContain(`\`${name}\``);
+    expect(receipt.firstTurnText).toContain(composedFor('codex')?.text);
+  });
+
+  test('no station-control means no receipt and no stationInstructions', async () => {
+    const result = await resolverFor({
+      prompt: 'Authored.',
+      tools: { mcpServers: [] },
+    })(baseInput({ provider: 'claude' }));
+    expect(receiptOf(result)).toBeUndefined();
+    expect(result.agent?.stationInstructions).toBeUndefined();
+  });
+
+  test('Muse, which cannot receive station-control, gets no receipt', async () => {
+    const result = await resolverFor({ prompt: 'Authored.' })(
+      baseInput({ provider: 'muse' }),
+    );
+    expect(result.agent?.toolServers).toBeUndefined();
+    expect(receiptOf(result)).toBeUndefined();
+  });
+
+  test('preview off stamps nothing at all, and is read at each resolution', async () => {
+    let on = false;
+    const resolver = resolverFor(
+      { prompt: 'Authored.' },
+      { enabled: () => on },
+    );
+    for (const provider of ['claude', 'codex'] as const) {
+      const off = await resolver(baseInput({ provider }));
+      expect(receiptOf(off)).toBeUndefined();
+      expect(off.agent?.stationInstructions).toBeUndefined();
+    }
+    on = true;
+    expect(
+      receiptOf(await resolver(baseInput({ provider: 'codex' }))),
+    ).toBeDefined();
+    on = false;
+    expect(
+      receiptOf(await resolver(baseInput({ provider: 'codex' }))),
+    ).toBeUndefined();
+    // An absent selector is off as well.
+    const { selfIntegration } = createRuntimeSelfIntegration();
+    const unwired = createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({ prompt: 'x', tools: { mcpServers: ['station-control'] } }),
+      resolveToolServer: async () =>
+        ({
+          ...selfIntegration,
+          command: 'node',
+          args: [builtinStationControlServerPath()],
+          env: { STATION_PORT: '7777' },
+        }) as ToolDef,
+      resolveSkillDir: async () => null,
+    });
+    expect(
+      receiptOf(await unwired(baseInput({ provider: 'codex' }))),
+    ).toBeUndefined();
+  });
+
+  test('a resumed engine thread is stamped with no first-turn text', async () => {
+    const resume = { resumeCursor: { nativeSession: 'x' } };
+    for (const [provider, prompt] of [
+      ['codex', 'Authored.'],
+      ['acp', 'Authored.'],
+      ['claude', ''],
+    ] as const) {
+      const result = await resolverFor({ prompt })(
+        baseInput({ provider, ...resume }),
+      );
+      expect(receiptOf(result)).toBeUndefined();
+      expect(result.agent?.stationInstructions).toBeUndefined();
+    }
+  });
+
+  test('a selection without delegate_task yields no orchestration section', async () => {
+    const without = await resolverFor({
+      prompt: '',
+      tools: {
+        mcpServers: ['station-control'],
+        available: ['station-control_wait_session'],
+      },
+    })(baseInput({ provider: 'claude' }));
+    const receipt = receiptOf(without);
+    expect(receipt).toBeDefined();
+    expect(receipt.sections).not.toContain('orchestration');
+
+    const withDelegate = await resolverFor({
+      prompt: '',
+      tools: {
+        mcpServers: ['station-control'],
+        available: [
+          'station-control_wait_session',
+          'station-control_delegate_task',
+        ],
+      },
+    })(baseInput({ provider: 'claude' }));
+    expect(receiptOf(withDelegate).sections).toContain('orchestration');
+  });
+
+  test('a delegated child is told so instead of being offered orchestration', async () => {
+    const result = await resolverFor({ prompt: '' })(
+      baseInput({
+        provider: 'claude',
+        metadata: { agentSlug: 'my-agent', delegation: { depth: 1 } },
+      }),
+    );
+    const sections = receiptOf(result).sections;
+    expect(sections).toContain('delegated-child');
+    expect(sections).not.toContain('orchestration');
   });
 });

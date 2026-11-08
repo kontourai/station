@@ -190,6 +190,10 @@ export interface InitializeRuntimeDeps {
   resolveProjectToolServers?: (
     input: import('@kontourai/station-contracts/provider').ProviderSessionStartInput,
   ) => Promise<readonly string[]>;
+  /** `station-orchestration-instructions` Feature Preview, read per Session start. */
+  stationInstructionsEnabled?: () => boolean;
+  /** `codex-bound-browser-device-tools` Feature Preview, read per Session start. */
+  codexBoundToolsEnabled?: () => boolean;
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -608,6 +612,8 @@ export async function initializeRuntime(
   const resolveSessionAgent = createSessionAgentResolver({
     validateProjectTools: deps.validateProjectTools,
     resolveProjectToolServers: deps.resolveProjectToolServers,
+    stationInstructionsEnabled: deps.stationInstructionsEnabled,
+    codexBoundToolsEnabled: deps.codexBoundToolsEnabled,
     loadAgentSpec: loadSessionAgentSpec,
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),

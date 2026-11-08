@@ -1517,6 +1517,61 @@ function pendingFirstTurnInstructions(
   return firstTurnInstructions;
 }
 
+/**
+ * Station's own orchestration instructions on a session's genuine first turn:
+ * the `first-turn` receipt `session-agent-resolution.ts` stamps under
+ * `stationInstructions` (preview-gated there). Same first-turn rule as
+ * `pendingFirstTurnInstructions`: nothing once a `turn.started` exists. Also
+ * nothing when the latest toolServers report says station-control did not
+ * reach the engine (listed undelivered, or absent from a present delivered
+ * list), since the text names tools the session cannot call.
+ */
+function pendingStationInstructions(
+  events: readonly { method?: unknown; metadata?: unknown }[],
+): string | undefined {
+  if (events.some((event) => event.method === 'turn.started')) {
+    return undefined;
+  }
+  let text: string | undefined;
+  let toolServers: SessionCapabilityDeliveryMetadata['toolServers'];
+  for (const event of events) {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    ) {
+      continue;
+    }
+    const metadata =
+      event.metadata && typeof event.metadata === 'object'
+        ? (event.metadata as Record<string, unknown>)
+        : undefined;
+    const report = metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as
+      | SessionCapabilityDeliveryMetadata
+      | undefined;
+    if (report?.toolServers) toolServers = report.toolServers;
+    const receipt = report?.stationInstructions;
+    if (
+      receipt?.channel === 'first-turn' &&
+      typeof receipt.firstTurnText === 'string'
+    ) {
+      text = receipt.firstTurnText;
+    }
+  }
+  if (text === undefined) return undefined;
+  if (
+    toolServers?.undelivered?.some((entry) => entry.id === 'station-control')
+  ) {
+    return undefined;
+  }
+  if (
+    Array.isArray(toolServers?.delivered) &&
+    !toolServers.delivered.includes('station-control')
+  ) {
+    return undefined;
+  }
+  return text;
+}
+
 function taskBriefStartRecord(brief: {
   digest: string;
   text: string;
@@ -9186,6 +9241,11 @@ export class OrchestrationService {
           const pendingPrompt = current
             ? pendingFirstTurnInstructions(current.events)
             : undefined;
+          // Station's orchestration instructions ride the same first turn,
+          // right after the authored prompt (preview-gated at resolution).
+          const pendingStationGuide = current
+            ? pendingStationInstructions(current.events)
+            : undefined;
           // Epic #4003: a Session dispatched for a Task gets its Task brief
           // the same way, on the same genuine first turn, on every engine:
           // after any authored prompt, before ordinary ambient context.
@@ -9221,6 +9281,7 @@ export class OrchestrationService {
           const firstTurnContext = [
             ...stationContext,
             pendingPrompt,
+            pendingStationGuide,
             pendingBrief?.retainedByBoundary ? undefined : pendingBrief?.text,
             pendingHostImageGuide,
             publicTurnInput.ambientContext?.trim()
@@ -9229,6 +9290,7 @@ export class OrchestrationService {
           ].filter((part): part is string => part !== undefined);
           const turnInputWithFirstTurnPrompt =
             pendingPrompt ||
+            pendingStationGuide ||
             pendingBrief ||
             pendingHostImageGuide ||
             stationContext.length > 0
