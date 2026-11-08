@@ -42,6 +42,14 @@ commands and desktop control from the scheduled task's actual session: an
 engine login check does not verify either capability. A headless service can
 have different runner-pipe and desktop access.
 
+Every child process the server, CLI, packages and scripts launch passes
+`windowsHide: true`. Node defaults it to `false`, and on Windows each such
+launch opens a console window over the user's work.
+[`npm run windows-hide:ratchet`](../../scripts/windows-hide-ratchet.mjs) runs
+before push and in `verification:policy:gate`; it fails a new `child_process`
+call whose options visibly omit the key. It cannot see options passed through a
+parameter or spread, so a wrapper still sets the key itself.
+
 ### Unbound Codex workspaces
 
 A confined [Codex chat](../../src-server/providers/adapters/codex-adapter.ts)
