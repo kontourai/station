@@ -2796,6 +2796,28 @@ function taskCapabilityScreens(): Screen[] {
           await page.keyboard.press('Home');
           await expect(overview).toBeFocused();
           await expect(overview).toHaveAttribute('aria-selected', 'true');
+          if (previewRoute) {
+            await page.unroute('**/api/feature-previews', previewRoute);
+            previewRoute = undefined;
+          }
+          const restoredReview = await request.put(
+            `${resolveE2EApiBase()}/api/feature-previews/task-review`,
+            { data: { enabled: reviewPreviousEnabled } },
+          );
+          expect(restoredReview.ok()).toBe(true);
+          reviewChanged = false;
+          if (!reviewPreviousEnabled) {
+            await page.goto(screen.path);
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            await expect(tabs.getByRole('tab', { name: 'Review' })).toHaveCount(
+              0,
+            );
+            await expect(overview).toHaveAttribute('aria-selected', 'true');
+          }
           const panel = page.getByRole('region', {
             name: 'Capabilities and evidence',
           });
