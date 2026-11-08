@@ -1694,6 +1694,24 @@ describe('Station orchestration instructions (resolution receipt)', () => {
     expect(receipt.firstTurnText).toContain(composedFor('codex')?.text);
   });
 
+  test('Codex with both previews on names the device tools its bound channel offers; device preview off names none', async () => {
+    const on = receiptOf(
+      await resolverFor({ prompt: '' }, { codexBound: () => true })(
+        baseInput({ provider: 'codex' }),
+      ),
+    );
+    expect(on.sections).toContain('devices');
+    expect(on.firstTurnText).toContain('`device_open`');
+
+    const off = receiptOf(
+      await resolverFor({ prompt: '' }, { codexBound: () => false })(
+        baseInput({ provider: 'codex' }),
+      ),
+    );
+    expect(off.sections).not.toContain('devices');
+    expect(off.firstTurnText).not.toContain('device_open');
+  });
+
   test('no station-control means no receipt and no stationInstructions', async () => {
     const result = await resolverFor({
       prompt: 'Authored.',
