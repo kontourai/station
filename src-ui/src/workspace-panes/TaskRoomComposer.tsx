@@ -159,10 +159,6 @@ export function TaskRoomComposer({
   );
   const currentOwner = useRef(owner);
   const ownerGeneration = useRef(0);
-  if (currentOwner.current !== owner) {
-    currentOwner.current = owner;
-    ownerGeneration.current += 1;
-  }
   const connectionChanged = draftOwner !== undefined && draftOwner !== owner;
   const textarea = useRef<HTMLTextAreaElement>(null);
   const [returnToMessage, setReturnToMessage] = useState<{
@@ -170,7 +166,36 @@ export function TaskRoomComposer({
     owner: string;
     generation: number;
     isCurrent: () => boolean;
+    cancelled: boolean;
   }>();
+  const focusReturnAttempt = useRef<typeof returnToMessage>(undefined);
+  useLayoutEffect(() => {
+    if (currentOwner.current !== owner) {
+      currentOwner.current = owner;
+      ownerGeneration.current += 1;
+    }
+    const cancelCompetingFocus = () => {
+      const attempt = focusReturnAttempt.current;
+      const active = document.activeElement;
+      if (
+        attempt &&
+        active &&
+        active !== document.body &&
+        active !== document.documentElement &&
+        active.isConnected &&
+        active !== attempt.element
+      ) {
+        attempt.cancelled = true;
+      }
+    };
+    document.addEventListener('focusin', cancelCompetingFocus, true);
+    return () => {
+      document.removeEventListener('focusin', cancelCompetingFocus, true);
+      if (focusReturnAttempt.current)
+        focusReturnAttempt.current.cancelled = true;
+      focusReturnAttempt.current = undefined;
+    };
+  }, [owner]);
   const id = useId();
   const discardRecovery = () => {
     if (
@@ -271,6 +296,8 @@ export function TaskRoomComposer({
   useLayoutEffect(() => {
     if (!returnToMessage) return;
     if (
+      returnToMessage.cancelled ||
+      focusReturnAttempt.current !== returnToMessage ||
       returnToMessage.owner !== owner ||
       returnToMessage.generation !== ownerGeneration.current ||
       !returnToMessage.isCurrent() ||
@@ -278,10 +305,26 @@ export function TaskRoomComposer({
       !writable ||
       textarea.current !== returnToMessage.element
     ) {
+      if (focusReturnAttempt.current === returnToMessage)
+        focusReturnAttempt.current = undefined;
+      setReturnToMessage(undefined);
+      return;
+    }
+    const active = document.activeElement;
+    if (
+      active &&
+      active !== document.body &&
+      active !== document.documentElement &&
+      active.isConnected &&
+      active !== returnToMessage.element
+    ) {
+      returnToMessage.cancelled = true;
+      focusReturnAttempt.current = undefined;
       setReturnToMessage(undefined);
       return;
     }
     if (locked) return;
+    focusReturnAttempt.current = undefined;
     setReturnToMessage(undefined);
     applyReturnFocus([returnToMessage.element], returnToMessage.element);
   }, [returnToMessage, owner, scope, writable, locked]);
@@ -366,6 +409,17 @@ export function TaskRoomComposer({
     const focusedMessage =
       document.activeElement === textarea.current ? textarea.current : null;
     const sendGeneration = ownerGeneration.current;
+    const focusAttempt = focusedMessage
+      ? {
+          element: focusedMessage,
+          owner,
+          generation: sendGeneration,
+          isCurrent: () => scope.isCurrent(),
+          cancelled: false,
+        }
+      : undefined;
+    focusReturnAttempt.current = focusAttempt;
+    let focusReturnQueued = false;
     setNotice('');
     sendInFlight.current = true;
     setPreparing(true);
@@ -613,13 +667,9 @@ export function TaskRoomComposer({
         )
           return;
         if (outcome.kind === 'committed' || outcome.kind === 'duplicate') {
-          if (focusedMessage) {
-            setReturnToMessage({
-              element: focusedMessage,
-              owner,
-              generation: sendGeneration,
-              isCurrent: () => scope.isCurrent(),
-            });
+          if (focusAttempt && !focusAttempt.cancelled) {
+            focusReturnQueued = true;
+            setReturnToMessage(focusAttempt);
           }
           setDraft((current) => (current === draft ? '' : current));
           setLeadingPerson(undefined);
@@ -637,6 +687,8 @@ export function TaskRoomComposer({
     } catch (error) {
       setNotice(describeStationFailure(error).body);
     } finally {
+      if (!focusReturnQueued && focusReturnAttempt.current === focusAttempt)
+        focusReturnAttempt.current = undefined;
       sendInFlight.current = false;
       setPreparing(false);
     }
