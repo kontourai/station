@@ -234,6 +234,10 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'ui-glyph-coverage-ratchet.mjs',
     'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
   ],
+  [
+    'windows-hide-ratchet.mjs',
+    'scripts/__tests__/windows-hide-ratchet.test.ts',
+  ],
 ];
 
 /**
