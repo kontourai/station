@@ -90,15 +90,17 @@ Consequences:
 
 ## Connect an engine through a saved proxy
 
-In **Connections → Engines**, Claude Code and Codex offer **Connect through**. Choose
-**Your account** or an enabled OpenAI-compatible connection already saved under **Models**.
+In **Connections → Engines**, Claude Code and Codex offer **Connect through** on their
+**Settings** tab. Choose **Your account** or an enabled OpenAI-compatible connection already
+saved under **Models**. With **Your account** and no custom settings, an endpoint inherited
+from Station's own environment is named under the field.
 The saved model connection owns the address and key; the engine stores only its connection
 reference. Choosing a route explicitly replaces custom connection environment/config-home
 overrides. Station never edits the user's global CLI configuration. A managed policy that
 locks the engine's environment (#4520) makes the route and those overrides inert.
 
-Save the connection to discover its models, choose a **Default model**, and use **Check
-connection**. The check sends one short, potentially billable message. It can retry an old
+Save the connection to discover its models, choose a **Default model** on **Models**, and
+use **Check connection**. The check sends one short, potentially billable message. It can retry an old
 authentication failure, but cannot bypass missing binaries or other prerequisites. A failed
 or timed-out check leaves failure evidence; only a proven successful turn restores runtime
 health. **Refresh models** re-reads the connection catalog and does not send a chat turn.

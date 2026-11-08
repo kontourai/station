@@ -77,7 +77,9 @@ capture revision and sample-data limits remain explicit.
 This short, silent walkthrough opens the model's settings, switches to Engines,
 and expands an engine's details. The sample engine still needs setup. It does
 not run a connection test or log in to an account. These Connections captures
-also predate the row status badges, the inset tab frame and the in-pane Add engine journey; use the
+also predate the row status badges, the inset tab frame, the in-pane Add engine journey and
+the engine page's Overview, Usage, Models, Accounts and Settings tabs, which replaced the
+setup steps, status tiles and **Advanced** section the tour expands; use the
 Connections guide for current setup actions and layout.
 They also predate the optional Chat apps integration-status disclosure; they
 do not demonstrate its probes or write-back history.

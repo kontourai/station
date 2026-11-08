@@ -151,8 +151,10 @@ boundary rather than disappearing while a chunk loads.
 Navigation and editable drafts have dedicated owners. Project layout changes
 flow through canonical navigation/layout actions. A feature with unsaved state
 registers `useUnsavedGuard`; ordinary `navigate` already enters that guard, so
-wrapping the same navigation again produces duplicate prompts. Local actions
-that do not navigate may use the guard explicitly. See
+wrapping the same navigation again produces duplicate prompts. A route change
+that keeps the dirty surface mounted, such as a detail's route tabs, runs inside
+the hook's `stayWithin`, which passes that surface's own guard; other guards
+still ask. Local actions that do not navigate may use the guard explicitly. See
 [UI instructions](../../src-ui/AGENTS.md) and the relevant owner tests.
 
 ## Styling and responsive behavior

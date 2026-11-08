@@ -102,15 +102,15 @@ An engine's page has tabs, each with its own address
 
 - **Overview** — the route the engine actually uses, its default model, where
   its model list comes from, any managed policy, the last **Check connection**
-  and the agents bound to it. Setup and sign-in steps appear here when the
-  engine needs them.
+  and the agents bound to it. Setup steps, and a command engine's sign-in,
+  appear here when the engine needs them.
 - **Usage** — Station-observed usage over 7 or 30 days. Claude Code and Codex
   are read by engine kind, with an account filter and allowance history. Other
   engines are read by connection, on a Station that supports that filter. A
   command engine reports context use only, so it shows no totals. Usage needs
   `access:manage`; without it the tab says so.
 - **Models** — a searchable list with the default marked, and **Refresh
-  models**. The default is saved with **Save**.
+  models**. The default is saved with **Save** on **Settings**.
 - **Accounts** (Claude Code and Codex) — accounts, sign-in and per-account
   allowance.
 - **Settings** — name, routing, app home, skills and credential entries (only
@@ -176,7 +176,8 @@ not discard readable account/credit details.
 field paths and deliberate exclusions. Only field names leave the server for
 unmapped values. This bounded shape audit excludes null/empty fields, value
 validation, credential stores and other endpoints; “none in this response” does
-not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
+not establish complete provider coverage. The full quota response remains a live projection. **Allowance history**, on
+**Usage** for the chosen account or the one runs use, retains
 only window labels, percentages, durations, reset times and observation timestamps.
 It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
 and 32 windows per observation, under this Station's `analytics/engine-allowance/`.
@@ -218,9 +219,9 @@ precedence, both readers reported no unmapped non-null field paths or audit
 truncation for those account responses. Claude spending, breakdown, active-limit
 and extra-usage shapes are live-observed as well as fixture-validated. Other plans and provider endpoints remain outside this observation.
 
-**Activity** initially shows 7 or 30 days of all engine runs on this Station, so
-older activity remains visible. **Activity for** switches
-between the selected credential profile and all accounts of this engine. New
+The engine's **Usage** tab shows 7 or 30 days of this engine's runs on this
+Station, across all its accounts. With more than one account, **Usage for**
+narrows it to one account. New
 Claude and Codex sessions record an opaque account key from the profile actually
 resolved for the process. Raw profile references are not published in runtime
 events. Source-home continuations and older events without this observation
@@ -240,7 +241,7 @@ convert or combine them. Missing days keep their place and are marked unreported
 **Token breakdown & capture coverage** expands cache/input/output totals, pricing
 provenance and observed-versus-usage-reported turn counts. Missing values are not
 added as known zeros; reported subtotals can be incomplete. Subscription allowance
-and engine-reported costs are not billing statements. Activity requires
+and engine-reported costs are not billing statements. Usage requires
 credential-management access, even for this Station alone.
 
 The component/transport tests exercise both account pages and the login relay
@@ -1112,7 +1113,7 @@ tested against a stand-in engine that speaks the same protocol.
 In **Models**, save an OpenAI-compatible connection with the proxy address and key.
 Then open **Engines → Claude Code** or **Engines → Codex** → **Settings**, select
 that connection under **Connect through**, and save. Choose a **Default model** on
-**Models** and save it. **Check connection** sends one short message and reports whether
+**Models** and save it with **Save** on **Settings**. **Check connection** sends one short message and reports whether
 the engine answered. A failed check is shown as **Check failed**; a model catalog
 alone does not override that result. **Refresh models** refreshes the catalog.
 
