@@ -1504,6 +1504,13 @@ describe('EventStore', () => {
     const base = { provider: 'claude' as const, threadId, createdAt: at };
     const trigger = { trigger: 'provider' };
     const seed = () => {
+      store.upsertSession({
+        provider: base.provider,
+        threadId,
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
       const events: CanonicalRuntimeEvent[] = [
         {
           ...base,
