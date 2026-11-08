@@ -114,7 +114,9 @@
 
     "src-ui/src/views/ProjectSettingsView.tsx",
 
-    "src-ui/src/hooks/useSectionNavigation.ts"
+    "src-ui/src/hooks/useSectionNavigation.ts",
+
+    "src-ui/src/contexts/__tests__/AccountPreferencesContext.test.tsx"
   ],
 
   "checks": [

@@ -1952,6 +1952,21 @@ function ChatMessageListComponent({
     ) : null;
   const scrollControls = scrollToBottomControl;
 
+  // A request Station reports settled that this view still lists: drop it
+  // from the pending set and refetch history, which brings in the
+  // resolution this view missed and any request opened since.
+  const catchUpSettledRequest = (request: { approvalId?: string }) => {
+    const current = activeChatsStore.getSnapshot()[activeSession.id];
+    if (!current) return;
+    activeChatsStore.updateChat(activeSession.id, {
+      pendingApprovals: current.pendingApprovals?.filter(
+        (id) => id !== request.approvalId,
+      ),
+      orchestrationHistoryRevision:
+        (current.orchestrationHistoryRevision ?? 0) + 1,
+    });
+  };
+
   return (
     <ApprovalSheetProvider
       apiBase={apiBase}
@@ -1980,18 +1995,10 @@ function ChatMessageListComponent({
             ),
           });
         }
-        if (outcome === 'already-settled') {
-          if (current)
-            activeChatsStore.updateChat(activeSession.id, {
-              pendingApprovals: current.pendingApprovals?.filter(
-                (id) => id !== request.approvalId,
-              ),
-              orchestrationHistoryRevision:
-                (current.orchestrationHistoryRevision ?? 0) + 1,
-            });
-        }
+        if (outcome === 'already-settled') catchUpSettledRequest(request);
         return outcome;
       }}
+      onSettledElsewhere={catchUpSettledRequest}
       onApprove={(request, action) =>
         handleToolApproval(
           activeSession.id,

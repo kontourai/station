@@ -56,6 +56,15 @@ both folders go through the same preparation, so the chat gets one private
 folder. With **Chats without a project** set to **Home folder**, the chat is
 still unbound and a confined Codex session uses the private folder here.
 
+On Windows, newly prepared scratch and managed engine folders use
+`~/.station-workspaces/<hash of Station home>/` in place of `<Station home>`.
+PowerShell reads ancestor attributes to establish its location; private Station
+data denies those reads, making relative commands start at `C:\` even when the
+process cwd is correct. Workspace placement preserves the data home's ACL and
+the engine's filesystem profile. Existing conversations keep their recorded
+folders. These Windows workspace files are external to Station home archives
+and resets; back them up and retire them separately, as with Project folders.
+
 The user home is too broad a writable sandbox root: Windows sandbox setup can
 recursively change ACLs throughout it, delaying commands and granting sandbox
 accounts access to unrelated launchers.
@@ -485,6 +494,15 @@ accepts it only from Station's own origin, so nobody can pre-claim the key. An o
 Station without the route answers 404 and the client sends the short
 continuation as an ordinary message. Ordinary connection recovery still treats
 a memory kill as manual and never replays the prompt.
+
+Any other engine end with work still running (a stop, a Station shutdown, a
+crash) gets a lighter note on the next turn, whether that turn runs in a
+successor Session or in the same Session restarted in place. It lists the
+calls the ended engine settled as `unresolved` (a backgrounded subagent is named
+by its description) and tells the agent that they are not running, that no
+completion notice will arrive, and to check what they left behind. Without it,
+the resumed conversation still shows a backgrounded subagent as started, and
+the agent reports it as running and waits for it.
 
 `npm run lint:check` and `lint:fix` share one Biome slot per OS user across
 worktrees and use at most two Biome worker threads. This prevents overlapping

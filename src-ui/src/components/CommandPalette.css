@@ -28,10 +28,19 @@
 
 .command-palette__input-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-primary);
+}
+
+.command-palette__search-field {
+  display: flex;
+  flex: 1 1 16rem;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .command-palette__search-icon {
@@ -41,6 +50,7 @@
 
 .command-palette__input {
   flex: 1 1 auto;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
@@ -136,4 +146,34 @@
   border-bottom: 1px solid var(--border-primary);
   color: var(--text-secondary);
   font-size: var(--k-text-sm);
+}
+
+/* #4694: the palette's own keys (not rendered for a coarse pointer). */
+.command-palette__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2) var(--k-space-4);
+  margin: 0;
+  padding: var(--k-space-2) 14px;
+  border-top: 1px solid var(--k-line);
+  list-style: none;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.command-palette__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.command-palette__legend kbd {
+  min-width: 1.5em;
+  padding: 0 var(--k-space-1);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  text-align: center;
 }

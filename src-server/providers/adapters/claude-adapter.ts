@@ -179,6 +179,7 @@ import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import {
   assertExecutionOverrideDelivery,
+  confirmStationInstructionsDelivery,
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import {
@@ -198,6 +199,7 @@ import {
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   reportClaudePermissionMode,
+  settleOpenClaudeTasks,
   settleUnresolvedClaudeToolCalls,
   withdrawnSubagentPermissionResult,
 } from './claude-adapter-events.js';
@@ -1493,6 +1495,24 @@ async function coordinatorMcpDeadline<T>(operation: Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Whether Station's orchestration instructions are appended to this session's
+ * system prompt: an authored prompt to append after, instructions to append,
+ * and the built-in station-control server in the servers the session is
+ * actually given. One predicate for the options and the delivery receipt, so
+ * the two cannot disagree.
+ */
+function claudeStationInstructionsAppended(
+  input: Pick<ProviderSessionStartInput, 'agent'>,
+  servers: Record<string, McpServerConfig> | undefined,
+): boolean {
+  return Boolean(
+    input.agent?.systemPrompt &&
+      input.agent.stationInstructions &&
+      servers?.['station-control'] !== undefined,
+  );
+}
+
 export class ClaudeAdapter implements ProviderAdapterShape {
   readonly coordinatorToolsRefresh = true as const;
   coordinatorToolsNeedSuccessor(threadId: string): boolean {
@@ -2480,6 +2500,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         });
       }
 
+      if (input.agent?.stationInstructions) {
+        configuredMetadata = confirmStationInstructionsDelivery(
+          configuredMetadata,
+          claudeStationInstructionsAppended(input, record.mcpServers),
+        );
+      }
+
       configuredMetadata[MODEL_SELECTION_RECEIPT_METADATA_KEY] =
         modelSelectionReceipt(input.modelId, record.session.model);
       record.configuredMetadata = configuredMetadata;
@@ -2551,6 +2578,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       })();
     }
     return announce();
+  }
+
+  /**
+   * Full access on a session spawned without the bypass grant (one that
+   * started with no Station mode, see `hostBypassGrant`): `sendTurn` would
+   * refuse the escalation, but a fresh start at `never` takes the grant. Not
+   * where the engine refuses that grant at all (root outside a sandbox), so
+   * the relaunch would fail to start.
+   */
+  turnNeedsEngineRelaunch(
+    threadId: string,
+    modelOptions: Record<string, unknown> | undefined,
+  ): boolean {
+    const record = this.sessions.get(threadId);
+    return (
+      record !== undefined &&
+      !record.allowsBypassPermissions &&
+      !record.confinementPending &&
+      this.resolvePermissionMode(modelOptions) === 'bypassPermissions' &&
+      !claudeRefusesBypassGrant()
+    );
   }
 
   async sendTurn(
@@ -3565,6 +3613,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return this.sessions.has(threadId);
   }
 
+  /**
+   * A task the engine started and has not reported an end for. Read from
+   * the engine's own task frames, not the child-work registry, so a gap in
+   * that record can never let an idle park stop a working engine.
+   */
+  hasOpenEngineWork(threadId: string): boolean {
+    const tasks = this.sessions.get(threadId)?.activeTasks;
+    if (!tasks) return false;
+    for (const task of tasks.values()) {
+      if (!task.unresolvedPublished) return true;
+    }
+    return false;
+  }
+
   async stopAll(): Promise<void> {
     try {
       await Promise.all(
@@ -4230,12 +4292,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // authored prompt keep byte-identical options (option entirely
       // unset). A bare-string value would instead REPLACE the prompt and
       // strip the engine's own behavior — rejected.
+      //
+      // Station orchestration instructions ride the same append, after the
+      // authored prompt, and only when station-control is in the servers this
+      // session is actually given (`claudeStationInstructionsAppended`). They
+      // never create the append: that would flip an Agent with no authored
+      // prompt onto the claude_code preset, so that case uses the first turn.
       ...(input.agent?.systemPrompt
         ? {
             systemPrompt: {
               type: 'preset' as const,
               preset: 'claude_code' as const,
-              append: input.agent.systemPrompt,
+              append: claudeStationInstructionsAppended(input, {
+                ...mcpServers,
+                ...builtinServers,
+              })
+                ? `${input.agent.systemPrompt}\n\n${input.agent.stationInstructions}`
+                : input.agent.systemPrompt,
             },
           }
         : {}),
@@ -4803,6 +4876,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         agentId: taskId,
       });
     }
+    // Before the tool-call settle: a task woken after its first terminal
+    // re-opened a call that settle skips (see `settleOpenClaudeTasks`).
+    settleOpenClaudeTasks({
+      provider: this.provider,
+      record: record as ClaudeMessageState,
+      publish,
+    });
     settleUnresolvedClaudeToolCalls({
       provider: this.provider,
       record: record as ClaudeMessageState,

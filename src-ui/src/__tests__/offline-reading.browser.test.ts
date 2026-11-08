@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
-import { build } from 'vite';
+import { build, type InlineConfig } from 'vite';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { offlineShell } from '../../../scripts/vite-offline-shell';
 import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
@@ -22,13 +22,16 @@ declare global {
   }
 }
 
-const ROOT = path.resolve(import.meta.dirname, '../../..');
+const ROOT = path
+  .resolve(import.meta.dirname, '../../..')
+  .replaceAll('\\', '/');
 const temp = trackTempDirs({ base: path.join(ROOT, 'node_modules/.cache') });
 let browser: Awaited<ReturnType<typeof chromium.launch>>;
 let server: ReturnType<typeof createServer>;
 let origin: string;
 let navigationFailure: 'disconnect' | 'unavailable' | undefined;
 const requests: { path: string; cookie?: string }[] = [];
+let selectUpdatedBuild: (updated: boolean) => void;
 beforeAll(async () => {
   mkdirSync(path.join(ROOT, 'node_modules/.cache'), { recursive: true });
   const root = temp('offline-reading-browser-');
@@ -44,6 +47,7 @@ beforeAll(async () => {
     import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
     import {OfflineReadingBoundary} from '${ROOT}/src-ui/src/components/OfflineReadingBoundary';
     import {WebOfflineShell} from '${ROOT}/src-ui/src/components/WebOfflineShell';
+    import '${ROOT}/src-ui/src/index.css';
     import {OfflineReadingSection} from '${ROOT}/src-ui/src/views/settings/OfflineReadingSection';
     import * as reading from '${ROOT}/src-ui/src/lib/offlineReading';
     window.reading=reading;
@@ -75,7 +79,7 @@ beforeAll(async () => {
     fixture +
       '\nexport const checkServerHealth = async () => true; export const probeServerConnection = async () => ({ok: true});',
   );
-  const result = await build({
+  const buildOptions: InlineConfig = {
     configFile: false,
     define: { 'import.meta.env.PROD': 'true' },
     root,
@@ -93,14 +97,39 @@ beforeAll(async () => {
     },
     plugins: [offlineShell({ warmModules: ['warm-surface.ts'] })],
     build: { write: false, minify: false },
-  });
+  };
+  const result = await build(buildOptions);
   if (!('output' in result)) throw new Error('Expected one build output');
-  const outputs = new Map(
+  const initialOutputs = new Map(
     result.output.map((output) => [
       output.fileName,
       Buffer.from(output.type === 'chunk' ? output.code : output.source),
     ]),
   );
+  writeFileSync(
+    path.join(root, 'index.html'),
+    readFileSync(path.join(root, 'index.html'), 'utf8').replace(
+      'test-build',
+      'updated-build',
+    ),
+  );
+  writeFileSync(
+    path.join(root, 'main.tsx'),
+    `${readFileSync(path.join(root, 'main.tsx'), 'utf8')}\ndocument.documentElement.dataset.fixtureBuild='updated';`,
+  );
+  const updated = await build(buildOptions);
+  if (!('output' in updated))
+    throw new Error('Expected one updated build output');
+  const updatedOutputs = new Map(
+    updated.output.map((output) => [
+      output.fileName,
+      Buffer.from(output.type === 'chunk' ? output.code : output.source),
+    ]),
+  );
+  let outputs = initialOutputs;
+  selectUpdatedBuild = (updated) => {
+    outputs = updated ? updatedOutputs : initialOutputs;
+  };
   server = createServer((req, res) => {
     const url = new URL(req.url!, 'http://localhost');
     if (url.pathname === '/' && navigationFailure) {
@@ -174,7 +203,64 @@ beforeAll(async () => {
 }, 60000);
 afterAll(async () => {
   await browser?.close();
-  await new Promise<void>((resolve) => server?.close(() => resolve()));
+  if (server)
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
+test('a real worker update and offline-reading action coexist and reload the new build', async () => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  context.setDefaultTimeout(5000);
+  try {
+    const page = await context.newPage();
+    await page.goto(origin);
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+    selectUpdatedBuild(true);
+    await page.evaluate(async () =>
+      (await navigator.serviceWorker.getRegistration())!.update(),
+    );
+    const reload = page.getByRole('button', {
+      name: 'Reload to update',
+      exact: true,
+    });
+    await reload.waitFor({ state: 'visible' });
+    await context.setOffline(true);
+    const read = page.getByRole('button', {
+      name: 'Read offline copies',
+      exact: true,
+    });
+    await read.waitFor({ state: 'visible' });
+    const reloadHit = await reload.evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      return button.contains(
+        document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2,
+        ),
+      );
+    });
+    expect(reloadHit).toBe(true);
+    await read.click();
+    await page.getByRole('heading', { name: 'Station is offline' }).waitFor();
+    await page.getByRole('button', { name: 'Back to workspace' }).click();
+    await read.waitFor({ state: 'visible' });
+    await context.setOffline(false);
+    await read.waitFor({ state: 'hidden' });
+    await reload.click();
+    await page.waitForFunction(
+      () => document.documentElement.dataset.fixtureBuild === 'updated',
+    );
+    expect(
+      await page
+        .locator('meta[name="station-build-commit"]')
+        .getAttribute('content'),
+    ).toBe('updated-build');
+    expect(await reload.count()).toBe(0);
+  } finally {
+    await context.close();
+    selectUpdatedBuild(false);
+  }
 });
 
 test('opt-in text survives an offline reload under CSP, stays read-only, and clears on request', async () => {

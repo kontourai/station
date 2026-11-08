@@ -23,6 +23,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |
 | `execution.modelId` | Explicit model preference on that execution binding |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
+| (Station guidance) | With the `station-orchestration-instructions` Feature Preview on, Agents offered `station-control` also get Station-written guidance on using it, kept separate from `prompt`. See [orchestration instructions](self-configuring-agent.md#orchestration-instructions) |
 | `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
 | `audience` | Who besides the operator may list, read and use the Agent; absent means operator only ([reference](../reference/config.md#audience)) |
 

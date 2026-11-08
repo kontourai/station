@@ -483,8 +483,14 @@ export function ensureOrchestrationEventStream(
   if (station) {
     if (!station.isCurrent() || station.targetApiBase !== apiBase)
       return () => {};
-    authorityKey = station.runtimeKey;
+    // A host station names the host's own authority, which the app-wide
+    // transport and the dock ensure under the caller's plain key. Keying it by
+    // its runtime key made every alternating ensure of the same apiBase read
+    // as an authority change: the live stream closed, its cursor was dropped,
+    // and the reconnect's snapshot was taken for a first one, so the events
+    // in each gap never arrived. Only a remote station is its own authority.
     if (station.routeKind !== 'host') {
+      authorityKey = station.runtimeKey;
       general = false;
       sharedRealtime = false;
     }

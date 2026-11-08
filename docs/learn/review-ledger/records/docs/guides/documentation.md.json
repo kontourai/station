@@ -32,7 +32,13 @@
 
     "docs/guides/documentation-review-ledger.md",
 
-    "scripts/__tests__/learning-media.test.ts"
+    "scripts/__tests__/learning-media.test.ts",
+
+    "corpus-content.json",
+
+    "scripts/documentation-impact.mjs",
+
+    "package.json#/devDependencies/@kontourai~1corpus"
   ],
 
   "checks": [

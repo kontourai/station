@@ -24,6 +24,12 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
+`dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
+accepts `{ requestScope }` as its fourth argument. Pass a captured
+`requestScope` when a command follows a delayed confirmation or Undo window;
+authority checks apply through credential resolution, dispatch and reading the
+receipt. This does not make a server command reversible.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
@@ -4621,6 +4627,10 @@ content, while retaining the observed HTTP status (usually 200).
   `workChatConversationIds` for authorized Inbox grouping. These canonical
   Conversation IDs are a presentation projection, not a lead assignment or
   permission grant. Servers predating that projection may omit it.
+  Unscoped Task lists refresh on remount after a mutation or event invalidates
+  them, so returning to a Project shows changed Task status. Untouched cached
+  lists keep the cache-first mount policy. By default, scoped destination pickers retain
+  their fresh authorization read on every mount.
 
 ### Tracker-backed Tasks and Task memory (#4003)
 

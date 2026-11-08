@@ -100,6 +100,26 @@ materializer. Existing staging owner/tenant identity, grants and `stage_*` codes
 remain unchanged. The [CLI](cli.md#delegate) and [SDK](sdk.md#delegatetaskapibase-input-options-with-files)
 references describe cleanup and uncertain delivery outcomes.
 
+### Station orchestration instructions receipt
+
+`ResolvedAgentDefinition.stationInstructions` (`@kontourai/station-contracts/provider`)
+carries Station-owned orchestration guidance, composed for one Session from the
+Station Control tools it is actually offered. It is separate from the
+Agent-authored `systemPrompt`, and is set only for the Claude system-prompt
+append, after an authored prompt. `SessionCapabilityDeliveryMetadata.stationInstructions`
+(`StationInstructionsReceipt`) is the receipt: `version: 1`, the composed
+`sections` ids, the text `digest`, the `channel` (`system-prompt-append` or
+`first-turn`) and, for the first-turn channel, the `firstTurnText` that the
+first message carries. `delivered` is written only by the Claude adapter, after
+it checks that `station-control` is among the servers it gave the session; it
+reports whether the append reached the engine, not whether the model followed
+it. The first-turn channel never sets it, so absent means "not confirmed", not
+"not delivered". Both fields are additive and optional and are absent unless
+the `station-orchestration-instructions` Feature Preview was on when the
+Session was resolved. The
+[orchestration instructions section](../guides/self-configuring-agent.md#orchestration-instructions)
+describes delivery per engine.
+
 ## Modules
 
 `@kontourai/station-contracts/session-goal` owns provider-neutral Goal,

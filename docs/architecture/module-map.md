@@ -37,6 +37,7 @@ The optional [Durable Station Agent](#durable-station-agent) owner sits above th
 | [AccountPreferences](#accountpreferences) | Keep personal choices account-scoped and hardware preferences device-local. | `src-server/services/identity/account-preferences.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
+| [StationOrchestrationInstructions](#stationorchestrationinstructions) | Compose the Station tool guidance an Agent receives from the tools its session is actually offered. | `src-server/runtime/agents/station-orchestration-instructions.ts` |
 | [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `packages/monument/src/session-message-delivery.ts` |
 | [SessionDigest](#sessiondigest) | Account for a Session's turns from recorded events alone, in pages that never exceed a byte cap. | `src-server/services/orchestration/session-digest.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
@@ -161,6 +162,33 @@ route-level disconnect control is
 These use real framework loops and local SQLite with scripted model transport.
 See the [package contract](../../packages/agent-runtime/README.md) for supported
 forms and the separate provider, performance and release boundaries.
+
+## StationOrchestrationInstructions
+
+[StationOrchestrationInstructions](../../src-server/runtime/agents/station-orchestration-instructions.ts)
+is a pure composer: from a capability description it returns short, bounded
+sections (orchestration or delegated-child, Sessions, replies, Browser, devices,
+tool loading), their joined text and a digest. It decides what to say, never where
+it is delivered; resolvers and adapters own the channel, the preview and receipts.
+
+**Interface and ownership.** Every tool name in the text is gated on the
+`controlTools` set the caller passes, which `effectiveStationControlTools`
+derives from the Agent's selection and `stationControlToolListable` at the
+engine's assurance (`stationControlAssuranceFor`: Claude `bound`; Codex and ACP
+`delegated-custody`; other engines none). A section with no offered tool is
+omitted. A delegated session gets the delegated-child section in place of
+orchestration and is never told to use `delegate_task` or `send_message`.
+`list_delegation_targets` is bound-only, so a non-bound engine is pointed at
+`list_agents`. Sections stay within 3,500 bytes and the whole within 12,000;
+composition throws rather than truncating.
+
+**Evidence.** The
+[registry and composition tests](../../src-server/runtime/agents/__tests__/station-orchestration-instructions.test.ts)
+check every named tool against the real control catalog, the Browser tool names
+and the discovery tools. The
+[tool-choice case set](../../src-server/runtime/agents/__tests__/station-orchestration-tool-choice.test.ts)
+is a deterministic table of what the text names per session shape; it does not
+measure model behaviour.
 
 ## Local speech and media tools
 
@@ -2159,7 +2187,11 @@ context delivery not yet completed on the current Session.
 
 `OrchestrationService` parks an at-rest engine left unused past
 `idleSessionParkAfterMs`, provided it is at rest, has no active turn or reported running child work,
-has a saved resume cursor, and is not known to lack resume support.
+has a saved resume cursor, and is not known to lack resume support. "Unused" is
+measured from the later of the session row's `updatedAt` and the engine's latest
+event, so a backgrounded subagent's progress keeps its engine. An adapter that
+implements `hasOpenEngineWork` also vetoes the park while its engine still runs a
+task it never reported an end for, whatever the child-work record says.
 Parking stops the process but absorbs its exit, so the session stays dormant
 rather than ending: the next turn restarts it in place. No worktree, claim or
 room effect fires.
@@ -4639,7 +4671,12 @@ read from cgroup v2 files, including each scope's kernel `oom_kill` count
 normally killed). Orchestration's first-turn composition adds the
 budget statement for adapters declaring `workloadScope: 'engine-process'` and
 the [memory-exhaustion recovery note](../../src-server/services/orchestration/memory-exhaustion-recovery.ts)
-for a successor of a memory-killed Session; the
+for a successor of a memory-killed Session. Otherwise, the first turn after any
+engine ended with work still running gets the
+[interrupted-work recovery note](../../src-server/services/orchestration/interrupted-work-recovery.ts):
+the calls settled `unresolved` since the latest `turn.started` of the
+predecessor (for a successor) or of the Session itself (after an in-place
+restart). The
 [continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)
 sends that successor's turn through the conversation inbox, automatically
 (capped) or on a person's Continue, once per dead turn. The
