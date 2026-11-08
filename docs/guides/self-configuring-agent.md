@@ -1015,6 +1015,36 @@ parent linkage. The result is the same resumable task exposed by
 confirmation to follow its existing session, approvals, output, and interrupt
 controls.
 
+## Orchestration instructions
+
+With the `station-orchestration-instructions` Feature Preview on (off by
+default; Settings, Advanced, Feature previews), a new Session whose Agent is
+offered `station-control` also receives Station-owned guidance on when to use
+those tools: delegating with `delegate_task`, waiting with `wait_session`, and
+the browser and device tools. The text is composed from the tools the Session
+is actually offered after the Agent's tool selection, disabled tools, and the
+engine's caller assurance, so it never names a tool the Session cannot call.
+This is guidance, not authority: access, approval and the delegation rules below
+are enforced regardless.
+
+Delivery depends on the engine:
+
+- Claude with an authored Agent prompt: appended after that prompt, as
+  `stationInstructions` on the resolved definition, with receipt channel
+  `system-prompt-append`. An Agent with no authored prompt is not given an
+  append, because that would switch Claude to its preset prompt; it uses the
+  first-turn channel instead.
+- Codex, ACP and Muse: prepended to the Session's first message (receipt channel
+  `first-turn`), after the Agent prompt. Codex has no `additionalContext` channel
+  here; the existing first-message path is used.
+- A resumed engine thread is not re-sent the first-turn text, a Session's second
+  turn never repeats it, and it is withheld when `station-control` did not reach
+  the engine.
+
+The receipt is recorded under `stationInstructions` in the Session's capability
+delivery metadata (`sections`, `digest`, `channel`). Toggling the preview applies
+to Sessions started afterwards.
+
 ## Example agent
 
 Use this as an attended Station-engine Agent after configuring a usable Model

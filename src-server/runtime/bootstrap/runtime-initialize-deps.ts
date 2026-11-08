@@ -59,6 +59,8 @@ interface RuntimeInitializationContext {
   getReviewedTariffConfiguration?: InitializeRuntimeDeps['getReviewedTariffConfiguration'];
   validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
+  stationInstructionsEnabled?: InitializeRuntimeDeps['stationInstructionsEnabled'];
+  codexBoundToolsEnabled?: InitializeRuntimeDeps['codexBoundToolsEnabled'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -199,6 +201,8 @@ export function createRuntimeInitializationDeps(
     storageAdapter: context.storageAdapter,
     validateProjectTools: context.validateProjectTools,
     resolveProjectToolServers: context.resolveProjectToolServers,
+    stationInstructionsEnabled: context.stationInstructionsEnabled,
+    codexBoundToolsEnabled: context.codexBoundToolsEnabled,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
     voiceService: context.voiceService,
