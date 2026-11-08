@@ -122,6 +122,9 @@ export function planFloorInvocations(args) {
  * @param {string} options.root
  * @param {(command: string, args: string[], options: import('node:child_process').SpawnSyncOptions) => Pick<import('node:child_process').SpawnSyncReturns<Buffer>, 'status' | 'signal' | 'error'>} [options.spawnSync]
  * @param {(message: string) => void} [options.log]
+ * @param {typeof applicationCrashEvents} [options.crashEvents]
+ * @param {NodeJS.Platform} [options.platform]
+ * @param {string} [options.evidenceRoot]
  */
 export function runFloorInvocations(
   invocations,
