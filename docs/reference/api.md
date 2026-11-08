@@ -2553,6 +2553,11 @@ Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
 OpenAI-compatible Model connection; its current address/key are resolved at
 launch. `config.modelRoute` is a secret-free discovery projection, not an
 editable credential. Selecting a missing/disabled proxy refuses launch.
+Claude/Codex rows also carry `routeObservation` (`account`, `proxy`, `ambient`
+or `unknown`), read from the env the engine child receives: the server's
+environment under the connection's launch env. `origin` is scheme, host and port
+only. It is readable wherever the row is; a saved proxy's full address already
+is. Engine settings files are not read, so `account` can still be rerouted by them.
 
 A cached catalog, built-in selector, prerequisite check, and successful smoke
 are different facts. Preserve the returned source/freshness/completeness fields;

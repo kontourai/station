@@ -39,7 +39,10 @@ members or choose a person's account by fallback. See [the S3 source guide](know
 
 Each Model and Engine row shows one readiness badge beside its name; the line
 under the name holds facts, not the state. An engine whose first add failed is
-listed as **Not connected yet** instead. Model connections distinguish saved
+listed as **Not connected yet** instead. An engine Station found on this
+computer that nobody has connected is listed as **Found, not connected**; its
+**Connect** opens that engine's step in Add engine. Listing it changes nothing.
+Public registry listings stay in Add engine's own group. Model connections distinguish saved
 settings from a check that actually reached the provider:
 
 - **Ready** — the current readiness evidence permits selection; it does not prove every model or tool capability.
@@ -55,8 +58,8 @@ settings from a check that actually reached the provider:
 - **Not allowed** — the managed policy does not allow this engine. It is its own state, not **Disabled**, because there is nothing to turn on.
 - **Unreachable** — configured, but Station cannot reach it.
 
-The engine page's Status, its **Ready** step and its readiness notice show the
-same state as its row. A section tab carries an attention mark when an engine
+The engine page's header shows the same state as its row, with the reason and
+at most one fix. A section tab carries an attention mark when an engine
 cannot run agents for a reason you can fix, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
@@ -92,12 +95,41 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ---
 
+## Read an engine's page
+
+An engine's page has tabs, each with its own address
+(`/connections/engines/<id>/<tab>`); switching tabs keeps unsaved settings.
+
+- **Overview** — the route the engine actually uses, its default model, where
+  its model list comes from, any managed policy, the last **Check connection**
+  and the agents bound to it. Setup and sign-in steps appear here when the
+  engine needs them.
+- **Usage** — Station-observed usage over 7 or 30 days. Claude Code and Codex
+  are read by engine kind, with an account filter and allowance history. Other
+  engines are read by connection, on a Station that supports that filter. A
+  command engine reports context use only, so it shows no totals. Usage needs
+  `access:manage`; without it the tab says so.
+- **Models** — a searchable list with the default marked, and **Refresh
+  models**. The default is saved with **Save**.
+- **Accounts** (Claude Code and Codex) — accounts, sign-in and per-account
+  allowance.
+- **Settings** — name, routing, app home, skills and credential entries (only
+  where the engine can apply them), then the engine's own declarations as
+  facts, and **Reset** last.
+
+The route is observed from the environment Station starts the engine with:
+your account, a saved proxy, or an endpoint inherited from Station's own
+environment (its origin only). Station does not read the engine's settings
+files, so **Your account** says those can still change it; an endpoint
+Station cannot name reads **Route unknown**
+([observation](../../src-server/services/connections/engine-route-observation.ts)).
+
 ## Sign an engine profile in from a device
 
-Open **Connections → Engines → Codex** or **Claude**. The account picker shows
-saved accounts and marks the account currently in use. Picking an account changes
-what you view; it does not change the account used by runs. Existing account
-application controls remain under **Advanced**.
+Open **Connections → Engines → Codex** or **Claude**, then **Accounts**. The
+account picker shows saved accounts and marks the account currently in use.
+Picking an account changes what you view; it does not change the account used
+by runs. Existing account application controls are under **Settings**.
 
 Choose **Add account**, name it, and select **Sign in**. Codex displays a code:
 open the OpenAI page, enter the code, and approve access. Claude opens its
@@ -888,14 +920,15 @@ opens on that entry's first step.
    New chat uses the dock's current Project, or no Project when none is open.
    Choose **Done** to finish without opening a chat.
 
-A configured command-backed engine that is not ready offers **Retry check** on its
-engine page, except one the managed policy refuses (**Not allowed**), which has
-no repair; a Ready engine offers **Check connection** instead.
+A configured command-backed engine that is not ready offers **Retry check** in
+its page header, except one the managed policy refuses (**Not allowed**), which
+has no repair; a Ready engine is checked with **Check connection** on
+**Settings** instead.
 An engine whose first check never succeeded is saved but has no Agent yet; it
 is listed on the Engines page and at the top of Add engine as **Not connected
 yet**, and its page offers **Retry check**, **Remove**, and, for a custom
 engine, **Edit setup**. It is not counted as one of your engines until a check
-succeeds. A command engine's page also opens its **Connection details**: what
+succeeds. A command engine's **Settings** also open its **Connection details**: what
 it reported when it connected and the tool servers Station passes to it.
 In the Add catalogue, an app that still needs setup offers **Add and set up**:
 after its confirm step it is added, and **Finish setup** opens its page, where
@@ -1077,9 +1110,9 @@ tested against a stand-in engine that speaks the same protocol.
 ## Route an engine through a model proxy
 
 In **Models**, save an OpenAI-compatible connection with the proxy address and key.
-Then open **Engines → Claude Code** or **Engines → Codex**, select that connection
-under **Connect through**, and save. Choose a **Default model** from the discovered
-list and save it. **Check connection** sends one short message and reports whether
+Then open **Engines → Claude Code** or **Engines → Codex** → **Settings**, select
+that connection under **Connect through**, and save. Choose a **Default model** on
+**Models** and save it. **Check connection** sends one short message and reports whether
 the engine answered. A failed check is shown as **Check failed**; a model catalog
 alone does not override that result. **Refresh models** refreshes the catalog.
 

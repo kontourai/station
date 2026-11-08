@@ -6293,6 +6293,8 @@ filter; all accounts, the default profile, and a named profile remain distinct.
 `connectionId`/`modelConnectionId` filters (with `localOnly`), keyed separately.
 Gate the connection filters on the `usageConnectionFilters` capability: an
 older host ignores them and returns unfiltered totals.
+`readUsageConnectionFiltersCapability(apiBase)` from `@kontourai/station-sdk/client`
+reads it from the public handshake (`null` when the handshake is unreadable).
 The Profile receipt panel requires a scope and clears its page position when
 authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
 on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured
