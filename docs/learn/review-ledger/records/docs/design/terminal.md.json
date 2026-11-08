@@ -70,7 +70,9 @@
 
     "src-server/adapters/__tests__/fixtures/node-pty-quiet-exit.mjs",
 
-    "src-server/adapters/__tests__/fixtures/node-pty-cancel-ready.mjs"
+    "src-server/adapters/__tests__/fixtures/node-pty-cancel-ready.mjs",
+
+    "src-server/services/terminal/__tests__/terminal-journal-resize.test.ts"
   ],
 
   "checks": [
