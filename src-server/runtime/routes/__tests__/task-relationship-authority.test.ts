@@ -473,7 +473,7 @@ test('task list omits chats whose Task admission disappeared and propagates unex
   readable = false;
   const response = await h.app.request('/api/tasks');
   expect(response.status).toBe(200);
-  expect((await response.json()).data).toEqual([
+  expect(((await response.json()) as { data: unknown[] }).data).toEqual([
     expect.objectContaining({ id: h.task.id, workChatConversationIds: [] }),
   ]);
   readable = true;
@@ -483,7 +483,7 @@ test('task list omits chats whose Task admission disappeared and propagates unex
   prepare.mockRestore();
   const restored = await h.app.request('/api/tasks');
   expect(restored.status).toBe(200);
-  expect((await restored.json()).data).toEqual([
+  expect(((await restored.json()) as { data: unknown[] }).data).toEqual([
     expect.objectContaining({
       id: h.task.id,
       workChatConversationIds: ['chat'],
