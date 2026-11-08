@@ -2694,6 +2694,42 @@ function taskCapabilityScreens(): Screen[] {
                 }),
               );
             }
+            const cdp = await page.context().newCDPSession(page);
+            await cdp.send('Emulation.setTouchEmulationEnabled', {
+              enabled: true,
+            });
+            for (const width of [390, 393]) {
+              await page.setViewportSize({ width, height: viewport.height });
+              const box = await tabs.boundingBox();
+              expect(box).not.toBeNull();
+              await tabs.evaluate((strip) => {
+                strip.scrollLeft = 0;
+              });
+              const y = box!.y + box!.height / 2;
+              await cdp.send('Input.dispatchTouchEvent', {
+                type: 'touchStart',
+                touchPoints: [{ x: box!.x + box!.width - 35, y }],
+              });
+              await cdp.send('Input.dispatchTouchEvent', {
+                type: 'touchMove',
+                touchPoints: [{ x: box!.x + 35, y }],
+              });
+              await cdp.send('Input.dispatchTouchEvent', {
+                type: 'touchEnd',
+                touchPoints: [],
+              });
+              await expect
+                .poll(() => tabs.evaluate((strip) => strip.scrollLeft))
+                .toBeGreaterThan(0);
+              await expect(details).toHaveAttribute('aria-selected', 'true');
+              expect(
+                await detailsPanel.evaluate((panel) => panel.scrollTop),
+              ).toBe(panelScroll);
+            }
+            await cdp.send('Emulation.setTouchEmulationEnabled', {
+              enabled: false,
+            });
+            await cdp.detach();
             await page.setViewportSize(viewport);
           }
           await page.keyboard.press('Home');
