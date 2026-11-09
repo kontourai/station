@@ -150,3 +150,20 @@ function assertLabel(prefix: string): string {
   }
   return prefix;
 }
+
+/**
+ * The short root that holds engines' per-session `TMPDIR`s when Station's
+ * home is too long for them (`src-server/services/infra/session-tmpdir.ts`):
+ * `<system temp>/stn-<uid>/<pid>-<digest>`. It is not under
+ * {@link stationTempRoot}, whose sweep reaps by age, and its name is shared
+ * here so the CLI can recognize an agent's inherited `TMPDIR` as a
+ * Station-reaped tree.
+ */
+export function stationSessionTmpRootName(
+  uid: number | undefined = process.getuid?.(),
+): string {
+  return `stn-${uid ?? 'user'}`;
+}
+
+/** A per-session temp directory's name in that root: `<owner pid>-<digest>`. */
+export const STATION_SESSION_TMP_DIR_NAME = /^(\d+)-[0-9a-f]{16}$/;

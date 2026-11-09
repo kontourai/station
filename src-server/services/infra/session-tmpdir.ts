@@ -11,7 +11,12 @@ import {
   realpathSync,
   rmSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import {
+  STATION_SESSION_TMP_DIR_NAME,
+  stationSessionTmpRootName,
+} from '@kontourai/station-shared/temp-dir';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { tightenToOwnerOnly } from './engine-spawn-tmpdir.js';
 
@@ -22,14 +27,29 @@ import { tightenToOwnerOnly } from './engine-spawn-tmpdir.js';
  * Without it every engine shares `<home>/tmp/engine-spawn`
  * (`engine-spawn-tmpdir.ts`), which holds every session's files and so can
  * never be a place Station reads one session's images from. With the
- * `chat-host-images` Feature Preview on, a session gets
- * `<home>/tmp/session-tmp/session-<station pid>-<thread digest>`: the
- * digest keeps the thread id out of the path and the name derivable, so the
- * capture side recomputes it from the thread instead of trusting a stored
+ * `chat-host-images` Feature Preview on, a session gets a directory named
+ * `<station pid>-<thread digest>`: the digest keeps the thread id out of the
  * path. Capture reads the root recorded when the engine launched
  * ({@link sessionTempRoot}). The directory is removed when the session exits; one a crash left
  * behind is removed once its owning Station process is gone
  * ({@link reapStaleSessionTmpDirs}).
+ *
+ * The directory is the engine's whole `TMPDIR`, and the tools an agent runs
+ * create Unix sockets in it (tsx's IPC pipe `$TMPDIR/tsx-<uid>/<pid>.pipe`,
+ * ssh `ControlPath`, gpg-agent, tmux, language servers). A socket path is
+ * capped by `sun_path`: 104 bytes with its NUL on macOS, 108 on Linux. Under
+ * the default home, `<home>/tmp/session-tmp/session-<pid>-<24 hex>` was 95
+ * bytes, so tsx's pipe came to 117 and its `listen` failed with EINVAL for
+ * every agent working inside a Station session. So the directory is held to
+ * {@link SESSION_TMPDIR_MAX_BYTES}, which leaves 40 bytes under the macOS
+ * limit for `/`, the tool's own suffix, and the NUL. It lives under
+ * `<home>/tmp/session-tmp` when that fits (a short `STATION_HOME`);
+ * otherwise in a short per-user root, `stn-<uid>` directly under the system
+ * temp directory (Station's own `os.tmpdir()`, else `/tmp`), created 0700
+ * and checked to be this user's real directory before anything goes in it.
+ * When no candidate is usable, the home path is used even though it is over
+ * budget, and Windows (no POSIX socket paths in a temp directory) always
+ * uses the home path.
  *
  * The decision is taken when an engine starts. Turning the preview on does
  * not move a running engine, and turning it off does not remove a running
@@ -39,19 +59,84 @@ export function sessionTmpRoot(homeDir: string = resolveHomeDir()): string {
   return join(homeDir, 'tmp', 'session-tmp');
 }
 
-const SESSION_DIR = /^session-(\d+)-[0-9a-f]{24}$/;
+/**
+ * The longest per-session `TMPDIR`, in bytes: the 104-byte macOS `sun_path`
+ * (the smaller of the two limits) less 40 bytes left for `/`, a tool's
+ * socket name, and the terminating NUL.
+ */
+export const SESSION_TMPDIR_MAX_BYTES = 104 - 40;
 
-/** The directory a thread's engine uses, whether or not it exists yet. */
+/** Test seam: the system temp bases a short root may sit under. */
+export const sessionTmpDirTestHooks: { shortBases?: () => string[] } = {};
+
+/** Names an older Station gave its in-home session directories. */
+const LEGACY_SESSION_DIR = /^session-(\d+)-[0-9a-f]{24}$/;
+
+/**
+ * The short per-user roots, in preference order, canonical (macOS `/tmp` is
+ * `/private/tmp`, and the reaper refuses a root that resolves elsewhere).
+ */
+export function shortSessionTmpRoots(): string[] {
+  if (process.platform === 'win32') return [];
+  const bases = sessionTmpDirTestHooks.shortBases?.() ?? [tmpdir(), '/tmp'];
+  const roots: string[] = [];
+  for (const base of bases) {
+    let real: string;
+    try {
+      real = realpathSync(base);
+    } catch {
+      continue;
+    }
+    const root = join(real, stationSessionTmpRootName());
+    if (!roots.includes(root)) roots.push(root);
+  }
+  return roots;
+}
+
+function fitsSocketBudget(dir: string): boolean {
+  return Buffer.byteLength(dir) <= SESSION_TMPDIR_MAX_BYTES;
+}
+
+interface Candidate {
+  readonly root: string;
+  readonly dir: string;
+  readonly short: boolean;
+}
+
+/** Where a thread's directory may go, best first. */
+function sessionTmpDirCandidates(
+  threadId: string,
+  homeDir: string,
+  pid: number,
+): Candidate[] {
+  const digest = createHash('sha256')
+    .update(threadId)
+    .digest('hex')
+    .slice(0, 16);
+  const name = `${pid}-${digest}`;
+  const homeRoot = sessionTmpRoot(homeDir);
+  const inHome = { root: homeRoot, dir: join(homeRoot, name), short: false };
+  const fitting = [
+    inHome,
+    ...shortSessionTmpRoots().map((root) => ({
+      root,
+      dir: join(root, name),
+      short: true,
+    })),
+  ].filter((candidate) => fitsSocketBudget(candidate.dir));
+  return fitting.includes(inHome) ? fitting : [...fitting, inHome];
+}
+
+/**
+ * The directory a thread's engine gets when its preferred root is usable,
+ * whether or not it exists yet.
+ */
 export function sessionTmpDirPath(
   threadId: string,
   homeDir: string = resolveHomeDir(),
   pid: number = process.pid,
 ): string {
-  const digest = createHash('sha256')
-    .update(threadId)
-    .digest('hex')
-    .slice(0, 24);
-  return join(sessionTmpRoot(homeDir), `session-${pid}-${digest}`);
+  return sessionTmpDirCandidates(threadId, homeDir, pid)[0]!.dir;
 }
 
 let policy: ((threadId: string) => boolean) | undefined;
@@ -190,17 +275,61 @@ export function commitEngineLaunch(
   else launchedRoots.delete(threadId);
 }
 
+/** The root cannot hold the directory; the next candidate is tried. */
+const UNUSABLE = Symbol('unusable root');
+
 function createOwnDir(threadId: string): string | undefined {
-  const dir = sessionTmpDirPath(threadId);
+  for (const candidate of sessionTmpDirCandidates(
+    threadId,
+    resolveHomeDir(),
+    process.pid,
+  )) {
+    const dir = candidate.short
+      ? createInShortRoot(candidate)
+      : createInHome(candidate);
+    // A directory that exists but cannot be trusted is refused outright,
+    // not moved to another root.
+    if (dir !== UNUSABLE) return dir;
+  }
+  return undefined;
+}
+
+function createInHome({
+  root,
+  dir,
+}: Candidate): string | undefined | typeof UNUSABLE {
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   } catch {
-    return undefined;
+    return UNUSABLE;
   }
   // The parents mkdir created are masked by the umask too.
-  const root = sessionTmpRoot();
   tightenToOwnerOnly(dirname(root));
   tightenToOwnerOnly(root);
+  return ownedPrivateDir(dir) ? dir : undefined;
+}
+
+/**
+ * The shared system temp directory is writable by every user, so the root is
+ * made without `recursive` (which would follow a link planted in its place)
+ * and must then be this user's own private, real directory before a session
+ * directory is made in it. A root another user holds is passed over.
+ */
+function createInShortRoot({
+  root,
+  dir,
+}: Candidate): string | undefined | typeof UNUSABLE {
+  try {
+    mkdirSync(root, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return UNUSABLE;
+  }
+  if (!ownedPrivateDir(root)) return UNUSABLE;
+  try {
+    mkdirSync(dir, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return UNUSABLE;
+  }
   return ownedPrivateDir(dir) ? dir : undefined;
 }
 
@@ -300,27 +429,53 @@ function processAlive(pid: number): boolean {
 /**
  * Remove session temp directories whose owning Station process is gone. The
  * same ownership proof as `reapStaleSeatbeltSessionDirs`: a real directory
- * directly in the root, named for a pid, owned by this user, and no such
- * process alive. This process's own directories are left to session exit.
+ * directly in a session root, named for a pid, owned by this user, and no
+ * such process alive. Both the home root (including names an older Station
+ * used) and the short per-user roots are swept; a short root is shared by
+ * every Station instance this user runs, which is safe because a directory
+ * is only removed once its owner process is gone. This process's own
+ * directories are left to session exit.
  */
 export function reapStaleSessionTmpDirs(
   homeDir: string = resolveHomeDir(),
   deps: { isAlive?: (pid: number) => boolean; uid?: number | undefined } = {},
 ): number {
-  let root: string;
+  const isAlive = deps.isAlive ?? processAlive;
+  const uid = 'uid' in deps ? deps.uid : process.getuid?.();
+  let reaped = 0;
+  try {
+    reaped += reapRoot(sessionTmpRoot(realpathSync(homeDir)), isAlive, uid, [
+      STATION_SESSION_TMP_DIR_NAME,
+      LEGACY_SESSION_DIR,
+    ]);
+  } catch {
+    // No home: nothing of it to sweep.
+  }
+  for (const root of shortSessionTmpRoots()) {
+    reaped += reapRoot(root, isAlive, uid, [STATION_SESSION_TMP_DIR_NAME]);
+  }
+  return reaped;
+}
+
+function reapRoot(
+  root: string,
+  isAlive: (pid: number) => boolean,
+  uid: number | undefined,
+  names: readonly RegExp[],
+): number {
   let entries: string[];
   try {
-    root = sessionTmpRoot(realpathSync(homeDir));
     if (realpathSync(root) !== root) return 0;
+    if (uid !== undefined && lstatSync(root).uid !== uid) return 0;
     entries = readdirSync(root);
   } catch {
     return 0;
   }
-  const isAlive = deps.isAlive ?? processAlive;
-  const uid = 'uid' in deps ? deps.uid : process.getuid?.();
   let reaped = 0;
   for (const entry of entries) {
-    const owner = SESSION_DIR.exec(entry);
+    const owner = names
+      .map((pattern) => pattern.exec(entry))
+      .find((match) => match !== null);
     if (!owner) continue;
     const pid = Number(owner[1]);
     const path = join(root, entry);
