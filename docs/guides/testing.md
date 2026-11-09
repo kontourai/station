@@ -979,7 +979,8 @@ chat-image line). `agent-context-budget.test.ts` beside it recomputes each
 number from live source and fails when the file disagrees, so update the JSON
 to the measured values in the same change. When text shrinks, lower the
 number. `PR: Agent context budget` fails a pull request that raises any value
-above `main`'s. Cut the added text first; if the growth is worth it, a
+above its merge base's, so only the pull request's own change counts; a branch
+that predates the file passes until it merges `main`. Cut the added text first; if the growth is worth it, a
 maintainer adds the `agent-context-increase` label. On a merge conflict in the
 JSON, rerun the test and take its measured values.
 
