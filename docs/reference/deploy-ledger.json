@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-11-09T18:02:13Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261109.42668201934",
+    "sha": "309f2231d40cf86b6d2ad8c6ed4434b02fbf6e5d",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42668201934",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261109.42668201934 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "427db9ad6a6ca2cf52efa048824199f8a9da1fb2",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4728](https://github.com/kontourai/station/pull/4728) fix: don't resend first-turn budget to a resumed successor Session"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-11-09T07:25:06Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.20261109.42577827028",

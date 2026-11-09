@@ -70,6 +70,66 @@ function judge(args: string[], cwd = process.cwd()) {
 }
 
 describe('gallery-ui-findings check', () => {
+  it.each([false, true])(
+    'preserves judge exits with optional diagnostics=%s',
+    (includeDiagnostics) => {
+      const root = scratch();
+      const finding = {
+        identity: 'hit-target:overlap:First / Second',
+        detail: 'touch targets overlap',
+        ...(includeDiagnostics
+          ? {
+              diagnostics: {
+                version: 1,
+                overlapWidth: 20,
+                overlapHeight: 30,
+                firstCentreHitPresent: true,
+              },
+            }
+          : {}),
+      };
+      const dir = gallery(root, [
+        screen('home', {
+          findings: [finding],
+          measured: { controls: 2, smallTargets: 0, viewport: 390 },
+        }),
+      ]);
+      const list = allowlist(root, {});
+      const failed = judge([
+        'check',
+        `--gallery=${dir}`,
+        `--allowlist=${list}`,
+      ]);
+      expect(failed.status).toBe(1);
+      expect(failed.out).toContain(
+        'FAIL home: hit-target:overlap:First / Second — touch targets overlap',
+      );
+      expect(failed.out).toContain('1 finding(s), 1 not allowlisted');
+      writeFileSync(
+        list,
+        JSON.stringify({
+          schemaVersion: 1,
+          screens: { home: [finding.identity] },
+        }),
+      );
+      const accepted = judge([
+        'check',
+        `--gallery=${dir}`,
+        `--allowlist=${list}`,
+      ]);
+      expect(accepted.status).toBe(0);
+      expect(accepted.out).toContain('1 finding(s), 0 not allowlisted');
+      const unknown = judge([
+        'check',
+        `--gallery=${dir}`,
+        `--allowlist=${list}`,
+        '--screens=missing',
+      ]);
+      expect(unknown.status).toBe(2);
+      expect(unknown.out).toContain('missing');
+    },
+  );
+
   it('fails an unlisted finding, naming the screen and the finding', () => {
     const root = scratch();
     const dir = gallery(root, [
