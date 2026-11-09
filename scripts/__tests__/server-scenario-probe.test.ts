@@ -103,37 +103,61 @@ function response(type, id, send) {
     try { send?.(); } catch (error) { finish(error); }
   });
 }
-let receipt;
+const receipt = {};
+let failure;
+let cleanupFailure;
 try {
   const [, primed] = await Promise.all([
     response('fixture-ready'), response('fixture-native-primed'),
   ]);
+  receipt.nativeCountBeforeReset = primed.count;
   const [reset, observation] = await Promise.all([
     response('server-scenario-probe', 1, () => child.send({
       type: 'server-scenario-probe', id: 1, action: 'reset', remainingBudgetMs: 1000,
     })),
     response('fixture-reset-observation', 1),
   ]);
+  receipt.nativeCountAtResetReply = observation.count;
   if (reset.error) throw Error(reset.error);
   const actionStarted = performance.now();
   const blocked = await response('fixture-block-complete', 2, () => child.send({
     type: 'fixture-block', id: 2,
   }));
   const actionRoundTripMs = performance.now() - actionStarted;
+  receipt.actionMs = blocked.actionMs;
+  receipt.actionRoundTripMs = actionRoundTripMs;
   const sample = await response('server-scenario-probe', 3, () => child.send({
     type: 'server-scenario-probe', id: 3, action: 'sample', remainingBudgetMs: 1000,
   }));
+  receipt.sample = sample;
   if (sample.error) throw Error(sample.error);
-  receipt = {
-    nativeCountBeforeReset: primed.count,
-    nativeCountAtResetReply: observation.count,
-    actionMs: blocked.actionMs, actionRoundTripMs, sample,
-  };
+} catch (error) {
+  failure = error;
 } finally {
-  if (child.connected) child.disconnect();
-  const result = await closed;
-  if (result.code !== 0 || result.signal !== null)
-    throw Error('fixture child did not exit cleanly: ' + JSON.stringify(result));
+  let timer;
+  try {
+    if (child.connected) child.disconnect();
+    const result = await Promise.race([
+      closed,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Error('fixture child close timed out')), 2000);
+      }),
+    ]);
+    if (result.code !== 0 || result.signal !== null)
+      throw Error('fixture child did not exit cleanly: ' + JSON.stringify(result));
+  } catch (error) {
+    cleanupFailure = error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+if (failure || cleanupFailure) {
+  console.error(JSON.stringify({
+    failure: failure?.stack, cleanupFailure: cleanupFailure?.stack, receipt,
+  }));
+  if (failure && cleanupFailure)
+    throw new AggregateError([failure, cleanupFailure], 'fixture and cleanup failed');
+  throw failure ?? cleanupFailure;
 }
 console.log(JSON.stringify(receipt));
 `;
