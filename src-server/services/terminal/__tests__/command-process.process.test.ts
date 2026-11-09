@@ -6,25 +6,26 @@
  */
 import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Duplex } from 'node:stream';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
 import { buildWindowsOwnedGuard } from '../../../../scripts/lib/windows-owned-guard-build.mjs';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { spawnCommandProcess } from '../command-process.js';
 import { windowsCommandLine } from '../windows-command-guard.js';
 import { windowsNowUs } from '../windows-owned-processes.js';
 
 const windows = process.platform === 'win32';
+const makeFixtureDirectory = trackTempDirs({ lifetime: 'file' });
 const started: number[] = [];
 let guard: ReturnType<typeof buildWindowsOwnedGuard> | undefined;
 let fixtureDirectory: string | undefined;
 
 beforeAll(() => {
   if (!windows) return;
-  fixtureDirectory = mkdtempSync(join(tmpdir(), 'station-command-custody-'));
+  fixtureDirectory = makeFixtureDirectory('station-command-custody-');
   const source = resolve('scripts/windows-owned-guard.cs');
   guard = buildWindowsOwnedGuard({
     source,
@@ -50,9 +51,7 @@ beforeAll(() => {
 
 afterAll(() => {
   guard?.cleanup();
-  if (fixtureDirectory)
-    rmSync(fixtureDirectory, { recursive: true, force: true });
-  console.info('source-bound guard fixture retired', fixtureDirectory);
+  console.info('source-bound guard retired', guard?.path);
 });
 
 function alive(pid: number): boolean {
