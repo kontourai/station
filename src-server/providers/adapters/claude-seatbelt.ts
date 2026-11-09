@@ -13,7 +13,7 @@
  * refresh token on every refresh, so two holders of one login break each
  * other.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import type {
@@ -27,14 +27,13 @@ import type {
 } from '../../security/confinement/confinement-provider.js';
 import {
   canonicalPath,
+  createSeatbeltSessionDir,
   discoverSeatbeltGitLayout,
   type SeatbeltBounds,
   type SeatbeltEvidence,
   seatbeltConfigRoot,
   seatbeltGrants,
   seatbeltHiddenPaths,
-  seatbeltSessionDirPrefix,
-  seatbeltTempRoot,
   seatbeltWorkspaceRefusal,
   seatbeltWriteGrantKinds,
 } from '../../security/confinement/seatbelt.js';
@@ -236,11 +235,8 @@ export async function prepareConfinedClaudeLaunch(input: {
   stationRoot?: string;
 }): Promise<ConfinedClaudeLaunch> {
   mkdirSync(input.configDir, { recursive: true, mode: 0o700 });
-  const tempRoot = seatbeltTempRoot(input.stationHome);
-  mkdirSync(tempRoot, { recursive: true, mode: 0o700 });
-  const tmpDir = canonicalPath(
-    mkdtempSync(join(tempRoot, seatbeltSessionDirPrefix())),
-  );
+  // Short enough for agents' Unix sockets; see createSeatbeltSessionDir.
+  const tmpDir = createSeatbeltSessionDir(input.stationHome);
   const configDir = canonicalPath(input.configDir);
   const home = canonicalPath(input.home ?? homedir());
   const git = await discoverSeatbeltGitLayout(input.workspace);

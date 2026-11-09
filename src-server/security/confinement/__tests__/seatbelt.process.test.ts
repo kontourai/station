@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -29,6 +29,11 @@ import {
   confinedClaudeSpawn,
   prepareConfinedClaudeLaunch,
 } from '../../../providers/adapters/claude-seatbelt.js';
+import {
+  claimShortSessionTmpRoot,
+  SESSION_TMPDIR_MAX_BYTES,
+  shortSessionTmpRoots,
+} from '../../../services/infra/session-tmpdir.js';
 import {
   canonicalPath,
   createSeatbeltConfinementProvider,
@@ -425,6 +430,70 @@ describe.skipIf(!probe.ok)(
         rmSync(join(worktree, 'sub'), { recursive: true, force: true });
       },
     );
+
+    // #4740: this test home is under the macOS per-user temp folder, far too
+    // long for the in-home layout, so the session directory is in the short
+    // root (`/private/tmp/stn-<uid>`), and a tool's socket in it must listen
+    // under the 104-byte `sun_path` limit from inside the profile.
+    test('a Unix socket listens inside the confined TMPDIR, which stays within the socket budget', async () => {
+      const listener = join(outside, 'listen.cjs');
+      writeFileSync(
+        listener,
+        [
+          "const path = require('node:path');",
+          "const server = require('node:net').createServer();",
+          'const dir = path.join(process.env.TMPDIR, `tsx-${process.getuid()}`);',
+          "require('node:fs').mkdirSync(dir);",
+          'const socket = path.join(dir, `${process.pid}.pipe`);',
+          "server.once('error', (e) => { console.error(e.code); process.exit(3); });",
+          'server.listen(socket, () => server.close(() => console.log(Buffer.byteLength(socket))));',
+        ].join('\n'),
+      );
+      const result = await confined(
+        worktree,
+        `"${process.execPath}" "${listener}"`,
+      );
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(Number(result.stdout.trim())).toBeLessThan(104);
+      expect(Buffer.byteLength(result.launch.tmpDir)).toBeLessThanOrEqual(
+        SESSION_TMPDIR_MAX_BYTES,
+      );
+      expect(result.launch.tmpDir.startsWith(stationHome)).toBe(false);
+      expect(existsSync(result.launch.tmpDir)).toBe(false);
+    });
+
+    test('the short root beside the session directory is neither writable nor readable', async () => {
+      // Another session's directory in every short root this host offers.
+      const siblings = shortSessionTmpRoots()
+        .filter((root) => claimShortSessionTmpRoot(root))
+        .map((root) => join(root, 'session-1-sibling'));
+      expect(siblings.length).toBeGreaterThan(0);
+      for (const sibling of siblings) {
+        mkdirSync(sibling, { recursive: true });
+        writeFileSync(join(sibling, 'secret'), 'another session\n');
+      }
+      try {
+        const result = await confined(
+          worktree,
+          [
+            'echo x > "$(dirname "$TMPDIR")/escape" 2>/dev/null && exit 4',
+            ...siblings.map(
+              (sibling) => `cat "${sibling}/secret" 2>/dev/null && exit 5`,
+            ),
+            'ls "$(dirname "$TMPDIR")" 2>/dev/null && exit 6',
+            'test -d "$TMPDIR" || exit 7',
+            'exit 0',
+          ].join('\n'),
+        );
+        expect(result.status).toBe(0);
+        for (const sibling of siblings)
+          expect(existsSync(join(dirname(sibling), 'escape'))).toBe(false);
+      } finally {
+        for (const sibling of siblings)
+          rmSync(sibling, { recursive: true, force: true });
+      }
+    });
 
     test('the session temp directory is writable and the confined env points at it', async () => {
       const result = await confined(

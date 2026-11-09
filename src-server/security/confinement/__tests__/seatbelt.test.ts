@@ -6,9 +6,13 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { basename, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  sessionTmpDirTestHooks,
+  shortSessionTmpRoots,
+} from '../../../services/infra/session-tmpdir.js';
 import {
   canonicalPath,
   confineWithSeatbelt,
@@ -564,6 +568,17 @@ describe('Seatbelt posture', () => {
 
 describe('reaping stale confined-session temp directories (R9)', () => {
   const makeTempDir = trackTempDirs();
+  // Short bases under the system /tmp, never this user's real short roots.
+  const makeShortDir = trackTempDirs({ base: '/tmp' });
+
+  beforeEach(() => {
+    // The in-home cases sweep no short root; the short-root case sets one.
+    sessionTmpDirTestHooks.shortBases = () => [];
+  });
+
+  afterEach(() => {
+    sessionTmpDirTestHooks.shortBases = undefined;
+  });
 
   function layout() {
     const home = canonicalPath(makeTempDir('seatbelt-reap-'));
@@ -617,6 +632,40 @@ describe('reaping stale confined-session temp directories (R9)', () => {
     expect(reapStaleSeatbeltSessionDirs(home)).toBe(1);
     expect(existsSync(stale)).toBe(false);
   });
+
+  // #4740: a long home puts confined directories in the short per-user
+  // root, shared with unconfined sessions' TMPDIRs and other instances.
+  test.skipIf(process.platform === 'win32')(
+    'sweeps the short root by owner process, leaves unconfined session directories, and never sweeps through a link',
+    () => {
+      const { home } = layout();
+      const base = canonicalPath(makeShortDir('st'));
+      sessionTmpDirTestHooks.shortBases = () => [base];
+      const [root] = shortSessionTmpRoots();
+      mkdirSync(root!, { mode: 0o700 });
+      const make = (name: string) => {
+        mkdirSync(join(root!, name));
+        return join(root!, name);
+      };
+      const dead = make('session-999991-abcdef');
+      const live = make('session-999992-abcdef');
+      const unconfined = make(`999991-${'a'.repeat(16)}`);
+      const alive = new Set([999992]);
+      const isAlive = (pid: number) => alive.has(pid);
+      expect(reapStaleSeatbeltSessionDirs(home, { isAlive })).toBe(1);
+      expect(existsSync(dead)).toBe(false);
+      expect(existsSync(live) && existsSync(unconfined)).toBe(true);
+      // A root that is a link is not swept.
+      const linkedBase = canonicalPath(makeShortDir('st'));
+      const target = canonicalPath(makeShortDir('st'));
+      const victim = join(target, 'session-999993-abcdef');
+      mkdirSync(victim);
+      symlinkSync(target, join(linkedBase, basename(root!)));
+      sessionTmpDirTestHooks.shortBases = () => [linkedBase];
+      expect(reapStaleSeatbeltSessionDirs(home, { isAlive })).toBe(0);
+      expect(existsSync(victim)).toBe(true);
+    },
+  );
 
   test('a missing root is nothing to reap', () => {
     expect(

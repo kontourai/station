@@ -10,7 +10,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type {
   ConfinementPlan,
   ExecutionConfinementRecord,
@@ -81,7 +81,9 @@ import {
   commitEngineLaunch,
   installSessionTmpDirPolicy,
   sessionTempRoot,
+  sessionTmpDirTestHooks,
   sessionTmpRoot,
+  shortSessionTmpRoots,
 } from '../../services/infra/session-tmpdir.js';
 import {
   SendTurnRefusedError,
@@ -159,9 +161,23 @@ function deferred<T>() {
 
 describe('#2494: the Claude adapter confines a full-access workspace start with Seatbelt', () => {
   const makeTempDir = trackTempDirs();
+  // A test-owned short root under /tmp, never this user's real one.
+  const makeShortDir = trackTempDirs({ base: '/tmp' });
   let stationHome: string;
   let workspace: string;
   let adapter: ClaudeAdapter;
+
+  /**
+   * #4740: this test home is too long for a socket-safe TMPDIR in it, so a
+   * confined start's TMPDIR is a fresh `session-<pid>-<random>` in the short
+   * root.
+   */
+  function expectConfinedTmpDir(tmpdir: string | undefined): void {
+    expect(dirname(tmpdir!)).toBe(shortSessionTmpRoots()[0]);
+    expect(basename(tmpdir!)).toMatch(
+      new RegExp(`^session-${process.pid}-[A-Za-z0-9]{6}$`),
+    );
+  }
   let events: CanonicalRuntimeEvent[];
 
   function createAdapter(
@@ -205,11 +221,14 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     workspace = join(root, 'workspace');
     mkdirSync(stationHome, { recursive: true });
     mkdirSync(workspace);
+    const shortBase = canonicalPath(makeShortDir('st'));
+    sessionTmpDirTestHooks.shortBases = () => [shortBase];
     mockPlatform.mockReturnValue('linux');
   });
 
   afterEach(async () => {
     await adapter?.stopAll();
+    sessionTmpDirTestHooks.shortBases = undefined;
     mockQuery.mockReset();
     mockForkSession.mockReset();
     vi.unstubAllEnvs();
@@ -379,9 +398,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     expect(env.CLAUDE_CONFIG_DIR).toBe(
       join(stationHome, 'confined-homes', 'claude'),
     );
-    expect(env.TMPDIR).toContain(
-      join(stationHome, 'tmp', 'confined-sessions', 'session-'),
-    );
+    expectConfinedTmpDir(env.TMPDIR);
     expect(env).not.toHaveProperty('CLAUDE_SECURESTORAGE_CONFIG_DIR');
     expect(child.spawnArgs.options.cwd).toBe(workspace);
     // Spawned at Auto, with the grant the SDK only takes at spawn.
@@ -646,9 +663,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       // Recorded once for this start, not again when it is announced.
       expect(vi.mocked(commitEngineLaunch)).toHaveBeenCalledTimes(1);
       const tmpdir = spawnedEnv().TMPDIR;
-      expect(tmpdir).toContain(
-        join(stationHome, 'tmp', 'confined-sessions', 'session-'),
-      );
+      expectConfinedTmpDir(tmpdir);
       expect(sessionTempRoot('confined-images')).toBe(tmpdir);
       expect(existsSync(sessionTmpRoot(stationHome))).toBe(false);
       await adapter.stopSession('confined-images');

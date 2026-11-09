@@ -145,7 +145,8 @@ let policy: ((threadId: string) => boolean) | undefined;
  * The temp root each live session's engine was actually launched with, by
  * thread: this module's own per-session directory, or one an engine's
  * confinement created for it (Claude under Seatbelt uses its own
- * `<home>/tmp/confined-sessions/session-…`). Capture and the agent
+ * `session-<pid>-<random>`, in the same short root or
+ * `<home>/tmp/confined-sessions`). Capture and the agent
  * instruction read this rather than recomputing a path, so a session whose
  * engine never got a per-session root (preview off when it started, an
  * in-process engine, a confinement Station did not record) has none.
@@ -310,6 +311,22 @@ function createInHome({
 }
 
 /**
+ * Makes `root` (one of {@link shortSessionTmpRoots}) when it is missing, and
+ * whether it is then this user's own private, real directory. The shared
+ * system temp directory is writable by every user, so it is made without
+ * `recursive` (which would follow a link planted in its place). Seatbelt's
+ * confined sessions put their own directories in the same root.
+ */
+export function claimShortSessionTmpRoot(root: string): boolean {
+  try {
+    mkdirSync(root, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return false;
+  }
+  return ownedPrivateDir(root);
+}
+
+/**
  * The shared system temp directory is writable by every user, so the root is
  * made without `recursive` (which would follow a link planted in its place)
  * and must then be this user's own private, real directory before a session
@@ -319,12 +336,7 @@ function createInShortRoot({
   root,
   dir,
 }: Candidate): string | undefined | typeof UNUSABLE {
-  try {
-    mkdirSync(root, { mode: 0o700 });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return UNUSABLE;
-  }
-  if (!ownedPrivateDir(root)) return UNUSABLE;
+  if (!claimShortSessionTmpRoot(root)) return UNUSABLE;
   try {
     mkdirSync(dir, { mode: 0o700 });
   } catch (error) {
@@ -444,24 +456,37 @@ export function reapStaleSessionTmpDirs(
   const uid = 'uid' in deps ? deps.uid : process.getuid?.();
   let reaped = 0;
   try {
-    reaped += reapRoot(sessionTmpRoot(realpathSync(homeDir)), isAlive, uid, [
-      STATION_SESSION_TMP_DIR_NAME,
-      LEGACY_SESSION_DIR,
-    ]);
+    reaped += reapStaleSessionRoot(
+      sessionTmpRoot(realpathSync(homeDir)),
+      [STATION_SESSION_TMP_DIR_NAME, LEGACY_SESSION_DIR],
+      isAlive,
+      uid,
+    );
   } catch {
     // No home: nothing of it to sweep.
   }
   for (const root of shortSessionTmpRoots()) {
-    reaped += reapRoot(root, isAlive, uid, [STATION_SESSION_TMP_DIR_NAME]);
+    reaped += reapStaleSessionRoot(
+      root,
+      [STATION_SESSION_TMP_DIR_NAME],
+      isAlive,
+      uid,
+    );
   }
   return reaped;
 }
 
-function reapRoot(
+/**
+ * Removes the entries directly in `root` that one of `names` matches (its
+ * first group the owner pid) and whose owner process is gone: real
+ * directories, not links, owned by `uid`, in a root that is canonical and
+ * owned by `uid`. Seatbelt's sweep uses it for its own names.
+ */
+export function reapStaleSessionRoot(
   root: string,
-  isAlive: (pid: number) => boolean,
-  uid: number | undefined,
   names: readonly RegExp[],
+  isAlive: (pid: number) => boolean = processAlive,
+  uid: number | undefined = process.getuid?.(),
 ): number {
   let entries: string[];
   try {
