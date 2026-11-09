@@ -1466,6 +1466,20 @@ photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
 - blocking (serious/critical) axe violations, through
   `getBlockingAccessibilityViolations`.
 
+Overlap findings may include version 1 diagnostics copied from the same audit
+evaluation: painted boxes, control centres, intersection dimensions and centre,
+and hit-presence booleans. The first 16 admitted overlap occurrences can retain
+finite values with absolute magnitude at most 10 million CSS pixels, rounded
+to 0.01 pixels. Invalid values and occurrences beyond that limit have separate
+omission counts. Identical findings keep the first occurrence's geometry and
+record the total occurrence count; a later duplicate does not fill in missing
+diagnostics for the first. Diagnostics do not change finding identities,
+allowlist matching or verdicts, and older captures without them remain valid.
+
+Hit presence does not establish which control owns a press. These diagnostics
+do not measure scroll reachability or guarantee an atomic match with screenshot
+pixels.
+
 `node scripts/gallery-ui-findings.mjs` judges
 them against `tests/gallery-ui-findings.allowlist.json`, keyed by screen
 name plus a finding identity. The identity names the element by its stable
