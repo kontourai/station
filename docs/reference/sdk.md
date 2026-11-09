@@ -24,6 +24,12 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
+`dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
+accepts `{ requestScope }` as its fourth argument. Pass a captured
+`requestScope` when a command follows a delayed confirmation or Undo window;
+authority checks apply through credential resolution, dispatch and reading the
+receipt. This does not make a server command reversible.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
@@ -534,6 +540,13 @@ once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
 are unchanged.
+A stream opening has a 30-second deadline until response headers arrive,
+including credential resolution. `timeoutMs` changes that opening deadline;
+`null` or `0` explicitly disables it. The deadline stops at headers, so it never
+limits the lifetime of a healthy response body. An abandoned opening settles
+without waiting for a transport that ignores cancellation; a late response is
+cancelled and cannot deliver frames. `restart()` also cancels the current reader
+and retains the accepted replay cursor.
 Streams reconnect after 75 seconds without body bytes by default. Station's
 common event streams use a 30-second keepalive; Task rooms and direct-chat streams
 use 15 seconds, and Shared Project rooms use a 20-second heartbeat. Other stream
@@ -850,6 +863,32 @@ the original operation/proposal ID for uncertain retries. Image-only callers mus
 still supply nonempty message/prompt text. Bytes may expire under retention while
 history descriptors remain. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
 for limits, persistence and mixed-version behavior.
+
+### Shared Task agent request negotiation
+
+The client exports shared capability, request, withdrawal, and published-result
+operations. They use the Task room shared paths and do not fall back to personal
+delegation. Capability discovery is not admission. An unavailable or unknown
+capability prevents submission; existing hosts do not mount the shared routes.
+A caller captures the host authority and Task incarnation, and retains the
+original operation and intent for lookup or retry. An accepted acknowledgement
+must match that intent and the SHA-256 digest of its recursively key-sorted
+JSON encoding. Failure after dispatch is unconfirmed; it does not prove the request was not accepted. `placed` is
+ledger-proved placement or start, not model consumption or result success.
+Withdrawal sends a closed JSON command with the captured actor, Project, Task
+incarnation, operation and original input digest in the DELETE body. A future
+receiver must compare URL and body identities and compare those preconditions
+to the durable original before mutation; MP-X/B owns that enforcement. They do
+not grant authority. A matching versioned refusal inside a successful RPC data
+envelope reports `not-sent` only under the captured current authority. A generic
+HTTP error, malformed or mismatched reply, lost response, or authority drift
+remains unconfirmed. A withdrawal refusal means the withdrawal was not accepted;
+it does not establish that the original work stopped. A durable record in
+`refused` state remains an accepted record. Shared operations capture the host
+scope, currentness callback and live signal at entry. Published
+result reads capture the reference and Task scope before dispatch, require the
+sequence and both digests, and verify the returned Markdown content digest. No
+shared provider execution is enabled by this SDK surface.
 
 ### Task room agent requests
 
@@ -4614,6 +4653,10 @@ content, while retaining the observed HTTP status (usually 200).
   `workChatConversationIds` for authorized Inbox grouping. These canonical
   Conversation IDs are a presentation projection, not a lead assignment or
   permission grant. Servers predating that projection may omit it.
+  Unscoped Task lists refresh on remount after a mutation or event invalidates
+  them, so returning to a Project shows changed Task status. Untouched cached
+  lists keep the cache-first mount policy. By default, scoped destination pickers retain
+  their fresh authorization read on every mount.
 
 ### Tracker-backed Tasks and Task memory (#4003)
 

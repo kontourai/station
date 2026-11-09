@@ -21,7 +21,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { fastBase } from './run-ci-fast.mjs';
 
-export const CORPUS_PIN = 'b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05';
+export const CORPUS_PIN = 'dfadba4e64883e6187fb42e32911ca9f091e0fa7';
 const CORPUS_PACKAGE = `https://codeload.github.com/kontourai/corpus/tar.gz/${CORPUS_PIN}`;
 
 /** The npm arguments for one subcommand; refuses anything else. */

@@ -345,6 +345,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | --- | --- | --- | --- |
 | [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested; same-repository main-target PR merged close. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
+| [`agent-context-budget.yml`](../../.github/workflows/agent-context-budget.yml) | — | **PR: Agent context budget** | PR events, including label changes. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
@@ -794,6 +795,7 @@ npm run verify:local              # coordinated static + desktop Rust + mobile c
 npm run verify:static             # lint, ratchets, and typecheck
 npm run verify                    # broad diagnostic escalation when explicitly required
 npm run test:focused -- <file...> # exact-file focused runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
+npm run test:focused -- <file> --test-name="suite case name" # one exact fully qualified case
 npm run test:coverage             # with coverage report
 npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's NotificationContainer touch-target check)
 npm run install:playwright:ci     # CI runners: Chromium into the ambient PLAYWRIGHT_BROWSERS_PATH, bounded retry, no root (station#1648)
@@ -966,6 +968,21 @@ the override is the only way to run the gate at all.
 The gate's failure text names both variables. A transfer budget regression
 is a real finding: raise the fixture envelope only with a matching
 `policy-attribution.json` record, never by editing the bound.
+
+### Agent context budget
+
+`src-server/runtime/agents/agent-context-budget.json` records, in UTF-8 bytes,
+the context Station itself puts in front of every engine session: the
+`tools/list` of each built-in MCP server (name, description and input schema)
+and Station's injected text (orchestration instructions, workload budget,
+chat-image line). `agent-context-budget.test.ts` beside it recomputes each
+number from live source and fails when the file disagrees, so update the JSON
+to the measured values in the same change. When text shrinks, lower the
+number. `PR: Agent context budget` fails a pull request that raises any value
+above its merge base's, so only the pull request's own change counts; a branch
+that predates the file passes until it merges `main`. Cut the added text first; if the growth is worth it, a
+maintainer adds the `agent-context-increase` label. On a merge conflict in the
+JSON, rerun the test and take its measured values.
 
 ### Latest E2E screenshot evidence
 
@@ -1955,8 +1972,19 @@ these controls through the managed dependency workflow.
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
-A raw Vitest worker override is not accepted by `test:focused`, whose interface
-accepts exact paths rather than options. Use the owning runner's resource policy;
+A raw Vitest worker override is not accepted by `test:focused`. It accepts exact
+in-worktree file paths and optional repeatable `--test-name="suite case name"`
+selectors. Names include every enclosing suite title separated by spaces and
+are literal, not regular expressions. Duplicate, empty or whitespace-padded
+names are rejected. With selectors, every requested name must pass exactly once
+in the selected files; an unmatched, skipped or partially matched selection is
+nonpass even if Vitest exits zero. The wrapper checks Vitest's JSON result and
+prints the verified names. Unfiltered runs retain their existing behavior.
+
+Name selection still loads the whole selected module and its setup and imports;
+it does not waive dependency, native or fixture prerequisites. The active
+worktree root, dependency provenance, one-worker limit and timeout policy are
+unchanged. No other Vitest options are forwarded. Use the owning runner's resource policy;
 do not bypass the manifest or increase an authoritative lane's concurrency.
 
 The opt-in load-reliability lane below remains host-local evidence only. It
@@ -2342,6 +2370,16 @@ deliberately-provisioned hosts—not an edit-loop speed knob.
 at 320px and 390px it covers the header trigger, visual-viewport sheet
 containment, dismissal/focus return, chat restore, and delegated Sessions
 navigation without a connection or credential setup step.
+
+### Model evals
+
+A change to what a model sees (Station Control tool descriptions and
+schemas, refusal copy, injected instructions) cannot be proven by a unit test.
+[`scripts/evals/`](../../scripts/evals/README.md) runs a paid model against
+the real text and grades its tool calls, for example
+`npx tsx scripts/evals/station-control-tool-use/run.ts --out <dir>`. It needs
+`ANTHROPIC_API_KEY` and is never run by CI or hooks; CI runs only the graders'
+tests. Compare a change with a baseline run of `main` on the same model.
 
 ### Task-first Home and root readiness
 

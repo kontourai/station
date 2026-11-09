@@ -364,7 +364,12 @@ workspace for a confined Codex session. A No project chat runs in its own
 scratch folder, `<Station home>/scratch/<conversation>` (#4389), unless
 `AppConfig.noProjectChatFolder` is `home`; the server reads that once, at the
 conversation's first start, and a conversation that already recorded a folder
-keeps it. The scratch folder is prepared with the same safeguards as the
+keeps it. On Windows, new scratch and managed folders use
+`~/.station-workspaces/<Station home hash>/` instead of the private Station
+data root, so PowerShell can establish cwd without access to private data.
+Those Windows workspace files require separate backup and retention. On other
+platforms they remain under the Station home. Existing folders are retained.
+The scratch folder is prepared with the same safeguards as the
 managed engine workspaces, and the Codex adapter keeps it rather than making a
 second one, so a no-project Codex chat has one private folder. With the
 `home` choice a confined Codex chat is still unbound and gets its private
@@ -392,9 +397,22 @@ cards allow two title lines while status and metadata keep predictable positions
 Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed
 clock and ×, while × hides any conversation without stopping work or deleting
 history. Undo restores it on this device; inbox search reveals dismissed work with Restore.
-With Sheet gestures preview enabled, mobile rows reveal the same clock and ×
-on a left swipe, with larger targets and short labels. Swiping only reveals;
-Snooze still opens its duration picker, and Details retains the same actions.
+Long press and the visible ⋯ open the same chat actions and details on touch
+rows. One action definition supplies the desktop shortcuts, Details sheet and
+swipe tray, including availability, labels and pending state.
+With Sheet gestures preview enabled, mobile rows follow the finger on a left
+swipe and snap to reveal labelled actions. Only one row's tray stays open.
+Swiping only reveals; Snooze still opens its duration picker. Eligible
+conversations also offer Settle or Reopen when Open and Settled inbox is
+enabled. Dismiss from inbox hides work on this device; settling records the
+person's resolution across devices, and neither stops a running engine.
+The Details sheet retains the complete available action set, including actions
+also offered as shortcuts. Destructive draft discard stays outside the swipe
+tray. A server Draft remains present for an eight-second Undo window before
+discard is sent. Unmounting the discard control or changing authority cancels
+that pending deletion; success is published only after the server confirms it.
+Snooze retains a session copy when browser storage cannot be written, and
+storage events refresh snoozes in other tabs of the same browser.
 The implementation is shared by both Inbox presentations; Home and
 sidebar hosts retain their own actions.
 When Continue holds Home's only item of work, Recent work is not shown and

@@ -32,6 +32,14 @@ Markdown, and checks every emitted HTML file for broken or escaping relative
 links. It writes disposable output to `dist-pages/`; do not edit that directory
 by hand.
 
+Product images on the home page are not separate captures. The build copies
+the screens named in `PAGES_GALLERY_SCREENS` (`scripts/build-github-pages.mjs`)
+from the committed screenshot-gallery baseline in `tests/screenshots.baseline/`
+to `media/<screen>.png`, so they change when that baseline is regenerated. The
+root README embeds the same baseline images. A renamed, dropped, or volatile
+baseline screen fails the build or `product-docs-source-links.test.ts`. The
+`og:image` and `twitter:image` URLs point at the published `media/` copy.
+
 Rendered headings have section IDs from their visible text, using the same
 heading rules as the learning reader. Repeated headings receive unique numeric
 suffixes within each document. Links such as the getting-started guide's
@@ -81,8 +89,11 @@ renders no page for it and this builder never publishes it. The manifest's
 - `docs/user/workspace-checkpoints.md` and `docs/user/houston.md`: the
   unadmitted user guides.
 - `docs/reviews/personal-boards-20261016/README.md`,
-  `docs/reviews/workspace-map-20261015/README.md` and
-  `docs/ui/reviews/mobile-pickers-20261003/README.md`: dated review evidence,
+  `docs/reviews/sidebar-focus-20261107/README.md`,
+  `docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md`,
+  `docs/reviews/workspace-map-20261015/README.md`,
+  `docs/ui/reviews/mobile-pickers-20261003/README.md`, and
+  `docs/ui/reviews/station-connections-20261105/README.md`: dated review evidence,
   each listed by exact path.
 
 Admitting or withdrawing a document changes both files.

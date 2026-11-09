@@ -409,6 +409,8 @@ export interface ClaudeActiveTask {
    * events but is not child work.
    */
   ownedBySubagent?: boolean;
+  /** Set once the session end published this task's `unresolved` terminal. */
+  unresolvedPublished?: boolean;
 }
 
 /** Namespace for Claude-Code-specific `extension.notification` events. */
@@ -1479,6 +1481,60 @@ export function settleUnresolvedClaudeToolCalls({
       method: 'tool.completed',
       toolCallId,
       toolName: tracked.toolName,
+      status: 'unresolved',
+      output: CLAUDE_UNRESOLVED_TOOL_OUTPUT,
+    });
+  }
+}
+
+/**
+ * Session end: every task still in `record.activeTasks` published a
+ * `tool.started` whose terminal the engine can no longer send, so its call
+ * settles `unresolved` here.
+ *
+ * `settleUnresolvedClaudeToolCalls` cannot cover this alone: a backgrounded
+ * agent that settled (its `tool_use` marked `terminalPublished`) and was then
+ * woken again by its own background command's notification re-opens the SAME
+ * call through a new `task_started`. That call's card was left running for
+ * good when the engine stopped. Runs before `settleUnresolvedClaudeToolCalls`
+ * and marks the call `terminalPublished`, so each call settles once.
+ *
+ * The entries stay in `activeTasks`: a terminal the SDK still drains after a
+ * stop's grace settles the real outcome through `settleClaudeTask`, as it
+ * already corrects an `unresolved` tool call.
+ */
+export function settleOpenClaudeTasks({
+  provider,
+  record,
+  publish,
+  createdAt,
+}: {
+  provider: ProviderSession['provider'];
+  record: ClaudeMessageState;
+  publish: (event: CanonicalRuntimeEvent) => void;
+  createdAt?: string;
+}): void {
+  const open = record.activeTasks;
+  if (!open || open.size === 0) return;
+  const settledAt = createdAt ?? new Date().toISOString();
+  const published = new Set<string>();
+  for (const task of open.values()) {
+    if (task.unresolvedPublished) continue;
+    task.unresolvedPublished = true;
+    if (published.has(task.toolCallId)) continue;
+    published.add(task.toolCallId);
+    const trackedCall = record.activeToolCalls?.get(task.toolCallId);
+    if (trackedCall) trackedCall.terminalPublished = true;
+    publish({
+      eventId: crypto.randomUUID(),
+      provider,
+      threadId: record.session.threadId,
+      createdAt: settledAt,
+      ...(task.turnId !== undefined ? { turnId: task.turnId } : {}),
+      itemId: task.toolCallId,
+      method: 'tool.completed',
+      toolCallId: task.toolCallId,
+      toolName: task.toolName,
       status: 'unresolved',
       output: CLAUDE_UNRESOLVED_TOOL_OUTPUT,
     });

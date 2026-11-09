@@ -10,6 +10,7 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -22,7 +23,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const dispatch = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'draft-discard-test',
+    isCurrent: () => true,
+  }),
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -144,12 +149,52 @@ function accepted(threadId: string) {
   };
 }
 
+async function discardAfterUndoWindow(
+  button: HTMLElement,
+  during?: () => void,
+) {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  fireEvent.click(button);
+  await act(async () => {});
+  during?.();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(8000);
+  });
+  vi.useRealTimers();
+}
+
 describe('#2312 discarding Drafts from the inbox', () => {
   beforeEach(() => {
     localStorage.clear();
     deviceSettingsStore.reloadFromStorage();
     dispatch.mockReset();
     queryClient = new QueryClient();
+  });
+
+  it('retains Search focus after a delayed discard while still closing its open tab', async () => {
+    dispatch.mockResolvedValue(accepted(FRESH.threadId));
+    const rows = items([FRESH, WORKED], {
+      [FRESH.threadId]: {
+        agentSlug: 'fresh-agent',
+        status: 'idle',
+        orchestrationSessionStarted: true,
+        currentSessionId: FRESH.threadId,
+        conversationId: FRESH.threadId,
+        createdAt: NOW - 23 * HOUR,
+        messages: [],
+      },
+    });
+    const { onCloseChat } = renderPanel(rows, [FRESH.threadId]);
+    const search = screen.getByRole('searchbox', { name: 'Search inbox' });
+    const discard = screen.getByRole('button', {
+      name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
+    });
+    discard.focus();
+    await discardAfterUndoWindow(discard, () => search.focus());
+    await waitFor(() =>
+      expect(onCloseChat).toHaveBeenCalledWith(FRESH.threadId),
+    );
+    expect(document.activeElement).toBe(search);
   });
 
   it('an orchestration-only Draft is discarded by the server command, and the session list is re-read', async () => {
@@ -159,7 +204,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const { onCloseChat } = renderPanel(rows);
 
     const drafts = screen.getByRole('region', { name: 'Open' });
-    fireEvent.click(
+    await discardAfterUndoWindow(
       within(drafts).getByRole('button', {
         name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
       }),
@@ -171,7 +216,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
       }),
     );
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(dispatch.mock.calls[0]?.[0]).toEqual({
       type: 'discardDraft',
       threadId: FRESH.threadId,
     });
@@ -211,14 +256,14 @@ describe('#2312 discarding Drafts from the inbox', () => {
     expect(row?.orchestrationThreadId).toBe(FRESH.threadId);
     const { onCloseChat } = renderPanel(rows, [FRESH.threadId]);
 
-    fireEvent.click(
+    await discardAfterUndoWindow(
       screen.getByRole('button', { name: `Discard draft ${row?.title}` }),
     );
 
     await waitFor(() =>
       expect(onCloseChat).toHaveBeenCalledWith(FRESH.threadId),
     );
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(dispatch.mock.calls[0]?.[0]).toEqual({
       type: 'discardDraft',
       threadId: FRESH.threadId,
     });
@@ -240,7 +285,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const rows = items([FRESH]);
     renderPanel(rows);
 
-    fireEvent.click(
+    await discardAfterUndoWindow(
       screen.getByRole('button', {
         name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
       }),
@@ -263,7 +308,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const rows = items([FRESH]);
     const { onCloseChat } = renderPanel(rows, [FRESH.threadId]);
 
-    fireEvent.click(
+    await discardAfterUndoWindow(
       screen.getByRole('button', {
         name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
       }),
@@ -287,7 +332,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const rows = items([FRESH]);
     renderPanel(rows);
 
-    fireEvent.click(
+    await discardAfterUndoWindow(
       screen.getByRole('button', {
         name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
       }),
@@ -354,7 +399,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     fireEvent.click(
       screen.getByRole('button', { name: `Details for ${staleTitle}` }),
     );
-    fireEvent.click(
+    await discardAfterUndoWindow(
       await screen.findByRole(
         'button',
         { name: `Discard draft ${staleTitle}` },
@@ -363,7 +408,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     );
 
     await waitFor(() =>
-      expect(dispatch).toHaveBeenCalledWith({
+      expect(dispatch.mock.calls[0]?.[0]).toEqual({
         type: 'discardDraft',
         threadId: STALE.threadId,
       }),

@@ -44,7 +44,11 @@ import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { DelegationProvenance } from '@kontourai/station-contracts/provider';
 import { isAgentConfigNotFound } from '../../domain/config-loader-agents.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
-import { createChildDelegationContext } from './delegation.js';
+import {
+  createChildDelegationContext,
+  DEFAULT_CHILD_BLOCKED_TOOLS,
+  isDelegatedToolAllowed,
+} from './delegation.js';
 import { verifyDelegationContextAttestation } from './delegation-attestation.js';
 
 /**
@@ -62,6 +66,27 @@ class DelegationLineageUnavailableError extends Error {
     this.name = 'DelegationLineageUnavailableError';
   }
 }
+
+/**
+ * A delegated child asked to fan out (`delegate_task`, `send_message`). The
+ * in-session policy already denies these to Station's own engine; this is the
+ * same denial where an external engine's call reaches the route, so a child
+ * cannot spawn children or message Sessions by naming a tool the engine's
+ * harness never asked Station about. Checked before the depth limit: the tool
+ * is refused at any depth, not only at the last one.
+ */
+class DelegatedToolBlockedError extends Error {
+  readonly code = 'delegated_tool_blocked' as const;
+  constructor(tool: string) {
+    super(
+      `'${tool}' is not allowed in a delegated child session. Do the work yourself and return the result in your reply.`,
+    );
+    this.name = 'DelegatedToolBlockedError';
+  }
+}
+
+/** The station-control tools whose routes derive a child delegation. */
+export type DelegationFanOutTool = 'delegate_task' | 'send_message';
 
 export interface RequestDelegationSources {
   /** True only for Station's own internal principal. */
@@ -85,6 +110,11 @@ export interface RequestDelegationSources {
 }
 
 export interface ClaimedRequestDelegation {
+  /**
+   * The station-control tool the route serves. Set by the route, never read
+   * from the body, and required so a new caller of the resolver cannot omit it.
+   */
+  readonly tool: DelegationFanOutTool;
   readonly delegation?: AgentDelegationContext;
   readonly attestation?: string;
 }
@@ -237,6 +267,7 @@ async function callerIdentity(
  */
 async function deriveCallerChildDelegation(
   caller: StationControlCaller,
+  tool: DelegationFanOutTool,
   sources: Pick<
     RequestDelegationSources,
     | 'startedMetadata'
@@ -251,6 +282,25 @@ async function deriveCallerChildDelegation(
     throw new DelegationLineageUnavailableError(
       'the session recorded a malformed delegation context.',
     );
+  // The caller's own recorded context decides, before the depth limit. The
+  // built-in denials are applied here as well as read from the record, so a
+  // context recorded without them (or with an `allowedTools` that names the
+  // tool) cannot re-allow a built-in denial: `blockedTools` always wins.
+  if (
+    current &&
+    !isDelegatedToolAllowed({
+      toolName: `station-control_${tool}`,
+      delegation: {
+        ...current,
+        blockedTools: [
+          ...DEFAULT_CHILD_BLOCKED_TOOLS,
+          ...(current.blockedTools ?? []),
+        ],
+      },
+      toolNameMapping: new Map(),
+    })
+  )
+    throw new DelegatedToolBlockedError(tool);
   const { agentSlug, spec } = await callerIdentity(
     caller.sessionId,
     metadata,
@@ -279,7 +329,11 @@ export function createRequestDelegationResolver(
     const caller = sources.resolveCaller(request);
     if (caller)
       return {
-        context: await deriveCallerChildDelegation(caller, sources),
+        context: await deriveCallerChildDelegation(
+          caller,
+          claimed.tool,
+          sources,
+        ),
         provenance: 'caller-derived',
       };
     return claimed.delegation &&

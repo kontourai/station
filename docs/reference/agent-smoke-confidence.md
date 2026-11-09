@@ -626,6 +626,6 @@ exercise external adapters' passthrough or prove native policy enforcement.
 
 | Turn request | Real route owner | Validation / submitted body |
 | --- | --- | --- |
-| `POST /api/orchestration/chat` | `src-server/routes/orchestration/orchestration.ts:2916` | `foregroundMessageSchema` (`:981`, derived from `foregroundMessageObjectSchema`, `:802`); conversation ID, selected temporary Agent in `target`, expected engine, directory workspace, `model.override`, message and client turn ID. |
+| `POST /api/orchestration/chat` | `src-server/routes/orchestration/orchestration.ts:3404` | `foregroundMessageSchema` (`:981`, derived from `foregroundMessageObjectSchema`, `:802`); conversation ID, selected temporary Agent in `target`, expected engine, directory workspace, `model.override`, message and client turn ID. |
 | `POST /api/orchestration/chat/:conversationId/continue` | `orchestration.ts:3310` | `continueForegroundMessageSchema` (`:997`); message, `model.override` and client turn ID. |
 | `POST /api/orchestration/commands` | `orchestration.ts:5650` | `orchestrationCommandSchema` (`:571`); cleanup uses only `{ type: 'stopSession', threadId }`, never start/send commands. |

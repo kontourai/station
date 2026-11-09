@@ -56,6 +56,15 @@ both folders go through the same preparation, so the chat gets one private
 folder. With **Chats without a project** set to **Home folder**, the chat is
 still unbound and a confined Codex session uses the private folder here.
 
+On Windows, newly prepared scratch and managed engine folders use
+`~/.station-workspaces/<hash of Station home>/` in place of `<Station home>`.
+PowerShell reads ancestor attributes to establish its location; private Station
+data denies those reads, making relative commands start at `C:\` even when the
+process cwd is correct. Workspace placement preserves the data home's ACL and
+the engine's filesystem profile. Existing conversations keep their recorded
+folders. These Windows workspace files are external to Station home archives
+and resets; back them up and retire them separately, as with Project folders.
+
 The user home is too broad a writable sandbox root: Windows sandbox setup can
 recursively change ACLs throughout it, delaying commands and granting sandbox
 accounts access to unrelated launchers.
@@ -241,6 +250,22 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   server runs under `scripts/dev-server-watch.mts` (`tsx watch` cannot poll).
   Polling costs some CPU; leave it off where native watching works.
 
+### Free scripted turns
+
+Do not pay for a model just to watch a turn render.
+`node scripts/dev-scripted-model.mjs --port=4417` starts a loopback-only,
+Ollama-compatible server whose models are scripted scenarios:
+`scripted-showcase` (Markdown with a list, table and code block),
+`scripted-echo`, `scripted-long`, `scripted-truncated` (finish reason
+`length`) and `scripted-error` (fails mid-stream). In the dev instance, add an
+Ollama connection under Connections with base URL `http://127.0.0.1:4417` and
+pick a scenario as the model. The turn then runs through the real Ollama
+adapter, orchestration, persistence and live stream; only the model is
+replaced. It offers no tools, so a scripted turn never asks Station to run
+anything. Add the connection only to an isolated dev home, never your own.
+`--delay-ms` sets the pause between streamed pieces (default 25). Use a real
+provider's cheapest model when the test needs real model behavior.
+
 ### Linux service workload budgets
 
 When the server runs inside a `station-*.service` user unit on Linux,
@@ -418,9 +443,16 @@ an `oom_kill` no listener was told about, or a scope systemd reports as
 and peak and `session.exited` reason `memory-exhausted`. A signal alone does
 not prove OOM; an unknown count (a scope systemd already collected) leaves
 the cause unknown, and the turn and interrupted tool/child rows still settle.
-Claude Code runs in the same scopes and is told its budget, but its adapter
-does not yet read these counts: a Claude command kill is reported only by
-Claude, and Claude's own memory death is not classified as such.
+Claude Code runs in the same scopes and is told its budget. A Claude command
+kill is reported only by Claude. Claude's own death is classified the same way
+as Codex's: `engine-memory-exhausted` and reason `memory-exhausted` for a
+memory kill, otherwise `claude-engine-exited` and reason `process-exit`. The
+adapter observes the `claude` process's exit itself, because the SDK's message
+stream (streaming input mode) neither ends nor throws after a SIGKILL. An exit
+without a stop closes a stream still open 2 seconds later, then settles open
+work as interrupted, publishes the failure on the turn its work belongs to
+(the newest dispatched turn when a background subagent outlived it), and
+publishes `session.exited`.
 
 #### What engines are told
 
@@ -485,6 +517,15 @@ accepts it only from Station's own origin, so nobody can pre-claim the key. An o
 Station without the route answers 404 and the client sends the short
 continuation as an ordinary message. Ordinary connection recovery still treats
 a memory kill as manual and never replays the prompt.
+
+Any other engine end with work still running (a stop, a Station shutdown, a
+crash) gets a lighter note on the next turn, whether that turn runs in a
+successor Session or in the same Session restarted in place. It lists the
+calls the ended engine settled as `unresolved` (a backgrounded subagent is named
+by its description) and tells the agent that they are not running, that no
+completion notice will arrive, and to check what they left behind. Without it,
+the resumed conversation still shows a backgrounded subagent as started, and
+the agent reports it as running and waits for it.
 
 `npm run lint:check` and `lint:fix` share one Biome slot per OS user across
 worktrees and use at most two Biome worker threads. This prevents overlapping

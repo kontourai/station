@@ -11368,20 +11368,8 @@ export class EventStore {
         );
       }
       values.push(options.limit + 1);
-      // Immutable lineage wins. Metadata is a legacy fallback only; public
-      // starts cannot author it because conversationId is reserved.
-      const conversationId = `COALESCE(cs.conversation_id, (
-        SELECT json_extract(e.payload, '$.metadata.conversationId')
-        FROM orchestration_events e
-        WHERE e.thread_id = h.thread_id
-          AND e.method IN ('session.started', 'session.configured')
-          AND json_valid(e.payload)
-          AND json_type(e.payload, '$.metadata.conversationId') = 'text'
-        ORDER BY e.sequence DESC
-        LIMIT 1
-      ), h.thread_id)`;
-      // Environment metadata is likewise server-owned. Empty is the legacy
-      // pre-environment namespace, never a caller-selected scope.
+      const conversationId = 'cs.conversation_id';
+      // Environment identity is server-owned, independent of the requesting client.
       const environmentId = `COALESCE((
         SELECT json_extract(e.payload, '$.metadata.environmentId')
         FROM orchestration_events e
@@ -11431,7 +11419,7 @@ export class EventStore {
                     FIRST_VALUE(h.title_source) OVER meaningful
                       AS meaningful_title_source
              FROM orchestration_conversation_history h
-             LEFT JOIN orchestration_conversation_sessions cs
+             JOIN orchestration_conversation_sessions cs
                ON cs.session_id = h.thread_id
              WHERE ${memberPredicates.join(' AND ')}
              WINDOW meaningful AS (
@@ -11574,7 +11562,6 @@ export class EventStore {
    * execution sessions, in lineage order (#4266). A handoff to another engine
    * is a lineage session too, so it appears once that session exists; a
    * reserved handoff whose session never started ran nothing and is absent.
-   * A legacy conversation with no lineage rows is its own single session.
    */
   readConversationExecutionProviders(
     conversationIds: readonly string[],
@@ -11590,18 +11577,9 @@ export class EventStore {
            FROM orchestration_conversation_sessions m
            JOIN provider_session_state s ON s.thread_id = m.session_id
            WHERE m.conversation_id IN (${placeholders})
-           UNION ALL
-           SELECT s.thread_id AS conversationId, s.provider AS provider,
-                  -1 AS ordinal
-           FROM provider_session_state s
-           WHERE s.thread_id IN (${placeholders})
-             AND NOT EXISTS (
-               SELECT 1 FROM orchestration_conversation_sessions x
-               WHERE x.conversation_id = s.thread_id
-             )
            ORDER BY conversationId, ordinal`,
         )
-        .all(...chunk, ...chunk) as Array<{
+        .all(...chunk) as Array<{
         conversationId: string;
         provider: string;
       }>;
@@ -11621,27 +11599,16 @@ export class EventStore {
   }): string | undefined {
     const row = this.db
       .prepare(
-        `SELECT json_extract(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') AS model
-         FROM orchestration_events e
-         LEFT JOIN orchestration_conversation_sessions cs
-           ON cs.session_id = e.thread_id
-         WHERE e.method IN ('session.started', 'session.configured', 'turn.started')
+        `WITH candidates(thread_id) AS (
+           SELECT session_id FROM orchestration_conversation_sessions
+           WHERE conversation_id = ?
+         )
+         SELECT json_extract(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') AS model
+         FROM orchestration_events e INDEXED BY idx_events_accepted_model
+         WHERE e.thread_id IN (SELECT thread_id FROM candidates)
+           AND e.method IN ('session.started', 'session.configured', 'turn.started')
            AND json_valid(e.payload)
            AND json_type(e.payload, '$.metadata.modelSelectionReceipt.appliedModel') = 'text'
-           AND COALESCE(
-             cs.conversation_id,
-             (
-               SELECT json_extract(identity_event.payload, '$.metadata.conversationId')
-               FROM orchestration_events identity_event
-               WHERE identity_event.thread_id = e.thread_id
-                 AND identity_event.method IN ('session.started', 'session.configured')
-                 AND json_valid(identity_event.payload)
-                 AND json_type(identity_event.payload, '$.metadata.conversationId') = 'text'
-               ORDER BY identity_event.sequence DESC
-               LIMIT 1
-             ),
-             e.thread_id
-           ) = ?
            AND COALESCE((
              SELECT json_extract(environment_event.payload, '$.metadata.environmentId')
              FROM orchestration_events environment_event

@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { chmod, lstat, mkdir, realpath } from 'node:fs/promises';
+import { homedir, platform } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { resolveHomeDir } from '../../utils/paths.js';
 
@@ -8,6 +10,32 @@ const WORKSPACE_MODE = 0o700;
 const WORKSPACE_KINDS: ReadonlySet<string> = new Set(['session', 'probe']);
 const WORKSPACE_DIGEST = /^[0-9a-f]{64}$/;
 const ENGINES = ['acp', 'codex'] as const;
+
+/** Windows shells normalize cwd through ancestors that private Station data denies. */
+export function stationChatWorkspaceRoot(stationHome: string): string {
+  const home = resolve(stationHome);
+  if (platform() !== 'win32') return home;
+  const identity = createHash('sha256')
+    .update(home.toLowerCase())
+    .digest('hex');
+  return join(realpathSync(homedir()), '.station-workspaces', identity);
+}
+
+export async function prepareStationChatWorkspaceRoot(
+  stationHome: string,
+): Promise<string> {
+  const root = stationChatWorkspaceRoot(stationHome);
+  if (platform() !== 'win32') return root;
+  const profile = realpathSync(homedir());
+  return prepareStationPrivateFolder(profile, [
+    {
+      directory: join(profile, '.station-workspaces'),
+      label: 'Station workspace directory',
+      restrict: false,
+    },
+    { directory: root, label: 'Station chat workspace root', restrict: true },
+  ]);
+}
 
 /** Recognize a private workspace, including one created by another Station home. */
 export function isManagedEngineWorkspace(
@@ -20,7 +48,11 @@ export function isManagedEngineWorkspace(
     isAbsolute(cwd) &&
     engines.some((name) =>
       isContainedBy(
-        join(resolve(stationHome), 'runtime', `${name}-workspaces`),
+        join(
+          stationChatWorkspaceRoot(stationHome),
+          'runtime',
+          `${name}-workspaces`,
+        ),
         resolve(cwd),
       ),
     )
@@ -105,7 +137,7 @@ export async function prepareStationPrivateFolder(
  * Prepare a private, deterministic workspace for an otherwise-unbound engine
  * process. Session and probe identities are explicitly disjoint; repeated
  * lifecycle operations reuse their own directory without allowing probes to
- * share a session workspace. The Station-home reset is the cleanup boundary.
+ * share a session workspace. Windows keeps these outside private Station data.
  *
  * Preparation fails closed. No caller may replace failure with HOME or
  * process.cwd(), and no caller-controlled text becomes a path component.
@@ -116,7 +148,7 @@ export async function prepareManagedEngineWorkspace(
   stationHome: string = resolveHomeDir(),
 ): Promise<string> {
   const labelPrefix = engine.toUpperCase();
-  const home = resolve(stationHome);
+  const home = await prepareStationChatWorkspaceRoot(stationHome);
   const root = join(home, 'runtime', `${engine}-workspaces`);
   const digest = createHash('sha256')
     .update(JSON.stringify(identity))

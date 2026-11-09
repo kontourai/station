@@ -50,7 +50,7 @@ jobs:
       - name: Build docs-kit bundle
         continue-on-error: true
         run: >-
-          npx -y github:kontourai/corpus#b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05
+          npx -y github:kontourai/corpus#dfadba4e64883e6187fb42e32911ca9f091e0fa7
           corpus build
           --out "$RUNNER_TEMP/docs-kit-site"
           --base-url https://kontourai.github.io/station/

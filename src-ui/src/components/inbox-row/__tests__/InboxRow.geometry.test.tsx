@@ -1066,8 +1066,13 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           MIN_TOUCH_TARGET_PX,
         );
       }
-      // Snooze stays beside the row, so the sheet holds only the rest.
-      expect(labels).toEqual(['Close chat']);
+      expect(labels).toEqual([
+        '1 hour',
+        '3 hours',
+        'Tomorrow 9am',
+        'Next Monday 9am',
+        'Close chat',
+      ]);
     } finally {
       await pg.close();
     }

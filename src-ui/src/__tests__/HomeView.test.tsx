@@ -1251,11 +1251,17 @@ describe('HomeView', () => {
       }),
     ).toBeNull();
 
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fireEvent.click(
       within(drafts).getByRole('button', {
         name: 'Discard draft Fresh draft title',
       }),
     );
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    vi.useRealTimers();
 
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({
@@ -1263,7 +1269,7 @@ describe('HomeView', () => {
       }),
     );
     expect(fixtures.discardDraft).toHaveBeenCalledTimes(1);
-    expect(fixtures.discardDraft).toHaveBeenCalledWith({
+    expect(fixtures.discardDraft.mock.calls[0]?.[0]).toEqual({
       type: 'discardDraft',
       threadId: 'fresh-draft',
     });

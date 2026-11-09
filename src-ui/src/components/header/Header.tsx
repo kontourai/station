@@ -7,6 +7,7 @@ import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
 import { activatable } from '../../utils/activatable';
 import { MenuGlyph, SidebarGlyph } from '../icons/Glyph';
+import { CommandPaletteEntry } from './CommandPaletteEntry';
 import { HeaderActions } from './HeaderActions';
 import { LayoutSwitcher } from './LayoutSwitcher';
 import { RegionToolbarControls } from './RegionToolbarControls';
@@ -189,6 +190,8 @@ export function Header({ currentView, onNavigate }: HeaderProps) {
       )}
 
       <div className="app-toolbar__spacer" />
+
+      <CommandPaletteEntry />
 
       <HeaderActions
         helpPrompts={helpPrompts}
