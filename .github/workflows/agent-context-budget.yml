@@ -1,0 +1,93 @@
+name: "PR: Agent context budget"
+
+# SECURITY: this is a pull_request_target workflow. It must NEVER check out or
+# execute pull-request head code. It has no checkout step and no actions: it
+# reads the head's and main's agent-context-budget.json as data through the
+# GitHub contents API with the read-only job token, and parses them with jq
+# only. Permissions are contents: read; the label override comes from the
+# event payload and needs no further scope. scripts/actionlint-gate.mjs
+# (isExactAgentContextBudgetJob) refuses any checkout, action, extra step or
+# wider permission here.
+#
+# Fails when a pull request raises any value in agent-context-budget.json
+# above main's. src-server/runtime/agents/__tests__/agent-context-budget.test.ts
+# keeps that file equal to the context Station measurably injects, so the
+# context cannot grow without the file growing too. To accept growth on
+# purpose, a maintainer adds the agent-context-increase label
+# (docs/guides/testing.md#agent-context-budget). The head file is untrusted,
+# so it must be an object of integer byte counts with plain identifier keys
+# before anything from it reaches the log.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-context-budget-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  budget:
+    name: Agent context budget
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Compare with main
+        env:
+          BUDGET: src-server/runtime/agents/agent-context-budget.json
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ALLOW_INCREASE: ${{ contains(github.event.pull_request.labels.*.name, 'agent-context-increase') }}
+        run: |
+          # fetch <ref> <out>: 0 = fetched, 1 = file absent at ref, 2 = API error.
+          fetch() {
+            if gh api -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$REPO/contents/$BUDGET?ref=$1" > "$2" 2> fetch.err; then
+              return 0
+            fi
+            grep -q 'HTTP 404' fetch.err && return 1
+            echo "::error::Could not read $BUDGET at $1 from the GitHub API."
+            return 2
+          }
+          valid='type == "object" and (to_entries | all(
+            (.key | test("^[A-Za-z][A-Za-z0-9]{0,63}$")) and
+            (.value | type == "number" and . >= 0 and . == floor)))'
+          fetch main main.json; status=$?
+          if [ "$status" = 1 ]; then
+            echo "main has no agent context budget yet."
+            exit 0
+          fi
+          [ "$status" = 0 ] || exit 1
+          fetch "$HEAD_SHA" head.json; status=$?
+          if [ "$status" = 1 ]; then
+            echo "::error::$BUDGET was removed. Keep it, or ask a maintainer to add the agent-context-increase label."
+            [ "$ALLOW_INCREASE" = "true" ] && exit 0
+            exit 1
+          fi
+          [ "$status" = 0 ] || exit 1
+          if ! jq -e "$valid" head.json > /dev/null 2>&1; then
+            echo "::error::$BUDGET must be a JSON object of non-negative integer byte counts with identifier keys."
+            exit 1
+          fi
+          grown=$(jq -r --slurpfile main main.json '
+            to_entries[]
+            | select($main[0][.key] == null or .value > $main[0][.key])
+            | "\(.key): \($main[0][.key] // "new") -> \(.value)"
+          ' head.json)
+          if [ -z "$grown" ]; then
+            echo "Agent context is not larger than main."
+            exit 0
+          fi
+          printf 'Agent context grew compared to main:\n%s\n' "$grown"
+          if [ "$ALLOW_INCREASE" = "true" ]; then
+            echo "Accepted by the agent-context-increase label."
+            exit 0
+          fi
+          echo "::error file=$BUDGET::Agent context grew compared to main. Cut the added text, or ask a maintainer to add the agent-context-increase label."
+          exit 1
