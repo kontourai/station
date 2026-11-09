@@ -1602,9 +1602,9 @@ function taskBriefStartRecord(brief: {
 function resumesNativeTranscript(
   events: readonly { method?: unknown; metadata?: unknown }[],
 ): boolean {
-  const started = events.findLast(
-    (event) => event.method === 'session.started',
-  );
+  let started: (typeof events)[number] | undefined;
+  for (let index = events.length - 1; index >= 0 && !started; index -= 1)
+    if (events[index].method === 'session.started') started = events[index];
   return (
     !!started?.metadata &&
     typeof started.metadata === 'object' &&
