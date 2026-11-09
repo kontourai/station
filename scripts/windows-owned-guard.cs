@@ -25,6 +25,7 @@ class StationWindowsOwnedGuard {
   const int CONTROL_PENDING = 0;
   const int CONTROL_RESUME = 1;
   const int CONTROL_ABORT = 2;
+  const int CONTROL_RELEASE_UNCAPPED = 3;
   const int CONTROL_INVALID = -1;
   const uint CREATE_NO_WINDOW = 0x08000000;
   const int JobObjectBasicAccountingInformation = 1;
@@ -92,7 +93,7 @@ class StationWindowsOwnedGuard {
       var worker = new Thread(() => {
         try {
           string line = reader.ReadLine();
-          int next = line == "RESUME" ? CONTROL_RESUME : line == "ABORT" ? CONTROL_ABORT : CONTROL_INVALID;
+          int next = line == "RESUME" ? CONTROL_RESUME : line == "ABORT" ? CONTROL_ABORT : line == "RELEASE_UNCAPPED" ? CONTROL_RELEASE_UNCAPPED : CONTROL_INVALID;
           Interlocked.Exchange(ref state, next);
         } catch { Interlocked.Exchange(ref state, CONTROL_INVALID); }
       });
@@ -222,12 +223,27 @@ class StationWindowsOwnedGuard {
             if (session && abortMonitor.State != CONTROL_PENDING) return EndSession(job, writer);
             if (abortMonitor.State != CONTROL_PENDING) { KillAndReapOnce(child.hProcess, ref childReaped); return 125; }
             uint childWait = WaitForSingleObject(child.hProcess, 50);
-            if (childWait == WAIT_TIMEOUT) { if (WaitForSingleObject(parent, 0) != WAIT_TIMEOUT) { if (session) TerminateJobObject(job, 1); KillAndReapOnce(child.hProcess, ref childReaped); return 126; } continue; }
+            if (childWait == WAIT_TIMEOUT) { if (WaitForSingleObject(parent, 0) != WAIT_TIMEOUT) { if (session) return EndSession(job, writer); KillAndReapOnce(child.hProcess, ref childReaped); return 126; } continue; }
             if (session && abortMonitor.State != CONTROL_PENDING) return EndSession(job, writer);
             if (abortMonitor.State != CONTROL_PENDING) { KillAndReapOnce(child.hProcess, ref childReaped); return 125; }
-            if (childWait != WAIT_OBJECT_0 || WaitForSingleObject(parent, 0) != WAIT_TIMEOUT) { if (session) TerminateJobObject(job, 1); KillAndReapOnce(child.hProcess, ref childReaped); return 126; }
+            if (childWait != WAIT_OBJECT_0 || WaitForSingleObject(parent, 0) != WAIT_TIMEOUT) { if (session) return EndSession(job, writer); KillAndReapOnce(child.hProcess, ref childReaped); return 126; }
             uint exitCode; if (!GetExitCodeProcess(child.hProcess, out exitCode)) return 125;
-            if (session && !ReleaseJob(job)) return FailWin32("job-release");
+            if (session) {
+              // Leader exit is not a verdict on buffered output. Keep kill-on-close
+              // custody until the parent has fenced and accounted its bounded drain.
+              Send(writer, "EXIT " + exitCode.ToString(CultureInfo.InvariantCulture));
+              var deadline = DateTime.UtcNow.AddMilliseconds(CONTROL_DEADLINE_MS);
+              while (true) {
+                if (WaitForSingleObject(parent, 0) != WAIT_TIMEOUT) return EndSession(job, writer);
+                int control = abortMonitor.State;
+                if (control == CONTROL_RELEASE_UNCAPPED) {
+                  if (!ReleaseJob(job)) return FailWin32("job-release");
+                  break;
+                }
+                if (control != CONTROL_PENDING || DateTime.UtcNow >= deadline) return EndSession(job, writer);
+                Thread.Sleep(20);
+              }
+            }
             Send(writer, "COMPLETE " + exitCode.ToString(CultureInfo.InvariantCulture));
             // COMPLETE carries the target result; a successful guard protocol
             // exits zero so the launcher can distinguish it from guard failure.

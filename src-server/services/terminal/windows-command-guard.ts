@@ -12,7 +12,7 @@
  * The guard passes the command its own std handles: stdout and stderr on the
  * guard's fds 3 and 4, and stdin on fd 5, so a command tab still takes typing.
  * Its own stdin and stdout carry the control protocol (BOUND, RESUME, ABORT,
- * COMPLETE, ENDED).
+ * EXIT, RELEASE_UNCAPPED, COMPLETE, ENDED).
  */
 import {
   type ChildProcess,
@@ -49,6 +49,8 @@ export interface CommandChild {
    * rejects when that cannot be confirmed. Only a command in a Job has it.
    */
   endJob?(): Promise<void>;
+  /** Release a naturally exited Job only after its bounded output verdict. */
+  completeOutput?(): Promise<void>;
 }
 
 function run(
@@ -299,6 +301,9 @@ class GuardedCommandChild implements CommandChild {
   private ended = false;
   private diagnostic = '';
   private readonly guardExited: Promise<number | null>;
+  private readonly leaderExited: Promise<
+    [number | null, NodeJS.Signals | null]
+  >;
   private ending: Promise<void> | undefined;
 
   constructor(private readonly guard: ChildProcess) {
@@ -330,6 +335,12 @@ class GuardedCommandChild implements CommandChild {
       });
       guard.once('error', () => resolve(null));
     });
+    let leaderExited!: (
+      outcome: [number | null, NodeJS.Signals | null],
+    ) => void;
+    this.leaderExited = new Promise((resolve) => {
+      leaderExited = resolve;
+    });
     let bound!: () => void;
     let refused!: (error: GuardSpawnError) => void;
     this.started = new Promise<void>((resolve, reject) => {
@@ -352,12 +363,15 @@ class GuardedCommandChild implements CommandChild {
           this.pid = Number(binding[1]);
           guard.stdin?.write('RESUME\n');
           bound();
-        } else if (/^COMPLETE \d+$/.test(line))
+        } else if (/^EXIT \d+$/.test(line))
+          leaderExited([Number(line.slice('EXIT '.length)), null]);
+        else if (/^COMPLETE \d+$/.test(line))
           this.completed = Number(line.slice('COMPLETE '.length));
         else if (line === 'ENDED') this.ended = true;
       }
     });
     void this.guardExited.then(() => {
+      leaderExited(this.outcome());
       if (this.pid === undefined) {
         const diagnostic = this.diagnostic.trim();
         refused(
@@ -385,8 +399,11 @@ class GuardedCommandChild implements CommandChild {
     listener: (code: number | null, signal: NodeJS.Signals | null) => void,
   ): this {
     if (event === 'close')
-      this.guard.once('close', () => listener(...this.outcome()));
-    else void this.guardExited.then(() => listener(...this.outcome()));
+      void this.guardExited.then((code) => {
+        if (code === 0) listener(...this.outcome());
+        else listener(null, 'SIGKILL');
+      });
+    else void this.leaderExited.then((outcome) => listener(...outcome));
     return this;
   }
 
@@ -397,10 +414,8 @@ class GuardedCommandChild implements CommandChild {
 
   endJob(): Promise<void> {
     this.ending ??= (async () => {
-      if (this.completed === null) this.guard.stdin?.write('ABORT\n');
+      this.guard.stdin?.write('ABORT\n');
       const code = await this.guardExited;
-      // A command that had already exited by itself released its Job.
-      if (this.completed !== null) return;
       if (!(this.ended && code === 0))
         throw new Error(
           `The command or a process it started could not be confirmed ended${
@@ -409,6 +424,16 @@ class GuardedCommandChild implements CommandChild {
         );
     })();
     return this.ending;
+  }
+
+  async completeOutput(): Promise<void> {
+    if (this.ending) return this.ending;
+    this.guard.stdin?.write('RELEASE_UNCAPPED\n');
+    const code = await this.guardExited;
+    if (this.completed === null || code !== 0 || this.ending)
+      throw new Error(
+        'The command Job was not released after its output verdict',
+      );
   }
 }
 

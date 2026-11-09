@@ -105,6 +105,9 @@ class CommandProcess implements IPtyProcess {
   /** Checks the group while terminating, so emptiness is seen promptly. */
   private groupWatch: ReturnType<typeof setInterval> | undefined;
   private terminating: Promise<void> | undefined;
+  private paused = false;
+  private outputIncomplete = false;
+  private pending: string[] = [];
 
   constructor(
     private readonly child: CommandChild,
@@ -119,12 +122,18 @@ class CommandProcess implements IPtyProcess {
     child.once('exit', () => {
       this.leaderExited = true;
       this.leaderExitedUs = windowsNowUs();
+      if (this.paused) this.outputIncomplete = true;
     });
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
     const deliver = (data: string) => this.deliver(data);
     child.stdout?.on('data', deliver);
     child.stderr?.on('data', deliver);
+    for (const output of [child.stdout, child.stderr])
+      output?.on('error', () => {
+        this.outputIncomplete = true;
+        if (child.completeOutput) void this.terminate().catch(() => undefined);
+      });
     // A write to a command that has stopped reading its input is lost, as
     // input to a PTY that just exited is.
     child.stdin?.on('error', () => {});
@@ -140,18 +149,57 @@ class CommandProcess implements IPtyProcess {
         exitCode: code ?? -1,
         signal: signalNumber(signal),
         ...(this.capped && { outputCapped: true }),
+        ...((this.outputIncomplete ||
+          this.paused ||
+          this.pending.length > 0) && {
+          outputIncomplete: true,
+        }),
       };
+      this.pending = [];
       reported();
       for (const listener of [...this.exitListeners]) listener(this.exit);
     };
     // `close` follows the last byte of output; `exit` bounds how long a
     // background child holding the pipes can delay it.
-    child.once('close', report);
+    const fenceOutput = () => {
+      for (const output of [child.stdout, child.stderr]) {
+        output?.pause();
+        output?.off('data', deliver);
+        // Fence delivery first, then charge every chunk already accepted by
+        // Node before closing the pipes. Background children need not send EOF.
+        let buffered: string | null;
+        while (output && (buffered = output.read()) !== null)
+          this.deliver(buffered);
+        output?.destroy();
+      }
+    };
+    let drain: ReturnType<typeof setTimeout> | undefined;
+    child.once('close', (code, signal) => {
+      clearTimeout(drain);
+      if (child.completeOutput) fenceOutput();
+      if (child.completeOutput && signal && !this.terminating)
+        this.outputIncomplete = true;
+      report(code, signal);
+    });
     child.once('exit', (code, signal) => {
-      setTimeout(() => {
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        report(code, signal);
+      if (this.exit) return;
+      drain = setTimeout(() => {
+        if (child.completeOutput) {
+          fenceOutput();
+          if (this.pending.length) this.outputIncomplete = true;
+          if (this.capped || this.terminating || this.outputIncomplete) {
+            // Do not await terminate here: it waits for the final close report.
+            void this.terminate().catch(() => undefined);
+          } else {
+            void child.completeOutput().catch(() => {
+              this.outputIncomplete = true;
+            });
+          }
+        } else {
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          report(code, signal);
+        }
       }, PIPE_DRAIN_MS).unref();
     });
   }
@@ -161,11 +209,16 @@ class CommandProcess implements IPtyProcess {
   }
 
   pause(): void {
+    this.paused = true;
+    if (this.child.completeOutput) return;
     this.child.stdout?.pause();
     this.child.stderr?.pause();
   }
 
   resume(): void {
+    this.paused = false;
+    this.flushPending();
+    if (this.child.completeOutput) return;
     this.child.stdout?.resume();
     this.child.stderr?.resume();
   }
@@ -337,6 +390,7 @@ class CommandProcess implements IPtyProcess {
 
   onData(cb: (data: string) => void): () => void {
     this.dataListeners.add(cb);
+    this.flushPending();
     return () => this.dataListeners.delete(cb);
   }
 
@@ -363,7 +417,20 @@ class CommandProcess implements IPtyProcess {
       void this.terminate().catch(() => this.signalGroup('SIGKILL'));
       return;
     }
-    for (const listener of [...this.dataListeners]) listener(data);
+    if (this.child.completeOutput) {
+      // Cap accounting keeps flowing while the journal applies backpressure.
+      // These ordered strings are charged to the same finite cap, not a second
+      // unbounded pipe buffer; they are never forwarded while delivery is paused.
+      this.pending.push(data);
+      this.flushPending();
+    } else for (const listener of [...this.dataListeners]) listener(data);
+  }
+
+  private flushPending(): void {
+    while (!this.paused && this.dataListeners.size && this.pending.length) {
+      const data = this.pending.shift()!;
+      for (const listener of [...this.dataListeners]) listener(data);
+    }
   }
 
   private signalGroup(signal: NodeJS.Signals): void {

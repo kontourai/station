@@ -5,13 +5,55 @@
  * or from the output cap.
  */
 import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { Duplex } from 'node:stream';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
+import { buildWindowsOwnedGuard } from '../../../../scripts/lib/windows-owned-guard-build.mjs';
 import { spawnCommandProcess } from '../command-process.js';
-import { resolveWindowsCommandGuard } from '../windows-command-guard.js';
+import { windowsCommandLine } from '../windows-command-guard.js';
 import { windowsNowUs } from '../windows-owned-processes.js';
 
 const windows = process.platform === 'win32';
 const started: number[] = [];
+let guard: ReturnType<typeof buildWindowsOwnedGuard> | undefined;
+let fixtureDirectory: string | undefined;
+
+beforeAll(() => {
+  if (!windows) return;
+  fixtureDirectory = mkdtempSync(join(tmpdir(), 'station-command-custody-'));
+  const source = resolve('scripts/windows-owned-guard.cs');
+  guard = buildWindowsOwnedGuard({
+    source,
+    tempDirectory: fixtureDirectory,
+    spawnProcess: (file, args, options) =>
+      spawnSyncBounded(file, args, {
+        ...options,
+        windowsHide: true,
+        timeout: 60_000,
+      }),
+  });
+  console.info('source-bound Job guard', {
+    source,
+    sourceSHA256: createHash('sha256')
+      .update(readFileSync(source))
+      .digest('hex'),
+    executable: guard.path,
+    executableSHA256: createHash('sha256')
+      .update(readFileSync(guard.path))
+      .digest('hex'),
+  });
+}, 120_000);
+
+afterAll(() => {
+  guard?.cleanup();
+  if (fixtureDirectory)
+    rmSync(fixtureDirectory, { recursive: true, force: true });
+  console.info('source-bound guard fixture retired', fixtureDirectory);
+});
 
 function alive(pid: number): boolean {
   try {
@@ -22,9 +64,9 @@ function alive(pid: number): boolean {
   }
 }
 
-afterEach(() => {
+afterEach(async () => {
   // Only processes this file started, by the pids they reported.
-  for (const pid of started.splice(0))
+  for (const pid of started.splice(0)) {
     if (alive(pid))
       if (windows)
         spawnSync('taskkill', ['/F', '/PID', String(pid)], {
@@ -32,6 +74,9 @@ afterEach(() => {
           windowsHide: true,
         });
       else process.kill(pid, 'SIGKILL');
+    await expect.poll(() => alive(pid), { timeout: 10_000 }).toBe(false);
+    console.info('owned fixture retired', pid);
+  }
 });
 
 /** Runs `script` as the command and collects what it prints. */
@@ -46,7 +91,7 @@ async function run(
     cwd: process.cwd(),
     env: process.env,
     ...(outputCapBytes !== undefined && { outputCapBytes }),
-    ...(windowsGuard !== undefined && { windowsGuard }),
+    windowsGuard: windowsGuard === undefined ? guard?.path : windowsGuard,
   });
   started.push(proc.pid);
   let text = '';
@@ -106,6 +151,83 @@ const child = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); c
 setInterval(() => {}, 1000);
 `;
 
+/** The real session protocol with control stdin retained by this test owner. */
+function controlledSession(parentPid = process.pid) {
+  if (!guard) throw new Error('Source-bound Job guard was not built');
+  const identity = spawnSyncBounded(
+    guard.path,
+    ['--identity', String(parentPid)],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 60_000,
+    },
+  );
+  if (identity.error || identity.status !== 0)
+    throw new Error(`Parent identity failed: ${identity.stderr}`);
+  const script = `
+require('node:child_process').spawn(process.execPath, ['-e', "console.log('pid:' + process.pid); setInterval(() => {}, 1000)"], { stdio: 'inherit', detached: true, windowsHide: true }).unref();
+process.stdin.once('data', () => process.exit(7));
+`;
+  const child = nodeSpawn(
+    guard.path,
+    [
+      '--session',
+      String(parentPid),
+      identity.stdout.trim(),
+      process.execPath,
+      windowsCommandLine(process.execPath, ['-e', script], false),
+    ],
+    {
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe'],
+    },
+  );
+  if (child.pid) started.push(child.pid);
+  const exited = new Promise<number | null>((done) =>
+    child.once('close', done),
+  );
+  let control = '';
+  let output = '';
+  let resumed = false;
+  child.stdout!.setEncoding('utf8');
+  child.stdout!.on('data', (data: string) => {
+    control += data;
+    const bound = /^BOUND (\d+) \S+/m.exec(control);
+    if (bound && !resumed) {
+      started.push(Number(bound[1]));
+      resumed = true;
+      child.stdin!.write('RESUME\n');
+    }
+  });
+  child.stdin!.on('error', () => {});
+  const stdout = child.stdio[3];
+  const stdin = child.stdio[5];
+  if (!(stdout instanceof Duplex) || !(stdin instanceof Duplex))
+    throw new Error('Session fixture pipes unavailable');
+  stdout.setEncoding('utf8');
+  stdout.on('data', (data: string) => {
+    output += data;
+  });
+  stdin.on('error', () => {});
+  return {
+    child,
+    exited,
+    control: () => control,
+    async leaderExit() {
+      await expect
+        .poll(() => /pid:(\d+)/.exec(output)?.[1], { timeout: 20_000 })
+        .toBeDefined();
+      const descendant = Number(/pid:(\d+)/.exec(output)![1]);
+      started.push(descendant);
+      stdin.write('exit\n');
+      await expect.poll(() => control, { timeout: 20_000 }).toContain('EXIT 7');
+      expect(alive(descendant)).toBe(true);
+      return descendant;
+    },
+  };
+}
+
 describe.skipIf(windows)('command termination custody (POSIX)', () => {
   it('Stop ends a child that ignores SIGTERM after its parent exits', async () => {
     const { proc, pidsOf } = await run(STUBBORN_CHILD);
@@ -135,6 +257,80 @@ setTimeout(() => setInterval(() => process.stdout.write('x'.repeat(65536)), 1), 
 });
 
 describe.runIf(windows)('command termination custody (Windows)', () => {
+  it('the output cap retains custody after fast leader exit while delivery is paused', async () => {
+    const { proc, exited, pidsOf, read } = await run(
+      `
+require('node:child_process').spawn(process.execPath, ['-e', "console.log('pid:' + process.pid); setInterval(() => {}, 1000)"], { stdio: 'inherit', detached: true, windowsHide: true }).unref();
+process.stdin.once('data', () => process.stdout.write('x'.repeat(2048), () => process.exit(0)));
+`,
+      1024,
+    );
+    const [child] = await pidsOf(1);
+    expect(alive(child!)).toBe(true);
+    proc.pause();
+    proc.write('flush\n');
+    const event = await exited;
+    console.info('paused-cap verdict', {
+      event,
+      deliveredBytes: Buffer.byteLength(read()),
+      leader: proc.pid,
+      child,
+      leaderAlive: alive(proc.pid),
+      childAlive: alive(child!),
+    });
+    expect.soft(event.outputCapped).toBe(true);
+    expect.soft(Buffer.byteLength(read())).toBeLessThanOrEqual(1024);
+    expect.soft(alive(proc.pid)).toBe(false);
+    expect(alive(child!)).toBe(false);
+  }, 120_000);
+
+  it.each([
+    { name: 'Stop after EXIT', action: 'ABORT\n' },
+    { name: 'control EOF after EXIT', action: null },
+    { name: 'invalid acknowledgement after EXIT', action: 'INVALID\n' },
+    { name: 'missing acknowledgement after EXIT', action: '' },
+  ])(
+    'fails closed for $name',
+    async ({ action }) => {
+      const session = controlledSession();
+      const descendant = await session.leaderExit();
+      if (action === null) session.child.stdin!.end();
+      else if (action) session.child.stdin!.write(action);
+      expect(await session.exited).toBe(0);
+      expect(session.control()).toContain('ENDED');
+      expect(session.control()).not.toContain('COMPLETE');
+      expect(alive(descendant)).toBe(false);
+    },
+    60_000,
+  );
+
+  it('ends the Job after EXIT when its parent dies with control still open', async () => {
+    const parent = nodeSpawn(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      {
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    );
+    if (!parent.pid) throw new Error('Parent fixture did not start');
+    started.push(parent.pid);
+    const parentExited = new Promise<void>((done) =>
+      parent.once('exit', () => done()),
+    );
+    const session = controlledSession(parent.pid);
+    const descendant = await session.leaderExit();
+    const killedAt = Date.now();
+    parent.kill('SIGKILL');
+    await parentExited;
+    expect(session.child.stdin!.writable).toBe(true);
+    expect(await session.exited).toBe(0);
+    expect(Date.now() - killedAt).toBeLessThan(5_000);
+    expect(session.control()).toContain('ENDED');
+    expect(session.control()).not.toContain('COMPLETE');
+    expect(alive(descendant)).toBe(false);
+  }, 60_000);
+
   it('Stop ends the command, its child and its grandchild', async () => {
     const tree = `
 const { spawn } = require('node:child_process');
@@ -191,6 +387,7 @@ setTimeout(() => setInterval(() => process.stdout.write('x'.repeat(65536)), 1), 
       ],
       cwd: process.cwd(),
       env: process.env,
+      windowsGuard: guard?.path,
     });
     started.push(proc.pid);
     let text = '';
@@ -213,8 +410,7 @@ setTimeout(() => setInterval(() => process.stdout.write('x'.repeat(65536)), 1), 
   }, 60_000);
 
   it('Stop fails when the Job cannot be confirmed ended, never reporting success', async () => {
-    const guard = await resolveWindowsCommandGuard();
-    expect(guard).toBeTruthy();
+    expect(guard?.path).toBeTruthy();
     // A guard that binds, then answers ABORT without confirming the Job ended.
     const unconfirmed = `
 process.stdout.write('BOUND ' + process.pid + ' 2026-01-01T00:00:00.0000000Z\\n');
@@ -231,7 +427,7 @@ setInterval(() => {}, 1000);
         args: ['-e', 'setInterval(() => {}, 1000)'],
         cwd: process.cwd(),
         env: process.env,
-        windowsGuard: guard,
+        windowsGuard: guard?.path,
       },
       (_guard, _args, options) =>
         nodeSpawn(process.execPath, ['-e', unconfirmed], options),
