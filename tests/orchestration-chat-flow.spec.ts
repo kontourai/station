@@ -885,11 +885,12 @@ test.describe('Orchestration Chat Flow', () => {
     answer = 'settled';
     await page.setViewportSize({ width: 360, height: 800 });
     await sheetAllow.click();
-    await expect(sheet.getByRole('status')).toHaveText(
-      'This request is no longer open.',
-    );
-    await expect(sheetAllow).toBeDisabled();
-    await expectClearLayout('no longer open 360', '.request-sheet-trigger', 1);
+    // Station says the request is settled: this view missed its resolution.
+    // It leaves the sheet (here its only request, so the sheet closes) rather
+    // than staying on screen as the request to answer, and the view catches
+    // its history up.
+    await expect(sheet).toBeHidden();
+    await expectClearLayout('settled 360', '.request-sheet-trigger', 1);
 
     // A desktop viewport (above the 768px breakpoint, so the shared mobile
     // `[class*="__actions"]` wrap rule does not apply) with the card in the

@@ -6263,6 +6263,8 @@ export async function delegateTask(
             input: {
               threadId: sessionId,
               provider: resolved.provider,
+              // Durable Tasks must retain the native transcript their resume cursor names.
+              persistSession: true,
               ...(resolvedCwd ? { cwd: resolvedCwd } : {}),
               ...(resolved.workspace?.kind === 'project'
                 ? { workspaceIsolation: resolved.workspace.workspaceIsolation }

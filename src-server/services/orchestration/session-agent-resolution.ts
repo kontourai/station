@@ -59,6 +59,12 @@ import {
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
+import {
+  composeStationInstructions,
+  effectiveStationControlTools,
+  stationControlAssuranceFor,
+  wrapFirstTurnStationInstructions,
+} from '../../runtime/agents/station-orchestration-instructions.js';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
@@ -93,6 +99,16 @@ interface SessionAgentResolverOptions {
    */
   isCoordinatorSession?: (threadId: string) => boolean;
   coordinatorGenerationForSession?: (threadId: string) => number;
+  /**
+   * The `station-orchestration-instructions` Feature Preview. Read at each
+   * resolution, never cached: off (or absent) stamps no receipt and attaches
+   * no `stationInstructions`.
+   */
+  stationInstructionsEnabled?: () => boolean;
+  /** HTTP progressive tool disclosure is on (adds the family-loading line). */
+  progressiveToolsEnabled?: () => boolean;
+  /** The `codex-bound-browser-device-tools` preview (Codex browser/device tools). */
+  codexBoundToolsEnabled?: () => boolean;
 }
 
 type ResolveSessionAgent = (
@@ -280,6 +296,102 @@ async function resolveCapability<T>(
 }
 
 class ToolApprovalDeliveryError extends Error {}
+
+/**
+ * Station-owned orchestration instructions for this session, composed from
+ * the station-control tools it is actually offered. Preview-gated, and only
+ * when station-control resolved onto the definition.
+ *
+ * Channel: Claude with an authored prompt appends after it
+ * (`definition.stationInstructions`); setting an append with no authored
+ * prompt would flip Claude to the preset prompt, so Claude without one, and
+ * every engine whose matrix names `instructionsInFirstTurn`, receipts the
+ * first turn instead. A resumed engine thread gets NO first-turn stamp (it
+ * would duplicate into the thread). Claude's append is per-process, so it is
+ * re-attached on resume.
+ */
+function resolveStationInstructions(args: {
+  options: SessionAgentResolverOptions;
+  input: ProviderSessionStartInput;
+  definition: ResolvedAgentDefinition;
+  report: SessionCapabilityDeliveryMetadata;
+  authoredPrompt: string | undefined;
+  spec: AgentSpec;
+}): void {
+  const { options, input, definition, report, authoredPrompt, spec } = args;
+  if (options.stationInstructionsEnabled?.() !== true) return;
+  const control = definition.toolServers?.find(
+    (server) => server.id === 'station-control',
+  );
+  if (!control) return;
+  const provider = input.provider;
+  const assurance = stationControlAssuranceFor(provider);
+  if (!assurance) return;
+  const catalog = stationControlToolCatalog().map((tool) => tool.name);
+  const controlTools = effectiveStationControlTools(
+    control,
+    catalog,
+    assurance,
+  );
+  const boundChannel =
+    provider === 'codex' && options.codexBoundToolsEnabled?.() === true;
+  const browserAllowed = definition.browserTools !== false;
+  const harness =
+    provider === 'claude' ||
+    provider === 'codex' ||
+    provider === 'acp' ||
+    provider === 'muse'
+      ? provider
+      : 'other';
+  // Device tools are bound-only, so the custody-filtered `controlTools` never
+  // holds them. Codex gets them through its own bound channel
+  // (`station-bound-tools`, offered at thread start unless the control server
+  // is coordinator-derived), narrowed by the same allow/disable lists; name
+  // exactly those, and only when that channel is on.
+  const channelDeviceTools =
+    boundChannel && !control.coordinatorDerived
+      ? [...effectiveStationControlTools(control, catalog, 'bound')].filter(
+          (name) => name.startsWith('device_'),
+        )
+      : [];
+  const composed = composeStationInstructions({
+    controlTools: new Set([...controlTools, ...channelDeviceTools]),
+    browser: browserAllowed && (provider === 'claude' || boundChannel),
+    devices: boundChannel
+      ? channelDeviceTools.includes('device_open')
+      : controlTools.has('device_open'),
+    delegated: Boolean(input.metadata?.delegation),
+    harness,
+    toolSearch: provider === 'claude' && spec.tools?.mcpLoading !== 'always',
+    progressiveFamilies: options.progressiveToolsEnabled?.() === true,
+  });
+  if (!composed) return;
+  const base = {
+    version: 1 as const,
+    sections: composed.sections.map((section) => section.id),
+    digest: composed.digest,
+  };
+  if (
+    provider === 'claude' &&
+    authoredPrompt !== undefined &&
+    definition.systemPrompt !== undefined
+  ) {
+    definition.stationInstructions = composed.text;
+    report.stationInstructions = { ...base, channel: 'system-prompt-append' };
+    return;
+  }
+  if (input.resumeCursor !== undefined) return;
+  const firstTurnChannel =
+    provider === 'claude' ||
+    ENGINE_CAPABILITY_MATRICES[provider]?.instructionsInFirstTurn?.state ===
+      'session';
+  if (!firstTurnChannel) return;
+  report.stationInstructions = {
+    ...base,
+    channel: 'first-turn',
+    firstTurnText: wrapFirstTurnStationInstructions(composed.text),
+  };
+}
 
 export function createSessionAgentResolver(
   options: SessionAgentResolverOptions,
@@ -666,6 +778,15 @@ export function createSessionAgentResolver(
           };
         }
       }
+
+      resolveStationInstructions({
+        options,
+        input,
+        definition,
+        report,
+        authoredPrompt,
+        spec,
+      });
 
       // Agent settings augment slice B: the model-field footgun.
       // `AgentSpec.model` is the Station-engine field — read only for an

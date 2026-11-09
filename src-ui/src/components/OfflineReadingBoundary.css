@@ -17,7 +17,34 @@
 }
 .offline-reading-launcher {
   position: fixed;
-  bottom: var(--k-space-4);
-  right: var(--k-space-4);
-  z-index: var(--layer-sticky);
+  inset-block-end: calc(var(--dock-bottom-clearance, 0px) + var(--k-space-4));
+  inset-inline-end: calc(var(--safe-right, 0px) + var(--k-space-4));
+  z-index: var(--layer-floating-action);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  max-inline-size: calc(
+    100vw -
+    var(--safe-left, 0px) -
+    var(--safe-right, 0px) -
+    2 *
+    var(--k-space-4)
+  );
+  padding: var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+/* Only WebOfflineShell's update status moves when the offline reader also
+   offers its action; the two callers must not share the same fixed corner. */
+:root:has(.offline-reading-launcher:not([role="status"]))
+  .offline-reading-launcher[role="status"] {
+  inset-block-start: calc(
+    var(--chat-visual-viewport-top, 0px) +
+    var(--app-toolbar-total-height, 0px) +
+    var(--k-space-4)
+  );
+  inset-block-end: auto;
 }

@@ -1043,6 +1043,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       input: {
         threadId: 'task:11111111-1111-4111-8111-111111111111',
         provider: 'station-agent',
+        persistSession: true,
         metadata: {
           agentId: 'reviewer',
           targetKind: 'agent',
@@ -5469,6 +5470,28 @@ describe('readRelayingLocalRefusal', () => {
     expect(error.cause).toBeInstanceOf(LocalStationRefusal);
     expect(error.cause).toMatchObject({
       refusalCode: 'delegation_depth_exceeded',
+    });
+  });
+
+  test('delegated_tool_blocked reaches the MCP caller as a coded error result', async () => {
+    const { delegationToolResult } = await import(
+      '../station-control-shared.js'
+    );
+    const error = await failed(
+      'current',
+      new StationHttpError(403, "'delegate_task' is not allowed here.", {
+        code: 'delegated_tool_blocked',
+      }),
+    );
+
+    const result = await delegationToolResult(async () => {
+      throw error;
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({
+      success: false,
+      code: 'delegated_tool_blocked',
     });
   });
 

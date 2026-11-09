@@ -234,7 +234,8 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
           }
         : undefined,
       onDraftDiscarded: (item: HomeWorkItem, action: HTMLButtonElement) => {
-        beforeRemoval(action);
+        if (action.closest('.inbox-row')?.contains(document.activeElement))
+          beforeRemoval(action);
         if (item.chatSessionId && openChatIds.has(item.chatSessionId))
           onCloseChat?.(item.chatSessionId);
       },

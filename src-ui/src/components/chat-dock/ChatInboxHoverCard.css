@@ -44,6 +44,7 @@
 
 .chat-dock-inbox-hover-card__meta dt {
   flex: 0 0 62px;
+  white-space: nowrap;
   color: var(--text-muted);
   font-size: var(--k-text-sm);
   text-transform: uppercase;

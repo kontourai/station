@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
   useCreateTaskMutation,
   useCreateTaskReferenceMutation,
   useDispatchTaskMutation,
+  useTasksQuery,
   useUpdateTaskStatusMutation,
 } from '../query-domains/taskGraph';
 import { taskQueries } from '../queryFactories';
@@ -154,3 +155,63 @@ test.each([
     }
   },
 );
+
+test('returning to a Project refreshes a status changed while its Task list was unmounted', async () => {
+  let status = 'todo';
+  let reads = 0;
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/api/tasks' && init?.method === undefined) {
+      expect(url.searchParams.get('projectId')).toBe('alpha');
+      reads += 1;
+      return Response.json({
+        success: true,
+        data: [{ id: 'task-one', status }],
+      });
+    }
+    if (
+      url.pathname === '/api/tasks/task-one/status' &&
+      init?.method === 'PATCH'
+    ) {
+      status = JSON.parse(String(init.body)).status;
+      return Response.json({ success: true, data: { id: 'task-one', status } });
+    }
+    throw new Error(`Unexpected request: ${init?.method ?? 'GET'} ${url}`);
+  });
+  vi.stubGlobal('fetch', fetch);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, refetchOnMount: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  let list = renderHook(() => useTasksQuery('alpha'), { wrapper });
+  const changeStatus = renderHook(() => useUpdateTaskStatusMutation(), {
+    wrapper,
+  });
+  try {
+    await waitFor(() =>
+      expect(list.result.current.data?.[0]?.status).toBe('todo'),
+    );
+    list.unmount();
+    list = renderHook(() => useTasksQuery('alpha'), { wrapper });
+    expect(list.result.current.data?.[0]?.status).toBe('todo');
+    expect(reads).toBe(1);
+    list.unmount();
+    await act(async () => {
+      await changeStatus.result.current.mutateAsync({
+        taskId: 'task-one',
+        status: 'in_progress',
+      });
+    });
+    list = renderHook(() => useTasksQuery('alpha'), { wrapper });
+    await waitFor(() =>
+      expect(list.result.current.data?.[0]?.status).toBe('in_progress'),
+    );
+    expect(reads).toBe(2);
+  } finally {
+    list.unmount();
+    changeStatus.unmount();
+    client.clear();
+  }
+});
