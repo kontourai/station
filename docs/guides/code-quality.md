@@ -42,7 +42,7 @@ historical measurements, not deadlines or guarantees on the current host. The ho
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
 | `npm run proof:repo-governance` | ~4s | a governance-proof violation. Until 2026-09-14 this proof was composed only by `full:regression:raw`, which no pull-request, push or merge-queue trigger reaches, so two violations landed on `main` while the Nightly that owned them was itself red |
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a verified baseline at the merge base when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
-| `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
+| `node scripts/check-prepush-static-gates.mjs` | ~7s before the windowsHide ratchet (~4s) joined, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208), or a new child-process launch without `windowsHide` |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
