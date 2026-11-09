@@ -19,7 +19,7 @@ unit tests in `scripts/__tests__/`. A run needs `ANTHROPIC_API_KEY` in the
 environment and skips with a message without it. Never print or commit a key.
 
 ```sh
-npm run eval:station-control-tool-use -- --case second-model-review --samples 1 --out /var/tmp/evals/check
+npx tsx scripts/evals/station-control-tool-use/run.ts --case second-model-review --samples 1 --out /var/tmp/evals/check
 ```
 
 Start with one case and one sample to check the setup. Write runs outside the
@@ -50,8 +50,9 @@ checkout (`--out`); they are evidence for a pull request, not source.
 Each eval is a directory here, shaped like
 [station-control-tool-use](station-control-tool-use/):
 
-- `run.ts` is the entry point, with a package script named `eval:` plus the
-  eval's directory name. Flags: `--out <dir>`, `--model <id>`,
+- `run.ts` is the entry point, run directly with `npx tsx` from the
+  repository root; there is no package script, so no lane or hook can reach
+  it. Flags: `--out <dir>`, `--model <id>`,
   `--samples <n>`, `--case <id>` (repeatable), `--baseline <results.jsonl>`,
   `--dry-run` (prints request bodies, no model calls) and `--context` (prints
   what the model is offered, in bytes; no key).

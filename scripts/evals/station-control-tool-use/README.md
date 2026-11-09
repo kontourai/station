@@ -29,10 +29,10 @@ finds them.
 ## Run
 
 ```sh
-npm run eval:station-control-tool-use -- --context
-npm run eval:station-control-tool-use -- --case second-model-review --dry-run
-npm run eval:station-control-tool-use -- --samples 3 --out /var/tmp/evals/main
-npm run eval:station-control-tool-use -- --samples 3 --out /var/tmp/evals/mine --baseline /var/tmp/evals/main/results.jsonl
+npx tsx scripts/evals/station-control-tool-use/run.ts --context
+npx tsx scripts/evals/station-control-tool-use/run.ts --case second-model-review --dry-run
+npx tsx scripts/evals/station-control-tool-use/run.ts --samples 3 --out /var/tmp/evals/main
+npx tsx scripts/evals/station-control-tool-use/run.ts --samples 3 --out /var/tmp/evals/mine --baseline /var/tmp/evals/main/results.jsonl
 ```
 
 The default model is `claude-haiku-5-5`; pick another with `--model`. The run

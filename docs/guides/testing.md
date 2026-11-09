@@ -2361,7 +2361,7 @@ A change to what a model sees (Station Control tool descriptions and
 schemas, refusal copy, injected instructions) cannot be proven by a unit test.
 [`scripts/evals/`](../../scripts/evals/README.md) runs a paid model against
 the real text and grades its tool calls, for example
-`npm run eval:station-control-tool-use -- --out <dir>`. It needs
+`npx tsx scripts/evals/station-control-tool-use/run.ts --out <dir>`. It needs
 `ANTHROPIC_API_KEY` and is never run by CI or hooks; CI runs only the graders'
 tests. Compare a change with a baseline run of `main` on the same model.
 

@@ -44,7 +44,6 @@
     "node-runtime:gate": "node scripts/node-runtime-contract.mjs && vitest run scripts/__tests__/node-runtime-contract.test.ts scripts/__tests__/local-verification.test.ts && npm run conduit:conformance:check",
     "gate:for": "node scripts/gate-for.mjs",
     "dependency-drift:gate": "tsx scripts/check-kontour-dependency-drift.ts",
-    "eval:station-control-tool-use": "tsx scripts/evals/station-control-tool-use/run.ts",
     "verify:local": "node scripts/run-verification.mjs request verify-local",
     "verify:local:raw": "node scripts/run-local-verification.mjs -- npm run verify:static:raw && npm run verify:desktop-rust && npm run check:mobile-compile",
     "prepare:verify-static": "node scripts/prepare-verify-static.mjs",
