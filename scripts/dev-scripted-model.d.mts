@@ -14,8 +14,6 @@ export const SCRIPTED_MODEL_SCENARIOS: Readonly<
   Record<string, ScriptedModelScenario>
 >;
 
-export function chunkText(text: string): string[];
-
 export function startScriptedModelServer(options?: {
   port?: number;
   host?: string;

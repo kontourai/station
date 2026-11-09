@@ -39,7 +39,7 @@ function longReply() {
 }
 
 /** Split text into word-sized pieces so streaming is visible. */
-export function chunkText(text) {
+function chunkText(text) {
   return text.match(/\S+\s*|\s+/g) ?? [];
 }
 
