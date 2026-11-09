@@ -209,7 +209,11 @@ describe('repo-governance Veritas result boundary', () => {
       expect(stale).toMatchObject({ implemented: true, passed: false });
       expect(
         stale.findings.map(
-          (finding: { artifact: string; kind: string; diagnostic: string }) => ({
+          (finding: {
+            artifact: string;
+            kind: string;
+            diagnostic: string;
+          }) => ({
             artifact: finding.artifact,
             kind: finding.kind,
             diagnostic: finding.diagnostic,
