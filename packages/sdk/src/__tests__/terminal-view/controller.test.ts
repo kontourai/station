@@ -2,7 +2,16 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  encodeTerminalFrame,
+  encodeTerminalSize,
+  TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+  TERMINAL_OUTPUT,
+  TERMINAL_RESIZE,
+  TERMINAL_SOCKET_PROTOCOL_V2,
+} from '@kontourai/station-contracts/terminal-transport';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TerminalSessionStore } from '../../client/terminal-session-store';
 import { TerminalController } from '../../terminal-view/controller';
 import type { EnginePort } from '../../terminal-view/engine/engine-client';
 import { EngineHost } from '../../terminal-view/engine/engine-host';
@@ -11,11 +20,15 @@ import type {
   FontSpec,
 } from '../../terminal-view/render/glyph-atlas';
 import type { TerminalRenderer } from '../../terminal-view/render/renderer';
-import type { TerminalTheme } from '../../terminal-view/render/screen-model';
+import type {
+  ScreenModel,
+  TerminalTheme,
+} from '../../terminal-view/render/screen-model';
 import type {
   TerminalViewSession,
   TerminalViewSessionListener,
 } from '../../terminal-view/session';
+import { toTerminalViewSession } from '../../terminal-view/store-session';
 
 // jsdom gives `import.meta.url` a non-file scheme; `__dirname` stays a path.
 const WASM_PATH = join(
@@ -28,13 +41,16 @@ class FakeRenderer implements TerminalRenderer {
   readonly kind = 'canvas2d' as const;
   themes: TerminalTheme[] = [];
   sizes: [number, number][] = [];
+  frames: { cols: number; rows: number }[] = [];
   resize(cols: number, rows: number) {
     this.sizes.push([cols, rows]);
   }
   setTheme(theme: TerminalTheme) {
     this.themes.push(theme);
   }
-  render() {}
+  render(model: ScreenModel) {
+    this.frames.push({ cols: model.cols, rows: model.rows.length });
+  }
   suspend() {}
   resume() {}
   dispose() {}
@@ -120,6 +136,126 @@ function sharedSession() {
   return { session, output, retained };
 }
 
+const storedTerminalId = '62b97fa1-b690-4d77-82b1-747dc86d3c11';
+
+/** Only the wire is simulated; the store, adapter, controller and engine run. */
+class SessionSocket extends EventTarget {
+  readyState = 0;
+  protocol = TERMINAL_SOCKET_PROTOCOL_V2;
+  binaryType = 'arraybuffer';
+  sent: (Record<string, unknown> | Uint8Array)[] = [];
+
+  send(value: string | Uint8Array) {
+    this.sent.push(typeof value === 'string' ? JSON.parse(value) : value);
+  }
+
+  controls() {
+    return this.sent.filter(
+      (value): value is Record<string, unknown> =>
+        !(value instanceof Uint8Array),
+    );
+  }
+
+  open() {
+    this.readyState = 1;
+    this.dispatchEvent(new Event('open'));
+    this.message({ type: 'authenticated', protocolVersion: 2 });
+  }
+
+  message(value: object | ArrayBuffer) {
+    this.dispatchEvent(
+      new MessageEvent('message', {
+        data: value instanceof ArrayBuffer ? value : JSON.stringify(value),
+      }),
+    );
+  }
+
+  attached(replayThrough: number, terminalId = storedTerminalId) {
+    const request = this.controls().findLast(
+      (command) => command.type === 'open' || command.type === 'attach',
+    );
+    if (!request) throw new Error('The real store sent no attachment request');
+    this.message({
+      type: 'attached',
+      requestId: request.requestId,
+      channel: request.channel,
+      terminalId,
+      status: 'running',
+      replayThrough,
+      readOnly: false,
+      maxOutstandingOutputFrames: TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+    });
+    return Number(request.channel);
+  }
+
+  ready(channel: number, seq: number) {
+    this.message({ type: 'ready', channel, seq });
+  }
+
+  output(channel: number, seq: number, text: string) {
+    this.message(
+      new Uint8Array(
+        encodeTerminalFrame(
+          TERMINAL_OUTPUT,
+          channel,
+          seq,
+          new TextEncoder().encode(text),
+        ),
+      ).buffer,
+    );
+  }
+
+  resized(channel: number, seq: number, cols: number, rows: number) {
+    this.message(
+      new Uint8Array(
+        encodeTerminalFrame(
+          TERMINAL_RESIZE,
+          channel,
+          seq,
+          encodeTerminalSize(cols, rows),
+        ),
+      ).buffer,
+    );
+  }
+
+  close() {
+    this.drop(1000);
+  }
+
+  drop(code = 1006) {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    this.dispatchEvent(Object.assign(new Event('close'), { code }));
+  }
+}
+
+async function acknowledged(
+  socket: SessionSocket,
+  channel: number,
+  seq: number,
+) {
+  await vi.waitFor(() =>
+    expect(
+      socket
+        .controls()
+        .filter(
+          (command) => command.type === 'ack' && command.channel === channel,
+        )
+        .at(-1),
+    ).toMatchObject({ seq }),
+  );
+}
+
+async function renderedGrid(
+  renderer: FakeRenderer,
+  cols: number,
+  rows: number,
+) {
+  await vi.waitFor(() =>
+    expect(renderer.frames.at(-1)).toEqual({ cols, rows }),
+  );
+}
+
 let resizeObservers: (() => void)[] = [];
 let rect = { width: 800, height: 320 };
 
@@ -197,6 +333,79 @@ async function startController(shared?: ReturnType<typeof sharedSession>) {
   await controller.start();
   await vi.waitFor(() => expect(controller.getSnapshot().status).toBe('ready'));
   return { controller, renderer, session, output, root };
+}
+
+async function startStoredController() {
+  rect = { width: 80 * 8, height: 24 * 16 };
+  const view = await startController();
+  const sockets: SessionSocket[] = [];
+  const store = new TerminalSessionStore({
+    apiBase: 'http://127.0.0.1:4198/prefix',
+    requestTicket: async () => ({ ticket: 'T'.repeat(43), expiresAt: 1 }),
+    createSocket: () => {
+      const socket = new SessionSocket();
+      sockets.push(socket);
+      return socket;
+    },
+  });
+  const dispose = () => {
+    view.controller.dispose();
+    store.dispose();
+  };
+  const lines = Array.from(
+    { length: 40 },
+    (_, index) => `line-${String(index + 1).padStart(2, '0')}`,
+  );
+  const session = store.open(
+    { projectId: 'grid', bindingKey: 'replay' },
+    { cols: 80, rows: 24 },
+  );
+  view.controller.setSession(toTerminalViewSession(session));
+  const socketAt = async (index: number) => {
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThan(index));
+    return sockets[index]!;
+  };
+  const resizeView = async (cols: number, rows: number) => {
+    rect = { width: cols * 8, height: rows * 16 };
+    for (const observe of resizeObservers) observe();
+    await renderedGrid(view.renderer, cols, rows);
+  };
+  try {
+    const socket = await socketAt(0);
+    socket.open();
+    const channel = socket.attached(0);
+    socket.ready(channel, 0);
+    expect(session.state).toBe('ready');
+    socket.resized(channel, 1, 80, 24);
+    socket.output(channel, 2, `${lines.join('\r\n')}\r\n`);
+    await acknowledged(socket, channel, 2);
+    await renderedGrid(view.renderer, 80, 24);
+    return {
+      ...view,
+      store,
+      session,
+      socket,
+      channel,
+      socketAt,
+      resizeView,
+      lines,
+      dispose,
+    };
+  } catch (error) {
+    dispose();
+    throw error;
+  }
+}
+
+async function selectedText(controller: TerminalController) {
+  const writeText = vi.fn(async (_text: string) => undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+  controller.selectAll();
+  expect(await controller.copy()).toBe(true);
+  return String(writeText.mock.lastCall?.[0]);
 }
 
 describe('TerminalController', () => {
@@ -428,6 +637,125 @@ describe('TerminalController', () => {
     expect(unsized).not.toContain('line-01');
     controller.dispose();
   });
+
+  it('restores the last live grid before incremental replay', async () => {
+    const f = await startStoredController();
+    try {
+      f.socket.drop();
+      expect(f.session.state).toBe('reconnecting');
+      await f.resizeView(100, 40);
+      const resumed = await f.socketAt(1);
+      resumed.open();
+      expect(resumed.controls().at(-1)).toMatchObject({
+        type: 'attach',
+        terminalId: storedTerminalId,
+        fromSeq: 2,
+      });
+      const channel = resumed.attached(3);
+      const repaint = `\x1b[H${f.lines
+        .slice(17)
+        .map((line) => `${line}\x1b[K`)
+        .join('\r\n')}\r\n\x1b[K\x1b[J`;
+      resumed.output(channel, 3, repaint);
+      await acknowledged(resumed, channel, 3);
+      await renderedGrid(f.renderer, 80, 24);
+      const text = await selectedText(f.controller);
+      for (const line of f.lines) expect(text.split(line)).toHaveLength(2);
+      expect(
+        resumed.controls().filter((command) => command.type === 'resize'),
+      ).toEqual([]);
+      resumed.ready(channel, 3);
+      await renderedGrid(f.renderer, 100, 40);
+
+      // Finishing one replay must not forget the grid for the next one.
+      resumed.drop();
+      await f.resizeView(120, 45);
+      const again = await f.socketAt(2);
+      again.open();
+      expect(again.controls().at(-1)).toMatchObject({
+        type: 'attach',
+        fromSeq: 3,
+      });
+      const nextChannel = again.attached(4);
+      again.output(nextChannel, 4, '\r\nsecond-replay');
+      await acknowledged(again, nextChannel, 4);
+      await renderedGrid(f.renderer, 80, 24);
+      again.ready(nextChannel, 4);
+      await renderedGrid(f.renderer, 120, 45);
+      expect(await selectedText(f.controller)).toContain('second-replay');
+    } finally {
+      f.dispose();
+    }
+  });
+
+  it('uses a later live recorded grid for incremental replay', async () => {
+    const f = await startStoredController();
+    try {
+      f.socket.resized(f.channel, 3, 90, 20);
+      await acknowledged(f.socket, f.channel, 3);
+      await renderedGrid(f.renderer, 80, 24);
+      f.socket.drop();
+      await f.resizeView(100, 40);
+      const resumed = await f.socketAt(1);
+      resumed.open();
+      expect(resumed.controls().at(-1)).toMatchObject({
+        type: 'attach',
+        fromSeq: 3,
+      });
+      const channel = resumed.attached(4);
+      resumed.output(channel, 4, '\r\nlater-grid');
+      await acknowledged(resumed, channel, 4);
+      await renderedGrid(f.renderer, 90, 20);
+      resumed.ready(channel, 4);
+      await renderedGrid(f.renderer, 100, 40);
+      expect(await selectedText(f.controller)).toContain('later-grid');
+    } finally {
+      f.dispose();
+    }
+  });
+
+  it.each(['reset', 'session replacement'] as const)(
+    'does not reuse a recorded grid after %s',
+    async (boundary) => {
+      const f = await startStoredController();
+      try {
+        await f.resizeView(100, 40);
+        let session = f.session;
+        let channel = f.channel;
+        let seq = 11;
+        if (boundary === 'reset') {
+          f.socket.message({
+            type: 'reset',
+            channel,
+            fromSeq: 10,
+            replayThrough: 11,
+          });
+        } else {
+          session = f.store.open(
+            { projectId: 'grid', bindingKey: 'replacement' },
+            { cols: 100, rows: 40 },
+          );
+          f.controller.setSession(toTerminalViewSession(session));
+          channel = f.socket.attached(
+            1,
+            '86e59280-af94-4562-9a7e-dca42652b0b1',
+          );
+          seq = 1;
+        }
+        expect(session.state).toBe('replaying');
+        f.socket.output(channel, seq, 'new-history');
+        await acknowledged(f.socket, channel, seq);
+        await renderedGrid(f.renderer, 100, 40);
+        const text = await selectedText(f.controller);
+        expect(text).toContain('new-history');
+        expect(text).not.toContain('line-01');
+        f.socket.ready(channel, seq);
+        expect(session.state).toBe('ready');
+      } finally {
+        f.dispose();
+      }
+    },
+  );
 
   // A dock region put away keeps its view mounted with no box; sizing the
   // shared shell from it squeezed every other view to two columns.

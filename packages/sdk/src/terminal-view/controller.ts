@@ -123,6 +123,8 @@ export class TerminalController {
    * engine parses it at that size and returns to the box's size after.
    */
   private replayGrid: { cols: number; rows: number } | null = null;
+  /** The terminal's last recorded grid survives finishing replay and reconnects. */
+  private latestRecordedGrid: { cols: number; rows: number } | null = null;
   /** False while `size` is a placeholder: the view has had no box to measure. */
   private measured = false;
   private session: TerminalViewSession | null = null;
@@ -291,6 +293,8 @@ export class TerminalController {
 
   dispose(): void {
     this.disposed = true;
+    this.latestRecordedGrid = null;
+    this.replayGrid = null;
     this.releaseWrites();
     this.unsubscribeSession?.();
     for (const cleanup of this.cleanups.splice(0)) cleanup();
@@ -310,6 +314,8 @@ export class TerminalController {
     if (session === this.session) return;
     this.unsubscribeSession?.();
     this.unsubscribeSession = null;
+    this.latestRecordedGrid = null;
+    this.endReplayGrid();
     this.session = session;
     this.update({ session: session ? session.state : 'none' });
     if (session && this.engine) this.attachSession(session);
@@ -327,10 +333,12 @@ export class TerminalController {
       resize: (cols, rows, kind) => this.recordedSize(cols, rows, kind),
       replayed: () => this.endReplayGrid(),
       reset: () => {
+        this.latestRecordedGrid = null;
         this.engine?.send({ type: 'reset' });
         this.endReplayGrid();
       },
       state: (state, detail) => {
+        if (state === 'replaying') this.restoreRecordedGrid();
         this.update({ session: state });
         if (state === 'exited')
           this.announcer?.event(
@@ -387,13 +395,21 @@ export class TerminalController {
     rows: number,
     kind: 'replay' | 'live',
   ): void {
+    if (this.disposed) return;
+    this.latestRecordedGrid = { cols, rows };
     if (kind === 'live') {
       this.endReplayGrid();
       return;
     }
+    this.restoreRecordedGrid();
+  }
+
+  private restoreRecordedGrid(): void {
+    const grid = this.latestRecordedGrid;
+    if (!grid) return;
     if (!this.engine || !this.size || this.resyncing || this.disposed) return;
-    this.replayGrid = { cols, rows };
-    this.engine.send({ type: 'resize', size: { ...this.size, cols, rows } });
+    this.replayGrid = { ...grid };
+    this.engine.send({ type: 'resize', size: { ...this.size, ...grid } });
   }
 
   /** Back to the box's size once replay is over; the engine reflows. */

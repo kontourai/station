@@ -1,3 +1,4 @@
+import type { ExecFileSyncOptions } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
@@ -10,7 +11,10 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
+import {
+  execFileSyncBounded,
+  spawnSyncBounded,
+} from '../lib/bounded-capture.mjs';
 import {
   applicationCrashEvents,
   floorFailures,
@@ -190,6 +194,107 @@ describe('the Windows portable floor runner', () => {
       }),
     ).toEqual([{ error: 'no event log' }]);
   });
+
+  it.runIf(process.platform === 'win32').each([
+    {
+      name: 'success projection',
+      body: `
+[pscustomobject]@{ TimeCreated = [datetime]::Parse('2026-11-05T01:02:03Z').ToUniversalTime(); Id = 1000; ProviderName = 'Application Error'; Message = 'fixture-event' }
+[pscustomobject]@{ TimeCreated = [datetime]::Parse('2026-11-05T01:02:03Z').ToUniversalTime(); Id = 9999; ProviderName = 'Unrelated provider'; Message = 'not-a-crash-provider' }
+`,
+      expected: 'projection',
+      message: '',
+    },
+    {
+      name: 'successful empty query',
+      body: 'return',
+      expected: 'empty',
+      message: '',
+    },
+    {
+      name: 'base no-matching ID',
+      body: "$PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new([Exception]::new('fixture-no-match'), 'NoMatchingEventsFound', [System.Management.Automation.ErrorCategory]::ObjectNotFound, $null))",
+      expected: 'empty',
+      message: '',
+    },
+    {
+      name: 'qualified no-matching ID',
+      body: "$PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new([Exception]::new('fixture-no-match'), 'NoMatchingEventsFound,FixtureProvider', [System.Management.Automation.ErrorCategory]::ObjectNotFound, $null))",
+      expected: 'empty',
+      message: '',
+    },
+    {
+      name: 'different ID with no-matching text',
+      body: "$PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new([Exception]::new('NoMatchingEventsFound'), 'OtherCollectionFailure', [System.Management.Automation.ErrorCategory]::InvalidOperation, $null))",
+      expected: 'error',
+      message: 'NoMatchingEventsFound',
+    },
+    {
+      name: 'access denied',
+      body: "$PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new([UnauthorizedAccessException]::new('fixture-access-denied'), 'LogAccessDenied', [System.Management.Automation.ErrorCategory]::PermissionDenied, $null))",
+      expected: 'error',
+      message: 'fixture-access-denied',
+    },
+    {
+      name: 'log unavailable',
+      body: "$PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new([InvalidOperationException]::new('fixture-log-unavailable'), 'NoLogMatchingLogNameFound', [System.Management.Automation.ErrorCategory]::ObjectNotFound, $null))",
+      expected: 'error',
+      message: 'fixture-log-unavailable',
+    },
+  ])(
+    'classifies generated Application log query: $name',
+    ({ body, expected, message }) => {
+      const stub = `
+function Get-WinEvent {
+  [CmdletBinding()]
+  param([hashtable]$FilterHashtable)
+  if ($FilterHashtable.LogName -ne 'Application') { throw 'fixture received the wrong query' }
+  ${body}
+}
+if ((Get-Command Get-WinEvent -ErrorAction Stop).CommandType -ne 'Function') {
+  throw 'refusing to execute a live Application log query'
+}
+`;
+      const run = <O extends ExecFileSyncOptions>(
+        file: string,
+        args: readonly string[] = [],
+        options?: O,
+      ) => {
+        expect(file).toBe('powershell.exe');
+        expect(args.slice(0, 3)).toEqual([
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+        ]);
+        const generated = args.at(-1);
+        if (!generated)
+          throw new Error('The collector supplied no PowerShell program');
+        return execFileSyncBounded(
+          file,
+          [...args.slice(0, -1), `${stub}\n${generated}`],
+          options,
+        );
+      };
+      const events = applicationCrashEvents(new Date('2026-11-05T00:00:00Z'), {
+        run,
+      });
+      if (expected === 'projection') {
+        expect(events).toEqual([
+          {
+            time: '2026-11-05T01:02:03.0000000Z',
+            Id: 1000,
+            ProviderName: 'Application Error',
+            Message: 'fixture-event',
+          },
+        ]);
+      } else if (expected === 'empty') {
+        expect(events).toEqual([]);
+      } else {
+        expect(events).toHaveLength(1);
+        expect(events[0]).toEqual({ error: expect.stringContaining(message) });
+      }
+    },
+  );
 
   it.each([
     { name: 'successful exit', source: 'process.exit(0)', code: 0 },

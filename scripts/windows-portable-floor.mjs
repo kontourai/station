@@ -54,12 +54,19 @@ export function applicationCrashEvents(
   const script = [
     `$since = [datetime]::Parse('${since.toISOString()}').ToLocalTime()`,
     `$providers = @(${EVENT_PROVIDERS.map((name) => `'${name}'`).join(', ')})`,
-    // Get-WinEvent fails when nothing matches; no entry is an empty list.
-    "$events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $since } -ErrorAction SilentlyContinue |",
+    'try {',
+    "$events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $since } -ErrorAction Stop |",
     '  Where-Object { $providers -contains $_.ProviderName } |',
     "  Select-Object @{ n = 'time'; e = { $_.TimeCreated.ToUniversalTime().ToString('o') } }, Id, ProviderName, Message)",
     'ConvertTo-Json -InputObject $events -Depth 3',
     'exit 0',
+    '} catch {',
+    "  if (($_.FullyQualifiedErrorId -split ',')[0] -eq 'NoMatchingEventsFound') {",
+    '    ConvertTo-Json -InputObject @() -Depth 3',
+    '    exit 0',
+    '  }',
+    '  throw',
+    '}',
   ].join('\n');
   try {
     const text = String(
