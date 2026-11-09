@@ -273,7 +273,15 @@ describe('persistent runner policy', () => {
   function primaryCiJobFixture(
     jobId: string,
     mutate: (job: Record<string, unknown>) => void,
-  ) {
+  ): [
+    {
+      file: string;
+      document: {
+        jobs: Record<string, Record<string, unknown>>;
+      };
+    },
+    ...ReturnType<typeof readWorkflowDocuments>,
+  ] {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/ci.yml',
     );
