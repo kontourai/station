@@ -97,6 +97,10 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   'component-style-hygiene',
   // ~1s: TypeScript AST over src-ui copy; fails only on growth.
   'ui-copy-length',
+  // ~4s: TypeScript AST over every file that mentions child_process; fails
+  // only on growth. Also in `verification:policy:gate` (ci:fast); listed here
+  // so the push that adds a launch without windowsHide is the one refused.
+  'windows-hide-ratchet',
   'a11y-ratchet',
 ]);
 

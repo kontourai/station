@@ -23,7 +23,27 @@
  */
 import { STABLE_ANCHOR_SOURCE } from './stable-anchor';
 
+export interface OverlapDiagnostics {
+  version: 1;
+  firstPainted: { left: number; right: number; top: number; bottom: number };
+  secondPainted: { left: number; right: number; top: number; bottom: number };
+  firstCentre: { x: number; y: number };
+  secondCentre: { x: number; y: number };
+  overlapWidth: number;
+  overlapHeight: number;
+  intersectionCentre: { x: number; y: number };
+  firstCentreHitPresent: boolean;
+  secondCentreHitPresent: boolean;
+  intersectionHitPresent: boolean;
+}
+
 export interface HitTargetAudit {
+  overlapDiagnostics: {
+    admittedOverlapOccurrences: number;
+    diagnosticOccurrencesStored: number;
+    omittedInvalid: number;
+    omittedLimit: number;
+  };
   /** Controls with a reachable target; `small` and `overlaps` judge these. */
   count: number;
   /** Laid-out controls that a hard-clipping ancestor hides entirely. */
@@ -59,6 +79,7 @@ export interface HitTargetAudit {
     layered: boolean;
     /** Which rule layered the pair: a third element on top, or a covering sheet. */
     layeredBy: 'third' | 'sheet' | null;
+    diagnostics?: OverlapDiagnostics;
   }>;
 }
 
@@ -145,7 +166,7 @@ export const HIT_TARGET_AUDIT = `(() => {
       if (cs.position === 'fixed' || cs.position === 'sticky') pinned = a;
     }
     return {
-      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned, painted,
+      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned, painted, cx, cy,
       w: Math.min(rr - l, reachSpan(x)), h: Math.min(b - t, reachSpan(y)), l, r: rr, t, b,
     };
   });
@@ -178,6 +199,9 @@ export const HIT_TARGET_AUDIT = `(() => {
   };
   const overlaps = [];
   const overlapPairs = [];
+  const overlapDiagnostics = { admittedOverlapOccurrences: 0, diagnosticOccurrencesStored: 0, omittedInvalid: 0, omittedLimit: 0 };
+  const rounded = (number) => Math.round(number * 100) / 100 || 0;
+  const paintedCopy = (box) => ({ left: rounded(box.l), right: rounded(box.r), top: rounded(box.t), bottom: rounded(box.b) });
   for (let i = 0; i < zones.length; i += 1) for (let j = i + 1; j < zones.length; j += 1) {
     const a = zones[i], b = zones[j];
     const ox = Math.min(a.painted.r, b.painted.r) - Math.max(a.painted.l, b.painted.l), oy = Math.min(a.painted.b, b.painted.b) - Math.max(a.painted.t, b.painted.t);
@@ -191,6 +215,27 @@ export const HIT_TARGET_AUDIT = `(() => {
       const mx = (Math.max(a.painted.l, b.painted.l) + Math.min(a.painted.r, b.painted.r)) / 2, my = (Math.max(a.painted.t, b.painted.t) + Math.min(a.painted.b, b.painted.b)) / 2;
       const meet = mx >= 0 && my >= 0 && mx < innerWidth && my < innerHeight ? document.elementFromPoint(mx, my) : null;
       const layeredBy = third(a) || third(b) ? 'third' : pinnedOver(a, b, meet) || pinnedOver(b, a, meet);
+      let diagnostics;
+      if (a.hit !== null && b.hit !== null && layeredBy === null) {
+        overlapDiagnostics.admittedOverlapOccurrences += 1;
+        if (overlapDiagnostics.admittedOverlapOccurrences > 16) overlapDiagnostics.omittedLimit += 1;
+        else if (![a.painted.l, a.painted.r, a.painted.t, a.painted.b, b.painted.l, b.painted.r, b.painted.t, b.painted.b, a.cx, a.cy, b.cx, b.cy, ox, oy, mx, my].every((number) => Number.isFinite(number) && Math.abs(number) <= 10000000)) overlapDiagnostics.omittedInvalid += 1;
+        else {
+          diagnostics = {
+            version: 1,
+            firstPainted: paintedCopy(a.painted),
+            secondPainted: paintedCopy(b.painted),
+            firstCentre: { x: rounded(a.cx), y: rounded(a.cy) },
+            secondCentre: { x: rounded(b.cx), y: rounded(b.cy) },
+            overlapWidth: rounded(ox), overlapHeight: rounded(oy),
+            intersectionCentre: { x: rounded(mx), y: rounded(my) },
+            firstCentreHitPresent: a.hit !== null,
+            secondCentreHitPresent: b.hit !== null,
+            intersectionHitPresent: meet !== null,
+          };
+          overlapDiagnostics.diagnosticOccurrencesStored += 1;
+        }
+      }
       overlapPairs.push({
         first: a.name,
         second: b.name,
@@ -199,8 +244,9 @@ export const HIT_TARGET_AUDIT = `(() => {
         checkable: a.hit !== null && b.hit !== null,
         layered: layeredBy !== null,
         layeredBy,
+        ...(diagnostics ? { diagnostics } : {}),
       });
     }
   }
-  return { count: zones.length, unreachable, small, overlaps, unreachableTargets, smallTargets, overlapPairs };
+  return { count: zones.length, unreachable, small, overlaps, unreachableTargets, smallTargets, overlapPairs, overlapDiagnostics };
 })()`;
