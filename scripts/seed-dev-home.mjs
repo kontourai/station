@@ -174,8 +174,9 @@ const DATA_KEEP = Object.freeze(['orchestration.sqlite', 'attachments']);
  * conversation history and its projections, search, and Task content. Every
  * other table is emptied (wake-ups, recovery intents, prepared turns,
  * claims, outboxes, deliveries, native session bindings, approvals in
- * flight, and anything unknown), so a dev Station boots with history it can
- * read and no work it would resume. A full-text table is kept or emptied as
+ * flight, plugin trust migration state, and anything unknown, because the
+ * plugins and their trust records stay behind), so a dev Station boots with
+ * history it can read and no work it would resume. A full-text table is kept or emptied as
  * a whole, never through its shadow tables.
  */
 export const ORCHESTRATION_KEEP_TABLES = Object.freeze([
@@ -215,7 +216,6 @@ export const ORCHESTRATION_KEEP_TABLES = Object.freeze([
   'orchestration_turn_boundaries',
   'orchestration_turn_provenance',
   'orchestration_usage_export_state',
-  'package_plugin_trust_migration',
   'project_task_room_attachment_formats',
   'project_task_room_formats',
   'project_task_room_heads',
