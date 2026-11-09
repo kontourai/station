@@ -2,19 +2,17 @@ import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { STATION_HOME_ROOTS } from '../../packages/shared/src/station-home-store-registry.js';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   DEV_HOME_SEED_MARKER,
   DROP_CATEGORIES,
@@ -23,16 +21,8 @@ import {
   seedDevHome,
 } from '../seed-dev-home.mjs';
 
-const roots: string[] = [];
-afterEach(() => {
-  while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true });
-});
-
-function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'seed-dev-home-'));
-  roots.push(dir);
-  return dir;
-}
+const makeTempDir = trackTempDirs();
+const tempDir = () => makeTempDir('seed-dev-home-');
 
 function write(home: string, path: string, content: string) {
   mkdirSync(dirname(join(home, path)), { recursive: true });
@@ -121,7 +111,8 @@ function buildSourceHome() {
   // A link out of the home must never be followed.
   const outside = join(base, 'outside');
   write(outside, 'private.txt', 'outside the home');
-  symlinkSync(outside, join(home, 'projects/p1/escape'));
+  // 'junction' needs no privilege on Windows and is ignored elsewhere.
+  symlinkSync(outside, join(home, 'projects/p1/escape'), 'junction');
 
   const orchestration = sqlite(
     join(home, 'data/orchestration.sqlite'),
