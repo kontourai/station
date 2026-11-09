@@ -3,7 +3,6 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   realpathSync,
   renameSync,
@@ -366,13 +365,13 @@ describe.skipIf(process.platform === 'win32')(
   () => {
     let previousHome: string | undefined;
     let uninstall: (() => void) | undefined;
-    const scratch: string[] = [];
+    // Under the system /tmp so a test-owned root fits the budget; removed
+    // after each test whether it passed or not.
+    const makeShortDir = trackTempDirs({ base: '/tmp' });
 
     /** A short base under the system /tmp, so a test-owned root fits. */
     function shortBase(): string {
-      const base = realpathSync(mkdtempSync('/tmp/st'));
-      scratch.push(base);
-      return base;
+      return realpathSync(makeShortDir('st'));
     }
 
     function withHome(dir: string): string {
@@ -408,8 +407,6 @@ describe.skipIf(process.platform === 'win32')(
       uninstall = undefined;
       if (previousHome === undefined) delete process.env.STATION_HOME;
       else process.env.STATION_HOME = previousHome;
-      for (const dir of scratch.splice(0))
-        rmSync(dir, { recursive: true, force: true });
     });
 
     test('a long STATION_HOME still gets a TMPDIR that leaves 40 bytes under the macOS socket limit', () => {
