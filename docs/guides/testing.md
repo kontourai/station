@@ -1018,7 +1018,12 @@ A failed invocation also leaves its crash evidence in
 `.kontourai/verification-output/windows-portable-floor/`, which the job uploads:
 how each Vitest worker ended and whether Vitest had asked it to stop, Node
 fatal-error reports, and the Application log's crash entries since it started
-(#4626). The adapter suite also runs in the floor: its owned children cover
+(#4626). Only the Application log's exact `NoMatchingEventsFound` error becomes
+an empty event list. An unavailable or refused log read remains an error in
+the evidence; it does not establish that no crash events occurred. The focused
+collector cases execute the generated PowerShell with a substituted event
+provider, rather than reading the machine's Application log.
+The adapter suite also runs in the floor: its owned children cover
 concurrent native exits/resizes, paused silent-reader retirement, and vendor
 cancellation. Issue #4626 records the captured access violation, handle-table
 reproduction, and dependency repair; retained source/binary receipts establish

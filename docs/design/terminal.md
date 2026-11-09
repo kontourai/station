@@ -766,7 +766,14 @@ before, at the view's size. An older Station cannot read a journal with
 resize records. Resize metadata counts against the pending-write, memory and
 read budgets. With history off, the tail evicts whole older replay windows
 and restates the effective size before retained output, so replay keeps its
-recorded grid even after the original resize has been evicted.
+recorded grid even after the original resize has been evicted. An incremental
+reconnect resumes after the last applied sequence, which may omit the size
+record effective there. The view retains that size across the disconnect and
+applies it before replay output, including when the program exited or failed
+while offline; replay completion restores the viewer's size. A reset, session
+replacement or full rebuild from retained history discards the cached size
+and reconstructs it in history order. An unsized prefix uses the viewer's
+size until a recorded size arrives.
 
 Retention is configurable in Settings › Host options (implemented, #3994):
 
