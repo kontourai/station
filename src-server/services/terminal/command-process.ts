@@ -167,9 +167,11 @@ class CommandProcess implements IPtyProcess {
         output?.off('data', deliver);
         // Fence delivery first, then charge every chunk already accepted by
         // Node before closing the pipes. Background children need not send EOF.
-        let buffered: string | null;
-        while (output && (buffered = output.read()) !== null)
+        while (output) {
+          const buffered: string | null = output.read();
+          if (buffered === null) break;
           this.deliver(buffered);
+        }
         output?.destroy();
       }
     };
@@ -186,7 +188,7 @@ class CommandProcess implements IPtyProcess {
       drain = setTimeout(() => {
         if (child.completeOutput) {
           fenceOutput();
-          if (this.pending.length) this.outputIncomplete = true;
+          if (this.paused || this.pending.length) this.outputIncomplete = true;
           if (this.capped || this.terminating || this.outputIncomplete) {
             // Do not await terminate here: it waits for the final close report.
             void this.terminate().catch(() => undefined);

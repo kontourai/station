@@ -6,7 +6,7 @@
  */
 import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Duplex } from 'node:stream';
@@ -257,6 +257,89 @@ setTimeout(() => setInterval(() => process.stdout.write('x'.repeat(65536)), 1), 
 });
 
 describe.runIf(windows)('command termination custody (Windows)', () => {
+  it('ends the Job when delivery pauses on a below-cap tail after EXIT', async () => {
+    if (!guard || !fixtureDirectory)
+      throw new Error('Source-bound Job fixture unavailable');
+    const marker = join(fixtureDirectory, 'post-exit-output');
+    const childSource = `
+const { existsSync, watch } = require('node:fs');
+const marker = ${JSON.stringify(marker)};
+let sent = false;
+const watcher = watch(${JSON.stringify(fixtureDirectory)}, () => {
+  if (sent || !existsSync(marker)) return;
+  sent = true;
+  watcher.close();
+  process.stdout.write('post-exit-tail\\n');
+});
+console.log('pid:' + process.pid);
+setInterval(() => {}, 1000);
+`;
+    const leaderSource = `
+require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(childSource)}], {
+  stdio: 'inherit', detached: true, windowsHide: true,
+}).unref();
+process.stdin.once('data', () => process.exit(7));
+`;
+    let control = '';
+    let exitObserved = false;
+    const proc = await spawnCommandProcess(
+      {
+        command: process.execPath,
+        args: ['-e', leaderSource],
+        cwd: process.cwd(),
+        env: process.env,
+        outputCapBytes: 1024,
+        windowsGuard: guard.path,
+      },
+      (file, args, options) => {
+        const child = nodeSpawn(file, args, { ...options, windowsHide: true });
+        if (child.pid) started.push(child.pid);
+        child.stdout?.on('data', (chunk) => {
+          control += String(chunk);
+          if (!exitObserved && control.split(/\r?\n/).includes('EXIT 7')) {
+            exitObserved = true;
+            writeFileSync(marker, 'emit tail');
+          }
+        });
+        return child;
+      },
+    );
+    started.push(proc.pid);
+    let text = '';
+    let pausedAfterExit = false;
+    proc.onData((data) => {
+      text += data;
+      if (text.includes('post-exit-tail')) {
+        pausedAfterExit = exitObserved && !alive(proc.pid);
+        proc.pause();
+      }
+    });
+    const exited = new Promise<{
+      outputIncomplete?: boolean;
+      outputCapped?: boolean;
+    }>((done) => proc.onExit(done));
+    await expect
+      .poll(() => /pid:(\d+)/.exec(text)?.[1], { timeout: 20_000 })
+      .toBeDefined();
+    const descendant = Number(/pid:(\d+)/.exec(text)![1]);
+    started.push(descendant);
+    expect(alive(descendant)).toBe(true);
+    proc.write('exit\n');
+    const event = await exited;
+    console.info('post-EXIT paused tail verdict', {
+      event,
+      text,
+      pausedAfterExit,
+      descendant,
+      descendantAlive: alive(descendant),
+    });
+    expect(pausedAfterExit).toBe(true);
+    expect(text).toContain('post-exit-tail');
+    expect(event.outputCapped).not.toBe(true);
+    expect(event.outputIncomplete).toBe(true);
+    expect(alive(descendant)).toBe(false);
+  }, 120_000);
+
   it('the output cap retains custody after fast leader exit while delivery is paused', async () => {
     const { proc, exited, pidsOf, read } = await run(
       `

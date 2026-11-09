@@ -276,9 +276,12 @@ exited. The guard hands the command its own stdin, stdout and stderr pipes,
 so a command tab still takes typing. Stop and the output cap end the whole
 Job, and the guard reports success only once the Job holds no live process;
 otherwise Stop fails. The command is found and quoted as Node would start it
-directly. A command that exits by itself releases its Job, so background
-children it started keep running, as on POSIX; if the server process dies,
-the guard ends the Job. The guard is the archive's staged, digest-checked
+directly. The guard retains custody after a natural leader exit until the
+parent's bounded output accounting finishes. It releases the Job only when
+output is uncapped and complete and no termination was requested; background
+children then keep running, as on POSIX. Incomplete output ends the Job even
+after a natural leader exit. If the server process dies, the guard ends the
+Job. The guard is the archive's staged, digest-checked
 `station-windows-owned-guard.exe`, or one compiled with the .NET Framework
 compiler from the source tree the server runs from. Without either (an
 install that has neither), the command runs outside a Job as before: it is

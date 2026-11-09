@@ -6,8 +6,9 @@
  * starts is in that Job, including one whose parent has already exited, which
  * no parent-pid census can attribute. Stop and the output cap end the whole
  * Job, and the guard reports `ENDED` only once the Job holds no live process.
- * A command that exits by itself releases its Job, so the processes it
- * started in the background keep running, as on POSIX.
+ * After natural leader exit, the Job is released only when bounded output
+ * accounting confirms uncapped, complete output and no termination request.
+ * Otherwise the Job ends; a valid release leaves background children running.
  *
  * The guard passes the command its own std handles: stdout and stderr on the
  * guard's fds 3 and 4, and stdin on fd 5, so a command tab still takes typing.
