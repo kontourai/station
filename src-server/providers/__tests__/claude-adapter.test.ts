@@ -9393,6 +9393,8 @@ describe('ClaudeAdapter', () => {
         disallowedTools: ['Artifact'],
         model: undefined,
         resume: undefined,
+        // A supplied title skips the engine's own session-naming request.
+        title: 'Station conversation thread-no-system-prompt-baseline',
         includePartialMessages: true,
         // station#1877: asks the SDK to summarise what a subagent is doing.
         // task_progress.summary is documented as carrying the model-generated
@@ -9417,6 +9419,37 @@ describe('ClaudeAdapter', () => {
         effort: undefined,
         settings: undefined,
       });
+    });
+
+    test('a new session names itself so the engine skips its title request; a resume keeps its recorded title', async () => {
+      // The engine asks the model to title a session from its first prompt
+      // unless `title` is supplied. Station names conversations itself, so a
+      // new session always supplies one. The SDK documents the option as having
+      // no effect on a resumed session's persisted title, so none is sent.
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+
+      await adapter.startSession({ provider: 'claude', threadId: 'titled' });
+      const fresh = mockQuery.mock.calls.at(-1)?.[0].options as Record<
+        string,
+        unknown
+      >;
+      expect(fresh.resume).toBeUndefined();
+      expect(fresh.title).toBe('Station conversation titled');
+      await adapter.stopSession('titled');
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'titled',
+        resumeCursor: 'native-titled',
+      });
+      const resumed = mockQuery.mock.calls.at(-1)?.[0].options as Record<
+        string,
+        unknown
+      >;
+      expect(resumed.resume).toBe('native-titled');
+      expect('title' in resumed).toBe(false);
+      await adapter.stopAll();
     });
   });
 
