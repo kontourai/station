@@ -997,6 +997,129 @@ describe('station#3596 (folded into station#3586): OllamaAdapter surfaces a yiel
   });
 });
 
+// station#4738: an OpenAI-compatible server reports a mid-stream failure as
+// an SSE `data:` frame carrying `{ error: { message, type } }` — exactly what
+// `scripts/dev-scripted-model.mjs`'s `scripted-error` model writes. ai-sdk's
+// OpenAI-compatible model forwards that `error` VALUE (a plain object, not an
+// `Error`) as its `error` stream part, and `String()` of it produced the
+// "[object Object]" Station recorded and showed. These drive the real ai-sdk
+// plumbing (no mocked `llm`) so the assertion reaches the published text.
+describe('station#4738: Ollama stream failures carry the server message, redacted', () => {
+  function failingSseStream(errorFrame: unknown): ReadableStream<Uint8Array> {
+    const encoder = new TextEncoder();
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              model: 'scripted-error',
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: 'Partial ' },
+                  finish_reason: null,
+                },
+              ],
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(errorFrame)}\n\n`),
+        );
+        controller.close();
+      },
+    });
+  }
+
+  async function runFailingTurn(
+    chatResponse: () => unknown,
+    threadId: string,
+  ): Promise<{ thrown: unknown; failure: any; events: any[] }> {
+    global.fetch = vi.fn(async (input: Parameters<typeof fetch>[0]) =>
+      String(input).endsWith('/api/tags')
+        ? {
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: async () =>
+              JSON.stringify({ models: [{ name: 'scripted-error' }] }),
+          }
+        : chatResponse(),
+    ) as any;
+    const adapter = new OllamaAdapter('http://ollama.test');
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'ollama',
+      threadId,
+      modelId: 'scripted-error',
+    });
+    const thrown = await adapter.sendTurn({ threadId, input: 'hi' }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    const events = (await drainEvents(iterator)) as any[];
+    return {
+      thrown,
+      failure: events.find((event) => event?.method === 'runtime.error'),
+      events,
+    };
+  }
+
+  test('a mid-stream error frame publishes its message, not "[object Object]"', async () => {
+    const { thrown, failure, events } = await runFailingTurn(
+      () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: failingSseStream({
+          error: {
+            message:
+              'Scripted mid-stream failure (Authorization: Bearer sk-live-abcdefghijklmnopqrstuvwxyz)',
+            type: 'scripted_error',
+          },
+        }),
+      }),
+      'thread-4738-mid-stream',
+    );
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(events.some((event) => event?.method === 'turn.completed')).toBe(
+      false,
+    );
+    expect(failure).toMatchObject({
+      method: 'runtime.error',
+      severity: 'error',
+    });
+    expect(failure.message).toContain('Scripted mid-stream failure');
+    expect(failure.message).not.toContain('[object Object]');
+    expect(failure.message).not.toContain('sk-live-abcdefghijklmnopqrstuvwxyz');
+    expect(failure.message).toContain('Bearer [REDACTED]');
+  });
+
+  test('a request-time HTTP failure publishes the server message and its status', async () => {
+    const { failure } = await runFailingTurn(
+      () =>
+        new Response(
+          JSON.stringify({ error: { message: 'Scripted request failure' } }),
+          {
+            status: 401,
+            statusText: 'Unauthorized',
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      'thread-4738-request-time',
+    );
+
+    expect(failure).toMatchObject({
+      method: 'runtime.error',
+      severity: 'error',
+    });
+    expect(failure.message).toContain('Scripted request failure');
+    expect(failure.message).toContain('HTTP 401');
+    expect(failure.message).not.toContain('[object Object]');
+  });
+});
+
 // archive#3588: `AiSdkLLMProvider.createStream` (which `OllamaLLMProvider`
 // inherits unmodified) has propagated a real `finishReason` on its finish
 // chunk since archive#3545, but `OllamaAdapter.sendTurn`'s loop never read
