@@ -896,6 +896,17 @@ function adoptionTitle(threadId: string): string {
   return `Station continuation ${threadId}`;
 }
 
+/**
+ * The title a new Claude session starts with. Without one the engine asks the
+ * model to name the session from the first prompt: an extra request per
+ * session that Station never reads, since it names conversations itself
+ * (conversation-title-generation.ts). Distinct from `adoptionTitle`, which
+ * child cleanup matches exactly.
+ */
+function newSessionTitle(threadId: string): string {
+  return `Station conversation ${threadId}`;
+}
+
 const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
 
 /**
@@ -4279,6 +4290,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? []
         : [CLAUDE_ARTIFACT_TOOL_NAME]),
     ];
+    const resumeSessionId = claudeResumeSessionId(input.resumeCursor);
     return {
       cwd: input.cwd,
       ...(disallowedTools.length ? { disallowedTools } : {}),
@@ -4289,7 +4301,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(claudeExecutable
         ? { pathToClaudeCodeExecutable: claudeExecutable }
         : {}),
-      resume: claudeResumeSessionId(input.resumeCursor),
+      resume: resumeSessionId,
+      // A supplied title skips the engine's own naming request. A resumed
+      // session keeps the title it was recorded with (the SDK ignores this
+      // option there), so only a new session sends one.
+      ...(resumeSessionId === undefined
+        ? { title: newSessionTitle(input.threadId) }
+        : {}),
       includePartialMessages: true,
       // station#1877 follow-up: ask the SDK to summarise what a subagent is
       // doing, so `task_progress.summary` carries a live status line instead
