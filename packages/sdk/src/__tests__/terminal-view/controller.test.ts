@@ -313,7 +313,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function startController(shared?: ReturnType<typeof sharedSession>) {
+async function startController(
+  shared?: ReturnType<typeof sharedSession>,
+  createWorker = inThreadPort,
+) {
   const root = document.createElement('div');
   root.getBoundingClientRect = () => DOMRect.fromRect(rect);
   const canvas = document.createElement('canvas');
@@ -327,7 +330,7 @@ async function startController(shared?: ReturnType<typeof sharedSession>) {
       font: { family: 'monospace', size: 13, lineHeight: 1.2 },
       screenReader: false,
       reducedMotion: true,
-      createWorker: inThreadPort,
+      createWorker,
       createRenderer: () => renderer,
       measureCell,
     },
@@ -339,9 +342,12 @@ async function startController(shared?: ReturnType<typeof sharedSession>) {
   return { controller, renderer, session, output, root };
 }
 
-async function startStoredController() {
+async function startStoredController({
+  recordInitialSize = true,
+  createWorker = inThreadPort,
+} = {}) {
   rect = { width: 80 * 8, height: 24 * 16 };
-  const view = await startController();
+  const view = await startController(undefined, createWorker);
   const sockets: SessionSocket[] = [];
   const store = new TerminalSessionStore({
     apiBase: 'http://127.0.0.1:4198/prefix',
@@ -380,9 +386,10 @@ async function startStoredController() {
     const channel = socket.attached(0);
     socket.ready(channel, 0);
     expect(session.state).toBe('ready');
-    socket.resized(channel, 1, 80, 24);
-    socket.output(channel, 2, `${lines.join('\r\n')}\r\n`);
-    await acknowledged(socket, channel, 2);
+    if (recordInitialSize) socket.resized(channel, 1, 80, 24);
+    const initialSeq = recordInitialSize ? 2 : 1;
+    socket.output(channel, initialSeq, `${lines.join('\r\n')}\r\n`);
+    await acknowledged(socket, channel, initialSeq);
     await renderedGrid(view.renderer, 80, 24);
     return {
       ...view,
@@ -701,6 +708,48 @@ describe('TerminalController', () => {
       }
     },
   );
+
+  it('rebuilds an unsized prefix before a later recorded grid on resync', async () => {
+    const ports: EnginePort[] = [];
+    const f = await startStoredController({
+      recordInitialSize: false,
+      createWorker: () => {
+        const port = inThreadPort();
+        ports.push(port);
+        return port;
+      },
+    });
+    try {
+      const repaint = `\x1b[H${f.lines
+        .slice(17)
+        .map((line) => `${line}\x1b[K`)
+        .join('\r\n')}\r\n\x1b[K\x1b[J`;
+      f.socket.output(f.channel, 2, repaint);
+      await acknowledged(f.socket, f.channel, 2);
+      const before = await selectedText(f.controller);
+      for (const line of f.lines) expect(before.split(line)).toHaveLength(2);
+      f.socket.resized(f.channel, 3, 100, 40);
+      await acknowledged(f.socket, f.channel, 3);
+      await renderedGrid(f.renderer, 80, 24);
+
+      const previousFrames = f.renderer.frames.length;
+      expect(ports).toHaveLength(1);
+      expect(ports[0]!.onmessage).toEqual(expect.any(Function));
+      ports[0]!.onmessage!(
+        new MessageEvent('message', { data: { type: 'overflow', id: 2 } }),
+      );
+      await vi.waitFor(() => expect(f.controller.resyncs).toBe(1));
+      await vi.waitFor(() =>
+        expect(f.renderer.frames.length).toBeGreaterThan(previousFrames),
+      );
+      await renderedGrid(f.renderer, 80, 24);
+      expect(f.session.state).toBe('ready');
+      const after = await selectedText(f.controller);
+      for (const line of f.lines) expect(after.split(line)).toHaveLength(2);
+    } finally {
+      f.dispose();
+    }
+  });
 
   it('uses a later live recorded grid for incremental replay', async () => {
     const f = await startStoredController();

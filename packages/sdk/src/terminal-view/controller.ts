@@ -323,6 +323,7 @@ export class TerminalController {
 
   private attachSession(session: TerminalViewSession): void {
     this.unsubscribeSession?.();
+    this.latestRecordedGrid = null;
     // A new attachment replays its terminal from the oldest retained output,
     // so the screen an earlier one drew would show that history twice.
     if (this.drawn) this.engine?.send({ type: 'reset' });
