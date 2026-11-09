@@ -2370,6 +2370,16 @@ at 320px and 390px it covers the header trigger, visual-viewport sheet
 containment, dismissal/focus return, chat restore, and delegated Sessions
 navigation without a connection or credential setup step.
 
+### Model evals
+
+A change to what a model sees (Station Control tool descriptions and
+schemas, refusal copy, injected instructions) cannot be proven by a unit test.
+[`scripts/evals/`](../../scripts/evals/README.md) runs a paid model against
+the real text and grades its tool calls, for example
+`npx tsx scripts/evals/station-control-tool-use/run.ts --out <dir>`. It needs
+`ANTHROPIC_API_KEY` and is never run by CI or hooks; CI runs only the graders'
+tests. Compare a change with a baseline run of `main` on the same model.
+
 ### Task-first Home and root readiness
 
 The `/` route is a deliberate Home surface. Its focused unit lane is:
