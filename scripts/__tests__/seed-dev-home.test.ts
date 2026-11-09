@@ -52,9 +52,10 @@ function treeDigest(dir: string): Record<string, string> {
   const walk = (path: string) => {
     for (const entry of readdirSync(path, { withFileTypes: true })) {
       const full = join(path, entry.name);
-      // Any SQLite reader, read-only included, updates the -shm
-      // shared-memory index; it holds no data, so it is not compared.
+      // Any SQLite reader, read-only included, may create or update the
+      // -shm index and an empty -wal; neither changes the store's data.
       if (entry.name.endsWith('-shm')) continue;
+      if (entry.name.endsWith('-wal') && statSync(full).size === 0) continue;
       if (entry.isSymbolicLink()) out[relative(dir, full)] = 'link';
       else if (entry.isDirectory()) walk(full);
       else {

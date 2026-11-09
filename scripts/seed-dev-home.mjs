@@ -11,7 +11,7 @@
  * scheduled jobs and pending work, links to other machines, plugin code and
  * grants, and telemetry queues. No source file is written: SQLite stores are
  * copied with `VACUUM INTO` from a read-only connection (which, like any
- * reader, may update the `-shm` index), so a running source Station is never
+ * reader, may create or update the `-shm` index and an empty `-wal`), so a running source Station is never
  * disturbed.
  *
  *   node scripts/seed-dev-home.mjs --target=<dir> [--source=<home>] [--force]

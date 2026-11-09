@@ -617,8 +617,8 @@ builds a dev home from a read-only snapshot of your real one
 instance on it with `--home=<dir>`. Data flows one way: no source file is
 written, and SQLite stores are copied with `VACUUM INTO` from a read-only
 connection, so it is safe while your Station runs. (Like any SQLite reader, that
-connection can update a store's `-shm` shared-memory index, which holds no
-data.)
+connection can create or update a store's `-shm` index and an empty `-wal`,
+which hold no data.)
 
 It keeps Projects, Agents, layouts, Tasks, selected settings and the
 conversation history in `data/orchestration.sqlite`. It is fail-closed: only
