@@ -633,6 +633,33 @@ transaction must independently validate mappings, preserve original evidence,
 and obtain the existing lifecycle authorities. Preserving history must never
 implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 
+### Seeding a dev home from real data
+
+An empty home is a poor test. `node scripts/seed-dev-home.mjs --target=<dir>`
+builds a dev home from a read-only snapshot of your real one
+(`$STATION_ROOT/instances/default`, or `--source=<home>`), then start a dev
+instance on it with `--home=<dir>`. Data flows one way: no source file is
+written, and SQLite stores are copied with `VACUUM INTO` from a read-only
+connection, so it is safe while your Station runs. (Like any SQLite reader, that
+connection can create or update a store's `-shm` index and an empty `-wal`,
+which hold no data.)
+
+It keeps Projects, Agents, layouts, Tasks, selected settings and the
+conversation history in `data/orchestration.sqlite`. It is fail-closed: only
+the roots, `config/` files and orchestration tables the script names are
+carried, and everything else, including roots or tables added later, is
+dropped or emptied. That leaves out credentials and sign-in state
+(`providers.json`, `security`, `authentication`, browser profiles, app homes),
+scheduled jobs and pending work (`scheduler`, `automation`, wake-ups, recovery
+intents, prepared turns, outboxes, native session bindings), links to other
+machines (`devices`, `environments`, `integrations`), plugin code and grants,
+and telemetry queues, so the dev instance cannot resume, schedule or report
+anything as you. Symbolic links are skipped. Add connections again in the dev
+instance. Projects still name their real working directories, so a turn you
+start there edits that checkout. `dev-home-seed.json` in the target records
+what was kept and dropped; `--force` replaces only an earlier seed with no
+instance record. Expect the copy to be roughly the size of your history.
+
 ## Packages
 
 | Package | Path | Distribution | Purpose |
