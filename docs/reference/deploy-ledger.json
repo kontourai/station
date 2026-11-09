@@ -1,5 +1,42 @@
 [
   {
+    "timestampUtc": "2026-11-09T07:25:06Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261109.42577827028",
+    "sha": "427db9ad6a6ca2cf52efa048824199f8a9da1fb2",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42577827028",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261109.42577827028 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "96d457f436f40bab99e7a28af8948fe937ddec45",
+      "groups": {
+        "feat": [
+          "[#4736](https://github.com/kontourai/station/pull/4736) feat(dev): stream free scripted turns through the real Ollama adapter"
+        ],
+        "fix": [
+          "[#4746](https://github.com/kontourai/station/pull/4746) fix(ci): measure agent context growth against the merge base"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4747](https://github.com/kontourai/station/pull/4747) test(orchestration): isolate Windows profile and scratch fixtures",
+          "[#4734](https://github.com/kontourai/station/pull/4734) chore(agents): load the Veritas governance block once",
+          "[#4744](https://github.com/kontourai/station/pull/4744) perf(station-control): list tool schemas without the dialect URL; trim restated limits",
+          "[#4741](https://github.com/kontourai/station/pull/4741) test(evals): add a station-control tool-use eval harness",
+          "[#4742](https://github.com/kontourai/station/pull/4742) test: pin resumed successors receiving no first-turn Station instructions"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-11-09T01:08:09Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261109",

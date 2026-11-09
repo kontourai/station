@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-09T07:25:06Z | nightly-npm | 0.11.0-nightly.20261109.42577827028 | `427db9a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42577827028) |
 | 2026-11-09T01:08:09Z | nightly-desktop | 0.1.11-nightly.20261109 | `96d457f` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42538339733) |
 | 2026-11-09T01:08:06Z | nightly-android | 0.1.11-nightly.20261109 | `96d457f` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42538339733) |
 | 2026-11-09T00:20:25Z | nightly-npm | 0.11.0-nightly.20261109.42538339733 | `96d457f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42538339733) |
@@ -444,6 +445,33 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-09T07:25:06Z · nightly-npm · 0.11.0-nightly.20261109.42577827028
+
+- Ship SHA: `427db9ad6a6ca2cf52efa048824199f8a9da1fb2`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261109.42577827028 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `96d457f` ([full sha](https://github.com/kontourai/station/commit/96d457f436f40bab99e7a28af8948fe937ddec45)):
+
+**Features**
+
+- [#4736](https://github.com/kontourai/station/pull/4736) feat(dev): stream free scripted turns through the real Ollama adapter
+
+**Fixes**
+
+- [#4746](https://github.com/kontourai/station/pull/4746) fix(ci): measure agent context growth against the merge base
+
+**Other**
+
+- [#4747](https://github.com/kontourai/station/pull/4747) test(orchestration): isolate Windows profile and scratch fixtures
+- [#4734](https://github.com/kontourai/station/pull/4734) chore(agents): load the Veritas governance block once
+- [#4744](https://github.com/kontourai/station/pull/4744) perf(station-control): list tool schemas without the dialect URL; trim restated limits
+- [#4741](https://github.com/kontourai/station/pull/4741) test(evals): add a station-control tool-use eval harness
+- [#4742](https://github.com/kontourai/station/pull/4742) test: pin resumed successors receiving no first-turn Station instructions
 
 ## 2026-11-09T01:08:09Z · nightly-desktop · 0.1.11-nightly.20261109
 
