@@ -173,60 +173,68 @@ describe('repo-governance Veritas result boundary', () => {
 
     // Instruction files that exist but are not canonical reach the boundary
     // through the other two governance-block kinds and their diagnostics.
-    const staleRoot = temporaryRoot('station-veritas-stale-');
-    writeFileSync(join(staleRoot, 'AGENTS.md'), '# No governance markers\n');
-    writeFileSync(
-      join(staleRoot, 'CLAUDE.md'),
-      [
-        '<!-- veritas:governance-block:start -->',
-        'Not the canonical block.',
-        '<!-- veritas:governance-block:end -->',
-        '',
-      ].join('\n'),
-    );
-    const stale = await evaluatedResult(
-      'ai-instruction-files-synced',
-      staleRoot,
-    );
-    expect(stale).toMatchObject({ implemented: true, passed: false });
-    expect(
-      stale.findings.map(
-        (finding: { artifact: string; kind: string; diagnostic: string }) => ({
-          artifact: finding.artifact,
-          kind: finding.kind,
-          diagnostic: finding.diagnostic,
-        }),
-      ),
-    ).toEqual([
+    // AGENTS.md is the only target (CLAUDE.md imports it), so each kind gets
+    // its own root.
+    const cases = [
       {
-        artifact: 'AGENTS.md',
-        kind: 'missing-governance-block',
-        diagnostic: 'missing-governance-markers',
+        agents: '# No governance markers\n',
+        expected: {
+          artifact: 'AGENTS.md',
+          kind: 'missing-governance-block',
+          diagnostic: 'missing-governance-markers',
+        },
       },
       {
-        artifact: 'CLAUDE.md',
-        kind: 'stale-governance-block',
-        diagnostic: 'stale-governance-content',
+        agents: [
+          '<!-- veritas:governance-block:start -->',
+          'Not the canonical block.',
+          '<!-- veritas:governance-block:end -->',
+          '',
+        ].join('\n'),
+        expected: {
+          artifact: 'AGENTS.md',
+          kind: 'stale-governance-block',
+          diagnostic: 'stale-governance-content',
+        },
       },
-    ]);
-    for (const finding of stale.findings) {
-      expect(Object.keys(finding).sort()).toEqual(
-        findingKeysByRule['ai-instruction-files-synced'],
-      );
-    }
-    expect(
-      expectSingleGenericBlock(
+    ];
+    for (const { agents, expected } of cases) {
+      const staleRoot = temporaryRoot('station-veritas-stale-');
+      writeFileSync(join(staleRoot, 'AGENTS.md'), agents);
+      writeFileSync(join(staleRoot, 'CLAUDE.md'), '@AGENTS.md\n');
+      const stale = await evaluatedResult(
         'ai-instruction-files-synced',
-        stale,
-        POLICY_FAILURE_MESSAGE,
-      ),
-    ).toEqual([
-      {
-        id: 'ai-instruction-files-synced',
-        message: POLICY_FAILURE_MESSAGE,
-        severity: 'block',
-      },
-    ]);
+        staleRoot,
+      );
+      expect(stale).toMatchObject({ implemented: true, passed: false });
+      expect(
+        stale.findings.map(
+          (finding: { artifact: string; kind: string; diagnostic: string }) => ({
+            artifact: finding.artifact,
+            kind: finding.kind,
+            diagnostic: finding.diagnostic,
+          }),
+        ),
+      ).toEqual([expected]);
+      for (const finding of stale.findings) {
+        expect(Object.keys(finding).sort()).toEqual(
+          findingKeysByRule['ai-instruction-files-synced'],
+        );
+      }
+      expect(
+        expectSingleGenericBlock(
+          'ai-instruction-files-synced',
+          stale,
+          POLICY_FAILURE_MESSAGE,
+        ),
+      ).toEqual([
+        {
+          id: 'ai-instruction-files-synced',
+          message: POLICY_FAILURE_MESSAGE,
+          severity: 'block',
+        },
+      ]);
+    }
   });
 
   it('does not let an invented stage downgrade a reported failure', async () => {
