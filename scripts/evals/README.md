@@ -47,16 +47,19 @@ checkout (`--out`); they are evidence for a pull request, not source.
 
 ## The shape of an eval
 
-- `scripts/evals/<eval>/run.ts` is the entry point, with a package script
-  `eval:<eval>`. Flags: `--out <dir>`, `--model <id>`, `--samples <n>`,
-  `--case <id>` (repeatable), `--baseline <results.jsonl>`, `--dry-run` (prints
-  request bodies, no model calls) and `--context` (prints what the model is
-  offered, in bytes; no key).
+Each eval is a directory here, shaped like
+[station-control-tool-use](station-control-tool-use/):
+
+- `run.ts` is the entry point, with a package script named `eval:` plus the
+  eval's directory name. Flags: `--out <dir>`, `--model <id>`,
+  `--samples <n>`, `--case <id>` (repeatable), `--baseline <results.jsonl>`,
+  `--dry-run` (prints request bodies, no model calls) and `--context` (prints
+  what the model is offered, in bytes; no key).
 - Cases are data beside it, each with an `id`, a `kind` (`bad`, `guard` or
   `control`), a `source` and its checks.
-- The grader is plain logic, unit-tested in
-  `scripts/__tests__/<eval>-eval.test.ts`.
+- The grader is plain logic, unit-tested in `scripts/__tests__/` (for this
+  eval, `station-control-tool-use-eval.test.ts`).
 - A run writes `results.jsonl` and a `summary.md` to `--out`.
 
 When a second eval needs code the first already has (the model client,
-sampling, the summary), move it to `scripts/evals/shared/`. Not before.
+sampling, the summary), move it into a shared directory here. Not before.

@@ -138,7 +138,7 @@
           "tool": "declare_pull_request",
           "args": {
             "provider": "github",
-            "number": "482",
+            "ref": "482",
             "repository.owner": "acme",
             "repository.name": "app"
           }

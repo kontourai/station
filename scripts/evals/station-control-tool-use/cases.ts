@@ -25,18 +25,41 @@ export function loadCases(url: URL = CASES_URL): ToolUseCase[] {
 
 const HARNESS_NAMES = new Set(HARNESS_TOOLS.map((t) => t.name));
 
+/** Each offered tool's top-level input property names. */
+export type OfferedTools = ReadonlyMap<string, readonly string[]>;
+
+const HARNESS_TOOL_PROPERTIES: OfferedTools = new Map(
+  HARNESS_TOOLS.map((t) => [
+    t.name,
+    Object.keys(t.input_schema.properties ?? {}),
+  ]),
+);
+
+/** name → property names, from a `tools/list` result. */
+export function offeredTools(
+  tools: readonly { name: string; inputSchema: Record<string, unknown> }[],
+): OfferedTools {
+  return new Map(
+    tools.map((t) => [
+      t.name,
+      Object.keys((t.inputSchema.properties as object | undefined) ?? {}),
+    ]),
+  );
+}
+
 function isToolTurn(turn: unknown): turn is PriorToolTurn {
   return typeof turn === 'object' && turn !== null && 'toolCall' in turn;
 }
 
 /**
  * Problems with the case table: duplicate ids, missing sources, too few
- * controls, unknown refusal reasons, and tool names the case's session is
- * not offered (a case about a tool that no longer exists tests nothing).
+ * controls, unknown refusal reasons, tool names the case's session is not
+ * offered, and argument names a tool's schema does not have (a case about a
+ * tool or field that no longer exists tests nothing).
  */
 export function validateCases(
   cases: readonly ToolUseCase[],
-  offered: Record<Assurance, ReadonlySet<string>>,
+  offered: Record<Assurance, OfferedTools>,
 ): string[] {
   const problems: string[] = [];
   const ids = new Set<string>();
@@ -50,14 +73,28 @@ export function validateCases(
       problems.push(`${c.id}: unknown assurance ${c.assurance}`);
       continue;
     }
-    const known = (name: string) => tools.has(name) || HARNESS_NAMES.has(name);
-    const named = [
-      ...(c.expect.firstCallAnyOf ?? []),
-      ...(c.expect.calls ?? []).map((call) => call.tool),
-    ];
-    for (const name of named) {
+    const properties = (name: string) =>
+      tools.get(name) ?? HARNESS_TOOL_PROPERTIES.get(name);
+    const known = (name: string) => properties(name) !== undefined;
+    const checkArgs = (name: string, args: Record<string, unknown>) => {
+      const fields = properties(name) ?? [];
+      for (const path of Object.keys(args)) {
+        const field = path.split('.')[0];
+        if (!fields.includes(field)) {
+          problems.push(`${c.id}: ${name} has no input field ${field}`);
+        }
+      }
+    };
+    for (const name of c.expect.firstCallAnyOf ?? []) {
       if (!known(name)) {
         problems.push(`${c.id}: ${name} is not offered at ${c.assurance}`);
+      }
+    }
+    for (const call of c.expect.calls ?? []) {
+      if (!known(call.tool)) {
+        problems.push(`${c.id}: ${call.tool} is not offered at ${c.assurance}`);
+      } else {
+        checkArgs(call.tool, call.args ?? {});
       }
     }
     for (const turn of c.priorTurns ?? []) {
@@ -66,6 +103,8 @@ export function validateCases(
         problems.push(
           `${c.id}: prior call ${turn.toolCall.name} is not offered at ${c.assurance}`,
         );
+      } else {
+        checkArgs(turn.toolCall.name, turn.toolCall.input);
       }
       if (
         turn.refusal !== undefined &&

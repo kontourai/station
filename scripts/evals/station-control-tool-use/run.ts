@@ -7,7 +7,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import Anthropic from '@anthropic-ai/sdk';
-import { buildMessages, loadCases, validateCases } from './cases.js';
+import {
+  buildMessages,
+  loadCases,
+  offeredTools,
+  validateCases,
+} from './cases.js';
 import {
   type CaseComparison,
   compareRuns,
@@ -107,8 +112,8 @@ async function main(): Promise<number> {
 
   const all = loadCases();
   const problems = validateCases(all, {
-    bound: new Set(tools.bound.map((t) => t.name)),
-    'delegated-custody': new Set(tools['delegated-custody'].map((t) => t.name)),
+    bound: offeredTools(tools.bound),
+    'delegated-custody': offeredTools(tools['delegated-custody']),
   });
   if (problems.length > 0) {
     console.error(problems.join('\n'));

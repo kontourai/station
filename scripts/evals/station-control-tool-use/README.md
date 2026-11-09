@@ -54,7 +54,7 @@ $0.15 on Haiku 5.5. The summary records the tokens a run used.
 | second-model-review | bad | #4716 | A second model's review goes through delegation, not a model CLI. |
 | wait-for-delegated-task | bad | #4716 | Waiting on a delegated task uses `wait_session`/`get_task`, not a sleep loop. |
 | chart-without-a-server | bad | #4716 | A chart for the user goes through `html_preview`/`html_render`, not a local server. |
-| declare-opened-pull-request | bad | #3161 | After `gh pr create`, the pull request is declared with `declare_pull_request`. |
+| declare-opened-pull-request | bad | #3161 | After `gh pr create`, the pull request is declared with `declare_pull_request` and its `ref`. |
 | look-for-existing-work-first | guard | #4092 | Checking for existing work uses conversation search or active work. |
 | custody-delegate-without-targets-tool | guard | #4716 | A Codex/ACP session picks an Agent without `list_delegation_targets`. |
 | ordinary-fix | control | #4716 | A one-line fix uses no Station tool. |

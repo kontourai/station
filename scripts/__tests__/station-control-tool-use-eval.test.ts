@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 import {
   buildMessages,
   loadCases,
+  offeredTools,
   validateCases,
 } from '../evals/station-control-tool-use/cases.js';
 import {
@@ -157,14 +158,31 @@ describe('the case table', () => {
 
   test('every case names tools this checkout offers and is well formed', async () => {
     const offered = {
-      bound: new Set(
-        (await listStationControlTools('bound')).map((t) => t.name),
-      ),
-      'delegated-custody': new Set(
-        (await listStationControlTools('delegated-custody')).map((t) => t.name),
+      bound: offeredTools(await listStationControlTools('bound')),
+      'delegated-custody': offeredTools(
+        await listStationControlTools('delegated-custody'),
       ),
     };
     expect(validateCases(cases, offered)).toEqual([]);
+  });
+
+  test('validateCases reports an argument the tool schema does not have', () => {
+    const wrongField: ToolUseCase = {
+      ...cases[0],
+      id: 'wrong-field',
+      assurance: 'bound',
+      priorTurns: [],
+      expect: {
+        calls: [{ tool: 'declare_pull_request', args: { number: '482' } }],
+      },
+    };
+    const offered = new Map([['declare_pull_request', ['provider', 'ref']]]);
+    expect(
+      validateCases([wrongField], {
+        bound: offered,
+        'delegated-custody': offered,
+      }),
+    ).toContain('wrong-field: declare_pull_request has no input field number');
   });
 
   test('validateCases reports a tool the session is not offered', () => {
@@ -176,8 +194,8 @@ describe('the case table', () => {
     };
     expect(
       validateCases([...cases, broken], {
-        bound: new Set(),
-        'delegated-custody': new Set(),
+        bound: new Map(),
+        'delegated-custody': new Map(),
       }),
     ).toContain('broken: no_such_tool is not offered at delegated-custody');
   });
