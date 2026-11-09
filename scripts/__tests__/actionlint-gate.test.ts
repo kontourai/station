@@ -1372,6 +1372,63 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test.each([
+    [
+      'a pull-request head checkout',
+      (job: Record<string, unknown> & { steps: unknown[] }) => {
+        job.steps.unshift({
+          uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+          with: {
+            'persist-credentials': false,
+            repository:
+              "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}",
+            ref: "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}",
+          },
+        });
+      },
+    ],
+    [
+      'a second shell step',
+      (job: Record<string, unknown> & { steps: unknown[] }) => {
+        job.steps.push({ run: 'node head/script.mjs' });
+      },
+    ],
+    [
+      'a wider permission',
+      (job: Record<string, unknown>) => {
+        job.permissions = { contents: 'read', 'pull-requests': 'write' };
+      },
+    ],
+    [
+      'a self-hosted runner',
+      (job: Record<string, unknown>) => {
+        job['runs-on'] = 'self-hosted';
+      },
+    ],
+  ])('refuses the agent context budget workflow with %s', (_label, mutate) => {
+    const file = '.github/workflows/agent-context-budget.yml';
+    const workflow = readWorkflowDocuments().find(
+      (candidate) => candidate.file === file,
+    );
+    if (!workflow)
+      throw new Error('Expected the agent context budget workflow.');
+
+    expect(persistentRunnerPolicyFindings([workflow])).toEqual([]);
+
+    const mutated = structuredClone(workflow.document) as {
+      jobs: { budget: Record<string, unknown> & { steps: unknown[] } };
+    };
+    mutate(mutated.jobs.budget);
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document: mutated }]),
+    ).toContainEqual({
+      file,
+      jobId: 'budget',
+      message:
+        'agent-context-budget must keep its exact no-checkout topology: one shell step, no actions, no secrets, contents: read, hosted ubuntu-22.04',
+    });
+  });
+
   test('admits only the exact read-only hosted PR: Secret scan pull_request workflow', () => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/secret-scan.yml',

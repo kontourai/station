@@ -345,6 +345,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | --- | --- | --- | --- |
 | [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested; same-repository main-target PR merged close. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
+| [`agent-context-budget.yml`](../../.github/workflows/agent-context-budget.yml) | — | **PR: Agent context budget** | PR events, including label changes. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
@@ -967,6 +968,20 @@ the override is the only way to run the gate at all.
 The gate's failure text names both variables. A transfer budget regression
 is a real finding: raise the fixture envelope only with a matching
 `policy-attribution.json` record, never by editing the bound.
+
+### Agent context budget
+
+`src-server/runtime/agents/agent-context-budget.json` records, in UTF-8 bytes,
+the context Station itself puts in front of every engine session: the
+`tools/list` of each built-in MCP server (name, description and input schema)
+and Station's injected text (orchestration instructions, workload budget,
+chat-image line). `agent-context-budget.test.ts` beside it recomputes each
+number from live source and fails when the file disagrees, so update the JSON
+to the measured values in the same change. When text shrinks, lower the
+number. `PR: Agent context budget` fails a pull request that raises any value
+above `main`'s. Cut the added text first; if the growth is worth it, a
+maintainer adds the `agent-context-increase` label. On a merge conflict in the
+JSON, rerun the test and take its measured values.
 
 ### Latest E2E screenshot evidence
 

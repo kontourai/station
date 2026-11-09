@@ -111,6 +111,18 @@ CREATE INDEX IF NOT EXISTS idx_events_method
   ON orchestration_events(method);
 CREATE INDEX IF NOT EXISTS idx_events_history_projection
   ON orchestration_events(thread_id, method, sequence);
+-- Keep history and accepted-model reads off unrelated event payloads.
+CREATE INDEX IF NOT EXISTS idx_events_environment_identity
+  ON orchestration_events(thread_id, sequence DESC)
+  WHERE method IN ('session.started', 'session.configured')
+    AND json_valid(payload)
+    AND json_type(payload, '$.metadata.environmentId') = 'text';
+CREATE INDEX IF NOT EXISTS idx_events_accepted_model
+  ON orchestration_events(thread_id)
+  WHERE method IN ('session.started', 'session.configured', 'turn.started')
+    AND json_valid(payload)
+    AND json_type(payload, '$.metadata.modelSelectionReceipt.appliedModel') = 'text';
+
 CREATE INDEX IF NOT EXISTS idx_events_turn_window
   ON orchestration_events(thread_id, method, created_at DESC, turn_id DESC);
 -- idx_events_usage_observed is created additively by EventStore only after

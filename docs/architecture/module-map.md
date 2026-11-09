@@ -2080,6 +2080,14 @@ tool-level behavior.
 
 ## ConversationSessionLineage
 
+History listing, execution-provider presentation and accepted-model lookup use
+canonical `orchestration_conversation_sessions` mappings. They do not infer a
+Conversation from event metadata when that mapping is absent. The accepted-model
+read seeks only the mapped Sessions through its partial receipt index;
+Environment identity uses a separate partial index on Session and descending
+sequence. These indexes keep absent metadata and unrelated histories from
+turning each displayed row into an event-log scan.
+
 A conversation is the continuing human thread; an execution Session is the engine instance serving part of it. [Lineage](../../src-server/services/orchestration/conversation-session-lineage.ts) records their immutable order. [Continuation policy](../../src-server/services/orchestration/conversation-lineage.ts) decides whether to reuse the current Session or reserve a successor.
 
 **Interface.** `establishInitialSession` records the legacy root,
@@ -5214,6 +5222,9 @@ needed for that adapter.
 **Code and evidence.** `StationRuntime` composes `TaskGraphService` after concrete project and workflow dependencies exist, then publishes `composeTaskDispatcher(taskGraph, adapters)` to runtime routes and capabilities. The dispatcher Implementation owns private task-graph Adapter contributions. Evidence includes `src-server/services/projects/__tests__/task-dispatcher.test.ts`, `task-dispatch-composition.test.ts`, `task-graph-service.dispatch-claim.test.ts`, task route tests, and cold-start/runtime tests. See [Task dispatch](../design/task-dispatcher.md). **Do not reintroduce:** `TaskGraphService.dispatchTask`, post-construction project/workflow setters, or a route that reaches graph execution details directly.
 
 **Deliverable hierarchy and work chats.**
+Task-list chat discovery omits a chat group when that Task's reader admission
+becomes unavailable during preparation. Unexpected store or adapter errors still
+fail the request; no unavailable group grants access to another Conversation.
 [Dedicated relationship routes](../../src-server/routes/orchestration/task-relationships.ts)
 use TaskGraph's existing cross-process lock for atomic child creation,
 parent attach/reparent/detach and canonical Conversation association receipts.

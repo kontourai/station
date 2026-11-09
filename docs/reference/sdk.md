@@ -553,6 +553,13 @@ once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
 are unchanged.
+A stream opening has a 30-second deadline until response headers arrive,
+including credential resolution. `timeoutMs` changes that opening deadline;
+`null` or `0` explicitly disables it. The deadline stops at headers, so it never
+limits the lifetime of a healthy response body. An abandoned opening settles
+without waiting for a transport that ignores cancellation; a late response is
+cancelled and cannot deliver frames. `restart()` also cancels the current reader
+and retains the accepted replay cursor.
 Streams reconnect after 75 seconds without body bytes by default. Station's
 common event streams use a 30-second keepalive; Task rooms and direct-chat streams
 use 15 seconds, and Shared Project rooms use a 20-second heartbeat. Other stream
