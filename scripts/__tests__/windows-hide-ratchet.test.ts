@@ -49,7 +49,7 @@ describe('findOmissions', () => {
     ],
     [
       'dynamic import plus promisify',
-      "async function f() {\n  const { execFile } = await import('node:child_process');\n  const run = (await import('node:util')).promisify(execFile);\n  await run('git', ['ls-files']);\n}",
+      "async function f() {\n  const { execFile } = await import('node:child_process');\n  const run = (await import('node:util')).promisify(execFile);\n  await run('git', ['status']);\n}",
     ],
     [
       'same-file const options without the key',
