@@ -438,6 +438,26 @@ export const REQUIRED_FAST_CHECKS_CONDITION =
   "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
 /**
+ * #4748: the pinned actionlint archive is fetched once, by the trusted
+ * `actionlint-artifact` job, instead of by every consumer. Its admission is the
+ * union of its consumers' guards (the statics guard below, or the fork-only
+ * guard of `fork-smoke`), so it runs exactly when a consumer can run.
+ */
+export const ACTIONLINT_ARTIFACT_JOB = 'actionlint-artifact';
+const ACTIONLINT_ARTIFACT_CONDITION =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
+  "${{ always() && !cancelled() && ((needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')) || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository)) }}";
+
+/**
+ * The statics guard: the part-job guard above plus an explicit success of the
+ * actionlint artifact, so statics never runs on (or falls back to) a missing
+ * archive.
+ */
+export const REQUIRED_FAST_CHECKS_STATICS_CONDITION =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
+  "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && needs.actionlint-artifact.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
+
+/**
  * The required `fast-checks` aggregator's guard (#2709): the same event
  * clause as its parts, under `always()` WITHOUT `!cancelled()`. A skipped
  * required check reports success, so an aggregator that skipped itself on a
@@ -498,7 +518,7 @@ export const FAST_CHECKS_PLANNED_STEP_IF =
  */
 export const FAST_CHECKS_SHARD_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}";
+  "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}";
 export const FAST_CHECKS_AGGREGATE_STEP_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   "${{ needs.fast-checks-plan.outputs.legacy != 'true' }}";
@@ -660,18 +680,39 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
       'Required fast-checks must mark a deferred plan provisional for the source policy.',
     );
 
-  for (const partId of ['fast-checks-plan', 'fast-checks-statics']) {
+  for (const [partId, condition, partNeeds] of [
+    [
+      'fast-checks-plan',
+      REQUIRED_FAST_CHECKS_CONDITION,
+      ['classify', 'pr-admission'],
+    ],
+    [
+      'fast-checks-statics',
+      REQUIRED_FAST_CHECKS_STATICS_CONDITION,
+      ['classify', 'pr-admission', ACTIONLINT_ARTIFACT_JOB],
+    ],
+  ]) {
     const part = jobs[partId];
     if (
       !part ||
-      part.if !== REQUIRED_FAST_CHECKS_CONDITION ||
+      part.if !== condition ||
       swallowsFailure(part) ||
-      !sameList(needsList(part), ['classify', 'pr-admission'])
+      !sameList(needsList(part), partNeeds)
     )
       findings.push(
         `Required ${partId} must admit PR and merge candidates without swallowing failures.`,
       );
   }
+  const artifactProducer = jobs[ACTIONLINT_ARTIFACT_JOB];
+  if (
+    !artifactProducer ||
+    artifactProducer.if !== ACTIONLINT_ARTIFACT_CONDITION ||
+    swallowsFailure(artifactProducer) ||
+    !sameList(needsList(artifactProducer), ['classify', 'pr-admission'])
+  )
+    findings.push(
+      `Required ${ACTIONLINT_ARTIFACT_JOB} must admit exactly its consumers without swallowing failures.`,
+    );
   const plan = jobs['fast-checks-plan'];
   const planSteps = steps(plan);
   const planned = planSteps.filter(
@@ -730,7 +771,10 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     !shard ||
     shard.if !== FAST_CHECKS_SHARD_IF ||
     swallowsFailure(shard) ||
-    !sameList(needsList(shard), ['fast-checks-plan']) ||
+    !sameList(needsList(shard), [
+      'fast-checks-plan',
+      ACTIONLINT_ARTIFACT_JOB,
+    ]) ||
     shard.strategy?.['fail-fast'] !== false ||
     matrix !== FAST_CHECKS_MATRIX
   )

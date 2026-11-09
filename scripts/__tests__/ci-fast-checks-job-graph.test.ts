@@ -1,8 +1,20 @@
-import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, join, resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 
 /**
  * #2709 re-land: the sharded fast-checks graph evaluated with GitHub's job
@@ -618,7 +630,16 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
   // real order: which jobs had finished at the cancel, which were running,
   // and each job's recorded conclusion. The aggregator's result is not
   // assumed: it comes from its real bash/jq step over the simulated needs.
-  const EARLY = ['classify', 'fork-smoke', 'repo-scans', 'ui-bundle-delta'];
+  // The actionlint artifact (#4748) finishes before any part that consumes it
+  // (shards, statics, fork-smoke). The plan does not need it, so the plan and
+  // the producer may run in parallel.
+  const EARLY = [
+    'classify',
+    'actionlint-artifact',
+    'fork-smoke',
+    'repo-scans',
+    'ui-bundle-delta',
+  ];
   const REPLAYS: Array<{
     run: string;
     outcomes?: Record<string, Result>;
@@ -718,6 +739,176 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       });
       expect(state.results.get('fast-checks'), running).toBe('failure');
     }
+  });
+
+  describe('the pinned actionlint artifact handoff (#4748)', () => {
+    const PRODUCER = 'actionlint-artifact';
+    const ran = (state: State, id: string) =>
+      !['skipped', 'cancelled'].includes(state.results.get(id) as Result);
+
+    test.each(EVENTS)(
+      '%s: the producer runs before the consumers that need it',
+      (_name, context, outputs) => {
+        const state = simulate(jobs, context, {
+          outputs: {
+            ...outputs,
+            'fast-checks-plan': { legacy: 'false' },
+            [PRODUCER]: { 'artifact-id': '4748' },
+          },
+        });
+        expect(state.results.get(PRODUCER)).toBe('success');
+        for (const id of ['fast-checks-shard', 'fast-checks-statics'])
+          expect(state.results.get(id), id).toBe('success');
+        expect(state.results.get('fork-smoke')).toBe('skipped');
+        expect(aggregatorPartResults(jobs, state)).toBe(0);
+      },
+    );
+
+    test.each(
+      EVENTS.flatMap(([name, context, outputs]) =>
+        (['failure', 'cancelled', 'skipped'] as const).map(
+          (outcome) => [name, outcome, context, outputs] as const,
+        ),
+      ),
+    )(
+      '%s: a producer that ends %s admits no consumer and the aggregator fails',
+      (_name, outcome, context, outputs) => {
+        const state = simulate(jobs, context, {
+          outputs: { ...outputs, 'fast-checks-plan': { legacy: 'false' } },
+          outcomes: { [PRODUCER]: outcome },
+        });
+        expect(state.results.get(PRODUCER)).toBe(outcome);
+        // The plan does not depend on the producer, so it still succeeds;
+        // only the consumers are held back, and no consumer fetches the
+        // archive itself.
+        expect(state.results.get('fast-checks-plan')).toBe('success');
+        for (const id of ['fast-checks-shard', 'fast-checks-statics'])
+          expect(state.results.get(id), id).toBe('skipped');
+        expect(state.results.get('fast-checks')).not.toBe('skipped');
+        expect(aggregatorPartResults(jobs, state)).toBe(1);
+      },
+    );
+
+    test('a fork pull request runs fork-smoke only after the producer, and a failed producer skips it', () => {
+      const fork = { ...sameRepositoryPr, headRepository: 'someone/station' };
+      const ok = simulate(jobs, fork);
+      expect(ok.results.get(PRODUCER)).toBe('success');
+      expect(ok.results.get('fork-smoke')).toBe('success');
+      for (const outcome of ['failure', 'cancelled', 'skipped'] as const) {
+        const state = simulate(jobs, fork, {
+          outcomes: { [PRODUCER]: outcome },
+        });
+        expect(state.results.get('fork-smoke'), outcome).toBe('skipped');
+      }
+    });
+
+    test.each([
+      ['a same-repository pull request', sameRepositoryPr, {}, true],
+      [
+        'a fork pull request',
+        { ...sameRepositoryPr, headRepository: 'someone/station' },
+        {},
+        true,
+      ],
+      [
+        'a base retarget edit',
+        { ...sameRepositoryPr, action: 'edited', retarget: true },
+        {},
+        true,
+      ],
+      [
+        'a metadata-only edit',
+        { ...sameRepositoryPr, action: 'edited' },
+        {},
+        false,
+      ],
+      [
+        'a metadata-only edit of a fork pull request',
+        {
+          ...sameRepositoryPr,
+          action: 'edited',
+          headRepository: 'someone/station',
+        },
+        {},
+        false,
+      ],
+      [
+        'a merge group',
+        { ...sameRepositoryPr, event: 'merge_group' },
+        { classify: { heavy: 'false' } },
+        true,
+      ],
+      [
+        'a manual dispatch',
+        { ...sameRepositoryPr, event: 'workflow_dispatch' },
+        { classify: { heavy: 'false' } },
+        true,
+      ],
+      [
+        'a heavy push',
+        { ...sameRepositoryPr, event: 'push' },
+        { classify: { heavy: 'true' } },
+        true,
+      ],
+      [
+        'a light push',
+        { ...sameRepositoryPr, event: 'push' },
+        { classify: { heavy: 'false' } },
+        false,
+      ],
+    ] as Array<
+      [string, Context, Record<string, Record<string, string>>, boolean]
+    >)(
+      'the producer runs exactly when a consumer can run: %s',
+      (_name, context, outputs, expected) => {
+        const state = simulate(jobs, context, {
+          outputs: { ...outputs, 'fast-checks-plan': { legacy: 'false' } },
+        });
+        expect(ran(state, PRODUCER)).toBe(expected);
+        expect(
+          ran(state, 'fast-checks-statics') || ran(state, 'fork-smoke'),
+        ).toBe(expected);
+      },
+    );
+
+    test('a deferred merge conflict spends no producer runner either', () => {
+      const state = simulate(jobs, sameRepositoryPr, {
+        outcomes: { 'pr-admission': 'failure' },
+        outputs: { 'pr-admission': { admitted: 'false' } },
+      });
+      expect(state.results.get(PRODUCER)).toBe('skipped');
+    });
+
+    test('every consumer depends on the producer and downloads only the id it outputs', () => {
+      type Step = { uses?: string; with?: Record<string, unknown> };
+      const parsed = (
+        load(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'), {
+          schema: JSON_SCHEMA,
+        }) as { jobs: Record<string, Job & { steps: Step[] }> }
+      ).jobs;
+      expect(
+        (parsed[PRODUCER] as unknown as { outputs: Record<string, string> })
+          .outputs,
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      ).toEqual({ 'artifact-id': '${{ steps.artifact.outputs.artifact-id }}' });
+      for (const id of [
+        'fast-checks-shard',
+        'fast-checks-statics',
+        'fork-smoke',
+      ]) {
+        expect(needsOf(parsed[id]), id).toContain(PRODUCER);
+        const downloads = parsed[id].steps.filter(
+          (step) =>
+            step.uses?.startsWith('actions/download-artifact@') &&
+            step.with?.['artifact-ids'] !== undefined,
+        );
+        expect(downloads, id).toHaveLength(1);
+        expect(downloads[0].with?.['artifact-ids']).toBe(
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          '${{ needs.actionlint-artifact.outputs.artifact-id }}',
+        );
+      }
+    });
   });
 
   test('every job that needs another carries a status function, so no skipped ancestor silently skips it', () => {
@@ -889,5 +1080,503 @@ describe('repository-wide PR source runner ceilings', () => {
         sourceGroups(jobs[id], 3701, 1, 'merge_group', 'c'.repeat(40)),
       );
     }
+  });
+});
+
+/**
+ * #4748: the actionlint handoff's shell, taken verbatim from ci.yml and run in
+ * real GNU bash against real GNU sha256sum and tar. Only the network and the
+ * clock are controlled: `curl` and `sleep` are stand-ins that record their
+ * calls and serve a fixture archive (or fail with curl's exit 22, a missing
+ * file, a flipped byte). `tar` is a recording wrapper around the host tar, so
+ * "the digest is verified BEFORE tar runs" is observed, not inferred.
+ */
+describe('the pinned actionlint provisioning text, executed (#4748)', () => {
+  type RunStep = {
+    name?: string;
+    run?: string;
+    env?: Record<string, string>;
+    with?: Record<string, string>;
+  };
+  const workflowJobs = readJobs() as unknown as Record<
+    string,
+    Job & { steps: RunStep[] }
+  >;
+  const stepOf = (jobId: string, name: string) => {
+    const step = workflowJobs[jobId].steps.find(
+      (candidate) => candidate.name === name,
+    );
+    if (typeof step?.run !== 'string' && step?.with === undefined)
+      throw new Error(`Expected the ${jobId} "${name}" step.`);
+    return step as RunStep;
+  };
+  const provisioning = (jobId: string, name: string) => {
+    const step = stepOf(jobId, name);
+    if (typeof step.run !== 'string' || !step.env)
+      throw new Error(`Expected a ${jobId} "${name}" run step with env.`);
+    return { run: step.run, env: step.env };
+  };
+  const PRODUCER = 'actionlint-artifact';
+  const PRODUCER_STEP = 'Download and verify pinned actionlint';
+  const INSTALL_STEP = 'Install pinned actionlint';
+  const CONSUMERS = ['fast-checks-shard', 'fast-checks-statics', 'fork-smoke'];
+  const ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
+  const sandboxes: string[] = [];
+  afterEach(() => {
+    for (const dir of sandboxes.splice(0))
+      rmSync(dir, { recursive: true, force: true });
+  });
+
+  type Outcome = { status: number; stdout: string; stderr: string };
+  /**
+   * A fixture child counts only when it ran to a numeric exit: a spawn error
+   * (ENOENT, a timeout, an output overflow), a signal, a missing status or a
+   * shell "command not found" would otherwise read as a nonzero "denial" for a
+   * negative control that never reached the behavior it names.
+   */
+  function settle(label: string, result: SpawnSyncReturns<string>): Outcome {
+    if (result.error)
+      throw new Error(
+        `${label}: spawn infrastructure error ${result.error.name}: ${result.error.message}`,
+      );
+    if (result.signal !== null)
+      throw new Error(`${label}: ended by signal ${result.signal}`);
+    if (typeof result.status !== 'number')
+      throw new Error(`${label}: no numeric exit status`);
+    if (/command not found/.test(result.stderr))
+      throw new Error(`${label}: a command was missing: ${result.stderr}`);
+    return {
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  }
+  const bounded = (
+    label: string,
+    command: string,
+    args: string[],
+    options: { env?: Record<string, string> } = {},
+  ) =>
+    settle(
+      label,
+      spawnSyncBounded(command, args, {
+        encoding: 'utf8',
+        timeout: 30_000,
+        windowsHide: true,
+        ...options,
+      }) as SpawnSyncReturns<string>,
+    );
+
+  function sandbox() {
+    const root = mkdtempSync(join(tmpdir(), 'actionlint-handoff-'));
+    sandboxes.push(root);
+    const bin = join(root, 'bin');
+    const temp = join(root, 'runner-temp');
+    mkdirSync(bin);
+    mkdirSync(temp);
+    const githubPath = join(root, 'github-path');
+    writeFileSync(githubPath, '');
+    const located = bounded('locate tar', 'bash', ['-c', 'command -v tar']);
+    const realTar = located.stdout.trim();
+    if (located.status !== 0 || !realTar)
+      throw new Error('A host tar is required for these fixtures.');
+    const tool = (name: string, body: string) =>
+      writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`, {
+        mode: 0o755,
+      });
+    tool(
+      'curl',
+      [
+        'printf "%s\\n" "$*" >> "$FAKE_CURL_LOG"',
+        'echo call >> "$FAKE_CURL_COUNT"',
+        'calls="$(wc -l < "$FAKE_CURL_COUNT" | tr -d " ")"',
+        "out=''",
+        'while [ "$#" -gt 0 ]; do case "$1" in --output) out="$2"; shift ;; esac; shift; done',
+        'case "$FAKE_CURL_MODE" in',
+        '  ok) cp "$FAKE_ARCHIVE" "$out" ;;',
+        '  fail22) echo "curl: (22) The requested URL returned error: 504" >&2; exit 22 ;;',
+        '  flaky) if [ "$calls" -le 2 ]; then echo "curl: (22) The requested URL returned error: 504" >&2; exit 22; fi; cp "$FAKE_ARCHIVE" "$out" ;;',
+        '  nofile) ;;',
+        '  *) echo "unknown fake curl mode" >&2; exit 99 ;;',
+        'esac',
+      ].join('\n'),
+    );
+    tool('sleep', 'echo "$*" >> "$FAKE_SLEEP_LOG"');
+    tool('tar', 'echo "$*" >> "$FAKE_TAR_LOG"\nexec "$REAL_TAR" "$@"');
+    const run = (
+      script: string,
+      env: Record<string, string>,
+      extra: Record<string, string> = {},
+    ) =>
+      bounded(
+        'workflow script',
+        'bash',
+        ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script],
+        {
+          env: {
+            PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+            RUNNER_TEMP: temp,
+            GITHUB_PATH: githubPath,
+            GITHUB_OUTPUT: join(root, 'github-output'),
+            FAKE_CURL_LOG: join(root, 'curl.log'),
+            FAKE_CURL_COUNT: join(root, 'curl.count'),
+            FAKE_SLEEP_LOG: join(root, 'sleep.log'),
+            FAKE_TAR_LOG: join(root, 'tar.log'),
+            REAL_TAR: realTar,
+            ...env,
+            ...extra,
+          },
+        },
+      );
+    const lines = (name: string) =>
+      existsSync(join(root, name))
+        ? readFileSync(join(root, name), 'utf8').split('\n').filter(Boolean)
+        : [];
+    return { root, temp, githubPath, run, lines };
+  }
+
+  function fixtureArchive(box: ReturnType<typeof sandbox>) {
+    const src = join(box.root, 'src');
+    const good = join(box.root, 'fixture');
+    const flipped = join(box.root, 'fixture-flipped');
+    for (const dir of [src, good, flipped]) mkdirSync(dir);
+    writeFileSync(
+      join(src, 'actionlint'),
+      '#!/bin/sh\necho fixture actionlint\n',
+      { mode: 0o755 },
+    );
+    const made = bounded('fixture tar', 'tar', [
+      '-czf',
+      join(good, ARCHIVE),
+      '-C',
+      src,
+      'actionlint',
+    ]);
+    if (made.status !== 0)
+      throw new Error(`fixture tar failed: ${made.stderr}`);
+    const bytes = readFileSync(join(good, ARCHIVE));
+    const corrupted = Buffer.from(bytes);
+    corrupted[Math.floor(corrupted.length / 2)] ^= 1;
+    writeFileSync(join(flipped, ARCHIVE), corrupted);
+    return {
+      archive: join(good, ARCHIVE),
+      flipped: join(flipped, ARCHIVE),
+      sha: createHash('sha256').update(bytes).digest('hex'),
+    };
+  }
+
+  test('the fixtures run on GNU sha256sum and GNU tar, so a host without them fails here instead of passing vacuously', () => {
+    for (const [tool, banner] of [
+      ['sha256sum', /GNU coreutils/],
+      ['tar', /GNU tar/],
+    ] as const) {
+      const result = bounded(`${tool} --version`, tool, ['--version']);
+      expect(result.status, tool).toBe(0);
+      expect(`${result.stdout}${result.stderr}`, tool).toMatch(banner);
+    }
+  });
+
+  describe('the producer download step', () => {
+    const producer = provisioning(PRODUCER, PRODUCER_STEP);
+
+    test('the uploaded path is the file the step verified', () => {
+      expect(
+        stepOf(PRODUCER, 'Upload verified actionlint archive').with,
+      ).toMatchObject({
+        path: `\${{ runner.temp }}/actionlint-download/${ARCHIVE}`,
+        overwrite: false,
+        'if-no-files-found': 'error',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        name: 'pinned-actionlint-${{ github.run_id }}-${{ github.run_attempt }}',
+      });
+      expect(producer.env.ACTIONLINT_ARCHIVE).toBe(ARCHIVE);
+    });
+
+    test('downloads once, verifies the digest and leaves exactly the verified archive', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const result = box.run(
+        producer.run,
+        { ...producer.env, ACTIONLINT_SHA256: fixture.sha },
+        { FAKE_CURL_MODE: 'ok', FAKE_ARCHIVE: fixture.archive },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        readFileSync(join(box.temp, 'actionlint-download', ARCHIVE)),
+      ).toEqual(readFileSync(fixture.archive));
+      const [call] = box.lines('curl.log');
+      expect(box.lines('curl.count')).toHaveLength(1);
+      expect(call).toContain('--fail');
+      expect(call).toContain('--max-time 60');
+      expect(call).toContain(producer.env.ACTIONLINT_URL);
+      expect(box.lines('sleep.log')).toEqual([]);
+    });
+
+    test('retries after curl exit 22 and succeeds on the third attempt', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const result = box.run(
+        producer.run,
+        { ...producer.env, ACTIONLINT_SHA256: fixture.sha },
+        { FAKE_CURL_MODE: 'flaky', FAKE_ARCHIVE: fixture.archive },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(box.lines('curl.count')).toHaveLength(3);
+      expect(box.lines('sleep.log')).toEqual(['10', '15']);
+    });
+
+    test('gives up after exactly four attempts when curl keeps returning 22', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const result = box.run(
+        producer.run,
+        { ...producer.env, ACTIONLINT_SHA256: fixture.sha },
+        { FAKE_CURL_MODE: 'fail22', FAKE_ARCHIVE: fixture.archive },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('failed after 4 attempts');
+      expect(box.lines('curl.count')).toHaveLength(4);
+      expect(box.lines('sleep.log')).toEqual(['10', '15', '20']);
+      expect(existsSync(join(box.temp, 'actionlint-download', ARCHIVE))).toBe(
+        false,
+      );
+    });
+
+    test.each([
+      [
+        'the production digest rejects an archive that is not the release',
+        'ok',
+        'good',
+        undefined,
+      ],
+      ['a flipped byte in the served archive', 'ok', 'flipped', 'fixture-sha'],
+      [
+        'a download that reports success but writes nothing',
+        'nofile',
+        'good',
+        'fixture-sha',
+      ],
+    ] as const)('rejects %s', (_name, mode, which, digest) => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const result = box.run(
+        producer.run,
+        {
+          ...producer.env,
+          ...(digest === 'fixture-sha'
+            ? { ACTIONLINT_SHA256: fixture.sha }
+            : {}),
+        },
+        {
+          FAKE_CURL_MODE: mode,
+          FAKE_ARCHIVE: which === 'good' ? fixture.archive : fixture.flipped,
+        },
+      );
+      expect(result.status).toBe(1);
+      expect(box.lines('curl.count')).toHaveLength(1);
+    });
+
+    test('refuses a download directory that already exists and never calls curl', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      mkdirSync(join(box.temp, 'actionlint-download'));
+      const result = box.run(
+        producer.run,
+        { ...producer.env, ACTIONLINT_SHA256: fixture.sha },
+        { FAKE_CURL_MODE: 'ok', FAKE_ARCHIVE: fixture.archive },
+      );
+      expect(result.status).toBe(1);
+      expect(box.lines('curl.count')).toEqual([]);
+    });
+  });
+
+  describe('the producer artifact id validation step', () => {
+    const VALIDATION_STEP = 'Validate uploaded artifact id';
+    const validation = stepOf(PRODUCER, VALIDATION_STEP);
+    const script = String(validation.run);
+    const outputFile = (box: ReturnType<typeof sandbox>) =>
+      join(box.root, 'github-output');
+    const written = (box: ReturnType<typeof sandbox>) =>
+      existsSync(outputFile(box)) ? readFileSync(outputFile(box), 'utf8') : '';
+
+    test('is the only step that writes the job output, from the upload id', () => {
+      const steps = workflowJobs[PRODUCER].steps as Array<
+        RunStep & { id?: string }
+      >;
+      expect(
+        steps.filter((step) => String(step.run).includes('GITHUB_OUTPUT')),
+      ).toEqual([validation]);
+      expect(validation.env).toEqual({
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        UPLOADED_ARTIFACT_ID: '${{ steps.upload.outputs.artifact-id }}',
+      });
+      // The validation step follows the upload that produces the id.
+      expect(steps.findIndex((step) => step.id === 'artifact')).toBeGreaterThan(
+        steps.findIndex((step) => step.id === 'upload'),
+      );
+    });
+
+    test.each(['1', '4748', '123456789012', '9007199254740993'])(
+      'passes the positive integer %s through unchanged and writes nothing else',
+      (id) => {
+        const box = sandbox();
+        const result = box.run(script, { UPLOADED_ARTIFACT_ID: id });
+        expect(result.status, result.stderr).toBe(0);
+        expect(written(box)).toBe(`artifact-id=${id}\n`);
+      },
+    );
+
+    test.each([
+      ['empty', ''],
+      ['zero', '0'],
+      ['a leading zero', '007'],
+      ['negative', '-5'],
+      ['a decimal', '1.5'],
+      ['letters', '12ab'],
+      ['a space', '12 34'],
+      ['surrounding whitespace', ' 12 '],
+      ['a newline-injected second output', '12\nartifact-id=99'],
+      ['an environment-file injection', '12\nGITHUB_ENV=x'],
+    ])('rejects %s and exposes no output', (_name, id) => {
+      const box = sandbox();
+      const result = box.run(script, { UPLOADED_ARTIFACT_ID: id });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('not a positive integer');
+      expect(written(box)).toBe('');
+    });
+
+    test('control: without the validation an empty id would be exposed as a successful output', () => {
+      // The harness reads the same output file; an unvalidated writer leaves a
+      // present-but-empty id, the shape that makes the download action fetch
+      // every artifact of the run.
+      const unvalidated =
+        'echo "artifact-id=$UPLOADED_ARTIFACT_ID" >> "$GITHUB_OUTPUT"';
+      const box = sandbox();
+      const result = box.run(unvalidated, { UPLOADED_ARTIFACT_ID: '' });
+      expect(result.status).toBe(0);
+      expect(written(box)).toBe('artifact-id=\n');
+    });
+  });
+
+  test('all three consumers install with the same shell and the same pinned inputs', () => {
+    const [first, ...rest] = CONSUMERS.map((id) =>
+      provisioning(id, INSTALL_STEP),
+    );
+    expect(first.run).toContain('sha256sum --check --status');
+    for (const other of rest) expect(other).toEqual(first);
+    expect(first.env.ACTIONLINT_ARCHIVE).toBe(ARCHIVE);
+    expect(first.env.ACTIONLINT_SHA256).toBe(
+      provisioning(PRODUCER, PRODUCER_STEP).env.ACTIONLINT_SHA256,
+    );
+  });
+
+  describe.each(CONSUMERS)('%s install step', (jobId) => {
+    const install = provisioning(jobId, INSTALL_STEP);
+    const place = (box: ReturnType<typeof sandbox>, source: string) => {
+      const directory = join(box.temp, 'actionlint-artifact');
+      mkdirSync(directory);
+      copyFileSync(source, join(directory, ARCHIVE));
+      return directory;
+    };
+    const untouched = (box: ReturnType<typeof sandbox>) => {
+      expect(box.lines('tar.log')).toEqual([]);
+      expect(readFileSync(box.githubPath, 'utf8')).toBe('');
+    };
+
+    test('extracts the verified archive and puts only that directory on PATH', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      place(box, fixture.archive);
+      const result = box.run(install.run, {
+        ...install.env,
+        ACTIONLINT_SHA256: fixture.sha,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(existsSync(join(box.temp, 'actionlint', 'actionlint'))).toBe(true);
+      expect(readFileSync(box.githubPath, 'utf8')).toBe(
+        `${join(box.temp, 'actionlint')}\n`,
+      );
+      expect(box.lines('tar.log')).toHaveLength(1);
+      expect(box.lines('tar.log')[0]).toContain('-xzf');
+      // The controlled curl wrapper is on this PATH, and the install never
+      // calls it: it extracts only what the download step already provided.
+      expect(box.lines('curl.count')).toEqual([]);
+    });
+
+    test.each([
+      ['a flipped byte', 'flipped', 'fixture-sha'],
+      ['an archive that is not the pinned release', 'good', 'production-sha'],
+    ] as const)('rejects %s before tar runs', (_name, which, digest) => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      place(box, which === 'good' ? fixture.archive : fixture.flipped);
+      const result = box.run(install.run, {
+        ...install.env,
+        ...(digest === 'fixture-sha' ? { ACTIONLINT_SHA256: fixture.sha } : {}),
+      });
+      expect(result.status).toBe(1);
+      untouched(box);
+      expect(existsSync(join(box.temp, 'actionlint'))).toBe(false);
+    });
+
+    test('rejects a missing archive before tar runs', () => {
+      const box = sandbox();
+      const result = box.run(install.run, install.env);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('missing from the downloaded artifact');
+      untouched(box);
+    });
+
+    test('rejects an archive that is a symbolic link before tar runs', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const directory = join(box.temp, 'actionlint-artifact');
+      mkdirSync(directory);
+      symlinkSync(fixture.archive, join(directory, ARCHIVE));
+      const result = box.run(install.run, {
+        ...install.env,
+        ACTIONLINT_SHA256: fixture.sha,
+      });
+      expect(result.status).toBe(1);
+      untouched(box);
+    });
+
+    test('control: the harness sees tar run when the verification is moved after it', () => {
+      // Without this, "tar never ran" above could hold for a harness that
+      // cannot observe tar at all. The same flipped archive, with the digest
+      // check moved behind the extraction, must show tar having run.
+      const verify =
+        'echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status\n';
+      const tail = 'echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"';
+      const unsafe = install.run
+        .replace(verify, '')
+        .replace(tail, `${verify}${tail}`);
+      expect(install.run).toContain(verify);
+      expect(unsafe).not.toBe(install.run);
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      place(box, fixture.flipped);
+      const result = box.run(unsafe, {
+        ...install.env,
+        ACTIONLINT_SHA256: fixture.sha,
+      });
+      // GNU tar's own refusal of the corrupted gzip (exit 2), or 1 from the
+      // digest check that now runs after it: either way tar was observed.
+      expect([1, 2]).toContain(result.status);
+      expect(box.lines('tar.log')).toHaveLength(1);
+    });
+
+    test('refuses an extraction directory that already exists', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      place(box, fixture.archive);
+      mkdirSync(join(box.temp, 'actionlint'));
+      const result = box.run(install.run, {
+        ...install.env,
+        ACTIONLINT_SHA256: fixture.sha,
+      });
+      expect(result.status).toBe(1);
+      untouched(box);
+    });
   });
 });
