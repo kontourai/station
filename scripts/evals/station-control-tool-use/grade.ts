@@ -8,9 +8,9 @@
 export const STATION_CONTROL_PREFIX = 'mcp__station-control__';
 
 /** The harness's shell tool. Its `command` is what `shellMustNot` reads. */
-export const SHELL_TOOL = 'Bash';
+const SHELL_TOOL = 'Bash';
 
-export type CaseKind = 'bad' | 'guard' | 'control';
+type CaseKind = 'bad' | 'guard' | 'control';
 
 export interface ToolCall {
   name: string;
@@ -29,11 +29,9 @@ export interface PriorToolTurn {
   isError?: boolean;
 }
 
-export type PriorTurn =
-  | { role: 'user' | 'assistant'; text: string }
-  | PriorToolTurn;
+type PriorTurn = { role: 'user' | 'assistant'; text: string } | PriorToolTurn;
 
-export interface CallExpectation {
+interface CallExpectation {
   /** A station-control tool name without the prefix, or a harness tool. */
   tool: string;
   /**
@@ -44,7 +42,7 @@ export interface CallExpectation {
   args?: Record<string, unknown>;
 }
 
-export interface Expectation {
+interface Expectation {
   /** The first tool call must be one of these. Requires at least one call. */
   firstCallAnyOf?: string[];
   /** Each must match some call in the response. */
@@ -72,13 +70,13 @@ export interface ToolUseCase {
   expect: Expectation;
 }
 
-export interface SampleGrade {
+interface SampleGrade {
   pass: boolean;
   failures: string[];
 }
 
 /** `mcp__station-control__delegate_task` → `delegate_task`; others unchanged. */
-export function shortToolName(name: string): string {
+function shortToolName(name: string): string {
   return name.startsWith(STATION_CONTROL_PREFIX)
     ? name.slice(STATION_CONTROL_PREFIX.length)
     : name;
@@ -94,7 +92,7 @@ function readPath(input: Record<string, unknown>, path: string): unknown {
 }
 
 /** Why `call` does not satisfy `args`, or undefined when it does. */
-export function argsMismatch(
+function argsMismatch(
   input: Record<string, unknown>,
   args: Record<string, unknown> | undefined,
 ): string | undefined {

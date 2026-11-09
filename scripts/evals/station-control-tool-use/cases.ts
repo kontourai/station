@@ -17,7 +17,7 @@ import {
 } from './grade.js';
 import { type Assurance, HARNESS_TOOLS } from './tools.js';
 
-export const CASES_URL = new URL('./cases.json', import.meta.url);
+const CASES_URL = new URL('./cases.json', import.meta.url);
 
 export function loadCases(url: URL = CASES_URL): ToolUseCase[] {
   return JSON.parse(readFileSync(url, 'utf8')) as ToolUseCase[];
@@ -26,7 +26,7 @@ export function loadCases(url: URL = CASES_URL): ToolUseCase[] {
 const HARNESS_NAMES = new Set(HARNESS_TOOLS.map((t) => t.name));
 
 /** Each offered tool's top-level input property names. */
-export type OfferedTools = ReadonlyMap<string, readonly string[]>;
+type OfferedTools = ReadonlyMap<string, readonly string[]>;
 
 const HARNESS_TOOL_PROPERTIES: OfferedTools = new Map(
   HARNESS_TOOLS.map((t) => [
