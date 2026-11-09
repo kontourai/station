@@ -338,7 +338,6 @@ export class TerminalController {
         this.endReplayGrid();
       },
       state: (state, detail) => {
-        if (state === 'replaying') this.restoreRecordedGrid();
         this.update({ session: state });
         if (state === 'exited')
           this.announcer?.event(
@@ -365,6 +364,7 @@ export class TerminalController {
     const engine = this.engine;
     if (!engine || this.resyncing || this.disposed) return undefined;
     if (kind === 'live') this.endReplayGrid();
+    else if (!this.replayGrid) this.restoreRecordedGrid();
     if (this.pendingWorkerBytes + bytes.byteLength > MAX_PENDING_WORKER_BYTES) {
       this.resync();
       return undefined;

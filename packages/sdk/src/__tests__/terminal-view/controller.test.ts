@@ -170,7 +170,11 @@ class SessionSocket extends EventTarget {
     );
   }
 
-  attached(replayThrough: number, terminalId = storedTerminalId) {
+  attached(
+    replayThrough: number,
+    terminalId = storedTerminalId,
+    status: 'running' | 'exited' | 'failed' = 'running',
+  ) {
     const request = this.controls().findLast(
       (command) => command.type === 'open' || command.type === 'attach',
     );
@@ -180,7 +184,7 @@ class SessionSocket extends EventTarget {
       requestId: request.requestId,
       channel: request.channel,
       terminalId,
-      status: 'running',
+      status,
       replayThrough,
       readOnly: false,
       maxOutstandingOutputFrames: TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
@@ -638,55 +642,65 @@ describe('TerminalController', () => {
     controller.dispose();
   });
 
-  it('restores the last live grid before incremental replay', async () => {
-    const f = await startStoredController();
-    try {
-      f.socket.drop();
-      expect(f.session.state).toBe('reconnecting');
-      await f.resizeView(100, 40);
-      const resumed = await f.socketAt(1);
-      resumed.open();
-      expect(resumed.controls().at(-1)).toMatchObject({
-        type: 'attach',
-        terminalId: storedTerminalId,
-        fromSeq: 2,
-      });
-      const channel = resumed.attached(3);
-      const repaint = `\x1b[H${f.lines
-        .slice(17)
-        .map((line) => `${line}\x1b[K`)
-        .join('\r\n')}\r\n\x1b[K\x1b[J`;
-      resumed.output(channel, 3, repaint);
-      await acknowledged(resumed, channel, 3);
-      await renderedGrid(f.renderer, 80, 24);
-      const text = await selectedText(f.controller);
-      for (const line of f.lines) expect(text.split(line)).toHaveLength(2);
-      expect(
-        resumed.controls().filter((command) => command.type === 'resize'),
-      ).toEqual([]);
-      resumed.ready(channel, 3);
-      await renderedGrid(f.renderer, 100, 40);
+  it.each(['running', 'exited', 'failed'] as const)(
+    'restores the last live grid before incremental replay for %s programs',
+    async (status) => {
+      const f = await startStoredController();
+      try {
+        f.socket.drop();
+        expect(f.session.state).toBe('reconnecting');
+        await f.resizeView(100, 40);
+        const resumed = await f.socketAt(1);
+        resumed.open();
+        expect(resumed.controls().at(-1)).toMatchObject({
+          type: 'attach',
+          terminalId: storedTerminalId,
+          fromSeq: 2,
+        });
+        const channel = resumed.attached(3, storedTerminalId, status);
+        expect(f.session.status).toBe(status);
+        expect(f.controller.getSnapshot().session).toBe(
+          status === 'running' ? 'replaying' : 'exited',
+        );
+        const repaint = `\x1b[H${f.lines
+          .slice(17)
+          .map((line) => `${line}\x1b[K`)
+          .join('\r\n')}\r\n\x1b[K\x1b[J`;
+        resumed.output(channel, 3, repaint);
+        await acknowledged(resumed, channel, 3);
+        await renderedGrid(f.renderer, 80, 24);
+        const text = await selectedText(f.controller);
+        for (const line of f.lines) expect(text.split(line)).toHaveLength(2);
+        expect(
+          resumed.controls().filter((command) => command.type === 'resize'),
+        ).toEqual([]);
+        resumed.ready(channel, 3);
+        await renderedGrid(f.renderer, 100, 40);
+        expect(f.controller.getSnapshot().session).toBe(
+          status === 'running' ? 'ready' : 'exited',
+        );
 
-      // Finishing one replay must not forget the grid for the next one.
-      resumed.drop();
-      await f.resizeView(120, 45);
-      const again = await f.socketAt(2);
-      again.open();
-      expect(again.controls().at(-1)).toMatchObject({
-        type: 'attach',
-        fromSeq: 3,
-      });
-      const nextChannel = again.attached(4);
-      again.output(nextChannel, 4, '\r\nsecond-replay');
-      await acknowledged(again, nextChannel, 4);
-      await renderedGrid(f.renderer, 80, 24);
-      again.ready(nextChannel, 4);
-      await renderedGrid(f.renderer, 120, 45);
-      expect(await selectedText(f.controller)).toContain('second-replay');
-    } finally {
-      f.dispose();
-    }
-  });
+        // Finishing one replay must not forget the grid for the next one.
+        resumed.drop();
+        await f.resizeView(120, 45);
+        const again = await f.socketAt(2);
+        again.open();
+        expect(again.controls().at(-1)).toMatchObject({
+          type: 'attach',
+          fromSeq: 3,
+        });
+        const nextChannel = again.attached(4, storedTerminalId, status);
+        again.output(nextChannel, 4, '\r\nsecond-replay');
+        await acknowledged(again, nextChannel, 4);
+        await renderedGrid(f.renderer, 80, 24);
+        again.ready(nextChannel, 4);
+        await renderedGrid(f.renderer, 120, 45);
+        expect(await selectedText(f.controller)).toContain('second-replay');
+      } finally {
+        f.dispose();
+      }
+    },
+  );
 
   it('uses a later live recorded grid for incremental replay', async () => {
     const f = await startStoredController();
