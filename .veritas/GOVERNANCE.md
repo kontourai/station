@@ -8,7 +8,7 @@ Zone 1 is human-owned Protected Standards and must not be weakened without revie
 - `.veritas/repo-standards/`
 - `.veritas/authority/`
 - `veritas.claims.json`
-- `AGENTS.md` / `CLAUDE.md` (governance block)
+- `AGENTS.md` (governance block; `CLAUDE.md` imports it rather than repeating it)
 
 Zone 2 is additive policy growth. Agents may add:
 
