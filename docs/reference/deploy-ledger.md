@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-09T01:08:09Z | nightly-desktop | 0.1.11-nightly.20261109 | `96d457f` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42538339733) |
 | 2026-11-09T01:08:06Z | nightly-android | 0.1.11-nightly.20261109 | `96d457f` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42538339733) |
 | 2026-11-09T00:20:25Z | nightly-npm | 0.11.0-nightly.20261109.42538339733 | `96d457f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42538339733) |
 | 2026-11-08T17:13:09Z | nightly-desktop | 0.1.11-nightly.20261108.1 | `38fd175` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42499366611) |
@@ -443,6 +444,34 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-09T01:08:09Z · nightly-desktop · 0.1.11-nightly.20261109
+
+- Ship SHA: `96d457f436f40bab99e7a28af8948fe937ddec45`
+- Artifact built at: `2026-11-09T00:19:17.021Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 42538339733)
+
+### Changelog
+
+Commits since `38fd175` ([full sha](https://github.com/kontourai/station/commit/38fd175a281fc0fb7b0671c3aa1b4cf55609de79)):
+
+**Features**
+
+- [#4666](https://github.com/kontourai/station/pull/4666) feat: add shared Task request contracts and SDK negotiation
+
+**Fixes**
+
+- [#4733](https://github.com/kontourai/station/pull/4733) fix(claude): name new sessions so the engine skips its title request
+- [#4727](https://github.com/kontourai/station/pull/4727) fix(sdk): recover chat streams stuck reconnecting
+- [#4726](https://github.com/kontourai/station/pull/4726) fix(server): stop history reads from wedging Station
+- [#4725](https://github.com/kontourai/station/pull/4725) fix(ui): keep focused Task tabs visible
+- [#4724](https://github.com/kontourai/station/pull/4724) fix(claude): record an engine death the SDK never reports
+- [#4663](https://github.com/kontourai/station/pull/4663) fix(ui): preserve focus across sidebar and Stations manager transitions
+
+**Other**
+
+- [#4730](https://github.com/kontourai/station/pull/4730) test: budget the agent context Station injects
 
 ## 2026-11-09T01:08:06Z · nightly-android · 0.1.11-nightly.20261109
 
