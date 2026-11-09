@@ -175,9 +175,9 @@ class SessionSocket extends EventTarget {
     terminalId = storedTerminalId,
     status: 'running' | 'exited' | 'failed' = 'running',
   ) {
-    const request = this.controls().findLast(
-      (command) => command.type === 'open' || command.type === 'attach',
-    );
+    const request = this.controls()
+      .reverse()
+      .find((command) => command.type === 'open' || command.type === 'attach');
     if (!request) throw new Error('The real store sent no attachment request');
     this.message({
       type: 'attached',
@@ -245,7 +245,7 @@ async function acknowledged(
         .filter(
           (command) => command.type === 'ack' && command.channel === channel,
         )
-        .at(-1),
+        .slice(-1)[0],
     ).toMatchObject({ seq }),
   );
 }
@@ -256,7 +256,7 @@ async function renderedGrid(
   rows: number,
 ) {
   await vi.waitFor(() =>
-    expect(renderer.frames.at(-1)).toEqual({ cols, rows }),
+    expect(renderer.frames[renderer.frames.length - 1]).toEqual({ cols, rows }),
   );
 }
 
@@ -659,7 +659,7 @@ describe('TerminalController', () => {
         await f.resizeView(100, 40);
         const resumed = await f.socketAt(1);
         resumed.open();
-        expect(resumed.controls().at(-1)).toMatchObject({
+        expect(resumed.controls().slice(-1)[0]).toMatchObject({
           type: 'attach',
           terminalId: storedTerminalId,
           fromSeq: 2,
@@ -692,7 +692,7 @@ describe('TerminalController', () => {
         await f.resizeView(120, 45);
         const again = await f.socketAt(2);
         again.open();
-        expect(again.controls().at(-1)).toMatchObject({
+        expect(again.controls().slice(-1)[0]).toMatchObject({
           type: 'attach',
           fromSeq: 3,
         });
@@ -761,7 +761,7 @@ describe('TerminalController', () => {
       await f.resizeView(100, 40);
       const resumed = await f.socketAt(1);
       resumed.open();
-      expect(resumed.controls().at(-1)).toMatchObject({
+      expect(resumed.controls().slice(-1)[0]).toMatchObject({
         type: 'attach',
         fromSeq: 3,
       });

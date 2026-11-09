@@ -201,7 +201,7 @@ process.stdin.once('data', () => process.exit(7));
   });
   child.stdin!.on('error', () => {});
   const stdout = child.stdio[3];
-  const stdin = child.stdio[5];
+  const stdin = child.stdio.slice(5)[0];
   if (!(stdout instanceof Duplex) || !(stdin instanceof Duplex))
     throw new Error('Session fixture pipes unavailable');
   stdout.setEncoding('utf8');
