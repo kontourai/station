@@ -1,0 +1,211 @@
+[
+  {
+    "id": "out-of-scope-retry-in-own-project",
+    "kind": "bad",
+    "source": "#3648",
+    "experience": "An external-engine agent's delegate_task was refused by the scope rule; it read the refusal as an authorization dead end, though calling again in its own Project would have worked.",
+    "assurance": "delegated-custody",
+    "prompt": "",
+    "priorTurns": [
+      {
+        "role": "user",
+        "text": "Have the reviewer Agent review the diff on this branch."
+      },
+      {
+        "toolCall": {
+          "name": "delegate_task",
+          "input": {
+            "agent": "reviewer",
+            "prompt": "Review the diff on branch fix/reconnect against main.",
+            "clientTurnId": "review-fix-reconnect-1",
+            "projectSlug": "acme-web"
+          }
+        },
+        "refusal": "other-project",
+        "isError": true
+      }
+    ],
+    "expect": {
+      "calls": [
+        {
+          "tool": "delegate_task",
+          "args": {
+            "agent": "reviewer",
+            "projectSlug": null,
+            "projectPath": null
+          }
+        }
+      ],
+      "shellMustNot": ["\\b(claude|codex|station)\\b"]
+    }
+  },
+  {
+    "id": "second-model-review",
+    "kind": "bad",
+    "source": "#4716 (tool-choice case second-model-review)",
+    "experience": "Asked for a second model's review, an agent ran a model CLI in a shell instead of delegating through Station.",
+    "assurance": "bound",
+    "prompt": "Get a second opinion on this diff from a different model before I merge it.",
+    "expect": {
+      "firstCallAnyOf": [
+        "list_delegation_targets",
+        "list_agents",
+        "delegate_task"
+      ],
+      "callsMustNot": ["respond_to_task_request", "send_message"],
+      "shellMustNot": ["\\b(claude|codex|station|gemini)\\b"]
+    }
+  },
+  {
+    "id": "wait-for-delegated-task",
+    "kind": "bad",
+    "source": "#4716 (tool-choice case wait-for-delegated-task)",
+    "experience": "Waiting on a delegated task, an agent polled with a sleep loop instead of Station's wait.",
+    "assurance": "bound",
+    "prompt": "Wait for the reviewer to finish, then tell me what it found.",
+    "priorTurns": [
+      {
+        "role": "user",
+        "text": "Delegate a review of this branch to the reviewer Agent."
+      },
+      {
+        "toolCall": {
+          "name": "delegate_task",
+          "input": {
+            "agent": "reviewer",
+            "prompt": "Review the diff on branch fix/reconnect against main.",
+            "clientTurnId": "review-fix-reconnect-1"
+          }
+        },
+        "result": {
+          "success": true,
+          "taskId": "task-7f3a",
+          "sessionId": "session-91c2",
+          "conversationId": "conv-91c2",
+          "status": "running"
+        }
+      },
+      {
+        "role": "assistant",
+        "text": "I delegated the review to the reviewer Agent (task task-7f3a). It is running."
+      }
+    ],
+    "expect": {
+      "firstCallAnyOf": ["wait_session", "get_task", "get_task_events"],
+      "shellMustNot": ["\\bsleep\\b", "\\bwhile\\b", "\\bwatch\\b"]
+    }
+  },
+  {
+    "id": "chart-without-a-server",
+    "kind": "bad",
+    "source": "#4716 (replies section: html_preview, html_render)",
+    "experience": "Asked for a chart the user could see, an agent started a local web server instead of rendering the reply in Station.",
+    "assurance": "bound",
+    "prompt": "Show me a bar chart of these test durations right here: auth 12s, session 48s, pager 3s, search 21s.",
+    "expect": {
+      "firstCallAnyOf": ["html_preview", "html_render"],
+      "shellMustNot": [
+        "http\\.server",
+        "\\bserve\\b",
+        "\\bvite\\b",
+        "\\bnpx\\b",
+        "\\bopen\\b"
+      ]
+    }
+  },
+  {
+    "id": "declare-opened-pull-request",
+    "kind": "bad",
+    "source": "#3161 (#3271)",
+    "experience": "Agents on external engines opened pull requests Station never learned about, so the Task could not track or close out on merge.",
+    "assurance": "delegated-custody",
+    "prompt": "",
+    "priorTurns": [
+      { "role": "user", "text": "Open a pull request for this branch." },
+      {
+        "toolCall": {
+          "name": "Bash",
+          "input": {
+            "command": "gh pr create --fill --base main --head fix/reconnect"
+          }
+        },
+        "result": "https://github.com/acme/app/pull/482"
+      }
+    ],
+    "expect": {
+      "calls": [
+        {
+          "tool": "declare_pull_request",
+          "args": {
+            "provider": "github",
+            "number": "482",
+            "repository.owner": "acme",
+            "repository.name": "app"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "look-for-existing-work-first",
+    "kind": "guard",
+    "source": "#4092",
+    "experience": "Agents started work another Session already had in progress; Station added conversation search and active-work listing so they check first.",
+    "assurance": "bound",
+    "prompt": "Before you touch the flaky reconnect test, check whether another session is already working on it.",
+    "expect": {
+      "firstCallAnyOf": [
+        "search_conversations",
+        "list_active_work",
+        "list_project_activity",
+        "search_sessions"
+      ],
+      "shellMustNot": ["\\bstation\\b"]
+    }
+  },
+  {
+    "id": "custody-delegate-without-targets-tool",
+    "kind": "guard",
+    "source": "#4716 (tool-choice case delegate-without-targets-tool)",
+    "experience": "A Codex or ACP session is not offered list_delegation_targets; it must pick an Agent through list_agents or the Agent the user named.",
+    "assurance": "delegated-custody",
+    "prompt": "Have the reviewer Agent review the diff on this branch.",
+    "expect": {
+      "firstCallAnyOf": ["list_agents", "delegate_task"],
+      "shellMustNot": ["\\b(claude|codex|station)\\b"]
+    }
+  },
+  {
+    "id": "ordinary-fix",
+    "kind": "control",
+    "source": "#4716 (\"Ordinary coding needs no Station tools\")",
+    "experience": "Ordinary coding: a one-line fix needs no Station tool.",
+    "assurance": "bound",
+    "prompt": "In src/pager.ts, pageCount uses Math.floor where it needs Math.ceil. Fix it.",
+    "expect": {
+      "noStationTools": true
+    }
+  },
+  {
+    "id": "explain-code",
+    "kind": "control",
+    "source": "#4716 (\"Ordinary coding needs no Station tools\")",
+    "experience": "A question about the code is answered by reading it, not through Station.",
+    "assurance": "delegated-custody",
+    "prompt": "What does reconnect() in src/session.ts do when the socket closes twice?",
+    "expect": {
+      "noStationTools": true
+    }
+  },
+  {
+    "id": "own-subagent-for-quick-helper",
+    "kind": "control",
+    "source": "#4716 (\"For a quick helper on your own engine in this checkout, use your own subagent tool\")",
+    "experience": "A quick search in this checkout is the engine's own subagent work, not a Station delegation.",
+    "assurance": "bound",
+    "prompt": "Use a quick helper to find every call site of reconnect() in this repo.",
+    "expect": {
+      "callsMustNot": ["delegate_task", "send_message", "send_to_session"]
+    }
+  }
+]
