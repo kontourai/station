@@ -73,8 +73,19 @@ const child = fork(entry, [probe], {
   stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   windowsHide: true,
 });
-const closed = new Promise((resolve) => {
-  child.once('close', (code, signal) => resolve({ code, signal }));
+const lifecycle = { exit: null, disconnected: false, errors: [] };
+child.on('error', (error) => lifecycle.errors.push(error.stack));
+const exited = new Promise((resolve) => {
+  child.once('exit', (code, signal) => {
+    lifecycle.exit = { code, signal };
+    resolve(lifecycle.exit);
+  });
+});
+const disconnected = new Promise((resolve) => {
+  child.once('disconnect', () => {
+    lifecycle.disconnected = true;
+    resolve();
+  });
 });
 function response(type, id, send) {
   return new Promise((resolve, reject) => {
@@ -137,14 +148,17 @@ try {
   let timer;
   try {
     if (child.connected) child.disconnect();
-    const result = await Promise.race([
-      closed,
+    const [result] = await Promise.race([
+      Promise.all([exited, disconnected]),
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Error('fixture child close timed out')), 2000);
+        timer = setTimeout(() => reject(Error('fixture child exit/disconnect timed out: ' +
+          JSON.stringify({ ...lifecycle, connected: child.connected,
+            exitCode: child.exitCode, signalCode: child.signalCode }))), 2000);
       }),
     ]);
-    if (result.code !== 0 || result.signal !== null)
-      throw Error('fixture child did not exit cleanly: ' + JSON.stringify(result));
+    if (result.code !== 0 || result.signal !== null || lifecycle.errors.length)
+      throw Error('fixture child did not exit cleanly: ' + JSON.stringify(lifecycle));
+    receipt.childLifecycle = lifecycle;
   } catch (error) {
     cleanupFailure = error;
   } finally {
