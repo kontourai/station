@@ -4,16 +4,14 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 
 /**
@@ -1121,11 +1119,7 @@ describe('the pinned actionlint provisioning text, executed (#4748)', () => {
   const INSTALL_STEP = 'Install pinned actionlint';
   const CONSUMERS = ['fast-checks-shard', 'fast-checks-statics', 'fork-smoke'];
   const ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
-  const sandboxes: string[] = [];
-  afterEach(() => {
-    for (const dir of sandboxes.splice(0))
-      rmSync(dir, { recursive: true, force: true });
-  });
+  const makeTempDir = trackTempDirs();
 
   type Outcome = { status: number; stdout: string; stderr: string };
   /**
@@ -1168,8 +1162,7 @@ describe('the pinned actionlint provisioning text, executed (#4748)', () => {
     );
 
   function sandbox() {
-    const root = mkdtempSync(join(tmpdir(), 'actionlint-handoff-'));
-    sandboxes.push(root);
+    const root = makeTempDir('actionlint-handoff-');
     const bin = join(root, 'bin');
     const temp = join(root, 'runner-temp');
     mkdirSync(bin);
