@@ -191,21 +191,18 @@ export function resetUndoableActionsForTest() {
   publish();
 }
 
-const TEXT_OWNERS =
-  'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], .cm-editor, .station-terminal, .xterm';
-
-/** Registers Mod+Z for the most recent undoable action. */
+/**
+ * Registers Mod+Z for the most recent undoable action. Inside a text field,
+ * editor or terminal the registry leaves Mod+Z to that field (#4383), so its
+ * own Undo always wins.
+ */
 export function UndoableActionShortcut({ children }: { children: ReactNode }) {
   useKeyboardShortcut(
     'app.undoLastAction',
     'z',
     ['cmd'],
     'Undo last action',
-    () => {
-      // A text field's own Undo always wins.
-      if (document.activeElement?.closest(TEXT_OWNERS)) return false;
-      return undoLatestAction() ? undefined : false;
-    },
+    () => (undoLatestAction() ? undefined : false),
   );
   return children;
 }
