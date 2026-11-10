@@ -33,6 +33,7 @@ import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import {
   projectLiveCount,
   projectLiveLabel,
@@ -281,21 +282,14 @@ function ProjectSidebarImpl() {
     }
     if (event.key !== 'Tab') return;
 
-    const focusable = Array.from(
-      navigationRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    ).filter((element) => element.getClientRects().length > 0);
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) return;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    wrapTabFocus(
+      event,
+      Array.from(
+        navigationRef.current?.querySelectorAll<HTMLElement>(
+          FOCUSABLE_SELECTOR,
+        ) ?? [],
+      ).filter((element) => element.getClientRects().length > 0),
+    );
   };
 
   return (

@@ -9,6 +9,7 @@ import {
   type RelayKeyApprovalSurface,
   type RelayKeyCandidate,
 } from '../../platform/native/relayKeyApproval';
+import { formatDateTime } from '../../utils/relativeTime';
 import { RelaySetupHelp } from './RelaySetupHelp';
 
 function normalizeConfirmationCode(value: string): string | null {
@@ -356,7 +357,7 @@ export function RelayRouteKeyApproval({
         <p className="connections-computers__note">
           {linkedInvitation.expiresAt === Number.MAX_SAFE_INTEGER
             ? 'Setup link: no expiry.'
-            : `Setup link expires ${new Date(linkedInvitation.expiresAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}.`}
+            : `Setup link expires ${formatDateTime(linkedInvitation.expiresAt)}.`}
         </p>
       )}
       <div
@@ -642,7 +643,7 @@ export function RelayRouteKeyApproval({
               </div>
               <div>
                 <dt>Expires</dt>
-                <dd>{new Date(candidate.expiresAt).toLocaleString()}</dd>
+                <dd>{formatDateTime(candidate.expiresAt)}</dd>
               </div>
             </dl>
           </details>

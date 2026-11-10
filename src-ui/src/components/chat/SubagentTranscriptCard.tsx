@@ -13,6 +13,7 @@ import {
   childWorkUsageClauses,
   formatChildWorkElapsed,
 } from '../../utils/child-work-display';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 import { Button } from '../Button';
 import {
   ArrowDownGlyph,
@@ -39,12 +40,6 @@ const loadChildWorkTranscript = () =>
   import('../../workspace-panes/agents/ChildWorkTranscript').then((module) => ({
     default: module.ChildWorkTranscript,
   }));
-
-function parseTime(iso: string | undefined): number | undefined {
-  if (!iso) return undefined;
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
 
 const LIST_ITEM = /^(?:[-*+]|\d+[.)])\s+/;
 
@@ -103,8 +98,8 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
   const detailId = useId();
   const transcriptId = useId();
   const running = item.status === 'running';
-  const startedAtMs = parseTime(item.startedAt);
-  const endedAtMs = parseTime(item.endedAt);
+  const startedAtMs = parseEpochMs(item.startedAt);
+  const endedAtMs = parseEpochMs(item.endedAt);
   const now = useElapsedClock(running && startedAtMs !== undefined);
 
   // Running: the live clock from the reported start. Settled: the reported

@@ -1009,8 +1009,8 @@ test.describe('Default agent workflow', () => {
     await page.getByRole('button', { name: 'Delete' }).last().click();
     await expect(history).not.toContainText('Beta Chat');
 
-    await page.getByRole('button', { name: 'Clear All' }).click();
-    await page.getByRole('button', { name: 'Clear All' }).last().click();
+    await page.getByRole('button', { name: 'Clear all' }).click();
+    await page.getByRole('button', { name: 'Clear all' }).last().click();
     await expect(history).toContainText('No conversations yet');
   });
 });

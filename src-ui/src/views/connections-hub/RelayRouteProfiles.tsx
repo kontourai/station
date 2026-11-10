@@ -39,6 +39,7 @@ import {
   nativeProfileRepository,
   usePlatformProfile,
 } from '../../platform/PlatformProfileContext';
+import { formatDateTime } from '../../utils/relativeTime';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { NativeRelayEnrollmentWizard } from './NativeRelayEnrollmentWizard';
 import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
@@ -739,7 +740,7 @@ function NativeRelayGrantSummary({ state }: { state: NativeRelayGrantState }) {
         <p>
           This saved credential expires{' '}
           <time dateTime={new Date(grant.metadata.expiresAt).toISOString()}>
-            {new Date(grant.metadata.expiresAt).toLocaleString()}
+            {formatDateTime(grant.metadata.expiresAt)}
           </time>
           . This is its local expiry, not a live check of Station availability.
         </p>
@@ -800,6 +801,7 @@ export function RelayRouteProfiles({
   const [editing, setEditing] = useState<StationProfile | undefined>();
   const [creating, setCreating] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<StationProfile | null>(null);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [selectionPending, setSelectionPending] = useState<string | null>(null);
@@ -902,8 +904,9 @@ export function RelayRouteProfiles({
   }
 
   async function removeRoute() {
-    if (!removeTarget || !repository) return;
+    if (!removeTarget || !repository || removing) return;
     setError(null);
+    setRemoving(true);
     try {
       await repository.removeRelayRouteProfile(
         `station-profile:${removeTarget.name.toLowerCase()}`,
@@ -912,6 +915,8 @@ export function RelayRouteProfiles({
       setRemoveTarget(null);
     } catch (cause) {
       setError(describeStationFailure(cause).body);
+    } finally {
+      setRemoving(false);
     }
   }
 
@@ -1044,6 +1049,7 @@ export function RelayRouteProfiles({
         title={`Remove ${removeTarget?.name ?? 'this Station'}?`}
         message="It’s removed from this device only. The Station and its confirmation are unchanged."
         confirmLabel="Remove"
+        pending={removing}
         onConfirm={() => void removeRoute()}
         onCancel={() => setRemoveTarget(null)}
         variant="danger"

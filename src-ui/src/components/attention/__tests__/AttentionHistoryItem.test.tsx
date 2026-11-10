@@ -181,9 +181,9 @@ describe('AttentionHistoryItem — session-failed kind', () => {
     // The tray's one-line context keeps the engine; the agent is on the page.
     const context = screen.getByTestId('inbox-context');
     expect(context.textContent).toContain('Engine: Claude Code');
-    // `formatNotificationTime` renders a fresh stamp as "Just now" — the
+    // `formatNotificationTime` renders a fresh stamp as "now" — the
     // point is that a <time> exists at all, which it did not before.
-    expect(screen.getByText('Just now')).toBeTruthy();
+    expect(screen.getByText('now')).toBeTruthy();
   });
 
   test('an unrecorded cause says so rather than rendering nothing', () => {

@@ -24,6 +24,7 @@ import {
 import { IconButton } from '../../components/IconButton';
 import { CloseGlyph, RefreshGlyph } from '../../components/icons/Glyph';
 import { Empty, SkeletonBlock, SkeletonList } from '../../components/state';
+import { nextTabIndex } from '../../utils/tab-navigation';
 import {
   GuestAccountRequired,
   requireGuestAccount,
@@ -332,7 +333,7 @@ export function GuestSharedTaskView({
             role="tablist"
             aria-label="Shared Task views"
           >
-            {['Chat', 'Brief'].map((name) => (
+            {['Chat', 'Brief'].map((name, index, names) => (
               <Button
                 key={name}
                 role="tab"
@@ -340,27 +341,15 @@ export function GuestSharedTaskView({
                 aria-selected={tab === name}
                 onClick={() => setTab(name)}
                 onKeyDown={(event) => {
-                  if (
-                    !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
-                      event.key,
-                    )
-                  )
-                    return;
+                  const next = nextTabIndex(index, names.length, event.key);
+                  if (next === null) return;
                   event.preventDefault();
-                  const next =
-                    event.key === 'Home'
-                      ? 'Chat'
-                      : event.key === 'End'
-                        ? 'Brief'
-                        : name === 'Chat'
-                          ? 'Brief'
-                          : 'Chat';
-                  setTab(next);
+                  setTab(names[next]);
                   const tabs =
                     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
                       '[role="tab"]',
                     );
-                  tabs?.[next === 'Chat' ? 0 : 1]?.focus();
+                  tabs?.[next]?.focus();
                 }}
               >
                 {name}

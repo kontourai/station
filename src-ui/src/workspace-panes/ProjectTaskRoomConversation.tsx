@@ -34,6 +34,7 @@ import { useElapsedClock } from '../hooks/useElapsedClock';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { formatDateTime } from '../utils/relativeTime';
 import { describeStationFailure } from '../utils/stationFailure';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { TaskRoomAttachmentComposer } from './TaskRoomAttachmentComposer';
@@ -99,7 +100,7 @@ function RoomAnswer({
 
 function Time({ at, compact = false }: { at?: string; compact?: boolean }) {
   return at && Number.isFinite(Date.parse(at)) ? (
-    <time dateTime={at} title={new Date(at).toLocaleString()}>
+    <time dateTime={at} title={formatDateTime(at)}>
       {new Date(at).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',

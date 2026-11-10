@@ -40,7 +40,11 @@ export function MonitoringActiveFilters({
           }}
         >
           agent:{agent}
-          <button type="button" onClick={() => onRemoveAgent(agent)}>
+          <button
+            type="button"
+            onClick={() => onRemoveAgent(agent)}
+            aria-label={`Remove agent filter ${agent}`}
+          >
             ×
           </button>
         </span>
@@ -55,7 +59,11 @@ export function MonitoringActiveFilters({
           }}
         >
           conversation:{selectedConversation.split(':').pop()?.substring(0, 8)}
-          <button type="button" onClick={onClearConversation}>
+          <button
+            type="button"
+            onClick={onClearConversation}
+            aria-label="Remove conversation filter"
+          >
             ×
           </button>
         </span>
@@ -70,7 +78,11 @@ export function MonitoringActiveFilters({
           }}
         >
           tool:{selectedToolCallId}
-          <button type="button" onClick={onClearToolCall}>
+          <button
+            type="button"
+            onClick={onClearToolCall}
+            aria-label="Remove tool call filter"
+          >
             ×
           </button>
         </span>
@@ -85,7 +97,11 @@ export function MonitoringActiveFilters({
           }}
         >
           trace:...{selectedTraceId.slice(-8)}
-          <button type="button" onClick={onClearTrace}>
+          <button
+            type="button"
+            onClick={onClearTrace}
+            aria-label="Remove trace filter"
+          >
             ×
           </button>
         </span>

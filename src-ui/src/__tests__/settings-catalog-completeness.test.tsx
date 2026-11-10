@@ -3629,7 +3629,7 @@ describe('settings catalog completeness', () => {
       fireEvent.click(
         screen.getByRole('button', { name: 'Reset Station settings' }),
       );
-      const dialog = screen.getByRole('dialog');
+      const dialog = screen.getByRole('alertdialog');
       expect(dialog.textContent).not.toContain(WORKSPACE_ROW);
       fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
 

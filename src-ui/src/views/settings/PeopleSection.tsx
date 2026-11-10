@@ -29,6 +29,7 @@ import { PersonList } from '../../components/people/PersonList';
 import { PersonRow } from '../../components/people/PersonRow';
 import { Empty, ErrorState } from '../../components/state';
 import { errorText, userFacingErrorMessage } from '../../utils/errorText';
+import { plural } from '../../utils/plural';
 import {
   OPERATOR_CREDENTIAL_REQUIRED_MESSAGE,
   PersonalTokens,
@@ -77,10 +78,6 @@ interface HeldSecret {
   principalId: string;
   displayName: string;
   minted: MintedPersonalAccessToken;
-}
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
 function limitedDevices(person: StationPerson): number {

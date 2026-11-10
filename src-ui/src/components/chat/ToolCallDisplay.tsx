@@ -33,6 +33,7 @@ import {
 } from '../../hooks/orchestration/answerRequest';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
+import { formatBytes } from '../../utils/formatBytes';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { attentionWord } from '../../views/home/work-status';
 import { Button } from '../Button';
@@ -53,7 +54,6 @@ import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
 import {
   boundedToolResultText,
-  formatWithheldBytes,
   fullToolResultText,
 } from './bounded-tool-result';
 import { ClaudeArtifactCard } from './ClaudeArtifactCard';
@@ -1126,7 +1126,7 @@ function ToolCallDetails({
                       "Output truncated" badge, which says the engine withheld
                       data before it ever arrived. This one says only that the
                       preview is showing part of what DID arrive. */}
-                  {'\n'}… {formatWithheldBytes(boundedResult.withheldBytes)}
+                  {'\n'}… {formatBytes(boundedResult.withheldBytes)}
                   {' not shown in this preview — '}
                   <button
                     type="button"
