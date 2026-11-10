@@ -1,5 +1,49 @@
 [
   {
+    "timestampUtc": "2026-11-10T02:49:26Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261110",
+    "sha": "d318c4d7f802789b018288bebc2a87e840734f10",
+    "artifactBuiltAt": "2026-11-10T01:59:13.037Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42738156510",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42738156510)"
+    ],
+    "changelog": {
+      "previousSha": "96d457f436f40bab99e7a28af8948fe937ddec45",
+      "groups": {
+        "feat": [
+          "[#4737](https://github.com/kontourai/station/pull/4737) feat(dev): seed a dev Station home from a pruned read-only snapshot",
+          "[#4736](https://github.com/kontourai/station/pull/4736) feat(dev): stream free scripted turns through the real Ollama adapter"
+        ],
+        "fix": [
+          "[#4757](https://github.com/kontourai/station/pull/4757) fix: prime server scenario sampling before synchronous actions",
+          "[#4751](https://github.com/kontourai/station/pull/4751) fix(desktop): validate Windows managed-update policy ACLs",
+          "[#4754](https://github.com/kontourai/station/pull/4754) fix(ollama): report a failed stream's message, not [object Object]",
+          "[#4728](https://github.com/kontourai/station/pull/4728) fix: don't resend first-turn budget to a resumed successor Session",
+          "[#4746](https://github.com/kontourai/station/pull/4746) fix(ci): measure agent context growth against the merge base"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4731](https://github.com/kontourai/station/pull/4731) chore(scripts): enforce windowsHide on child-process launches with a ratchet",
+          "[#4753](https://github.com/kontourai/station/pull/4753) test(gallery): retain bounded overlap diagnostics",
+          "[#4747](https://github.com/kontourai/station/pull/4747) test(orchestration): isolate Windows profile and scratch fixtures",
+          "[#4734](https://github.com/kontourai/station/pull/4734) chore(agents): load the Veritas governance block once",
+          "[#4744](https://github.com/kontourai/station/pull/4744) perf(station-control): list tool schemas without the dialect URL; trim restated limits",
+          "[#4741](https://github.com/kontourai/station/pull/4741) test(evals): add a station-control tool-use eval harness",
+          "[#4742](https://github.com/kontourai/station/pull/4742) test: pin resumed successors receiving no first-turn Station instructions"
+        ]
+      },
+      "note": null,
+      "commitCount": 14
+    }
+  },
+  {
     "timestampUtc": "2026-11-10T02:49:22Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.20261110",
