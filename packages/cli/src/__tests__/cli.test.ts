@@ -558,7 +558,7 @@ describe('runCli', () => {
         await expect(
           runCli([...command, `--base=${STATION_HOME}`, option]),
         ).rejects.toThrow(
-          /no longer selects the Strands runtime: the persisted `runtime` setting is the only runtime selector \(#3909\)\. Run `station config set runtime strands`/,
+          /no longer selects the Strands runtime \(#3909\)\. Run `station config set runtime strands`/,
         );
       }
       expect(lifecycle.start).not.toHaveBeenCalled();

@@ -37,18 +37,15 @@ itself (see `loadAppConfigFile` in `src-server/domain/config-loader-app.ts`).
 
 Before #3909, `--features=strands-runtime` (which set
 `STATION_FEATURES=strands-runtime`) switched one process to Strands without
-persisting anything. The server no longer reads the variable. So that such a
-caller is not moved to VoltAgent without notice, the CLI refuses a
-`--features=<list>` naming `strands-runtime` on `start`, `service install` and
-`service run`, and refuses a `STATION_FEATURES` value naming it when Station
-starts ([`retired-features-option.ts`](../../packages/cli/src/commands/retired-features-option.ts)).
-Other values never changed the runtime and are ignored.
+persisting anything. The server no longer reads the variable. The CLI refuses
+either form on `start`, `service install` and `service run`, so nobody is
+moved to VoltAgent without notice
+([`retired-features-option.ts`](../../packages/cli/src/commands/retired-features-option.ts)).
+Other values are ignored.
 
-A service installed with `--features=strands-runtime` passes it from its unit,
-so it stops starting. Its reinstall command (printed by `station service
-status` for stale scheduling or PATH drift, and by `station upgrade` for stale
-scheduling) repeats
-the recorded value and is refused the same way. To keep Strands, run
+A service installed with `--features=strands-runtime` stops starting, and the
+reinstall command Station prints for it repeats the value and is refused too.
+To keep Strands, run
 `STATION_HOME=<service home> station config set runtime strands --offline`,
 then `station service install` with the same options minus `--features`.
 

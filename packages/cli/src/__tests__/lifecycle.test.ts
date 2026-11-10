@@ -2886,7 +2886,7 @@ describe('lifecycle instance state', () => {
           }),
         ).rejects.toThrow(
           refused
-            ? /^STATION_FEATURES=.* no longer selects the Strands runtime: .*station config set runtime strands/
+            ? /^STATION_FEATURES=.* no longer selects the Strands runtime .*station config set runtime strands/
             : /--watch runs from source and builds nothing/,
         );
       } finally {

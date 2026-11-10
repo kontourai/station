@@ -2811,14 +2811,10 @@ origins on an `origins` line.
 server/UI identity endpoints. `--json` emits the same data for automation. An
 installed but inactive or unreachable service exits non-zero.
 
-`--features=<flags>` was removed (#3909): the persisted
-[`runtime` setting](config.md) is the only runtime selector. A
-`--features=<list>` naming `strands-runtime` is refused by `start`,
-`service install` and `service run` (a service installed with it does not
-start until reinstalled without it), and so is a `STATION_FEATURES` value
-naming it when Station starts; `station dev` and `station setup local`
-reject `--features` as an unknown option. Any other value is ignored. To keep Strands, run
-`station config set runtime strands` and restart Station; see the
+`--features` was removed (#3909); the [`runtime` setting](config.md) is the
+only runtime selector. `--features=strands-runtime` and
+`STATION_FEATURES=strands-runtime` are refused rather than ignored. To keep
+Strands, run `station config set runtime strands` and restart Station; see the
 [Strands migration note](../design/strands-migration.md).
 
 The unit's `PATH` is captured once, at install, from your login shell

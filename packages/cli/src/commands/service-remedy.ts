@@ -26,9 +26,8 @@ export interface ServiceInstallConfiguration {
   baseDir?: unknown;
   /**
    * SUNSET(#3909): the `--features=` value of a registration installed before
-   * #3909, rendered back faithfully so a reinstall of a Strands registration
-   * meets the CLI's refusal instead of silently dropping it. Delete once those
-   * registrations are no longer supported. Installs since write none.
+   * #3909. Repeated in the reinstall command so a Strands registration meets
+   * the CLI's refusal instead of silently losing it.
    */
   features?: unknown;
   host?: unknown;

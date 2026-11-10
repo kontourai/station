@@ -903,7 +903,7 @@ describe('station service dispatch', () => {
         const parse = () => parseLifecycleArgs(reinstall.split(' ').slice(3));
         if (refused) {
           expect(parse).toThrow(
-            /^--features=strands-runtime no longer selects the Strands runtime: .*station config set runtime strands/,
+            /^--features=strands-runtime no longer selects the Strands runtime .*station config set runtime strands/,
           );
         } else {
           expect(parse()).toMatchObject({ baseDir, serverPort: 4242 });

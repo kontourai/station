@@ -168,10 +168,8 @@ export interface ServiceManifest {
   /** Complete config is persisted so drift guidance never resets a service. */
   baseDir?: string;
   /**
-   * SUNSET(#3909): the `--features=` value an install before #3909 recorded
-   * (null for none). Still read so those manifests validate and their
-   * reinstall command repeats it; delete once they are no longer supported.
-   * Installs since write none.
+   * SUNSET(#3909): the `--features=` value recorded by installs before #3909
+   * (null for none), read so those manifests validate. No longer written.
    */
   features?: string | null;
   host: string;
