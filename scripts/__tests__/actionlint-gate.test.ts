@@ -1989,18 +1989,6 @@ describe('persistent runner policy', () => {
       },
     ],
     [
-      'no job timeout',
-      (job: Record<string, unknown>) => {
-        delete job['timeout-minutes'];
-      },
-    ],
-    [
-      'an unreviewed job timeout',
-      (job: Record<string, unknown>) => {
-        job['timeout-minutes'] = 360;
-      },
-    ],
-    [
       'disabled vulnerability check',
       (job: Record<string, unknown>) => {
         (

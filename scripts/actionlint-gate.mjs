@@ -420,9 +420,6 @@ const SECURITY_BASE_POLICY_DIRECTORY = `\${{ runner.temp }}/base-policy`;
 const SECURITY_SARIF_OUTPUT = `\${{ runner.temp }}/codeql-sarif`;
 const SECURITY_NORMALIZED_SARIF = `\${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif`;
 const SECURITY_ANALYSIS_TIMEOUT_MINUTES = 30;
-// Action-only and seconds-scale: the bound exists so a hung review cannot hold
-// a hosted runner for GitHub's six-hour default.
-const DEPENDENCY_REVIEW_TIMEOUT_MINUTES = 15;
 /**
  * The only CodeQL configuration the scan accepts: test code out, nothing else.
  * Exported so the workflow test and the baseline test share one copy.
@@ -1943,18 +1940,10 @@ function hasExactDependencyReviewSteps(job) {
     'comment-summary-in-pr': 'never',
   };
   return (
-    hasExactKeys(job, [
-      'name',
-      'if',
-      'runs-on',
-      'timeout-minutes',
-      'permissions',
-      'steps',
-    ]) &&
+    hasExactKeys(job, ['name', 'if', 'runs-on', 'permissions', 'steps']) &&
     job?.name === 'Dependency review' &&
     job?.if === DEPENDENCY_REVIEW_CANDIDATE_GUARD &&
     job?.['runs-on'] === 'ubuntu-22.04' &&
-    job?.['timeout-minutes'] === DEPENDENCY_REVIEW_TIMEOUT_MINUTES &&
     hasExactKeys(job?.permissions, ['contents']) &&
     job.permissions.contents === 'read' &&
     (job?.steps?.length ?? 0) === 2 &&

@@ -11,7 +11,6 @@
  *   the same failure the same way.
  */
 import { createPublicKey, type KeyObject } from 'node:crypto';
-import { isObjectRecord } from '../object-record.js';
 import {
   assertEnvelopeShape,
   assertEnvelopeSignature,
@@ -36,6 +35,10 @@ export class ManifestRefusal extends Error {
   ) {
     super(message);
   }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function refusal(error: unknown, code = 1): ManifestRefusal {
@@ -67,9 +70,7 @@ export function verifyInstallManifest(
   }
   const shaped = envelope as { keyId: string; payload: unknown };
   const table = parseKeyTable(keys);
-  const channel = isObjectRecord(shaped.payload)
-    ? shaped.payload.channel
-    : undefined;
+  const channel = isObject(shaped.payload) ? shaped.payload.channel : undefined;
   let key: KeyObject;
   try {
     key = pinnedKeyFor(table, shaped.keyId, channel);
@@ -91,7 +92,7 @@ export function verifyInstallManifest(
     throw refusal(error, 4);
   }
   const payload = shaped.payload;
-  if (!isObjectRecord(payload))
+  if (!isObject(payload))
     throw new ManifestRefusal('manifest payload has an unexpected shape', 1);
   if (payload.schemaVersion !== 2)
     throw new ManifestRefusal('unsupported manifest schema', 1);
