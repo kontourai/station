@@ -1171,6 +1171,14 @@ export interface ResolvedAgentDefinition {
    */
   systemPrompt?: string;
   /**
+   * Station-owned orchestration instructions composed for this session from
+   * the station-control tools it is actually offered. Delivered alongside —
+   * never in place of — the authored `systemPrompt`, and reported under
+   * `SessionCapabilityDeliveryMetadata.stationInstructions`, so it never
+   * reads as Agent-authored text.
+   */
+  stationInstructions?: string;
+  /**
    * Fix (external autoApprove parity): the agent's authored `tools.autoApprove` patterns
    * (`AgentTools.autoApprove`), carried through to external-engine adapters
    * so their tool-permission gates (Claude's `canUseTool`, ACP's
@@ -1263,6 +1271,22 @@ export interface CapabilityDeliveryChannelReport {
 }
 
 /**
+ * Receipt for Station-owned orchestration instructions. `sections` lists the
+ * composed section ids; `digest` identifies the exact text. `channel` is how
+ * the text travels: appended to the engine system prompt, or prepended to the
+ * first turn (`firstTurnText`). `delivered` is set once the adapter confirms
+ * the channel-stage outcome; absent means not yet confirmed.
+ */
+export interface StationInstructionsReceipt {
+  version: 1;
+  sections: string[];
+  digest: string;
+  channel: 'system-prompt-append' | 'first-turn';
+  firstTurnText?: string;
+  delivered?: boolean;
+}
+
+/**
  * Session configuration receipt for capability delivery, carried in
  * `session.started`/`session.configured` event metadata under
  * `SESSION_CAPABILITY_DELIVERY_METADATA_KEY`. Server-owned: the orchestration
@@ -1273,6 +1297,8 @@ export interface SessionCapabilityDeliveryMetadata {
   toolServers?: CapabilityDeliveryChannelReport;
   skills?: CapabilityDeliveryChannelReport;
   systemPrompt?: CapabilityDeliveryChannelReport;
+  /** Receipt for Station-owned orchestration instructions (see `StationInstructionsReceipt`). */
+  stationInstructions?: StationInstructionsReceipt;
   /** Server-owned statement of the pre-tool seam actually reached by this session. */
   toolPolicy?: {
     coverage: 'partial';

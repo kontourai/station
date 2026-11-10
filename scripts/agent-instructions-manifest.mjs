@@ -77,10 +77,11 @@ export const ROOT_UNIVERSAL_MARKERS = Object.freeze([
   'Never use shell background or relaunch loops',
   'do not edit or remove a worktree with a live handoff',
 ]);
+// `windowsHide: true` was required prose in src-server and scripts; it is now
+// computed by scripts/windows-hide-ratchet.mjs, which fails the launch itself,
+// so the instruction files no longer carry it.
 export const SCOPE_REQUIRED_MARKERS = Object.freeze({
-  'src-server': ['windowsHide: true'],
   'src-ui': ['React Query', 'setLayout'],
-  scripts: ['windowsHide: true'],
 });
 
 export function scopeForPath(path) {

@@ -220,7 +220,20 @@ detail, transcript page and list phases each have CPU time and RSS samples.
 Idle and post-workload samples include descendant process counts. Idle has no
 HTTP polling: its CPU delta and observed inbound request count describe the
 idle cost; CPU time is not a hardware wakeup count. Instrumentation adds
-overhead. Empty delay histograms contain null percentiles, never a claimed zero.
+overhead. Before each HTTP or idle action, reset waits for a real post-reset
+histogram observation so the monitor is primed before the action starts. A
+sample waits for an observation newer than its request; an empty histogram or
+an expired probe never becomes a timing sample. Each probe has a 30-second
+parent monotonic deadline. The child uses the remaining budget to bound its
+local observation work; IPC transit does not extend the parent's deadline.
+For phases that reset the probe, CPU, elapsed time and histogram measurements
+span reset handling through the actual sample observation, including reset
+priming and sampler settlement. HTTP `latencyMs` measures the action through
+JSON parsing and excludes those settlement steps. Startup is sampled after the
+listening handshake without a reset; synchronous work before the histogram's
+first observation may be absent from its delay sample. Cancellation and
+deadline rejection do not establish child
+settlement; the scenario's owned-process cleanup remains separately required.
 Build and fixture seeding are outside the measured phases; boot uses the empty
 home and the read workload follows seeding in that same server.
 
@@ -345,6 +358,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | --- | --- | --- | --- |
 | [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested; same-repository main-target PR merged close. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
+| [`agent-context-budget.yml`](../../.github/workflows/agent-context-budget.yml) | — | **PR: Agent context budget** | PR events, including label changes. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
@@ -968,6 +982,21 @@ The gate's failure text names both variables. A transfer budget regression
 is a real finding: raise the fixture envelope only with a matching
 `policy-attribution.json` record, never by editing the bound.
 
+### Agent context budget
+
+`src-server/runtime/agents/agent-context-budget.json` records, in UTF-8 bytes,
+the context Station itself puts in front of every engine session: the
+`tools/list` of each built-in MCP server (name, description and input schema)
+and Station's injected text (orchestration instructions, workload budget,
+chat-image line). `agent-context-budget.test.ts` beside it recomputes each
+number from live source and fails when the file disagrees, so update the JSON
+to the measured values in the same change. When text shrinks, lower the
+number. `PR: Agent context budget` fails a pull request that raises any value
+above its merge base's, so only the pull request's own change counts; a branch
+that predates the file passes until it merges `main`. Cut the added text first; if the growth is worth it, a
+maintainer adds the `agent-context-increase` label. On a merge conflict in the
+JSON, rerun the test and take its measured values.
+
 ### Latest E2E screenshot evidence
 
 Every completed `verify:e2e:full` run atomically replaces the ignored latest E2E projection
@@ -1449,6 +1478,20 @@ photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
   cross the viewport edge without an on-screen scroller or a narrower clip;
 - blocking (serious/critical) axe violations, through
   `getBlockingAccessibilityViolations`.
+
+Overlap findings may include version 1 diagnostics copied from the same audit
+evaluation: painted boxes, control centres, intersection dimensions and centre,
+and hit-presence booleans. The first 16 admitted overlap occurrences can retain
+finite values with absolute magnitude at most 10 million CSS pixels, rounded
+to 0.01 pixels. Invalid values and occurrences beyond that limit have separate
+omission counts. Identical findings keep the first occurrence's geometry and
+record the total occurrence count; a later duplicate does not fill in missing
+diagnostics for the first. Diagnostics do not change finding identities,
+allowlist matching or verdicts, and older captures without them remain valid.
+
+Hit presence does not establish which control owns a press. These diagnostics
+do not measure scroll reachability or guarantee an atomic match with screenshot
+pixels.
 
 `node scripts/gallery-ui-findings.mjs` judges
 them against `tests/gallery-ui-findings.allowlist.json`, keyed by screen
@@ -2354,6 +2397,16 @@ deliberately-provisioned hosts—not an edit-loop speed knob.
 at 320px and 390px it covers the header trigger, visual-viewport sheet
 containment, dismissal/focus return, chat restore, and delegated Sessions
 navigation without a connection or credential setup step.
+
+### Model evals
+
+A change to what a model sees (Station Control tool descriptions and
+schemas, refusal copy, injected instructions) cannot be proven by a unit test.
+[`scripts/evals/`](../../scripts/evals/README.md) runs a paid model against
+the real text and grades its tool calls, for example
+`npx tsx scripts/evals/station-control-tool-use/run.ts --out <dir>`. It needs
+`ANTHROPIC_API_KEY` and is never run by CI or hooks; CI runs only the graders'
+tests. Compare a change with a baseline run of `main` on the same model.
 
 ### Task-first Home and root readiness
 

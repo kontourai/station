@@ -926,17 +926,25 @@ export async function dispatchOrchestrationCommandWithReceipt<T = unknown>(
   command: OrchestrationCommandInput,
   apiBase?: string,
   timeoutMs?: number,
+  opts?: Pick<ClientRequestOptions, 'requestScope'>,
 ): Promise<OrchestrationCommandDispatchResult<T>> {
+  const scope = snapshotInvocationScope(opts?.requestScope);
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/orchestration/commands`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(command),
-      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-    },
-  );
+  const url = `${resolvedApiBase}/api/orchestration/commands`;
+  const deadline = timeoutMs !== undefined ? { timeoutMs } : {};
+  const response = scope
+    ? await mutateJson(
+        url,
+        'POST',
+        { requestScope: scope, ...deadline },
+        command,
+      )
+    : await authenticatedFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(command),
+        ...deadline,
+      });
   const result = (await response.json()) as {
     success: boolean;
     data?: T;

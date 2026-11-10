@@ -39,6 +39,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
   NATIVE_RESUME_BINDING_METADATA_KEY,
@@ -58,6 +59,10 @@ import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
+import {
+  type ChildWorkloadOutcome,
+  childWorkloadMemoryExhausted,
+} from '@kontourai/station-shared/child-workload';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import {
   externalMcpToolApprovalIdentity,
@@ -126,6 +131,7 @@ import {
   providerOps,
 } from '../../telemetry/metrics.js';
 import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
+import { raceWithSignal } from '../../utils/bounded-async.js';
 import {
   childProcessEnvironment,
   scrubBootInternalSecrets,
@@ -182,6 +188,7 @@ import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import {
   assertExecutionOverrideDelivery,
+  confirmStationInstructionsDelivery,
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
 import {
@@ -201,6 +208,7 @@ import {
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   reportClaudePermissionMode,
+  settleOpenClaudeTasks,
   settleUnresolvedClaudeToolCalls,
   withdrawnSubagentPermissionResult,
 } from './claude-adapter-events.js';
@@ -213,6 +221,7 @@ import {
   resolveClaudePermissionMode,
 } from './claude-approval-mode.js';
 import {
+  type ClaudeEngineExit,
   type ClaudeEngineProcess,
   claudeExitDetailWithStderr,
   createClaudeEngineProcess,
@@ -740,6 +749,20 @@ type ClaudeSessionRecord = {
   engineDied?: boolean;
   /** `stopSession` began: a stream failure after it is the stop, not a death. */
   stopping?: boolean;
+  /**
+   * The engine process exited without a stop (a crash, a memory kill). The
+   * SDK's message stream can stay open forever after that, so the exit itself
+   * is what ends the session.
+   */
+  engineExit?: ClaudeEngineExit;
+  /** Set once the SDK's message stream has ended (or thrown). */
+  streamEnded?: boolean;
+  /** Set once a failure for this engine's death was published. */
+  engineFailurePublished?: boolean;
+  /** The newest turn this adapter dispatched, kept after it ends. */
+  lastDispatchedTurnId?: string;
+  /** Stops observing the engine process's exit. */
+  stopWatchingEngineExit?: () => void;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
   mcpServers: Record<string, McpServerConfig>;
@@ -879,6 +902,17 @@ type ClaudeSessionRecord = {
 
 function adoptionTitle(threadId: string): string {
   return `Station continuation ${threadId}`;
+}
+
+/**
+ * The title a new Claude session starts with. Without one the engine asks the
+ * model to name the session from the first prompt: an extra request per
+ * session that Station never reads, since it names conversations itself
+ * (conversation-title-generation.ts). Distinct from `adoptionTitle`, which
+ * child cleanup matches exactly.
+ */
+function newSessionTitle(threadId: string): string {
+  return `Station conversation ${threadId}`;
 }
 
 const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
@@ -1154,6 +1188,12 @@ export interface ClaudeAdapterOptions {
    */
   streamStopGraceMs?: number;
   /**
+   * How long the SDK's message stream may stay open after its engine process
+   * exited unasked before the adapter closes it. Default
+   * `CLAUDE_ENGINE_EXIT_STREAM_GRACE_MS`; injected by tests.
+   */
+  engineExitStreamGraceMs?: number;
+  /**
    * #2494: the Seatbelt provider a start whose plan names `seatbelt` is
    * confined through. Defaults to the server's own; injected by tests.
    */
@@ -1293,6 +1333,26 @@ const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
  * as "Stopped", which asserts less than the truth rather than more.
  */
 const CLAUDE_STREAM_STOP_GRACE_MS = 1_000;
+
+/**
+ * After the `claude` process exits without a stop, the SDK's message stream
+ * (streaming input mode) can stay open forever: it neither ends nor throws, so
+ * nothing would ever record the death. This long after the exit, a stream
+ * still open is closed, which ends it.
+ */
+const CLAUDE_ENGINE_EXIT_STREAM_GRACE_MS = 2_000;
+
+/** How long an unexpected exit waits for its scope's workload outcome. */
+const CLAUDE_ENGINE_EXIT_OUTCOME_WAIT_MS = 12_000;
+
+const toMiB = (bytes: number) => Math.round(bytes / (1024 * 1024));
+
+function claudeMemoryExhaustedMessage(outcome: ChildWorkloadOutcome): string {
+  const budget = outcome.memoryMaxBytes
+    ? ` Its workload budget is ${toMiB(outcome.memoryMaxBytes)} MiB${outcome.memoryPeakBytes ? ` (peak ${toMiB(outcome.memoryPeakBytes)} MiB)` : ''}, shared by Claude, its subagents and every command they run.`
+    : '';
+  return `Claude ran out of memory and was stopped, along with the work it was running.${budget} When the chat continues, Station tells Claude what was interrupted and to run memory-heavy steps one at a time.`;
+}
 
 /**
  * Keep the raw SDK name for authentic grant provenance and any user-visible
@@ -1499,6 +1559,24 @@ async function coordinatorMcpDeadline<T>(operation: Promise<T>): Promise<T> {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * Whether Station's orchestration instructions are appended to this session's
+ * system prompt: an authored prompt to append after, instructions to append,
+ * and the built-in station-control server in the servers the session is
+ * actually given. One predicate for the options and the delivery receipt, so
+ * the two cannot disagree.
+ */
+function claudeStationInstructionsAppended(
+  input: Pick<ProviderSessionStartInput, 'agent'>,
+  servers: Record<string, McpServerConfig> | undefined,
+): boolean {
+  return Boolean(
+    input.agent?.systemPrompt &&
+      input.agent.stationInstructions &&
+      servers?.['station-control'] !== undefined,
+  );
 }
 
 export class ClaudeAdapter implements ProviderAdapterShape {
@@ -2387,6 +2465,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       this.sessions.set(input.threadId, record);
       // Once per start: a confined start committed when it registered.
       commitHostImageLaunch();
+      record.stopWatchingEngineExit = engineProcess.onExit((exit) =>
+        this.observeEngineExit(record, exit),
+      );
       record.streamTask = this.consumeMessages(record);
 
       this.publish({
@@ -2490,6 +2571,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         });
       }
 
+      if (input.agent?.stationInstructions) {
+        configuredMetadata = confirmStationInstructionsDelivery(
+          configuredMetadata,
+          claudeStationInstructionsAppended(input, record.mcpServers),
+        );
+      }
+
       configuredMetadata[MODEL_SELECTION_RECEIPT_METADATA_KEY] =
         modelSelectionReceipt(input.modelId, record.session.model);
       record.configuredMetadata = configuredMetadata;
@@ -2561,6 +2649,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       })();
     }
     return announce();
+  }
+
+  /**
+   * Full access on a session spawned without the bypass grant (one that
+   * started with no Station mode, see `hostBypassGrant`): `sendTurn` would
+   * refuse the escalation, but a fresh start at `never` takes the grant. Not
+   * where the engine refuses that grant at all (root outside a sandbox), so
+   * the relaunch would fail to start.
+   */
+  turnNeedsEngineRelaunch(
+    threadId: string,
+    modelOptions: Record<string, unknown> | undefined,
+  ): boolean {
+    const record = this.sessions.get(threadId);
+    return (
+      record !== undefined &&
+      !record.allowsBypassPermissions &&
+      !record.confinementPending &&
+      this.resolvePermissionMode(modelOptions) === 'bypassPermissions' &&
+      !claudeRefusesBypassGrant()
+    );
   }
 
   async sendTurn(
@@ -2967,6 +3076,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // nothing else is running and the CLI cannot say otherwise, and on its
     // `command_lifecycle` `started` when it can — so the published order is
     // the engine's order.
+    record.lastDispatchedTurnId = turnId;
     recordClaudeTurnDispatched(record, turnId, {
       context: this.sdkTurnContext(record),
       event: this.dispatchedTurnStartEvent(
@@ -3587,6 +3697,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return this.sessions.has(threadId);
   }
 
+  /**
+   * A task the engine started and has not reported an end for. Read from
+   * the engine's own task frames, not the child-work registry, so a gap in
+   * that record can never let an idle park stop a working engine.
+   */
+  hasOpenEngineWork(threadId: string): boolean {
+    const tasks = this.sessions.get(threadId)?.activeTasks;
+    if (!tasks) return false;
+    for (const task of tasks.values()) {
+      if (!task.unresolvedPublished) return true;
+    }
+    return false;
+  }
+
   async stopAll(): Promise<void> {
     try {
       await Promise.all(
@@ -4188,6 +4312,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? []
         : [CLAUDE_ARTIFACT_TOOL_NAME]),
     ];
+    const resumeSessionId = claudeResumeSessionId(input.resumeCursor);
     return {
       cwd: input.cwd,
       ...(disallowedTools.length ? { disallowedTools } : {}),
@@ -4198,7 +4323,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(claudeExecutable
         ? { pathToClaudeCodeExecutable: claudeExecutable }
         : {}),
-      resume: claudeResumeSessionId(input.resumeCursor),
+      resume: resumeSessionId,
+      // A supplied title skips the engine's own naming request. A resumed
+      // session keeps the title it was recorded with (the SDK ignores this
+      // option there), so only a new session sends one.
+      ...(resumeSessionId === undefined
+        ? { title: newSessionTitle(input.threadId) }
+        : {}),
       includePartialMessages: true,
       // station#1877 follow-up: ask the SDK to summarise what a subagent is
       // doing, so `task_progress.summary` carries a live status line instead
@@ -4252,12 +4383,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // authored prompt keep byte-identical options (option entirely
       // unset). A bare-string value would instead REPLACE the prompt and
       // strip the engine's own behavior — rejected.
+      //
+      // Station orchestration instructions ride the same append, after the
+      // authored prompt, and only when station-control is in the servers this
+      // session is actually given (`claudeStationInstructionsAppended`). They
+      // never create the append: that would flip an Agent with no authored
+      // prompt onto the claude_code preset, so that case uses the first turn.
       ...(input.agent?.systemPrompt
         ? {
             systemPrompt: {
               type: 'preset' as const,
               preset: 'claude_code' as const,
-              append: input.agent.systemPrompt,
+              append: claudeStationInstructionsAppended(input, {
+                ...mcpServers,
+                ...builtinServers,
+              })
+                ? `${input.agent.systemPrompt}\n\n${input.agent.stationInstructions}`
+                : input.agent.systemPrompt,
             },
           }
         : {}),
@@ -4828,6 +4970,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         agentId: taskId,
       });
     }
+    // Before the tool-call settle: a task woken after its first terminal
+    // re-opened a call that settle skips (see `settleOpenClaudeTasks`).
+    settleOpenClaudeTasks({
+      provider: this.provider,
+      record: record as ClaudeMessageState,
+      publish,
+    });
     settleUnresolvedClaudeToolCalls({
       provider: this.provider,
       record: record as ClaudeMessageState,
@@ -4839,6 +4988,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     try {
       await this.consumeMessagesInner(record);
     } finally {
+      record.streamEnded = true;
+      // An exit nobody asked for, with no failure published for it yet: the
+      // stream ended (or was closed) without saying why. Its children settle
+      // as interrupted by it.
+      if (
+        record.engineExit &&
+        !record.stopping &&
+        !record.engineFailurePublished
+      )
+        record.engineDied = true;
       // #2324: nothing runs once the iterator is gone. A turn the engine
       // opened on its own and never reported the end of is closed here —
       // turns Station dispatched get theirs from the failure that ended the
@@ -4862,6 +5021,107 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // leaves a newer launch of the thread alone.
       removeLaunchedRoot(record.session.threadId, record.hostImageLaunch);
     }
+    await this.finalizeUnexpectedEngineExit(record);
+  }
+
+  /**
+   * The engine process exited. Without a stop that is a death: if the SDK's
+   * stream is still open a moment later it never will end on its own, so it
+   * is closed, which lets `consumeMessages` record the death.
+   */
+  private observeEngineExit(
+    record: ClaudeSessionRecord,
+    exit: ClaudeEngineExit,
+  ): void {
+    if (record.stopping || record.engineExit) return;
+    record.engineExit = exit;
+    record.stopWatchingEngineExit?.();
+    // The stream already ended (stdout closed before the exit was seen):
+    // nothing else will record this death.
+    if (record.streamEnded) {
+      void this.finalizeUnexpectedEngineExit(record);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (record.stopping || record.streamEnded) return;
+      try {
+        record.query.close();
+      } catch {
+        // Already closed: the stream is ending by itself.
+      }
+    }, this.options.engineExitStreamGraceMs ??
+      CLAUDE_ENGINE_EXIT_STREAM_GRACE_MS);
+    timer.unref?.();
+  }
+
+  /**
+   * An engine that exited without a stop and whose stream ended without a
+   * failure: record why the session ended, on the turn its work belongs to,
+   * and end the session. A memory kill is reported as one, which hands the
+   * conversation to the memory-exhaustion continuation; anything else reads
+   * as the engine stopping unexpectedly. Before this, the session silently
+   * stayed `ready` with no failure, exit or interrupted work recorded.
+   */
+  private async finalizeUnexpectedEngineExit(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    const exit = record.engineExit;
+    if (!exit || record.stopping || record.engineFailurePublished) return;
+    record.engineFailurePublished = true;
+    const threadId = record.session.threadId;
+    const outcome = exit.workloadOutcome
+      ? await raceWithSignal(
+          exit.workloadOutcome,
+          AbortSignal.timeout(CLAUDE_ENGINE_EXIT_OUTCOME_WAIT_MS),
+        ).catch(() => undefined)
+      : undefined;
+    if (record.stopping || this.sessions.get(threadId) !== record) return;
+    const memoryExhausted = childWorkloadMemoryExhausted(outcome, exit.signal);
+    const turnId = record.activeTurnId ?? record.lastDispatchedTurnId;
+    const detail = claudeExitDetailWithStderr(
+      exit.signal
+        ? `Claude Code process terminated by signal ${exit.signal}`
+        : `Claude Code process exited with code ${exit.code ?? 'unknown'}`,
+      record.engineStderrTail?.(),
+    );
+    const createdAt = new Date().toISOString();
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt,
+      ...(turnId ? { turnId } : {}),
+      method: 'runtime.error',
+      ...providerFailure('engine_crashed'),
+      severity: 'error',
+      message:
+        memoryExhausted && outcome
+          ? claudeMemoryExhaustedMessage(outcome)
+          : `Claude stopped unexpectedly: ${detail}`,
+      code: memoryExhausted
+        ? ENGINE_MEMORY_EXHAUSTED_CODE
+        : 'claude-engine-exited',
+      details: {
+        ...(exit.signal ? { exitSignal: exit.signal } : {}),
+        ...(outcome ? { workload: outcome } : {}),
+      },
+    } satisfies ProviderRuntimeErrorEvent);
+    record.session.status = 'closed';
+    this.sessions.delete(threadId);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt,
+      method: 'session.exited',
+      sessionId: threadId,
+      ...(exit.code !== null ? { exitCode: exit.code } : {}),
+      reason: memoryExhausted
+        ? 'memory-exhausted'
+        : exit.code === 0
+          ? 'completed'
+          : 'process-exit',
+    });
   }
 
   private async consumeMessagesInner(
@@ -4910,6 +5170,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       if (record.terminalResultObserved) {
         record.session.status =
           record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
+        record.engineFailurePublished = true;
         return;
       }
       // The engine died only when its process is seen gone: a stream can
@@ -4938,6 +5199,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(startupFailure ? engineStartupFailureEvent(startupFailure) : {}),
       } satisfies ProviderRuntimeErrorEvent);
       record.session.status = 'error';
+      record.engineFailurePublished = true;
       record.promptQueue.close();
     }
   }

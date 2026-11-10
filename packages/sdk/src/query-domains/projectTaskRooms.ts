@@ -36,6 +36,8 @@ import type { TaskRoomWorkRequestScope } from './taskRoomWork';
 export { TaskRoomWorkNotSentError } from '../client/task-room-work';
 export {
   type TaskRoomWorkRequestScope,
+  useSharedTaskRoomCapabilitiesQuery,
+  useSubmitSharedTaskRoomAgentRequestMutation,
   useSubmitTaskRoomAgentRequestMutation,
   useTaskRoomAgentOptionsQuery,
   useTaskRoomAgentRequestsQuery,

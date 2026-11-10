@@ -583,6 +583,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   // the workspace or temp fixture object.
   'scripts/__tests__/heavy-check-slots.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/verification-coordinator.test.ts': TEMP_VIA_FIXTURE,
+  // Walks fixture homes that `buildSourceHome()` creates under trackTempDirs.
+  'scripts/__tests__/seed-dev-home.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/test-impact-incidents.test.ts':

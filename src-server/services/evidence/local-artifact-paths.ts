@@ -131,7 +131,11 @@ export function flowRunArtifactReference(
   runId: string,
   ...segments: string[]
 ): string {
-  return [STATION_ARTIFACT_ROOTS.flowRuns, runId, ...segments].join('/');
+  return [
+    STATION_ARTIFACT_ROOTS.flowRuns.split(sep).join('/'),
+    runId,
+    ...segments,
+  ].join('/');
 }
 
 export function workflowSidecarTaskReference(taskSlug: string): string {

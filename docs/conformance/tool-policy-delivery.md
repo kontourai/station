@@ -109,6 +109,17 @@ tools. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 
+Child fan-out is the one denial Station also enforces server-side for every
+engine. A delegated child that calls `delegate_task` or `send_message` is
+refused at the routes behind them (`POST /api/orchestration/delegations`, and
+`/chat`, `/chat/delegated` and `/chat/background`) with `403` and
+`delegated_tool_blocked`, before the depth limit is read. The decision uses the
+calling session's own recorded delegation context and the built-in denial list,
+so an Agent's `allowedTools` cannot re-allow it. It needs a verified
+station-control caller: a Codex URL token, an ACP header token or the Claude
+in-process server. A shell `station` CLI run under an operator credential is not
+that caller, so this is not coverage of every way a child could start work.
+
 ### Codex approval policy and reviewer
 
 The session-level engine Ask mode is separate from the authored per-tool Ask
@@ -712,7 +723,12 @@ The conversation opens one approval sheet for its current tool requests. It
 shows each command in full and gives each request its own decision controls.
 Closing the sheet hides it without answering; that prompt remains dismissed
 until Answer or Needs approval reopens it. A newly opened prompt can open the
-sheet again. Sending and failure state survive hiding the sheet.
+sheet again. Sending and failure state survive hiding the sheet. When Station
+answers a decision with "already settled", the view missed that request's
+resolution: the sheet drops the request and its count at once and refetches
+the conversation's history, which brings in the resolution and any request
+opened since, instead of keeping the settled request on screen with live
+controls.
 
 Approval toasts send the selected decision. If the originating conversation
 is already visible, its layout stays in place; otherwise the action opens it. Accepted approval actions in notification history and Attention also

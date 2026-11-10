@@ -166,7 +166,10 @@ import {
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
-import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
+import {
+  type SessionUsageAggregate,
+  sessionStartedResumedNativeSession,
+} from '@kontourai/station-shared/usage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import {
   readAuthorizedUsageExport,
@@ -436,6 +439,7 @@ import {
   InterruptedTurnRecovery,
   type RecoveredInterruptedTurn,
 } from './interrupted-turn-recovery.js';
+import { interruptedWorkRecoveryNote } from './interrupted-work-recovery.js';
 import { memoryExhaustionRecoveryNote } from './memory-exhaustion-recovery.js';
 import {
   listLaunchableAdapterModels,
@@ -1518,6 +1522,61 @@ function pendingFirstTurnInstructions(
   return firstTurnInstructions;
 }
 
+/**
+ * Station's own orchestration instructions on a session's genuine first turn:
+ * the `first-turn` receipt `session-agent-resolution.ts` stamps under
+ * `stationInstructions` (preview-gated there). Same first-turn rule as
+ * `pendingFirstTurnInstructions`: nothing once a `turn.started` exists. Also
+ * nothing when the latest toolServers report says station-control did not
+ * reach the engine (listed undelivered, or absent from a present delivered
+ * list), since the text names tools the session cannot call.
+ */
+function pendingStationInstructions(
+  events: readonly { method?: unknown; metadata?: unknown }[],
+): string | undefined {
+  if (events.some((event) => event.method === 'turn.started')) {
+    return undefined;
+  }
+  let text: string | undefined;
+  let toolServers: SessionCapabilityDeliveryMetadata['toolServers'];
+  for (const event of events) {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    ) {
+      continue;
+    }
+    const metadata =
+      event.metadata && typeof event.metadata === 'object'
+        ? (event.metadata as Record<string, unknown>)
+        : undefined;
+    const report = metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as
+      | SessionCapabilityDeliveryMetadata
+      | undefined;
+    if (report?.toolServers) toolServers = report.toolServers;
+    const receipt = report?.stationInstructions;
+    if (
+      receipt?.channel === 'first-turn' &&
+      typeof receipt.firstTurnText === 'string'
+    ) {
+      text = receipt.firstTurnText;
+    }
+  }
+  if (text === undefined) return undefined;
+  if (
+    toolServers?.undelivered?.some((entry) => entry.id === 'station-control')
+  ) {
+    return undefined;
+  }
+  if (
+    Array.isArray(toolServers?.delivered) &&
+    !toolServers.delivered.includes('station-control')
+  ) {
+    return undefined;
+  }
+  return text;
+}
+
 function taskBriefStartRecord(brief: {
   digest: string;
   text: string;
@@ -1535,6 +1594,25 @@ function taskBriefStartRecord(brief: {
       ? { mandatoryContextDigest: brief.mandatoryContextDigest }
       : {}),
   };
+}
+
+/**
+ * The engine now running this session resumed an existing native transcript,
+ * read from its latest `session.started` (the adapter's recorded fact).
+ */
+function resumesNativeTranscript(
+  events: readonly { method?: unknown; metadata?: unknown }[],
+): boolean {
+  let started: (typeof events)[number] | undefined;
+  for (let index = events.length - 1; index >= 0 && !started; index -= 1)
+    if (events[index].method === 'session.started') started = events[index];
+  return (
+    !!started?.metadata &&
+    typeof started.metadata === 'object' &&
+    sessionStartedResumedNativeSession({
+      metadata: started.metadata as Record<string, unknown>,
+    })
+  );
 }
 
 /** No turn has started in this session yet (the first-turn rule above). */
@@ -2595,6 +2673,14 @@ export class OrchestrationService {
    * the stopped one.
    */
   private readonly parkedThreads = new Set<string>();
+  /**
+   * When each live engine last reported anything (by event time). An idle
+   * park measures idleness from the later of this and the session's own
+   * `updatedAt`: a backgrounded subagent's progress does not move the
+   * session row, and parking off the row alone stopped an engine whose
+   * subagent was still committing work.
+   */
+  private readonly lastEngineActivityAt = new Map<string, number>();
   private idleSweepTimer: ReturnType<typeof setInterval> | undefined;
   /**
    * archive#1745: whether this process's startup attachment pass has FINISHED
@@ -9141,6 +9227,7 @@ export class OrchestrationService {
             current?.session.provider;
           if (turnEngine !== undefined)
             assertEngineAllowedByManagedPolicy(turnEngine);
+          let engineMaterialized = false;
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: submittedInput.threadId,
             threadProviders: this.threadProviders,
@@ -9158,12 +9245,14 @@ export class OrchestrationService {
             // admission authorizes the spawn it may need (the service
             // rechecks and verifies at the spawn effect); without one a
             // marked thread refuses before spawning.
-            materializeSession: (threadId) =>
-              this.materializeRecoveredSession(
+            materializeSession: (threadId) => {
+              engineMaterialized = true;
+              return this.materializeRecoveredSession(
                 threadId,
                 undefined,
                 internal?.receiverExecutionAdmission,
-              ),
+              );
+            },
           });
           const {
             invocationId: _untrustedInvocationId,
@@ -9187,6 +9276,24 @@ export class OrchestrationService {
           const pendingPrompt = current
             ? pendingFirstTurnInstructions(current.events)
             : undefined;
+          // Station's orchestration instructions ride the same first turn,
+          // right after the authored prompt (preview-gated at resolution).
+          // Whether station-control reached the engine is a delivery fact of
+          // the engine that runs this turn: a recovery that just started one
+          // logged a fresh report after `current` was read, so decide on the
+          // log as it stands now.
+          const stationGuideEvents =
+            current && engineMaterialized
+              ? ((
+                  await this.readSession(
+                    submittedInput.threadId,
+                    INTERNAL_SESSION_READ_SCOPE,
+                  )
+                )?.events ?? current.events)
+              : current?.events;
+          const pendingStationGuide = stationGuideEvents
+            ? pendingStationInstructions(stationGuideEvents)
+            : undefined;
           // Epic #4003: a Session dispatched for a Task gets its Task brief
           // the same way, on the same genuine first turn, on every engine:
           // after any authored prompt, before ordinary ambient context.
@@ -9200,14 +9307,37 @@ export class OrchestrationService {
           const genuineFirstTurn =
             !!current &&
             !current.events.some((event) => event.method === 'turn.started');
+          // A successor whose engine resumed the predecessor's native
+          // transcript already holds the budget and image line the earlier
+          // first turn delivered; repeating them only grows the history
+          // resent on every model call. Recovery notes are new and still go.
+          const resumedNativeConversation =
+            genuineFirstTurn &&
+            resumesNativeTranscript(stationGuideEvents ?? current.events);
           const workloadLimits =
             genuineFirstTurn &&
+            !resumedNativeConversation &&
             adapter.metadata.workloadScope === 'engine-process'
               ? this.options.workloadEngineLimits?.(submittedInput.threadId)
               : undefined;
-          const recoveryNote = genuineFirstTurn
-            ? this.predecessorMemoryExhaustionNote(submittedInput.threadId)
+          // After a memory kill, its own note. Otherwise, on the first turn
+          // after any engine ended with work still running (the
+          // predecessor's for a successor, this Session's own after an
+          // in-place restart), what that work was: the new engine's
+          // conversation still shows it started, and its completion notice
+          // can never arrive.
+          const predecessorId = genuineFirstTurn
+            ? this.options.eventStore?.conversationForSession(
+                submittedInput.threadId,
+              )?.predecessorSessionId
             : undefined;
+          const recoveryNote =
+            (genuineFirstTurn
+              ? this.predecessorMemoryExhaustionNote(submittedInput.threadId)
+              : undefined) ??
+            this.interruptedWorkNote(
+              genuineFirstTurn ? predecessorId : submittedInput.threadId,
+            );
           const stationContext = [
             workloadLimits
               ? workloadBudgetEngineContext(workloadLimits)
@@ -9216,12 +9346,15 @@ export class OrchestrationService {
           ].filter((part): part is string => part !== undefined);
           // The chat-host-images preview's one line, on the same first turn.
           const pendingHostImageGuide =
-            current && isGenuineFirstTurn(current.events)
+            current &&
+            isGenuineFirstTurn(current.events) &&
+            !resumedNativeConversation
               ? await this.hostImages.instructionFor(submittedInput.threadId)
               : undefined;
           const firstTurnContext = [
             ...stationContext,
             pendingPrompt,
+            pendingStationGuide,
             pendingBrief?.retainedByBoundary ? undefined : pendingBrief?.text,
             pendingHostImageGuide,
             publicTurnInput.ambientContext?.trim()
@@ -9230,6 +9363,7 @@ export class OrchestrationService {
           ].filter((part): part is string => part !== undefined);
           const turnInputWithFirstTurnPrompt =
             pendingPrompt ||
+            pendingStationGuide ||
             pendingBrief ||
             pendingHostImageGuide ||
             stationContext.length > 0
@@ -9503,6 +9637,40 @@ export class OrchestrationService {
             try {
               throwIfAborted(turnInput.signal);
               this.assertAdapterCurrent(adapter);
+              // A posture the live engine cannot take but a fresh start of
+              // this session can (Claude's full access, granted only at
+              // spawn): park the idle engine so the turn below restarts it in
+              // place, from its resume cursor, at the recorded posture. A
+              // session parking refuses (open request, running child work)
+              // keeps its engine, and the adapter reports the refusal.
+              if (
+                adapter.turnNeedsEngineRelaunch?.(
+                  turnInput.threadId,
+                  turnInput.modelOptions,
+                ) &&
+                this.isParkableIdleSession(turnInput.threadId, Date.now(), 0)
+              ) {
+                try {
+                  await this.parkIdleSession(
+                    turnInput.threadId,
+                    adapter,
+                    Date.now(),
+                    0,
+                  );
+                } catch (error) {
+                  // A turn or transition holds the session: the send goes on
+                  // to the live engine, which refuses or reports as before.
+                  if (!(error instanceof SessionLifecycleClaimRefusedError))
+                    throw error;
+                  this.options.logger.warn(
+                    'Engine was not relaunched for full access',
+                    {
+                      threadId: turnInput.threadId,
+                      error: errorMessage(error),
+                    },
+                  );
+                }
+              }
               const startTurn = async () => {
                 // An adapter whose session is visible before its engine start
                 // finishes (an ACP reattach) is waited on HERE, before the
@@ -13351,6 +13519,9 @@ export class OrchestrationService {
           this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
           if (normalized.method === 'session.exited') {
             this.sessionAdapters.delete(normalized.threadId);
+            this.lastEngineActivityAt.delete(normalized.threadId);
+          } else {
+            this.noteEngineActivity(normalized);
           }
           this.flowPolicy.applyPostHocToolPolicies(adapter, normalized);
           this.flowPolicy.spoolCommandEvidence(normalized);
@@ -13980,6 +14151,7 @@ export class OrchestrationService {
     }
     this.stationControlPullRequests?.retireSession(threadId);
     this.sessionAdapters.delete(threadId);
+    this.lastEngineActivityAt.delete(threadId);
     this.threadProviders.delete(threadId);
     this.sessionReadModel.delete(threadId);
     this.sessionConnectionIds.delete(threadId);
@@ -15855,6 +16027,15 @@ export class OrchestrationService {
     return parked;
   }
 
+  /** Records an adapter event's time as its engine's latest activity. */
+  private noteEngineActivity(event: CanonicalRuntimeEvent): void {
+    const at = Date.parse(event.createdAt);
+    if (!Number.isFinite(at)) return;
+    const previous = this.lastEngineActivityAt.get(event.threadId);
+    if (previous === undefined || at > previous)
+      this.lastEngineActivityAt.set(event.threadId, at);
+  }
+
   private isParkableIdleSession(
     threadId: string,
     now: number,
@@ -15875,7 +16056,10 @@ export class OrchestrationService {
     const session = this.sessionReadModel.get(threadId);
     if (!session || session.status === 'closed' || session.status === 'dead')
       return false;
-    const lastActivity = Date.parse(session.updatedAt);
+    const lastActivity = Math.max(
+      Date.parse(session.updatedAt),
+      this.lastEngineActivityAt.get(threadId) ?? Number.NEGATIVE_INFINITY,
+    );
     if (!Number.isFinite(lastActivity) || now - lastActivity < parkAfterMs)
       return false;
     // Only an engine that can pick the conversation back up is parked: the
@@ -15897,6 +16081,10 @@ export class OrchestrationService {
     // tasks — dies with its process: such a session is not idle.
     const children = this.childWork.read(threadId, session.provider);
     if (children?.observability === 'reported' && children.running.length > 0)
+      return false;
+    // The engine's own word, independent of that record: a task it started
+    // and never ended is still running inside it.
+    if (this.sessionAdapters.get(threadId)?.hasOpenEngineWork?.(threadId))
       return false;
     // At rest only — a session waiting on the user (an open request) keeps
     // its engine, which is what holds that request.
@@ -15965,6 +16153,7 @@ export class OrchestrationService {
         this.clientOriginTurns.clearThread(threadId);
         this.approvalPosture.forgetThread(threadId);
         this.acceptedTurnConfinement.delete(threadId);
+        this.lastEngineActivityAt.delete(threadId);
         this.options.logger.debug('Parked idle session engine', { threadId });
         return true;
       },
@@ -16162,6 +16351,59 @@ export class OrchestrationService {
       );
     } catch (error) {
       this.options.logger.warn('Could not read the predecessor failure', {
+        threadId,
+        error,
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * The interrupted-work note for `threadId`'s latest turn window: calls an
+   * ended engine settled `unresolved` since the thread's latest
+   * `turn.started` (see `interrupted-work-recovery.ts`). Index-bounded reads;
+   * any read failure composes nothing rather than failing the turn.
+   */
+  private interruptedWorkNote(
+    threadId: string | undefined,
+  ): string | undefined {
+    const store = this.options.eventStore;
+    if (!store || !threadId) return undefined;
+    try {
+      const turnStarted = store.latestEventByMethod(
+        threadId,
+        'turn.started',
+        true,
+        false,
+      );
+      const completions = store.listEventsByMethodsAfterSequence(
+        threadId,
+        ['tool.completed'],
+        turnStarted?.sequence ?? 0,
+        1_000,
+      );
+      if (
+        !completions.some(
+          (event) =>
+            (event.payload as { status?: unknown }).status === 'unresolved',
+        )
+      )
+        return undefined;
+      const callIds = [
+        ...new Set(
+          completions.flatMap((event) => {
+            const callId = (event.payload as { toolCallId?: unknown })
+              .toolCallId;
+            return typeof callId === 'string' ? [callId] : [];
+          }),
+        ),
+      ];
+      return interruptedWorkRecoveryNote(
+        completions,
+        store.boundToolStartedEvents(threadId, callIds),
+      );
+    } catch (error) {
+      this.options.logger.warn('Could not read the interrupted work', {
         threadId,
         error,
       });

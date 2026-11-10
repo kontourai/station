@@ -43,14 +43,24 @@ import { inboxRowChips } from '../inbox-row-chips';
 // The details sheet's on-demand reads (git, pull requests, basis) need a
 // connection scope; with none they stay disabled, which is all these tests
 // need of them.
+const discardAuthority = vi.hoisted(() => ({ enabled: false }));
 vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<
     typeof import('../../../contexts/ApiBaseContext')
   >()),
-  useHostRequestAuthorityScope: () => null,
+  useHostRequestAuthorityScope: () =>
+    discardAuthority.enabled
+      ? {
+          apiBase: 'http://station.test',
+          authorityKey: 'inbox-row-test',
+          isCurrent: () => true,
+        }
+      : null,
 }));
 
-const discardCommand = vi.hoisted(() => vi.fn(async () => ({})));
+const discardCommand = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<object>>(async () => ({})),
+);
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   dispatchOrchestrationCommandWithReceipt: discardCommand,
@@ -706,6 +716,125 @@ describe('two sizes and two chromes', () => {
   });
 });
 
+describe('shared inbox actions', () => {
+  it('keeps snooze choices in Details when Snooze is also a row shortcut', async () => {
+    const row = rowFor();
+    const onSnoozeWake = vi.fn();
+    renderRow(row, {
+      chrome: 'touch',
+      hoverCard: true,
+      onSnoozeWake,
+    });
+    expect(
+      screen.getByRole('button', { name: 'Snooze Migrate sessions table' }),
+    ).toBeTruthy();
+    const details = screen.getByRole('button', { name: /^Details for/ });
+    fireEvent.click(details);
+    const actions = await screen.findByTestId(
+      'inbox-row-details-actions',
+      {},
+      { timeout: 8000 },
+    );
+    fireEvent.click(within(actions).getByRole('button', { name: '1 hour' }));
+    expect(onSnoozeWake).toHaveBeenCalledWith(
+      row.item,
+      NOW + 3_600_000,
+      details,
+    );
+    expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+  });
+
+  it.each([false, true])(
+    'runs the same resolution command from desktop and Details (settled: %s)',
+    async (settled) => {
+      const onChange = vi.fn();
+      const row = rowFor({
+        hasActiveTurn: false,
+        conversationActivity: undefined,
+      });
+      const resolution = { settled, pending: false, onChange };
+      const verb = settled ? 'Reopen' : 'Settle';
+      renderRow(row, { resolution });
+      fireEvent.click(
+        screen.getByRole('button', { name: `${verb} Migrate sessions table` }),
+      );
+      expect(onChange).toHaveBeenCalledTimes(1);
+      cleanup();
+
+      renderRow(row, { chrome: 'touch', hoverCard: true, resolution });
+      fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+      const actions = await screen.findByTestId(
+        'inbox-row-details-actions',
+        {},
+        { timeout: 8000 },
+      );
+      fireEvent.click(
+        within(actions).getByRole('button', { name: `${verb} conversation` }),
+      );
+      expect(onChange).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+    },
+  );
+
+  it.each(['hover', 'touch'] as const)(
+    'does not resubmit a pending resolution through %s actions',
+    async (chrome) => {
+      const onChange = vi.fn();
+      renderRow(rowFor(), {
+        chrome,
+        hoverCard: true,
+        resolution: { settled: false, pending: true, onChange },
+      });
+      if (chrome === 'touch') {
+        fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+        await screen.findByTestId(
+          'inbox-row-details-actions',
+          {},
+          { timeout: 8000 },
+        );
+      }
+      const settle = screen.getByRole('button', {
+        name:
+          chrome === 'touch'
+            ? 'Settle conversation'
+            : 'Settle Migrate sessions table',
+      });
+      expect(settle.hasAttribute('disabled')).toBe(true);
+      fireEvent.click(settle);
+      expect(onChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it('names inbox dismissal separately from closing an open chat', async () => {
+    const row = rowFor();
+    const onDismiss = vi.fn();
+    const onCloseChat = vi.fn();
+    renderRow(row, {
+      chrome: 'touch',
+      hoverCard: true,
+      actionsInDetails: true,
+      isOpenChat: true,
+      onDismiss,
+      onCloseChat,
+    });
+    const details = screen.getByRole('button', { name: /^Details for/ });
+    fireEvent.click(details);
+    const actions = await screen.findByTestId(
+      'inbox-row-details-actions',
+      {},
+      { timeout: 8000 },
+    );
+    expect(
+      within(actions).queryByRole('button', { name: 'Close chat' }),
+    ).toBeNull();
+    fireEvent.click(
+      within(actions).getByRole('button', { name: 'Dismiss from inbox' }),
+    );
+    expect(onDismiss).toHaveBeenCalledWith(row.item, details);
+    expect(onCloseChat).not.toHaveBeenCalled();
+  });
+});
+
 describe('the Details sheet belongs to the item, not to the row instance', () => {
   const group = (id: 'idle' | 'running', item: HomeWorkItem) => ({
     id,
@@ -808,6 +937,13 @@ describe('an unsent composer draft on touch chrome (U11)', () => {
 });
 
 describe('a Draft row on touch chrome', () => {
+  beforeEach(() => {
+    discardAuthority.enabled = true;
+  });
+  afterEach(() => {
+    discardAuthority.enabled = false;
+    vi.useRealTimers();
+  });
   const draftRow = (): Row => {
     const base = rowFor({
       hasActiveTurn: false,
@@ -838,13 +974,19 @@ describe('a Draft row on touch chrome', () => {
       'Details for Migrate sessions table',
       'Discard draft Migrate sessions table',
     ]);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Discard draft Migrate sessions table',
       }),
     );
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    vi.useRealTimers();
     await vi.waitFor(() => expect(onDraftDiscarded).toHaveBeenCalledTimes(1));
-    expect(discardCommand).toHaveBeenCalledWith({
+    expect(discardCommand.mock.calls[0]?.[0]).toEqual({
       type: 'discardDraft',
       threadId: 'T',
     });
@@ -875,7 +1017,13 @@ describe('a Draft row on touch chrome', () => {
       name: 'Discard draft Migrate sessions table',
     });
     expect(discard.textContent).toBe('Discard draft');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fireEvent.click(discard);
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    vi.useRealTimers();
     await vi.waitFor(() => expect(onDraftDiscarded).toHaveBeenCalledTimes(1));
     // Not the portaled sheet button: the row's own Details trigger, which
     // the host can find its row from to move focus before the row goes.
@@ -1007,23 +1155,8 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
     expect(screen.queryByTestId('inbox-row-details')).toBeNull();
   });
 
-  it('a row that keeps nothing in the sheet renders no list at all', async () => {
-    // Home's Draft row: Discard is beside the row and there is no snooze.
-    const base = rowFor({
-      hasActiveTurn: false,
-      conversationActivity: undefined,
-    });
-    renderRow(
-      {
-        facts: undefined,
-        item: {
-          ...base.item,
-          lifecycleLabel: 'Draft',
-          turnProgress: undefined,
-        },
-      },
-      { chrome: 'touch', hoverCard: true, onDraftDiscarded: vi.fn() },
-    );
+  it('a host that supplies no actions renders no list in the sheet', async () => {
+    renderRow(rowFor(), { chrome: 'touch', hoverCard: true });
     await openSheet();
     expect(screen.queryByTestId('inbox-row-details-actions')).toBeNull();
     expect(

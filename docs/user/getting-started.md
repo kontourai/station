@@ -47,7 +47,7 @@ AI app**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
 inspect the selection. Save with **Create Agent**, then choose it in a new chat.
 Codex receives your instructions with the first message in each new chat, at
-the same priority as that message. You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
+the same priority as that message. (With the **Station orchestration instructions** Feature Preview on, an Agent that has Station controls also gets Station's own guidance on using them in that first message.) You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
 for tool selection and approval details.
 
 In **Coding**, use **Files** to open a project file, **Diff** to inspect changes,
@@ -231,9 +231,11 @@ writes too. Codex's web search and MCP tools are not commands and are not
 covered by this. Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session. A Claude chat started in a
 chosen mode by someone who may grant full access can switch to full access on
-its next turn. A chat left on Claude's own settings, one that started before
-this was available, or one on a Station running as root outside a sandbox
-needs a restart.
+its next turn. A chat left on Claude's own settings, or one that started before
+this was available, gets full access on its next turn too: Station relaunches
+Claude Code first and resumes the same conversation. A chat that is waiting on
+you or still running background work, or one on a Station running as root
+outside a sandbox, needs a restart.
 
 ## Read recent conversations offline
 
@@ -706,10 +708,12 @@ and shows all work anywhere else. If work needs
 you outside the filter, choose **Show all** from the notice.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
-from inbox**. On mobile, use the row’s Details menu; with **Sheet gestures
-preview** enabled in Settings → Advanced → Developer tools, swipe left to
-reveal the clock and × controls. The clock opens Snooze duration choices; ×
-dismisses the conversation. Dismissal leaves running work and history intact.
+from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
+details. With **Sheet gestures preview** enabled in Settings → Advanced →
+Developer tools, swipe left to reveal labelled actions; the row follows your
+finger and snaps open when released. Only one row's actions stay revealed.
+**Snooze** opens duration choices, and **Dismiss** hides the conversation.
+Swiping itself never runs an action. Dismissal leaves running work and history intact.
 Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
 or search the inbox, find matching **Dismissed** results, and choose
 **Restore to inbox**.
@@ -718,6 +722,18 @@ changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
 Hidden **Third-party** sessions stay hidden through external updates until you
 restore them or bring them into Station.
+
+If this browser cannot save Snooze, the choice still holds for the current
+page session. Saved snoozes update other open tabs of this browser.
+
+**Discard draft** deletes an unstarted server Draft across devices. It first
+offers **Undo** for eight seconds and announces **Draft will be discarded**.
+The Undo button replaces the row's discard shortcut; the Details sheet also
+shows the pending message. Undo keeps
+the Draft; leaving that control or switching Station or account also cancels
+the pending deletion. After the window, Station asks the server to discard it
+and shows any refusal. Discarding an **unsent draft** instead clears the text
+you typed on this device.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**

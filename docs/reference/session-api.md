@@ -395,6 +395,15 @@ affects new Sessions; continuing a qualified retained Session still requires
 current authorization for its recorded directory. The receipt itself grants no
 authority.
 
+A station-control call to `delegate_task` or `send_message` from a delegated
+child is refused before anything starts: `POST /api/orchestration/delegations`
+and `/chat`, `/chat/delegated` and `/chat/background` answer `403` with
+`delegated_tool_blocked`, ahead of the delegation depth limit and on every
+engine whose call carries a verified station-control caller. The decision uses
+the calling Session's own recorded delegation context, so a request body cannot
+re-allow it. See [tool-policy delivery](../conformance/tool-policy-delivery.md)
+for the callers this covers.
+
 A delegation's dispatch response (`POST /api/orchestration/delegations`) also
 carries `resolution.confinement` once its session has started (#2494). It is
 the session's confinement record, read back from that session's own

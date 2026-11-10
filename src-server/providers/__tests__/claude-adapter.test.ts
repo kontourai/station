@@ -8866,6 +8866,72 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('full access on a session spawned without the bypass grant asks for an engine relaunch; a granted one does not', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    vi.stubEnv('IS_SANDBOX', '1');
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    const adapter = new ClaudeAdapter();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-no-grant',
+      confinement: 'host',
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-granted',
+      confinement: 'host',
+      modelOptions: { approvalMode: 'ask' },
+    });
+
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-no-grant', {
+        approvalMode: 'never',
+      }),
+    ).toBe(true);
+    // Only full access needs the spawn-time grant.
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-no-grant', {
+        approvalMode: 'auto',
+      }),
+    ).toBe(false);
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-granted', {
+        approvalMode: 'never',
+      }),
+    ).toBe(false);
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-unknown', {
+        approvalMode: 'never',
+      }),
+    ).toBe(false);
+  });
+
+  test('no relaunch is asked for as root outside a sandbox, where a fresh start with the grant would fail', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-root-no-grant',
+      confinement: 'host',
+    });
+    const realGetuid = process.getuid;
+    process.getuid = () => 0;
+    vi.stubEnv('IS_SANDBOX', undefined);
+    vi.stubEnv('CLAUDE_CODE_BUBBLEWRAP', undefined);
+    try {
+      expect(
+        adapter.turnNeedsEngineRelaunch('thread-root-no-grant', {
+          approvalMode: 'never',
+        }),
+      ).toBe(false);
+    } finally {
+      process.getuid = realGetuid;
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('a host start below full access is not granted bypass as root outside a sandbox, where the engine would refuse it', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     // Defined where the platform has none (Windows), so the guard sees root.
@@ -9518,6 +9584,8 @@ describe('ClaudeAdapter', () => {
         disallowedTools: ['Artifact'],
         model: undefined,
         resume: undefined,
+        // A supplied title skips the engine's own session-naming request.
+        title: 'Station conversation thread-no-system-prompt-baseline',
         includePartialMessages: true,
         // station#1877: asks the SDK to summarise what a subagent is doing.
         // task_progress.summary is documented as carrying the model-generated
@@ -9542,6 +9610,37 @@ describe('ClaudeAdapter', () => {
         effort: undefined,
         settings: undefined,
       });
+    });
+
+    test('a new session names itself so the engine skips its title request; a resume keeps its recorded title', async () => {
+      // The engine asks the model to title a session from its first prompt
+      // unless `title` is supplied. Station names conversations itself, so a
+      // new session always supplies one. The SDK documents the option as having
+      // no effect on a resumed session's persisted title, so none is sent.
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+
+      await adapter.startSession({ provider: 'claude', threadId: 'titled' });
+      const fresh = mockQuery.mock.calls.at(-1)?.[0].options as Record<
+        string,
+        unknown
+      >;
+      expect(fresh.resume).toBeUndefined();
+      expect(fresh.title).toBe('Station conversation titled');
+      await adapter.stopSession('titled');
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'titled',
+        resumeCursor: 'native-titled',
+      });
+      const resumed = mockQuery.mock.calls.at(-1)?.[0].options as Record<
+        string,
+        unknown
+      >;
+      expect(resumed.resume).toBe('native-titled');
+      expect('title' in resumed).toBe(false);
+      await adapter.stopAll();
     });
   });
 
@@ -12827,6 +12926,86 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
     });
   });
 
+  // A backgrounded agent that ended its turn waiting on its own background
+  // command settles, then that command's notification wakes it under the
+  // SAME tool call. Its call was already marked terminal, so the session-end
+  // settle skipped it: the card stayed running after the engine stopped, and
+  // nothing told an idle park the engine was still busy.
+  test('a backgrounded agent woken after its terminal holds the engine open, and settles unresolved when the session ends', async () => {
+    const threadId = 'thread-woken-agent';
+    const query = createEndableMockQuery();
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({ provider: 'claude', threadId });
+    await adapter.sendTurn({ threadId, input: 'work' });
+    await nextOf(iterator, 'turn.started');
+    const agentFrame = (subtype: string, extra: Record<string, unknown>) => ({
+      type: 'system',
+      subtype,
+      task_id: 'agent-lane-2',
+      tool_use_id: 'toolu-agent',
+      uuid: `${subtype}-${Math.random()}`,
+      session_id: threadId,
+      ...extra,
+    });
+    const started = agentFrame('task_started', {
+      description: 'Lane 2',
+      subagent_type: 'general-purpose',
+      is_backgrounded: true,
+      spawn_depth: 1,
+      task_type: 'local_agent',
+    });
+    query.push({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu-agent', name: 'Task', input: {} },
+        ],
+      },
+      uuid: 'assistant-agent',
+      session_id: threadId,
+    });
+    await nextOf(iterator, 'tool.started');
+    query.push(started);
+    await nextOf(iterator, 'child-work.updated');
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+    query.push(
+      agentFrame('task_notification', {
+        status: 'completed',
+        summary: "I'll wait for the notification.",
+      }),
+    );
+    expect(await nextOf(iterator, 'tool.completed')).toMatchObject({
+      toolCallId: 'toolu-agent',
+      status: 'success',
+    });
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
+
+    // Woken by its own command's notification: the same call, working again.
+    query.push({ ...started, uuid: 'task_started-wake' });
+    await nextOf(iterator, 'tool.started');
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+
+    await adapter.stopSession(threadId);
+    const seen = await drainUntilQuiet(iterator);
+    expect(
+      seen.filter(
+        (event) =>
+          event.method === 'tool.completed' &&
+          event.toolCallId === 'toolu-agent',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        toolName: 'Task (general-purpose)',
+        status: 'unresolved',
+      }),
+    ]);
+    expect(seen.map((event) => event.method)).toContain('session.exited');
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
+  });
+
   test('a completed TURN leaves the open call alone — only the session settles it', async () => {
     const query = createEndableMockQuery();
     const { iterator } = await openCallOn('thread-unresolved-turn', query);
@@ -13354,14 +13533,24 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
 
   async function runningChild(
     threadId: string,
-    options: { endOnClose?: boolean; streamStopGraceMs?: number } = {},
+    options: {
+      endOnClose?: boolean;
+      streamStopGraceMs?: number;
+      engineExitStreamGraceMs?: number;
+    } = {},
   ) {
     const query = endableQuery({ endOnClose: options.endOnClose });
     mockQuery.mockReturnValue(query);
-    const adapter = new ClaudeAdapter(
-      options.streamStopGraceMs !== undefined
+    const adapterOptions = {
+      ...(options.streamStopGraceMs !== undefined
         ? { streamStopGraceMs: options.streamStopGraceMs }
-        : undefined,
+        : {}),
+      ...(options.engineExitStreamGraceMs !== undefined
+        ? { engineExitStreamGraceMs: options.engineExitStreamGraceMs }
+        : {}),
+    };
+    const adapter = new ClaudeAdapter(
+      Object.keys(adapterOptions).length > 0 ? adapterOptions : undefined,
     );
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({ provider: 'claude', threadId });
@@ -13522,6 +13711,98 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     if (!child) throw new Error('no fake engine spawned');
     return child;
   }
+
+  // The SDK's stream (streaming input mode) neither ends nor throws after its
+  // `claude` process is SIGKILLed (reproduced against the real SDK). Before
+  // this, a memory-killed engine left no failure, no exit and no interrupted
+  // work: the session stayed `ready` and the inbox looked idle.
+  test('an engine killed while its stream stays open ends the session: children interrupted, failure, then exit', async () => {
+    const threadId = 'thread-engine-killed-silent-stream';
+    const { adapter, until, seen } = await runningChild(threadId, {
+      engineExitStreamGraceMs: 20,
+    });
+    const engine = spawnEngine();
+    // Killed, and the stream says nothing: no crash, no end.
+    engine.exit(null, 'SIGKILL');
+    engine.closeStderr();
+    const exited = await until((event) => event.method === 'session.exited');
+    expect(exited).toMatchObject({ reason: 'process-exit' });
+    expect(childSettles(seen)).toEqual(['unresolved:engine-exit']);
+    const failure = seen.find((event) => event.method === 'runtime.error');
+    expect(failure).toMatchObject({
+      code: 'claude-engine-exited',
+      kind: 'engine_crashed',
+      // The turn the background work belongs to, though it already ended.
+      turnId: expect.any(String),
+      message: expect.stringContaining('terminated by signal SIGKILL'),
+    });
+    const order = (method: string) =>
+      seen.findIndex((event) => event.method === method);
+    expect(order('runtime.error')).toBeLessThan(order('session.exited'));
+    expect(
+      seen.findIndex(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'settle',
+      ),
+    ).toBeLessThan(order('runtime.error'));
+    expect(await adapter.hasSession(threadId)).toBe(false);
+  });
+
+  test('an engine killed for memory reports memory exhaustion, which hands the chat to the continuation', async () => {
+    const threadId = 'thread-engine-memory-killed';
+    const outcome = vi
+      .spyOn(childWorkload, 'childWorkloadOutcome')
+      .mockReturnValue(
+        Promise.resolve({
+          result: 'oom-kill-in-scope',
+          oomKills: 1,
+          unreportedOomKills: 1,
+          memoryPeakBytes: 4450 * 1024 * 1024,
+          memoryMaxBytes: 4620 * 1024 * 1024,
+        }),
+      );
+    try {
+      const { until, seen } = await runningChild(threadId, {
+        engineExitStreamGraceMs: 20,
+      });
+      const engine = spawnEngine();
+      engine.exit(null, 'SIGKILL');
+      engine.closeStderr();
+      expect(
+        await until((event) => event.method === 'session.exited'),
+      ).toMatchObject({ reason: 'memory-exhausted' });
+      expect(
+        seen.find((event) => event.method === 'runtime.error'),
+      ).toMatchObject({
+        code: 'engine-memory-exhausted',
+        message: expect.stringContaining('Claude ran out of memory'),
+        details: {
+          exitSignal: 'SIGKILL',
+          workload: expect.objectContaining({ unreportedOomKills: 1 }),
+        },
+      });
+    } finally {
+      outcome.mockRestore();
+    }
+  });
+
+  test('a deliberate stop is never reported as an engine death', async () => {
+    const threadId = 'thread-engine-stopped-not-died';
+    const { adapter, until, seen } = await runningChild(threadId, {
+      engineExitStreamGraceMs: 20,
+    });
+    const engine = spawnEngine();
+    const stopped = adapter.stopSession(threadId);
+    engine.exit(null, 'SIGTERM');
+    engine.closeStderr();
+    await stopped;
+    await until((event) => event.method === 'session.exited');
+    expect(seen.some((event) => event.method === 'runtime.error')).toBe(false);
+    expect(
+      seen.filter((event) => event.method === 'session.exited'),
+    ).toHaveLength(1);
+  });
 
   test('the engine process dying settles the running child interrupted, not unresolved', async () => {
     const threadId = 'thread-child-process-death';
