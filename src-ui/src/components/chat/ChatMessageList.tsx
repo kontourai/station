@@ -1946,6 +1946,17 @@ function ChatMessageListComponent({
     ],
   );
 
+  // One object per open turn rather than per render: a new value re-renders
+  // every consumer under the memoised streaming row.
+  const streamingTurnContext = useMemo(
+    () => ({
+      threadId: activeSession.currentSessionId,
+      turnId: activeSession.openTurnId,
+      wholeTurn: true,
+    }),
+    [activeSession.currentSessionId, activeSession.openTurnId],
+  );
+
   const scrollToBottomControl =
     isUserScrolledUp && !scrollingToBottom ? (
       <ScrollToBottomButton onClick={handleScrollToBottom} />
@@ -2114,11 +2125,7 @@ function ChatMessageListComponent({
                     data-chat-message-key={`${activeSession.id}:streaming`}
                   >
                     <TranscriptTurnContext.Provider
-                      value={{
-                        threadId: activeSession.currentSessionId,
-                        turnId: activeSession.openTurnId,
-                        wholeTurn: true,
-                      }}
+                      value={streamingTurnContext}
                     >
                       <ActiveStreamingMessage
                         sessionId={activeSession.id}

@@ -268,7 +268,31 @@ export function ACPChatPanel({
     ),
   );
 
-  if (!activeSession || !transcriptSession) {
+  // `transcriptSession` fills the ChatSession fields the transcript ignores
+  // with placeholders, and it is spread last so its normalized identity wins.
+  // The body, unlike the transcript, reads three of those fields — the queued
+  // follow-ups, the last sent input and the title — so they are restored from
+  // the live chat after the spread.
+  const bodySession = useMemo<ChatSession | null>(
+    () =>
+      activeSession && transcriptSession
+        ? {
+            ...activeSession,
+            ...transcriptSession,
+            title: activeSession.title ?? transcriptSession.title,
+            queuedMessages:
+              activeSession.queuedMessages ?? transcriptSession.queuedMessages,
+            inputHistory:
+              activeSession.inputHistory ?? transcriptSession.inputHistory,
+            agentConnectionId: activeSession.agentConnectionId
+              ? engineConnectionId(activeSession.agentConnectionId)
+              : undefined,
+          }
+        : null,
+    [activeSession, transcriptSession],
+  );
+
+  if (!activeSession || !bodySession) {
     return (
       <div className="acp-chat-panel acp-chat-panel--loading">
         Initializing...
@@ -288,13 +312,7 @@ export function ACPChatPanel({
         value={{ apiBase, requestScope: mentionRequestScope }}
       >
         <ConversationBody
-          activeSession={{
-            ...activeSession,
-            ...transcriptSession,
-            agentConnectionId: activeSession.agentConnectionId
-              ? engineConnectionId(activeSession.agentConnectionId)
-              : undefined,
-          }}
+          activeSession={bodySession}
           owner={owner}
           workingDirectory={sessionProject?.workingDirectory}
           chatInput={chatInput}
