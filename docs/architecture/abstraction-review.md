@@ -51,11 +51,14 @@ suggested fixes and documentation acceptance; they are not a second backlog.
 `KnowledgeStoreProvider.generateRootId` allows `root:personal:2` and later
 suffixes; the runtime's read-only `root:conversations` also uses personal scope.
 [KnowledgeStoreSection](../../src-ui/src/views/settings/KnowledgeStoreSection.tsx)
-selects the first personal root and stops offering creation. Thus a scope tag
-cannot tell this UI whether it found the intended writable store. Review the
-desired uniqueness and adapter-capability contract before introducing another
-special-case root-name check. This is an existing model/UI mismatch, not a
-claim that the registry already enforces one writable store per person.
+selects the first personal root and stops offering creation. It skips private
+memory roots (by `readPolicy`) and, since `knowledgeStores` became an ordinary
+Settings row, the conversation root (by its `conversation-store` adapter id,
+the same check `ProjectKnowledgeSources` makes). Those are special cases, not a
+contract: a scope tag still cannot tell this UI whether it found the intended
+writable store. Review the desired uniqueness and adapter-capability contract
+before adding another. This is an existing model/UI mismatch, not a claim that
+the registry already enforces one writable store per person.
 
 The existing [Settings scope issue #2192](https://github.com/kontourai/station/issues/2192)
 now carries this model/UI clarification and documentation acceptance. Its
