@@ -1,8 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   describeRunningTurns,
   readRunningTurns,
@@ -116,10 +115,14 @@ const twoTurnsAndAHiddenOne = JSON.stringify({
   hiddenCount: 1,
 });
 
+// Created before the hook that closes the stub servers, so the directory is
+// removed after they are closed.
+const makeTempDir = trackTempDirs();
+
 beforeEach(() => {
   previousCredentialStore = getProfileCredentialStore();
   setProfileCredentialStore(memoryCredentialStore());
-  root = mkdtempSync(join(tmpdir(), 'station-running-turns-'));
+  root = makeTempDir('station-running-turns-');
   previousHome = process.env.STATION_HOME;
   previousRoot = process.env.STATION_ROOT;
   process.env.STATION_HOME = join(root, 'instances', 'stable');
@@ -141,7 +144,6 @@ afterEach(async () => {
         }),
     ),
   );
-  rmSync(root, { recursive: true, force: true });
 });
 
 describe('readRunningTurns: what a restart is about to interrupt', () => {
