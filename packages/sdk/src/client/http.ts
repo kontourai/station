@@ -1776,10 +1776,11 @@ export interface FetchSseConnection {
   readonly signal: AbortSignal;
   readonly completed: Promise<void>;
   /**
-   * Force-resume a stream that is currently waiting out a terminal (401/403)
-   * stop — station#1094. A no-op when the stream is not currently blocked
-   * (e.g. it is mid-backoff on a transient failure, which will retry on its
-   * own schedule already).
+   * Ends the wait a stream is currently in and starts its next attempt now:
+   * a terminal (401/403) stop (station#1094), which has no timer of its own,
+   * or a transient backoff (station#1848). After a transient wait the ladder
+   * keeps its place, so an attempt that fails again waits the next step. A
+   * no-op while an attempt is opening or a response is being read.
    */
   retry(): void;
   /** Restarts only the current request while preserving Last-Event-ID. */

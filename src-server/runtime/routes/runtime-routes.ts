@@ -252,6 +252,7 @@ import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
+import { registerConversationDeliveryShutdown } from '../bootstrap/runtime-shutdown.js';
 import {
   isSupervisedEnvironment,
   requestSupervisorHandoff,
@@ -7068,6 +7069,13 @@ export function configureRuntimeRoutes(
         context.orchestrationEventStore,
       );
       delivery.start();
+      // Stopped by the runtime's shutdown, before the service it starts
+      // turns on shuts down.
+      registerConversationDeliveryShutdown(context.orchestrationService, {
+        name: 'delegationResultDelivery',
+        stop: () => delivery.stop(),
+        idle: () => delivery.idle(),
+      });
       return delivery;
     } catch (error) {
       context.logger.warn('delegation result delivery is unavailable', {
@@ -7088,6 +7096,11 @@ export function configureRuntimeRoutes(
         context.orchestrationEventStore,
       );
       // Start after all durable placement owners have been bound below.
+      registerConversationDeliveryShutdown(context.orchestrationService, {
+        name: 'threadInboxDelivery',
+        stop: () => delivery.stop(),
+        idle: () => delivery.idle(),
+      });
       return delivery;
     } catch (error) {
       context.logger.warn('thread inbox delivery is unavailable', {

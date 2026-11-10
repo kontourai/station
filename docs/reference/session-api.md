@@ -740,7 +740,8 @@ external effects are not claimed without an engine idempotency or receipt
 protocol.
 
 The browser hands eligible busy sends and IndexedDB replay to the server inbox
-with `whenBusy: 'queue'`; a definitive unqueued refusal restores the draft.
+with `whenBusy: 'queue'`; a definitive unqueued refusal of a composer send
+restores the draft. A replay neither clears nor restores the composer.
 Legacy sessionStorage records lack a Station/authority identity and remain
 review-only, without automatic drain or reassignment to the current account.
 Offline steering can retain an already observed, authority-scoped head; without
@@ -2040,8 +2041,20 @@ is checked again before queued content is written.
 
 Station's SessionDetail subscribes to the tab's shared orchestration feed and
 filters canonical events by Session id. Closing a detail releases its local
-subscription. The shared transport retains the server cursor and epoch across
-retries; a snapshot fallback reloads each mounted detail's bounded history.
+subscription. The shared transport retains the server cursor across retries; a
+snapshot fallback reloads each mounted detail's bounded history. Its request
+headers are fixed when it is created, so it sends `X-Station-Stream-Epoch` only
+if the epoch was already known then; a transport created earlier, such as the
+document's first, retries in place with the cursor and no epoch.
+The browser also checks the epoch on `orchestration:caughtUp`: when a replay
+ends on a different epoch from the one it holds, it discards the replay and
+reconnects without a cursor, which takes the snapshot path.
+A snapshot delivers no events, so the chat transcript re-reads a history window
+that was served before the snapshot's cursor when the stream reports newer
+events for that conversation.
+The browser ends a reconnect wait early when its health status returns to
+connected or reports a new server boot, as it does on visibility, focus and
+`online`. A stream stopped by a 401/403 is not woken by health recovery.
 History starts after capability discovery and does not wait for SSE to open.
 The same-tab subscription needs no BroadcastChannel or SharedWorker. Tabs still
 own separate shared feeds; scheduler, monitoring and Task-room feeds remain
@@ -2060,7 +2073,10 @@ the boot advertisement is separate from the capabilities section. A capable
 host acknowledges the stream request with the response header
 `X-Station-General-Stream: 1`. Without that acknowledgement, the browser uses
 the legacy `/events` connection as well; general events remain ephemeral and can
-be missed while either connection is reconnecting. These frames use `event: station:general` and contain a
+be missed while either connection is reconnecting. When the connection that
+carries them re-opens after a failure, the UI invalidates the queries those
+events keep current (not its whole cache); missed toasts, navigation and
+plugin registry reloads are not replayed. These frames use `event: station:general` and contain a
 JSON envelope with the original `event` and `data` strings. They have no SSE
 `id`, so they do not advance the orchestration replay cursor. General and
 orchestration events retain their respective request-authority checks. The bare

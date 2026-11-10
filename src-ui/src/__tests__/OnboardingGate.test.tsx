@@ -775,7 +775,28 @@ describe('OnboardingGate', () => {
     );
   });
 
-  test('does not report a bootstrap recovery error outside desktop', async () => {
+  test('reports a mobile launch recovery error once the shell is available', async () => {
+    platformProfile = {
+      ...platformProfile,
+      isTauri: true,
+      isMobile: true,
+      isDesktop: false,
+      target: 'ios',
+    };
+    bootstrapRecoveryError =
+      'Station couldn’t reconnect to your saved Station. Open Connections to pair this device again.';
+    render(
+      <OnboardingGate>
+        <div>App</div>
+      </OnboardingGate>,
+    );
+    await waitFor(() =>
+      expect(toastMocks.showToast).toHaveBeenCalledWith(bootstrapRecoveryError),
+    );
+    expect(toastMocks.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not report a bootstrap recovery error outside a native shell', async () => {
     bootstrapRecoveryError = 'The local credential could not be stored.';
     render(
       <OnboardingGate>
