@@ -1151,10 +1151,11 @@ configuration do not apply to it. A selected credential profile gets a
 confined copy of its own that starts empty, so a login held only in that
 profile does not reach it: the session runs at Auto until it has an
 environment credential. The readiness entry checks only the default confined
-home. `station doctor` asks the running Station the question a start asks:
-whether the Seatbelt profile applies on this host, and whether a confined
-start that names no credential profile of its own (the connection's default
-profile applied) would find a credential. See
+home. `station doctor` asks the selected Station the question a start asks:
+whether the Seatbelt profile applies on that Station's host, and whether a
+confined start that names no credential profile of its own (the connection's
+active credential profile applied) would find a credential. An Agent with its
+own credential profile is decided when it starts. See
 [`doctor`](../reference/cli.md#doctor).
 
 A confined session also gets only an allowlisted environment. Variables you

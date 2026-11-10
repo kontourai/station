@@ -3842,30 +3842,48 @@ doctor sends only a credential this CLI already holds (`--credential`,
 pairs or self-authorizes. The running server answers from the provider check
 and the credential check a Claude start makes, with the server's own
 environment and home, so a shell variable in doctor's own environment does
-not change the answer. Per engine:
+not change the answer. Reading it creates no app-home profile or spawn
+temporary directory on the Station; on macOS the first read may run the
+one-time Seatbelt probe a confined start would also run, in a throwaway
+temporary directory it removes.
+Rows name the Station that answered (`Station "<name>"`, or the Station
+selected by `<source>`), and `--json` carries it as `target`; that Station may
+be remote. Per engine:
 
 - `Confinement mechanism (<engine>: <mechanism>)`: `pass` when the provider
-  applies on this host, `warn` with the provider's reason when it does not (a
-  start that requires that level is refused), and `warn` "Decided by the
-  engine at start" for Codex, whose own sandbox is reported only after a
-  start.
+  applies on that Station's host, `warn` with the provider's reason when it
+  does not (a start that requires that level is refused there), and `warn`
+  "Decided by the engine at start" for Codex, whose own sandbox is reported
+  only after a start.
 - `Confined credential (<engine>)`: `pass` when a credential a confined
   start can use is in its environment or enrolled in Station's confined
   configuration; `warn` naming `confined-credential-unavailable` and the
   setup step when none is, because such a start runs at Auto with nothing
   engaged; `warn` "Not verified" when the server could not resolve the
-  connection or credential profile the check needs. It describes a start
-  that names no credential profile of its own.
+  connection or credential profile the check needs. Where the mechanism is
+  unavailable the row is a `warn` saying the question is moot there: a start
+  that requires confinement is refused before any credential is checked. The
+  answer covers starts that name no credential profile of their own (the
+  connection's active credential profile or app-home setting applies;
+  `appliesTo: starts-without-own-credential-profile` in `--json`); an Agent
+  with its own credential profile, or a credential-recovery restart, is
+  decided at start.
 - `Confinement preflight`: one `warn` "Not checked: <reason>" row when no
   answer was obtained: no server answered, no credential is held, the
-  Station refused it, or an older Station answered HTTP 404.
+  Station refused it, an older Station answered HTTP 404, or the answer is
+  not a confinement preflight (for example an engine id other than lowercase
+  letters, digits, `.`, `_` and `-` up to 64 characters, or a
+  `decidedAtStart` with an unknown or repeated reason).
 
 The workspace and conversation checks (`workspace-too-broad`,
 `config-root-pinned`, `resume-bound-elsewhere`) are decided only when a
 Session starts. Confinement rows are never `fail` and do not change the exit
-status. No row or JSON field carries a credential, an environment value or a
-host path: the server omits them and doctor strips paths from any reason text
-again.
+status. The server's answer is states, kinds and fixed setup text, never an
+environment value or credential content. Doctor removes terminal escape
+sequences and control characters from every text it shows from the Station,
+then passes it through Station's free-text sanitizer, which redacts known
+credential shapes and replaces URLs and the absolute paths it recognizes; it
+does the same to `--json`.
 
 ```
 station doctor [--json] [--station=<name> | --api-base=<url>] [--credential=<value>]
@@ -3940,7 +3958,8 @@ The JSON document has this top-level schema:
             "confinedAuthentication": {
               "state": "unavailable",
               "fallback": "confined-credential-unavailable",
-              "remedy": "Give confined Claude sessions a credential of their own: ..."
+              "remedy": "Give confined Claude sessions a credential of their own: ...",
+              "appliesTo": "starts-without-own-credential-profile"
             }
           }
         ],
@@ -4014,13 +4033,23 @@ interface DoctorReport {
             mechanismState: 'available' | 'unavailable' | 'engine-reported';
             mechanismReason: string;
             confinedAuthentication:
-              | { state: 'available'; source: 'environment' | 'config-dir' }
+              | {
+                  state: 'available';
+                  source: 'environment' | 'config-dir';
+                  appliesTo: 'starts-without-own-credential-profile';
+                }
               | {
                   state: 'unavailable';
                   fallback: 'confined-credential-unavailable';
                   remedy: string;
+                  appliesTo: 'starts-without-own-credential-profile';
                 }
-              | { state: 'unverified' | 'not-applicable'; reason: string };
+              | {
+                  state: 'unverified';
+                  reason: string;
+                  appliesTo: 'starts-without-own-credential-profile';
+                }
+              | { state: 'not-applicable'; reason: string };
           }>;
           decidedAtStart: string[];
         };

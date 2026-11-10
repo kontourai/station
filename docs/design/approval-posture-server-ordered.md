@@ -1198,12 +1198,22 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   `availability()` from the list a start resolves from
   (`DEFAULT_CONFINEMENT_PROVIDERS`), and the credential step
   `confinedClaudeDecision` itself calls (`confinedClaudeCredentialCheck`),
-  over the inputs a fresh start without its own credential profile builds:
-  the augmented spawn environment, the connection's environment and the
-  default credential profile's app home. The other three fallbacks depend on
-  the workspace or the conversation and are reported as decided at start.
-  Codex's engine-native sandbox is reported as decided by the engine at
-  start.
+  over the inputs a fresh start that names no credential profile of its own
+  builds: the inherited spawn environment, the connection's environment and
+  the app home of the connection's active credential profile (or its
+  app-home opt-in). The answer's `appliesTo` says so: an Agent with its own
+  `execution.credentialProfileRef`, or a credential-recovery restart, uses
+  that profile's confined home and is decided at start. Its credential
+  inputs are read without creating anything: it uses `inheritedSpawnEnv` (no PATH augmentation, no TMPDIR
+  creation) and `createCredentialProfileAppHomeEnvPeek`, which names a
+  profile home that does not exist yet by the directory a start would
+  create. `createStationConfinementPreflight` assembles these inputs.
+  Known gap: that assembly mirrors the layering in
+  `ClaudeAdapter.startSession` and `prepareSeatbeltStart` rather than
+  sharing it, so a change to the adapter's layering is not seen by the
+  preflight or its tests. The other three fallbacks depend on the workspace
+  or the conversation and are reported as decided at start. Codex's
+  engine-native sandbox is reported as decided by the engine at start.
 - **What a confined session does not load.** Its `CLAUDE_CONFIG_DIR` is
   Station's, so the operator's own `CLAUDE.md`, settings, hooks, plugins and
   MCP configuration do not apply. The workspace's project settings still do.
