@@ -17,6 +17,7 @@
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { type ComponentType, type ReactNode, useEffect } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { flushHistoryTraversals } from '../../__tests__/fixtures/history-traversals';
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 
 const PR = 'pr:github.com/kontourai/station#2049';
@@ -76,8 +77,13 @@ async function loadPage() {
   return { current, marker, navigationStore: navStore.navigationStore };
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Unmounting folds an open phone layer by travelling back. Let that Back
+  // land before anything pushes history again: jsdom cancels a queued
+  // traversal on the next `pushState`, which would leave the dialog-history
+  // module waiting for it and every later layer in this file unpublished.
+  await flushHistoryTraversals();
   vi.unstubAllGlobals();
 });
 
