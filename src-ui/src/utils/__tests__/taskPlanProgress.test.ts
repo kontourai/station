@@ -143,12 +143,12 @@ describe('projectTaskPlanProgress', () => {
       ).toBe('stopped');
   });
 
-  test('marks open steps waiting while the Session is blocked or needs input', () => {
+  test('marks open steps waiting while the Session is blocked or waits on input or approval', () => {
     const open = sequenced([
       turnStarted('turn-1'),
       plan('turn-1', ['completed', 'pending']),
     ]);
-    for (const state of ['blocked', 'needs_input'] as const)
+    for (const state of ['blocked', 'needs_input', 'review_pending'] as const)
       expect(projectTaskPlanProgress(open, state)?.halted).toBe('waiting');
     expect(projectTaskPlanProgress(open, 'running')?.halted).toBeUndefined();
   });

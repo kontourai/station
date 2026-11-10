@@ -17,7 +17,7 @@ export interface TaskPlanProgress {
   /**
    * Set while steps remain open but the run cannot advance them on its own:
    * `stopped` after an aborted turn or a failed or canceled Session,
-   * `waiting` while the Session is blocked or needs input.
+   * `waiting` while the Session is blocked or waits on input or approval.
    */
   halted?: 'stopped' | 'waiting';
   /** The newest plan update predates the Session's latest turn. */
@@ -31,6 +31,7 @@ const STOPPED_STATES: ReadonlySet<SessionLifecycleState> = new Set([
 const WAITING_STATES: ReadonlySet<SessionLifecycleState> = new Set([
   'blocked',
   'needs_input',
+  'review_pending',
 ]);
 
 /**
