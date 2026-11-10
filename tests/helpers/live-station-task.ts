@@ -74,40 +74,64 @@ type LifecycleCommandOutcome = {
   timedOut: boolean | null;
 };
 
+type LifecycleEvent = {
+  type: string;
+  instanceId: string;
+  bootId: string;
+  pid: number;
+  sha: string;
+  operationId?: string;
+  result?: string;
+};
+
+type LifecycleStartup = {
+  instance: string;
+  serverPort: number;
+  uiPort: number;
+  events: LifecycleEvent[];
+};
+
 const liveLifecycle = new WeakMap<
   LiveStation,
   {
     journal: string;
     start: LifecycleCommandOutcome | null;
-    started: { pid: number; bootId: string; sha: string } | null;
+    startup: LifecycleStartup | null;
   }
 >();
 
-function readLifecycleEvidence(path: string, instance: string) {
+function readLifecycleEvidence(
+  path: string,
+  instance: string,
+  startup: LifecycleStartup | null,
+) {
   let descriptor: number | undefined;
+  const events: LifecycleEvent[] = [];
+  let binding: { bytes: number | null; sha256: string | null } = {
+    bytes: null,
+    sha256: null,
+  };
+  const gap = (reason: string) => ({
+    ...binding,
+    events,
+    started: null,
+    matched: false,
+    gap: reason,
+  });
   try {
     descriptor = openSync(
       path,
       constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
     );
-    if (!fstatSync(descriptor).isFile()) return { gap: 'journal-not-regular' };
+    if (!fstatSync(descriptor).isFile()) return gap('journal-not-regular');
     const buffer = Buffer.alloc(128 * 1024 + 1);
     const bytes = readSync(descriptor, buffer, 0, buffer.length, 0);
-    if (bytes === buffer.length) return { gap: 'journal-too-large' };
+    if (bytes === buffer.length) return gap('journal-too-large');
     const raw = buffer.subarray(0, bytes);
-    const binding = {
+    binding = {
       bytes,
       sha256: createHash('sha256').update(raw).digest('hex'),
     };
-    const events: {
-      type: string;
-      instanceId: string;
-      bootId: string;
-      pid: number;
-      sha: string;
-      operationId?: string;
-      result?: string;
-    }[] = [];
     const id = (value: unknown) =>
       typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
     for (const line of raw.toString('utf8').split('\n').filter(Boolean)) {
@@ -129,7 +153,8 @@ function readLifecycleEvidence(path: string, instance: string) {
         (event.type === 'stop_result' &&
           !['completed', 'already_absent', 'failed'].includes(event.result))
       )
-        return { ...binding, gap: 'journal-identity-mismatch' };
+        return gap('journal-identity-mismatch');
+      if (events.length === 64) return gap('too-many-lifecycle-events');
       events.push({
         type: event.type,
         instanceId: instance,
@@ -139,45 +164,80 @@ function readLifecycleEvidence(path: string, instance: string) {
         ...(event.type !== 'started' ? { operationId: event.operationId } : {}),
         ...(event.type === 'stop_result' ? { result: event.result } : {}),
       });
-      if (events.length > 64)
-        return { ...binding, gap: 'too-many-lifecycle-events' };
     }
-    const sameBoot = (
-      left: (typeof events)[number],
-      right: (typeof events)[number],
-    ) =>
+    const sameIdentity = (left: LifecycleEvent, right: LifecycleEvent) =>
+      left.instanceId === right.instanceId &&
       left.pid === right.pid &&
       left.bootId === right.bootId &&
       left.sha === right.sha;
-    const startedIndex = events.map(({ type }) => type).lastIndexOf('started');
-    const started = events[startedIndex];
-    const matched = Boolean(
-      started &&
-        events.some(
-          (intent, intentIndex) =>
-            intentIndex > startedIndex &&
-            intent.type === 'stop_intent' &&
-            sameBoot(started, intent) &&
-            events.some(
-              (result, resultIndex) =>
-                resultIndex > intentIndex &&
-                result.type === 'stop_result' &&
-                sameBoot(started, result) &&
-                intent.operationId === result.operationId &&
-                (result.result === 'completed' ||
-                  result.result === 'already_absent'),
-            ),
-        ),
+    const starts = events.filter((event) => event.type === 'started');
+    if (starts.length === 0) return gap('startup-identity-missing');
+    if (
+      starts.some((event, index) =>
+        starts.slice(0, index).some((prior) => sameIdentity(event, prior)),
+      )
+    )
+      return gap('duplicate-start-or-restart');
+    const bootBuilds = new Set(
+      events.map((event) => `${event.bootId}:${event.sha}`),
     );
-    return {
-      ...binding,
-      events,
-      started: started ?? null,
-      matched,
-      gap: matched ? null : 'matching-stop-pair-missing',
-    };
+    if (bootBuilds.size !== 1) return gap('conflicting-boot-or-build');
+    if (startup) {
+      if (
+        startup.events.length === 0 ||
+        events.length < startup.events.length ||
+        startup.events.some((event, index) => {
+          const current = events[index];
+          return (
+            !current ||
+            event.type !== 'started' ||
+            current.type !== 'started' ||
+            !sameIdentity(event, current)
+          );
+        })
+      )
+        return gap('startup-prefix-changed');
+      if (
+        events
+          .slice(startup.events.length)
+          .some((event) => event.type === 'started')
+      )
+        return gap('new-start-after-startup');
+    } else if (events.some((event) => event.type !== 'started')) {
+      return gap('startup-snapshot-missing');
+    }
+    const intents = events.filter((event) => event.type === 'stop_intent');
+    const results = events.filter((event) => event.type === 'stop_result');
+    if (results.some((event) => event.result === 'failed'))
+      return gap('failed-stop');
+    if (intents.length === 0 && results.length === 0)
+      return gap('matching-stop-pair-missing');
+    if (intents.length !== 1 || results.length !== 1)
+      return gap('ambiguous-or-orphan-stop');
+    const [intent] = intents;
+    const [result] = results;
+    if (
+      !intent ||
+      !result ||
+      !sameIdentity(intent, result) ||
+      intent.operationId !== result.operationId
+    )
+      return gap('conflicting-stop-operation');
+    const candidates = starts.filter((event) => sameIdentity(event, intent));
+    const [started] = candidates;
+    if (candidates.length !== 1 || !started)
+      return gap('stop-identity-not-unique');
+    if (
+      events.indexOf(started) >= events.indexOf(intent) ||
+      events.indexOf(intent) >= events.indexOf(result)
+    )
+      return gap('stop-events-out-of-order');
+    if (!startup) return gap('startup-snapshot-missing');
+    if (!startup.events.some((event) => sameIdentity(event, started)))
+      return gap('stop-not-in-startup-set');
+    return { ...binding, events, started, matched: true, gap: null };
   } catch {
-    return { gap: 'journal-unreadable' };
+    return gap('journal-unreadable');
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
   }
@@ -191,9 +251,43 @@ function emitLiveLifecycleEvidence(
   const capture = liveLifecycle.get(live);
   if (!capture) return;
   try {
-    const evidence = readLifecycleEvidence(capture.journal, live.instance);
-    const started = 'started' in evidence ? evidence.started : null;
-    if (action === 'start') capture.started = started ?? null;
+    const startup = action === 'stop' ? capture.startup : null;
+    const evidence = readLifecycleEvidence(
+      capture.journal,
+      live.instance,
+      startup,
+    );
+    const nativeStart = capture.start;
+    const started = evidence.started;
+    const startSucceeded = Boolean(
+      nativeStart?.code === 0 &&
+        nativeStart.signal === null &&
+        !nativeStart.error &&
+        nativeStart.timedOut === false,
+    );
+    if (action === 'start') {
+      capture.startup =
+        startSucceeded && evidence.gap === 'matching-stop-pair-missing'
+          ? {
+              instance: live.instance,
+              serverPort: live.serverPort,
+              uiPort: live.uiPort,
+              events: evidence.events.map((event) => ({ ...event })),
+            }
+          : null;
+    }
+    const continuity = Boolean(
+      action === 'stop' &&
+        evidence.matched &&
+        startSucceeded &&
+        outcome.code === 0 &&
+        outcome.signal === null &&
+        !outcome.error &&
+        outcome.timedOut === false &&
+        startup?.instance === live.instance &&
+        startup.serverPort === live.serverPort &&
+        startup.uiPort === live.uiPort,
+    );
     console.log(
       `[e2e-lifecycle] ${JSON.stringify({
         owner: 'spec',
@@ -205,12 +299,17 @@ function emitLiveLifecycleEvidence(
         start: capture.start,
         ...(action === 'stop' ? { stop: outcome } : {}),
         journal: evidence,
-        startIdentityMatch: Boolean(
-          capture.started &&
+        candidateSetContinuity: continuity,
+        selectedMemberContinuity: Boolean(
+          continuity &&
             started &&
-            capture.started.pid === started.pid &&
-            capture.started.bootId === started.bootId &&
-            capture.started.sha === started.sha,
+            startup?.events.some(
+              (event) =>
+                event.instanceId === started.instanceId &&
+                event.pid === started.pid &&
+                event.bootId === started.bootId &&
+                event.sha === started.sha,
+            ),
         ),
       })}`,
     );
@@ -329,7 +428,7 @@ export async function startStation(
   ];
   if (options.logFile) {
     const journal = `${options.logFile}.lifecycle.ndjson`;
-    liveLifecycle.set(live, { journal, start: null, started: null });
+    liveLifecycle.set(live, { journal, start: null, startup: null });
     args.push(`--log=${options.logFile}`, `--lifecycle-journal=${journal}`);
   } else {
     liveLifecycle.delete(live);

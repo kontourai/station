@@ -393,23 +393,31 @@ export async function runE2EExecutionPhases(phases, execute) {
   }
 }
 
-function readLifecycleEvidence(path, instance) {
+function readLifecycleEvidence(path, instance, expected) {
   let descriptor;
+  const events = [];
+  let binding = { bytes: null, sha256: null };
+  const gap = (reason) => ({
+    ...binding,
+    events,
+    started: null,
+    matched: false,
+    gap: reason,
+  });
   try {
     descriptor = openSync(
       path,
       constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
     );
-    if (!fstatSync(descriptor).isFile()) return { gap: 'journal-not-regular' };
+    if (!fstatSync(descriptor).isFile()) return gap('journal-not-regular');
     const buffer = Buffer.alloc(128 * 1024 + 1);
     const bytes = readSync(descriptor, buffer, 0, buffer.length, 0);
-    if (bytes === buffer.length) return { gap: 'journal-too-large' };
+    if (bytes === buffer.length) return gap('journal-too-large');
     const raw = buffer.subarray(0, bytes);
-    const binding = {
+    binding = {
       bytes,
       sha256: createHash('sha256').update(raw).digest('hex'),
     };
-    const events = [];
     const id = (value) =>
       typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
     for (const line of raw.toString('utf8').split('\n').filter(Boolean)) {
@@ -431,7 +439,8 @@ function readLifecycleEvidence(path, instance) {
         (event.type === 'stop_result' &&
           !['completed', 'already_absent', 'failed'].includes(event.result))
       )
-        return { ...binding, gap: 'journal-identity-mismatch' };
+        return gap('journal-identity-mismatch');
+      if (events.length === 64) return gap('too-many-lifecycle-events');
       events.push({
         type: event.type,
         instanceId: instance,
@@ -441,42 +450,76 @@ function readLifecycleEvidence(path, instance) {
         ...(event.type !== 'started' ? { operationId: event.operationId } : {}),
         ...(event.type === 'stop_result' ? { result: event.result } : {}),
       });
-      if (events.length > 64)
-        return { ...binding, gap: 'too-many-lifecycle-events' };
     }
-    const sameBoot = (left, right) =>
+    const sameIdentity = (left, right) =>
+      left.instanceId === right.instanceId &&
       left.pid === right.pid &&
       left.bootId === right.bootId &&
       left.sha === right.sha;
-    const startedIndex = events.map(({ type }) => type).lastIndexOf('started');
-    const started = events[startedIndex];
-    const matched = Boolean(
-      started &&
-        events.some(
-          (intent, intentIndex) =>
-            intentIndex > startedIndex &&
-            intent.type === 'stop_intent' &&
-            sameBoot(started, intent) &&
-            events.some(
-              (result, resultIndex) =>
-                resultIndex > intentIndex &&
-                result.type === 'stop_result' &&
-                sameBoot(started, result) &&
-                intent.operationId === result.operationId &&
-                (result.result === 'completed' ||
-                  result.result === 'already_absent'),
-            ),
-        ),
+    const starts = events.filter((event) => event.type === 'started');
+    if (starts.length === 0) return gap('startup-identity-missing');
+    if (
+      starts.some((event, index) =>
+        starts.slice(0, index).some((prior) => sameIdentity(event, prior)),
+      )
+    )
+      return gap('duplicate-start-or-restart');
+    const bootBuilds = new Set(
+      events.map((event) => `${event.bootId}:${event.sha}`),
     );
-    return {
-      ...binding,
-      events,
-      started: started ?? null,
-      matched,
-      gap: matched ? null : 'matching-stop-pair-missing',
-    };
+    if (bootBuilds.size !== 1) return gap('conflicting-boot-or-build');
+    if (
+      !expected?.server ||
+      !id(expected.bootId) ||
+      typeof expected.sha !== 'string'
+    )
+      return gap('expected-server-identity-missing');
+    if (
+      starts.some(
+        (event) =>
+          event.bootId !== expected.bootId ||
+          event.sha !== expected.sha ||
+          (event.pid !== expected.server.pid &&
+            event.pid !== expected.generation?.pid),
+      )
+    )
+      return gap('unrecorded-start-identity');
+    const intents = events.filter((event) => event.type === 'stop_intent');
+    const results = events.filter((event) => event.type === 'stop_result');
+    if (results.some((event) => event.result === 'failed'))
+      return gap('failed-stop');
+    if (intents.length === 0 && results.length === 0)
+      return gap('matching-stop-pair-missing');
+    if (intents.length !== 1 || results.length !== 1)
+      return gap('ambiguous-or-orphan-stop');
+    const [intent] = intents;
+    const [result] = results;
+    if (
+      !intent ||
+      !result ||
+      !sameIdentity(intent, result) ||
+      intent.operationId !== result.operationId
+    )
+      return gap('conflicting-stop-operation');
+    const candidates = starts.filter((event) => sameIdentity(event, intent));
+    const [started] = candidates;
+    if (candidates.length !== 1 || !started)
+      return gap('stop-identity-not-unique');
+    if (
+      events.indexOf(started) >= events.indexOf(intent) ||
+      events.indexOf(intent) >= events.indexOf(result) ||
+      starts.some((event) => events.indexOf(event) >= events.indexOf(intent))
+    )
+      return gap('stop-events-out-of-order');
+    if (
+      started.pid !== expected.server.pid ||
+      started.bootId !== expected.bootId ||
+      started.sha !== expected.sha
+    )
+      return gap('stop-does-not-match-lease-server');
+    return { ...binding, events, started, matched: true, gap: null };
   } catch {
-    return { gap: 'journal-unreadable' };
+    return gap('journal-unreadable');
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
   }
@@ -506,7 +549,12 @@ function emitSuiteLifecycleEvidence(
   cleanup,
 ) {
   try {
-    const evidence = readLifecycleEvidence(journal, instance);
+    const evidence = readLifecycleEvidence(journal, instance, {
+      server: lease?.daemon?.server,
+      generation: lease?.daemon?.generation,
+      bootId: lease?.daemon?.bootId,
+      sha: start?.sha,
+    });
     console.log(
       `[e2e-lifecycle] ${JSON.stringify({
         owner: 'suite',
@@ -537,9 +585,21 @@ function emitSuiteLifecycleEvidence(
             : null,
         journal: evidence,
         journalDaemonMatch: Boolean(
-          evidence.started &&
+          evidence.matched &&
+            evidence.started &&
             evidence.started.pid === lease?.daemon?.server?.pid &&
-            evidence.started.bootId === lease?.daemon?.bootId,
+            evidence.started.bootId === lease?.daemon?.bootId &&
+            evidence.started.sha === start?.sha &&
+            start?.outcome?.code === 0 &&
+            start.outcome.signal === null &&
+            !start.outcome.error &&
+            start.outcome.timedOut === false &&
+            stop?.code === 0 &&
+            stop.signal === null &&
+            !stop.error &&
+            stop.timedOut === false &&
+            cleanup.settled &&
+            cleanup.errors.length === 0,
         ),
       })}`,
     );
@@ -2520,6 +2580,7 @@ async function main() {
           );
           operatorCredential = bootstrapAuthority.operatorCredential;
           stationHome = bootstrapAuthority.registry.baseDir;
+          lifecycleStart.sha = bootstrapAuthority.registry.build?.sha ?? null;
           daemon = await discoverE2EDaemon({
             root: process.cwd(),
             instance,
