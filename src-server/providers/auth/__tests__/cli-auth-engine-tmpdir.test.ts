@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { augmentedSpawnEnv } from '../cli-auth.js';
+import { augmentedSpawnEnv, inheritedSpawnEnv } from '../cli-auth.js';
 
 /**
  * archive#1908: `augmentedSpawnEnv` backs BOTH the Claude Agent SDK spawn
@@ -36,5 +36,27 @@ describe('augmentedSpawnEnv TMPDIR (station#1908)', () => {
     expect(env.TMPDIR).not.toBe(process.env.TMPDIR);
     // Base env is still preserved alongside the injected TMPDIR/PATH.
     expect(env.SOME_VAR).toBe('x');
+  });
+
+  test('#4774: inheritedSpawnEnv carries the same keys and values, but PATH and TMPDIR', async () => {
+    const input = {
+      SOME_VAR: 'x',
+      ANTHROPIC_API_KEY: 'fixture-key',
+      STATION_INTERNAL_API_TOKEN: 'internal-token',
+      STATION_SUPERVISOR_PID: '1',
+      PATH: '/usr/bin',
+      TMPDIR: '/tmp/ambient',
+    };
+    const withoutDerived = ({ PATH, TMPDIR, ...rest }: NodeJS.ProcessEnv) =>
+      rest;
+    const inherited = inheritedSpawnEnv(input);
+    expect(withoutDerived(inherited)).toEqual(
+      withoutDerived(await augmentedSpawnEnv(input)),
+    );
+    expect(inherited).not.toHaveProperty('STATION_INTERNAL_API_TOKEN');
+    // Left as inherited: the preflight neither resolves a PATH nor creates
+    // the spawn TMPDIR.
+    expect(inherited.PATH).toBe('/usr/bin');
+    expect(inherited.TMPDIR).toBe('/tmp/ambient');
   });
 });
