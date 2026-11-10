@@ -918,9 +918,9 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
-the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
-native steering. Other engines hold steering until a safe boundary can be proven;
+Keep typing during a turn. With Claude Code and Codex, which take native
+steering, **Send** defaults to **Steer**; elsewhere it defaults to **Queue**,
+which delivers after the turn finishes. The dropdown switches between them. Other engines hold steering until a safe boundary can be proven;
 currently they wait until the turn finishes. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can

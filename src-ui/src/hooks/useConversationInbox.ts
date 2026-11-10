@@ -50,6 +50,22 @@ export function visibleInboxEntries(
 export const INBOX_ACTIVE_POLL_MS = 2_000;
 export const INBOX_IDLE_POLL_MS = 15_000;
 
+/**
+ * A read that fails (a phone's network blip, a relay hop, a stalled host) is
+ * retried twice before the list reports it lost sight of the entries. While a
+ * retry is pending the query keeps its last answer, so the pending list does
+ * not flicker between its rows and "Couldn't load" on every missed poll. An
+ * authority or absence answer is final and is not retried.
+ */
+export const INBOX_READ_RETRIES = 2;
+export const INBOX_READ_RETRY_DELAY_MS = 400;
+
+function isFinalInboxError(error: unknown): boolean {
+  return (
+    error instanceof StationHttpError && [401, 403, 404].includes(error.status)
+  );
+}
+
 function inboxQueryKey(
   scope: { apiBase: string; authorityKey: string } | undefined,
   conversationId: string,
@@ -104,7 +120,11 @@ export function useConversationInbox(
     enabled,
     staleTime: 0,
     gcTime: 0,
-    retry: false,
+    retry: (failures, error) =>
+      failures < INBOX_READ_RETRIES &&
+      !isFinalInboxError(error) &&
+      Boolean(scope?.isCurrent()),
+    retryDelay: INBOX_READ_RETRY_DELAY_MS,
     refetchOnMount: 'always',
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,

@@ -937,9 +937,10 @@ controls. On mobile, Stop therefore follows them, at the row's trailing edge;
 before them it sat beside an empty reserved gap. At 390px a running turn's full
 row (Clear, Send, mode picker and Stop) still wraps to a second line. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
-picker defaults to **Queue**, which starts a new turn after the entire current
-turn finishes. **Steer** uses native mid-turn input only where the selected
-engine can prove that capability. Claude Code and Codex have additive steering.
+picker defaults to **Steer** where the selected engine can prove native mid-turn
+input, and to **Queue** (a new turn after the entire current turn finishes)
+everywhere else, including safe-stop steering. A chosen mode holds until the
+conversation changes. Claude Code and Codex have additive steering.
 ACP's capability matrix also includes cancel-and-reprompt, which is not proof
 of native steering for the current session.
 After a device's full access is revoked, a turn that started unconfined is not
@@ -990,8 +991,10 @@ same rule ([pendingMessages](../../src-ui/src/components/chat/pendingMessages.ts
 list renders nothing. Reads are silent: polling (every 2s while the
 conversation is working or holds messages, every 15s otherwise), turn-fact
 invalidation and focus/reconnect change the list only when the answer changes.
-A failed read after held rows were shown replaces them with a
-**Couldn't load inbox entries** line and its **Retry**, never a zero count.
+A failed read is retried twice, 400ms apart, while the last rows stay shown;
+401, 403 and 404 are final and not retried. Only when every attempt fails do
+held rows give way to a **Couldn't load inbox entries** line and its **Retry**,
+never a zero count.
 **Remove** or **Dismiss** uses the original message key and the server's
 authorization and placement checks; rows without a permitted key are
 read-only. Held rows offer no local edit, reorder, send-now or steer action; an

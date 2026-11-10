@@ -605,11 +605,19 @@ export function ChatInputArea({
   const removalUnblocksSend =
     removalUnblocksSendProp ||
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
-  const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
+  // A follow-up during a running turn steers it when the engine takes the
+  // message natively (it joins the turn at its next tool boundary). Safe-stop
+  // steering ends the turn early, so there Queue stays the default. An
+  // explicit choice holds until the conversation changes.
+  const [chosenSendMode, setSendMode] = useState<'queue' | 'steer' | null>(
+    null,
+  );
+  const sendMode =
+    chosenSendMode ?? (busySteeringKind === 'native' ? 'steer' : 'queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
   useEffect(() => {
     void sessionId;
-    setSendMode('queue');
+    setSendMode(null);
     setSendModeOpen(false);
   }, [sessionId]);
   const { chatReturnBehavior } = useDeviceSettings();
