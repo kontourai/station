@@ -1,5 +1,16 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
@@ -56,6 +67,162 @@ export async function allocateLiveStation(
   };
 }
 
+type LifecycleCommandOutcome = {
+  code: number | null;
+  signal: string | null;
+  error: boolean;
+  timedOut: boolean | null;
+};
+
+const liveLifecycle = new WeakMap<
+  LiveStation,
+  {
+    journal: string;
+    start: LifecycleCommandOutcome | null;
+    started: { pid: number; bootId: string; sha: string } | null;
+  }
+>();
+
+function readLifecycleEvidence(path: string, instance: string) {
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+    if (!fstatSync(descriptor).isFile()) return { gap: 'journal-not-regular' };
+    const buffer = Buffer.alloc(128 * 1024 + 1);
+    const bytes = readSync(descriptor, buffer, 0, buffer.length, 0);
+    if (bytes === buffer.length) return { gap: 'journal-too-large' };
+    const raw = buffer.subarray(0, bytes);
+    const binding = {
+      bytes,
+      sha256: createHash('sha256').update(raw).digest('hex'),
+    };
+    const events: {
+      type: string;
+      instanceId: string;
+      bootId: string;
+      pid: number;
+      sha: string;
+      operationId?: string;
+      result?: string;
+    }[] = [];
+    const id = (value: unknown) =>
+      typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+    for (const line of raw.toString('utf8').split('\n').filter(Boolean)) {
+      const event = JSON.parse(line);
+      if (
+        event.type !== 'started' &&
+        event.type !== 'stop_intent' &&
+        event.type !== 'stop_result'
+      )
+        continue;
+      if (
+        event.instanceId !== instance ||
+        !id(event.bootId) ||
+        !Number.isSafeInteger(event.pid) ||
+        event.pid < 1 ||
+        typeof event.sha !== 'string' ||
+        !/^[a-f0-9]{40,64}$/.test(event.sha) ||
+        (event.type !== 'started' && !id(event.operationId)) ||
+        (event.type === 'stop_result' &&
+          !['completed', 'already_absent', 'failed'].includes(event.result))
+      )
+        return { ...binding, gap: 'journal-identity-mismatch' };
+      events.push({
+        type: event.type,
+        instanceId: instance,
+        bootId: event.bootId,
+        pid: event.pid,
+        sha: event.sha,
+        ...(event.type !== 'started' ? { operationId: event.operationId } : {}),
+        ...(event.type === 'stop_result' ? { result: event.result } : {}),
+      });
+      if (events.length > 64)
+        return { ...binding, gap: 'too-many-lifecycle-events' };
+    }
+    const sameBoot = (
+      left: (typeof events)[number],
+      right: (typeof events)[number],
+    ) =>
+      left.pid === right.pid &&
+      left.bootId === right.bootId &&
+      left.sha === right.sha;
+    const startedIndex = events.map(({ type }) => type).lastIndexOf('started');
+    const started = events[startedIndex];
+    const matched = Boolean(
+      started &&
+        events.some(
+          (intent, intentIndex) =>
+            intentIndex > startedIndex &&
+            intent.type === 'stop_intent' &&
+            sameBoot(started, intent) &&
+            events.some(
+              (result, resultIndex) =>
+                resultIndex > intentIndex &&
+                result.type === 'stop_result' &&
+                sameBoot(started, result) &&
+                intent.operationId === result.operationId &&
+                (result.result === 'completed' ||
+                  result.result === 'already_absent'),
+            ),
+        ),
+    );
+    return {
+      ...binding,
+      events,
+      started: started ?? null,
+      matched,
+      gap: matched ? null : 'matching-stop-pair-missing',
+    };
+  } catch {
+    return { gap: 'journal-unreadable' };
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function emitLiveLifecycleEvidence(
+  live: LiveStation,
+  action: 'start' | 'stop',
+  outcome: LifecycleCommandOutcome,
+): void {
+  const capture = liveLifecycle.get(live);
+  if (!capture) return;
+  try {
+    const evidence = readLifecycleEvidence(capture.journal, live.instance);
+    const started = 'started' in evidence ? evidence.started : null;
+    if (action === 'start') capture.started = started ?? null;
+    console.log(
+      `[e2e-lifecycle] ${JSON.stringify({
+        owner: 'spec',
+        action,
+        instance: live.instance,
+        roots: 'fixture-owned-home-and-output',
+        serverPort: live.serverPort,
+        uiPort: live.uiPort,
+        start: capture.start,
+        ...(action === 'stop' ? { stop: outcome } : {}),
+        journal: evidence,
+        startIdentityMatch: Boolean(
+          capture.started &&
+            started &&
+            capture.started.pid === started.pid &&
+            capture.started.bootId === started.bootId &&
+            capture.started.sha === started.sha,
+        ),
+      })}`,
+    );
+  } catch {
+    try {
+      console.log('[e2e-lifecycle] {"owner":"spec","gap":"capture-failed"}');
+    } catch {
+      // Evidence output must not replace the original command outcome.
+    }
+  }
+}
+
 async function runCommand(
   file: string,
   args: string[],
@@ -63,16 +230,32 @@ async function runCommand(
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     timeoutMs?: number;
+    onOutcome?: (outcome: LifecycleCommandOutcome) => void;
   } = {},
 ): Promise<{ stdout: string; stderr: string }> {
-  const { stdout, stderr } = await execFileAsync(file, args, {
-    cwd: options.cwd,
-    env: options.env,
-    timeout: options.timeoutMs ?? 120_000,
-    maxBuffer: 10 * 1024 * 1024,
-    windowsHide: true,
-  });
-  return { stdout: String(stdout), stderr: String(stderr) };
+  let result: { stdout: string | Buffer; stderr: string | Buffer };
+  try {
+    result = await execFileAsync(file, args, {
+      cwd: options.cwd,
+      env: options.env,
+      timeout: options.timeoutMs ?? 120_000,
+      maxBuffer: 10 * 1024 * 1024,
+      windowsHide: true,
+    });
+  } catch (error) {
+    const detail = error && typeof error === 'object' ? error : {};
+    const code = 'code' in detail ? detail.code : null;
+    const signal = 'signal' in detail ? detail.signal : null;
+    options.onOutcome?.({
+      code: typeof code === 'number' ? code : null,
+      signal: typeof signal === 'string' ? signal : null,
+      error: true,
+      timedOut: code === 'ETIMEDOUT' ? true : null,
+    });
+    throw error;
+  }
+  options.onOutcome?.({ code: 0, signal: null, error: false, timedOut: false });
+  return { stdout: String(result.stdout), stderr: String(result.stderr) };
 }
 
 async function waitForReady(
@@ -144,7 +327,13 @@ export async function startStation(
     `--port=${live.serverPort}`,
     `--ui-port=${live.uiPort}`,
   ];
-  if (options.logFile) args.push(`--log=${options.logFile}`);
+  if (options.logFile) {
+    const journal = `${options.logFile}.lifecycle.ndjson`;
+    liveLifecycle.set(live, { journal, start: null, started: null });
+    args.push(`--log=${options.logFile}`, `--lifecycle-journal=${journal}`);
+  } else {
+    liveLifecycle.delete(live);
+  }
   if (clean) args.splice(3, 0, '--clean');
   const inherited = options.environment ?? process.env;
   const startup = await runCommand(...stationCommand(args), {
@@ -152,6 +341,11 @@ export async function startStation(
     // build. A cold Windows or low-disk cache can exceed the ordinary helper's
     // two-minute command budget without the Station process being unhealthy.
     timeoutMs: options.performanceReference ? 300_000 : 120_000,
+    onOutcome: (outcome) => {
+      const capture = liveLifecycle.get(live);
+      if (capture) capture.start = outcome;
+      emitLiveLifecycleEvidence(live, 'start', outcome);
+    },
     env: {
       ...inherited,
       PATH: `${NODE_BIN}${delimiter}${inherited.PATH ?? process.env.PATH ?? ''}`,
@@ -283,6 +477,7 @@ export async function stopStation(
   ];
   const inherited = options.environment ?? process.env;
   await runCommand(...stationCommand(args), {
+    onOutcome: (outcome) => emitLiveLifecycleEvidence(live, 'stop', outcome),
     env: {
       ...inherited,
       PATH: `${NODE_BIN}${delimiter}${inherited.PATH ?? process.env.PATH ?? ''}`,

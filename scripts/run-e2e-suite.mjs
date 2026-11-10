@@ -1,8 +1,11 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   closeSync,
+  constants,
   existsSync,
+  fstatSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -390,22 +393,193 @@ export async function runE2EExecutionPhases(phases, execute) {
   }
 }
 
+function readLifecycleEvidence(path, instance) {
+  let descriptor;
+  try {
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+    if (!fstatSync(descriptor).isFile()) return { gap: 'journal-not-regular' };
+    const buffer = Buffer.alloc(128 * 1024 + 1);
+    const bytes = readSync(descriptor, buffer, 0, buffer.length, 0);
+    if (bytes === buffer.length) return { gap: 'journal-too-large' };
+    const raw = buffer.subarray(0, bytes);
+    const binding = {
+      bytes,
+      sha256: createHash('sha256').update(raw).digest('hex'),
+    };
+    const events = [];
+    const id = (value) =>
+      typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+    for (const line of raw.toString('utf8').split('\n').filter(Boolean)) {
+      const event = JSON.parse(line);
+      if (
+        event.type !== 'started' &&
+        event.type !== 'stop_intent' &&
+        event.type !== 'stop_result'
+      )
+        continue;
+      if (
+        event.instanceId !== instance ||
+        !id(event.bootId) ||
+        !Number.isSafeInteger(event.pid) ||
+        event.pid < 1 ||
+        typeof event.sha !== 'string' ||
+        !/^[a-f0-9]{40,64}$/.test(event.sha) ||
+        (event.type !== 'started' && !id(event.operationId)) ||
+        (event.type === 'stop_result' &&
+          !['completed', 'already_absent', 'failed'].includes(event.result))
+      )
+        return { ...binding, gap: 'journal-identity-mismatch' };
+      events.push({
+        type: event.type,
+        instanceId: instance,
+        bootId: event.bootId,
+        pid: event.pid,
+        sha: event.sha,
+        ...(event.type !== 'started' ? { operationId: event.operationId } : {}),
+        ...(event.type === 'stop_result' ? { result: event.result } : {}),
+      });
+      if (events.length > 64)
+        return { ...binding, gap: 'too-many-lifecycle-events' };
+    }
+    const sameBoot = (left, right) =>
+      left.pid === right.pid &&
+      left.bootId === right.bootId &&
+      left.sha === right.sha;
+    const startedIndex = events.map(({ type }) => type).lastIndexOf('started');
+    const started = events[startedIndex];
+    const matched = Boolean(
+      started &&
+        events.some(
+          (intent, intentIndex) =>
+            intentIndex > startedIndex &&
+            intent.type === 'stop_intent' &&
+            sameBoot(started, intent) &&
+            events.some(
+              (result, resultIndex) =>
+                resultIndex > intentIndex &&
+                result.type === 'stop_result' &&
+                sameBoot(started, result) &&
+                intent.operationId === result.operationId &&
+                (result.result === 'completed' ||
+                  result.result === 'already_absent'),
+            ),
+        ),
+    );
+    return {
+      ...binding,
+      events,
+      started: started ?? null,
+      matched,
+      gap: matched ? null : 'matching-stop-pair-missing',
+    };
+  } catch {
+    return { gap: 'journal-unreadable' };
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function lifecycleProcessIdentity(identity) {
+  if (
+    !Number.isSafeInteger(identity?.pid) ||
+    !Number.isSafeInteger(identity?.pgid) ||
+    typeof identity?.processStart !== 'string' ||
+    !/^[\x20-\x7e]{1,128}$/.test(identity.processStart)
+  )
+    return null;
+  return {
+    pid: identity.pid,
+    pgid: identity.pgid,
+    processStart: identity.processStart,
+  };
+}
+
+function emitSuiteLifecycleEvidence(
+  instance,
+  journal,
+  lease,
+  start,
+  stop,
+  cleanup,
+) {
+  try {
+    const evidence = readLifecycleEvidence(journal, instance);
+    console.log(
+      `[e2e-lifecycle] ${JSON.stringify({
+        owner: 'suite',
+        instance,
+        roots: 'runner-owned-temp-home-and-results',
+        serverPort: lease?.start?.serverPort ?? start?.serverPort ?? null,
+        uiPort: lease?.start?.uiPort ?? start?.uiPort ?? null,
+        runner: lifecycleProcessIdentity(lease?.runner),
+        launcher: lifecycleProcessIdentity(start?.launcher),
+        starterGroup: (start?.groupMembers ?? [])
+          .slice(0, 64)
+          .map(lifecycleProcessIdentity),
+        daemon: {
+          server: lifecycleProcessIdentity(lease?.daemon?.server),
+          ui: lifecycleProcessIdentity(lease?.daemon?.ui),
+          generation: lifecycleProcessIdentity(lease?.daemon?.generation),
+        },
+        start: start?.outcome ?? null,
+        stop,
+        cleanup: {
+          settled: cleanup.settled,
+          errorsPresent: cleanup.errors.length > 0,
+        },
+        identityGap:
+          !lifecycleProcessIdentity(lease?.daemon?.server) ||
+          !lifecycleProcessIdentity(lease?.daemon?.ui)
+            ? 'daemon-identity-missing'
+            : null,
+        journal: evidence,
+        journalDaemonMatch: Boolean(
+          evidence.started &&
+            evidence.started.pid === lease?.daemon?.server?.pid &&
+            evidence.started.bootId === lease?.daemon?.bootId,
+        ),
+      })}`,
+    );
+  } catch {
+    try {
+      console.log('[e2e-lifecycle] {"owner":"suite","gap":"capture-failed"}');
+    } catch {
+      // Evidence output must not replace the original command outcome.
+    }
+  }
+}
+
 async function runWithinOwnedDeadline(
   command,
   args,
-  { deadlineMs, terminationGraceMs, terminationForceMs, ...options },
+  { deadlineMs, terminationGraceMs, terminationForceMs, onOutcome, ...options },
 ) {
   const execution = startOwned(command, args, options, command);
-  const result = await awaitOwnedCommandDeadline(execution, command, {
-    deadlineMs,
-    terminationGraceMs,
-    terminationForceMs,
+  let result;
+  try {
+    result = await awaitOwnedCommandDeadline(execution, command, {
+      deadlineMs,
+      terminationGraceMs,
+      terminationForceMs,
+    });
+  } catch (error) {
+    onOutcome?.({ code: null, signal: null, error: true, timedOut: null });
+    throw error;
+  }
+  onOutcome?.({
+    code: result.status,
+    signal: result.signal ?? null,
+    error: Boolean(result.error),
+    timedOut: false,
   });
-  if (result.status === 0) return;
+  if (result.status === 0) return result;
   throw new Error(`${command} ${args.join(' ')} exited with ${result.status}`);
 }
 
-function stopE2EInstance(instance) {
+function stopE2EInstance(instance, onOutcome) {
   return runWithinOwnedDeadline(
     './station',
     ['stop', `--instance=${instance}`],
@@ -413,6 +587,7 @@ function stopE2EInstance(instance) {
       deadlineMs: E2E_STOP_DEADLINE_MS,
       terminationGraceMs: E2E_STOP_SETTLEMENT_MS,
       terminationForceMs: E2E_STOP_SETTLEMENT_MS,
+      onOutcome,
     },
   );
 }
@@ -483,6 +658,12 @@ async function runCapturing(command, args, options = {}) {
   }
   return {
     code: result.status ?? 1,
+    nativeOutcome: {
+      code: result.error ? null : (result.status ?? null),
+      signal: result.signal ?? null,
+      error: Boolean(result.error),
+      timedOut: result.error ? null : false,
+    },
     output: result.error ? `${output}${String(result.error)}` : output,
     observedBytes,
     outputTruncated,
@@ -2194,6 +2375,15 @@ async function main() {
   // Keep startup diagnostics in the instance-owned Playwright artifact root so
   // hosted CI is secure and failures remain uploadable.
   const serverLog = join(testResultsRoot, 'station.log');
+  const lifecycleJournal = join(testResultsRoot, 'lifecycle.ndjson');
+  let lifecycleStart = null;
+  let lifecycleStop = null;
+  const stopWithEvidence = () => {
+    lifecycleStop = null;
+    return stopE2EInstance(instance, (outcome) => {
+      lifecycleStop = outcome;
+    });
+  };
   // Fixture writers and external-session readers share isolated history roots.
   // The live server can retain CLI authentication without importing host history.
   const claudeConfigDir = mkdtempSync(join(tmpdir(), `${instance}-claude-`));
@@ -2243,6 +2433,7 @@ async function main() {
         lease = readE2ELease(process.cwd(), instance);
         let groupSampler;
         let groupSamplingFailure = null;
+        lifecycleStart = { ...start, outcome: null };
         try {
           const result = await runCapturing(
             './station',
@@ -2255,7 +2446,7 @@ async function main() {
               `--port=${chosenServerPort}`,
               `--ui-port=${chosenUiPort}`,
               `--log=${serverLog}`,
-              `--lifecycle-journal=${join(testResultsRoot, 'lifecycle.ndjson')}`,
+              `--lifecycle-journal=${lifecycleJournal}`,
             ],
             {
               // The selected status mode must reach the SERVER, not just
@@ -2320,6 +2511,7 @@ async function main() {
               },
             },
           );
+          lifecycleStart = { ...lease?.start, outcome: result.nativeOutcome };
           if (groupSamplingFailure) throw groupSamplingFailure;
           if (result.code !== 0) return result;
           const bootstrapAuthority = readE2EBootstrapAuthority(
@@ -2351,7 +2543,7 @@ async function main() {
           if (groupSampler) clearInterval(groupSampler);
         }
       },
-      stopInstance: () => stopE2EInstance(instance),
+      stopInstance: stopWithEvidence,
       warn: (message) => console.warn(message),
       onStarted: ({ serverPort, uiPort, observedBytes, outputTruncated }) => {
         console.log(
@@ -2367,8 +2559,16 @@ async function main() {
       root: process.cwd(),
       leasePath: runLease,
       lease,
-      stopInstance: () => stopE2EInstance(instance),
+      stopInstance: stopWithEvidence,
     });
+    emitSuiteLifecycleEvidence(
+      instance,
+      lifecycleJournal,
+      lease,
+      lifecycleStart,
+      lifecycleStop,
+      cleanup,
+    );
     if (cleanup.errors.length) {
       throw new Error(
         `E2E startup failed and cleanup was not proven: ${cleanup.errors.join('; ')}`,
@@ -2556,8 +2756,16 @@ async function main() {
           root: process.cwd(),
           leasePath: runLease,
           lease,
-          stopInstance: () => stopE2EInstance(instance),
+          stopInstance: stopWithEvidence,
         });
+        emitSuiteLifecycleEvidence(
+          instance,
+          lifecycleJournal,
+          lease,
+          lifecycleStart,
+          lifecycleStop,
+          cleanup,
+        );
         if (runFailure) {
           if (existsSync(serverLog))
             console.error(`[e2e] retained Station server log: ${serverLog}`);
