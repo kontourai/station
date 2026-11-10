@@ -1103,6 +1103,7 @@ import {
   delegationResultStartPort,
   inboxPlacementStartPort,
   type RecordedActorContinuation,
+  readQueuedAttachmentFrom,
   readSessionDispatchFacts,
   scheduledDedicatedStartPort,
 } from './conversation-start-ports.js';
@@ -6974,6 +6975,7 @@ export function configureRuntimeRoutes(
           sessionFacts: (sessionId) =>
             readSessionDispatchFacts(eventStore, sessionId),
           continueAsRecordedActor,
+          readQueuedAttachment: readQueuedAttachmentFrom(eventStore),
         }),
       ),
     });
@@ -7570,6 +7572,13 @@ export function configureRuntimeRoutes(
       resolveRequestDelegation: createRequestDelegationResolver(
         requestDelegationSources,
       ),
+      // A queued follow-up's files wait in the attachment blob store.
+      ...(context.orchestrationEventStore
+        ? {
+            storeQueuedAttachment: (bytes: Buffer) =>
+              context.orchestrationEventStore!.storeQueuedAttachmentBlob(bytes),
+          }
+        : {}),
       hydrateStagedAttachments: (principal, references, binding, options) =>
         attachmentStaging.bindAndHydrate(
           {

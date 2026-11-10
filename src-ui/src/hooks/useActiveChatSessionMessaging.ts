@@ -428,6 +428,11 @@ export function useSendMessage(
          */
         queueOnBusy?: boolean;
         /**
+         * With `queueOnBusy`: the host holds a follow-up's files with it
+         * (`followUpAttachments`), so a busy send with files is queued.
+         */
+        queueFilesOnBusy?: boolean;
+        /**
          * A message Station composed, not the composer's: the composer's
          * text, attachments and visual skill are neither sent nor cleared,
          * and a refusal puts nothing back in it.
@@ -654,7 +659,10 @@ export function useSendMessage(
           });
           return false;
         }
-        if (attachments?.length) {
+        if (
+          attachments?.length &&
+          !(options?.queueOnBusy && options.queueFilesOnBusy)
+        ) {
           addEphemeralMessage(sessionId, {
             role: 'system',
             content:
@@ -1304,10 +1312,14 @@ export function useSendMessage(
           await live?.accepted();
           if (requestScope && !requestScope.isCurrent()) return true;
           const latest = activeChatsStore.getSnapshot()[sessionId];
-          const { input: _input, ...rollback } = rejectedSendRollback(
-            transaction,
-            latest,
-          );
+          // Queued, not refused: the held entry owns the text and any files,
+          // so neither returns to the composer; only the optimistic bubble goes.
+          const {
+            input: _input,
+            attachments: _attachments,
+            attachmentStages: _attachmentStages,
+            ...rollback
+          } = rejectedSendRollback(transaction, latest);
           updateChat(sessionId, {
             ...rollback,
             ...(latest?.pendingClientTurnId === resolvedTurnId

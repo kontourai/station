@@ -52,6 +52,7 @@ import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry
 import { useACPConnections } from '../../hooks/useACPConnections';
 import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
+import { useFollowUpAttachmentsSupport } from '../../hooks/useFollowUpAttachmentsSupport';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
 import { useSTT } from '../../hooks/useSTT';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -588,6 +589,10 @@ function LiveConversationBody({
     useConversationController(activeSession);
   const secondaryActions =
     station && station.routeKind !== 'host' ? undefined : dockSecondaryActions;
+  const queueTakesFiles = useFollowUpAttachmentsSupport(
+    apiBase,
+    !station || station.routeKind === 'host',
+  );
   const targetAgents = useAgentsQuery({
     enabled: Boolean(station),
     readTarget: station,
@@ -1124,8 +1129,9 @@ function LiveConversationBody({
     return chatInput.handleSend(undefined, undefined, {
       ambientContext,
       queueOnBusy: true,
+      ...(queueTakesFiles ? { queueFilesOnBusy: true } : {}),
     });
-  }, [getComposedContext, chatInput]);
+  }, [getComposedContext, chatInput, queueTakesFiles]);
   const nativeSteering =
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
     'native';
@@ -2878,6 +2884,7 @@ function LiveConversationBody({
             sendRefused={!callerMayContinue || workspaceRefusedWithoutNewChat}
             turnInFlight={turnInFlight}
             busyFollowUp={busyFollowUp}
+            busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
             onQueueFollowUp={handleQueueFollowUp}

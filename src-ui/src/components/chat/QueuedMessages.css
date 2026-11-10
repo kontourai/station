@@ -262,6 +262,17 @@
 .queued-messages--outbox .queued-message__text {
   white-space: normal;
 }
+/* Files held with a queued message: name only, muted, never a link. */
+.queued-message__files {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .queued-messages--pending .queued-message__body,
 .queued-messages--outbox .queued-message__body {
   display: -webkit-box;

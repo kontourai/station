@@ -1035,13 +1035,17 @@ reveals message content, mode, status and actions; it does not auto-expand durin
 a turn. Local queued rows retain their selected mode. Their **Send now** is an explicit
 stop override: Station waits for a settled interruption receipt before sending
 the selected row, keeps other rows in order, and retains the message if stopping
-cannot be confirmed. Queued follow-ups currently accept text and quoted context;
-attachments remain in the composer until the turn finishes. Steering carries
-text only (`steerTurn` takes an input string), and the mid-turn queue holds
-text only. The paperclip and mic stay usable during a turn, so the next
-message can be prepared: a file added then waits in the draft, and the line
-above the draft says that Steer and Queue carry text only, with **Remove
-attachments**. Send stays disabled until the turn ends or the files go.
+cannot be confirmed. Steering carries text only (`steerTurn` takes an input
+string), so a draft with files is queued, never steered. On a host that
+advertises `followUpAttachments` (the connected host, not a route to another
+Station), Queue carries the files: Station stores their bytes in its attachment
+blob store, the pending row names them, and they are sent with the message when
+the turn ends; a file no longer stored then refuses the row
+(`attachment_unavailable`) rather than sending it without the file. On any other
+host the paperclip and mic stay usable during a turn, so the next message can
+be prepared: a file added then waits in the draft, and the line above the draft
+says that Steer and Queue carry text only, with **Remove attachments**. Send
+stays disabled until the turn ends or the files go.
 
 Activity is engine-reported. Claude Code SDK API retries supply attempt and delay
 with a bounded reason category; Codex's `willRetry` reports retry intent without

@@ -130,6 +130,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // (src-server/routes/system/diagnostics.ts) and the station-control
   // troubleshoot tools. Served in every deployment mode.
   troubleshootPrepare: true,
+  // A busy `/chat` send with files is held in the conversation inbox
+  // (src-server/routes/orchestration/orchestration.ts `inboxFollowUpOf`),
+  // its bytes in the attachment blob store. Hosted deployments withdraw it:
+  // they build no thread inbox (servesFollowUpAttachments).
+  followUpAttachments: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */
@@ -195,6 +200,13 @@ export function servesCoordinatorSession(
   return !deployment.hosted;
 }
 
+/** Hosted Stations build no conversation inbox to hold a follow-up's files in. */
+export function servesFollowUpAttachments(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -213,6 +225,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   privateMemoryReview: servesPrivateMemory,
   scheduledConversationTarget: servesScheduledConversationTarget,
   coordinatorSession: servesCoordinatorSession,
+  followUpAttachments: servesFollowUpAttachments,
 };
 
 /**
