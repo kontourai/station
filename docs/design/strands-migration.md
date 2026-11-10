@@ -38,8 +38,8 @@ itself (see `loadAppConfigFile` in `src-server/domain/config-loader-app.ts`).
 Before #3909, `--features=strands-runtime` (which set
 `STATION_FEATURES=strands-runtime`) switched one process to Strands without
 persisting anything. The server no longer reads the variable. The CLI refuses
-either form on `start`, `service install` and `service run`, so nobody is
-moved to VoltAgent without notice
+the option on `start` and the `service` actions, and the variable whenever it
+starts Station, so nobody is moved to VoltAgent without notice
 ([`retired-features-option.ts`](../../packages/cli/src/commands/retired-features-option.ts)).
 Other values are ignored.
 

@@ -9,9 +9,8 @@
  */
 
 function listsStrandsRuntime(list: string | undefined): boolean {
-  return (list ?? '')
-    .split(',')
-    .some((flag) => flag.trim() === 'strands-runtime');
+  // Exact match, as the server read it: a padded entry never selected Strands.
+  return (list ?? '').split(',').includes('strands-runtime');
 }
 
 function refusal(input: string): Error {

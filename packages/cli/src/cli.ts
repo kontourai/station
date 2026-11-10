@@ -105,7 +105,10 @@ import {
 } from './commands/lifecycle.js';
 import { doctor, doctorJson } from './commands/lifecycle-doctor.js';
 import { runStationsCommand } from './commands/profile-command.js';
-import { refuseStrandsRuntimeOption } from './commands/retired-features-option.js';
+import {
+  refuseStrandsRuntimeEnvironment,
+  refuseStrandsRuntimeOption,
+} from './commands/retired-features-option.js';
 import {
   parseAllowedOriginFlag,
   runServiceCommand,
@@ -219,6 +222,9 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
     '--base',
     '--instance',
     '--log',
+    // SUNSET(#3909): keeps `--features strands-runtime` from slipping past
+    // the refusal below as two ignored arguments.
+    '--features',
     '--allowed-origin',
     '--stop-intent',
     '--lifecycle-journal',
@@ -1008,6 +1014,8 @@ function buildProgram(
   });
 
   register('start', async (args) => {
+    // Before `--clean` can wipe the home.
+    refuseStrandsRuntimeEnvironment(process.env);
     const lifecycleArgs = parseLifecycleArgs(args);
     validateLifecyclePorts(
       lifecycleArgs.serverPort,

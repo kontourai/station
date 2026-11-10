@@ -4788,7 +4788,7 @@ export async function waitForTcpOk(
 }
 
 export async function start(opts: StartOptions = {}): Promise<void> {
-  // First: `start`, `dev` and `service run` all start Station through here.
+  // `service run` starts here without passing the `start` or `dev` handler.
   refuseStrandsRuntimeEnvironment(process.env);
   const { build, force, watch } = opts;
   if (watch && build) {

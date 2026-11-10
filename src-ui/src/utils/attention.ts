@@ -14,14 +14,6 @@ import { notificationCategoryLabel } from './notificationLabels';
 import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
 
 /**
- * Single source of truth for attention-item badge copy. Gate kinds use
- * verdict vocabulary — route-back / gate blocked / exception pending — and
- * must never say "approval": an approval request allows an action, a review
- * decides on output, a gate verdict evaluates evidence (root CONTEXT.md
- * ~624). Shared between AttentionCard and AttentionHistoryItem so the two
- * surfaces can't drift.
- */
-/**
  * Kinds whose `openHref` is the Flow run console. Do not link there while the
  * Flow preview is off (`useDeveloperFeatures().flow`).
  */
@@ -33,6 +25,14 @@ export function isFlowGateKind(kind: AttentionItem['kind']): boolean {
   );
 }
 
+/**
+ * Single source of truth for attention-item badge copy. Gate kinds use
+ * verdict vocabulary — route-back / gate blocked / exception pending — and
+ * must never say "approval": an approval request allows an action, a review
+ * decides on output, a gate verdict evaluates evidence (root CONTEXT.md
+ * ~624). Shared between AttentionCard and AttentionHistoryItem so the two
+ * surfaces can't drift.
+ */
 export function attentionKindLabel(kind: AttentionItem['kind']): string {
   return notificationCategoryLabel(kind);
 }

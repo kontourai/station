@@ -21,6 +21,7 @@ import {
   resolveWorktreePath,
 } from './dev-ports.js';
 import { clean, start } from './lifecycle.js';
+import { refuseStrandsRuntimeEnvironment } from './retired-features-option.js';
 
 /** Hosts a dev server binds to; a genuinely-taken port shows up on one of them. */
 const DEV_PORT_PROBE_HOSTS = ['127.0.0.1', '::1'] as const;
@@ -135,6 +136,8 @@ export async function runDevCommand(
   deps: DevCommandDeps = {},
 ): Promise<void> {
   const env = deps.env ?? process.env;
+  // Before `--clean` can wipe the dev home.
+  refuseStrandsRuntimeEnvironment(env);
   const cwd = deps.cwd ?? process.cwd();
   const log = deps.log ?? ((message: string) => console.log(message));
   const startImpl = deps.startImpl ?? start;

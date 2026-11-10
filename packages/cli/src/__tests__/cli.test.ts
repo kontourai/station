@@ -553,7 +553,7 @@ describe('runCli', () => {
       const { lifecycle, runCli, service } = await loadCliWithLifecycleMocks();
       for (const option of [
         '--features=strands-runtime',
-        '--features=voice, strands-runtime',
+        '--features=voice,strands-runtime',
       ]) {
         await expect(
           runCli([...command, `--base=${STATION_HOME}`, option]),
@@ -561,6 +561,15 @@ describe('runCli', () => {
           /no longer selects the Strands runtime \(#3909\)\. Run `station config set runtime strands`/,
         );
       }
+      // The spaced form must not slip through as two ignored arguments.
+      await expect(
+        runCli([
+          ...command,
+          `--base=${STATION_HOME}`,
+          '--features',
+          'strands-runtime',
+        ]),
+      ).rejects.toThrow(/--features requires the --features=<value> form/);
       expect(lifecycle.start).not.toHaveBeenCalled();
       expect(lifecycle.clean).not.toHaveBeenCalled();
       expect(service.runServiceCommand).not.toHaveBeenCalled();
@@ -568,7 +577,7 @@ describe('runCli', () => {
       for (const option of [
         '--features=managed-chat-orchestration',
         '--features=strands-runtime-x',
-        '--features',
+        '--features=voice, strands-runtime',
       ]) {
         await runCli([...command, `--base=${STATION_HOME}`, option]);
       }
@@ -579,6 +588,22 @@ describe('runCli', () => {
       expect(runs).toHaveLength(3);
     },
   );
+
+  test('start --clean refuses STATION_FEATURES=strands-runtime before cleaning the home', async () => {
+    const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
+    vi.stubEnv('STATION_FEATURES', 'strands-runtime');
+    try {
+      await expect(
+        runCli(['start', `--base=${STATION_HOME}`, '--clean', '--force']),
+      ).rejects.toThrow(
+        /^STATION_FEATURES=strands-runtime no longer selects the Strands runtime/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(lifecycle.clean).not.toHaveBeenCalled();
+    expect(lifecycle.start).not.toHaveBeenCalled();
+  });
 
   test('rejects ephemeral service commands before creating a temp home', async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'station-cli-service-test-'));
