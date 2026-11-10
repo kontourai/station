@@ -50,6 +50,14 @@ list entrance, for example) must also zero its own delays under reduced
 motion explicitly, or a still-mounted element sits invisible for its
 un-zeroed delay before its (now-instant) animation ever starts.
 
+A person can also choose **Reduced** under Appearance → Display → Motion
+(#4692). It sets `data-motion="reduce"` on the root, which applies the same
+global rule from [tokens.css](../../src-ui/src/tokens.css), and
+`prefersReducedMotion()` returns true for script-driven motion. A component's
+own `@media (prefers-reduced-motion: reduce)` block still follows only the
+device; its durations are collapsed by the global rule either way. See
+[theming](../guides/theming.md#density-and-motion).
+
 ## Migration and ratchet
 
 The app shell, page navigation, Schedule surfaces, transient notifications,

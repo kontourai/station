@@ -290,6 +290,8 @@ describe('account preference HTTP persistence', () => {
           colorTheme: 'catppuccin',
           colorThemeFlavor: 'frappe',
           colorThemeAccent: 'pink',
+          density: 'compact',
+          motion: 'reduce',
         })
       ).status,
     ).toBe(200);
@@ -310,9 +312,43 @@ describe('account preference HTTP persistence', () => {
           colorTheme: 'catppuccin',
           colorThemeFlavor: 'frappe',
           colorThemeAccent: 'pink',
+          density: 'compact',
+          motion: 'reduce',
         },
       },
     });
+  });
+
+  test('density and motion persist across devices and restart, validate choices, and reset (#4692)', async () => {
+    const f = await fixture();
+    expect(
+      (
+        await f.call(
+          { density: 'compact', motion: 'reduce' },
+          { 'x-test-device': 'phone' },
+        )
+      ).status,
+    ).toBe(200);
+    const restarted = new Hono().route('/api/me', f.build());
+    expect(
+      await (
+        await f.call(undefined, { 'x-test-device': 'desktop' }, restarted)
+      ).json(),
+    ).toMatchObject({
+      data: { values: { density: 'compact', motion: 'reduce' } },
+    });
+    for (const patch of [
+      { density: 'roomy' },
+      { density: 13 },
+      { motion: 'full' },
+    ])
+      expect((await f.call(patch)).status).toBe(400);
+    expect((await f.call({ density: null, motion: null })).status).toBe(200);
+    const reset = (await (await f.call()).json()) as {
+      data: { values: Record<string, unknown> };
+    };
+    expect(reset.data.values).not.toHaveProperty('density');
+    expect(reset.data.values).not.toHaveProperty('motion');
   });
 
   test('a key written by a newer server is kept on write and left out of the view', async () => {

@@ -91,7 +91,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   },
   appearance: {
     title: 'Appearance',
-    subtitle: 'Mode, color theme and accent.',
+    subtitle: 'Mode, density, motion, color theme and accent.',
     width: 'narrow',
   },
   profile: {
