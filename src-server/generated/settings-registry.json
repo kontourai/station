@@ -814,7 +814,7 @@
     {
       "id": "knowledge-conversation-history",
       "label": "Past conversations in Knowledge",
-      "help": "After a restart, Station adds your past conversations to Knowledge as a read-only source that Knowledge search covers.",
+      "help": "After a restart, past conversations on this Station join Knowledge read-only, searchable after a reindex; turning this off does not remove them.",
       "scope": "station",
       "section": "knowledge",
       "route": "/settings?view=knowledge&highlight=knowledge-conversation-history",

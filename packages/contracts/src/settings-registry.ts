@@ -547,15 +547,19 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Past conversations in Knowledge',
-    help: 'After a restart, Station adds your past conversations to Knowledge as a read-only source that Knowledge search covers.',
+    help: 'After a restart, past conversations on this Station join Knowledge read-only, searchable after a reindex; turning this off does not remove them.',
     // Read once at personal runtime initialization by
     // ensureConversationKnowledgeRoot (conversation-root-bootstrap.ts), which
     // registers root:conversations only when this is true and the root is
-    // absent. Nothing reads it later, and DELETE /api/knowledge/roots refuses
-    // the conversation root (RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR), so turning
-    // it off cannot take the root away; the description says so.
+    // absent; hosted initialization returns before that. Nothing indexes the
+    // root automatically: POST /api/knowledge/index/rebuild
+    // (knowledge-index-routes.ts) builds it, needs an embedding connection and,
+    // for this session-backed root, the local operator. That build reads every
+    // session on the Station. DELETE /api/knowledge/roots refuses the
+    // conversation root (RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR), so turning this
+    // off cannot take the root away.
     description:
-      'Add past conversations to Knowledge as the read-only root:conversations source, so Knowledge search covers them once indexed. Off by default because conversation history is personal. Applies after a restart. Turning it off later does not remove the source, and Station cannot remove it. Hosted Stations do not offer it.',
+      'Adds past conversations on this Station to Knowledge as the read-only root:conversations source. Nothing indexes them automatically: they become searchable after a Knowledge reindex (`station knowledge reindex`), which needs an embedding connection and this Station’s operator. Off by default because conversation history is personal. Applies after a restart. Turning it off later does not remove the source, and Station cannot remove it. Has no effect on a hosted Station.',
     defaultValue: false,
   }),
   defineSetting({

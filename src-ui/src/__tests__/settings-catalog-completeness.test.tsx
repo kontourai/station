@@ -1325,6 +1325,17 @@ describe('settings catalog completeness', () => {
       });
       // Nothing stored: the registry default, off.
       expect(toggle.getAttribute('aria-checked')).toBe('false');
+      // Before turning it on, a person sees without opening Details that it
+      // needs a reindex and cannot be undone by turning it off.
+      const visible = row.cloneNode(true) as HTMLElement;
+      for (const details of visible.querySelectorAll('details'))
+        details.remove();
+      expect(visible.textContent).toContain(
+        'Searchable after a Knowledge reindex',
+      );
+      expect(visible.textContent).toContain(
+        'Turning it off later does not remove them',
+      );
 
       fireEvent.click(toggle);
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
