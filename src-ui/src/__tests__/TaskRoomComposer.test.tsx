@@ -56,7 +56,7 @@ const mocks = vi.hoisted(() => ({
     apiBase: 'http://station.test',
     authorityKey: 'home-a',
     draftRecoveryKey: 'home-a-authorization-1',
-    isCurrent: () => true,
+    isCurrent: (): boolean => true,
   },
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
