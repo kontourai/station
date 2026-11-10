@@ -430,7 +430,7 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0(supports-color@7.2.0)
       '@kontourai/corpus':
-        specifier: https://codeload.github.com/kontourai/corpus/tar.gz/dfadba4e64883e6187fb42e32911ca9f091e0fa7
+        specifier: github:kontourai/corpus#dfadba4e64883e6187fb42e32911ca9f091e0fa7
         version: https://codeload.github.com/kontourai/corpus/tar.gz/dfadba4e64883e6187fb42e32911ca9f091e0fa7
       '@kontourai/station-supervisor':
         specifier: ^0.1.0
