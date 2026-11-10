@@ -24,10 +24,6 @@ import {
 } from 'react';
 import { StartupHandoff } from '../components/StartupHandoff';
 import { StartupScreen } from '../components/StartupScreen';
-import {
-  isStandaloneDisplay,
-  setInstalledAppZoomLock,
-} from './installedAppZoom';
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
 import type { NativeStationProfileStorage } from './native/stationProfileStorage';
@@ -444,14 +440,23 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   }, [profile]);
 
   // The installed app (native mobile shell or a home-screen web app) does not
-  // page-zoom; a browser tab keeps pinch zoom. See `installedAppZoom.ts`.
-  useEffect(
-    () =>
-      setInstalledAppZoomLock(
-        Boolean(profile?.isMobile && profile.isTauri) || isStandaloneDisplay(),
-      ),
-    [profile],
-  );
+  // page-zoom; a browser tab keeps pinch zoom. See `installedAppZoom.ts`,
+  // loaded lazily so the lock and its stylesheet stay out of the entry chunk.
+  useEffect(() => {
+    let disposed = false;
+    let release: (() => void) | undefined;
+    void import('./installedAppZoom').then((zoom) => {
+      if (disposed) return;
+      release = zoom.setInstalledAppZoomLock(
+        Boolean(profile?.isMobile && profile.isTauri) ||
+          zoom.isStandaloneDisplay(),
+      );
+    });
+    return () => {
+      disposed = true;
+      release?.();
+    };
+  }, [profile]);
 
   useEffect(() => {
     if (!profile?.isMobile || !profile.isTauri) return;
