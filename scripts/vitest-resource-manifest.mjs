@@ -213,6 +213,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Real IPC child observes the native histogram at reset acknowledgement and blocks for 80ms.
+  'scripts/__tests__/server-scenario-probe.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   // A real detached engine-shaped process and the scope holder Station spawns.
@@ -686,6 +688,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2176: its real-tree half, split out for the repo-scans job; same
   // `git ls-files`/child-process shape as the file above.
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Same shape as the test temp-dir ratchet: the windowsHide ratchet runs as
+  // a real child process against throwaway git repositories so its `FAIL:`
+  // sentence and exit status are proven. Bounded single-shot children per case.
+  'scripts/__tests__/windows-hide-ratchet.test.ts',
   // Runs the type-laundering gate as a real child process from a checkout
   // path containing a space (known-bad and clean control) so the entry check
   // that made it a silent no-op is proven, not just the scanner. Two bounded

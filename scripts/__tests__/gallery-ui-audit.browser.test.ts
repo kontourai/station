@@ -452,12 +452,93 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
         finding.identity.startsWith('hit-target:overlap:'),
       ),
     ).toEqual([
-      {
+      expect.objectContaining({
         identity:
           'hit-target:overlap:button.scaled-control[Scaled control] / button.scaled-bar-action[Fixed bar action]',
         detail: 'touch targets overlap',
-      },
+        diagnostics: {
+          version: 1,
+          firstPainted: { left: 0, right: 390, top: 600, bottom: 688 },
+          secondPainted: { left: 0, right: 390, top: 620, bottom: 664 },
+          firstCentre: { x: 195, y: 644 },
+          secondCentre: { x: 195, y: 642 },
+          overlapWidth: 390,
+          overlapHeight: 44,
+          intersectionCentre: { x: 195, y: 642 },
+          firstCentreHitPresent: true,
+          secondCentreHitPresent: true,
+          intersectionHitPresent: true,
+          representativeOccurrence: 1,
+          occurrences: 1,
+        },
+      }),
     ]);
+  });
+
+  it('keeps first-pair evidence through duplicate identities and the diagnostic cap', async () => {
+    await render(
+      Array.from({ length: 18 }, (_, index) => {
+        const label =
+          index < 2 ? 'Repeated' : `Pair ${String.fromCharCode(65 + index)}`;
+        return `<button aria-label="${label} first" style="position:absolute;box-sizing:border-box;left:0;top:${index * 40}px;width:60px;height:30px">A</button><button aria-label="${label} second" style="position:absolute;box-sizing:border-box;left:40px;top:${index * 40}px;width:60px;height:30px">B</button>`;
+      }).join('') +
+        '<input aria-label="Unrelated" value="private-sentinel-value" style="position:absolute;left:200px;top:0;width:60px;height:30px">',
+    );
+    const audit = await auditGalleryScreen(page, 'bounded-overlap-evidence');
+    const findings = audit.findings.filter((finding) =>
+      finding.identity.startsWith('hit-target:overlap:'),
+    );
+    expect(findings).toHaveLength(17);
+    const repeated = findings.find((finding) =>
+      finding.identity.includes('[Repeated first]'),
+    );
+    expect(repeated).toMatchObject({
+      detail: 'touch targets overlap (x2)',
+      diagnostics: {
+        firstPainted: { left: 0, right: 60, top: 0, bottom: 30 },
+        secondPainted: { left: 40, right: 100, top: 0, bottom: 30 },
+        intersectionCentre: { x: 50, y: 15 },
+        overlapWidth: 20,
+        overlapHeight: 30,
+        representativeOccurrence: 1,
+        occurrences: 2,
+      },
+    });
+    expect(
+      findings.find((finding) => finding.identity.includes('[Pair C first]')),
+    ).toMatchObject({
+      diagnostics: {
+        firstPainted: { left: 0, right: 60, top: 80, bottom: 110 },
+        secondPainted: { left: 40, right: 100, top: 80, bottom: 110 },
+        intersectionCentre: { x: 50, y: 95 },
+        occurrences: 1,
+      },
+    });
+    expect(audit).toMatchObject({
+      overlapDiagnostics: {
+        admittedOverlapOccurrences: 18,
+        diagnosticOccurrencesStored: 16,
+        omittedInvalid: 0,
+        omittedLimit: 2,
+        representativesWithDiagnostics: 15,
+        duplicateOccurrences: 1,
+      },
+    });
+    const omitted = findings.filter((finding) =>
+      /\[Pair [QR] first\]/.test(finding.identity),
+    );
+    expect(omitted).toHaveLength(2);
+    for (const finding of omitted)
+      expect(finding).not.toHaveProperty('diagnostics');
+    const serialized = JSON.stringify(findings);
+    expect(serialized).not.toContain('private-sentinel-value');
+    for (const finding of findings) {
+      if ('diagnostics' in finding)
+        expect(
+          Buffer.byteLength(JSON.stringify(finding.diagnostics)),
+        ).toBeLessThanOrEqual(2048);
+    }
+    expect(Buffer.byteLength(serialized)).toBeLessThanOrEqual(32768);
   });
 
   it('keeps a below-fold action reachable without overlapping the input beneath its scroller', async () => {
