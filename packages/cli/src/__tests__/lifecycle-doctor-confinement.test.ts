@@ -17,6 +17,7 @@ import {
   type DoctorDeps,
   doctorJson,
 } from '../commands/lifecycle-doctor.js';
+import { stripTerminalControls } from '../commands/terminal-safe.js';
 
 const SECRET = 'sk-ant-fixture-secret-0123456789abcdef';
 const HOST_PATH = '/Users/someone/.station/confined-homes/claude';
@@ -501,5 +502,32 @@ describe('#4774: station doctor reports the Station confinement preflight', () =
         expect(output).not.toContain('title');
       }
     });
+  });
+});
+
+describe('stripTerminalControls', () => {
+  test('a line, page or tab break between words becomes one space, not a join', () => {
+    expect(stripTerminalControls('line1\nline2')).toBe('line1 line2');
+    expect(stripTerminalControls('a\r\n\tb')).toBe('a b');
+    expect(stripTerminalControls('a\u2028b\u2029c\u0085d\fe\vf')).toBe(
+      'a b c d e f',
+    );
+    // A run broken only by removed characters is still one space, and a
+    // break beside an ordinary space adds none.
+    expect(stripTerminalControls('a\n\u001b[31m\u0000\nb')).toBe('a b');
+    expect(stripTerminalControls('a \nb')).toBe('a b');
+    // Dropped at either end.
+    expect(stripTerminalControls('\n\tline\r\n')).toBe('line');
+  });
+
+  test('every other control, format and bidi character is removed', () => {
+    expect(
+      stripTerminalControls('a\u0000b\u0007c\u007fd\u202ee\u2066f\u200bg'),
+    ).toBe('abcdefg');
+    // The zero-width joiner too: safety over emoji fidelity.
+    expect(stripTerminalControls('x\u200dy')).toBe('xy');
+    expect(stripTerminalControls('t\u001b]0;title\u0007\u001b[2Jext')).toBe(
+      'text',
+    );
   });
 });

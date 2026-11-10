@@ -18,7 +18,12 @@ export function terminalSafeText(value: string): string {
   }).join('');
 }
 
+// Format characters (`Cf`) include the zero-width joiner, so an emoji
+// sequence joined by one comes apart: safety over emoji fidelity, since the
+// same class carries the bidi overrides that can disguise text.
 const CONTROL_CHARACTER = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+/** Controls and separators that break text rather than hide it: tab, line and page breaks. */
+const WHITESPACE_CONTROL = /[\t\n\v\f\r\u0085\u2028\u2029]/u;
 
 function codeIn(character: string | undefined, low: number, high: number) {
   const code = character?.codePointAt(0);
@@ -54,14 +59,17 @@ function escapeEnd(characters: readonly string[], start: number): number {
 
 /**
  * Text with terminal escape sequences (CSI such as `ESC[2J`, OSC such as a
- * title or hyperlink, other two-character escapes) removed, and every other
- * control, format and separator character removed, for text shown where an
- * escaped `\u001b` would itself be noise. Unlike {@link terminalSafeText},
- * nothing of a removed sequence remains.
+ * title or hyperlink, other two-character escapes) removed, each run of
+ * tabs, line and page breaks between visible text replaced by one space
+ * (and dropped at either end), and every other control, format and
+ * separator character removed, for text shown where an escaped `\u001b`
+ * would itself be noise. Unlike {@link terminalSafeText}, nothing of a
+ * removed sequence remains.
  */
 export function stripTerminalControls(value: string): string {
   const characters = Array.from(value);
   let text = '';
+  let pendingSpace = false;
   let index = 0;
   while (index < characters.length) {
     const character = characters[index];
@@ -69,7 +77,12 @@ export function stripTerminalControls(value: string): string {
       index = escapeEnd(characters, index);
       continue;
     }
-    if (!CONTROL_CHARACTER.test(character)) text += character;
+    if (WHITESPACE_CONTROL.test(character)) pendingSpace = text !== '';
+    else if (!CONTROL_CHARACTER.test(character)) {
+      if (pendingSpace && !text.endsWith(' ')) text += ' ';
+      pendingSpace = false;
+      text += character;
+    }
     index += 1;
   }
   return text;
