@@ -28,7 +28,10 @@ dispatch is surfaced without automatic resend. See the
 
 Station reads the persisted `runtime` setting once at startup and creates the
 Strands framework when it is `strands`. With Station running, omit `--offline`
-and restart Station after the change.
+and restart Station after the change. Start a new home once before the offline
+write: on a home with no `config/app.json`, `--offline` creates the file with
+only `runtime`, so Station skips the values it seeds when it creates the file
+itself (see `loadAppConfigFile` in `src-server/domain/config-loader-app.ts`).
 
 ## What's Working
 
