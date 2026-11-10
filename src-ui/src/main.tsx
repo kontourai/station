@@ -54,6 +54,7 @@ import { ConversationWorkStateProvider } from './components/chat-dock/useConvers
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
 import { StartupHandoff } from './components/StartupHandoff';
+import { UndoableActionShortcut } from './components/undo/undoable-actions';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
 import { ActivityReviewProvider } from './contexts/ActivityReviewContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
@@ -374,7 +375,9 @@ function renderApp(): void {
                                                                 <WorkClaimsProvider>
                                                                   <ConversationWorkStateProvider>
                                                                     <InboxDismissUndo>
-                                                                      <App />
+                                                                      <UndoableActionShortcut>
+                                                                        <App />
+                                                                      </UndoableActionShortcut>
                                                                     </InboxDismissUndo>
                                                                   </ConversationWorkStateProvider>
                                                                 </WorkClaimsProvider>

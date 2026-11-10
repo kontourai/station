@@ -87,6 +87,17 @@ be rebound in Keyboard shortcuts. The command declines inside text fields,
 contenteditable editors, CodeMirror and terminals, preserving their own Undo.
 Dismissal does not stop work or delete conversation history.
 
+## Undo the last action
+
+After an action that offers **Undo** in a notice (currently deleting a Board or
+moving it into a Project), press **⌘Z** on macOS or **Ctrl+Z** on Windows and
+Linux to undo the most recent one. **Undo last action** can be rebound in
+Keyboard shortcuts. Like **Undo inbox dismissal**, which shares the default
+key, it declines inside text fields, contenteditable editors, CodeMirror and
+terminals, and does nothing when no notice is waiting. When both have
+something to undo, each press undoes one of them; choose **Undo** in a notice
+to pick which. If an Undo can no longer apply, the notice says why.
+
 ## Dispatch and limits
 
 The registry orders matching shortcuts by priority, then registry order.
