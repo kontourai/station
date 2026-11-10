@@ -312,6 +312,28 @@ export const COLOR_THEME_ID_PATTERN = '^[a-z][a-z0-9-]{0,47}$';
  */
 export type ThemePreference = 'light' | 'dark' | 'system';
 
+/**
+ * Interface density (#4692). `comfortable`, the default, reads at a 13px base;
+ * `compact` keeps the 12px sizes Station used before. Applied as
+ * `data-density` on the document root (src-ui/src/lib/display-preferences.ts).
+ */
+export type DensityPreference = 'comfortable' | 'compact';
+export const DENSITY_PREFERENCES = [
+  'comfortable',
+  'compact',
+] as const satisfies readonly DensityPreference[];
+
+/**
+ * Interface motion (#4692). `system`, the default, follows the device's
+ * `prefers-reduced-motion`; `reduce` reduces motion on this interface even
+ * when the device does not ask for it.
+ */
+export type MotionPreference = 'system' | 'reduce';
+export const MOTION_PREFERENCES = [
+  'system',
+  'reduce',
+] as const satisfies readonly MotionPreference[];
+
 export interface DeviceSettings {
   theme: ThemePreference;
   accentColor: string | null;
@@ -333,6 +355,10 @@ export interface DeviceSettings {
    * A custom `accentColor` still wins over it on Station's accent.
    */
   colorThemeAccent: string | null;
+  /** Text size and spacing density; see {@link DensityPreference}. */
+  density: DensityPreference;
+  /** Whether motion follows the device or is reduced; see {@link MotionPreference}. */
+  motion: MotionPreference;
   featureSettings: FeatureSettings;
   sttProvider: string;
   ttsProvider: string;
@@ -773,6 +799,25 @@ export const DEVICE_SETTINGS_REGISTRY = [
     description:
       'Named accent from the color theme’s palette. Unset uses the theme’s default accent.',
     defaultValue: null,
+  }),
+  // No prior storage keys: density and motion are new (#4692).
+  defineDeviceSetting({
+    key: 'density',
+    scope: 'account',
+    descriptor: { kind: 'enum', values: DENSITY_PREFERENCES },
+    label: 'Density',
+    help: 'Comfortable reads at a 13px base; Compact keeps the smaller 12px text.',
+    description: 'Interface text size and density: Comfortable or Compact.',
+    defaultValue: 'comfortable',
+  }),
+  defineDeviceSetting({
+    key: 'motion',
+    scope: 'account',
+    descriptor: { kind: 'enum', values: MOTION_PREFERENCES },
+    label: 'Motion',
+    help: 'System follows this device’s reduced-motion setting; Reduced keeps animations to a minimum.',
+    description: 'Interface motion: follow the device, or always reduce.',
+    defaultValue: 'system',
   }),
   defineDeviceSetting({
     key: 'featureSettings',
@@ -1321,6 +1366,8 @@ export const PREFERENCE_DEVICE_KEYS = [
   'colorTheme',
   'colorThemeFlavor',
   'colorThemeAccent',
+  'density',
+  'motion',
   'featureSettings',
   'sttProvider',
   'ttsProvider',

@@ -261,7 +261,9 @@ not a universal accessibility, keyboard or device certificate.
 At the shared mobile breakpoint, `responsive-surface-panel` raises the compact
 Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-md` (14px), and shared sheet headings and action-menu labels use
-`--k-text-lg` (18px). Desktop density remains owned by each surface.
+`--k-text-lg` (18px). Desktop density remains owned by each surface; the
+person's Comfortable or Compact choice sets only the base text tokens and
+never shrinks a touch target ([density and motion](theming.md#density-and-motion)).
 The embedded mobile Inbox uses two-line titles, project artwork and engine
 marks, short status labels, and a separate recency timestamp. Search opens
 from its icon without opening the keyboard on Inbox entry. The dock header

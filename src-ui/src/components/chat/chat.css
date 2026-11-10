@@ -394,9 +394,13 @@
    unmeasured margin against ordinary engine-to-engine font-metric variance
    (WKWebView, WebView2, WebKitGTK), not a verified number for any of them.
    `text-align: center` keeps a shorter label centered in the reserved slot
-   rather than flush left against empty trailing space. */
+   rather than flush left against empty trailing space.
+   #4692: the measurement was at a 12px `--text-base`, and a label's width
+   scales with its font size, so the reservation is written in `em`: exactly
+   116px at Compact's 12px and ~125.7px at Comfortable's 13px, keeping the
+   same headroom for "Awaiting approval" in both densities. */
 .app-toolbar__conn-state {
-  min-width: 116px;
+  min-width: calc(116em / 12);
   font-size: var(--text-base);
   font-weight: 500;
   /* #1536 C3: END, not centre. The reserved width above exists so a state
