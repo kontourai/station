@@ -5,7 +5,6 @@ import {
   sameRuntimePath,
   spawnedStationRoot,
 } from '@kontourai/station-shared/runtime-path-resolver';
-import { describeRetiredServiceFeatures } from './retired-features-option.js';
 import type {
   CommandRunner,
   ServiceFs,
@@ -19,15 +18,17 @@ import {
 /**
  * Render a service reinstall command only when the installed manifest carries
  * every setting that `service install` would otherwise replace.  A partial
- * command is dangerous: it may select another Station home.
+ * command is dangerous: it may select another Station home or reset a
+ * user-selected feature configuration.
  */
 export interface ServiceInstallConfiguration {
   allowedOrigins?: unknown;
   baseDir?: unknown;
   /**
-   * The `--features=` value a registration made before #3909 passes. It is
-   * not reproduced: `service run` refuses the option, so the remedy reports
-   * it as `retiredFeatures` and its command reinstalls without it.
+   * SUNSET(#3909): the `--features=` value of a registration installed before
+   * #3909, rendered back faithfully so a reinstall of a Strands registration
+   * meets the CLI's refusal instead of silently dropping it. Delete once those
+   * registrations are no longer supported. Installs since write none.
    */
   features?: unknown;
   host?: unknown;
@@ -38,47 +39,16 @@ export interface ServiceInstallConfiguration {
 }
 
 export function shellArgument(value: string): string {
-  // Comma included: allowed-origin and retired feature lists are
-  // comma-separated and a comma is not a shell metacharacter outside brace
-  // expansion, so quoting them adds noise to a command the operator is meant
-  // to read and paste.
+  // Comma included: feature lists are comma-separated and a comma is not a
+  // shell metacharacter outside brace expansion, so quoting them adds noise
+  // to a command the operator is meant to read and paste.
   if (/^[A-Za-z0-9_./:@,=-]+$/u.test(value)) return value;
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
-export type ServiceInstallRemedy = (
+export type ServiceInstallRemedy =
   | { command: string; reason?: undefined }
-  | { command: null; reason: string }
-) & {
-  /**
-   * Set when the registration still passes `--features=<value>`, which
-   * `service run` refuses since #3909: the service does not start until it
-   * is reinstalled (with `command`, which omits the option).
-   */
-  retiredFeatures?: { features: string; explanation: string };
-};
-
-/** Attach what a registration's retired `--features=` value means. */
-function withRetiredFeatures(
-  remedy: ServiceInstallRemedy,
-  configuration: ServiceInstallConfiguration,
-  fallbackBaseDir?: string,
-): ServiceInstallRemedy {
-  const { features } = configuration;
-  if (typeof features !== 'string' || features.length === 0) return remedy;
-  const home = configuration.baseDir ?? fallbackBaseDir;
-  return {
-    ...remedy,
-    retiredFeatures: {
-      features,
-      explanation: describeRetiredServiceFeatures(
-        features,
-        typeof home === 'string' ? home : undefined,
-        shellArgument,
-      ),
-    },
-  };
-}
+  | { command: null; reason: string };
 
 /**
  * The command a remedy runs: `launcher`, which exports `stationRoot` as
@@ -129,24 +99,6 @@ export function resolveServiceInstallRemedy(
   invocation: ServiceInstallInvocation = { launcher: 'station' },
   source: RemedySource = MANIFEST_SOURCE,
 ): ServiceInstallRemedy {
-  return withRetiredFeatures(
-    resolveServiceInstallCommand(
-      configuration,
-      fallbackBaseDir,
-      invocation,
-      source,
-    ),
-    configuration,
-    fallbackBaseDir,
-  );
-}
-
-function resolveServiceInstallCommand(
-  configuration: ServiceInstallConfiguration,
-  fallbackBaseDir: string | undefined,
-  invocation: ServiceInstallInvocation,
-  source: RemedySource,
-): ServiceInstallRemedy {
   const baseDir = configuration.baseDir ?? fallbackBaseDir;
   if (
     typeof configuration.instanceId !== 'string' ||
@@ -154,6 +106,9 @@ function resolveServiceInstallCommand(
     typeof configuration.serverPort !== 'number' ||
     typeof configuration.uiPort !== 'number' ||
     typeof configuration.host !== 'string' ||
+    (configuration.features !== undefined &&
+      configuration.features !== null &&
+      typeof configuration.features !== 'string') ||
     !Array.isArray(configuration.allowedOrigins) ||
     configuration.allowedOrigins.some((origin) => typeof origin !== 'string') ||
     (configuration.stationRoot !== undefined &&
@@ -207,6 +162,9 @@ function resolveServiceInstallCommand(
     `--port=${configuration.serverPort}`,
     `--ui-port=${configuration.uiPort}`,
     `--host=${shellArgument(configuration.host)}`,
+    ...(typeof configuration.features === 'string'
+      ? [`--features=${shellArgument(configuration.features)}`]
+      : []),
     ...configuration.allowedOrigins.map(
       (origin) => `--allowed-origin=${shellArgument(origin)}`,
     ),
@@ -245,7 +203,7 @@ function parseServiceRunArguments(
 ): ServiceInstallConfiguration | { unknownArgument: string } {
   const configuration: ServiceInstallConfiguration & {
     allowedOrigins: string[];
-  } = { allowedOrigins: [] };
+  } = { allowedOrigins: [], features: null };
   const port = (value: string) =>
     /^[1-9][0-9]{0,4}$/u.test(value) ? Number(value) : value;
   for (const argument of args) {
@@ -324,11 +282,7 @@ export function resolveInstalledUnitRemedy(
       ? dirname(dirname(entries[0]))
       : undefined;
   const owner = serviceInstallLauncher(installRoot);
-  if ('reason' in owner)
-    return withRetiredFeatures(
-      { command: null, reason: owner.reason },
-      run.configuration,
-    );
+  if ('reason' in owner) return { command: null, reason: owner.reason };
   return resolveServiceInstallRemedy(
     run.configuration,
     undefined,
@@ -359,12 +313,7 @@ export function resolveInstalledServiceRemedy(
         ? manifest.installRoot
         : undefined,
     );
-    if ('reason' in owner)
-      return withRetiredFeatures(
-        { command: null, reason: owner.reason },
-        manifest,
-        fallbackBaseDir,
-      );
+    if ('reason' in owner) return { command: null, reason: owner.reason };
     return resolveServiceInstallRemedy(manifest, fallbackBaseDir, owner);
   }
   let unit: InstalledServiceUnit;

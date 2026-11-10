@@ -165,6 +165,7 @@ import {
   promptYN,
   sleepSync,
 } from './platform.js';
+import { refuseStrandsRuntimeEnvironment } from './retired-features-option.js';
 import type { CommandRunner } from './service.js';
 import {
   renderServiceStatusCommand,
@@ -4787,6 +4788,9 @@ export async function waitForTcpOk(
 }
 
 export async function start(opts: StartOptions = {}): Promise<void> {
+  // Before any other check or effect: `start`, `dev` and `service run` all
+  // start Station through here.
+  refuseStrandsRuntimeEnvironment(process.env);
   const { build, force, watch } = opts;
   if (watch && build) {
     throw new Error(

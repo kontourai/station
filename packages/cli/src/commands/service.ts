@@ -168,9 +168,10 @@ export interface ServiceManifest {
   /** Complete config is persisted so drift guidance never resets a service. */
   baseDir?: string;
   /**
-   * Written by installs before #3909: the `--features=` value the unit
-   * passes, or null for none. Installs no longer write it; a string here
-   * means the registration passes an option `service run` now refuses.
+   * SUNSET(#3909): the `--features=` value an install before #3909 recorded
+   * (null for none). Still read so those manifests validate and their
+   * reinstall command repeats it; delete once they are no longer supported.
+   * Installs since write none.
    */
   features?: string | null;
   host: string;
@@ -1121,8 +1122,7 @@ function renderStatus(
     state.supervisor.enabled !== false &&
     state.supervisor.linger !== false &&
     state.ready &&
-    schedulingHealthy &&
-    remedy.retiredFeatures === undefined;
+    schedulingHealthy;
   const { state: _identityState, ...instance } = state.identity;
   const result = {
     healthy,
@@ -1130,9 +1130,6 @@ function renderStatus(
     instance,
     manifest: state.manifestDetails,
     registry: state.registry,
-    ...(remedy.retiredFeatures === undefined
-      ? {}
-      : { retiredFeatures: remedy.retiredFeatures }),
     scheduling,
     ...(servicePath === null ? {} : { servicePath }),
     unit: state.unit,
@@ -1221,14 +1218,6 @@ function renderStatus(
         : `               reinstall command unavailable: ${remedy.reason}`,
     );
   };
-  // #3909: a registration that still passes --features is refused by
-  // `service run`, so name why the service is down and how to reinstall.
-  if (remedy.retiredFeatures !== undefined) {
-    console.log(
-      `launch options refused: ${remedy.retiredFeatures.explanation}`,
-    );
-    printRemedy();
-  }
   if (scheduling.status === 'stale') {
     console.log(
       `scheduling     stale (${scheduling.observed}, expected ${scheduling.expected})`,
@@ -2124,8 +2113,7 @@ export async function runServiceCommand(
     observed.supervisor.enabled !== false &&
     observed.supervisor.linger !== false &&
     observed.ready &&
-    isSchedulingPolicyHealthy(scheduling) &&
-    remedy.retiredFeatures === undefined;
+    isSchedulingPolicyHealthy(scheduling);
   if (!healthy) {
     process.exitCode = 1;
   }

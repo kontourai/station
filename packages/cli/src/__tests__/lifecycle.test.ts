@@ -613,6 +613,7 @@ function writeStaleServiceManifest(
     `${JSON.stringify({
       allowedOrigins: [],
       baseDir: home,
+      features: null,
       host: '127.0.0.1',
       instanceId,
       platform,
@@ -2851,6 +2852,49 @@ describe('lifecycle instance state', () => {
     ).rejects.toThrow('--watch runs from source and builds nothing');
     expect(spawn).not.toHaveBeenCalled();
   });
+
+  // #3909: STATION_FEATURES=strands-runtime used to switch the server to
+  // Strands. The server no longer reads it, so start refuses it before any
+  // other check; any other value never changed the runtime and is ignored.
+  // `watch` + `build` makes the next check refuse too, so an ignored value
+  // reaches that refusal instead of starting anything.
+  it.each([
+    ['strands-runtime', true],
+    ['managed-chat-orchestration,strands-runtime', true],
+    ['managed-chat-orchestration', false],
+    ['', false],
+  ])(
+    'STATION_FEATURES=%s at start: refused=%s, before anything is spawned',
+    async (value, refused) => {
+      ensureDir(TEST_CWD);
+      ensureDir(TEST_ALT_HOME);
+      const spawn = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(), spawn },
+      });
+      vi.stubEnv('STATION_FEATURES', value);
+      try {
+        await expect(
+          lifecycle.start({
+            baseDir: TEST_ALT_HOME,
+            homeSource: '--base',
+            instanceName: 'features-env',
+            serverPort: 3343,
+            uiPort: 5375,
+            watch: true,
+            build: true,
+          }),
+        ).rejects.toThrow(
+          refused
+            ? /^STATION_FEATURES=.* no longer selects the Strands runtime: .*station config set runtime strands/
+            : /--watch runs from source and builds nothing/,
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(spawn).not.toHaveBeenCalled();
+    },
+  );
 
   it('refuses start --watch on a non-loopback host before anything is spawned (#3254)', async () => {
     ensureDir(TEST_CWD);

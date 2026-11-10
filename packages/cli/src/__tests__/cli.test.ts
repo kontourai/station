@@ -538,28 +538,45 @@ describe('runCli', () => {
     }
   });
 
-  // #3909: `--features` only set STATION_FEATURES, which nothing reads now.
-  // Lifecycle commands ignore unknown flags, so ignoring this one would start
-  // a Station that asked for Strands on VoltAgent; it is refused instead,
-  // before any lifecycle effect, and the refusal names the runtime setting.
+  // #3909: `--features=strands-runtime` used to switch the process to
+  // Strands. Lifecycle commands ignore unknown options, so ignoring it would
+  // start such a caller on VoltAgent without saying so; it is refused before
+  // any lifecycle effect. Every other value never changed the runtime and
+  // stays an ignored unknown option.
   test.each([
     ['start', ['start']],
     ['service install', ['service', 'install']],
     ['service run', ['service', 'run']],
   ])(
-    '%s refuses the retired --features option before any lifecycle effect',
+    '%s refuses a --features list naming strands-runtime and ignores any other',
     async (_label, command) => {
       const { lifecycle, runCli, service } = await loadCliWithLifecycleMocks();
-      for (const option of ['--features=strands-runtime', '--features']) {
+      for (const option of [
+        '--features=strands-runtime',
+        '--features=voice, strands-runtime',
+      ]) {
         await expect(
           runCli([...command, `--base=${STATION_HOME}`, option]),
         ).rejects.toThrow(
-          /^--features was removed: .*persisted `runtime` setting is the only runtime selector \(#3909\)\. .*station config set runtime strands/,
+          /no longer selects the Strands runtime: the persisted `runtime` setting is the only runtime selector \(#3909\)\. Run `station config set runtime strands`/,
         );
       }
       expect(lifecycle.start).not.toHaveBeenCalled();
       expect(lifecycle.clean).not.toHaveBeenCalled();
       expect(service.runServiceCommand).not.toHaveBeenCalled();
+
+      for (const option of [
+        '--features=managed-chat-orchestration',
+        '--features=strands-runtime-x',
+        '--features',
+      ]) {
+        await runCli([...command, `--base=${STATION_HOME}`, option]);
+      }
+      const runs =
+        command[0] === 'start'
+          ? lifecycle.start.mock.calls
+          : service.runServiceCommand.mock.calls;
+      expect(runs).toHaveLength(3);
     },
   );
 

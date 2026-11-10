@@ -2811,24 +2811,15 @@ origins on an `origins` line.
 server/UI identity endpoints. `--json` emits the same data for automation. An
 installed but inactive or unreachable service exits non-zero.
 
-`--features=<flags>` was removed (#3909). It only set `STATION_FEATURES`,
-whose last flag, `strands-runtime`, chose the Strands runtime for one process;
-the persisted [`runtime` setting](config.md) is now the only runtime
-selector. `start`, `dev`, `service install`, and `service run` refuse the
-option, in either form, before doing anything, and name
-`station config set runtime strands`. A service installed before #3909 with
-`--features` still passes it from its unit, so its `service run` refuses and
-Station does not start; it never starts on another runtime than the one the
-unit asked for. A launchd or systemd unit restarts it and logs the same
-refusal each time. A launcher-run service that receives this version as an
-update fails the trial and is rolled back to the previous version. `service
-status` prints a `launch options refused:` line naming the option, and, when
-it asked for `strands-runtime`, the `STATION_HOME=<home> station config set
-runtime strands --offline` command that keeps Strands, followed by the
-reinstall command (which omits `--features`). It reports `healthy: false` and
-exits 1, and `--json` carries the same as `retiredFeatures: { features,
-explanation }`. Run the `config set` command first: a reinstall without it
-starts the service on the persisted `runtime` setting, VoltAgent unless set.
+`--features=<flags>` was removed (#3909): the persisted
+[`runtime` setting](config.md) is the only runtime selector. A
+`--features=<list>` naming `strands-runtime` is refused by `start`,
+`service install` and `service run` (a service installed with it does not
+start until reinstalled without it), and so is a `STATION_FEATURES` value
+naming it when Station starts; `station dev` and `station setup local`
+reject `--features` as an unknown option. Any other value is ignored. To keep Strands, run
+`station config set runtime strands` and restart Station; see the
+[Strands migration note](../design/strands-migration.md).
 
 The unit's `PATH` is captured once, at install, from your login shell
 (`$SHELL -l`) plus the Node and system directories. A directory added to your
@@ -2857,7 +2848,8 @@ loaded job, and uses the environment of the shell that runs `status`.
 
 On macOS and Linux the reinstall command (here, for stale scheduling, and in
 `station upgrade` guidance) repeats the installed unit's own `service run`
-arguments: instance, home, ports, host and allowed origins. The
+arguments: instance, home, ports, host, any recorded `--features` value and
+allowed origins. The
 unit is named by instance alone, so a manifest in the home `status` read can
 describe an earlier install. On Windows the command comes from the manifest
 beside the task's wrapper. A service that runs an installer-owned archive is

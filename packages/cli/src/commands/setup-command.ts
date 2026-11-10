@@ -31,7 +31,6 @@ import {
   setDefaultProfile,
   upsertProfile,
 } from './profile-store.js';
-import { retiredFeaturesOptionError } from './retired-features-option.js';
 import type { ServiceInstallReceipt } from './service.js';
 
 const HOSTED_ENDPOINT = 'https://station.kontourai.io';
@@ -129,9 +128,6 @@ export async function runSetupCommand(
   const [kind, ...values] = positionals;
 
   if (kind === 'local') {
-    // #3909: refused here, before the profile genesis below, not by the
-    // service install it would reach.
-    if (flags.has('features')) throw retiredFeaturesOptionError('--features');
     assertFlags(flags, ['name', 'base', 'port', 'ui-port', 'instance', 'host']);
     if (values.length > 0)
       throw new Error(

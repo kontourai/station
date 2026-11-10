@@ -1,53 +1,40 @@
 /**
- * `--features=<flags>` only ever set `STATION_FEATURES`, and its last flag,
- * `strands-runtime`, was retired in #3909: the persisted `runtime` setting is
- * now the only runtime selector. The option is refused, not ignored, because
- * lifecycle commands ignore unknown flags, and ignoring this one would start
- * a Station that asked for Strands on VoltAgent without saying so.
+ * SUNSET(#3909): delete once lifecycle parsing rejects unknown options, or
+ * once registrations installed before #3909 are no longer supported.
+ *
+ * `strands-runtime`, passed as `--features=<list>` or in `STATION_FEATURES`,
+ * used to switch one process to the Strands runtime. Station no longer reads
+ * it, and lifecycle commands ignore unknown options, so a caller still
+ * passing it would run on VoltAgent without being told. Only that value is
+ * refused; any other `--features` or `STATION_FEATURES` value never changed
+ * the runtime and stays ignored.
  */
 
-const SET_RUNTIME = 'station config set runtime strands';
-
-/** True for `--features` in either spelling. */
-export function isRetiredFeaturesOption(arg: string): boolean {
-  return arg === '--features' || arg.startsWith('--features=');
-}
-
-/** Whether a retired `--features` value asked for the Strands runtime. */
-function requestsStrandsRuntime(features: string): boolean {
-  return features
+function listsStrandsRuntime(list: string | undefined): boolean {
+  return (list ?? '')
     .split(',')
-    .map((flag) => flag.trim())
-    .includes('strands-runtime');
+    .some((flag) => flag.trim() === 'strands-runtime');
 }
 
-/** The refusal for a command line that still passes `--features`. */
-export function retiredFeaturesOptionError(arg: string): Error {
+function refusal(input: string): Error {
   return new Error(
-    `${arg.split('=')[0]} was removed: Station no longer reads STATION_FEATURES, and the persisted \`runtime\` setting is the only runtime selector (#3909). To run Strands, set it with \`${SET_RUNTIME}\` (add --offline while Station is stopped) and restart Station. A Station service whose registration still passes --features does not start until it is reinstalled without it; \`station service status\` prints the reinstall command.`,
+    `${input} no longer selects the Strands runtime: the persisted \`runtime\` setting is the only runtime selector (#3909). Run \`station config set runtime strands\` (with --offline while Station is stopped), then start Station, or reinstall its service, without it.`,
   );
 }
 
-/**
- * What `service status` and upgrade guidance say about an installed service
- * that still passes `--features=<value>`: it cannot start, and how to keep
- * the runtime it asked for before reinstalling. `home` is the service's
- * Station home, when known.
- */
-export function describeRetiredServiceFeatures(
-  features: string,
-  home: string | undefined,
-  shellArgument: (value: string) => string,
-): string {
-  const strands = requestsStrandsRuntime(features);
-  const setRuntime =
-    home === undefined
-      ? `${SET_RUNTIME} --offline`
-      : `STATION_HOME=${shellArgument(home)} ${SET_RUNTIME} --offline`;
-  return [
-    `this service passes --features=${shellArgument(features)}, which Station no longer accepts (#3909), so it does not start until it is reinstalled without it.`,
-    strands
-      ? `It asked for the Strands runtime: to keep Strands, run "${setRuntime}" before reinstalling, or it runs on the persisted \`runtime\` setting (VoltAgent unless set).`
-      : 'No other value of --features changed what Station ran.',
-  ].join(' ');
+/** Refuses a `--features=<list>` argument that names `strands-runtime`. */
+export function refuseStrandsRuntimeOption(arg: string): void {
+  if (
+    arg.startsWith('--features=') &&
+    listsStrandsRuntime(arg.slice('--features='.length))
+  ) {
+    throw refusal(arg);
+  }
+}
+
+/** Refuses a `STATION_FEATURES` value that names `strands-runtime`. */
+export function refuseStrandsRuntimeEnvironment(env: NodeJS.ProcessEnv): void {
+  if (listsStrandsRuntime(env.STATION_FEATURES)) {
+    throw refusal(`STATION_FEATURES=${env.STATION_FEATURES}`);
+  }
 }

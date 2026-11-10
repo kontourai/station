@@ -417,7 +417,6 @@ export async function startStation(
     /** Explicit inherited environment; live security fixtures pass a sanitized set. */
     environment?: NodeJS.ProcessEnv;
   } = {},
-  runtimeRestarted = false,
 ): Promise<string> {
   const args = [
     'start',
@@ -492,11 +491,6 @@ export async function startStation(
     const headers = e2eOperatorAuthorizationHeaders(operatorCredential);
     const persisted = await persistedRuntimeFramework(live, headers);
     if (persisted !== options.runtimeFramework) {
-      if (runtimeRestarted) {
-        throw new Error(
-          `Nested Station booted with runtime ${persisted} after persisting ${options.runtimeFramework}`,
-        );
-      }
       const response = await fetch(`${live.api}/config/app`, {
         method: 'PUT',
         headers: { ...headers, 'Content-Type': 'application/json' },
@@ -509,7 +503,12 @@ export async function startStation(
         );
       }
       await stopStation(live, { environment: options.environment });
-      return startStation(live, false, options, true);
+      // The restart boots on the persisted value; callers assert the
+      // runtime it reports (`/api/system/runtime`).
+      return startStation(live, false, {
+        ...options,
+        runtimeFramework: undefined,
+      });
     }
   }
   return bootstrapMatches[0]![1]!;

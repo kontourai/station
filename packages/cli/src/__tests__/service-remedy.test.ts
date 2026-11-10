@@ -9,6 +9,7 @@ import {
 
 const completeConfiguration = {
   allowedOrigins: ['https://station.example.test'],
+  features: 'agent-mode,voice',
   host: '127.0.0.1',
   instanceId: 'service-test',
   serverPort: 4242,
@@ -63,7 +64,7 @@ describe('service reinstall STATION_ROOT (#2663 review M1)', () => {
       stationRoot,
     });
     expect(remedy.command).toBe(
-      "STATION_ROOT='/srv/Station team'\"'\"'s root' station service install --instance=service-test --base=/srv/station-home --port=4242 --ui-port=5275 --host=127.0.0.1 --allowed-origin=https://station.example.test",
+      "STATION_ROOT='/srv/Station team'\"'\"'s root' station service install --instance=service-test --base=/srv/station-home --port=4242 --ui-port=5275 --host=127.0.0.1 --features=agent-mode,voice --allowed-origin=https://station.example.test",
     );
     const executed = runRenderedCommand(remedy.command!);
     expect(executed.stationRoot).toBe(stationRoot);
@@ -144,7 +145,7 @@ describe('service remedy rendering', () => {
     expect(
       renderServiceInstallRemedy(completeConfiguration, '/srv/station=blue'),
     ).toBe(
-      'station service install --instance=service-test --base=/srv/station=blue --port=4242 --ui-port=5275 --host=127.0.0.1 --allowed-origin=https://station.example.test',
+      'station service install --instance=service-test --base=/srv/station=blue --port=4242 --ui-port=5275 --host=127.0.0.1 --features=agent-mode,voice --allowed-origin=https://station.example.test',
     );
   });
 
@@ -156,55 +157,38 @@ describe('service remedy rendering', () => {
     });
 
     expect(command).toBe(
-      "station service install --instance=service-test --base='/srv/Station team'\"'\"'s=blue' --port=4242 --ui-port=5275 --host=127.0.0.1 --allowed-origin=https://station.example.test",
+      "station service install --instance=service-test --base='/srv/Station team'\"'\"'s=blue' --port=4242 --ui-port=5275 --host=127.0.0.1 --features=agent-mode,voice --allowed-origin=https://station.example.test",
     );
     expect(
       parseLifecycleArgs(parseRenderedInstallArguments(command!)),
     ).toMatchObject({ baseDir });
   });
 
-  // #3909: a registration written before the flag ended may still pass
-  // --features. The reinstall command drops it (the CLI refuses it now), and
-  // the remedy says what the value asked for.
-  test('drops a retired --features value from the reinstall command and explains it', () => {
-    const remedy = resolveServiceInstallRemedy({
-      ...completeConfiguration,
-      baseDir: "/srv/Station team's home",
+  // #3909: an install since writes no `features`; one before it recorded a
+  // value or null. The command repeats a recorded value faithfully (the CLI
+  // refuses it only for strands-runtime) and adds nothing otherwise.
+  test('repeats a recorded --features value and treats an absent or null one as none', () => {
+    const base = { ...completeConfiguration, baseDir: '/srv/station-home' };
+    const plain =
+      'station service install --instance=service-test --base=/srv/station-home --port=4242 --ui-port=5275 --host=127.0.0.1 --allowed-origin=https://station.example.test';
+    expect(renderServiceInstallRemedy({ ...base, features: undefined })).toBe(
+      plain,
+    );
+    expect(renderServiceInstallRemedy({ ...base, features: null })).toBe(plain);
+    const strands = renderServiceInstallRemedy({
+      ...base,
       features: 'strands-runtime',
     });
-    expect(remedy.command).toBe(
-      "station service install --instance=service-test --base='/srv/Station team'\"'\"'s home' --port=4242 --ui-port=5275 --host=127.0.0.1 --allowed-origin=https://station.example.test",
+    expect(strands).toBe(
+      plain.replace(
+        '--host=127.0.0.1',
+        '--host=127.0.0.1 --features=strands-runtime',
+      ),
     );
-    // The command is one the current CLI accepts.
-    expect(
-      parseLifecycleArgs(parseRenderedInstallArguments(remedy.command!)),
-    ).toMatchObject({ baseDir: "/srv/Station team's home" });
-    expect(remedy.retiredFeatures).toEqual({
-      features: 'strands-runtime',
-      explanation:
-        "this service passes --features=strands-runtime, which Station no longer accepts (#3909), so it does not start until it is reinstalled without it. It asked for the Strands runtime: to keep Strands, run \"STATION_HOME='/srv/Station team'\"'\"'s home' station config set runtime strands --offline\" before reinstalling, or it runs on the persisted `runtime` setting (VoltAgent unless set).",
-    });
-
-    const other = resolveServiceInstallRemedy({
-      ...completeConfiguration,
-      baseDir: '/srv/station-home',
-      features: 'agent-mode,voice',
-    });
-    expect(other.command).not.toContain('--features');
-    expect(other.retiredFeatures?.explanation).toContain(
-      'No other value of --features changed what Station ran.',
-    );
-    expect(other.retiredFeatures?.explanation).not.toContain('config set');
-
-    for (const features of [null, undefined, '']) {
-      expect(
-        resolveServiceInstallRemedy({
-          ...completeConfiguration,
-          baseDir: '/srv/station-home',
-          features,
-        }),
-      ).not.toHaveProperty('retiredFeatures');
-    }
+    expect(() =>
+      parseLifecycleArgs(parseRenderedInstallArguments(strands!)),
+    ).toThrow(/no longer selects the Strands runtime/);
+    expect(renderServiceInstallRemedy({ ...base, features: 42 })).toBeNull();
   });
 
   test('renders a read-only status command only for a known instance and home', () => {

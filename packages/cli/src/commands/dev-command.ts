@@ -21,10 +21,6 @@ import {
   resolveWorktreePath,
 } from './dev-ports.js';
 import { clean, start } from './lifecycle.js';
-import {
-  isRetiredFeaturesOption,
-  retiredFeaturesOptionError,
-} from './retired-features-option.js';
 
 /** Hosts a dev server binds to; a genuinely-taken port shows up on one of them. */
 const DEV_PORT_PROBE_HOSTS = ['127.0.0.1', '::1'] as const;
@@ -170,8 +166,6 @@ export async function runDevCommand(
       portOffsetFlag = Number(value);
     } else if (arg.startsWith('--host=')) {
       host = arg.slice('--host='.length);
-    } else if (isRetiredFeaturesOption(arg)) {
-      throw retiredFeaturesOptionError(arg);
     } else if (arg === '--dry-run') {
       dryRun = true;
     } else if (arg === '--build') {

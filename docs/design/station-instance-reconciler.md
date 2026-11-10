@@ -17,9 +17,8 @@ The platform Adapter owns the implementation facts behind that Interface:
 manifest presence, orphaned registration, supervisor state, the exact
 authenticated Station identity, readiness, and configured ports. `station
 service status` takes supervisor and authenticated identity state from that
-single `InstanceState`. It also reports separate scheduling-policy, retired
-`--features` launch-option (#3909) and installed PATH-drift observations and,
-for a launcher-run archive, the update read from
+single `InstanceState`. It also reports separate scheduling-policy and installed
+PATH-drift observations and, for a launcher-run archive, the update read from
 that install's runtime files (`update` in `--json`); these do not replace the
 reconciler's lifecycle state. When the installed launchd or systemd unit runs
 from another home than the one `status` read, that `InstanceState` is

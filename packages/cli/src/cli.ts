@@ -105,10 +105,7 @@ import {
 } from './commands/lifecycle.js';
 import { doctor, doctorJson } from './commands/lifecycle-doctor.js';
 import { runStationsCommand } from './commands/profile-command.js';
-import {
-  isRetiredFeaturesOption,
-  retiredFeaturesOptionError,
-} from './commands/retired-features-option.js';
+import { refuseStrandsRuntimeOption } from './commands/retired-features-option.js';
 import {
   parseAllowedOriginFlag,
   runServiceCommand,
@@ -233,7 +230,7 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
         `Lifecycle option ${arg} requires the ${arg}=<value> form.`,
       );
     }
-    if (isRetiredFeaturesOption(arg)) throw retiredFeaturesOptionError(arg);
+    refuseStrandsRuntimeOption(arg);
   }
 
   const channelDefaults = {
