@@ -129,7 +129,9 @@ describe('install-registry helpers', () => {
           2,
         ),
       );
-      expect(readdirSync(join(home, 'config'))).toEqual(['app.json']);
+      // The publish leaves no temporary file beside the config.
+      const tempConfigDir = join(home, 'config');
+      expect(readdirSync(tempConfigDir)).toEqual(['app.json']);
       log.mockRestore();
     });
 
