@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-10T02:00:12Z | nightly-npm | 0.11.0-nightly.20261110.42738156510 | `d318c4d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42738156510) |
 | 2026-11-09T18:02:13Z | nightly-npm | 0.11.0-nightly.20261109.42668201934 | `309f223` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42668201934) |
 | 2026-11-09T07:25:06Z | nightly-npm | 0.11.0-nightly.20261109.42577827028 | `427db9a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42577827028) |
 | 2026-11-09T01:08:09Z | nightly-desktop | 0.1.11-nightly.20261109 | `96d457f` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42538339733) |
@@ -446,6 +447,32 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-10T02:00:12Z · nightly-npm · 0.11.0-nightly.20261110.42738156510
+
+- Ship SHA: `d318c4d7f802789b018288bebc2a87e840734f10`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261110.42738156510 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `309f223` ([full sha](https://github.com/kontourai/station/commit/309f2231d40cf86b6d2ad8c6ed4434b02fbf6e5d)):
+
+**Features**
+
+- [#4737](https://github.com/kontourai/station/pull/4737) feat(dev): seed a dev Station home from a pruned read-only snapshot
+
+**Fixes**
+
+- [#4757](https://github.com/kontourai/station/pull/4757) fix: prime server scenario sampling before synchronous actions
+- [#4751](https://github.com/kontourai/station/pull/4751) fix(desktop): validate Windows managed-update policy ACLs
+- [#4754](https://github.com/kontourai/station/pull/4754) fix(ollama): report a failed stream's message, not [object Object]
+
+**Other**
+
+- [#4731](https://github.com/kontourai/station/pull/4731) chore(scripts): enforce windowsHide on child-process launches with a ratchet
+- [#4753](https://github.com/kontourai/station/pull/4753) test(gallery): retain bounded overlap diagnostics
 
 ## 2026-11-09T18:02:13Z · nightly-npm · 0.11.0-nightly.20261109.42668201934
 
