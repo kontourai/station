@@ -169,6 +169,16 @@ async function resolveFileMemoryOccupancy(
 const INTERRUPTED_TURN_RETRY_DELAYS_MS: readonly number[] = [250, 500, 1_000];
 
 /**
+ * What follows the bounded backoff: one pass a minute over the records still
+ * pending, until they recover or the service stops. An unrecovered row reads
+ * as a running turn (and an `indeterminate` one refuses new sends), and
+ * nothing tells the person to restart Station, so this process keeps trying.
+ * The same interval `SessionRecoveryCoordinator` re-asks an unreadable store
+ * on (`SOURCE_TERMINAL_FENCE_RETRY_MS`).
+ */
+const INTERRUPTED_TURN_SLOW_RETRY_MS = 60_000;
+
+/**
  * #3562: how many `turn.started` rows after a claim `deriveOwnTurn` reads.
  * A dispatch that died mid-invocation leaves a handful at most; past this
  * bound the owner is not guessed (banner, no abort).
@@ -340,17 +350,22 @@ export class InterruptedTurnRecovery {
   /** Aborted by `stop()`: no further pass runs and a backoff ends early. */
   private readonly stopSignal = new AbortController();
   private readonly recovered: RecoveredInterruptedTurn[] = [];
+  /** Armed slow retries (one per `consume` that left records pending). */
+  private readonly slowRetries = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(private readonly deps: InterruptedTurnRecoveryDeps) {}
 
   /**
    * #3562: the service is shutting down. A pass already inside a record
    * finishes that record; no further record or retry pass starts, and a
-   * backoff in progress ends now rather than after its delay. Unfinished rows
-   * stay for the next boot, which is the durable path.
+   * backoff in progress ends now rather than after its delay. The slow retry
+   * ends too. Unfinished rows stay for the next boot, which is the durable
+   * path.
    */
   stop(): void {
     this.stopSignal.abort();
+    for (const timer of this.slowRetries) clearTimeout(timer);
+    this.slowRetries.clear();
   }
 
   /** #4512: the turns `consume` has settled so far, in the order it did. */
@@ -488,17 +503,84 @@ export class InterruptedTurnRecovery {
       // a restart finds again; this is the one line saying so for this boot.
       this.deps.logger.warn(
         abandoned === undefined
-          ? 'Interrupted-turn recovery gave up for this boot; the boundary rows stay for the next boot'
+          ? 'Interrupted-turn recovery did not finish in its first attempts; it retries every minute, and the boundary rows stay for the next boot'
           : 'Interrupted-turn recovery stopped before it finished; the boundary rows stay for the next boot',
         {
           boundaryIds: unrecovered,
           ...(abandoned === undefined
-            ? { attempts: INTERRUPTED_TURN_RETRY_DELAYS_MS.length + 1 }
+            ? {
+                attempts: INTERRUPTED_TURN_RETRY_DELAYS_MS.length + 1,
+                retryInMs: INTERRUPTED_TURN_SLOW_RETRY_MS,
+              }
             : { reason: abandoned }),
         },
       );
+      // Not awaited: the caller is told now what this boot's bounded passes
+      // left, and the slow retry carries on behind it.
+      if (abandoned === undefined)
+        this.armSlowRetry(drainedFrom, interrupted, pending);
     }
     return unrecovered;
+  }
+
+  /**
+   * One more pass over `pending` in a minute, and again after that while any
+   * record is left. Unref'd, so it never holds the process open, and cleared
+   * by `stop()`. Each pass re-decides from the log exactly as the bounded
+   * retries do. A turn it recovers is added to `recoveredTurns()`, after
+   * `consume` returned, so a caller that read the list when `consume`
+   * settled (restart continuation) does not see it. A store closed without
+   * `stop()` keeps this re-arming; the service stops it first.
+   */
+  private armSlowRetry(
+    drainedFrom: EventStore,
+    interrupted: readonly SessionTurnBoundaryRecord[],
+    pending: readonly SessionTurnBoundaryRecord[],
+  ): void {
+    if (this.stopSignal.signal.aborted) return;
+    const timer = setTimeout(() => {
+      this.slowRetries.delete(timer);
+      void this.slowRetryPass(drainedFrom, interrupted, pending);
+    }, INTERRUPTED_TURN_SLOW_RETRY_MS);
+    timer.unref?.();
+    this.slowRetries.add(timer);
+  }
+
+  private async slowRetryPass(
+    drainedFrom: EventStore,
+    interrupted: readonly SessionTurnBoundaryRecord[],
+    pending: readonly SessionTurnBoundaryRecord[],
+  ): Promise<void> {
+    if (this.stopSignal.signal.aborted) return;
+    // The rows belong to the store they were drained from, as in `consume`.
+    if (this.deps.eventStore() !== drainedFrom) {
+      this.deps.logger.warn(
+        'Interrupted-turn recovery stopped before it finished; the boundary rows stay for the next boot',
+        {
+          boundaryIds: pending.map((record) => record.boundaryId),
+          reason: 'event-store-changed',
+        },
+      );
+      return;
+    }
+    let remaining: readonly SessionTurnBoundaryRecord[] = pending;
+    try {
+      remaining = await this.recoverPass(drainedFrom, interrupted, pending);
+    } catch (error) {
+      // `recoverPass` contains each record's failure; this is for the pass
+      // itself, so a timer callback can never reject unhandled.
+      this.deps.logger.warn('Interrupted-turn recovery retry failed', {
+        error: errorMessage(error),
+      });
+    }
+    if (remaining.length === 0) {
+      this.deps.logger.warn(
+        'Interrupted-turn recovery finished on a later retry',
+        { boundaryIds: pending.map((record) => record.boundaryId) },
+      );
+      return;
+    }
+    this.armSlowRetry(drainedFrom, interrupted, remaining);
   }
 
   /**
@@ -583,7 +665,8 @@ export class InterruptedTurnRecovery {
           // not block a claim) before its own `turn.started` is persisted, and
           // a pass landing in between banners `needs_input`. It self-heals,
           // because that start then folds the session back to running. It is
-          // the first pass's window, only longer.
+          // the first pass's window, only longer; each slow-retry pass opens
+          // it again for the rows still pending.
           const ownTurnStarted =
             ownTurnId !== undefined &&
             eventStore

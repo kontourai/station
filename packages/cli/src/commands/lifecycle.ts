@@ -146,6 +146,7 @@ import {
   type PackagedRuntimeChannel,
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
+import { isLoopbackSelfAuthEndpoint } from './local-self-auth.js';
 import {
   assertManagedInheritedStationHost,
   installedRemoteClientsLimit,
@@ -165,6 +166,8 @@ import {
   promptYN,
   sleepSync,
 } from './platform.js';
+import { getProfileCredentialStore } from './profile-credentials.js';
+import { readProfileStore } from './profile-store.js';
 import type { CommandRunner } from './service.js';
 import {
   renderServiceStatusCommand,
@@ -183,6 +186,7 @@ import {
   runSupervisorHandoff,
   SUPERVISOR_BUNDLE_FILENAME,
 } from './supervisor-launch.js';
+import { terminalSafeText } from './terminal-safe.js';
 import {
   UI_PROXY_BACKEND_PREFIXES,
   UI_PROXY_EXCLUDED_PREFIXES,
@@ -5684,6 +5688,139 @@ function findRunningTarget(
   return match;
 }
 
+/** How long `station restart` waits for the instance to list its turns. */
+const RUNNING_TURNS_READ_TIMEOUT_MS = 3_000;
+/** Titles listed before the rest are only counted. */
+const RUNNING_TURN_TITLES_SHOWN = 10;
+
+/**
+ * The agent turns running on an instance, as its
+ * `GET /api/system/core-update/running-turns` lists them for this caller.
+ * `hiddenCount` counts the ones in sessions the caller may not read.
+ */
+export interface RunningTurnsReport {
+  turns: Array<{ title: string | null; engine: string }>;
+  hiddenCount: number;
+}
+
+/**
+ * The Station saved on this device whose endpoint is this instance (an
+ * IP-literal loopback origin on its server port), with the credential it was
+ * paired or self-authorized with. Loopback is not authority to the server,
+ * so without one there is nothing to read the route with; no credential is
+ * minted here, and none saved for any other endpoint is ever sent.
+ */
+function savedInstanceCredential(
+  record: Pick<InstanceStateRecord, 'serverPort'>,
+): { apiBase: string; credential: string } | undefined {
+  for (const profile of readProfileStore().profiles) {
+    if (!profile.credentialRef) continue;
+    if (!isLoopbackSelfAuthEndpoint(profile.endpoint)) continue;
+    const endpoint = new URL(profile.endpoint);
+    if (endpoint.protocol !== 'http:') continue;
+    if (Number(endpoint.port) !== record.serverPort) continue;
+    const credential = getProfileCredentialStore().get(profile.credentialRef);
+    if (credential) return { apiBase: endpoint.origin, credential };
+  }
+  return undefined;
+}
+
+/**
+ * What a restart of this instance is about to interrupt, read from the
+ * instance itself. Best effort, and never a reason to hold the restart:
+ * `undefined` when this device holds no credential for the instance, when it
+ * does not answer in time or refuses, or when its answer is not the route's
+ * shape (an older server).
+ */
+export async function readRunningTurns(
+  record: Pick<InstanceStateRecord, 'serverPort'>,
+  options: { timeoutMs?: number } = {},
+): Promise<RunningTurnsReport | undefined> {
+  try {
+    const saved = savedInstanceCredential(record);
+    if (!saved) return undefined;
+    const response = await fetch(
+      `${saved.apiBase}/api/system/core-update/running-turns`,
+      {
+        redirect: 'error',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${saved.credential}`,
+        },
+        signal: AbortSignal.timeout(
+          options.timeoutMs ?? RUNNING_TURNS_READ_TIMEOUT_MS,
+        ),
+      },
+    );
+    if (!response.ok) return undefined;
+    const body = (await response.json()) as {
+      turns?: unknown;
+      hiddenCount?: unknown;
+    } | null;
+    if (!body || !Array.isArray(body.turns)) return undefined;
+    return {
+      turns: body.turns.flatMap(
+        (turn: { title?: unknown; engine?: unknown }) =>
+          turn && typeof turn.engine === 'string' && turn.engine
+            ? [
+                {
+                  title:
+                    typeof turn.title === 'string' && turn.title
+                      ? turn.title
+                      : null,
+                  engine: turn.engine,
+                },
+              ]
+            : [],
+      ),
+      hiddenCount:
+        typeof body.hiddenCount === 'number' &&
+        Number.isSafeInteger(body.hiddenCount) &&
+        body.hiddenCount > 0
+          ? body.hiddenCount
+          : 0,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The lines that tell the operator what is about to be interrupted: how many
+ * turns, the titles this device may read, and a count of the rest. Empty when
+ * nothing is running or nothing could be read. A title is another session's
+ * text, so it is escaped for the terminal.
+ */
+export function describeRunningTurns(
+  report: RunningTurnsReport | undefined,
+): string[] {
+  if (!report) return [];
+  const total = report.turns.length + report.hiddenCount;
+  if (total === 0) return [];
+  const lines = [
+    `${total} agent ${total === 1 ? 'turn is' : 'turns are'} running and will be interrupted:`,
+  ];
+  for (const turn of report.turns.slice(0, RUNNING_TURN_TITLES_SHOWN)) {
+    lines.push(
+      `  · ${terminalSafeText(turn.title ?? 'Untitled session')} (${terminalSafeText(turn.engine)})`,
+    );
+  }
+  const unlisted = report.turns.length - RUNNING_TURN_TITLES_SHOWN;
+  if (unlisted > 0) lines.push(`  · ${unlisted} more`);
+  if (report.hiddenCount > 0) {
+    const sessions =
+      report.hiddenCount === 1
+        ? 'a session this device may not read'
+        : 'sessions this device may not read';
+    lines.push(
+      report.turns.length > 0
+        ? `  · ${report.hiddenCount} more in ${sessions}`
+        : `  · ${report.hiddenCount} in ${sessions}`,
+    );
+  }
+  return lines;
+}
+
 function describeDirectStart(record: InstanceStateRecord): string {
   return `Station instance ${record.instanceId} runs without the process supervisor (an earlier CLI started it, or ${DIRECT_LAUNCH_ENV}=1 was set)`;
 }
@@ -5692,8 +5829,10 @@ function describeDirectStart(record: InstanceStateRecord): string {
  * `station restart`: hands the instance to a new core server generation
  * through its supervisor. Connections wait in the supervisor's listeners
  * while the generations swap; a generation that fails to come up is rolled
- * back to the entry that was serving. Resolves once the new generation
- * serves; throws when the handoff rolled back or was refused.
+ * back to the entry that was serving. Agent turns do not survive the swap:
+ * the ones running are printed first, when this device can read them.
+ * Resolves once the new generation serves; throws when the handoff rolled
+ * back or was refused.
  */
 export async function restart(opts: StopOptions = {}): Promise<void> {
   const record = findRunningTarget(opts, 'restart');
@@ -5702,6 +5841,10 @@ export async function restart(opts: StopOptions = {}): Promise<void> {
       `${describeDirectStart(record)}, so it cannot restart in place. Restart it with \`station start --force\`, passing the options it was started with.`,
     );
   }
+  // The handoff stops the serving generation's engines: say what that
+  // interrupts before it happens. Nothing is asked, and nothing waits on it.
+  for (const line of describeRunningTurns(await readRunningTurns(record)))
+    console.log(line);
   console.log(`Handing ${record.instanceId} to a new core generation…`);
   const result = await runSupervisorHandoff(
     supervisorTarget(record),
