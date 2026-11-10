@@ -12,31 +12,40 @@
  * comment), so a change to the adapter's layering is not seen here.
  */
 import {
+  chmodSync,
   lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { CredentialProfileEnvironmentError } from '../../../providers/app-home/app-home-profiles.js';
+import {
+  appHomeProfileDir,
+  CredentialProfileEnvironmentError,
+} from '../../../providers/app-home/app-home-profiles.js';
 import {
   createCredentialProfileAppHomeEnvPeek,
   createCredentialProfileAppHomeEnvResolver,
 } from '../../../providers/app-home/credential-profile-env.js';
-import { credentialProfileStorageId } from '../../../providers/app-home/credential-profile-registry.js';
+import {
+  credentialProfileAppHomeDir,
+  credentialProfileStorageId,
+} from '../../../providers/app-home/credential-profile-registry.js';
 import { engineProxyLaunch } from '../../../services/connections/engine-proxy-routing.js';
 import { resolveHomeDir } from '../../../utils/paths.js';
-import {
-  createStationConfinementPreflight,
-  type StationConfinementPreflightResolvers,
-} from '../confinement-preflight.js';
+import { createStationConfinementPreflight } from '../confinement-preflight.js';
 import { canonicalPath } from '../seatbelt.js';
 
 type Env = Record<string, string>;
+type StationConfinementPreflightResolvers = Parameters<
+  typeof createStationConfinementPreflight
+>[0];
 type Settings = {
   credentialRecovery?: unknown;
   config?: Record<string, unknown>;
@@ -126,7 +135,10 @@ describe('#4774: createStationConfinementPreflight', () => {
     writeFileSync(join(dir, '.credentials.json'), JSON.stringify(OAUTH));
   }
 
-  describe('creates, writes and modifies nothing', () => {
+  // What the snapshot covers: the temporary Station home only. Writes
+  // elsewhere (the app config a real runtime loads, the Seatbelt probe's
+  // OS temporary directory) are outside it.
+  describe('creates, writes and modifies nothing under the Station home', () => {
     test.each([
       ['the app-home opt-in (useAppHome)', { config: { useAppHome: true } }],
       [
@@ -314,6 +326,118 @@ describe('#4774: createStationConfinementPreflight', () => {
         appliesTo: SCOPE,
       });
       expect(snapshot(stationHome)).toEqual(before);
+    });
+
+    test("a Station home given through a symlink is canonicalized, so the profile's confined home is found", async () => {
+      // The runtime hands the factory `resolveHomeDir()`, which need not be
+      // canonical (macOS `/var` is a link to `/private/var`); the start
+      // canonicalizes it, and so must the factory.
+      const linkParent = makeTempDir('station-preflight-link-');
+      const linkedHome = join(linkParent, 'linked-home');
+      symlinkSync(stationHome, linkedHome);
+      expect(canonicalPath(linkedHome)).toBe(stationHome);
+      enroll(credentialProfileStorageId('claude', 'work'));
+      const settings = {
+        credentialRecovery: {
+          profiles: [{ ref: 'work' }],
+          activeProfileRef: 'work',
+        },
+      };
+      expect(
+        await claudeCredential(
+          resolvers({ settings, stationHome: () => linkedHome }),
+        ),
+      ).toEqual({ state: 'available', source: 'config-dir', appliesTo: SCOPE });
+    });
+
+    describe('where a start would be refused, the answer is unverified (#4774)', () => {
+      const PROFILE = {
+        credentialRecovery: {
+          profiles: [{ ref: 'work' }],
+          activeProfileRef: 'work',
+        },
+      };
+
+      async function expectRefusedLikeStart() {
+        // The start's own resolver refuses here: every start without its
+        // own credential profile fails before confinement is decided.
+        await expect(
+          createCredentialProfileAppHomeEnvResolver(settingsLoader(PROFILE))(),
+        ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+        const before = snapshot(stationHome);
+        const credential = await claudeCredential(
+          resolvers({
+            settings: PROFILE,
+            inherited: { ANTHROPIC_API_KEY: 'fixture-key' },
+          }),
+        );
+        expect(credential).toEqual({
+          state: 'unverified',
+          reason: expect.stringContaining('a start fails'),
+          appliesTo: SCOPE,
+        });
+        if (credential?.state === 'unverified')
+          expect(credential.reason).not.toMatch(/[\\/]/);
+        expect(snapshot(stationHome)).toEqual(before);
+      }
+
+      test("the active profile's home path is a regular file", async () => {
+        mkdirSync(join(stationHome, 'app-homes'), { recursive: true });
+        writeFileSync(
+          credentialProfileAppHomeDir('claude', 'work', stationHome),
+          'not a directory',
+        );
+        await expectRefusedLikeStart();
+      });
+
+      test('the app-homes directory is not writable', async (context) => {
+        const root = join(stationHome, 'app-homes');
+        mkdirSync(root, { recursive: true });
+        chmodSync(root, 0o555);
+        try {
+          const probe = join(root, 'mode-probe');
+          let enforced = true;
+          try {
+            mkdirSync(probe);
+            rmSync(probe, { recursive: true, force: true });
+            enforced = false;
+          } catch {}
+          if (!enforced)
+            context.skip(
+              'this host does not enforce a read-only directory mode (running as root?)',
+            );
+          await expectRefusedLikeStart();
+        } finally {
+          chmodSync(root, 0o755);
+        }
+      });
+
+      test('the legacy app-home opt-in degrades to the global configuration, as its start does', async () => {
+        mkdirSync(join(stationHome, 'app-homes'), { recursive: true });
+        writeFileSync(
+          appHomeProfileDir('claude', stationHome),
+          'not a directory',
+        );
+        const settings = { config: { useAppHome: true } };
+        await expect(
+          createCredentialProfileAppHomeEnvResolver(settingsLoader(settings))(),
+        ).resolves.toBeUndefined();
+        await expect(
+          createCredentialProfileAppHomeEnvPeek(settingsLoader(settings))(),
+        ).resolves.toBeUndefined();
+        expect(
+          await claudeCredential(
+            resolvers({
+              settings,
+              inherited: { ANTHROPIC_API_KEY: 'fixture-key' },
+            }),
+          ),
+        ).toEqual({
+          state: 'available',
+          source: 'environment',
+          appliesTo: SCOPE,
+        });
+      });
     });
 
     test('reports what is decided at start', async () => {

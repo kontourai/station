@@ -109,7 +109,7 @@ type SpawnEnv = Readonly<Record<string, string | undefined>>;
  * the raw inputs the Claude adapter's start reads. The factory, not the
  * caller, chooses the forms of the readers that create and write nothing.
  */
-export interface StationConfinementPreflightResolvers {
+interface StationConfinementPreflightResolvers {
   /** Defaults to the providers a start resolves from. */
   providers?: readonly ConfinementProvider[];
   claude: {
@@ -133,12 +133,20 @@ export interface StationConfinementPreflightResolvers {
 
 /**
  * #4774: the preflight a running Station serves, assembled here so the
- * runtime holds no logic of its own. Every input is read in a form that
- * creates and writes nothing: `inheritedSpawnEnv` in place of
+ * runtime holds no logic of its own. The two readers a start uses to act
+ * are replaced by forms that do not: `inheritedSpawnEnv` in place of
  * `augmentedSpawnEnv` (which may spawn a login shell and creates the spawn
  * TMPDIR; neither key decides a credential), and
  * `createCredentialProfileAppHomeEnvPeek` in place of the adapter's
- * `getAppHomeEnv` (which creates the profile home).
+ * `getAppHomeEnv` (which creates the profile home). So no app-home profile
+ * and no spawn TMPDIR is created. The other inputs are read as a start
+ * reads them: `loadConnectionSettings` and `connectionLaunch` are the
+ * ordinary app config load, which writes a default `config/app.json` when
+ * none exists and rewrites one holding legacy keys, as any config read
+ * does. On macOS the first call may run the Seatbelt provider's
+ * once-per-process probe (a synchronous spawn of up to 10 s that blocks the
+ * server meanwhile); its result, a failure included, is cached on the
+ * provider and is the one later starts use.
  *
  * Known gap: the layering here (inherited environment, else `process.env`;
  * then the connection's environment; then the app-home environment of a
