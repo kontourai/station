@@ -1,9 +1,11 @@
 /**
  * #4774: `createStationConfinementPreflight`, the assembly the running
- * Station serves, over the resolvers the runtime hands it: the inherited
- * spawn environment, the real connection launch (`engineProxyLaunch`), the
- * real non-creating app-home resolver and a real temporary Station home.
- * Only the stored connection settings are fixtures.
+ * Station serves, over the inputs the runtime hands it: an inherited
+ * environment, the real connection launch (`engineProxyLaunch`), stored
+ * connection settings and a real temporary Station home (`resolveHomeDir`).
+ * The factory's own readers (`inheritedSpawnEnv`, the non-creating app-home
+ * resolver) are the real ones; only the environment and the stored settings
+ * are fixtures.
  *
  * Not covered: the factory's layering mirrors `ClaudeAdapter.startSession`
  * and `prepareSeatbeltStart` rather than sharing them (see the factory's
@@ -26,7 +28,6 @@ import {
   createCredentialProfileAppHomeEnvResolver,
 } from '../../../providers/app-home/credential-profile-env.js';
 import { credentialProfileStorageId } from '../../../providers/app-home/credential-profile-registry.js';
-import { inheritedSpawnEnv } from '../../../providers/auth/cli-auth.js';
 import { engineProxyLaunch } from '../../../services/connections/engine-proxy-routing.js';
 import { resolveHomeDir } from '../../../utils/paths.js';
 import {
@@ -91,7 +92,7 @@ describe('#4774: createStationConfinementPreflight', () => {
     };
   }
 
-  /** The runtime's resolvers, with only the stored settings as fixtures. */
+  /** The runtime's inputs, with the environment and settings as fixtures. */
   function resolvers(
     options: {
       settings?: Settings;
@@ -103,13 +104,10 @@ describe('#4774: createStationConfinementPreflight', () => {
     return {
       providers: confinementProvidersForTests(),
       claude: {
-        spawnEnv: () => inheritedSpawnEnv({ ...inherited }),
-        fallbackEnv: () => ({}),
+        processEnv: () => ({ ...inherited }),
         connectionLaunch: async () =>
           engineProxyLaunch('claude', connectionConfig, []),
-        appHomeEnv: createCredentialProfileAppHomeEnvPeek(
-          settingsLoader(settings ?? {}),
-        ),
+        loadConnectionSettings: async () => settings ?? {},
         stationHome: resolveHomeDir,
         ...overrides,
       },
@@ -231,29 +229,32 @@ describe('#4774: createStationConfinementPreflight', () => {
       });
     });
 
-    test('the inherited environment counts, and the fallback is used only when it cannot be read', async () => {
+    test('the inherited environment counts, and the process environment is the fallback only when that read fails', async () => {
       expect(
         await claudeCredential(
           resolvers({ inherited: { ANTHROPIC_API_KEY: 'fixture-key' } }),
         ),
       ).toMatchObject({ state: 'available', source: 'environment' });
-      const fallbackEnv = vi.fn(() => ({ ANTHROPIC_API_KEY: 'fallback-key' }));
+      // The read fails: the process environment, which holds a key, is used.
       expect(
         await claudeCredential(
           resolvers({
+            inherited: { ANTHROPIC_API_KEY: 'fallback-key' },
             spawnEnv: () => {
               throw new Error('environment unavailable');
             },
-            fallbackEnv,
           }),
         ),
       ).toMatchObject({ state: 'available', source: 'environment' });
-      expect(fallbackEnv).toHaveBeenCalledTimes(1);
-      fallbackEnv.mockClear();
-      expect(await claudeCredential(resolvers({ fallbackEnv }))).toMatchObject({
-        state: 'unavailable',
-      });
-      expect(fallbackEnv).not.toHaveBeenCalled();
+      // The read succeeds without a key: the process environment's is unused.
+      expect(
+        await claudeCredential(
+          resolvers({
+            inherited: { ANTHROPIC_API_KEY: 'fallback-key' },
+            spawnEnv: () => ({}),
+          }),
+        ),
+      ).toMatchObject({ state: 'unavailable' });
     });
 
     test('a connection launch that cannot be resolved is unverified', async () => {
@@ -313,21 +314,6 @@ describe('#4774: createStationConfinementPreflight', () => {
         appliesTo: SCOPE,
       });
       expect(snapshot(stationHome)).toEqual(before);
-      // A resolver that throws something else: the same.
-      expect(
-        await claudeCredential(
-          resolvers({
-            inherited: { ANTHROPIC_API_KEY: 'fixture-key' },
-            appHomeEnv: async () => {
-              throw new Error('legacy lookup failed');
-            },
-          }),
-        ),
-      ).toEqual({
-        state: 'available',
-        source: 'environment',
-        appliesTo: SCOPE,
-      });
     });
 
     test('reports what is decided at start', async () => {

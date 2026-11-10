@@ -14,7 +14,11 @@ import type {
 import { MAX_CONFINEMENT_PREFLIGHT_REASON_LENGTH } from '@kontourai/station-contracts/execution-confinement';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import { claudeConfinedCredentialPreflight } from '../../providers/adapters/claude-confinement-preflight.js';
-import type { ResolvedAppHome } from '../../providers/app-home/app-home-profiles.js';
+import {
+  type CredentialProfileAppHomeEnvOptions,
+  createCredentialProfileAppHomeEnvPeek,
+} from '../../providers/app-home/credential-profile-env.js';
+import { inheritedSpawnEnv } from '../../providers/auth/cli-auth.js';
 import type { ConfinementProvider } from './confinement-provider.js';
 import { DEFAULT_CONFINEMENT_PROVIDERS } from './default-confinement-providers.js';
 import { canonicalPath } from './seatbelt.js';
@@ -102,70 +106,80 @@ type SpawnEnv = Readonly<Record<string, string | undefined>>;
 
 /**
  * What the running Station hands {@link createStationConfinementPreflight}:
- * the same resolvers the Claude adapter's start reads, each in a form that
- * creates and writes nothing.
+ * the raw inputs the Claude adapter's start reads. The factory, not the
+ * caller, chooses the forms of the readers that create and write nothing.
  */
 export interface StationConfinementPreflightResolvers {
   /** Defaults to the providers a start resolves from. */
   providers?: readonly ConfinementProvider[];
   claude: {
-    /**
-     * The inherited spawn environment (`inheritedSpawnEnv`): what
-     * `augmentedSpawnEnv` returns for every key a credential check reads,
-     * without its PATH augmentation or TMPDIR creation.
-     */
-    spawnEnv: () => SpawnEnv | Promise<SpawnEnv>;
-    /** Used when `spawnEnv` throws, as the adapter falls back to `process.env`. */
-    fallbackEnv: () => SpawnEnv;
+    /** The environment a start inherits (`process.env`). */
+    processEnv: () => SpawnEnv;
     /** The adapter's `getConnectionLaunch`. */
     connectionLaunch: () => Promise<{
       env: Record<string, string> | undefined;
     }>;
-    /**
-     * The adapter's `getAppHomeEnv` in its non-creating form
-     * (`createCredentialProfileAppHomeEnvPeek`), asked for a start that names
-     * no credential profile.
-     */
-    appHomeEnv: (
-      credentialProfileRef?: string,
-    ) => Promise<ResolvedAppHome | undefined>;
-    /** Station's runtime home (`resolveHomeDir`), canonicalized here. */
+    /** The Claude connection's stored settings, which `getAppHomeEnv` reads. */
+    loadConnectionSettings: CredentialProfileAppHomeEnvOptions['loadConnectionSettings'];
+    /** Station's runtime home (`resolveHomeDir`). */
     stationHome: () => string;
+    /**
+     * Replaces the inherited-environment read; tests use it to make that
+     * read fail. Defaults to `inheritedSpawnEnv(processEnv())`.
+     */
+    spawnEnv?: () => SpawnEnv;
   };
 }
 
 /**
- * #4774: the preflight a running Station serves, assembled from its
- * resolvers so the runtime holds no logic of its own.
+ * #4774: the preflight a running Station serves, assembled here so the
+ * runtime holds no logic of its own. Every input is read in a form that
+ * creates and writes nothing: `inheritedSpawnEnv` in place of
+ * `augmentedSpawnEnv` (which may spawn a login shell and creates the spawn
+ * TMPDIR; neither key decides a credential), and
+ * `createCredentialProfileAppHomeEnvPeek` in place of the adapter's
+ * `getAppHomeEnv` (which creates the profile home).
  *
- * Known gap: the layering here (spawn environment, else `process.env`; then
- * the connection's environment; then the app-home environment; Station's
- * canonical home) mirrors `ClaudeAdapter.startSession` and
- * `prepareSeatbeltStart`; it is not shared with them. The credential step
- * itself is shared (`confinedClaudeCredentialCheck`), but a change to the
- * adapter's layering is not seen here or by the tests of this factory.
+ * Known gap: the layering here (inherited environment, else `process.env`;
+ * then the connection's environment; then the app-home environment of a
+ * start that names no credential profile; Station's canonical home) mirrors
+ * `ClaudeAdapter.startSession` and `prepareSeatbeltStart`; it is not shared
+ * with them. The credential step itself is shared
+ * (`confinedClaudeCredentialCheck`), but a change to the adapter's layering
+ * is not seen here or by the tests of this factory.
  */
 export function createStationConfinementPreflight(
   resolvers: StationConfinementPreflightResolvers,
 ): () => Promise<ConfinementPreflight> {
   const claude = resolvers.claude;
+  const spawnEnv =
+    claude.spawnEnv ?? (() => inheritedSpawnEnv({ ...claude.processEnv() }));
   return () =>
     confinementPreflight({
       providers: resolvers.providers ?? DEFAULT_CONFINEMENT_PROVIDERS,
       credentialChecks: {
-        claude: () =>
-          claudeConfinedCredentialPreflight({
+        claude: () => {
+          const stationHome = claude.stationHome();
+          return claudeConfinedCredentialPreflight({
             baseEnv: async () => {
+              // As the adapter's `resolveAugmentedSpawnEnv`, whose failure
+              // leaves the spawn on `process.env`.
               try {
-                return await claude.spawnEnv();
+                return spawnEnv();
               } catch {
-                return claude.fallbackEnv();
+                return claude.processEnv();
               }
             },
             connectionEnv: async () => (await claude.connectionLaunch()).env,
-            appHomeEnv: () => claude.appHomeEnv(undefined),
-            stationHome: canonicalPath(claude.stationHome()),
-          }),
+            appHomeEnv: () =>
+              createCredentialProfileAppHomeEnvPeek({
+                engine: 'claude',
+                homeDir: stationHome,
+                loadConnectionSettings: claude.loadConnectionSettings,
+              })(undefined),
+            stationHome: canonicalPath(stationHome),
+          });
+        },
       },
     });
 }

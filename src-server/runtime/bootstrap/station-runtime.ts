@@ -171,10 +171,8 @@ import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
   type CredentialProfileAppHomeEnvOptions,
-  createCredentialProfileAppHomeEnvPeek,
   createCredentialProfileAppHomeEnvResolver,
 } from '../../providers/app-home/credential-profile-env.js';
-import { inheritedSpawnEnv } from '../../providers/auth/cli-auth.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
@@ -5415,18 +5413,14 @@ export class StationRuntime {
       getUsageTelemetry: () => this.usageTelemetry,
       skillService: this.skillService,
       configLoader: this.configLoader,
-      // #4774: the factory owns the assembly; these are the resolvers a
-      // Claude start reads, in forms that create and write nothing.
+      // #4774: the factory owns the assembly and the non-creating readers;
+      // these are the inputs a Claude start reads.
       readConfinementPreflight: createStationConfinementPreflight({
         claude: {
-          spawnEnv: () => inheritedSpawnEnv(),
-          fallbackEnv: () => process.env,
+          processEnv: () => process.env,
           connectionLaunch: this.claudeConnectionLaunch,
-          appHomeEnv: createCredentialProfileAppHomeEnvPeek({
-            engine: this.claudeAppHomeSettings.engine,
-            loadConnectionSettings:
-              this.claudeAppHomeSettings.loadConnectionSettings,
-          }),
+          loadConnectionSettings:
+            this.claudeAppHomeSettings.loadConnectionSettings,
           stationHome: resolveHomeDir,
         },
       }),
