@@ -287,7 +287,7 @@ describe('PlatformProfile derivation', () => {
       // An interrupted re-pairing leaves the launch Station `requires-auth`, and
       // the host refuses to authorize it on every later start.
       const refused = async () => {
-        throw new Error('native Station profile is not configured');
+        throw new Error('the saved Station is not configured');
       };
       state.openLastStationOnLaunch = openLastStationOnLaunch;
       state.authorizeRememberedProfile = refused;
