@@ -1,5 +1,37 @@
 [
   {
+    "timestampUtc": "2026-11-10T09:56:32Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261110.1",
+    "sha": "be313818aaa2b87bade4b3ee4c2b5ac4e8135b6f",
+    "artifactBuiltAt": "2026-11-10T09:02:45.307Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42785864317",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42785864317)"
+    ],
+    "changelog": {
+      "previousSha": "d318c4d7f802789b018288bebc2a87e840734f10",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4750](https://github.com/kontourai/station/pull/4750) fix(ci): share verified actionlint artifact across checks",
+          "[#4758](https://github.com/kontourai/station/pull/4758) fix(approvals): make Claude session grants cover Bash warnings and offer prefix grants"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4761](https://github.com/kontourai/station/pull/4761) chore(deps): fetch Corpus from the public GitHub repo, not a codeload tarball URL"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-11-10T09:56:29Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.20261110.1",
