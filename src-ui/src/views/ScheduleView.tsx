@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { PageFrameActions } from '../components/page-frame';
 import { JobDetail } from '../components/scheduler';
-import { ErrorState, SkeletonBlock } from '../components/state';
+import {
+  describeReadFailure,
+  ErrorState,
+  SkeletonBlock,
+  useRetainedReadFailure,
+} from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { schedulerJobDialogStore } from '../contexts/scheduler-job-dialog-store';
 import { useToast } from '../contexts/ToastContext';
@@ -63,7 +68,14 @@ export function ScheduleView() {
     refetch: refetchStatus,
     isFetching: fetchingStatus,
   } = useSchedulerStatus();
-  const { data: runs = [], isLoading: runsLoading } = useRunsQuery();
+  const runsQuery = useRunsQuery();
+  const { data: runs = [], isPending: runsLoading } = runsQuery;
+  const retainedRunsFailure = useRetainedReadFailure(runsQuery);
+  const runsFailure =
+    retainedRunsFailure ??
+    (runsQuery.error
+      ? { error: runsQuery.error, retrying: runsQuery.fetchStatus !== 'idle' }
+      : null);
   const schedulerAvailable = !jobsError && !statusError;
   const { isRunning, markErrorShown, getMissedCount } =
     useSchedulerEvents(schedulerAvailable);
@@ -240,7 +252,26 @@ export function ScheduleView() {
 
           {runError && <p role="alert">{runError}</p>}
 
-          {runTarget && !runsLoading && !exactRun && (
+          {runTarget && runsFailure ? (
+            <ErrorState
+              variant="compact"
+              title="Run history unavailable"
+              description={describeReadFailure(runsFailure.error)}
+              action={
+                <Button
+                  size="sm"
+                  pending={runsFailure.retrying}
+                  onClick={() => void runsQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              }
+            />
+          ) : runTarget && runsLoading && !exactRun ? (
+            <SkeletonBlock count={1} label="Loading scheduled run" />
+          ) : null}
+
+          {runTarget && !runsLoading && !runsFailure && !exactRun && (
             <p role="status">
               That scheduled run isn’t available, and Station won’t open a
               different one in its place.
