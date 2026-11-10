@@ -2132,6 +2132,47 @@ falls back to the required Playwright installation, which still runs on a hit.
 Browser smoke and test failures remain required. Compare cache restore plus
 installation time with uncached setup before treating the cache as a speedup.
 
+The hosted `PR: CI` workflow shares the pinned actionlint 1.7.12 Linux archive
+through the `actionlint-artifact` job instead of fetching it separately in
+each shard. That job checks out nothing, reads no
+secret and runs no candidate code. It downloads the fixed release URL with up
+to four `curl` attempts (60 seconds each, inside a five-minute step bound),
+checks the SHA-256 and uploads that exact archive as
+`pinned-actionlint-<run_id>-<run_attempt>` with overwrite disabled. A later
+step exposes the upload's artifact ID as the job output only when it is a
+positive integer: the pinned `actions/download-artifact` downloads every
+artifact of the run when `artifact-ids` is empty. `fast-checks-shard`,
+`fast-checks-statics` and `fork-smoke` each require that job to have
+succeeded, download that exact ID into a fresh `$RUNNER_TEMP` path, require a
+regular file that is not a symbolic link, verify the SHA-256 again and only
+then extract it with `tar` into a new directory. If the producer fails, its
+consumers are skipped. On events admitted to `fast-checks`, the required
+aggregate fails when those required jobs skip; no consumer falls back to
+fetching the archive itself. `scripts/actionlint-gate.mjs` pins the producer
+job by digest and admits exactly one reviewed download step in the statics and
+fork jobs.
+
+The legacy plan lane (used only for a candidate that predates the sharded
+lane) and the completion workflow still install actionlint inline from the
+release URL; that residual is unchanged. Artifacts expire after seven days:
+re-running only the failed jobs after that cannot download the producer's
+artifact, so rerun the whole workflow. The pinned actions' behavior (ID mode,
+the current-run route, the one-file artifact layout) was checked against their
+source, not a hosted run, so the first hosted run, including the fork route,
+is the qualification.
+
+The shell controls for this handoff are in
+`scripts/__tests__/ci-fast-checks-job-graph.test.ts`. They run the workflow's
+own Bash step text under GNU `bash`, GNU `sha256sum` and GNU `tar`, with only
+`curl` and `sleep` replaced by recording stand-ins. Those are operating-system
+tools of the Linux CI images. The managed JavaScript dependency setup does not
+install them, and the tests fail instead of skipping when `sha256sum --version`
+and `tar --version` do not report GNU. A host profile that puts GNU coreutils
+and GNU tar ahead of the BSD tools on `PATH` can run the controls; the change
+was checked on one such macOS profile. Other developer, Windows and macOS
+profiles are unverified without those prerequisites. There is no automatic
+installer, profile-wide bootstrap change, silent skip or portability claim.
+
 Linux CI, Android, publish, and secret-scan jobs run on GitHub-hosted
 images. A private native Windows host remains for the hardware-reference
 performance lane, the Windows Vitest
