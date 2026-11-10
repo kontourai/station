@@ -278,6 +278,44 @@ describe('PlatformProfile derivation', () => {
     expect(remembered).toHaveBeenCalledOnce();
   });
 
+  test.each([
+    ['its remembered Station', true],
+    ['the default Station', false],
+  ])(
+    'a mobile launch that cannot authorize %s still mounts the shell and records the recovery',
+    async (_label, openLastStationOnLaunch) => {
+      // An interrupted re-pairing leaves the launch Station `requires-auth`, and
+      // the host refuses to authorize it on every later start.
+      const refused = async () => {
+        throw new Error('native Station profile is not configured');
+      };
+      state.openLastStationOnLaunch = openLastStationOnLaunch;
+      state.authorizeRememberedProfile = refused;
+      state.authorizeDefaultProfile = refused;
+      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      state.adapter = tauriAdapter('ios', 'disabled');
+      vi.resetModules();
+      const mod = await import('../platform/PlatformProfileContext');
+
+      render(
+        <mod.PlatformBootstrap>
+          <span data-testid="protected-shell">protected</span>
+        </mod.PlatformBootstrap>,
+      );
+
+      try {
+        expect(await screen.findByTestId('protected-shell')).toBeTruthy();
+        expect(screen.queryByRole('alert')).toBeNull();
+        const recovery = mod.nativeProfileBootstrapRecoveryError();
+        expect(recovery).toContain('Connections');
+        expect(recovery).not.toContain('not configured');
+        expect(warned).toHaveBeenCalledOnce();
+      } finally {
+        warned.mockRestore();
+      }
+    },
+  );
+
   test('desktop macOS with an enabled tray supervises and tags the root', async () => {
     const profile = await resolveProfile(tauriAdapter('macos', 'enabled'));
     expect(profile).toMatchObject({
