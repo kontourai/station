@@ -9,7 +9,6 @@ import type { ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { boardPath } from '../../app-shell/board-route';
 import { boardSlugFromName, nextBoardSlug } from '../../app-shell/board-slug';
-import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -464,13 +463,13 @@ export function ProjectSidebarBoards({
   const visibleRows = rows.filter(
     (row) => !pendingUndo.has(boardUndoKey(row.slug)),
   );
-  const scope = useHostRequestAuthorityScope();
 
   /**
    * Delete and Move to project are deferred behind Undo. The write runs when
    * the notice closes, so Undo cancels it rather than recreating the Board.
    * The list is re-read before the row is released, so it does not flash
-   * back between the write and the refetch.
+   * back between the write and the refetch. The notice is scoped to the
+   * connected Station, so switching Station drops the write unsent.
    */
   const deleteWithUndo = (board: { slug: string; name: string }) => {
     const path = boardPath(board.slug);
@@ -480,7 +479,6 @@ export function ProjectSidebarBoards({
       message: `Deleted ${board.name}`,
       restoredMessage: `Restored ${board.name}`,
       failureMessage: `Could not delete ${board.name}.`,
-      isCurrent: scope?.isCurrent,
       commit: async () => {
         await deleteBoard.mutateAsync(board.slug);
         await refetch();
@@ -503,7 +501,6 @@ export function ProjectSidebarBoards({
       message: `Moved ${board.name} to ${project.name}`,
       restoredMessage: `Kept ${board.name} in Apps`,
       failureMessage: `Could not move ${board.name} to ${project.name}.`,
-      isCurrent: scope?.isCurrent,
       commit: async () => {
         await promoteBoard.mutateAsync({
           layoutSlug: board.slug,
