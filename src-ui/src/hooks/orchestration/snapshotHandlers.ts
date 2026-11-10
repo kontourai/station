@@ -14,6 +14,7 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { observeConversationOpenTurns } from '../../lib/outboundAcceptedTurnObservations';
 import { newerConversationActivity } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
@@ -156,18 +157,13 @@ function settleEndedDurableTurns(
     conversationId: record.conversationId,
     ...(record.openTurn ? { openTurnId: record.openTurn.turnId } : {}),
   }));
-  void import('../../lib/outboundQueue')
-    .then(({ outboundDispatch }) =>
-      outboundDispatch.completeAcceptedTurnsNotOpen(
-        observed,
-        observedAt,
-        station ? outboundStationIdentity(station) : undefined,
-      ),
-    )
-    .catch(() => {
-      // The row stays as it was, for its terminal event or the next
-      // snapshot; the outbox reports its own storage outage.
-    });
+  // Published, not sent: this path loads no module of its own. The outbox
+  // takes it now if it has loaded, or when it does.
+  observeConversationOpenTurns({
+    records: observed,
+    observedAt,
+    ...(station ? { station: outboundStationIdentity(station) } : {}),
+  });
 }
 
 type OrchestrationSnapshotSyncPlan = {
