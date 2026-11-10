@@ -220,7 +220,20 @@ detail, transcript page and list phases each have CPU time and RSS samples.
 Idle and post-workload samples include descendant process counts. Idle has no
 HTTP polling: its CPU delta and observed inbound request count describe the
 idle cost; CPU time is not a hardware wakeup count. Instrumentation adds
-overhead. Empty delay histograms contain null percentiles, never a claimed zero.
+overhead. Before each HTTP or idle action, reset waits for a real post-reset
+histogram observation so the monitor is primed before the action starts. A
+sample waits for an observation newer than its request; an empty histogram or
+an expired probe never becomes a timing sample. Each probe has a 30-second
+parent monotonic deadline. The child uses the remaining budget to bound its
+local observation work; IPC transit does not extend the parent's deadline.
+For phases that reset the probe, CPU, elapsed time and histogram measurements
+span reset handling through the actual sample observation, including reset
+priming and sampler settlement. HTTP `latencyMs` measures the action through
+JSON parsing and excludes those settlement steps. Startup is sampled after the
+listening handshake without a reset; synchronous work before the histogram's
+first observation may be absent from its delay sample. Cancellation and
+deadline rejection do not establish child
+settlement; the scenario's owned-process cleanup remains separately required.
 Build and fixture seeding are outside the measured phases; boot uses the empty
 home and the read workload follows seeding in that same server.
 
