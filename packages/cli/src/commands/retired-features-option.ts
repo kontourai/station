@@ -14,7 +14,7 @@ export function isRetiredFeaturesOption(arg: string): boolean {
 }
 
 /** Whether a retired `--features` value asked for the Strands runtime. */
-export function requestsStrandsRuntime(features: string): boolean {
+function requestsStrandsRuntime(features: string): boolean {
   return features
     .split(',')
     .map((flag) => flag.trim())
