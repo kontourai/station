@@ -35,6 +35,7 @@ import {
   realpathSync as nodeRealpathSync,
 } from 'node:fs';
 import {
+  access as nodeAccess,
   mkdir as nodeMkdir,
   mkdtemp as nodeMkdtemp,
   open as nodeOpen,
@@ -221,6 +222,13 @@ export interface AppHomeFsPort {
   rename: (from: string, to: string) => Promise<void>;
   /** Recursively removes `path` unconditionally, tolerant of it not existing — only ever invoked on a path resolved to be inside the Station-owned profile dir. */
   rmRecursive: (path: string) => Promise<void>;
+  /**
+   * #4774: whether this process may create entries in the existing
+   * directory `path` (`access(W_OK | X_OK)`), without creating anything.
+   * Only {@link locateAppHomeProfile} asks; a port without it skips that
+   * check.
+   */
+  canCreateIn?: (path: string) => Promise<boolean>;
 }
 
 function toStat(stat: {
@@ -314,6 +322,14 @@ function defaultFsPort(): AppHomeFsPort {
     rename: (from, to) => nodeRename(from, to),
     rmRecursive: async (path) => {
       await nodeRm(path, { recursive: true, force: true });
+    },
+    canCreateIn: async (path) => {
+      try {
+        await nodeAccess(path, nodeFsConstants.W_OK | nodeFsConstants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
     },
   };
 }
@@ -481,16 +497,53 @@ async function assertAppHomeProfileContained(
 }
 
 /**
+ * #4774: refuses, without writing, a profile dir whose creation
+ * `ensureAppHomeProfile` could not complete: the nearest existing entry on
+ * the way to `dir` (`dir` itself when it exists) must be a directory this
+ * process may create entries in, and not an unresolvable link.
+ */
+async function assertAppHomeProfileCreatable(
+  dir: string,
+  fs: AppHomeFsPort,
+): Promise<void> {
+  let current = normalize(dir);
+  for (;;) {
+    const real = await fs.realpath(current);
+    if (real) {
+      if (!(await fs.lstat(real))?.isDirectory)
+        throw new Error(
+          `App home profile: '${current}' is not a directory, so the profile dir '${dir}' cannot be created there.`,
+        );
+      if (fs.canCreateIn && !(await fs.canCreateIn(real)))
+        throw new Error(
+          `App home profile: '${current}' is not writable, so the profile dir '${dir}' cannot be created there.`,
+        );
+      return;
+    }
+    if (await fs.lstat(current))
+      throw new Error(
+        `App home profile: '${current}' exists but cannot be resolved, so the profile dir '${dir}' cannot be created there.`,
+      );
+    const parent = dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
+
+/**
  * #4774: the directory `ensureAppHomeProfile` would return, without creating
  * or writing anything. It refuses what ensure refuses before its first
  * write (a profile dir outside the app-homes root, a marker that is not a
- * regular file); it cannot see a failure of ensure's own writes. `exists`
- * says whether the profile is there yet.
+ * regular file), and, when the profile is not there yet, what would make
+ * ensure's own writes fail and that a read can see: a profile path or
+ * ancestor that is not a directory, or a directory this process may not
+ * create entries in. Other write failures (a full disk, a race) it cannot
+ * see.
  */
 export async function locateAppHomeProfile(
   engineId: string,
   options: { homeDir?: string; fs?: AppHomeFsPort } = {},
-): Promise<{ dir: string; exists: boolean }> {
+): Promise<{ dir: string }> {
   const fs = options.fs ?? defaultFsPort();
   const root = appHomesRootDir(options.homeDir);
   const dir = appHomeProfileDir(engineId, options.homeDir);
@@ -501,7 +554,8 @@ export async function locateAppHomeProfile(
     throw new Error(
       `App home profile: marker at '${markerPath}' is not a regular file; refusing to proceed.`,
     );
-  return { dir, exists: marker !== null };
+  if (!marker) await assertAppHomeProfileCreatable(dir, fs);
+  return { dir };
 }
 
 export interface EnsureAppHomeProfileResult {
