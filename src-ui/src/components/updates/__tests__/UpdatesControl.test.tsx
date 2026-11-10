@@ -1,17 +1,20 @@
 /** @vitest-environment jsdom */
 import type { ServerUpdateState } from '@kontourai/station-contracts/system-status';
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderUi,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ConnectedServerUpdateContext } from '../../../hooks/useConnectedServerUpdateContext';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import type { PlatformProfile } from '../../../platform/PlatformProfileContext';
 import {
   desktopUpdateFixture,
@@ -24,7 +27,22 @@ import {
   publishUpdateNotice,
 } from '../updatesEvents';
 
+const clients: QueryClient[] = [];
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  clients.push(client);
+  return renderUi(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}
+
 const native = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
+vi.mock('../../../build-info', async (importActual) => ({
+  ...(await importActual<typeof import('../../../build-info')>()),
+  readClientReleaseVersion: () => '0.1.11-nightly.20261105.1',
+}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: native.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: native.listen }));
 vi.mock('../../../platform/PlatformProfileContext', () => ({
@@ -148,8 +166,16 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.removeItem('station.release-notes.last-version');
+  deviceSettingsStore.reset('showReleaseNotesAfterUpdate');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response('{}', { status: 404 })),
+  );
   profile.isDesktop = true;
   profile.isMobile = false;
+  profile.isDevBuild = false;
+  profile.channel = 'beta';
   context.kind = 'installed-local-service';
   serverState.progress = { state: 'idle' };
   status.stagedUpdates = true;
@@ -162,6 +188,8 @@ beforeEach(() => {
 afterEach(async () => {
   act(() => clearUpdateNotice('mobile-release'));
   cleanup();
+  for (const client of clients.splice(0)) client.clear();
+  vi.unstubAllGlobals();
   // Match the dialog surface suite: drain jsdom's chained traversal tasks so
   // an unmount's pending Back cannot consume the next test's history entry.
   for (let turn = 0; turn < 4; turn += 1) {
@@ -186,6 +214,31 @@ async function closeUpdates(
     expect(screen.queryByRole('dialog', { name: 'Updates' })).toBeNull();
   });
 }
+
+test('an informational server notice does not advertise an available update on the sidebar', async () => {
+  installFakeNativeUpdater(native, desktopUpdateFixture('upToDate'));
+  render(<UpdatesControl collapsed onNavigate={vi.fn()} />);
+  act(() =>
+    publishUpdateNotice({
+      id: 'mobile-release',
+      target: 'server',
+      message: 'App and server use separate release channels.',
+    }),
+  );
+  await waitFor(() => expect(native.invoke).toHaveBeenCalled());
+  expect(screen.getByRole('button', { name: 'Updates' })).toBeTruthy();
+  act(() =>
+    publishUpdateNotice({
+      id: 'mobile-release',
+      target: 'server',
+      message: 'Server update available.',
+      updateAvailable: true,
+    }),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Updates: Update available' }),
+  ).toBeTruthy();
+});
 
 test('one panel offers independently labelled app and server downloads, and opening it starts neither', async () => {
   const fake = installFakeNativeUpdater(
@@ -257,12 +310,24 @@ test.each([false, true])(
   async (isMobile) => {
     profile.isDesktop = false;
     profile.isMobile = isMobile;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          tag_name: 'desktop-v0.9.0-nightly.2500',
+          name: 'Station app release',
+          body: '- Mobile release features',
+          draft: false,
+        }),
+      ),
+    );
     render(<UpdatesControl collapsed onNavigate={vi.fn()} />);
     act(() =>
       publishUpdateNotice({
         id: 'mobile-release',
         target: 'desktop',
-        message: 'Station 0.9.0 is available.',
+        message: 'Station 0.9.0-nightly.2500 is available.',
+        releaseVersion: '0.9.0-nightly.2500',
         detail: 'Install from the release page.',
         href: 'https://example.test/releases/0.9.0',
         actionLabel: 'View app release',
@@ -284,6 +349,9 @@ test.each([false, true])(
         .getByRole('link', { name: 'View app release' })
         .getAttribute('href'),
     ).toBe('https://example.test/releases/0.9.0');
+    expect(
+      await within(panel).findByText('Mobile release features'),
+    ).toBeTruthy();
     expect(native.invoke).not.toHaveBeenCalled();
     expect(native.listen).not.toHaveBeenCalled();
   },
@@ -460,4 +528,155 @@ test('native events that arrive before the pulled snapshot keep their newer prog
   expect(
     screen.getByRole('button', { name: 'Updates: App ready to restart' }),
   ).toBeTruthy();
+});
+
+test.each([false, true])(
+  'the sidebar progress ring follows native bytes and clears when ready (collapsed=%s)',
+  async (collapsed) => {
+    const downloading = desktopUpdateFixture('downloading');
+    const fake = installFakeNativeUpdater(native, downloading);
+    render(<UpdatesControl collapsed={collapsed} onNavigate={vi.fn()} />);
+    const ring = await screen.findByRole('progressbar', {
+      name: 'Downloading app update',
+    });
+    expect(ring.getAttribute('aria-valuenow')).toBe('42');
+    expect(
+      ring
+        .querySelector('circle[pathLength]')
+        ?.getAttribute('stroke-dashoffset'),
+    ).toBe('58');
+    const phase = downloading.phase;
+    if (phase.status !== 'downloading') throw new Error('wrong fixture');
+    act(() =>
+      fake.emit({
+        ...downloading,
+        phase: { ...phase, totalBytes: null },
+      }),
+    );
+    expect(ring.hasAttribute('aria-valuenow')).toBe(false);
+    act(() => fake.emit(desktopUpdateFixture('ready')));
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(
+      await screen.findByRole('button', {
+        name: 'Updates: App ready to restart',
+      }),
+    ).toBeTruthy();
+  },
+);
+
+test.each([false, true])(
+  'an upgrade shows its installed changelog once and remembers the preference (optOut=%s)',
+  async (optOut) => {
+    localStorage.setItem('station.release-notes.last-version', '0.1.10');
+    const current = desktopUpdateFixture('idle');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          tag_name: `v${current.currentVersion}`,
+          name: 'Station release',
+          body: '- New workspace features',
+          draft: false,
+        }),
+      ),
+    );
+    installFakeNativeUpdater(native, current);
+    const first = render(<UpdatesControl onNavigate={vi.fn()} />);
+    expect(await screen.findByText('New workspace features')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', {
+      name: `Updated to Station ${current.currentVersion}`,
+    });
+    const preference = within(dialog).getByRole('switch', {
+      name: 'Show changelog after updates',
+    });
+    expect(preference.getAttribute('aria-checked')).toBe('true');
+    if (optOut) fireEvent.click(preference);
+    expect(deviceSettingsStore.get('showReleaseNotesAfterUpdate')).toBe(
+      !optOut,
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Done' }));
+    first.unmount();
+    const second = render(<UpdatesControl onNavigate={vi.fn()} />);
+    await waitFor(() =>
+      expect(localStorage.getItem('station.release-notes.last-version')).toBe(
+        current.currentVersion,
+      ),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    second.unmount();
+    const next = { ...current, currentVersion: '0.1.13' };
+    installFakeNativeUpdater(native, next);
+    render(<UpdatesControl onNavigate={vi.fn()} />);
+    await waitFor(() =>
+      expect(localStorage.getItem('station.release-notes.last-version')).toBe(
+        '0.1.13',
+      ),
+    );
+    if (optOut) expect(screen.queryByRole('dialog')).toBeNull();
+    else
+      expect(
+        await screen.findByRole('dialog', {
+          name: 'Updated to Station 0.1.13',
+        }),
+      ).toBeTruthy();
+  },
+);
+
+test('a server download continues to drive the sidebar ring after Updates closes', async () => {
+  profile.isDesktop = false;
+  serverState.progress = {
+    state: 'staging',
+    requestId: 'server-download',
+    intent: 'stage',
+    stagePhase: 'downloading',
+    downloadedBytes: 25_000_000,
+    totalBytes: 100_000_000,
+  };
+  render(<UpdatesControl collapsed onNavigate={vi.fn()} />);
+  const historyBeforeOpen = window.history.state;
+  fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
+  const ring = await screen.findByRole('progressbar', {
+    name: 'Downloading server update',
+  });
+  expect(ring.getAttribute('aria-valuenow')).toBe('25');
+  await closeUpdates(historyBeforeOpen);
+  expect(
+    screen
+      .getByRole('progressbar', { name: 'Downloading server update' })
+      .getAttribute('aria-valuenow'),
+  ).toBe('25');
+});
+
+test('development desktop versions never trigger the automatic upgrade dialog', async () => {
+  profile.isDevBuild = true;
+  localStorage.setItem('station.release-notes.last-version', '0.1.10');
+  const fake = installFakeNativeUpdater(
+    native,
+    desktopUpdateFixture('disabled'),
+  );
+  render(<UpdatesControl onNavigate={vi.fn()} />);
+  await waitFor(() => expect(fake.listenerCount()).toBe(1));
+  await act(async () => {});
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(localStorage.getItem('station.release-notes.last-version')).toBe(
+    '0.1.10',
+  );
+});
+
+test('mobile keeps its installed version and channel when no app update is available', async () => {
+  profile.isDesktop = false;
+  profile.isMobile = true;
+  profile.channel = 'nightly';
+  render(<UpdatesControl onNavigate={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Station app · nightly' }),
+  ).toBeTruthy();
+  const panel = screen.getByRole('dialog', { name: 'Updates' });
+  expect(within(panel).getByText('0.1.11-nightly.20261105.1')).toBeTruthy();
+  expect(
+    within(panel).queryByRole('button', {
+      name: 'Check for desktop app updates',
+    }),
+  ).toBeNull();
 });

@@ -319,7 +319,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+      screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
     );
     expect(screen.getByText(child.title)).toBeTruthy();
     expect(screen.getByText(parent.title)).toBeTruthy();
@@ -507,7 +507,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           now={NOW}
         />,
       );
-      const lane = screen.getByRole('region', { name: /^Needs you/ });
+      const lane = screen.getByRole('region', { name: /^Needs attention/ });
       expect(within(lane).getByText('Ship release')).toBeTruthy();
       fireEvent.click(
         within(lane).getByRole('button', {
@@ -520,8 +520,11 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         '',
         '/tasks/task-1?dock=open&chat=linked-chat&taskView=conversation',
       );
+      expect(
+        within(lane).queryByRole('button', { name: 'Ship release, alpha' }),
+      ).toBeNull();
       fireEvent.click(
-        within(lane).getByRole('button', { name: 'Ship release, alpha' }),
+        within(lane).getByRole('button', { name: 'Open task Ship release' }),
       );
       expect(window.location.pathname).toBe('/tasks/task-1');
       expect(new URL(window.location.href).searchParams.get('dock')).toBeNull();
@@ -629,7 +632,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           />,
         );
       }
-      const needsYou = screen.getByRole('region', { name: /^Needs you/ });
+      const needsYou = screen.getByRole('region', { name: /^Needs attention/ });
       if (association === 'none') {
         expect(within(needsYou).getByText('Release review')).toBeTruthy();
         expect(
@@ -681,7 +684,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           0,
         );
         fireEvent.click(
-          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
         );
       } else {
         render(
@@ -696,7 +699,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       if (host === 'mobile')
         fireEvent.click(
-          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
         );
       expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
         20,
@@ -755,7 +758,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           />,
         );
         fireEvent.click(
-          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
         );
       } else {
         render(
@@ -770,7 +773,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       if (host === 'mobile')
         fireEvent.click(
-          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
         );
       const current = screen.getByRole('button', {
         name: 'Historical work 40, Shared project',
@@ -1325,10 +1328,10 @@ it.each([0, 1, 2])(
       screen.getByRole('status', { name: 'Working chats' }).textContent,
     ).toBe(String(count));
     const lane = screen.getByRole('region', {
-      name: count ? /^Running/ : /^Idle/,
+      name: count ? /^Working/ : /^Open/,
     });
     expect(
-      within(lane).getAllByRole('button', { name: 'One outcome, alpha' }),
+      within(lane).getAllByRole('button', { name: 'Open task One outcome' }),
     ).toHaveLength(1);
     expect(within(lane).getByText('Task · In progress')).toBeTruthy();
     if (count)

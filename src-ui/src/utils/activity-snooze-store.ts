@@ -19,6 +19,10 @@
  */
 
 const SNOOZE_STORAGE_KEY = 'station.activity.snoozed';
+const storageKey = (namespace?: string | null) =>
+  namespace
+    ? JSON.stringify([SNOOZE_STORAGE_KEY, namespace])
+    : SNOOZE_STORAGE_KEY;
 
 /**
  * Bumped on every write in this tab, so a surface that reads the map (the
@@ -49,9 +53,9 @@ export function snoozesVersion(): number {
 /** Snoozed item id -> epoch ms at which the snooze lapses. */
 export type SnoozeMap = Record<string, number>;
 
-export function readSnoozes(now: number): SnoozeMap {
+export function readSnoozes(now: number, namespace?: string | null): SnoozeMap {
   try {
-    const raw = localStorage.getItem(SNOOZE_STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(namespace));
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -70,10 +74,15 @@ export function readSnoozes(now: number): SnoozeMap {
   }
 }
 
-export function writeSnooze(id: string, until: number, now: number): SnoozeMap {
-  const next = { ...readSnoozes(now), [id]: until };
+export function writeSnooze(
+  id: string,
+  until: number,
+  now: number,
+  namespace?: string | null,
+): SnoozeMap {
+  const next = { ...readSnoozes(now, namespace), [id]: until };
   try {
-    localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(storageKey(namespace), JSON.stringify(next));
   } catch {
     /* ignore — snooze is a convenience, not state worth failing over */
   }
@@ -81,11 +90,15 @@ export function writeSnooze(id: string, until: number, now: number): SnoozeMap {
   return next;
 }
 
-export function clearSnooze(id: string, now: number): SnoozeMap {
-  const next = readSnoozes(now);
+export function clearSnooze(
+  id: string,
+  now: number,
+  namespace?: string | null,
+): SnoozeMap {
+  const next = readSnoozes(now, namespace);
   delete next[id];
   try {
-    localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(storageKey(namespace), JSON.stringify(next));
   } catch {
     /* ignore */
   }
@@ -109,8 +122,9 @@ export function migrateSnoozeKey(
   oldId: string,
   newId: string,
   now: number,
+  namespace?: string | null,
 ): SnoozeMap {
-  const current = readSnoozes(now);
+  const current = readSnoozes(now, namespace);
   if (oldId === newId || !(oldId in current)) {
     return current;
   }
@@ -118,7 +132,7 @@ export function migrateSnoozeKey(
   delete current[oldId];
   current[newId] = wakeAt;
   try {
-    localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(current));
+    localStorage.setItem(storageKey(namespace), JSON.stringify(current));
   } catch {
     /* ignore — snooze is a convenience, not state worth failing over */
   }

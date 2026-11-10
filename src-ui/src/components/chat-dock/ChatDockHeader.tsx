@@ -75,6 +75,7 @@ export interface ChatDockWorkspaceControls {
   /** station#1301 slice 1: the Background tasks sheet's desktop anchor. */
   backgroundTasksTriggerRef: React.RefObject<HTMLButtonElement | null>;
   backgroundTasksRunningCount: number;
+  backgroundTasksLimited?: boolean;
   isBackgroundTasksOpen: boolean;
   /**
    * Whether the row opens the Agents PANE rather than the sheet (#2050).
@@ -265,7 +266,7 @@ export function ChatDockHeader({
             key: 'background-tasks',
             label:
               workspaceControls.backgroundTasksRunningCount > 0
-                ? `Background tasks — ${workspaceControls.backgroundTasksRunningCount} running`
+                ? `Background tasks — ${workspaceControls.backgroundTasksRunningCount} running${workspaceControls.backgroundTasksLimited ? ' shown' : ''}`
                 : 'Background tasks',
             ...(workspaceControls.backgroundTasksOpensPane
               ? {}
@@ -342,7 +343,7 @@ export function ChatDockHeader({
     : (workspaceControls?.backgroundTasksRunningCount ?? 0);
   const backgroundTasksLabel =
     backgroundTasksCount > 0
-      ? `${backgroundTasksCount} background task${backgroundTasksCount === 1 ? '' : 's'} running`
+      ? `${backgroundTasksCount} background task${backgroundTasksCount === 1 ? '' : 's'} running${workspaceControls?.backgroundTasksLimited ? ' shown' : ''}`
       : undefined;
   // The inbox toggle shows the working count as a number.
   const toggleWearsNumber = showInboxToggle && workingCount > 0;
@@ -427,16 +428,14 @@ export function ChatDockHeader({
     <>
       {workspaceControls &&
       !(workspaceControls.showInboxToggle && workspaceControls.isInboxOpen) ? (
-        <div className="chat-dock__new-split">
-          <LazyBoundary
-            load={loadChatDockWorkspaceActions}
-            pending={null}
-            componentProps={{
-              ...workspaceControls,
-              iconOnly: true,
-            }}
-          />
-        </div>
+        <LazyBoundary
+          load={loadChatDockWorkspaceActions}
+          pending={null}
+          componentProps={{
+            ...workspaceControls,
+            iconOnly: true,
+          }}
+        />
       ) : null}
       {/* #800: the COLLAPSED bar's one affordance, a real action: the same
           New chat action every other chrome uses, icon-only and named, so

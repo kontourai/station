@@ -3,6 +3,7 @@ import {
   useCoreUpdateStatusQuery,
 } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
+import { StatusSummary } from '../../components/StatusSummary';
 import type { ConnectedServerUpdateContext } from '../../hooks/useConnectedServerUpdateContext';
 import {
   coreUpdateScopeFromContext,
@@ -10,7 +11,7 @@ import {
 } from '../../hooks/useConnectedServerUpdateContext';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { CoreUpdateCheck } from './CoreUpdateCheck';
-import { isArchiveInstall, ServerUpdateHeader } from './coreUpdatePresentation';
+import { isArchiveInstall } from './coreUpdatePresentation';
 import { SourceInstallerDisclosure } from './SourceInstallerDisclosure';
 
 function serverHost(apiBase: string): string {
@@ -121,12 +122,14 @@ export function ConnectedServerUpdates({
   active = true,
   headingId,
   notices,
+  showReleaseNotes = false,
 }: {
   active?: boolean;
   /** Renders the server's name as the heading this id labels (Updates). */
   headingId?: string;
   /** Update notices for this server, shown under its header. */
   notices?: ReactNode;
+  showReleaseNotes?: boolean;
 }) {
   const context = useConnectedServerUpdateContext();
   // The same query (same key) CoreUpdateCheck and the source disclosure
@@ -149,8 +152,8 @@ export function ConnectedServerUpdates({
   // and it fetches only while a person has it open.
   if (context.kind === 'embedded-sidecar') {
     return (
-      <div className="server-update">
-        <ServerUpdateHeader title={title} headingId={headingId} />
+      <div className="server-update content-stack">
+        <StatusSummary title={title} headingId={headingId} />
         {notices}
         <p className="settings__update-msg" role="status">
           Built-in server — updated with this desktop app.
@@ -168,6 +171,7 @@ export function ConnectedServerUpdates({
     // owner the correlation could not establish each keep the automatic
     // source check off.
     <CoreUpdateCheck
+      showReleaseNotes={showReleaseNotes}
       active={active}
       apiBase={context.apiBase}
       context={context}

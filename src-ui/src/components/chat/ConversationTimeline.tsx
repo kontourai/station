@@ -10,6 +10,7 @@ import {
   activeTimelineLandmarkIndex,
   conversationTimelineLandmarks,
 } from '../../hooks/orchestration/replay/timeline';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ArrowLeftGlyph, ArrowRightGlyph } from '../icons/Glyph';
 import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
 import './ConversationTimeline.css';
@@ -167,11 +168,7 @@ export function ConversationTimeline({
                   event.currentTarget.value,
                 )
                   .catch((error: unknown) =>
-                    setSwitchError(
-                      error instanceof Error
-                        ? error.message
-                        : 'That part of the conversation could not be loaded.',
-                    ),
+                    setSwitchError(describeStationFailure(error).body),
                   )
                   .finally(() => setSwitchingExecution(false));
               }}

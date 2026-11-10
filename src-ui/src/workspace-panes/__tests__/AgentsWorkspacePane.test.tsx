@@ -119,7 +119,10 @@ test('the pane lists the ACTIVE chat’s running and finished work', () => {
   });
   // Reverting `useNavigation(s => s.activeChat)` to a constant, or dropping
   // the argument, stops this from being the chat the reader is looking at.
-  expect(useChatBackgroundTasks).toHaveBeenCalledWith('chat-1');
+  expect(useChatBackgroundTasks).toHaveBeenCalledWith(
+    'chat-1',
+    'http://station.test',
+  );
   expect(screen.getByText('Running (1)')).toBeTruthy();
   expect(screen.getByText('Finished (1)')).toBeTruthy();
   expect(screen.getByText('Investigate flaky test')).toBeTruthy();
@@ -133,7 +136,10 @@ test('no chat shows every conversation’s work; an empty chat says so rather th
   mount({ running: [], finished: [] });
   // #2459: with no chat there is no "this conversation" — the pane reads All.
   expect(screen.getByText('No agent work yet')).toBeTruthy();
-  expect(useChatBackgroundTasks).toHaveBeenCalledWith(null);
+  expect(useChatBackgroundTasks).toHaveBeenCalledWith(
+    null,
+    'http://station.test',
+  );
   cleanup();
   activeChat = 'chat-1';
   mount({ running: [], finished: [] });
@@ -193,3 +199,7 @@ test('opening a delegate’s transcript reveals it on Activity', () => {
     session: 'delegate-1',
   });
 });
+
+vi.mock('../../hooks/useActiveStationName', () => ({
+  useActiveStationName: () => 'Fixture Station',
+}));

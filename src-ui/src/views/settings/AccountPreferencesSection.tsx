@@ -7,9 +7,11 @@ import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { applyReturnFocus } from '@kontourai/station-shared/return-focus';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { ManagedApprovalCeilingNote } from '../../components/managed/ManagedApprovalCeilingNote';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { ErrorState } from '../../components/state';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
+import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   APPROVAL_MODE_OPTIONS,
@@ -22,6 +24,7 @@ import { settingsRow } from './settings-catalog';
 
 export function AccountPreferencesSection() {
   const account = useAccountPreferences();
+  const { aboveCeiling } = useManagedApprovalCeiling();
   const recoveryRegion = useRef<HTMLElement>(null);
   const retryTrigger = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -155,15 +158,28 @@ export function AccountPreferencesSection() {
                   : saveMode(engine, event.target.value)
               }
             >
-              {APPROVAL_MODE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              {APPROVAL_MODE_OPTIONS.map((option) => {
+                // #4518: a personal default above this Station's managed
+                // ceiling is not offered; one already saved stays shown, and
+                // the server lowers it where it applies.
+                const managed =
+                  aboveCeiling(option.value) &&
+                  option.value !== defaults[engine];
+                return (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    disabled={managed}
+                  >
+                    {managed ? `${option.label} (Managed)` : option.label}
+                  </option>
+                );
+              })}
             </select>
           }
         />
       ))}
+      <ManagedApprovalCeilingNote className="editor-hint" />
       <ConfirmModal
         isOpen={confirmEngine !== null}
         title="Save full access default?"

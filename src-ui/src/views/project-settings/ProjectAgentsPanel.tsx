@@ -10,6 +10,7 @@ import { Checkbox } from '../../components/Checkbox';
 import { Dialog } from '../../components/Dialog';
 import { Empty, SkeletonList } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { AgentToolLibrary } from '../agent-editor/AgentToolLibrary';
 import {
   createEmptyAgentForm,
@@ -99,9 +100,7 @@ export function ProjectAgentsPanel({
       setForm(undefined);
       setEditing(undefined);
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'Agent could not be saved.',
-      );
+      setError(describeStationFailure(cause).body);
     }
   }
   async function policy(mode: 'all' | 'selected', sources: string[]) {
@@ -209,7 +208,9 @@ export function ProjectAgentsPanel({
               ))}
         </details>
       )}
-      {change.isError && <p role="alert">{change.error.message}</p>}
+      {change.isError && (
+        <p role="alert">{describeStationFailure(change.error).body}</p>
+      )}
       {form && (
         <Dialog
           title={editing === 'new' ? 'New Project agent' : form.name}

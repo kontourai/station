@@ -58,7 +58,10 @@ import type {
   BrowserViewport,
   CdpTransport,
 } from '../browser-host.js';
-import { CdpPipeTransport } from '../cdp-pipe-transport.js';
+import {
+  CdpPipeTransport,
+  CdpTransportClosedError,
+} from '../cdp-pipe-transport.js';
 import type { EgressPolicy } from '../egress-policy.js';
 import {
   isStationSelfUrl,
@@ -236,8 +239,31 @@ export const BEST_EFFORT_DENIED_PERMISSIONS = [
 
 const POPUP_URL_GRACE_MS = 3_000;
 
+/** A launch failure recognised from the browser's own stderr. */
+export type ChromiumLaunchFailure = 'sandbox-unavailable';
+
+/**
+ * Pure: the known fatal cause in a Chromium stderr excerpt, if any.
+ *
+ * `sandbox-unavailable` is Chromium's Linux zygote refusing to start without a
+ * sandbox (`zygote_host_impl_linux.cc`): unprivileged user namespaces are
+ * refused (Ubuntu 23.10+ AppArmor `apparmor_restrict_unprivileged_userns`, or
+ * a distro sysctl) and no setuid sandbox is installed.
+ */
+function classifyChromiumStderr(
+  stderr: string,
+): ChromiumLaunchFailure | undefined {
+  if (/FATAL:[^\]\n]*\] No usable sandbox!/.test(stderr))
+    return 'sandbox-unavailable';
+  return undefined;
+}
+
 export class BrowserHostExitedError extends Error {
-  constructor(readonly reason: string) {
+  constructor(
+    /** Server-side detail (may quote browser stderr); never sent to clients. */
+    readonly reason: string,
+    readonly failure?: ChromiumLaunchFailure,
+  ) {
     super(`The browser host is no longer running (${reason}).`);
     this.name = 'BrowserHostExitedError';
   }
@@ -276,6 +302,8 @@ export interface ChromiumLaunch {
   readonly pid: number | undefined;
   /** Resolves with a human-readable reason once the process has exited. */
   readonly exited: Promise<string>;
+  /** The classified cause from the browser's stderr, once one is seen. */
+  readonly failure?: () => ChromiumLaunchFailure | undefined;
   /** Kill the process tree and forget its orphan-registry record. */
   terminate(): Promise<void>;
 }
@@ -324,6 +352,12 @@ export type ChromiumHostEvent =
     }
   | { kind: 'untracked-target-closed'; targetId: string; url: string }
   | { kind: 'permission-deny-skipped'; permission: string; error: string }
+  | {
+      kind: 'launch-failed';
+      /** Includes a browser stderr excerpt: log it, never send it to a client. */
+      reason: string;
+      failure?: ChromiumLaunchFailure;
+    }
   | ({ kind: 'egress-refused' } & EgressDecisionEvent);
 
 export type PausedRequestBlock = 'station-self' | 'disallowed-url' | 'popup';
@@ -435,6 +469,8 @@ export function chromiumEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 const STDERR_TAIL_BYTES = 4096;
+/** How long an exit waits for the rest of stderr (helpers can hold it open). */
+const STDERR_DRAIN_MS = 500;
 
 /** Production launcher: an owned, orphan-registered child with a CDP pipe. */
 export const launchChromiumProcess: ChromiumLauncher = ({
@@ -446,18 +482,37 @@ export const launchChromiumProcess: ChromiumLauncher = ({
     env: chromiumEnvironment(process.env),
   });
   let stderrTail = '';
+  let failure: ChromiumLaunchFailure | undefined;
+  // Classified as it arrives, and before the tail is trimmed: one write can
+  // carry the FATAL line and kilobytes of stack after it. The unfinished
+  // last line of earlier output is kept with the chunk, so a line split
+  // across writes still classifies.
+  let lineCarry = '';
   proc.stderr?.on('data', (chunk: Buffer) => {
-    stderrTail = (stderrTail + chunk.toString('utf8')).slice(
-      -STDERR_TAIL_BYTES,
-    );
+    const text = chunk.toString('utf8');
+    const scanned = lineCarry + text;
+    failure ??= classifyChromiumStderr(scanned);
+    const lastNewline = scanned.lastIndexOf('\n');
+    lineCarry = scanned.slice(lastNewline + 1).slice(-STDERR_TAIL_BYTES);
+    stderrTail = (stderrTail + text).slice(-STDERR_TAIL_BYTES);
   });
   proc.stderr?.on('error', () => {});
+  const stderrEnded = new Promise<void>((resolve) => {
+    if (!proc.stderr) return resolve();
+    proc.stderr.once('end', resolve);
+    proc.stderr.once('close', resolve);
+  });
   const transport = new CdpPipeTransport(
     proc.stdio[3] as Writable,
     proc.stdio[4] as Readable,
   );
   const exited = new Promise<string>((resolve) => {
-    proc.once('exit', (code, signal) => {
+    proc.once('exit', async (code, signal) => {
+      // 'exit' can precede the last stderr chunk; the cause is often in it.
+      await Promise.race([
+        stderrEnded,
+        new Promise((r) => setTimeout(r, STDERR_DRAIN_MS)),
+      ]);
       const tail = stderrTail.trim().split('\n').slice(-3).join(' | ');
       resolve(
         `browser process exited (code ${code ?? 'none'}, signal ${signal ?? 'none'})${tail ? `: ${tail}` : ''}`,
@@ -485,6 +540,7 @@ export const launchChromiumProcess: ChromiumLauncher = ({
     transport,
     pid: proc.pid,
     exited,
+    failure: () => failure,
     async terminate() {
       try {
         await terminateProcessTree(proc, { processGroup: true });
@@ -523,6 +579,31 @@ interface Running {
 /** Grace before an unknown page target (not ours, not a popup) is closed. */
 const UNTRACKED_TARGET_GRACE_MS = 1_000;
 
+/** How long a launch whose pipe closed waits for the process exit. */
+const LAUNCH_EXIT_GRACE_MS = 2_000;
+
+/** The promise's value, or undefined if it has not settled within `ms`. */
+function settleWithin<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    promise,
+    new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/** A bounded host step that did not finish in time. */
+class HostStepTimeoutError extends Error {
+  constructor(what: string, ms: number) {
+    super(`${what} timed out after ${ms}ms`);
+    this.name = 'HostStepTimeoutError';
+  }
+}
+
 function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
@@ -532,10 +613,7 @@ function withTimeout<T>(
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`${what} timed out after ${ms}ms`)),
-        ms,
-      );
+      timer = setTimeout(() => reject(new HostStepTimeoutError(what, ms)), ms);
     }),
   ]).finally(() => clearTimeout(timer));
 }
@@ -583,6 +661,7 @@ export class ChromiumServerHost implements BrowserHost {
   private running: Running | undefined;
   private starting: Promise<Running> | undefined;
   private exitReason: string | undefined;
+  private exitFailure: ChromiumLaunchFailure | undefined;
   private shuttingDown = false;
   private readonly exitListeners = new Set<(reason: string) => void>();
   private readonly launcher: ChromiumLauncher;
@@ -710,14 +789,14 @@ export class ChromiumServerHost implements BrowserHost {
 
   private requireRunning(): Running {
     if (this.exitReason !== undefined)
-      throw new BrowserHostExitedError(this.exitReason);
+      throw new BrowserHostExitedError(this.exitReason, this.exitFailure);
     if (!this.running) throw new BrowserHostExitedError('not started');
     return this.running;
   }
 
   private async ensureRunning(profileDir: string): Promise<Running> {
     if (this.exitReason !== undefined)
-      throw new BrowserHostExitedError(this.exitReason);
+      throw new BrowserHostExitedError(this.exitReason, this.exitFailure);
     const current = this.running ?? (await this.starting);
     if (current) {
       if (current.profileDir !== profileDir)
@@ -795,13 +874,38 @@ export class ChromiumServerHost implements BrowserHost {
         await this.verifyWebRtcPolicy(running);
       return running;
     } catch (error) {
+      // A browser that dies at launch closes its pipe first, so the pending
+      // command fails as "transport closed" before the exit, and the stderr
+      // explaining it, is known. Wait briefly for the exit so the error says
+      // why the browser could not start.
+      const failure =
+        error instanceof CdpTransportClosedError
+          ? new BrowserHostExitedError(
+              (await settleWithin(launch.exited, LAUNCH_EXIT_GRACE_MS)) ??
+                error.message,
+              launch.failure?.(),
+            )
+          : error instanceof BrowserHostExitedError
+            ? new BrowserHostExitedError(error.reason, launch.failure?.())
+            : // A browser that hangs instead of exiting could not start
+              // either: the same typed failure, not an untyped 500.
+              error instanceof HostStepTimeoutError
+              ? new BrowserHostExitedError(error.message, launch.failure?.())
+              : error;
       for (const off of running.unsubscribe) off();
       await launch.terminate().catch(() => {});
       await proxy.close();
-      this.markExited(
-        `launch failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      throw error;
+      const reason = `launch failed: ${failure instanceof Error ? failure.message : String(failure)}`;
+      if (failure instanceof BrowserHostExitedError) {
+        this.exitFailure = failure.failure;
+        this.options.onEvent?.({
+          kind: 'launch-failed',
+          reason: failure.reason,
+          ...(failure.failure ? { failure: failure.failure } : {}),
+        });
+      }
+      this.markExited(reason);
+      throw failure;
     }
   }
 

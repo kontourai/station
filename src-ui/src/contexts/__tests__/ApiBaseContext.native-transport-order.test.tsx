@@ -63,6 +63,16 @@ vi.mock('@kontourai/station-connect', () => ({
       origin: 'https://station.example.test',
     }),
     isCredentialEvidenceCurrent: () => true,
+    captureCredentialEvidenceForConnection: (connectionId: string) => ({
+      connectionId,
+      leaseEpoch: 'background:1',
+      activationEpoch: 'profile:background:1',
+      generation: 0,
+      authorityGeneration: 0,
+      credentialState: 'device-session',
+      origin: 'https://station.example.test',
+    }),
+    isConnectionCredentialEvidenceCurrent: () => true,
     recordAuthenticatedSuccess: vi.fn(),
     // #3602: the SSE wake watches the connection's credential-authority
     // generation rather than the credential VALUE (a browser device session
@@ -98,6 +108,7 @@ vi.mock('../../platform/native/authenticatedTransport', () => ({
 }));
 
 import { getJson } from '../../../../packages/sdk/src/client/http';
+import { captureStationConnectionAuthority } from '../../connections/station-connection-authority';
 import {
   ApiBaseProvider,
   useHostRequestAuthorityScope,
@@ -256,5 +267,35 @@ describe('ApiBaseContext native transport installation order', () => {
       name: 'StationRequestAuthorityError',
     });
     expect(nativeTransport).not.toHaveBeenCalled();
+  });
+
+  it('binds a non-active profile to its own receipt and refuses dispatch after that binding disappears', async () => {
+    const rawFetch = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', rawFetch);
+    render(
+      <ApiBaseProvider>
+        <div />
+      </ApiBaseProvider>,
+    );
+    const authority =
+      await captureStationConnectionAuthority('background-station');
+    const response = await getJson(
+      'https://station.example.test/api/system/identity',
+      { requestScope: authority.requestScope },
+    );
+    expect(response.status).toBe(200);
+    expect(nativeTransport).toHaveBeenCalledOnce();
+    nativeBinding.current = null;
+    await expect(response.json()).rejects.toMatchObject({
+      name: 'StationRequestAuthorityError',
+    });
+    await expect(
+      getJson('https://station.example.test/api/system/identity', {
+        requestScope: authority.requestScope,
+      }),
+    ).rejects.toMatchObject({ name: 'StationRequestAuthorityError' });
+    expect(nativeTransport).toHaveBeenCalledOnce();
+    expect(rawFetch).not.toHaveBeenCalled();
+    authority.release();
   });
 });

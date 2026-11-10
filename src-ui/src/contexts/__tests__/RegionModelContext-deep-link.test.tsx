@@ -4,7 +4,7 @@ import type { TurnStartedEvent } from '@kontourai/station-contracts/runtime-even
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SessionTranscript } from '../../components/session-detail/SessionTranscript';
+import { SessionConversationReader } from '../../components/conversation/ConversationReader';
 import { PreviewProvider } from '../PreviewContext';
 /** @vitest-environment jsdom */
 
@@ -31,6 +31,10 @@ import {
 } from '../RegionModelContext';
 import { useShowSurface } from '../useShowSurface';
 
+vi.mock('../AuthContext', () => ({ useAuth: () => ({ user: null }) }));
+vi.mock('../ToastContext', () => ({
+  useToast: () => ({ showToast: vi.fn(), dismissToast: vi.fn() }),
+}));
 const sessionsProps = vi.hoisted(() => vi.fn());
 const transcriptProbe = vi.hoisted(() => ({ enabled: false }));
 
@@ -39,7 +43,7 @@ vi.mock('../../views/SessionsView', () => ({
     sessionsProps(props);
     if (transcriptProbe.enabled && typeof props.sessionId === 'string')
       return (
-        <SessionTranscript
+        <SessionConversationReader
           apiBase="http://test.local"
           session={{
             threadId: props.sessionId,

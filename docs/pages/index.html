@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Station | The agent workspace where work ships with receipts</title>
+    <title>Station: Code from anywhere</title>
     <meta
       name="description"
-      content="Station is Kontour's open-source, local-first agent workspace. Bring your agents, projects, and devices together and keep gates, evidence, and receipts beside the work."
+      content="Pick up where you left off, bring your team into the work, and make what your agents produce something you can build on together."
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -26,91 +26,81 @@
     <main>
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Open source · local-first · by Kontour</p>
-          <h1>The agent workspace where work ships with receipts.</h1>
-          <p class="lede">
-            Bring your agents, projects, and devices together. Hand a Task to
-            the agent you choose, and keep the gates, evidence, and receipts
-            beside the work so "done" means proven rather than asserted.
-          </p>
+          <h1>Code from anywhere. On your own, or with your team.</h1>
+          <p class="lede">Agent work shouldn’t be trapped in one terminal or provider. Pick up where you left off, bring your team into the work, and make what your agents produce something you can build on together.</p>
           <div class="hero-actions">
             <a class="button primary" href="./docs/user/getting-started.html">Get started</a>
             <a class="button secondary" href="https://github.com/kontourai/station">View source</a>
             <a class="button secondary" href="https://station.kontourai.io">Product tour</a>
           </div>
           <p class="status-line">
-            Active development under Apache-2.0. Run from source on macOS or
-            Linux, or try the macOS Nightly desktop build. A verified installer
-            ships with the first stable release.
+            Active development under Apache-2.0. v1 is coming soon. Try a Nightly server or desktop
+            build, or run from source. Nightly is a testing channel; follow the
+            setup guide for supported platforms and current limits.
           </p>
         </div>
-        <div class="hero-panel" aria-label="Platform capability summary">
-          <div class="panel-row">
-            <span>Agents</span>
-            <strong>Station agents + External agents</strong>
-          </div>
-          <div class="panel-row">
-            <span>Connections</span>
-            <strong>Model connections + Engines</strong>
-          </div>
-          <div class="panel-row">
-            <span>Work</span>
-            <strong>Projects, Tasks, Sessions</strong>
-          </div>
-          <div class="panel-row">
-            <span>Trust</span>
-            <strong>Gates, evidence, receipts</strong>
-          </div>
-        </div>
+
       </section>
 
       <section id="platform" class="section">
         <div class="section-heading">
-          <p class="eyebrow">Platform</p>
-          <h2>One workspace from task to evidence.</h2>
+          <h2>What Station does.</h2>
         </div>
         <div class="feature-grid">
           <article>
-            <h3>Supported engines, one workspace</h3>
-            <p>Run Station agents on a local or hosted model, or connect supported agent CLIs and compatible custom engines as External agents. Each engine keeps its own behavior and tool loop; Station supplies the context, the gates, and the record.</p>
+            <h3>Bring the coding agents you already use</h3>
+            <p>Run a Station agent on a local or hosted model, or connect supported agent CLIs and compatible custom engines. Each engine keeps its own tool loop. Station supplies Project context and records its activity.</p>
             <a href="./docs/user/concepts.html">Understand agents and connections</a>
           </article>
           <article>
-            <h3>Work that outlives a chat</h3>
-            <p>Projects, Tasks, Sessions, changed files, artifacts, and receipts stay linked. Reopen a Task later with its workspace binding and evidence intact.</p>
+            <h3>Pick up where you left off</h3>
+            <p>The plan, conversations, files, artifacts, and results stay linked to the Task. Reopen it to review the record, then check that its workspace is still available.</p>
             <a href="./docs/user/concepts.html">Understand Projects, Tasks, and Sessions</a>
           </article>
           <article>
-            <h3>See why work can advance</h3>
-            <p>Gate outcomes, missing evidence, route-backs, exceptions, and readiness stay visible beside the work they describe. A confident answer is never mistaken for a verified outcome.</p>
+            <h3>Review the changes and check results</h3>
+            <p>Configured workflows can attach gate results, missing evidence, exceptions, and receipts to a Task. Completing a Task doesn’t mean a review or gate passed.</p>
             <a href="./docs/user/concepts.html">Understand gates and receipts</a>
           </article>
           <article>
-            <h3>Local-first ownership</h3>
-            <p>Station data lives on your machine by default. Hosted Model connections, Engines, paired devices, remote computers, and export endpoints carry your data only when you configure and use them; desktop builds also check their release feed for updates.</p>
+            <h3>Run it on your own machine</h3>
+            <p>Station stores its data on the computer that runs it. Connected model services, engines, devices, and integrations can send and receive data outside it. Desktop builds also check for updates.</p>
             <a href="./docs/user/getting-started.html">Get started</a>
           </article>
           <article>
-            <h3>Your devices, your Station</h3>
-            <p>Pair a phone, tablet, or laptop to your Station with scoped, revocable access. Delegate work to another computer you own over SSH and let it run with that machine's own agents and credentials.</p>
+            <h3>Direct work from another device</h3>
+            <p>Pair a phone, tablet, or laptop with scoped, revocable access and open the same Task. You can also send work to another computer you own over SSH, using that computer’s agents and credentials.</p>
             <a href="https://github.com/kontourai/station/blob/main/docs/guides/machine-relationships.md">Read about computer relationships</a>
           </article>
           <article>
-            <h3>Built to extend</h3>
-            <p>Plugins add layouts, agents, tools, knowledge, connections, skills, and purpose-built work surfaces on the same SDK the core uses.</p>
+            <h3>Add a tool or work surface</h3>
+            <p>Plugins built on the public SDK can add layouts, agents, MCP tools, model providers, knowledge, and skills for your own setup or a team-specific work surface.</p>
             <a href="https://github.com/kontourai/station/blob/main/docs/guides/plugins.md">Read the plugin guide</a>
           </article>
         </div>
       </section>
 
+      <section class="section" aria-labelledby="shared-work-title">
+        <div class="section-heading">
+          <h2 id="shared-work-title">From your first idea to what you ship.</h2>
+        </div>
+        <p>Plan, build, and ship with your coding agents. Start on your own, then bring in teammates who can make decisions with you and take the work forward themselves. See progress as it happens, share what you learn, and build on work already done.</p>
+        <p>Team collaboration is in development. The current sharing limits are described below.</p>
+        <p>Today, you can invite people to a Project and give them a role. After signing in and
+          getting their browser approved, they can read the Tasks you publish for
+          them. Editing Tasks and running agents from that entry aren’t available
+          yet. Review and member-presence UI include Feature Previews. Pairing
+          connects your own devices; it isn’t team access.</p>
+        <p><a href="https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md">Read sharing setup and current limits</a>.</p>
+      </section>
+
       <section id="use-cases" class="section">
         <div class="section-heading">
-          <p class="eyebrow">Use cases</p>
           <h2>What people use it for.</h2>
         </div>
         <div class="feature-grid">
           <article>
-            <h3>Ship a change you can stand behind</h3>
+            <h3>Ship a change with its checks attached</h3>
             <p>Open the repository as a Project, create a Task, pick an agent, and keep the commands that ran, their results, and the review receipts with the change.</p>
           </article>
           <article>
@@ -119,7 +109,7 @@
           </article>
           <article>
             <h3>Use agents without a cloud account</h3>
-            <p>Point a Station agent at a local model server. Inference stays on this machine, and every other data-carrying connection is one you add yourself.</p>
+            <p>A configured local model can provide inference without a cloud account. Tools, engines, and other enabled integrations retain their own network behavior.</p>
           </article>
           <article>
             <h3>Coordinate several agents</h3>
@@ -132,37 +122,15 @@
           </article>
           <article>
             <h3>Build a purpose-built work surface</h3>
-            <p>Write a plugin: a review workbench, a release console, a domain-specific layout. Plugins get the same primitives as the core.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="section split">
-        <div>
-          <p class="eyebrow">Who it is for</p>
-          <h2>From a personal project to governed agent work.</h2>
-        </div>
-        <div class="use-case-list">
-          <article>
-            <h3>Individuals</h3>
-            <p>Keep your preferred connections, project context, reusable skills, and agent work in one local workspace you own.</p>
-          </article>
-          <article>
-            <h3>Teams</h3>
-            <p>A trusted group can run one Station on a machine it controls and use separate device grants with scoped access, keeping verification evidence attached to the work. Station does not yet provide per-person membership, roles, or person-level attribution; those are on the roadmap.</p>
-          </article>
-          <article>
-            <h3>Organizations</h3>
-            <p>Self-host on infrastructure you control, keep data local by default, and make readiness, policy depth, and receipts visible. Person-level access control and hosted multi-tenant operation are delivery targets, not available today.</p>
+            <p>Use the public SDK to build a review workbench, a release console, or a layout for a particular kind of work. The plugin guide lists supported hooks and their limits.</p>
           </article>
         </div>
       </section>
 
       <section id="get-station" class="section">
         <div class="section-heading">
-          <p class="eyebrow">Get Station</p>
-          <h2>Two ways to run it today.</h2>
-          <p class="section-note">Station is open source and under active development. A signed stable release ring has not been published yet, so the verified installer is not available yet.</p>
+          <h2>Choose how to try Station.</h2>
+          <p class="section-note">Station is open source and under active development. Nightly is a testing channel; the setup guide owns platform requirements and release availability.</p>
         </div>
         <div class="feature-grid">
           <article>
@@ -172,12 +140,12 @@
           </article>
           <article>
             <h3>Nightly desktop build</h3>
-            <p>macOS on Apple silicon. A rolling pre-release published from the main branch for testers. It installs alongside a stable Station and updates through its own channel. Not a stable release.</p>
+            <p>A rolling desktop pre-release for macOS Apple silicon and Windows x64. Check the setup guide for signing, runtime requirements, and platform limitations.</p>
             <a href="https://github.com/kontourai/station/releases/tag/nightly-desktop">Nightly desktop pre-release</a>
           </article>
           <article>
-            <h3>Coming: verified installer</h3>
-            <p>Arrives with the first stable release. The bootstrap verifies the release's build attestation and checksum before installing, and upgrades in place when run again. Not available until a signed release ring is published.</p>
+            <h3>Nightly server install</h3>
+            <p>Install a signed Nightly server archive using the documented installer. Follow the setup guide for macOS, Linux, or Windows PowerShell, verification, updates, and removal.</p>
             <a href="./docs/user/getting-started.html">Read the install guide</a>
           </article>
         </div>
@@ -185,13 +153,12 @@
 
       <section id="developers" class="section">
         <div class="section-heading">
-          <p class="eyebrow">Developers</p>
-          <h2>Build on it, script it, integrate it.</h2>
+          <h2>Build on Station.</h2>
         </div>
         <div class="feature-grid">
           <article>
             <h3>Plugins and the SDK</h3>
-            <p>Layouts, agents, tools, knowledge, and connections ship as plugins on a published SDK. Start from the scaffold, then use the full reference and runnable examples.</p>
+            <p>Use the published SDK to add layouts, agents, MCP tools, model providers, knowledge, and skills. Start from the scaffold, then read the reference and runnable examples.</p>
             <a href="https://github.com/kontourai/station/blob/main/docs/guides/build-your-first-plugin.md">Build your first plugin</a>
           </article>
           <article>
@@ -233,7 +200,7 @@
 
       <section class="section cta">
         <h2>Start with one connection and one project.</h2>
-        <p>Run Station, connect a model or an engine, open a project, and keep the first Task's evidence with the work from the beginning.</p>
+        <p>Run Station, connect an agent, and open your project. Start a Task and inspect what the agent changes.</p>
         <a class="button primary" href="./docs/user/getting-started.html">Get started</a>
       </section>
     </main>

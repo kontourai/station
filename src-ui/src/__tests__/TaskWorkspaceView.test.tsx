@@ -1882,8 +1882,11 @@ describe('TaskWorkspaceView', () => {
         else if (kind === 'refusal') {
           await waitFor(() =>
             expect(screen.getByRole('alert').textContent).toContain(
-              'Worktree diff unavailable:',
+              'Try again in a moment.',
             ),
+          );
+          expect(screen.getByRole('alert').textContent).not.toContain(
+            'Worktree diff unavailable:',
           );
           expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
           expect(screen.queryByText('No changes')).toBeNull();
@@ -2122,6 +2125,47 @@ describe('TaskWorkspaceView', () => {
     ).toBe('true');
   });
 
+  test('reveals the capability path only with its preview and follows canonical Task navigation', () => {
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    expect(
+      screen.queryByRole('region', { name: 'Capabilities and evidence' }),
+    ).toBeNull();
+    featurePreviews = [{ id: 'task-capabilities', enabled: true }];
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    const path = screen.getByRole('region', {
+      name: 'Capabilities and evidence',
+    });
+    fireEvent.click(within(path).getByRole('button', { name: 'Work chats' }));
+    expect(
+      screen
+        .getByRole('tab', { name: 'Work chats' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(
+      screen.queryByRole('region', { name: 'Capabilities and evidence' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('tab', { name: 'Work chats' }),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    fireEvent.click(
+      within(
+        screen.getByRole('region', { name: 'Capabilities and evidence' }),
+      ).getByRole('button', { name: 'Artifacts and receipts' }),
+    );
+    expect(new URLSearchParams(window.location.search).get('taskView')).toBe(
+      'details',
+    );
+    featurePreviews = [];
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.queryByRole('region', { name: 'Capabilities and evidence' }),
+    ).toBeNull();
+  });
+
   test('mounts write-back history only in Details while the chat apps preview is enabled', () => {
     featurePreviews = [{ id: 'chat-apps', enabled: true }];
     const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
@@ -2297,8 +2341,9 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
 
     expect(screen.getByRole('alert').textContent).toContain(
-      'Couldn’t load Task outputs: Offline',
+      'Couldn’t load Task outputs: Try again in a moment.',
     );
+    expect(screen.getByRole('alert').textContent).not.toContain('Offline');
     fireEvent.click(screen.getByRole('button', { name: 'Retry outputs' }));
     expect(taskOutputsResult.refetch).toHaveBeenCalledTimes(1);
   });
@@ -2381,8 +2426,9 @@ describe('TaskWorkspaceView', () => {
     const [, options] = deleteOutputMutation.mutate.mock.calls[0];
     act(() => options.onError(new Error('Still in use')));
     expect(screen.getByRole('alert').textContent).toMatch(
-      /Couldn’t delete.*Still in use/i,
+      /Couldn’t delete.*Try again in a moment\./i,
     );
+    expect(screen.getByRole('alert').textContent).not.toContain('Still in use');
   });
 
   test('renders PNG only from the exact safe server receipt and revokes its URL', async () => {

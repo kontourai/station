@@ -12,10 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
-import {
-  type LoadedManagedPolicy,
-  loadInstalledManagedPolicy,
-} from '@kontourai/station-shared/managed-policy';
+import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
 import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
@@ -30,6 +27,7 @@ import {
   installCrashHandlers,
   logFatalAndFlush,
 } from './runtime/bootstrap/crash-handlers.js';
+import { bootManagedPolicy } from './runtime/bootstrap/managed-policy-boot.js';
 import {
   installStdoutEpipeGuard,
   writeReadinessHandshake,
@@ -53,6 +51,20 @@ import {
   parkUnderSupervisor,
   type SupervisorLink,
 } from './runtime/bootstrap/supervisor-link.js';
+import { installManagedApprovalCeiling } from './security/managed-approval-ceiling.js';
+import { installManagedCapabilityLimits } from './security/managed-capability-limits.js';
+import { installManagedEngineLimits } from './security/managed-engine-limits.js';
+import {
+  assertManagedAdoptedListenersLoopback,
+  assertNoManagedRelayConnector,
+  assertNoManagedTailscaleServeExposure,
+  createManagedListenerAdmission,
+  installManagedListenerAdmission,
+  localClientsOnly,
+  ManagedNetworkExposureError,
+  managedTailscaleCommand,
+  resolveManagedListenHost,
+} from './security/managed-network-exposure.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
 import {
   getInstalledServerLogSink,
@@ -62,6 +74,7 @@ import {
   initializeWorkloadResources,
   stopWorkloadResources,
 } from './services/infra/workload-resources.js';
+import { readTelemetryCompanionSavedPorts } from './services/telemetry-companion-control.js';
 import { lifecycleService } from './telemetry/metrics.js';
 import { createLogger, resolveLogLevel } from './utils/logger.js';
 import { resolveHomeDir } from './utils/paths.js';
@@ -82,6 +95,26 @@ function flushLogSink(): void {
     getInstalledServerLogSink()?.flushSync();
   } catch {
     // best-effort; the crash path must never throw
+  }
+}
+
+/**
+ * The saved telemetry companion ports, for the startup Serve check. Under
+ * the limit a companion whose ports cannot be read refuses startup, since
+ * Station cannot show that nothing forwards to it.
+ */
+async function managedTelemetryCompanionPorts(
+  policy: LoadedManagedPolicy,
+  home: string,
+): Promise<number[]> {
+  try {
+    return await readTelemetryCompanionSavedPorts(home);
+  } catch (error) {
+    throw new ManagedNetworkExposureError(
+      policy,
+      `Station cannot read the telemetry companion's ports (${error instanceof Error ? error.message.slice(0, 200) : 'unreadable'})`,
+      'Repair or remove the telemetry-companion folder in the Station home, then start Station again.',
+    );
   }
 }
 
@@ -137,7 +170,7 @@ async function main() {
   // reaps children whose recorded owner pid is demonstrably gone — so it
   // cannot touch a live sibling Station's engines. Best-effort, like the temp
   // sweep: a failure here must never block boot.
-  void sweepOrphanedOwnedProcesses({
+  const orphanEngineSweep = sweepOrphanedOwnedProcesses({
     log: (message, data) => console.log(`[station] ${message}`, data ?? ''),
   }).catch(() => {});
   let port = resolveRuntimePort(
@@ -213,17 +246,7 @@ async function main() {
   // Loaded after the schema gate and the log sink so the refusal reaches
   // the durable log; neither depends on the policy.
   let managedPolicy: LoadedManagedPolicy | null;
-  try {
-    managedPolicy = loadInstalledManagedPolicy();
-    // #4517: composite values and cross-field rules are checked against
-    // the settings file schema, which the contract parser cannot see.
-    if (managedPolicy?.document.settings) {
-      const { validator } = await import('./domain/validator.js');
-      assertManagedSettingsValid(managedPolicy, (config) =>
-        validator.validateAppConfig(config),
-      );
-    }
-  } catch (error) {
+  const refuseStartup: (error: unknown) => never = (error) => {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);
     // One line that starts with the marker: the desktop sidecar matches it
@@ -236,8 +259,31 @@ async function main() {
       flushLogSink,
       buildProvenanceSnapshot,
     );
-    process.exit(1);
+    return process.exit(1);
+  };
+  try {
+    // The same load the OTel bootstrap read before `main()` (#4521).
+    managedPolicy = bootManagedPolicy();
+    // #4517: composite values and cross-field rules are checked against
+    // the settings file schema, which the contract parser cannot see.
+    if (managedPolicy?.document.settings) {
+      const { validator } = await import('./domain/validator.js');
+      assertManagedSettingsValid(managedPolicy, (config) =>
+        validator.validateAppConfig(config),
+      );
+    }
+  } catch (error) {
+    refuseStartup(error);
   }
+  // #4521: the capability switches every seam reads, installed before
+  // anything they govern is built.
+  installManagedCapabilityLimits(managedPolicy);
+  // #4520: the engine allow list and pinned launch fields, before any engine
+  // is started.
+  installManagedEngineLimits(managedPolicy);
+  // #4518: the approval ceiling every gate reads, installed before anything
+  // that can start or change a run is built.
+  installManagedApprovalCeiling(managedPolicy);
   if (managedPolicy) {
     logger.info('Managed policy loaded', {
       source: managedPolicy.source,
@@ -246,7 +292,21 @@ async function main() {
     });
   }
 
-  const configuredHost = process.env.STATION_HOST || undefined;
+  // #4519: without `remote` in the policy's `limits.clients`, bind loopback
+  // (and refuse a non-loopback STATION_HOST) before anything listens.
+  let configuredHost: string | undefined;
+  try {
+    configuredHost = resolveManagedListenHost(
+      managedPolicy,
+      process.env.STATION_HOST || undefined,
+    );
+    assertManagedAdoptedListenersLoopback(
+      managedPolicy,
+      supervisorLink?.adoptedAddresses() ?? [],
+    );
+  } catch (error) {
+    refuseStartup(error);
+  }
   const host = configuredHost || '0.0.0.0';
   const displayHost = host.includes(':') ? `[${host}]` : host;
 
@@ -256,6 +316,46 @@ async function main() {
   if (port === AUTO_ALLOCATE_PORT) {
     port = await allocateFreePortBlock(host);
   }
+
+  try {
+    // #4519: a relay connector and a Tailscale Serve route are both ways in
+    // from off this machine. The Serve check covers every listener port
+    // and the UI proxy's.
+    assertNoManagedRelayConnector(
+      managedPolicy,
+      Boolean(process.env.STATION_BROKER_CONFIG_FILE),
+    );
+    const uiPort = Number.parseInt(process.env.STATION_UI_PORT ?? '', 10);
+    const consentPort = Number.parseInt(
+      process.env.STATION_CONSENT_PORT ?? '',
+      10,
+    );
+    await assertNoManagedTailscaleServeExposure(
+      managedPolicy,
+      [
+        port,
+        port + 2,
+        Number.isInteger(consentPort) ? consentPort : port + 3,
+        ...(Number.isInteger(uiPort) && uiPort > 0 ? [uiPort] : []),
+        // Round 2: a telemetry companion outlives Station, so one already
+        // running publishes these now; Start admits them again.
+        ...(managedPolicy && localClientsOnly(managedPolicy)
+          ? await managedTelemetryCompanionPorts(managedPolicy, projectHomeDir)
+          : []),
+      ],
+      managedTailscaleCommand(managedPolicy),
+    );
+  } catch (error) {
+    refuseStartup(error);
+  }
+  // The same two checks for every listener opened later (the MCP Apps
+  // frame origin, the repair relay), which StationRuntime admits as each
+  // binds.
+  const listenerAdmission = createManagedListenerAdmission(
+    managedPolicy,
+    managedTailscaleCommand(managedPolicy),
+  );
+  installManagedListenerAdmission(listenerAdmission);
 
   const connector = loadSelfHostedBrokerConnectorConfig({
     homeDir: projectHomeDir,
@@ -269,11 +369,14 @@ async function main() {
 
   const runtime = new StationRuntime({
     projectHomeDir,
+    // #4507: deferred Task worktree finalizations wait for this.
+    orphanEngineSweep,
     port,
     host: configuredHost,
     logger,
     buildProvenanceSnapshot,
     managedPolicy,
+    listenerAdmission,
     ...(connector
       ? {
           relayInvitationOwner: connector.invitationOwner,
@@ -399,6 +502,8 @@ async function main() {
     }
     await supervisorLink?.ready(randomUUID(), port);
   } catch (error) {
+    // A listener refused by admission is the same one-line managed refusal.
+    if (error instanceof ManagedNetworkExposureError) refuseStartup(error);
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);
     console.error('Failed to start Station:', error);

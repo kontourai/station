@@ -183,7 +183,9 @@ namespace and are retired when that account changes; explicit chat picks remain
 separate. Existing chats,
 unattended starts and remote-Station execution do not inherit the initiating
 Station's personal preference. Engine capability and device authorization still
-apply. The composer distinguishes startup intent, confirmed engine mode,
+apply. Under a managed approval ceiling (#4518) the preference is recorded
+as a personal default, not a pick, and lowered to the ceiling; the pickers
+disable modes above it. The composer distinguishes startup intent, confirmed engine mode,
 next-turn requests and restart-required refusal. Its picker changes this chat;
 **Save as my … default** is a separate explicit action.
 
@@ -294,6 +296,15 @@ workspace isolation mode); the stored project record keeps them. Device settings
 client. Settings shows a "Managed by <organization>" layer and badge and
 disables the locked control.
 
+The capability switches in `limits` (#4521) are enforced outside the setting
+scopes: `limits.telemetry: false` overrides every usage-sharing choice and the
+OTel collector settings, and `limits.registries` narrows `registryTrust` and
+the default skill registries without changing what is stored. See
+[capability switches](../guides/managed-policy.md#capability-switches).
+
+`limits.clients` (#4519) sits outside settings too: it governs network
+exposure, not a setting value.
+
 ## 3. Target model: five scopes
 
 Every setting is declared with exactly one scope. The scope determines storage,
@@ -384,7 +395,7 @@ Notifications & voice, Keyboard shortcuts, Devices, Privacy & sharing,
 My knowledge, and Advanced. General is the default. The topic inventory in
 [`settings-pages.ts`](../../src-ui/src/views/settings/settings-pages.ts) groups
 existing sections without changing their row identities or persistence scopes.
-Settings and Developer share [SectionNavigation](../../src-ui/src/components/SectionNavigation.tsx),
+Settings, Project Settings and Developer share [SectionNavigation](../../src-ui/src/components/SectionNavigation.tsx),
 including the desktop rail and narrow-screen selector. Search keeps its selected
 topic while suppressing the active-link highlight. Longer registry explanations
 remain in expandable Details beneath a concise consequence sentence; the full

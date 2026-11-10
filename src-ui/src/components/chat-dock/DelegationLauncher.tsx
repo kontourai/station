@@ -32,6 +32,7 @@ import {
   peerStationLabel,
   selectablePeerStations,
 } from '../../utils/peerEnvironmentOptions';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import {
   ENVIRONMENTS_UNAVAILABLE_NOTICE,
@@ -784,7 +785,7 @@ export function DelegationLauncher({
 
           {discoveryError && (
             <div className="delegation-launcher__discovery-error" role="alert">
-              <span>{discoveryError.message}</span>
+              <span>{describeStationFailure(discoveryError).body}</span>
               <button type="button" onClick={() => void retryDiscovery()}>
                 Try again
               </button>
@@ -1074,7 +1075,7 @@ export function DelegationLauncher({
 
           {mutation.error && (
             <p className="delegation-launcher__error" role="alert">
-              {mutation.error.message}
+              {describeStationFailure(mutation.error).body}
             </p>
           )}
         </div>

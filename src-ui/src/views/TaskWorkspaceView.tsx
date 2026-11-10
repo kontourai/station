@@ -55,6 +55,7 @@ import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
+import { describeStationFailure } from '../utils/stationFailure';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
 import {
   ProjectTaskRoomConversation,
@@ -73,6 +74,7 @@ import {
   resolveTaskExperiences,
   type TaskExperienceId,
 } from './task-experiences';
+import { TaskCapabilityPath } from './task-workspace/TaskCapabilityPath';
 import { TaskLearningPanel } from './task-workspace/TaskLearningPanel';
 import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
 import {
@@ -668,6 +670,21 @@ function TaskWorkspaceContent({
         aria-labelledby="task-tab-Overview"
       >
         <TaskRoomRail task={graph.task} onBrief={() => setTab('Plan')} />
+        {tab === 'Overview' && (
+          <TaskCapabilityPath
+            taskId={graph.task.id}
+            taskCreatedAt={graph.task.createdAt}
+            projectId={projectId}
+            projectSlug={projectSlug}
+            onView={(view) => {
+              if (view === 'Details') setActiveExperienceId('direct');
+              setTab(view);
+              document
+                .getElementById(`task-tab-${view.replaceAll(' ', '-')}`)
+                ?.focus();
+            }}
+          />
+        )}
         {supervisionAuthority && (
           <TaskSupervisionPanel
             taskId={graph.task.id}
@@ -793,7 +810,10 @@ function TaskWorkspaceContent({
         ) : (
           <TaskExperienceBoundary experience={activeExperience} />
         )}
-        <TaskRoomHistoryDetails taskId={taskId} />
+        <TaskRoomHistoryDetails
+          taskId={taskId}
+          requestScope={supervisionAuthority}
+        />
       </div>
     </div>
   );
@@ -1617,9 +1637,7 @@ function TaskLoadError({
   const notFound = isTaskNotFound(error);
   const description = notFound
     ? `Task ${taskId} is unavailable or no longer exists.`
-    : error instanceof Error
-      ? error.message
-      : 'Task data was not returned.';
+    : describeStationFailure(error).body;
   return (
     <div className="page page--full task-workspace task-workspace__state">
       <ErrorState

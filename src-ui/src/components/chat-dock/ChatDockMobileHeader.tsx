@@ -81,6 +81,7 @@ export interface ChatDockMobileOverflowActions {
    */
   onOpenBackgroundTasks?: () => void;
   backgroundTasksRunningCount?: number;
+  backgroundTasksLimited?: boolean;
   /**
    * The session context sheet (the desktop card's rows). A row of this sheet
    * rather than a third control in the bar: the bar's edge reserve holds two
@@ -137,6 +138,7 @@ interface ChatDockMobileHeaderProps {
   showConnection: boolean;
   sessionTitle: string;
   routeLabel?: string;
+  stationName?: string;
   sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
   projectScope?: { name: string; onClear: () => void };
@@ -162,6 +164,7 @@ export function ChatDockMobileHeader({
   showConnection,
   sessionTitle,
   routeLabel,
+  stationName,
   sessionProjectMismatchLabel,
   agentIdentity,
   projectScope,
@@ -326,10 +329,12 @@ export function ChatDockMobileHeader({
             {inboxActive ? 'Inbox' : sessionTitle}
           </span>
           {!inboxActive && agentIdentity && ' '}
-          {!inboxActive && agentIdentity && (
-            <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
-              {agentIdentity.name}
-              {routeLabel ? ` · via ${routeLabel}` : ''}
+          {!inboxActive && (agentIdentity || stationName) && (
+            <span className="chat-dock__mobile-eyebrow">
+              {stationName && `Via ${stationName}`}
+              {stationName && agentIdentity && ' · '}
+              {agentIdentity?.name}
+              {!stationName && routeLabel && ` · via ${routeLabel}`}
               {sessionProjectMismatchLabel &&
                 ` · ${sessionProjectMismatchLabel}`}
             </span>

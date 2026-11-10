@@ -1,3 +1,4 @@
+import { managedEngineEnvironmentLocked } from '../../security/managed-engine-limits.js';
 import { BOOT_INTERNAL_SECRET_ENV_KEYS } from '../../utils/child-process-environment.js';
 import { expandTilde } from '../../utils/paths.js';
 
@@ -116,6 +117,10 @@ export function connectionSpawnEnv(
   config: Record<string, unknown> | undefined,
   engine: ConnectionEnvEngine,
 ): Record<string, string> | undefined {
+  // #4520: a locked managed environment makes the launch environment the
+  // administrator's, so the connection's own variables and config home,
+  // which point the engine at configuration the user writes, are not applied.
+  if (managedEngineEnvironmentLocked(engine)) return undefined;
   const env = sanitizeConnectionEnvMap(config?.env);
   const configHome = sanitizeConnectionConfigHome(config?.configHome);
   const homeKey = CONNECTION_CONFIG_HOME_ENV_KEYS[engine];

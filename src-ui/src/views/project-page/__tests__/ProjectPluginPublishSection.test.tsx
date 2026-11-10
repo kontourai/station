@@ -263,7 +263,7 @@ test('a folder refusal is explained with the files it names, and blocks publishi
   expect(publishButton().disabled).toBe(true);
 });
 
-test('a refusal at publish time shows the server sentence, and a secret it found is listed', async () => {
+test('a publish refusal shows safe recovery and lists the detected secret', async () => {
   answerInspection(inspection());
   mutateJsonMock.mockResolvedValueOnce(
     jsonResponse(409, {
@@ -276,11 +276,7 @@ test('a refusal at publish time shows the server sentence, and a secret it found
   await openDialog();
   typeAddress();
   fireEvent.click(publishButton());
-  expect(
-    await screen.findByText(
-      'The branch on the remote changed while publishing.',
-    ),
-  ).toBeTruthy();
+  expect(await screen.findByText('Try again in a moment.')).toBeTruthy();
 
   mutateJsonMock.mockResolvedValueOnce(
     jsonResponse(409, {

@@ -358,6 +358,7 @@ describe('Station-agent conversation storage (#3112)', () => {
     modelMode = { fail: false };
     languageModel = model(modelMode);
     agent = await new VoltAgentFramework().createTempAgent({
+      purpose: 'agent-run',
       agentId: SLUG,
       name: SLUG,
       instructions: 'Answer briefly.',

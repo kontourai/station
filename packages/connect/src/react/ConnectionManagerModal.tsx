@@ -111,6 +111,15 @@ export interface ConnectionManagerModalProps {
   onPairingSucceeded?: () => void;
   /** Move a submitted approval request into persistent application chrome. */
   onApprovalPending?: (pending: PendingPairingExchange) => void;
+  /** The person stopped waiting on a request handed to `onApprovalPending`. */
+  onApprovalCancelled?: (pending: PendingPairingExchange) => void;
+  /**
+   * #4519: set when this Station cannot pair other devices (its managed
+   * policy allows no remote clients): the explanation to show, rendered by
+   * the host. The pairing panel is replaced by it and "Approve another
+   * device" is disabled; the server refuses pairing either way.
+   */
+  pairingRefusal?: ReactNode;
 }
 
 export function ConnectionManagerModal({
@@ -140,6 +149,8 @@ export function ConnectionManagerModal({
   returnFocusTarget,
   onPairingSucceeded,
   onApprovalPending,
+  onApprovalCancelled,
+  pairingRefusal,
 }: ConnectionManagerModalProps) {
   if (!isOpen) return null;
   return (
@@ -170,6 +181,8 @@ export function ConnectionManagerModal({
         returnFocusTarget={returnFocusTarget}
         onPairingSucceeded={onPairingSucceeded}
         onApprovalPending={onApprovalPending}
+        onApprovalCancelled={onApprovalCancelled}
+        pairingRefusal={pairingRefusal}
       />
     </Suspense>
   );

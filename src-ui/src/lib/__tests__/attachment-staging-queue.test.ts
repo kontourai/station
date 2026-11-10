@@ -24,8 +24,66 @@ const attachment = (id: string) => ({
 });
 
 describe('stageComposerAttachments', () => {
+  test('keeps the source scope on every relay staging operation and waits for completion before reporting complete', async () => {
+    const relay = 'http://source.test/api/environments/peers/receiver/chat-api';
+    const scope = {
+      apiBase: 'http://source.test',
+      authorityKey: 'source-lease',
+    };
+    capability.mockResolvedValueOnce({
+      state: 'supported',
+      version: 1,
+      maxConcurrentUploads: 3,
+    });
+    prepare.mockResolvedValueOnce({
+      stageId: 'stage_one',
+      uploadGrant: 'receiver-only',
+    });
+    let finish: (value: unknown) => void = () => {};
+    const started = new Promise<void>((resolve) =>
+      upload.mockImplementationOnce(async () => {
+        resolve();
+        return new Promise((done) => {
+          finish = done;
+        });
+      }),
+    );
+    const updates: unknown[] = [];
+    const waiting = stageComposerAttachments(
+      relay,
+      [attachment('remote')],
+      undefined,
+      (update) => updates.push(update),
+      undefined,
+      scope,
+    );
+    await started;
+    expect(updates.at(-1)).toMatchObject({ state: 'uploading', progress: 0 });
+    expect(capability).toHaveBeenCalledWith(
+      relay,
+      expect.objectContaining({ requestScope: scope }),
+    );
+    expect(prepare).toHaveBeenCalledWith(
+      relay,
+      expect.anything(),
+      expect.objectContaining({ requestScope: scope }),
+    );
+    expect(upload).toHaveBeenCalledWith(
+      relay,
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ requestScope: scope }),
+    );
+    finish({ stageId: 'stage_one' });
+    await expect(waiting).resolves.toMatchObject({
+      kind: 'staged',
+      references: [{ stageId: 'stage_one' }],
+    });
+    expect(updates.at(-1)).toMatchObject({ state: 'complete', progress: 1 });
+  });
   test('refuses before querying or preparing a grant when raw egress is blocked', async () => {
     capability.mockReset();
+    prepare.mockClear();
     assertRawEgress.mockReset();
     assertRawEgress.mockImplementationOnce(() => {
       throw new Error(

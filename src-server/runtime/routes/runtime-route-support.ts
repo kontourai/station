@@ -13,6 +13,7 @@ import { getNotificationProviders } from '../../providers/registries/registry.js
 import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { readBootHistory } from '../../routes/system/boot-history.js';
+import { isManagedEngineRefusal } from '../../security/managed-engine-limits.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import {
   ApprovalInboxNotificationProvider,
@@ -50,6 +51,7 @@ import {
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
+import { createTaskLeadReader } from '../../services/orchestration/task-question-wake.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import {
   wireInternalStopRedispatchFailureNotifications,
@@ -69,12 +71,19 @@ import type { ScheduledConversationRunner } from '../../services/scheduling/sche
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
+import { GhGitHubFollowUpReader } from '../../services/work-item-providers/github-follow-up-reader.js';
+import { composeTaskFollowUpPoller } from '../../services/work-item-providers/task-follow-up-poller.js';
+import {
+  TaskFollowUpWake,
+  type TaskFollowUpWakePorts,
+} from '../../services/work-item-providers/task-follow-up-wake.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
 import { createAutomationActionsRuntime } from '../automation-actions-runtime.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
+import { canUseTaskSource } from '../context-efficiency-runtime.js';
 import {
   createStationEngineAvailabilityReader,
   resolveManagedChatBinding,
@@ -126,6 +135,12 @@ export function createScheduledTurnAdapter(
         );
         return { kind: 'completed' as const, output: result.text ?? '' };
       } catch (error) {
+        // #4515: refused by the managed policy before the model was called.
+        if (isManagedEngineRefusal(error))
+          return {
+            kind: 'definitely-not-invoked' as const,
+            error: errorMessage(error),
+          };
         return {
           kind: 'indeterminate' as const,
           error:
@@ -156,6 +171,8 @@ export function createRuntimeSystemRouteDeps(
   context: ConfigureRuntimeRoutesContext,
 ) {
   return {
+    // #4522: the update routes enforce the managed policy's update limit.
+    managedUpdates: context.managedPolicy?.document.limits?.updates ?? null,
     getHomeRecovery: (): HomeRecoveryDisclosure => {
       const result = readStationHomeRecovery(
         context.configLoader.getProjectHomeDir(),
@@ -524,6 +541,47 @@ export function configureRuntimeSupportServices(
     () => existsSync(join(automationHome, 'automation', 'automation.sqlite')),
   );
   const automationStore = new AutomationStore(automationHome);
+  // #4508: Task tracker follow-ups ride the same tick, behind their own
+  // Feature Preview; the store is the runtime's, shared with Task briefs.
+  const taskFollowUps = context.taskFollowUps;
+  // The lead wake (decision 2) needs the durable event store's lead reader
+  // and the conversation inbox; without them follow-ups are recorded only.
+  const followUpEventStore = context.orchestrationEventStore;
+  let taskFollowUpWake: TaskFollowUpWake | undefined;
+  const taskFollowUpPoller = taskFollowUps
+    ? composeTaskFollowUpPoller(
+        context.featurePreviews,
+        isHostedTenantExecutionRequired(),
+        {
+          store: () => taskFollowUps.forWrite(),
+          tasks: context.taskGraphService,
+          reader: new GhGitHubFollowUpReader(),
+          wake: () => taskFollowUpWake,
+          logger: context.logger,
+        },
+      )
+    : undefined;
+  if (taskFollowUps && taskFollowUpPoller && followUpEventStore)
+    taskFollowUpWake = new TaskFollowUpWake({
+      store: () => taskFollowUps.forRead(),
+      enabled: () => taskFollowUpPoller.previewEnabled(),
+      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+      readLead: createTaskLeadReader({
+        eventStore: followUpEventStore,
+        service: context.orchestrationService,
+      }),
+      conversationOf: (sessionId) =>
+        followUpEventStore.conversationForSession(sessionId)?.conversationId ??
+        sessionId,
+      // The question wake's own re-check, with execute authority.
+      mayReadTask: (task, owner) =>
+        canUseTaskSource(context, task, owner, true),
+      get submit(): TaskFollowUpWakePorts['submit'] {
+        const inbox = options.threadInbox?.();
+        return inbox ? (input) => inbox.submit(input) : undefined;
+      },
+      logger: context.logger,
+    });
   const automationObservation = composeGitHubAutomationObservation(
     context.featurePreviews,
     isHostedTenantExecutionRequired(),
@@ -590,6 +648,9 @@ export function configureRuntimeSupportServices(
             (agent) => agent.slug === id,
           ),
         logger: context.logger,
+        ...(context.listenerAdmission
+          ? { listenerAdmission: context.listenerAdmission }
+          : {}),
       });
   const schedulerService = new SchedulerService({
     logger: context.logger,
@@ -602,11 +663,17 @@ export function configureRuntimeSupportServices(
       integrationSecretResolver,
       automationPoller: {
         async poll(input) {
+          // #4508: started, never awaited. Follow-ups keep their own single
+          // flight and deadline, so slow GitHub reads cannot hold up the
+          // observation, actions and repairs below.
+          taskFollowUpPoller?.tick(input);
           await automationObservation.poller?.poll(input);
           if (!input.signal.aborted) await automationActions?.tick();
           if (!input.signal.aborted) await isolatedRepairs?.tick();
         },
         async close() {
+          await taskFollowUpPoller?.close();
+          taskFollowUps?.close();
           await isolatedRepairs?.close();
           automationActions?.close();
           automationObservation.poller?.close();
@@ -925,5 +992,7 @@ export function configureRuntimeSupportServices(
     pushSigningKeyStore,
     pushGatewayAvailable: pushGateway !== null,
     agentActivityPublisher,
+    /** #4508: the follow-up lead wake, for the inbox's placement re-check. */
+    taskFollowUpWake,
   };
 }

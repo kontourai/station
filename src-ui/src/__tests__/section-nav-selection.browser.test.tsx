@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { expect, test } from 'vitest';
+import { getBlockingAccessibilityViolations } from '../../../tests/helpers/accessibility';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
@@ -76,6 +77,37 @@ test('a section tab that loses selection shows no active fill in the frame it lo
       expect(after.sameFrame).toMatchObject(after.neverSelected);
       expect(after.nextFrame).toEqual(after.neverSelected);
       expect(after.neverSelected.background).toBe('rgba(0, 0, 0, 0)');
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('selected rail sections remain readable in both themes and retain navigation', async () => {
+  const railFixture = fixture.replace(
+    '<SectionNav aria-label=',
+    '<SectionNav className="section-nav--rail" aria-label=',
+  );
+  const { browser, page, errors } = await scrollBrowserFixture(railFixture);
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addStyleTag({
+      content: resolveCssImports(resolve(import.meta.dirname, '../index.css')),
+    });
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      const link = page.getByRole('link', { name: 'Workspace', exact: true });
+      await link.click();
+      expect(await link.getAttribute('aria-current')).toBe('location');
+      expect(await link.getAttribute('href')).toBe('?section=workspace');
+      await page.mouse.move(0, 0);
+      expect(
+        await getBlockingAccessibilityViolations(page, 'section-rail', 'nav'),
+      ).toEqual([]);
     }
     expect(errors).toEqual([]);
   } finally {

@@ -288,7 +288,7 @@ idempotent and does not move the recorded moment.
   exists exactly once and a self-dismissing notification could take the only
   copy of a capability with it. A failed clipboard write is never reported as a
   copy.
-- **Manage**: Settings → Station → *Shared answers*, listing every share with
+- **Manage**: Settings → Privacy & sharing → *Shared answers*, listing every share with
   its live/revoked/expired state in a sentence, and a two-click inline revoke
   (`PairedDeviceList`'s idiom). The list never shows a token or its digest.
 

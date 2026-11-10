@@ -32,6 +32,7 @@ import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { createSchedulerRoutes } from '../../../routes/operations/scheduler.js';
 import { composeAgentSchedule } from '../../../runtime/routes/agent-schedule-composition.js';
+import { inboxPlacementStartPort } from '../../../runtime/routes/conversation-start-ports.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
@@ -196,28 +197,36 @@ describe.each([
             INTERNAL_SESSION_READ_SCOPE,
             inputDigest,
           ),
-        start: async ({ conversationId, threadId, payload, clientTurnId }) => {
-          const dispatched = await service.dispatchWithReceipt(
-            {
-              type: 'sendTurn',
-              input: { threadId, input: payload.message, clientTurnId },
-            },
-            {
-              userId: payload.actor.userId,
-              ...(payload.clientOrigin
-                ? { clientOrigin: payload.clientOrigin }
-                : {}),
-            },
-          );
-          const result = dispatched.result as { turnId?: string } | undefined;
-          if (!result?.turnId) return { outcome: 'indeterminate' };
-          return {
-            outcome: 'started',
-            conversationId,
-            sessionId: threadId,
-            turnId: result.turnId,
-          };
-        },
+        // Production's start port (#4512 dispatch origin included); only the
+        // foreground execution behind it is this direct dispatch.
+        start: inboxPlacementStartPort({
+          readProjectTaskRoomExecutionBinding: (sessionId) =>
+            store.readProjectTaskRoomExecutionBinding(sessionId),
+          continueAsRecordedActor: async (input, threadId) => {
+            const dispatched = await service.dispatchWithReceipt(
+              {
+                type: 'sendTurn',
+                input: {
+                  threadId,
+                  input: input.message,
+                  clientTurnId: input.clientTurnId,
+                },
+              },
+              { userId: input.userId, clientOrigin: input.clientOrigin },
+              input.dispatchOrigin
+                ? { dispatchOrigin: input.dispatchOrigin }
+                : undefined,
+            );
+            const result = dispatched.result as { turnId?: string } | undefined;
+            if (!result?.turnId) return { outcome: 'indeterminate' };
+            return {
+              outcome: 'started',
+              conversationId: input.conversationId,
+              sessionId: threadId,
+              turnId: result.turnId,
+            };
+          },
+        }),
         subscribe: (listener) =>
           bus.subscribe((frame) => {
             const event = (frame.data as { event?: CanonicalRuntimeEvent })
@@ -310,6 +319,13 @@ describe.each([
 
     test('the run lands in the chat as a framed Station turn and settles from that turn', async () => {
       await startChat();
+      expect(
+        await store.bindProjectTaskRoomExecution({
+          projectId: 'project-1',
+          taskId: 'task-1',
+          sessionId: THREAD,
+        }),
+      ).toEqual({ kind: 'bound' });
       const scheduler = startScheduler();
       await addAutomation(scheduler);
 
@@ -342,6 +358,9 @@ describe.each([
       expect(started).toHaveLength(1);
       expect(started[0]).toMatchObject({
         clientOrigin: { actor: { kind: 'internal' } },
+        // #4512: an Automation's run, though Station sent it into a
+        // Task-bound chat (which an internal entry would read as Task work).
+        dispatchOrigin: 'automation',
       });
       expect(
         inbox

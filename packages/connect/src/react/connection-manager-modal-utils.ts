@@ -1,3 +1,4 @@
+import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import { connectionFailureCopy } from '../core/environmentProfiles';
 import type { ConnectionFailureReason, SavedConnection } from '../core/types';
 
@@ -40,7 +41,7 @@ export function getConnectionManagerTitle(
     case 'devices':
       return 'Paired Devices';
     case 'discover':
-      return 'Other Stations';
+      return 'Nearby Stations';
   }
 }
 
@@ -154,7 +155,7 @@ export function connectionCardMeta(
   // story — the store's mutations no-op on them.
   if (connection.injected) return null;
   if (isPendingConnection) {
-    return { line: 'Access request pending approval' };
+    return { line: pairingStateCopy('waiting-for-approval').title };
   }
   if (connection.lastError?.reason === 'identity-mismatch') {
     return {

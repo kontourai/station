@@ -306,19 +306,20 @@ describe('Open and Settled conversation responsibility', () => {
     expect(membersOf(groups, 'settled').map((entry) => entry.id)).toEqual([
       'task',
     ]);
-    expect(membersOf(groups, 'open').map((entry) => entry.id)).toEqual([
+    expect(membersOf(groups, 'running').map((entry) => entry.id)).toEqual([
       'running',
     ]);
+    expect(membersOf(groups, 'open')).toEqual([]);
     expect(membersOf(groups, 'snoozed').map((entry) => entry.id)).toEqual([
       'snoozed',
     ]);
     expect(groups.map((group) => group.label)).toEqual([
       'Needs attention',
+      'Working',
       'Open',
-      'Settled',
       'Snoozed',
-      'Drafts',
-      'Read only',
+      'Third-party',
+      'Settled',
     ]);
   });
 });

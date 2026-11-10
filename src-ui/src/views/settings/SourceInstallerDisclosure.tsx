@@ -8,6 +8,7 @@ import {
   type ConnectedServerUpdateContext,
   coreUpdateScopeFromContext,
 } from '../../hooks/useConnectedServerUpdateContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import {
   ComparisonMessage,
   comparisonMetadata,
@@ -179,7 +180,7 @@ function SourceInstallationFacts({
       )}
       {rebuildMutation.error && (
         <div className="settings__update-msg settings__update-msg--error">
-          {(rebuildMutation.error as Error).message}
+          {describeStationFailure(rebuildMutation.error).body}
         </div>
       )}
       {comparisonSuperseded && status && historicalTime && (

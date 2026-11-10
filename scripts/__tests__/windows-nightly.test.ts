@@ -8,7 +8,7 @@ import {
 } from '../lib/windows-nightly.mjs';
 
 const sourceSha = 'a'.repeat(40);
-const version = '0.1.11-nightly.2443.2';
+const version = '0.1.11-nightly.20260909.2';
 const bytes = Buffer.from('a signed archive');
 /** A Tauri updater signature file body naming `version` in its trusted comment. */
 function signedFor(version: string, label = 'archive'): string {
@@ -34,6 +34,7 @@ const input = () => ({
   version,
   sourceSha,
   pubDate: '2026-09-09T00:00:00Z',
+  notes: '## Features\n- New workspace tools',
   builds: [build('darwin-aarch64'), build('windows-x86_64')],
 });
 describe('Windows Nightly', () => {
@@ -42,9 +43,9 @@ describe('Windows Nightly', () => {
       createWindowsNightlyConfig({ packageVersion: '0.1.11', bundleVersion }),
     );
     expect(configs.map((c) => c.version)).toEqual([
-      '0.1.11-nightly.2443.2',
-      '0.1.11-nightly.2443.3',
-      '0.1.11-nightly.2444',
+      '0.1.11-nightly.20260909.2',
+      '0.1.11-nightly.20260909.3',
+      '0.1.11-nightly.20260910',
     ]);
     expect(configs[0].bundle.targets).toEqual(['nsis']);
     expect(configs[0].mainBinaryName).toBe('station-nightly');
@@ -62,6 +63,9 @@ describe('Windows Nightly', () => {
     },
   );
   it('assembles both platforms from the same verified source and version', () => {
+    expect(assembleNightlyDesktopManifest(input()).notes).toContain(
+      'New workspace tools',
+    );
     expect(
       Object.keys(assembleNightlyDesktopManifest(input()).platforms),
     ).toEqual(['darwin-aarch64', 'windows-x86_64']);

@@ -7,6 +7,7 @@ import {
   LIVE_SURFACE_FRAMES_CONTENT_TYPE,
   LIVE_SURFACE_INPUT_MAX_BODY_BYTES,
   LIVE_SURFACE_INPUT_MAX_EVENTS,
+  type LiveSurfaceFold,
   type LiveSurfaceRecord,
   LiveSurfaceRecordDecoder,
 } from '@kontourai/station-contracts/live-surface';
@@ -36,6 +37,7 @@ import {
   createLiveSurfaceRoutes,
   type LiveSurfaceRouteOptions,
 } from '../live-surface.js';
+import { LiveSurfaceRecordDecoder as ReleasedRecordDecoder } from './fixtures/released-live-surface-0.1.11-nightly.2500.js';
 
 const SURFACE = 'browser:session-1';
 const base = `/api/live-surfaces/${encodeURIComponent(SURFACE)}`;
@@ -1001,5 +1003,110 @@ describe('a revoked device share ends the stream while the host is busy (#2433)'
       ),
     ).toBe(true);
     expect(shareKeyMemo.key).toBe('New_AVD');
+  });
+});
+
+describe('a foldable stream and a released shell (desktop-v0.1.11-nightly.2500)', () => {
+  const FOLD: LiveSurfaceFold = {
+    activeDisplay: 'inner',
+    hingeAngle: 90,
+    posture: 'book',
+    postures: ['closed', 'open', 'book', 'laptop', 'tent'],
+    angleControl: true,
+  };
+
+  function foldableHarness() {
+    const h = harness();
+    h.producer.status = () => ({
+      inputChannel: 'connected',
+      fold: { ...FOLD },
+    });
+    h.producer.display = 'inner';
+    return h;
+  }
+
+  /** Every record of a stream's first bytes, through `decoder`. */
+  async function decodeFirst(
+    response: Response,
+    decoder: { push(bytes: Uint8Array): unknown[] },
+    emit: () => void,
+    count: number,
+  ) {
+    const reader = response.body!.getReader();
+    const records: unknown[] = [];
+    let emitted = false;
+    while (records.length < count) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      records.push(...decoder.push(chunk.value));
+      if (!emitted) {
+        emitted = true;
+        emit();
+      }
+    }
+    await reader.cancel();
+    return records as {
+      kind: string;
+      state?: Record<string, unknown>;
+      header?: Record<string, unknown>;
+    }[];
+  }
+
+  test('without ?fold=1 the released decoder reads every record: no fold state, no display tag', async () => {
+    const h = foldableHarness();
+    const records = await decodeFirst(
+      await h.request(`${base}/frames`, 'operator'),
+      new ReleasedRecordDecoder(),
+      () => {
+        void h.registry
+          .get(SURFACE)!
+          .hub.settled()
+          .then(() => h.producer.emit());
+      },
+      2,
+    );
+    expect(records.map((record) => record.kind)).toEqual(['state', 'frame']);
+    expect(records[0]!.state).not.toHaveProperty('fold');
+    expect(records[1]!.header).not.toHaveProperty('display');
+  });
+
+  test('with ?fold=1 the current decoder gets fold state and display-tagged frames', async () => {
+    const h = foldableHarness();
+    const records = await decodeFirst(
+      await h.request(`${base}/frames?fold=1`, 'operator'),
+      new LiveSurfaceRecordDecoder(),
+      () => {
+        void h.registry
+          .get(SURFACE)!
+          .hub.settled()
+          .then(() => h.producer.emit());
+      },
+      2,
+    );
+    expect(records[0]!.state).toMatchObject({ fold: FOLD });
+    expect(records[1]!.header).toMatchObject({ display: 'inner' });
+  });
+
+  test('the released decoder refuses the opted-in stream (why the opt-in exists)', async () => {
+    const h = foldableHarness();
+    await expect(
+      decodeFirst(
+        await h.request(`${base}/frames?fold=1`, 'operator'),
+        new ReleasedRecordDecoder(),
+        () => {},
+        1,
+      ),
+    ).rejects.toThrow(/invalid state record/);
+  });
+
+  test('fold takes only the value 1', async () => {
+    const h = foldableHarness();
+    const response = await h.request(`${base}/frames?fold=yes`, 'operator');
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      success: false,
+      code: 'invalid-request',
+      field: 'fold',
+    });
   });
 });

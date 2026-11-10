@@ -14,7 +14,32 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+## Project settings
+
+Open a Project's settings to change its defaults, sources and access. Desktop
+uses the same vertical section navigation as Settings; on a narrow screen,
+choose a section from the picker. One section is shown at a time. Section
+links remain bookmarkable, and moving between sections keeps unsaved edits.
+
+**Save** applies project defaults. Layout, source, access and knowledge actions
+apply separately when confirmed. A saved model connection that is no longer
+available stays visible until you choose a replacement; an unrelated edit does
+not reset it to the Station default.
+
+Folder paths identify the Station that owns them. A path shown while using a
+phone or remote browser belongs to that Station, rather than to the viewing
+device. **Sources** shows repository links and checkout locations. Use
+**Add a repository** to attach a checkout and **Advanced: checkout repair**
+for filesystem repair. **Workspace** edits the Project's local working folder.
+
 ## Feature previews
+
+**Paired Station chats** lets New Chat use another paired Station. Choose its
+Project; the chat header says **Via <Station>**. Full access, folder selection,
+mentions, offline copies and local integrations are unavailable over relay.
+Turning it off keeps text and drafts visible and stops remote chat operations.
+Older held chats require confirmed **Reconnect chat** before continuing. See
+[starting a chat](getting-started.md#start-your-first-chat).
 
 Feature previews are features that are still being evaluated. Each one has a
 switch, a name and a description of what turning it on does. A preview is listed
@@ -35,6 +60,7 @@ only when this Station's build can run it; if none is, the section says
 | `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
 | `conversation-resolution` | Open and Settled inbox | Keeps conversations Open until explicitly settled. Task closure follows the existing Task close-on-merge setting. | Personal resolution state syncs across devices. Turning it off preserves saved choices and restores turn-based grouping; no provider cost. |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
+| `private-memory` | Private memory | Private memory you can check and search. New chats start with what you confirmed. No erasure yet. | Memory can contain personal information. Off by default. Only chats on the Station engine get the brief. Create it through the API. Disabling hides access but retains the store. Hosted Stations do not offer it. |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `integration-content-trust` | Integration content trust | Shows trust classification and after-untrusted-content permissions for integrations in Connections. | Saved choices remain effective when the preview is off; enforcement depends on the engine and integration path. |
 | `browser-experience` | Browser experience | Adds Browser shortcuts, per-tab zoom and appearance, float over chat, and agent action visualization. | Off by default on personal hosts; ordinary Browser authority and control checks still apply. |
@@ -45,12 +71,17 @@ only when this Station's build can run it; if none is, the section says
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 | `chat-host-images` | Chat images from the host | On by default. Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
+| `task-tracker-follow-ups` | Task tracker follow-ups | Every five minutes, reads new comments, reviews and check results on the GitHub items of tracker-backed Tasks (the issue and pull requests a person kept on the Task) and shows them in the Task brief, labeled member, bot, other or CI. A member's comment or review, or a failing check, sends the Task's lead agent one message. | Uses the host's `gh` login and GitHub API requests. Off by default, personal Stations only. The message waits for the lead's running turn, or starts a turn when it is idle; bots and other authors never send one. Comments made with the same GitHub account Station's `gh` uses never send one either, because agents post with it: on a single-user Station your own GitHub comments are recorded but do not wake the lead, so steer it in Station instead. If that account cannot be determined, only failing checks send one. Turning it off stops polling and waking; recorded follow-ups stay in the brief. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
+| `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
 | `task-review` | Task review | Adds a Review tab and Overview Timeline to Tasks for Screens and anchored comments that can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
 | `member-passkeys` | Member passkeys | Lets invited people with Station accounts create an account, sign in and recover with a passkey (see [member passkeys](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#member-passkeys-feature-preview)). | Passkeys work only at the configured sign-in address, selected in Settings or supplied by `STATION_AUTHENTICATION_ORIGIN`; changing its hostname orphans them. Turning it off keeps stored passkeys, but they cannot sign in. |
+| `apps-library` | Apps library | Adds a searchable launcher for your personal Boards and plugin layouts, with name, icon and description editing. | Uses existing personal-layout permissions; does not install plugins or grant access. |
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
 | `chat-apps` | Chat apps | Shows integration capability status in Connections and write-back history in Task Details. | Status checks can run `gh auth status` on the Station host; an unverified result does not prove delivery. |
+| `repository-auth-details` | Repository sign-in details | Shows the current Station’s GitHub CLI account, health and reported scopes in Project Sources. | Runs a bounded `gh auth status --json hosts --no-refresh`; no token refresh, credential transfer or repository-permission proof. |
 | `continue-interrupted-turn` | Continue after restart | Offers **Continue** on a chat turn a Station restart cut off, which sends the agent a short note to pick up where it stopped. | Continue starts an ordinary agent turn, once per interrupted turn; it is never sent on its own. |
+| `continue-unattended-after-restart` | Continue unattended work after restart | After a restart, continues Task and delegated work the restart cut off, once, with the restart note, oldest Task first. | Starts an agent turn per interrupted turn on its own; never for your chats, Automations or Tasks that are done, canceled or blocked. Waits for engine-start capacity. |
 | `paired-station-chats` | Paired Station chats | Starts text chats on a paired Station from New Chat, with that Station’s Project picker, transcript, replies and approvals. | Personal hosts only. Uses the destination’s providers and credits. Off disables reads and new operations; saved tabs and unconfirmed messages remain. Existing remote Tasks keep their separate flow. |
 | `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
@@ -105,6 +136,24 @@ Anything you were writing stays in the composer. A second tap, here or on
 another device, does not send it again. A newer message retires the button.
 If the agent refuses it as busy, that Continue cannot be sent again; type a
 message instead.
+
+**Continue unattended work after restart** (`continue-unattended-after-restart`):
+with the preview on, after Station restarts it continues work nobody was
+watching. That covers a turn Station itself sent into a Task's Session (such as
+a Task question wake) and a delegated Session's work, including a result a
+delegated child returned to a Task's Session or to another delegated Session.
+A result returned into your own chat, or an agent's message into it, belongs
+to your chat and is not continued. Each such turn the restart cut off gets one turn with the same note
+**Continue** sends, oldest Task first, as the Session's owner. The chat shows it
+as **Continued after restart**. It is never sent for a turn you sent yourself
+(including Station's automatic continuation of your turn after a memory kill),
+an Automation's run (Automations keep their own recovery), a coordinator, or a
+turn whose cause Station did not record. It also skips a Task that is done,
+canceled or blocked, a chat that has moved on since, and a turn that was itself
+such a continuation, so a second restart does not continue it again. It uses
+the same key as **Continue**, so the agent is continued once whichever comes
+first. A continuation that needs to start the agent's engine waits for
+engine-start capacity.
 
 **Stale checkout warning** (`stale-project-checkout`): an agent started in a
 Project reads that checkout's instructions, so a checkout far behind its
@@ -227,6 +276,18 @@ off and only the computer's local operator can change it. The status below the
 switch says whether publication succeeded; enabling it does not change your
 network or firewall. Connecting still needs your approval. See
 [Connect your phone](getting-started.md#connect-your-phone).
+
+## Updates and changelogs
+
+Open **Updates** in the sidebar to review an app or server update. **What’s
+new** shows the offered version’s release notes. **Previous versions and
+changelogs** lets you browse published releases without starting an update.
+The circle around the sidebar update icon fills as a download progresses.
+
+After an app upgrade, its changelog opens once on this device. To turn that
+off, clear **Show changelog after updates** in the dialog, Updates, or
+**Settings → System**. Release history stays available. The first launch on a
+new device establishes the starting version without showing an upgrade dialog.
 
 ## About
 

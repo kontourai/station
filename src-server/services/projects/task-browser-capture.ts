@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { taskWorkingDirectory } from '@kontourai/station-contracts/task-graph';
 import {
   TASK_REVIEW_LIMITS,
   type TaskCapture,
@@ -70,9 +71,8 @@ export class TaskBrowserCapture {
       task.projectId !== access.write.projectId
     )
       throw new TaskBrowserCaptureError('not-found', 'Task not found.');
-    const directory = task.workspaceBinding?.workingDirectory
-      ? resolve(expandTilde(task.workspaceBinding.workingDirectory))
-      : undefined;
+    const working = taskWorkingDirectory(task);
+    const directory = working ? resolve(expandTilde(working)) : undefined;
     if (task.workspaceBinding?.availability !== 'available' || !directory)
       throw new TaskBrowserCaptureError(
         'workspace-unobservable',

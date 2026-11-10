@@ -13,7 +13,9 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [agent-authored-tracker-updates](./agent-authored-tracker-updates.md) | current | Agents keep tracker items current through comments and PR links, not status sync |
 | [automations-unify-schedules](./automations-unify-schedules.md) | current | Automations are scheduled work that runs in a conversation, on any engine |
 | [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
+| [browser-viewport-is-shared-fit-is-per-viewer](./browser-viewport-is-shared-fit-is-per-viewer.md) | current | The Browser page viewport is shared by every viewer; each viewer's fit and zoom are local |
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
+| [ended-task-resume](./ended-task-resume.md) | needs-decision | Resuming ended tracker-backed Tasks after GitHub follow-ups |
 | [html-replies](./html-replies.md) | current | Contain agent-authored HTML in a page-only sandbox |
 | [managed-policy](./managed-policy.md) | current | A machine-level managed policy that Station loads at startup and fails closed on |
 | [mcp-app-transcript-previews](./mcp-app-transcript-previews.md) | current | Display recorded MCP app results in chat without granting session actions |
@@ -22,6 +24,8 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [project-room-realtime](./project-room-realtime.md) | current | Keep Room durability independent of realtime transport and harden SSE first |
 | [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |
 | [revision-evidence-freeze-policy](./revision-evidence-freeze-policy.md) | current | Freeze Task room revision evidence only when a consumer references it |
+| [tailscale-serve-own-origin](./tailscale-serve-own-origin.md) | current | A Station trusts its own daemon-attested Tailscale Serve HTTPS origin without ALLOWED_ORIGINS |
+| [task-tracker-followups](./task-tracker-followups.md) | current | Bounded GitHub follow-ups for tracker-backed Tasks |
 | [telemetry-tiers](./telemetry-tiers.md) | current | Per-publisher Station telemetry tiers and consent boundaries |
 | [terminal-same-origin-only](./terminal-same-origin-only.md) | current | Terminals use only the same-origin socket; the port + 1 listener is removed |
 | [user-color-themes](./user-color-themes.md) | current | Named color themes layered on the shipped design tokens, Station unchanged by default |

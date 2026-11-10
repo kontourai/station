@@ -59,7 +59,8 @@ vi.mock('../contexts/RegionModelContext', () => ({
         },
 }));
 
-vi.mock('../build-info', () => ({
+vi.mock('../build-info', async (importActual) => ({
+  ...(await importActual<typeof import('../build-info')>()),
   buildInfo: { version: '0.1.2', commit: 'test' },
 }));
 
@@ -374,7 +375,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       const view = renderSidebar(<ProjectSidebar />);
       if (phone)
         act(() => window.dispatchEvent(new CustomEvent('toggle-sidebar')));
-      await screen.findByText('Personal Boards');
+      await screen.findByText('Apps');
       expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
       expect(screen.queryByText('Recent chats')).toBeNull();
       expect(screen.queryByText('Open chats')).toBeNull();
@@ -396,7 +397,7 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
     boards.push({ slug: 'daily', name: 'Daily brief' });
     renderSidebar(<ProjectSidebar />);
 
-    expect(await screen.findByText('Personal Boards')).toBeTruthy();
+    expect(await screen.findByText('Apps')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
     // Named separately from the positive assertion: a future change that
     // renders the section AND an alert somewhere else in the panel is still a
@@ -413,7 +414,7 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
       slug: 'untitled-board',
       name: 'Untitled Board',
     });
-    expect(screen.getByText('Personal Boards')).toBeTruthy();
+    expect(screen.getByText('Apps')).toBeTruthy();
     expect(document.querySelector('.lazy-boundary__error')).toBeNull();
   });
 });

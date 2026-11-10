@@ -10,6 +10,7 @@ import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { copyToClipboard } from '../../lib/clipboard';
 import { useCodingFilesContext } from '../../providers/context/CodingFilesContextProvider';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { PromptModal } from '../modals/PromptModal';
@@ -48,6 +49,7 @@ type MenuState = {
 type PromptState = {
   mode: 'create-file' | 'create-folder' | 'rename';
   entry: FileEntry | null;
+  origin: HTMLElement;
 };
 
 const FileTreeNode = memo(function FileTreeNodeView({
@@ -222,13 +224,14 @@ export function FileTreePanel({
     [tree, deferredSearch],
   );
 
-  const loadError = queryError?.message ?? null;
+  const loadError = queryError ? describeStationFailure(queryError).body : null;
   const opError =
     actionError ??
-    createMut.error?.message ??
-    renameMut.error?.message ??
-    deleteMut.error?.message ??
-    null;
+    ([createMut.error, renameMut.error, deleteMut.error].find(Boolean)
+      ? describeStationFailure(
+          createMut.error ?? renameMut.error ?? deleteMut.error,
+        ).body
+      : null);
 
   const openMenu = useCallback(
     (entry: FileEntry | null, at: ContextMenuPoint, origin: HTMLElement) =>
@@ -257,7 +260,7 @@ export function FileTreePanel({
         );
       }
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Failed to attach file');
+      setActionError(describeStationFailure(e).body);
     }
   };
 
@@ -284,17 +287,20 @@ export function FileTreePanel({
     }
   };
 
-  const menuActions = (entry: FileEntry | null): ContextMenuAction[] => {
+  const menuActions = (
+    entry: FileEntry | null,
+    origin: HTMLElement,
+  ): ContextMenuAction[] => {
     const actions: ContextMenuAction[] = [
       {
         key: 'new-file',
         label: 'New File',
-        onSelect: () => setPrompt({ mode: 'create-file', entry }),
+        onSelect: () => setPrompt({ mode: 'create-file', entry, origin }),
       },
       {
         key: 'new-folder',
         label: 'New Folder',
-        onSelect: () => setPrompt({ mode: 'create-folder', entry }),
+        onSelect: () => setPrompt({ mode: 'create-folder', entry, origin }),
       },
     ];
     if (entry) {
@@ -348,7 +354,7 @@ export function FileTreePanel({
       actions.push({
         key: 'rename',
         label: 'Rename',
-        onSelect: () => setPrompt({ mode: 'rename', entry }),
+        onSelect: () => setPrompt({ mode: 'rename', entry, origin }),
       });
       actions.push({
         key: 'delete',
@@ -507,13 +513,14 @@ export function FileTreePanel({
           label={
             menu.entry ? `Actions for ${menu.entry.name}` : 'File tree actions'
           }
-          actions={menuActions(menu.entry)}
+          actions={menuActions(menu.entry, menu.origin)}
           onClose={() => setMenu(null)}
         />
       )}
 
       <PromptModal
         isOpen={prompt !== null}
+        returnFocusTarget={prompt?.origin}
         title={promptTitle}
         label={prompt?.mode === 'rename' ? 'New name' : 'Name'}
         initialValue={

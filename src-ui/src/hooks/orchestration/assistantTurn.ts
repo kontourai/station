@@ -1,3 +1,4 @@
+import type { StationStateScope } from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { deriveLatestPlanArtifactFromMessages } from '../../utils/planArtifacts';
 import { pruneStaleFailureMarkers } from '../../utils/sessionFailure';
@@ -42,8 +43,10 @@ export function finalizeAssistantTurn(
   threadId: string,
   fallbackText?: string,
   turnProvenance?: FinalizedTurnProvenance,
+  station?: StationStateScope,
 ) {
-  const chat = activeChatsStore.getChatForExecutionSession(threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(threadId);
   if (!chat) return;
 
   let streamingMessage = chat.streamingMessage;
@@ -120,7 +123,7 @@ export function finalizeAssistantTurn(
     (!content && !(streamingMessage?.contentParts || []).length) ||
     (isDuplicateErrorText && !hasNonTextParts)
   ) {
-    activeChatsStore.updateChat(threadId, {
+    chatStore.updateChat(threadId, {
       status: 'idle',
       orchestrationTurnOpen: false,
       // archive#1410: the turn is closed; a later terminal event must not
@@ -186,7 +189,7 @@ export function finalizeAssistantTurn(
     chat.messages || [],
     turnProvenance?.turnId ?? chat.openTurnId,
   );
-  activeChatsStore.updateChat(threadId, {
+  chatStore.updateChat(threadId, {
     messages: [...priorMessages, finalizedMessage],
     // As while streaming: this turn's own prose plan (its last line is only
     // parsed now) replaces the plan; otherwise a typed plan (`plan.updated`)

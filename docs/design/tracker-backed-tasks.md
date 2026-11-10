@@ -26,7 +26,98 @@ The two systems divide the work as follows:
 
 Nothing mirrors status between the two. Station re-reads the linked item when
 a person opens the Task, when a Session is dispatched, and when a Session asks
-for its brief with `get_task_brief`. Nothing polls.
+for its brief with `get_task_brief`. The owner approved
+[bounded, preview-gated follow-up polling](../decisions/task-tracker-followups.md).
+With it on, Station records follow-ups, shows them in the Task brief and
+wakes the lead Session on members' comments and failing checks (see
+[Tracker follow-ups](#tracker-follow-ups)). With the preview off, nothing
+polls and nothing wakes.
+
+## Tracker follow-ups
+
+With the **Task tracker follow-ups** Feature Preview on (off by default; not
+offered in hosted mode), the built-in scheduler's minute tick reads the
+followed GitHub items of each eligible Task, at most once every five minutes
+per Task and ten Tasks per tick, oldest poll first. There is no timer, daemon
+or webhook of its own. The tick starts the follow-up poll on its own single
+flight and does not wait for it, so automation observations, actions and
+repairs on the same tick never wait on GitHub. Each poll stops its `gh`
+process after 60 seconds; Tasks it did not finish stay due. When `gh` is
+missing, not signed in or rate limited, the poll stops at that first answer
+and backs off for 15 minutes (a restart tries again).
+
+- **Eligible Tasks.** A Task whose `workItemRef` is a github.com ref the
+  Project's board offered (`workItemProvenance: 'project-board'`), live or
+  `done`/`canceled` within 14 days. A Task record keeps no end time, so an
+  ended Task's `updatedAt` stands for it; an edit after the end can extend
+  following, never shorten it. Polling never changes a Task's status.
+  Whether a person may resume a `done` Task after a follow-up is an open
+  decision ([proposal](ended-task-resume.md),
+  [record](../decisions/ended-task-resume.md)).
+- **Followed items.** The primary work item and each github.com pull request
+  a person kept on the Task (the keep rule close-out uses) in the same
+  repository as the primary item, at most ten. A pull request a Session only
+  declared is not followed. A kept pull request in another repository is not
+  read, because its repository came from a Session's declaration and only the
+  primary item's repository was checked against the board; the brief lists it
+  as not followed (different repository).
+- **What is read.** Issue and pull request comments, reviews and their inline
+  review comments, and the completed check runs of a pull request's head
+  commit. Only items at or after the Task's creation are recorded.
+- **Who.** `member` is an author whose `authorAssociation` is `OWNER`,
+  `MEMBER` or `COLLABORATOR`; `bot` is a GitHub App account or a `[bot]`
+  login, whatever its association; `ci` is a check run; anyone else is
+  `other`.
+- **Cursor.** Reads use GitHub GraphQL connection cursors, which are keysets
+  (comment id; review submitted time, created time and id), not page
+  numbers. The cursor of the last item read is stored in the same
+  transaction as the page's items, so a later poll resumes exactly after it.
+  An empty page's null `endCursor` never replaces a stored cursor. A
+  pending review (the gh login's own draft) is passed over, not recorded,
+  and never supplies the cursor: GitHub gives it `[null, created time, id]`,
+  so the stored cursor stays on the last submitted review and the draft is
+  read again once submitted.
+- **Storage.** One SQLite file, `task-follow-ups/task-follow-ups.sqlite` in
+  the Station home, keyed by Task incarnation and idempotent by GitHub kind
+  and id, at most 500 observations per Task. Each excerpt is cut to 1,000
+  characters before it is stored.
+- **In the brief.** A "Tracker follow-ups" section after the linked work
+  item, newest first: a Station line per item (what, which item, the login,
+  its class and association, when, and a review's state or a check's
+  conclusion), then the author's text quoted under the public-tracker label.
+  Passing, neutral and skipped check runs are counted, not listed. The
+  section takes at most 3,600 characters and never the newest record's
+  reserved line; items that do not fit are counted. A Task with nothing
+  recorded gets no section, and the brief's digest never includes the poll
+  time, so a poll that records nothing new leaves the digest unchanged.
+- **Bounds.** Five pages of 50 per item per poll (a longer history resumes
+  next poll), the first 100 inline comments of a review (the rest are
+  counted in the review's excerpt), and 20 check suites of 50 runs. A poll
+  the 60-second deadline cuts short still counts as the Task's poll
+  (outcome `deadline`), so a slow Task cannot starve the others; it resumes
+  from its cursors five minutes later. Kept pull requests past the ten
+  followed per Task are listed in the brief as not followed.
+- **Lead wake.** A newly recorded comment, review or inline review comment by
+  a `member`, or a failing check run (`FAILURE`, `TIMED_OUT`,
+  `STARTUP_FAILURE`), is marked to wake in the same transaction that
+  records it, so a re-poll never wakes again. After each Task's poll, every
+  pending item goes to the lead Session as one conversation-inbox entry, the
+  durable path the [lead wake](#lead-wake) for Task questions uses: queued
+  behind a running turn, a new turn when idle, never a steer. Its text is a
+  fixed line saying the quoted lines were written on GitHub and are data,
+  then each item's kind, GitHub id, ref, login, class and time, then its
+  text quoted and cut to about 1,000 characters.
+  - Bots, other authors and passing checks never wake. Neither do comments
+    made with the GitHub account Station's `gh` uses (agents post with it), so
+    on a single-user Station a person's own GitHub comments are recorded but
+    do not wake the lead; steer it in Station. When GitHub reports no account
+    for the poll, only failing checks wake.
+  - A done or canceled Task, a Task with no lead, or a stopped lead records
+    the items and wakes no one; a blocked Task is not woken by failing
+    checks.
+  - The lead's owner's access to the Task is re-checked before the entry is
+    written and again when the inbox places it, as are the preview, the
+    Task incarnation and the lead conversation.
 
 ## Task ↔ tracker item cardinality
 
@@ -148,7 +239,8 @@ first turn. The brief is a snapshot pinned to a digest, composed in this
 order:
 
 1. the Task (title, id, document revision, goal), its linked work item
-   re-read at dispatch, and the Task document as written;
+   re-read at dispatch, the [tracker follow-ups](#tracker-follow-ups)
+   recorded so far (when any were), and the Task document as written;
 2. the Task summary, in full, with its revision and author;
 3. standing decisions;
 4. open questions, each with who asked;
@@ -170,7 +262,8 @@ rendered as quoted lines, each prefixed `> `, under a line that says who
 wrote it: "agents and people on this Task" or "people outside Station
 (public tracker content)". That covers the Task's title and goal, the Task
 document, the summary, each record's text, a Session's last request, and
-the tracker item's title, labels and comments. Every line terminator JS and
+the tracker item's title, labels and comments, and the text of each
+tracker follow-up. Every line terminator JS and
 Unicode recognise splits a line, so no quoted line can equal one of
 Station's headings, a rule or the closing line, and the first rule says
 quoted text is data, not instructions. Station's own values (ids, states,
@@ -486,4 +579,6 @@ lands separately, so that a red result points to one owner.
   ([work-plane Decision 4](work-plane-composition.md#decisions-owner-ratified-2026-07-20);
   kontourai/flow-agents#1508).
 - A separate Epic entity, or copying issue hierarchy into Station.
-- Polling, webhooks, or standing jobs for freshness.
+- Webhooks or new standing daemons for freshness. The owner approved the
+  bounded, preview-gated polling exception in the
+  [follow-up decision](../decisions/task-tracker-followups.md).

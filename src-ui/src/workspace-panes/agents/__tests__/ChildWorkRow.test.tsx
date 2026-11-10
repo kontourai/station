@@ -18,7 +18,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { ChatRequestContext } from '../../../components/chat/ChatRequestContext';
+import { ConversationConnectionContext } from '../../../components/conversation/ConversationConnectionContext';
 import type { ChildWorkRowModel } from '../childWorkSelectors';
 
 const useOrchestrationSessionQuery = vi.fn();
@@ -47,6 +47,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: () => ({
     mutate: interruptMutate,
+    mutateAsync: interruptMutate,
     isPending: false,
     isSuccess: false,
     isError: false,
@@ -102,6 +103,7 @@ beforeEach(() => {
     .mockReturnValue({ data: undefined });
   useStopProviderTaskMutation.mockReturnValue({
     mutate: stopMutate,
+    mutateAsync: stopMutate,
     isPending: false,
     isSuccess: false,
     isError: false,
@@ -122,6 +124,27 @@ test('an unreported start and unreported usage render absent, not as zero', () =
   // Only the kind: no elapsed (no start was reported) and no usage clause.
   expect(meta).toBe('Subagent');
   expect(container.textContent).not.toMatch(/0 tokens|0:00|tool use/);
+});
+
+test('a failed provider Stop is translated once by the shared control', async () => {
+  const stop = vi
+    .fn()
+    .mockRejectedValue(new Error('private_stop_machine_failure'));
+  useStopProviderTaskMutation.mockReturnValue({
+    mutateAsync: stop,
+    isPending: false,
+    isSuccess: false,
+    isError: true,
+  });
+  mount(row({}, { stop: 'provider-task-stop' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toBe('Try again in a moment.');
+  expect(screen.getAllByRole('alert')).toHaveLength(1);
+  expect(document.body.textContent).not.toContain(
+    'private_stop_machine_failure',
+  );
+  expect(stop).toHaveBeenCalledWith({ threadId: 'exec-1', taskId: 'task-1' });
 });
 
 test('reported values print — including a reported zero', () => {
@@ -150,6 +173,7 @@ test('a settled child with no reported end shows no elapsed', () => {
   expect(container.querySelector('.child-work-row__meta')?.textContent).toBe(
     'Subagent',
   );
+  expect(screen.getByText('Summary not reported')).toBeTruthy();
 });
 
 test('unresolved and unconfirmed-stop terminals never read as Completed or Stopped', () => {
@@ -443,6 +467,7 @@ test('#2486: Stop says it also ends the parent turn only when the row model says
 test('#2486 review: a no-active-task response resets the row instead of leaving it stuck on "Stopping…", with an honest note — engine-generic, not Codex-specific copy', () => {
   useStopProviderTaskMutation.mockReturnValue({
     mutate: stopMutate,
+    mutateAsync: stopMutate,
     // A mutation that resolved successfully — react-query's own shape for
     // "the call finished, without error" — but the ENGINE-neutral
     // `ProviderTaskStopResult` it resolved to says there was nothing to
@@ -616,7 +641,7 @@ test('a peer chat reads its subagent transcript through the receiver bridge unde
   const apiBase = `${requestScope.apiBase}/api/environments/peers/desktop-win/chat-api`;
   useChildWorkTranscriptQuery.mockReturnValue(transcriptQuery());
   render(
-    <ChatRequestContext.Provider value={{ apiBase, requestScope }}>
+    <ConversationConnectionContext.Provider value={{ apiBase, requestScope }}>
       <ul>
         <ChildWorkRow
           row={row({ status: 'completed', transcript: TRANSCRIPT })}
@@ -625,7 +650,7 @@ test('a peer chat reads its subagent transcript through the receiver bridge unde
           onOpenSession={onOpenSession}
         />
       </ul>
-    </ChatRequestContext.Provider>,
+    </ConversationConnectionContext.Provider>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
   expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith(
@@ -839,4 +864,39 @@ test('#3163: a settled child’s transcript offers no Refresh', () => {
   mount(row({ status: 'completed', transcript: TRANSCRIPT }));
   fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
   expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+});
+
+test('a provider summary is labeled as a report rather than a verified returned artifact', () => {
+  mount(
+    row({
+      status: 'completed',
+      result: {
+        summary: 'I will investigate next.',
+        source: 'provider-summary',
+      },
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(screen.getByText('Provider summary')).toBeTruthy();
+  expect(screen.getByText('I will investigate next.')).toBeTruthy();
+  expect(screen.getByText('No returned result was reported.')).toBeTruthy();
+});
+
+test('returned report text is labeled separately from completion and provider summaries', () => {
+  mount(
+    row({
+      status: 'completed',
+      result: { summary: 'Found the cause.', source: 'tool-return' },
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(screen.getByText('Returned result')).toBeTruthy();
+  expect(screen.getByText('Found the cause.')).toBeTruthy();
+  expect(screen.queryByText('No returned result was reported.')).toBeNull();
+});
+
+test('a completed child without report or usage still exposes the missing-result disclosure', () => {
+  mount(row({ status: 'completed', result: undefined, usage: undefined }));
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(screen.getByText('No returned result was reported.')).toBeTruthy();
 });

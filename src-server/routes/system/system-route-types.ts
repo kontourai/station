@@ -2,6 +2,7 @@ import type {
   EngineConnectionId,
   EngineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { ManagedPolicyUpdatesLimit } from '@kontourai/station-contracts/managed-policy';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import type { StationRoutesResponse } from '@kontourai/station-contracts/station-routes';
 import type {
@@ -112,6 +113,11 @@ export interface SystemStatusDeps {
    * capabilities probe builds these deps again and must not start another).
    */
   serverUpdate?: ServerUpdateCoordinator;
+  /**
+   * #4522: the managed policy's `limits.updates`, which the update routes
+   * enforce. Absent or null when no policy limits updates.
+   */
+  managedUpdates?: ManagedPolicyUpdatesLimit | null;
   /** #3851: the running turns a restart would interrupt, as `request` may see them. */
   listRunningTurnsFor?: (c: Context) => Promise<ServerUpdateRunningTurns>;
   appConfig?: { runtime?: string };

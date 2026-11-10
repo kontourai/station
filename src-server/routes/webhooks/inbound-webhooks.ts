@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ExecutionTarget } from '@kontourai/station-contracts/execution-target';
 import { Hono } from 'hono';
+import { managedApprovalCeilingFailureBody } from '../../security/managed-approval-ceiling.js';
+import {
+  managedCapabilityRefusalBody,
+  webhookAutomationsAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
 import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
 import { InboundWebhookAuthorizationService } from '../../services/webhooks/inbound-webhook-authorization.js';
 import {
@@ -182,7 +187,9 @@ export class InboundWebhookNoiseAggregator {
   }
 }
 
-function recordOutcome(outcome: 'accepted' | InboundWebhookAuditReason): void {
+function recordOutcome(
+  outcome: 'accepted' | 'managed_policy' | InboundWebhookAuditReason,
+): void {
   try {
     inboundWebhookRequests.add(1, { outcome });
   } catch {
@@ -309,6 +316,14 @@ export function createInboundWebhookRoutes(options: {
     );
 
   app.post(INBOUND_WEBHOOK_PATH, async (c) => {
+    // #4521: the managed policy turned webhook automations off. Refused
+    // before anything else: no configuration read, no body read, no limiter
+    // or audit state, so neither the off switch in the file nor a token can
+    // bring them back. The configuration is kept, for editing or deleting.
+    if (!webhookAutomationsAllowedByManagedPolicy()) {
+      recordOutcome('managed_policy');
+      return c.json(managedCapabilityRefusalBody('webhook automations'), 403);
+    }
     const tokenId = c.req.header('x-station-webhook-token');
 
     // Review M2: checked first, before any disk I/O. Once this budget has
@@ -426,7 +441,15 @@ export function createInboundWebhookRoutes(options: {
         },
         202,
       );
-    } catch (_error) {
+    } catch (error) {
+      // #4518: a start the managed approval ceiling refused is settled and
+      // will be refused again as sent: a definitive 403 with the managed
+      // code and sentence, never a retryable 503.
+      const ceilingRefusal = managedApprovalCeilingFailureBody(error);
+      if (ceilingRefusal) {
+        options.logger.warn('Inbound webhook turn refused by managed policy');
+        return c.json({ ...ceilingRefusal, retryable: false }, 403);
+      }
       options.logger.warn('Inbound webhook turn start failed');
       return c.json(
         { success: false, code: 'turn_start_failed', retryable: true },

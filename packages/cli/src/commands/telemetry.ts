@@ -264,7 +264,10 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
     await runProducersCommand(parsed);
     return;
   }
-  const [action = 'status', publisher, tier, ...extra] = parsed.positionals;
+  const [action = 'status', publisher, inputTier, ...extra] =
+    parsed.positionals;
+  const builtIn = publisher === 'kontour' || publisher === 'operator';
+  const tier = builtIn && inputTier === 'anonymous' ? 'lite' : inputTier;
   if (action === 'set') {
     if (
       !isTelemetryPublisherId(publisher) ||
@@ -272,7 +275,7 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       extra.length
     )
       throw new Error(
-        'Usage: station telemetry set <kontour|operator|publisher:id> <off|lite|full>',
+        'Usage: station telemetry set <kontour|operator> <off|anonymous|lite|full> | station telemetry set publisher:<id> <off|lite|full>',
       );
     if (parsed.flags.offline)
       throw new Error(
@@ -340,20 +343,28 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
             full: 'Detailed usage to help improve Station',
           }[value.tier];
       const notice =
-        value.reason === 'DNT'
-          ? '; Do Not Track is on, so nothing is shared'
-          : name === 'kontour' && value.fullAvailable === false
-            ? '; This build has no Station usage destination, so nothing is sent to Kontour'
-            : value.reason === 'disclosure'
-              ? plugin
-                ? "; Detailed plugin sharing is waiting for this publisher's confirmation"
-                : '; Detailed sharing is waiting for your review in Privacy & sharing'
-              : '';
+        value.reason === 'managed'
+          ? `; ${value.managedDenial ?? 'A managed policy turns usage sharing off.'}`
+          : value.reason === 'DNT'
+            ? '; Do Not Track is on, so nothing is shared'
+            : name === 'kontour' && value.fullAvailable === false
+              ? '; This build has no Station usage destination, so nothing is sent to Kontour'
+              : value.reason === 'disclosure'
+                ? plugin
+                  ? "; Detailed plugin sharing is waiting for this publisher's confirmation"
+                  : '; Detailed sharing is waiting for your review in Privacy & sharing'
+                : '';
       const environment =
         name === 'operator' && value.reason === 'environment'
           ? '; environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.'
           : '';
-      console.log(`${label}: ${choice} (${value.tier})${notice}${environment}`);
+      const displayTier =
+        (name === 'kontour' || name === 'operator') && value.tier === 'lite'
+          ? 'anonymous'
+          : value.tier;
+      console.log(
+        `${label}: ${choice} (${displayTier})${notice}${environment}`,
+      );
     }
   }
 }

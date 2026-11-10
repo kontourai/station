@@ -13,6 +13,11 @@ export type {
  */
 
 import type { EngineId } from '@kontourai/station-contracts/provider';
+import {
+  managedToolServerCatalogDenial,
+  registryLocationAllowedByManagedPolicy,
+} from '../../security/managed-capability-limits.js';
+import { managedEnginePin } from '../../security/managed-engine-limits.js';
 import { adapterRegistration } from '../../telemetry/metrics.js';
 import {
   awaitSettlementWithin,
@@ -756,7 +761,11 @@ export function getProviderAdapters(
   for (const entry of listProviders('providerAdapter', view)) {
     const adapter = entry.provider as ProviderAdapterShape;
     const current = active.get(adapter.provider);
-    if (!current || !entry.builtin) {
+    // #4520: a plugin adapter normally replaces the built-in one for its
+    // engine. While the managed policy locks that engine's launch, the
+    // built-in adapter is kept: a plugin runtime would not apply the pins.
+    const preferBuiltin = managedEnginePin(adapter.provider)?.locked === true;
+    if (!current || (preferBuiltin ? entry.builtin : !entry.builtin)) {
       active.set(adapter.provider, entry);
     }
   }
@@ -836,10 +845,52 @@ export function getAgentRegistryProvider(): IAgentRegistryProvider {
 
 // ── Tool Registry ──────────────────────────────────────
 
+/** Integration catalogs that ship with Station (#4521: never policy-refused). */
+const bundledIntegrationRegistries = new WeakSet<object>();
+
 export function registerIntegrationRegistryProvider(
   provider: IIntegrationRegistryProvider,
+  options: { bundled?: boolean } = {},
 ) {
+  if (options.bundled) bundledIntegrationRegistries.add(provider);
   registerProvider('integrationRegistry', provider);
+}
+
+/**
+ * #4521: registered integration catalogs with the ones `limits.registries`
+ * refuses taken out before anything lists, installs from or syncs them, and
+ * the sentence for the first refusal. A catalog with no location (no
+ * `registryKey`) cannot be on the allow list, so it is refused under one.
+ */
+function managedIntegrationRegistryEntries(): {
+  entries: ReturnType<typeof listProviders>;
+  denial: string | undefined;
+} {
+  let denial: string | undefined;
+  const entries = listProviders('integrationRegistry').filter((entry) => {
+    const provider = entry.provider as IIntegrationRegistryProvider;
+    const refused = managedToolServerCatalogDenial(
+      provider.registryKey,
+      bundledIntegrationRegistries.has(provider),
+    );
+    denial ??= refused;
+    return refused === undefined;
+  });
+  return { entries, denial };
+}
+
+/**
+ * #4521: the sentence for a tool-server install the managed policy may have
+ * caused to fail, or undefined when the policy refuses no integration
+ * catalog. The configured MCP subregistry reports its refusal the same way.
+ */
+export function integrationCatalogManagedDenial(): string | undefined {
+  return (
+    managedIntegrationRegistryEntries().denial ??
+    mcpSubregistryIntegrationProviders().find(
+      (provider) => provider.managedDenial !== undefined,
+    )?.managedDenial
+  );
 }
 
 export function registerACPConnectionRegistryProvider(
@@ -851,7 +902,7 @@ export function registerACPConnectionRegistryProvider(
 }
 
 export function getIntegrationRegistryProvider(): IIntegrationRegistryProvider {
-  const entries = listProviders('integrationRegistry');
+  const { entries } = managedIntegrationRegistryEntries();
   const providers = entries.map(
     (entry) => entry.provider as IIntegrationRegistryProvider,
   );
@@ -904,7 +955,32 @@ export function registerPluginRegistryProvider(
   registerProvider('pluginRegistry', provider, { source });
 }
 
-export function getPluginRegistryProviders(): {
+/** The registration label of the plugin registry that ships with Station. */
+export const BUNDLED_MANIFEST_REGISTRY_SOURCE = 'Bundled examples';
+
+/**
+ * #4521: whether `limits.registries.allowedUrls` lets a registered plugin
+ * registry supply anything. The bundled examples ship with Station and are
+ * never refused; a registry with no location cannot be listed, so it is
+ * refused under an allow list.
+ */
+export function pluginRegistryAllowedByManagedPolicy(entry: {
+  provider: Pick<IPluginRegistryProvider, 'registryKey'>;
+  source: string;
+}): boolean {
+  return registryLocationAllowedByManagedPolicy(
+    entry.provider.registryKey,
+    entry.source === BUNDLED_MANIFEST_REGISTRY_SOURCE,
+  );
+}
+
+/**
+ * Every registered plugin registry, those the managed policy refuses
+ * included. Only readers that must account for a refused registry without
+ * contacting it use this: the marketplace source manager (it shows a refused
+ * source as disabled) and the name resolver (it says why nothing matched).
+ */
+export function getRegisteredPluginRegistryProviders(): {
   provider: IPluginRegistryProvider;
   source: string;
 }[] {
@@ -912,6 +988,20 @@ export function getPluginRegistryProviders(): {
     provider: IPluginRegistryProvider;
     source: string;
   }[];
+}
+
+/**
+ * The plugin registries Station may read: #4521 leaves out every one the
+ * managed policy refuses, so update checks, dependency resolution, previews
+ * and lifecycle lookups never contact a refused catalog.
+ */
+export function getPluginRegistryProviders(): {
+  provider: IPluginRegistryProvider;
+  source: string;
+}[] {
+  return getRegisteredPluginRegistryProviders().filter(
+    pluginRegistryAllowedByManagedPolicy,
+  );
 }
 
 // ── Cross-Provider Prerequisites ───────────────────────

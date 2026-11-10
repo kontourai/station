@@ -98,9 +98,8 @@ describe('Desktop app updates settings card', () => {
       }),
     );
     expect(select.value).toBe('never');
-    expect(screen.getByRole('status').textContent).toMatch(
-      /It downloads when you choose\./,
-    );
+    expect(screen.getByText('It downloads when you choose.')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Update available');
   });
 
   test('a policy the native side could not save is reported', async () => {
@@ -169,9 +168,7 @@ describe('Desktop app updates settings card', () => {
 
   test('an unconfigured build offers no check, download or policy', async () => {
     await mount('disabled');
-    expect(screen.getByRole('status').textContent).toMatch(
-      /has no desktop update channel/,
-    );
+    expect(screen.getByRole('status').textContent).toBe('No update channel');
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByLabelText('Automatic download')).toBeNull();
   });
@@ -207,14 +204,13 @@ describe('Desktop app updates settings card', () => {
       expect((await screen.findByRole('alert')).textContent).toBe(
         'Station could not read the desktop app’s update state.',
       );
+      expect(screen.getByText('Try again in a moment.')).not.toBeNull();
       expect(
-        screen.getByText('native update connection unavailable'),
-      ).not.toBeNull();
+        screen.queryByText('native update connection unavailable'),
+      ).toBeNull();
       native.invoke.mockImplementation(answer);
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-      expect(
-        await screen.findByText(/Station 0.1.12 is downloaded/),
-      ).not.toBeNull();
+      expect(await screen.findByText('Ready to restart')).not.toBeNull();
       expect(fake.listenerCount()).toBe(1);
       act(() => fake.emit(desktopUpdateFixture('available')));
       fireEvent.click(screen.getByRole('button', { name: 'Download update' }));
@@ -241,7 +237,8 @@ describe('Desktop app updates settings card', () => {
 
     fireEvent.click(trigger);
     fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
-    expect(await screen.findByText('installer access denied')).not.toBeNull();
+    expect(await screen.findByText('Try again in a moment.')).not.toBeNull();
+    expect(screen.queryByText('installer access denied')).toBeNull();
     expect(screen.getByRole('dialog').textContent).toContain(
       'The update did not install, and Station did not restart.',
     );

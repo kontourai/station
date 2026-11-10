@@ -19,7 +19,8 @@ import {
   useUninstallSkillMutation,
   useUpdateLocalSkillMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { applyReturnFocus } from '@kontourai/station-shared/return-focus';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
@@ -29,7 +30,10 @@ import { SkillRunModal } from '../components/modals/SkillRunModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
@@ -38,6 +42,7 @@ import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../hooks/useUrlSelection';
 import { userFacingErrorMessage } from '../utils/errorText';
+import { describeStationFailure } from '../utils/stationFailure';
 import { SkillCommandSection } from './skills/SkillCommandSection';
 import {
   buildSkillFilename,
@@ -115,11 +120,7 @@ export function SkillsView({
   /** `commands` narrows the list to command-enabled skills. */
   filter?: 'commands';
 }) {
-  const {
-    selectedId: rawSelectedId,
-    select,
-    deselect,
-  } = useUrlSelection(basePath);
+  const { selectedId: rawSelectedId } = useUrlSelection(basePath);
   const selectedId = rawSelectedId === 'new' ? null : rawSelectedId;
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(rawSelectedId === 'new');
@@ -140,9 +141,50 @@ export function SkillsView({
   formRef.current = form;
   const selectionRef = useRef(rawSelectedId);
   selectionRef.current = rawSelectedId;
-  const { navigate } = useNavigation();
+  const { navigate, pathname } = useNavigation();
   const { showToast } = useToast();
   const { apiBase } = useApiBase();
+  const requestAuthorityScope = useHostRequestAuthorityScope();
+  const select = useCallback(
+    (id: string) =>
+      navigate(
+        `${basePath}/${encodeURIComponent(id)}`,
+        basePath === '/guidance'
+          ? { tab: 'skills', filter: filter ?? null }
+          : undefined,
+      ),
+    [basePath, filter, navigate],
+  );
+  const deselect = useCallback(
+    () =>
+      navigate(
+        basePath,
+        basePath === '/guidance'
+          ? { tab: 'skills', filter: filter ?? null }
+          : undefined,
+      ),
+    [basePath, filter, navigate],
+  );
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const removalFrameRef = useRef<number | null>(null);
+  const removalAttemptRef = useRef(0);
+  const removalScopeRef = useRef({ rawSelectedId, pathname, apiBase, filter });
+  if (
+    removalScopeRef.current.rawSelectedId !== rawSelectedId ||
+    removalScopeRef.current.pathname !== pathname ||
+    removalScopeRef.current.apiBase !== apiBase ||
+    removalScopeRef.current.filter !== filter
+  ) {
+    removalScopeRef.current = { rawSelectedId, pathname, apiBase, filter };
+  }
+  useEffect(
+    () => () => {
+      removalAttemptRef.current += 1;
+      if (removalFrameRef.current !== null)
+        cancelAnimationFrame(removalFrameRef.current);
+    },
+    [],
+  );
   const agents = useAgents();
   const launchChat = useLaunchChat(apiBase);
 
@@ -253,6 +295,46 @@ export function SkillsView({
   const uninstallMutation = useUninstallSkillMutation();
   const updateLocalMutation = useUpdateLocalSkillMutation();
   const runSkillMutation = useRunSkill();
+  function handleRemoveSkill(name: string) {
+    const scope = removalScopeRef.current;
+    const authority = requestAuthorityScope;
+    const attempt = ++removalAttemptRef.current;
+    if (removalFrameRef.current !== null) {
+      cancelAnimationFrame(removalFrameRef.current);
+      removalFrameRef.current = null;
+    }
+    uninstallMutation.mutate(name, {
+      onSuccess: () => {
+        showToast('Skill removed');
+        if (
+          removalAttemptRef.current !== attempt ||
+          removalScopeRef.current !== scope ||
+          !authority?.isCurrent()
+        )
+          return;
+        deselect();
+        removalFrameRef.current = requestAnimationFrame(() => {
+          removalFrameRef.current = null;
+          const current = removalScopeRef.current;
+          const search = searchInputRef.current;
+          if (
+            removalAttemptRef.current !== attempt ||
+            !authority.isCurrent() ||
+            current.rawSelectedId !== null ||
+            current.pathname !== basePath ||
+            current.apiBase !== scope.apiBase ||
+            !search ||
+            document.visibilityState !== 'visible' ||
+            !document.hasFocus() ||
+            document.querySelector('[aria-modal="true"], dialog[open]')
+          )
+            return;
+          applyReturnFocus([search]);
+        });
+      },
+      onError: () => showToast('Failed to remove skill'),
+    });
+  }
   // This view already owns the exact active Station origin. Passing it into
   // the write avoids a second, global SDK-base lookup between the click and
   // request dispatch — the dead path audited in #890 stalled before fetch.
@@ -488,6 +570,7 @@ export function SkillsView({
         onDeselect={handleDeselectSkill}
         onSearch={setSearch}
         searchValue={search}
+        searchInputRef={searchInputRef}
         listFilteredEmptyNoun="skills"
         collectionEmpty={tabFiltered.length === 0}
         searchPlaceholder="Search skills..."
@@ -685,15 +768,7 @@ export function SkillsView({
                           label: 'Remove',
                           tone: 'danger' as const,
                           disabled: detailBusy,
-                          onSelect: () =>
-                            uninstallMutation.mutate(selected.name, {
-                              onSuccess: () => {
-                                showToast('Skill removed');
-                                deselect();
-                              },
-                              onError: () =>
-                                showToast('Failed to remove skill'),
-                            }),
+                          onSelect: () => handleRemoveSkill(selected.name),
                         },
                       ]
                     : []
@@ -704,11 +779,7 @@ export function SkillsView({
             {detailFailed ? (
               <ErrorState
                 title="Unable to load skill"
-                description={
-                  detailError instanceof Error
-                    ? detailError.message
-                    : 'The skill detail could not be read.'
-                }
+                description={describeStationFailure(detailError).body}
                 action={
                   <Button size="sm" onClick={() => void refetchSkillDetail()}>
                     Retry

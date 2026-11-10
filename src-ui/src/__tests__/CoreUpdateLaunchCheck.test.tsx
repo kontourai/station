@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import { act, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -9,18 +10,7 @@ import {
 
 let isMobile = false;
 let isDesktop = false;
-let desktopStatus:
-  | {
-      updateAvailable: boolean;
-      installKind?: 'source-checkout' | 'desktop-bundle' | 'unknown';
-      applyMethod?: 'git-pull' | 'reinstall' | 'self-update';
-      behind?: number;
-      ahead?: number;
-      currentHash?: string;
-      remoteHash?: string;
-      channel?: string;
-    }
-  | undefined;
+let desktopStatus: Partial<CoreUpdateStatus> | undefined;
 const { useCoreUpdateStatusQuery, useConnectedServerUpdateContext } =
   vi.hoisted(() => ({
     useCoreUpdateStatusQuery: vi.fn(),
@@ -109,6 +99,32 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('CoreUpdateLaunchCheck notices', () => {
+  test.each([true, false])(
+    'verified archive attention requires both release versions (complete=%s)',
+    (complete) => {
+      desktopStatus = {
+        installKind: 'archive-service',
+        applyMethod: 'service-update',
+        releaseCheck: 'verified',
+        updateAvailable: true,
+        currentVersion: '0.8.0-preview.1',
+        latestVersion: complete ? '0.8.0-preview.2' : undefined,
+      };
+      renderCheck();
+      expect(notices).toEqual(
+        complete
+          ? [
+              expect.objectContaining({
+                target: 'server',
+                updateAvailable: true,
+                summaryOnly: true,
+              }),
+            ]
+          : [],
+      );
+    },
+  );
+
   test.each([1, 3])(
     'publishes a source comparison of %i commits as a summary-only notice',
     (behind) => {
@@ -128,6 +144,7 @@ describe('CoreUpdateLaunchCheck notices', () => {
           // The server section states the same comparison: the notice
           // only drives the Updates control status, with no action.
           summaryOnly: true,
+          updateAvailable: true,
         }),
       ]);
       expect(notices[0]?.onAction).toBeUndefined();
@@ -211,7 +228,7 @@ describe('CoreUpdateLaunchCheck notices', () => {
       expect(notices).toEqual([
         expect.objectContaining({
           target: 'desktop',
-          detail: 'offline',
+          detail: 'Try again in a moment.',
           actionLabel: 'Retry update check',
         }),
       ]),
@@ -246,24 +263,24 @@ describe('CoreUpdateLaunchCheck notices', () => {
       'insecure release',
       'https://updates.example.test/feed',
       'http://downloads.example/app.apk',
-      /must use HTTPS/,
     ],
     [
       'cross-origin response',
       'https://cdn.example.test/feed',
       'https://updates.example.test/app',
-      /not trusted/,
     ],
   ])(
     'rejects %s without publishing an install action',
-    async (_label, url, releaseUrl, detail) => {
+    async (_label, url, releaseUrl) => {
       isMobile = true;
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ...feedResponse('2.0.0', releaseUrl),
         url,
       });
       renderCheck(feedProps);
-      await waitFor(() => expect(notices[0]?.detail).toMatch(detail));
+      await waitFor(() =>
+        expect(notices[0]?.detail).toBe('Try again in a moment.'),
+      );
       expect(notices.some((notice) => notice.href)).toBe(false);
     },
   );

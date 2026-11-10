@@ -1,3 +1,4 @@
+import { conversationConnection } from '../components/conversation/__tests__/fixtures';
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -70,6 +71,7 @@ function finishedEntry(
 function renderSheet(view: {
   running: BackgroundTaskEntry[];
   finished: BackgroundTaskEntry[];
+  toolHistoryLimited?: true;
 }) {
   useChatBackgroundTasks.mockReturnValue(view);
   const anchorRef = createRef<HTMLElement>();
@@ -133,7 +135,10 @@ describe('BackgroundTasksSheet', () => {
 
   test('renders the empty state when there are no running or finished tasks', () => {
     renderSheet({ running: [], finished: [] });
-    expect(screen.getByText('Nothing here yet')).not.toBeNull();
+    expect(screen.getByText('Nothing to show')).not.toBeNull();
+    expect(screen.getByText(/Recent activity only/).textContent).toContain(
+      'closed-chat history may be missing.',
+    );
   });
 
   test('renders a Running section with a count and the Activity disclosure', () => {
@@ -143,7 +148,7 @@ describe('BackgroundTasksSheet', () => {
     });
     expect(screen.getByText('Running (2)')).not.toBeNull();
     expect(
-      screen.getByText('Remote delegations appear on the Activity page.'),
+      screen.getByText(/Find remote delegations in Activity\./),
     ).not.toBeNull();
     expect(
       screen.queryByText('Remote delegations appear on the Sessions page.'),
@@ -167,12 +172,12 @@ describe('BackgroundTasksSheet', () => {
     expect(screen.getByText(/Tool · 1:07/)).not.toBeNull();
   });
 
-  test('Finished section is collapsed by default and shows an outcome chip once expanded', () => {
+  test('Recent activity section is collapsed by default and shows an outcome chip once expanded', () => {
     renderSheet({ running: [], finished: [finishedEntry()] });
-    expect(screen.getByText('Finished (1)')).not.toBeNull();
+    expect(screen.getByText('Recent activity (1)')).not.toBeNull();
     expect(screen.queryByText('Investigate flaky test')).toBeNull();
 
-    fireEvent.click(screen.getByText('Finished (1)'));
+    fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('Investigate flaky test')).not.toBeNull();
     expect(screen.getByText('Completed')).not.toBeNull();
   });
@@ -185,7 +190,7 @@ describe('BackgroundTasksSheet', () => {
       running: [],
       finished: [finishedEntry({ state: 'unresolved' })],
     });
-    fireEvent.click(screen.getByText('Finished (1)'));
+    fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('No result')).not.toBeNull();
     expect(screen.queryByText('Stopped')).toBeNull();
     expect(screen.queryByText('Failed')).toBeNull();
@@ -193,7 +198,7 @@ describe('BackgroundTasksSheet', () => {
 
   test('Finished section collapse state persists to localStorage and is honored on remount', () => {
     renderSheet({ running: [], finished: [finishedEntry()] });
-    fireEvent.click(screen.getByText('Finished (1)'));
+    fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('Investigate flaky test')).not.toBeNull();
 
     const stored = JSON.parse(
@@ -288,7 +293,7 @@ describe('BackgroundTasksSheet', () => {
         finished: state === 'completed' ? [entry] : [],
       });
       if (state === 'completed')
-        fireEvent.click(screen.getByText('Finished (1)'));
+        fireEvent.click(screen.getByText('Recent activity (1)'));
       expect(
         screen
           .getByRole('img', { name: 'Owl · Codex' })
@@ -495,4 +500,79 @@ describe('BackgroundTasksSheet', () => {
     fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('35 tokens · 1 tool use')).not.toBeNull();
   });
+});
+
+test('omitted tool history is disclosed beside the retained running count', () => {
+  renderSheet({
+    running: [runningEntry()],
+    finished: [],
+    toolHistoryLimited: true,
+  });
+  expect(screen.getByRole('status').textContent).toContain(
+    'Older tool rows are omitted',
+  );
+  expect(
+    screen.getByRole('heading', { name: 'Running (1 shown)' }),
+  ).toBeTruthy();
+});
+
+test('a peer background sheet selects its Station partition and never invokes host-only child controls', () => {
+  interruptTask.mockReset();
+  stopProviderTask.mockReset();
+  useOrchestrationSessionActivityQuery.mockReturnValue({ data: undefined });
+  useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
+  useInterruptDelegatedTaskMutation.mockReturnValue({
+    mutate: interruptTask,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+  });
+  useStopProviderTaskMutation.mockReturnValue({
+    mutate: stopProviderTask,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+  });
+  const station = conversationConnection('relay');
+  useChatBackgroundTasks.mockReturnValue({
+    running: [
+      runningEntry({
+        kind: 'agent',
+        source: 'delegate-session',
+        delegateThreadId: 'peer-child',
+        stop: { kind: 'delegate-interrupt' },
+      }),
+    ],
+    finished: [],
+  });
+  render(
+    <BackgroundTasksSheet
+      chatThreadId="peer-tab"
+      station={station}
+      apiBase={station.targetApiBase}
+      anchorRef={createRef<HTMLElement>()}
+      onOpenTranscript={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  expect(useChatBackgroundTasks).toHaveBeenCalledWith('peer-tab', station);
+  expect(screen.getByText('Via Receiver')).toBeTruthy();
+  const stop = screen.getByRole('button', { name: 'Stop' });
+  expect(stop.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(stop);
+  expect(interruptTask).not.toHaveBeenCalled();
+  expect(
+    screen
+      .getByRole('button', { name: 'View transcript' })
+      .hasAttribute('disabled'),
+  ).toBe(true);
+  expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
+    'peer-child',
+    station.targetApiBase,
+    expect.objectContaining({
+      readTarget: expect.objectContaining({
+        targetApiBase: station.targetApiBase,
+      }),
+    }),
+  );
 });

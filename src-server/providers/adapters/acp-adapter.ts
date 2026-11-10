@@ -1,4 +1,8 @@
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  assertEngineAllowedByManagedPolicy,
+  managedEnginePrerequisites,
+} from '../../security/managed-engine-limits.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
 import { providerFailure } from '../provider-failure.js';
 /**
@@ -46,6 +50,7 @@ import type {
 import type {
   CapabilityUndelivered,
   ResolvedAgentDefinition,
+  StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
@@ -507,6 +512,8 @@ export interface AcpAdapterOptions {
     threadId: string;
     projectSlug?: string;
     cwd: string;
+    /** #2497: the session's current confinement, read at each create. */
+    confinement: () => StationConfinement | undefined;
   }) => AcpSessionTerminals | undefined;
 }
 
@@ -631,6 +638,12 @@ export interface AcpSessionRecord {
   stopping?: boolean;
   /** At most one engine re-establishment is attempted for this session. */
   credentialRecoveryAttempted?: boolean;
+  /**
+   * #2497: the session's server-derived confinement (#2493) as it stands:
+   * the start's, then each turn's. The engine's terminal commands run on the
+   * host only while it is `host`.
+   */
+  executionConfinement: StationConfinement | undefined;
   currentModeId?: string;
   /**
    * #3290: who decides which of this session's actions ask, from the
@@ -970,6 +983,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     const config = (await this.options.getConnections()).find(
       (candidate) => candidate.id === connectionId,
     );
+    // #4520: before the start boundary is claimed, so the refusal is
+    // definitive (see startSession for the same check on a direct start).
+    if (config) assertEngineAllowedByManagedPolicy('acp', config);
     if (!config || acpApprovalControl(config.command) !== 'station') return;
     const floor = acpApprovalFloor(
       acpAppliedApprovalMode(
@@ -1036,6 +1052,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         `Unknown ACP connection: ${connectionId ?? '(none provided)'}`,
       );
     }
+    // #4520: a connection added from the public ACP registry does not run
+    // when the managed policy sets `limits.engines.acpRegistryAgents: false`.
+    assertEngineAllowedByManagedPolicy('acp', config);
     // #3290: an engine that decides which of its actions ask is not started
     // with an approval mode it would never apply. The server sends a mode
     // only to a `station` connection, so this refuses a caller-carried one.
@@ -1256,6 +1275,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           : undefined,
       agent: input.agent,
       credentialRecoveryAttempted: options?.credentialRecoveryAttempted,
+      executionConfinement: input.confinement,
       toolUpdateSupervisor: undefined as unknown as AcpToolUpdateSupervisor,
     };
     record.toolUpdateSupervisor = new AcpToolUpdateSupervisor(
@@ -1271,6 +1291,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         projectSlug: input.metadata.projectSlug,
       }),
       cwd,
+      confinement: () => record.executionConfinement,
     });
     let terminalCounter = 0;
     const logger = this.options.logger ?? console;
@@ -1290,6 +1311,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         args: config.args,
         cwd,
         launchEnv,
+        connection: config,
         ...(tmpDir ? { tmpDir } : {}),
         credentialEnv: () => engineCredentialEnvFor(config),
         // #3957: not offered, because OpenCode's own tools already write
@@ -2253,6 +2275,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     // caller that did not (or a start that began since) is refused
     // retryably rather than racing the start.
     if (record.startSettled) throw new ProviderSessionStartingError();
+    // #2497: the turn carries the session's confinement as it stands now (a
+    // revoked grant re-confines it); the engine's terminal commands follow.
+    if (input.confinement !== undefined)
+      record.executionConfinement = input.confinement;
     // #2415: a send that races the session's active turn is refused here,
     // before any provider-visible effect, so it must be a
     // `SendTurnRefusedError`. A plain error is recorded by orchestration as
@@ -2842,6 +2868,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (scoped.length === 0) {
       return [];
     }
+    // #4515: an engine the managed policy does not allow is never run.
+    if (managedEnginePrerequisites('acp', 'acp', 'ACP')) {
+      return scoped.flatMap(
+        (config) =>
+          managedEnginePrerequisites('acp', config.command, config.name) ?? [],
+      );
+    }
 
     const results = await Promise.all(
       scoped.map((config) =>
@@ -2903,6 +2936,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const client = createACPBridgeClient({
       cwd: context.cwd,
       terminals: context.terminals,
+      terminalConfinement: () => record.executionConfinement,
       ...(context.sessionTerminals && {
         sessionTerminals: context.sessionTerminals,
       }),

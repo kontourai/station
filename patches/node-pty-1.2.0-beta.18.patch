@@ -1,0 +1,34 @@
+diff --git a/lib/windowsTerminal.js b/lib/windowsTerminal.js
+--- a/lib/windowsTerminal.js
++++ b/lib/windowsTerminal.js
+@@ -55,2 +55,5 @@
+-        // The socket 'close' handler that drives 'exit' is only attached after
+-        // ready_datapipe, which never fires when connect() fails.
++        // Exit observation must not depend on output-pipe readiness.
++        _this._socket.on('close', function () {
++            _this.emit('exit', _this._agent.exitCode);
++            _this._close();
++        });
+@@ -59 +61,0 @@
+-            _this.emit('exit', _this._agent.exitCode);
+@@ -106,5 +107,0 @@
+-            // Cleanup after the socket is closed.
+-            _this._socket.on('close', function () {
+-                _this.emit('exit', _this._agent.exitCode);
+-                _this._close();
+-            });
+@@ -163,8 +160,6 @@
+-        var _this = this;
+-        this._deferNoArgs(function () {
+-            if (signal) {
+-                throw new Error('Signals not supported on windows.');
+-            }
+-            _this._close();
+-            _this._agent.kill();
+-        });
++        if (signal) {
++            throw new Error('Signals not supported on windows.');
++        }
++        // The agent cancels pending startup; release must not wait for output.
++        this._close();
++        this._agent.kill();

@@ -81,8 +81,9 @@ release workflows can publish one per ring (`portable-stable`,
 [signed host-stream manifests](release-rings.md#signed-host-stream-manifests).
 The default path for stable and beta is still the authenticated one. Nightly has no
 public/runtime name split: the ring, the runtime, and the provenance channel
-are all `nightly`, and its version is `X.Y.Z-nightly.<code>` with `<code>`
-reserved by `nightly-version-code`. `STATION_VERSION` accepts an exact
+are all `nightly`, and portable versions use `X.Y.Z-nightly.YYYYMMDDNN`: the
+UTC date followed by a two-digit build index. The allocation remains bound
+to its native `nightly-version-code/<code>` reservation. `STATION_VERSION` accepts an exact
 `vX.Y.Z-nightly.N` so a rollback can name its target; builds order
 numerically on `N`.
 
@@ -130,7 +131,8 @@ the manifest URL when the install came from a public manifest. The
 authenticated GitHub-release path records no URL and keeps writing schema 3,
 which released installers and CLIs read. A packaged `station upgrade` re-runs the installed version's
 `install.sh` with that URL, so it needs no environment variable. An explicit
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins.
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins, unless a
+[managed policy](managed-policy.md#update-control) names a mirror.
 
 A service installed from an archive's active version (`station service
 install` run through the launcher) runs `<install root>/current`, and its

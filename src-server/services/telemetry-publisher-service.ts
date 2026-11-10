@@ -8,6 +8,10 @@ import type {
   UsageTelemetryProperties,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
+  TELEMETRY_ENGINES,
+  telemetrySendingForbidden,
+} from '@kontourai/station-contracts/product-telemetry';
+import {
   LITE_TELEMETRY_INVENTORY_REVISION,
   liteTelemetryNoticeText,
   mapRuntimeChannelToTelemetryChannel,
@@ -15,6 +19,10 @@ import {
   parseStationDailyPing,
   parseTelemetryFeedback,
 } from '@kontourai/station-shared/product-telemetry';
+import {
+  cacheInclusivePromptTokens,
+  type UsageObservation,
+} from '@kontourai/station-shared/usage-fold';
 import type { ResolvedTelemetryConfiguration } from '../domain/telemetry-configuration.js';
 import { writeUserNotice } from '../utils/logger.js';
 import {
@@ -40,6 +48,7 @@ interface PublisherOptions {
       | 'branding_overridden'
     >
   >;
+  usage?: (day: string) => readonly UsageObservation[];
   fetch: typeof globalThis.fetch;
 }
 const PUBLISHERS = ['kontour', 'operator'] as const;
@@ -165,6 +174,13 @@ export class TelemetryPublisherService {
     });
   }
   async notice(headless: boolean): Promise<void> {
+    // #4521: a managed policy turned telemetry off. Announcing Lite would be
+    // false, and recording the notice as shown would be a false receipt.
+    const resolved = this.options.configuration().publishers;
+    if (
+      PUBLISHERS.every((publisher) => resolved[publisher].reason === 'managed')
+    )
+      return;
     const facts = await this.options.facts?.();
     await this.update((ping) => {
       if (facts) Object.assign(ping, facts);
@@ -318,11 +334,12 @@ export class TelemetryPublisherService {
         // Reserve before I/O: concurrent processes cannot duplicate an attempt.
         state.attempted[publisher] = today;
         state.reported[publisher] = snapshot.day;
+        const { engine_tokens_today: _previousTokens, ...ping } = snapshot.ping;
         jobs.push({
           publisher,
           payload: parseStationDailyPing(
             {
-              ...snapshot.ping,
+              ...ping,
               version: mapRuntimeVersionToTelemetryVersion(
                 snapshot.ping.version,
               ),
@@ -338,17 +355,83 @@ export class TelemetryPublisherService {
       }
       return state;
     });
+    const yesterday = new Date(now.getTime() - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const tokens = jobs.length ? this.readTokenBuckets(yesterday) : undefined;
     await Promise.all(
       jobs.map(({ publisher, payload, notice }) =>
-        this.send(publisher, payload, notice),
+        this.send(
+          publisher,
+          parseStationDailyPing(
+            {
+              ...payload,
+              ...(tokens?.length ? { engine_tokens_today: tokens } : {}),
+            },
+            [],
+            'semver',
+          ),
+          notice,
+        ),
       ),
     );
+  }
+  private readTokenBuckets(
+    day: string,
+  ): StationDailyPing['engine_tokens_today'] {
+    try {
+      // The canonical allocation emits separate component rows for one event.
+      const observations = new Map<string, UsageObservation>();
+      for (const observation of this.options.usage?.(day) ?? []) {
+        const key = JSON.stringify([
+          observation.sourceEventId,
+          observation.provider,
+        ]);
+        observations.set(key, { ...observations.get(key), ...observation });
+      }
+      const totals = new Map<(typeof TELEMETRY_ENGINES)[number], number>();
+      for (const usage of observations.values()) {
+        const engine =
+          TELEMETRY_ENGINES.find(
+            (engine) =>
+              engine ===
+              (usage.provider === 'station-agent' ? 'station' : usage.provider),
+          ) ?? 'other';
+        const tokens =
+          (cacheInclusivePromptTokens(usage.provider, usage) ??
+            usage.inputTokens ??
+            0) + (usage.outputTokens ?? 0);
+        totals.set(engine, (totals.get(engine) ?? 0) + tokens);
+      }
+      return [...totals]
+        .filter(([, tokens]) => tokens > 0)
+        .map(([engine, tokens]) => ({
+          engine,
+          bucket:
+            tokens <= 10_000
+              ? '1-10k'
+              : tokens <= 100_000
+                ? '10k-100k'
+                : tokens <= 1_000_000
+                  ? '100k-1M'
+                  : tokens <= 10_000_000
+                    ? '1M-10M'
+                    : '10M+',
+        }));
+    } catch {
+      // Accounting is optional; its failure must not suppress the rest of Lite.
+      return undefined;
+    }
   }
   async tierLowered(
     publisher: Publisher,
     reason?: TelemetryFeedback['reason'],
   ): Promise<void> {
-    if (this.options.configuration().publishers[publisher].reason === 'DNT')
+    if (
+      telemetrySendingForbidden(
+        this.options.configuration().publishers[publisher],
+      )
+    )
       return;
     let sendReason = false;
     await this.update();
@@ -395,7 +478,9 @@ export class TelemetryPublisherService {
     const publisher = payload.publisher;
     if (
       payload.action !== 'tier-lowered' ||
-      this.options.configuration().publishers[publisher].reason === 'DNT'
+      telemetrySendingForbidden(
+        this.options.configuration().publishers[publisher],
+      )
     )
       return false;
     let allowed = false;
@@ -431,9 +516,11 @@ export class TelemetryPublisherService {
     const resolution = config.publishers[publisher];
     const endpoint = this.endpoint(publisher);
     const epoch = this.epochs[publisher];
+    // A tier-lowered reason may follow a user's own "off"; Do Not Track
+    // and a managed policy's `limits.telemetry: false` (#4521) forbid it too.
     let reason: TelemetryOutboxEntry['reason'] =
       resolution.tier === 'off' &&
-      (!('action' in payload) || resolution.reason === 'DNT')
+      (!('action' in payload) || telemetrySendingForbidden(resolution))
         ? resolution.reason === 'DNT'
           ? 'DNT'
           : 'off'

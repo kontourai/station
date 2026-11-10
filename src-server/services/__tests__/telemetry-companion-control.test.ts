@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { installManagedListenerAdmission } from '../../security/managed-network-exposure.js';
 import {
   captureTelemetryCompanionPrivateUsageTarget,
   controlTelemetryCompanion,
   readTelemetryCompanionManagedState,
   readTelemetryCompanionProductTrends,
+  readTelemetryCompanionSavedPorts,
 } from '../telemetry-companion-control.js';
 import {
   captureCompanionHomeCustody,
@@ -53,6 +55,100 @@ vi.mock('../telemetry-companion-artifact.mjs', async (importOriginal) => ({
 }));
 
 const managedFixture = () => managedCompanionFixture(makeTempDir, docker);
+
+afterEach(() => installManagedListenerAdmission(undefined));
+
+/** A stopped companion whose artifact verifies, so Start reaches its effects. */
+async function startableFixture() {
+  const fixture = await managedFixture();
+  const manifest = Buffer.from('{}');
+  fixture.state.manifestSha256 = createHash('sha256')
+    .update(manifest)
+    .digest('hex');
+  await writeFile(
+    join(fixture.directory, 'deployment.json'),
+    JSON.stringify(fixture.state),
+    { mode: 0o600 },
+  );
+  await mkdir(join(fixture.directory, 'payload'), { mode: 0o700 });
+  await writeFile(
+    join(fixture.directory, 'payload/companion-manifest.json'),
+    manifest,
+    { mode: 0o600 },
+  );
+  await writeFile(
+    join(fixture.directory, 'intent.json'),
+    JSON.stringify({ envelope: {} }),
+    { mode: 0o600 },
+  );
+  return fixture;
+}
+
+const dockerStarts = () =>
+  docker.mock.calls.filter((call) => call[1].slice(2)[0] === 'start').length;
+
+test.skipIf(process.platform === 'win32')(
+  '#4519: Start admits every saved companion port first; a Serve route to one refuses it before any container starts',
+  async () => {
+    const { home, installationId, state } = await startableFixture();
+    expect(await readTelemetryCompanionSavedPorts(home)).toEqual(state.ports);
+    const admitted: number[] = [];
+    installManagedListenerAdmission({
+      localClientsOnly: true,
+      admit: async ({ name, host, port }) => {
+        admitted.push(port);
+        expect([name, host]).toEqual(['telemetry companion', '127.0.0.1']);
+        if (port === state.ports[1])
+          throw new Error(`Tailscale Serve forwards port ${port} to it`);
+      },
+    });
+    docker.mockClear();
+    await expect(
+      controlTelemetryCompanion(home, installationId, {
+        operationId: '31234567-89ab-4cde-8fab-0123456789ab',
+        action: 'start',
+        requireOperator: async () => {},
+      }),
+    ).rejects.toThrow(`Tailscale Serve forwards port ${state.ports[1]} to it`);
+    expect(admitted).toEqual(state.ports.slice(0, 2));
+    expect(dockerStarts()).toBe(0);
+
+    // Admitted, the same Start goes on to start containers (stopped here
+    // by aborting once the first start is issued).
+    admitted.length = 0;
+    installManagedListenerAdmission({
+      localClientsOnly: true,
+      admit: async ({ port }) => {
+        admitted.push(port);
+      },
+    });
+    const controller = new AbortController();
+    const implementation = docker.getMockImplementation()!;
+    docker.mockImplementation(async (...args) => {
+      if (args[1].slice(2)[0] === 'start') controller.abort();
+      return implementation(...args);
+    });
+    await expect(
+      controlTelemetryCompanion(home, installationId, {
+        operationId: '41234567-89ab-4cde-8fab-0123456789ab',
+        action: 'start',
+        requireOperator: async () => {},
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow();
+    expect(admitted).toEqual(state.ports);
+    expect(dockerStarts()).toBe(1);
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  '#4519: the saved ports are none without an installation',
+  async () => {
+    expect(
+      await readTelemetryCompanionSavedPorts(makeTempDir('companion-none-')),
+    ).toEqual([]);
+  },
+);
 
 test.skipIf(process.platform === 'win32')(
   'missing current pointer preserves an unknown lock or orphaned installation instead of reporting a clean absence',

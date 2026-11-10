@@ -205,6 +205,7 @@ function installSharedTaskTransport() {
             timeoutMs: 15_000,
             maxResponseBytes: kind === 'publication' ? 64 * 1024 : 1024 * 1024,
             signal: init?.signal,
+            cursor: url.searchParams.get('cursor') ?? undefined,
           },
         ];
         sharedDetails.calls.push({ kind, args });
@@ -431,9 +432,7 @@ test('hides cached history and document while publication is stale or unshared',
   );
   await waitFor(() =>
     expect(
-      screen.getByText(
-        'History is hidden until a current publication is confirmed.',
-      ),
+      screen.getByText('History is not shared with this connection.'),
     ).toBeTruthy(),
   );
   expect(screen.queryByText('Private stale history')).toBeNull();
@@ -630,4 +629,69 @@ test('redacts Station detail errors that could disclose a private Project', asyn
   expect(screen.queryByText(/private project exists/)).toBeNull();
   expect(screen.queryByText(project.name)).toBeNull();
   expect(sdk.operatorHook).not.toHaveBeenCalled();
+});
+
+test('member pages through its authorized history, keeps rows on page failure, and retries the same cursor', async () => {
+  sdk.memberView = project;
+  sharedWork.read.mockResolvedValue([summary]);
+  sharedDetails.publication.mockResolvedValue({
+    kind: 'shared',
+    publication: summary,
+  });
+  sharedDetails.document.mockResolvedValue({ kind: 'unavailable' });
+  const checkpoint = {
+    throughSeq: 3,
+    checkpointDigest: 'b'.repeat(64),
+    retainedAnchorSeq: 0,
+    retainedAnchorDigest: 'c'.repeat(64),
+  };
+  const record = (sequence: number, text: string) => ({
+    sequence,
+    actor: { kind: 'human', label: 'Zach' },
+    body: { kind: 'human-message', text },
+    digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+    integrity: 'L0',
+  });
+  sharedDetails.history
+    .mockResolvedValueOnce({
+      kind: 'available',
+      checkpoint,
+      records: [record(1, 'First **shared** decision')],
+      hasMore: true,
+      nextCursor: 'fixed-page-two',
+    })
+    .mockRejectedValueOnce(new Error('network disconnected'))
+    .mockResolvedValueOnce({
+      kind: 'available',
+      checkpoint,
+      records: [record(2, 'Next shared decision')],
+      hasMore: false,
+    });
+  renderPage();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Read shared item: Review the shared design',
+    }),
+  );
+  expect(
+    await screen.findByText('shared', { selector: 'strong' }),
+  ).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Load earlier messages' }),
+  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+  expect(
+    screen.getByRole('list', { name: 'Shared history records' }).textContent,
+  ).toContain('First shared decision');
+  expect(await screen.findByText('Next shared decision')).toBeTruthy();
+  const calls = sharedDetails.calls.filter((call) => call.kind === 'history');
+  expect(calls).toHaveLength(3);
+  expect(calls.slice(1).map((call) => call.args[3])).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        cursor: 'fixed-page-two',
+        requestScope: authority.current,
+      }),
+    ]),
+  );
 });

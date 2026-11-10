@@ -128,6 +128,7 @@ import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
   SessionApprovalModeSetEvent,
+  TurnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isProviderTriggeredTurn,
@@ -237,12 +238,20 @@ import {
 } from '../../security/coding-authority.js';
 import {
   type ConfinementProvider,
-  ConfinementRefusedError,
   noMechanismConfinementRecord,
   readConfinementRecord,
   resolveConfinement,
 } from '../../security/confinement/confinement-provider.js';
 import { seatbeltConfinementProvider } from '../../security/confinement/seatbelt.js';
+import {
+  clampToManagedCeiling,
+  ManagedApprovalCeilingRefusedError,
+  managedCeilingRefuses,
+} from '../../security/managed-approval-ceiling.js';
+import {
+  assertEngineAllowedByManagedPolicy,
+  isManagedEngineRefusal,
+} from '../../security/managed-engine-limits.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -424,6 +433,7 @@ import {
   type DurableTurnHandoff,
   type InterruptedTurnMemoryAdapter,
   InterruptedTurnRecovery,
+  type RecoveredInterruptedTurn,
 } from './interrupted-turn-recovery.js';
 import { memoryExhaustionRecoveryNote } from './memory-exhaustion-recovery.js';
 import {
@@ -491,6 +501,7 @@ import {
   type SessionCommandModule,
   type SessionCommandOutcome,
 } from './session-command-module.js';
+import { readSessionDispatchFacts } from './session-dispatch-facts.js';
 import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
@@ -647,6 +658,27 @@ interface OrchestrationDispatchInternalOptions {
   /** #3323: see `SessionCommandInternalOptions.delegationProvenance`. */
   delegationProvenance?: SessionCommandInternalOptions['delegationProvenance'];
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
+  /**
+   * #4512: who caused this `sendTurn`, as the server-side caller knows it
+   * (the delegation start, the conversation inbox's placement). Stamped on
+   * the turn's `turn.started` as `dispatchOrigin`. Absent, the service
+   * classifies the send from its client origin (`classifyTurnDispatchOrigin`).
+   */
+  dispatchOrigin?: TurnDispatchOrigin;
+}
+
+/**
+ * #4512: the `dispatchOrigin` a `sendTurn` records. A server caller's own
+ * classification wins; otherwise a send from a person's client (operator or
+ * paired device) is `interactive` and everything else is `unknown`.
+ */
+export function classifyTurnDispatchOrigin(
+  dispatchOrigin: TurnDispatchOrigin | undefined,
+  clientOrigin: ClientOrigin | undefined,
+): TurnDispatchOrigin {
+  if (dispatchOrigin) return dispatchOrigin;
+  const actor = clientOrigin?.actor.kind;
+  return actor === 'operator' || actor === 'device' ? 'interactive' : 'unknown';
 }
 
 function chatStartGateReason(error: unknown): string {
@@ -2627,6 +2659,20 @@ export class OrchestrationService {
     return { promise, settle };
   })();
 
+  /**
+   * #4512: settled once THIS runtime's boot interrupted-turn recovery has
+   * finished (or given up), with the turns it settled as interrupted.
+   */
+  private readonly interruptedTurnsSettled = (() => {
+    let settle: (turns: readonly RecoveredInterruptedTurn[]) => void = () => {};
+    const promise = new Promise<readonly RecoveredInterruptedTurn[]>(
+      (resolve) => {
+        settle = resolve;
+      },
+    );
+    return { promise, settle };
+  })();
+
   private readonly stopSessionDeletionNotifications?: () => void;
   private readonly sessionDeletionReaders = new Set<SessionReadScope>();
 
@@ -2812,29 +2858,38 @@ export class OrchestrationService {
       },
       readUsageRevision: (threadId) =>
         this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
-      listUsageEventPayloads: (threadId) =>
-        this.options.eventStore?.listUsageEventPayloads(threadId) ?? [],
+      listUsageEventPayloads: (threadId, clock) =>
+        this.options.eventStore?.listUsageEventPayloads(threadId, clock) ?? [],
       listUsageReceiptEvents: (input) =>
         this.options.eventStore?.listUsageReceiptEvents(input) ?? [],
       listUsageCoverageEvents: (input) =>
         this.options.eventStore?.listUsageCoverageEvents(input) ?? [],
       searchConversationMessages: (input) =>
         this.options.eventStore?.searchConversationMessages(input) ?? [],
-      readSessionThreadIds: (authority) => {
+      readSessionThreadIds: (authority, stationOwnedOnly = false) => {
         if (authority === INTERNAL_SESSION_READ_SCOPE) {
-          return (this.options.eventStore?.readSessions() ?? []).map(
-            (persisted) => persisted.threadId,
-          );
+          return (this.options.eventStore?.readSessions() ?? [])
+            .filter(
+              (session) =>
+                !stationOwnedOnly || session.controlMode === 'station-owned',
+            )
+            .map((persisted) => persisted.threadId);
         }
         if (!isSessionReadAuthority(authority)) return [];
-        return (
+        const ids =
           this.options.eventStore?.readUsageSessionThreadIds({
             ownerUserId: authority.userId,
             ...(authority.mode === 'hosted' && authority.tenantExecutionContext
               ? { tenantId: authority.tenantExecutionContext.tenantId }
               : {}),
-          }) ?? []
-        );
+          }) ?? [];
+        return stationOwnedOnly
+          ? ids.filter(
+              (id) =>
+                this.options.eventStore?.readSessionByThread(id)
+                  ?.controlMode === 'station-owned',
+            )
+          : ids;
       },
       requireTenantExecutionContext: () =>
         this.options.requireTenantExecutionContext?.() === true,
@@ -3808,12 +3863,19 @@ export class OrchestrationService {
         // recovery-intent reconciliation just above — a failure here must
         // never surface as an unhandled rejection after attachment state
         // has already settled; unwritten banners simply retry next boot.
-        void this.interruptedTurns.consume().catch((error) => {
-          this.options.logger.warn(
-            'Interrupted-turn boundary consumption did not complete',
-            { error: errorMessage(error) },
+        void this.interruptedTurns
+          .consume()
+          .catch((error) => {
+            this.options.logger.warn(
+              'Interrupted-turn boundary consumption did not complete',
+              { error: errorMessage(error) },
+            );
+          })
+          .finally(() =>
+            this.interruptedTurnsSettled.settle(
+              this.interruptedTurns.recoveredTurns(),
+            ),
           );
-        });
       });
   }
 
@@ -4430,6 +4492,17 @@ export class OrchestrationService {
    */
   whenSessionAttachmentSettled(): Promise<void> {
     return this.sessionAttachmentSettledSignal.promise;
+  }
+
+  /**
+   * #4512: the turns this runtime's boot recovery settled as interrupted
+   * (banner written, boundary resolved), once that recovery has finished.
+   * Never settles if `initialize()` is never called.
+   */
+  whenInterruptedTurnsRecovered(): Promise<
+    readonly RecoveredInterruptedTurn[]
+  > {
+    return this.interruptedTurnsSettled.promise;
   }
 
   /**
@@ -5608,6 +5681,19 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * #4507: the Task a Session was started for, from the server-written room
+   * execution binding (never from start metadata). A continuation uses it to
+   * prove a Task-owned worktree belongs to the Session's own Task.
+   */
+  readTaskRoomExecutionBinding(
+    sessionId: string,
+  ): { projectId: string; taskId: string } | undefined {
+    return this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+      sessionId,
+    );
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
@@ -5801,6 +5887,24 @@ export class OrchestrationService {
       authority,
       requested,
     );
+  }
+
+  /**
+   * #4512: what a Session's own record says about whom it works for (Task
+   * binding, Station-derived delegated child, its newest non-result turn's
+   * origin). Without a store it says nothing unattended.
+   */
+  sessionDispatchFacts(
+    threadId: string,
+  ): ReturnType<typeof readSessionDispatchFacts> {
+    const store = this.options.eventStore;
+    if (!store)
+      return {
+        taskBound: false,
+        delegatedChild: false,
+        priorOrigin: () => 'unknown',
+      };
+    return readSessionDispatchFacts(store, threadId);
   }
 
   currentConversationSessionId(conversationId: string): string {
@@ -6909,6 +7013,11 @@ export class OrchestrationService {
   listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {
     this.initialize();
     return this.transcriptReads.listSessionUsage(authority);
+  }
+
+  listDailyUsage(day: string, authority: SessionReadScope) {
+    this.initialize();
+    return this.transcriptReads.listDailyUsage(day, authority);
   }
 
   listUsageReceipts(
@@ -8562,7 +8671,9 @@ export class OrchestrationService {
         error instanceof SessionReattachConflictError ||
         error instanceof ConcurrentEngineStartCapacityError ||
         // #2873: a refusal to start, with nothing run.
-        error instanceof DispatchCwdRefusedError,
+        error instanceof DispatchCwdRefusedError ||
+        // #4520: the managed policy refused the engine before it ran.
+        isManagedEngineRefusal(error),
       attachedSessionReadOnlyMessage: ATTACHED_SESSION_READ_ONLY_ERROR,
     });
   }
@@ -9022,6 +9133,13 @@ export class OrchestrationService {
             submittedInput.threadId,
             INTERNAL_SESSION_READ_SCOPE,
           );
+          // #4520: a thread on an engine the managed policy does not allow
+          // is kept but runs no turn, before any engine is started for it.
+          const turnEngine =
+            this.threadProviders.get(submittedInput.threadId) ??
+            current?.session.provider;
+          if (turnEngine !== undefined)
+            assertEngineAllowedByManagedPolicy(turnEngine);
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: submittedInput.threadId,
             threadProviders: this.threadProviders,
@@ -9445,6 +9563,10 @@ export class OrchestrationService {
                         | SkillExperienceInvocationReferenceV1
                         | undefined;
                       let experienceContext: string | undefined;
+                      const dispatchOrigin = classifyTurnDispatchOrigin(
+                        internal?.dispatchOrigin,
+                        context?.clientOrigin,
+                      );
                       if (internal?.skillExperience) {
                         if (
                           !this.skillExperienceRuntime ||
@@ -9516,6 +9638,7 @@ export class OrchestrationService {
                           context?.principal,
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
+                          dispatchOrigin,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -9859,6 +9982,7 @@ export class OrchestrationService {
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
                           turnInput.invocationId,
+                          dispatchOrigin,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
@@ -11209,11 +11333,15 @@ export class OrchestrationService {
           // the engine is never switched to acceptEdits with no decision to
           // undo it. With it, the standing decision is kept: any decision
           // recorded while the engine takes the answer wins.
+          // #4518: under a managed ceiling below Auto the answer would switch
+          // the engine to acceptEdits past the ceiling, so it is downgraded
+          // to the one-call accept too.
           const editModeAnswer = this.isEditModeSessionAnswer(
             command,
             adapter.provider,
           )
-            ? context?.approvalModeAuthority === true
+            ? context?.approvalModeAuthority === true &&
+              !managedCeilingRefuses('auto')
               ? { standing: this.approvalPosture.decision(command.threadId) }
               : 'downgrade'
             : undefined;
@@ -11421,7 +11549,10 @@ export class OrchestrationService {
           error instanceof ReceiverExecutionRefusal ||
           error instanceof TurnIdempotencySettledError ||
           // #2494: a respawn refused for its confinement started nothing.
-          error instanceof ConfinementRefusedError
+          // #4518: so did any start the adapter settled as refused (the
+          // managed approval ceiling, a model the engine did not offer),
+          // reached here when a send lazily starts a dormant session.
+          error instanceof SessionStartRefusedError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -11473,7 +11604,10 @@ export class OrchestrationService {
           error instanceof TurnSubmissionUnsupportedError ||
           // #2494: the closed confinement refusal codes are a public
           // contract (`CONFINEMENT_REFUSAL_CODES`), not retryable as sent.
-          error instanceof ConfinementRefusedError
+          // #4518: every start refusal's code is a closed
+          // `ProviderFailureCode`, which the start route already forwards;
+          // a send that starts the session lazily forwards it the same way.
+          error instanceof SessionStartRefusedError
           ? error.code
           : error instanceof SendTurnRefusedError &&
               'code' in error &&
@@ -11481,7 +11615,8 @@ export class OrchestrationService {
             ? error.code
             : retryableAdapterRefusalCode(error),
         error instanceof SendTurnRefusedError ||
-          error instanceof ProviderRefusalError
+          error instanceof ProviderRefusalError ||
+          error instanceof SessionStartRefusedError
           ? error
           : undefined,
       );
@@ -13875,6 +14010,9 @@ export class OrchestrationService {
     adapter: ProviderAdapterShape,
     connectionId?: string,
   ): Promise<void> {
+    // #4520: every engine start (new, recovered or child work) passes here;
+    // an engine the managed policy does not allow starts nothing.
+    assertEngineAllowedByManagedPolicy(adapter.provider);
     const prerequisites = await this.readPrerequisites(adapter, connectionId);
     const readiness = resolveRuntimeAdapterReadiness({
       adapter,
@@ -14110,7 +14248,15 @@ export class OrchestrationService {
     principal?: PrincipalRef;
     /** #1796: set only by `resetFullAccessGrantedBy`. */
     revocation?: SessionApprovalModeSetEvent['revocation'];
+    /** #4518: set only by `recordPersonalApprovalDefault`. */
+    source?: SessionApprovalModeSetEvent['source'];
   }): SetApprovalModeResult {
+    // #4518: no decision above the machine's managed approval ceiling is
+    // recorded, whichever path records it (the command route, a pick carried
+    // on a send, a delegated or agent-tool pick). The routes refuse first
+    // with the same message; this is the one writer, so it holds for all.
+    if (managedCeilingRefuses(input.approvalMode))
+      throw new ManagedApprovalCeilingRefusedError();
     const standing = this.approvalPosture.supersedingDecision(
       input.threadId,
       input.approvalMode,
@@ -14137,6 +14283,7 @@ export class OrchestrationService {
           approvalMode: input.approvalMode,
           ...(input.principal ? { principal: input.principal } : {}),
           ...(input.revocation ? { revocation: input.revocation } : {}),
+          ...(input.source ? { source: input.source } : {}),
         },
         input.clientOrigin,
       ),
@@ -14637,6 +14784,19 @@ export class OrchestrationService {
     | { outcome: 'refused-full-access' }
     | { outcome: 'recorded'; result: SetApprovalModeResult }
   > {
+    // #4518: a saved personal default is a default, so one above the managed
+    // ceiling starts the chat at the ceiling rather than refusing it. It is
+    // recorded marked `personal-default`, never as a pick: `ApprovalPosture`
+    // lowers such a decision to the ceiling in force at each start and turn,
+    // so a later, tighter policy lowers this chat instead of refusing it for
+    // a choice nobody made. What is recorded is the default as it applies
+    // now: a `never` needs a full-access grant, which nobody holds under the
+    // ceiling, so it is recorded at the ceiling and stays there if the policy
+    // is later removed.
+    input = {
+      ...input,
+      approvalMode: clampToManagedCeiling(input.approvalMode),
+    };
     if (
       input.approvalMode === 'connection-default' ||
       !this.approvalKnobForThread(
@@ -14669,6 +14829,7 @@ export class OrchestrationService {
         provider: input.provider,
         approvalMode: input.approvalMode,
         basedOnSequence: null,
+        source: 'personal-default',
         ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
         ...(input.principal ? { principal: input.principal } : {}),
       }),

@@ -92,6 +92,7 @@ clearly mark the stale document.
 - **[Backlog disposition policy](reference/backlog-disposition-policy.md)** — how every open issue is classified and which labels the backlog audit accepts.
 - **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
+- **[Station connections](design/station-connection.md)** — dock connection and relay contract, retained delivery state, shared surface migrations and evidence limits.
 - **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and
   the staged path to verified execution handoff.
 - **[Personal transfer controller](guides/home-transfer-controller.md)** — explicit pairing, authenticated remote room bindings, and current preparation limits.

@@ -1,12 +1,14 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { readClientReleaseVersion } from '../../build-info';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { desktopUpdateControlView } from '../desktop-update/desktopUpdatePresentation';
 import { useDesktopUpdateState } from '../desktop-update/useDesktopUpdateState';
-import { RefreshGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
+import { PostUpdateChangelog } from './PostUpdateChangelog';
+import { UpdateDownloadIcon } from './UpdateDownloadIcon';
 import {
   openUpdates,
   takeOpenUpdatesRequest,
@@ -29,6 +31,14 @@ export function UpdatesControl({
   const { state } = useDesktopUpdateState(profile.isDesktop);
   const desktop = desktopUpdateControlView(state);
   const notices = useUpdateNotices();
+  const progress =
+    desktop.kind === 'downloading'
+      ? {
+          percent: desktop.percent,
+          text: desktop.progressText,
+          label: 'Downloading app update',
+        }
+      : notices.find((notice) => notice.progress)?.progress;
   const request = useOpenUpdatesRequest();
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -50,9 +60,11 @@ export function UpdatesControl({
             ? desktop.failed
               ? 'App download failed'
               : 'App update available'
-            : notices.length > 0
-              ? 'Update details available'
-              : null;
+            : progress
+              ? `Server downloading ${progress.text}`
+              : notices.some((notice) => notice.updateAvailable)
+                ? 'Update available'
+                : null;
   const close = () => setOpen(false);
   const loadingDialog = (children: ReactNode) => (
     <Dialog
@@ -76,12 +88,23 @@ export function UpdatesControl({
         aria-expanded={open}
         onClick={() => openUpdates()}
       >
-        <RefreshGlyph />
+        <UpdateDownloadIcon progress={progress} />
         {!collapsed && <span>Updates{status && <small>{status}</small>}</span>}
-        {collapsed && status && (
+        {collapsed && status && !progress && (
           <span className="updates-control__indicator" aria-hidden="true" />
         )}
       </button>
+      <PostUpdateChangelog
+        version={
+          profile.isDevBuild
+            ? null
+            : profile.isDesktop
+              ? (state?.currentVersion ?? null)
+              : readClientReleaseVersion()
+        }
+        nativeApp={profile.isDesktop || profile.isMobile}
+        updatesOpen={open}
+      />
       {loaded && (
         <LazyBoundary
           load={loadUpdatesPanel}

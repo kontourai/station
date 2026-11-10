@@ -3,6 +3,10 @@ import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
+import {
+  type StationStateScope,
+  stationPartitionKey,
+} from '../../connections/station-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
@@ -80,7 +84,13 @@ function loadSemanticDelivery(): void {
       semanticDeliveryLoading = false;
       if (!bufferedDeliveryEnabled() || semanticDelivery) return;
       semanticDelivery = createDeviceSemanticDeliveryBuffer(
-        dispatchProjectedOrchestrationEvent,
+        (apiBase, event, provenance, station) =>
+          dispatchProjectedOrchestrationEvent(
+            apiBase,
+            event,
+            provenance,
+            station,
+          ),
       );
     },
     () => (semanticDeliveryLoading = false),
@@ -112,7 +122,12 @@ export function handleOrchestrationEvent(
    * approval-posture decision is folded by it, never by arrival (#2436).
    */
   position?: number,
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
+  if (station) {
+    if (!station.isCurrent()) return;
+  }
   recordEventPosition(event, position);
   recordSequencedLiveEvent(apiBase, event as CanonicalRuntimeEvent, position);
   if (
@@ -121,15 +136,15 @@ export function handleOrchestrationEvent(
       event.method === 'session.configured') &&
     !isReplayThread(event.threadId)
   ) {
-    const key = activeChatsStore.getChatKeyForExecutionSession(
+    const key = chatStore.getChatKeyForExecutionSession(
       conversation.conversationId,
     );
     if (
       key &&
       !isReplayThread(key) &&
-      activeChatsStore.getSnapshot()[key]?.currentSessionId !== event.threadId
+      chatStore.getSnapshot()[key]?.currentSessionId !== event.threadId
     )
-      activeChatsStore.updateChat(key, {
+      chatStore.updateChat(key, {
         currentSessionId: event.threadId,
         conversationId: conversation.conversationId,
         conversationOpenPending: true,
@@ -142,9 +157,10 @@ export function handleOrchestrationEvent(
   // frames never feed it: a recorded record would land on the live chat of
   // the same conversation.
   if (conversation?.activity && !isReplayThread(event.threadId)) {
-    activeChatsStore.applyConversationActivity(conversation.activity);
+    chatStore.applyConversationActivity(conversation.activity);
   }
-  recordReplayRuntime(apiBase, event, provenance);
+  if (!station || station.binding.affinity.kind === 'host')
+    recordReplayRuntime(apiBase, event, provenance);
   // archive#1301: ingest BEFORE the `if (!chat) return` guard below —
   // a delegate session's events arrive on the delegate's own threadId, which
   // is never opened as a chat, so the guard would otherwise drop every event
@@ -155,34 +171,49 @@ export function handleOrchestrationEvent(
   // this costs nothing for chats that never touch background tasks.
   const replayThread = isReplayThread(event.threadId);
   if (!replayThread) {
-    backgroundTasksStore.ingest(event);
-    // #2456 D2: a session's end must reach the child-work registry even when
-    // its chat was since rebound to a newer session (the guard below would
-    // drop it), or the chat keeps the dead session's children.
-    observeChildWorkLifecycle(event);
-    // #2459: the Agents pane's "All" scope — every session's engine
-    // subagents, including sessions no chat has open (a CLI delegate).
-    childWorkGlobalStore.ingest(apiBase, event);
+    const taskSource = station ?? apiBase;
+    backgroundTasksStore.ingest(event, taskSource);
+    // Classify the transition before deciding which reporter aliases to retain.
+    childWorkGlobalStore.ingest(stationPartitionKey(taskSource), event);
+    if (
+      event.method === 'child-work.updated' ||
+      event.method === 'extension.notification'
+    ) {
+      const chatKey = chatStore.getChatKeyForExecutionSession(event.threadId);
+      if (chatKey)
+        backgroundTasksStore.bindProviderReporter(
+          taskSource,
+          event.threadId,
+          chatKey,
+        );
+    }
+    observeChildWorkLifecycle(event, taskSource);
     // A settled request's approval toast goes whether or not any chat still
     // routes this thread: the toast (and the header "Approval needed" count
     // built from it) is global, and the chat that raised it may be closed
     // or rebound. `handleRequestResolvedEvent` does the chat's own
     // bookkeeping when there is one.
     if (event.method === 'request.resolved')
-      toastStore.dismissApprovalRequest(event.threadId, event.requestId);
+      toastStore.dismissApprovalRequest(
+        chatStore.getChatKeyForExecutionSession(event.threadId) ??
+          (station
+            ? JSON.stringify([station.runtimeKey, event.threadId])
+            : event.threadId),
+        event.requestId,
+      );
   }
 
   if (replayThread) {
-    dispatchProjectedOrchestrationEvent(apiBase, event, provenance);
+    dispatchProjectedOrchestrationEvent(apiBase, event, provenance, station);
     return;
   }
-  drainUnroutedConversationTurnEnd(apiBase, event, conversation);
+  drainUnroutedConversationTurnEnd(apiBase, event, conversation, station);
   if (bufferedDeliveryEnabled()) {
     if (semanticDelivery)
-      return semanticDelivery.offer(event, apiBase, provenance);
+      return semanticDelivery.offer(event, apiBase, provenance, station);
     loadSemanticDelivery();
   }
-  dispatchProjectedOrchestrationEvent(apiBase, event, provenance);
+  dispatchProjectedOrchestrationEvent(apiBase, event, provenance, station);
 }
 
 /**
@@ -204,16 +235,18 @@ export function handleOrchestrationEvent(
  * the server's same verdict. The queue waits for the resumed turn's end, or
  * for the user (Send now).
  */
-function markUsageLimitStop(chatKey: string, event: OrchestrationEvent): void {
+function markUsageLimitStop(
+  chatKey: string,
+  event: OrchestrationEvent,
+  station?: StationStateScope,
+): void {
+  const chatStore = activeChatsStore.forStation(station);
   const stopped =
     event.method === 'runtime.error' &&
     (event.details as { usageLimit?: unknown } | undefined)?.usageLimit ===
       true;
-  if (
-    Boolean(activeChatsStore.getSnapshot()[chatKey]?.usageLimitStopped) !==
-    stopped
-  )
-    activeChatsStore.updateChat(chatKey, {
+  if (Boolean(chatStore.getSnapshot()[chatKey]?.usageLimitStopped) !== stopped)
+    chatStore.updateChat(chatKey, {
       usageLimitStopped: stopped ? true : undefined,
     });
 }
@@ -222,87 +255,108 @@ function drainUnroutedConversationTurnEnd(
   apiBase: string,
   event: OrchestrationEvent,
   conversation: OrchestrationConversationStreamBinding | undefined,
+  station?: StationStateScope,
 ): void {
+  const chatStore = activeChatsStore.forStation(station);
   if (!conversation || conversation.currentSessionId !== event.threadId) return;
   const endsTurn =
     event.method === 'turn.completed' ||
     (event.method === 'runtime.error' && !isDeferredRetriableTurnError(event));
   if (!endsTurn) return;
-  if (activeChatsStore.getChatKeyForExecutionSession(event.threadId)) return;
-  const chatKey = activeChatsStore.getChatKeyForExecutionSession(
+  if (chatStore.getChatKeyForExecutionSession(event.threadId)) return;
+  const chatKey = chatStore.getChatKeyForExecutionSession(
     conversation.conversationId,
   );
   if (!chatKey || isReplayThread(chatKey)) return;
-  markUsageLimitStop(chatKey, event);
-  drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+  markUsageLimitStop(chatKey, event, station);
+  drainQueuedMessageOnTurnCompleted(
+    apiBase,
+    chatKey,
+    undefined,
+    undefined,
+    station,
+  );
 }
 
 function dispatchProjectedOrchestrationEvent(
   apiBase: string,
   event: OrchestrationEvent,
   provenance?: unknown,
+  station?: StationStateScope,
 ) {
+  if (station && !station.isCurrent()) return;
+  const chatStore = activeChatsStore.forStation(station);
   if (event.method === 'request.resolved') {
-    handleRequestResolvedEvent(event);
+    handleRequestResolvedEvent(event, station);
     return;
   }
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 
   switch (event.method) {
     case 'session.started':
     case 'session.configured':
-      handleSessionLifecycleEvent(event);
+      handleSessionLifecycleEvent(event, station);
       return;
     case 'session.state-changed':
-      handleSessionStateChangedEvent(event);
+      handleSessionStateChangedEvent(event, undefined, station ?? apiBase);
       return;
     case 'session.exited':
-      handleSessionExitedEvent(event);
+      handleSessionExitedEvent(event, undefined, station ?? apiBase);
       return;
     case 'session.cancellation-requested':
       // Intent is not a terminal outcome; settlement owns completion and queue handling.
       return;
     case 'turn.started':
       if (chat.usageLimitStopped)
-        activeChatsStore.updateChat(
-          activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
+        chatStore.updateChat(
+          chatStore.getChatKeyForExecutionSession(event.threadId) ??
             event.threadId,
           { usageLimitStopped: undefined },
         );
-      handleTurnStartedEvent(event);
+      handleTurnStartedEvent(event, undefined, station);
       return;
     case 'content.text-delta':
-      handleTextDeltaEvent(event);
+      handleTextDeltaEvent(event, station);
       return;
     case 'content.reasoning-delta':
-      handleReasoningDeltaEvent(event);
+      handleReasoningDeltaEvent(event, station);
       return;
     case 'tool.started':
-      handleToolStartedEvent(event);
+      handleToolStartedEvent(event, station);
       return;
     case 'tool.progress':
-      handleToolProgressEvent(event);
+      handleToolProgressEvent(event, station);
       return;
     case 'tool.completed':
-      handleToolCompletedEvent(event);
+      handleToolCompletedEvent(event, station);
       return;
     case 'request.opened':
-      handleRequestOpenedEvent(apiBase, event);
+      handleRequestOpenedEvent(apiBase, event, station);
       return;
     case 'request.delivery':
-      handleRequestDeliveryEvent(event);
+      handleRequestDeliveryEvent(event, station);
       return;
     case 'turn.completed':
-      handleTurnCompletedEvent(apiBase, event, provenance);
-      resumePendingSendNowOnTurnTerminal(apiBase, event.threadId, event.turnId);
+      handleTurnCompletedEvent(apiBase, event, provenance, station);
+      resumePendingSendNowOnTurnTerminal(
+        apiBase,
+        event.threadId,
+        event.turnId,
+        station,
+      );
       return;
     case 'turn.aborted':
-      handleTurnAbortedEvent(event);
-      resumePendingSendNowOnTurnTerminal(apiBase, event.threadId, event.turnId);
+      handleTurnAbortedEvent(event, station);
+      resumePendingSendNowOnTurnTerminal(
+        apiBase,
+        event.threadId,
+        event.turnId,
+        station,
+      );
       return;
     case 'runtime.error':
-      handleRuntimeErrorEvent(event);
+      handleRuntimeErrorEvent(event, station);
       // archive#3451: a message queued while the turn that failed
       // was running had no trigger to ever send — this listener was only
       // wired to `turn.completed`, so B sat in the queue forever once A
@@ -323,9 +377,10 @@ function dispatchProjectedOrchestrationEvent(
         !isReplayThread(event.threadId)
       ) {
         markUsageLimitStop(
-          activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
+          chatStore.getChatKeyForExecutionSession(event.threadId) ??
             event.threadId,
           event,
+          station,
         );
         const terminalTurnId = event.details?.turnId ?? event.turnId;
         if (typeof terminalTurnId === 'string')
@@ -333,58 +388,62 @@ function dispatchProjectedOrchestrationEvent(
             apiBase,
             event.threadId,
             terminalTurnId,
+            station,
           );
         drainQueuedMessageOnTurnCompleted(
           apiBase,
-          activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
+          chatStore.getChatKeyForExecutionSession(event.threadId) ??
             event.threadId,
+          undefined,
+          undefined,
+          station,
         );
       }
       return;
     case 'runtime.warning':
-      handleRuntimeWarningEvent(event);
+      handleRuntimeWarningEvent(event, station);
       return;
     case 'flow.run-attached':
-      handleFlowRunAttachedEvent(event);
+      handleFlowRunAttachedEvent(event, station);
       return;
     case 'flow.gate-verdict':
-      handleFlowGateVerdictEvent(event);
+      handleFlowGateVerdictEvent(event, station);
       return;
     case 'plan.updated':
-      handlePlanUpdatedEvent(event);
+      handlePlanUpdatedEvent(event, station);
       return;
     case 'extension.notification':
-      handleExtensionNotificationEvent(event);
+      handleExtensionNotificationEvent(event, station ?? apiBase);
       return;
     case 'child-work.updated':
-      handleChildWorkUpdatedEvent(event);
+      handleChildWorkUpdatedEvent(event, station ?? apiBase);
       return;
     case 'token-usage.updated':
-      handleTokenUsageUpdatedEvent(event);
+      handleTokenUsageUpdatedEvent(event, station);
       return;
     case 'session.stop-settled':
-      handleSessionStopSettledEvent(event);
+      handleSessionStopSettledEvent(event, station);
       return;
     case 'session.approval-mode-set':
-      handleApprovalModeSetEvent(event);
+      handleApprovalModeSetEvent(event, station);
       return;
     case 'policy.hooks-attached':
       handlePolicyHooksAttachedEvent(event);
       return;
     case 'policy.stop-verdict':
-      handlePolicyStopVerdictEvent(event);
+      handlePolicyStopVerdictEvent(event, station);
       return;
     case 'platform.mutation':
-      handlePlatformMutationEvent(event);
+      handlePlatformMutationEvent(event, station);
       return;
     case 'workflow.state-changed':
-      handleWorkflowStateChangedEvent(event);
+      handleWorkflowStateChangedEvent(event, station);
       return;
     case 'conversation.forked':
       handleConversationForkedEvent(event);
       return;
     case 'content.host-images':
-      handleHostImagesEvent(event);
+      handleHostImagesEvent(event, station);
       return;
     default: {
       const _exhaustive: never = event;

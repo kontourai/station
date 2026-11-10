@@ -59,7 +59,9 @@ sharing question itself is visible. Advanced saves still persist preferences
 when that question is offscreen, but record no built-in notice. A visible plugin
 row cannot supply that evidence. Hidden or covered questions cannot supply it either.
 DNT still refuses notice writes. CLI/headless starts are unchanged: printing
-the notice counts as showing it. A status fetch alone never records presentation. A current
+the notice counts as showing it. Under a managed policy with `limits.telemetry:
+false`, neither `station start` nor a headless server prints the notice or
+records it as shown. A status fetch alone never records presentation. A current
 notice prevents another prompt on remount; a changed notice revision prompts
 again. Off remains available in Settings. Resetting Station settings preserves
 sharing choices.
@@ -120,7 +122,10 @@ translated into tier changes under the same authorization rules.
 
 Telemetry has per-publisher `off`, `lite`, and `full` tiers. Kontour/operator default to Lite; third-party plugin publishers default Off and require explicit opt-in;
 Off permits no product traffic to that publisher, and Full requires explicit choice
-and the current disclosure receipt. `DO_NOT_TRACK` with any value except empty or
+and the current disclosure receipt. A [managed policy](../guides/managed-policy.md#capability-switches)
+with `limits.telemetry: false` forces Off for every publisher with reason
+`managed`, ahead of every other input, and stops OpenTelemetry export as well.
+`DO_NOT_TRACK` with any value except empty or
 `0` forces Off for every publisher. Saved `telemetryTier` choices precede
 `STATION_TELEMETRY_TIER`, then the legacy product-enabled aliases.
 Distribution/operator policies can lower the default, never raise it to Full;
@@ -148,8 +153,9 @@ pre-launch state lacks a current record. The server records its log notice
 asynchronously; HTTP readiness does not imply it is already written. Unattended
 services retain the notice in their logs. Logged and visibly rendered notices
 are distinct presentation paths. `station telemetry status` uses the same display
-labels, with `off|lite|full` shown in parentheses; accepted command values remain
-unchanged.
+labels, with `off|anonymous|full` shown in parentheses for built-in publishers.
+Plugin Lite remains `Plugin usage counts (lite)` because plugin-chosen counts can
+encode identifiers. `--json` retains the server's `off|lite|full` values.
 
 Desktop sidecars (`STATION_STDOUT_HANDSHAKE=1`) defer to the single UI choice.
 Until it records the shown revision with `POST /api/usage-telemetry/lite-notices`,
@@ -182,10 +188,13 @@ before sending. A Lite inventory change requires a new notice, while a Full
 inventory change requires a new acknowledgement.
 
 Use `station telemetry status` to read effective tiers and reasons (`DNT`,
-`policy`, `default`, `user`, `disclosure`, `environment`) from a running Station. Use
-`station telemetry set operator off` or `station telemetry set kontour lite`
-to save a single publisher choice. Requesting Full without its receipt remains
-Lite. These commands support the normal target/credential flags. The status API also
+`managed`, `policy`, `default`, `user`, `disclosure`, `environment`) from a running Station. Use
+`station telemetry set operator off` or `station telemetry set kontour anonymous`
+to save a single publisher choice. For `kontour` and `operator` only, `anonymous`
+is an input alias for `lite`; `lite` remains accepted and is the stored value.
+Plugin publishers accept `off|lite|full`, never `anonymous`.
+`STATION_TELEMETRY_TIER` also retains `off|lite|full`. Requesting Full without its
+receipt remains Lite. These commands support the normal target/credential flags. The status API also
 returns the exact Lite field catalog alongside its revision so a notice consumer
 can display the server inventory rather than an older bundled copy. Use `station telemetry outbox` or
 `station telemetry outbox --publisher operator` to inspect the bounded ledger.
@@ -270,6 +279,7 @@ The contract validator checks every outgoing daily field. Current sources are:
 | surfaces_today | Reported web/desktop/CLI origin on an authenticated general-events connection, either `/events` or the shared orchestration stream. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
 | first_active_this_week/month, install_age_bucket | Local observed activity dates. Age starts when this telemetry state is first created; an existing install without that state starts at `0d`. This is not historical OS/package installation age. |
 | engines_used_today | Existing engine-turn terminal observations. |
+| engine_tokens_today | Up to eight unique `{engine, bucket}` entries for positive tokens from **conversations run in Station**; outside CLI use is excluded, including read-only-attached/followed transcripts. Canonical allocations use Station observation UTC dates through yesterday, read outside the daily-state lock. `cacheInclusivePromptTokens` adds separate cache components only for declared disjoint providers (Claude/Bedrock); other providers retain reported input. Output is added once, without separately adding reasoning. Codex cache inclusivity remains declared unverified. Buckets: `1-10k` (1–10,000), `10k-100k` (10,001–100,000), `100k-1M` (100,001–1,000,000), `1M-10M` (1,000,001–10,000,000), `10M+` (above 10,000,000). Cumulative restatements and child summaries are not added again. Cumulative decreases can undercount: 500k then 20k then 40k contributes only the later 20k increase because the shared fold discards earlier dates when it cannot distinguish reset from correction. Every repeated cumulative-engine session start, including a fresh start after a lost native session, withholds the whole first reported figure of each token component as an undated baseline. An initially recorded native resume is treated the same. Conversations taken over from an outside Codex CLI session currently contribute no tokens: the Codex adapter withholds every usage update for sessions that run from the outside CLI's home. The fold also baselines inherited-counter metadata on either start or configuration (including native forks) as a backstop. Only later increases count. This excludes outside-session jumps and can undercount the whole first turn when the engine reports once per turn, or part of it when it reports more often. The repeated-fresh-start case undercounts rather than leaking outside usage; the reset/correction undercount is separate. Lifetime accounting is unchanged. Missing/undated usage, undeclared scopes and hosted home-wide totals are omitted. The field is omitted when empty or unavailable, including on accounting-read failure; the remaining ping still sends. Upgrade receivers before senders emit nonempty buckets; older strict receivers reject the key. The changed inventory revision requires a new shown notice. |
 | paired_devices_bucket | The pairing service's current device store. |
 | distribution/public_plugins_enabled | `unknown` / empty set: no authoritative public telemetry catalog or distribution manifest consumer exists. Layout-source profiles are not distribution identities. |
 | private_plugins_bucket | Valid installed plugin manifests; unverified-public packages are counted conservatively as private. No names leave the machine. |
@@ -381,6 +391,9 @@ observation or commit receipt. It does not create an installation identifier or
 acknowledge disclosure. Other address shapes report unsupported instead of
 guessing a credential-bearing request path. Revoked keys and incompatible
 storage fail. Probe readiness is distinct from an acknowledged usage event.
+Under a managed policy with `limits.telemetry: false` both checks are refused,
+and the delivery status carries the policy sentence as `managedDenial` on the
+product and OTel rows, so Settings disables both **Check connection** buttons.
 
 Status reads require `orchestration:read`; connection checks require
 `access:manage`, including paired callers. Status responses contain presence
@@ -672,6 +685,7 @@ A public or custom plugin was disabled after a crash.
 - `home_replaced`: {"domain":"boolean"}
 - `layouts_customized`: {"domain":"boolean-or-unknown"}
 - `setup_abandoned_step`: {"domain":["none","welcome","connection","engine","project","pairing","finish"]}
+- `engine_tokens_today`: {"domain":"engine-token-buckets","meaning":"Reported tokens from conversations run in Station; outside CLI use excluded. Declared disjoint cache components included; resumed cumulative jumps withheld; empty or unavailable omitted.","buckets":["1-10k","10k-100k","100k-1M","1M-10M","10M+"],"arrayMax":8,"optional":true}
 - `engine_connect_failures`: {"domain":"engine-count-buckets","arrayMax":8}
 - `safe_mode_entered`: {"domain":"count","max":65535}
 - `plugin_disabled_after_crash`: {"domain":"count","max":65535}
@@ -687,7 +701,15 @@ in `publicTelemetryRegistries`; absent classification refuses the declaration.
 Distribution manifests remain design-only and will share the declaration schema
 and tier resolver.
 
-Publishers appear in the existing status map as `publisher:<24 hex registry-key digest>/<verified registry item id>`. `station telemetry set publisher:<digest>/writer off` stores an independent choice;
+Publishers appear in the existing status map as `publisher:<24 lowercase hex registry-key digest>/<verified registry item id>`.
+The item follows the telemetry declaration grammar: a lowercase ASCII letter or
+digit, then lowercase letters, digits, `.`, `_`, `:`, or `-`, with a maximum of
+128 characters. Uppercase items and trailing newlines are refused.
+Reserved item keys `constructor` and `prototype` are refused; the digest segment
+must be exactly 24 lowercase hex characters. Extra `/` segments are refused.
+Legacy `publisher:<id>` remains accepted with lowercase letters and the same
+128-character item bound. `station telemetry set publisher:<digest>/writer lite`
+stores and reloads an independent choice; use `off` to disable that publisher;
 `station telemetry outbox --publisher publisher:<digest>/writer` filters the shared ledger.
 The status API keeps its top-level built-in inventory fields. Each plugin publisher
 adds `destination`, `endpointConfigured`, `liteInventoryRevision`, `liteInventory`,

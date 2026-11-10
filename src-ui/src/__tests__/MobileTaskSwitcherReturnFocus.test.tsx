@@ -21,7 +21,7 @@
  * node as successful, so neither suite alone covers the behaviour.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
-import { act, createRef } from 'react';
+import { act, createRef, type RefObject, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
 import type { HomeWorkItem } from '../views/home/home-view-model';
@@ -64,24 +64,38 @@ afterEach(() => {
   // hook already emptied it. Each test removes the nodes it appended.
 });
 
+function SheetHost({
+  triggerRef,
+  onClose,
+}: {
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <MobileInboxPanel
+      open={open}
+      tasks={tasks}
+      activeChatSessionId={null}
+      triggerRef={triggerRef}
+      onClose={() => {
+        onClose();
+        setOpen(false);
+      }}
+      onFocusChat={vi.fn()}
+      onOpenConversation={vi.fn()}
+      onOpenSession={vi.fn()}
+      now={Date.now()}
+    />
+  );
+}
+
 function mountSheet(trigger: HTMLButtonElement, onClose = vi.fn()) {
   const triggerRef = createRef<HTMLButtonElement>() as {
     current: HTMLButtonElement | null;
   };
   triggerRef.current = trigger;
-  const view = render(
-    <MobileInboxPanel
-      open
-      tasks={tasks}
-      activeChatSessionId={null}
-      triggerRef={triggerRef}
-      onClose={onClose}
-      onFocusChat={vi.fn()}
-      onOpenConversation={vi.fn()}
-      onOpenSession={vi.fn()}
-      now={Date.now()}
-    />,
-  );
+  const view = render(<SheetHost triggerRef={triggerRef} onClose={onClose} />);
   return { view, onClose };
 }
 

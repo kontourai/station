@@ -31,7 +31,7 @@ on:
         description: Immutable authority tag binding the reserved native version.
         value: ${{ jobs.plan-cohort.outputs.reservation_tag }}
       web_build_version:
-        description: The cohort's full Nightly version (X.Y.Z-nightly.<day>[.<build>]) for the iOS web bundle's build identity.
+        description: The cohort's full Nightly version (X.Y.Z-nightly.<YYYYMMDD>[.<build>]) for the iOS web bundle's build identity.
         value: ${{ jobs.plan-cohort.outputs.web_build_version }}
 
 permissions:
@@ -191,6 +191,11 @@ jobs:
         run: |
           node scripts/release-cohort-workflow.mjs plan-input plan-input.json "${{ steps.source.outputs.sha }}" "$GITHUB_RUN_ID" "${{ steps.allocate.outputs.date }}" "${{ steps.allocate.outputs.build }}"
           node scripts/release-cohort.mjs plan plan-input.json > cohort-plan.json
+      - name: Generate desktop changelog from GitHub Releases
+        if: steps.decide.outputs.build == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/desktop-release-notes.mjs generate cohort-plan.json desktop-release-notes.md
       - id: web_identity
         name: Name the full Nightly version for the iOS web bundle
         # Apple's marketing version is the bare X.Y.Z, but the web bundle's
@@ -205,7 +210,9 @@ jobs:
         if: steps.decide.outputs.build == 'true'
         with:
           name: nightly-cohort-plan-${{ github.run_id }}
-          path: cohort-plan.json
+          path: |
+            cohort-plan.json
+            desktop-release-notes.md
           if-no-files-found: error
           retention-days: 14
 
@@ -457,7 +464,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")" = 'Station Nightly'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = 'io.kontourai.station.nightly'
-          node scripts/lib/tauri-updater-manifest.mjs --version "$version" --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --platform darwin-aarch64 --signature-file cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig --url "https://github.com/${{ github.repository }}/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz" --release-tag nightly-desktop --notes "Staged cohort ${{ needs.plan-cohort.outputs.source_sha }}" --output cohort-macos/latest.json
+          node scripts/lib/tauri-updater-manifest.mjs --version "$version" --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --platform darwin-aarch64 --signature-file cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig --url "https://github.com/${{ github.repository }}/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz" --release-tag nightly-desktop --notes "$(cat cohort/desktop-release-notes.md)" --output cohort-macos/latest.json
       - name: Cleanup macOS Developer ID keychain
         if: always()
         run: |

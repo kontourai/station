@@ -1,7 +1,13 @@
-import type {
-  LiveSurfaceDeviceButton,
-  LiveSurfaceFrameRotation,
-  LiveSurfaceOrientation,
+import {
+  LIVE_SURFACE_HINGE_ANGLE_MAX,
+  LIVE_SURFACE_POSTURES,
+  type LiveSurfaceDeviceButton,
+  type LiveSurfaceDisplay,
+  type LiveSurfaceFold,
+  type LiveSurfaceFoldInput,
+  type LiveSurfaceFrameRotation,
+  type LiveSurfaceOrientation,
+  type LiveSurfacePosture,
 } from '@kontourai/station-contracts/live-surface';
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';
 
@@ -31,6 +37,10 @@ export const IOS_MSG_KEY = 0x06;
 export const IOS_MSG_ORIENTATION = 0x07;
 export const IOS_MSG_HARDWARE_KEYBOARD = 0x0d;
 export const IOS_TAG_SCREEN_CONFIG = 0x82;
+/** Hinge control request `{requestId, command}` (hub 0.19.1 serve-sim). */
+export const IOS_MSG_HINGE_CONTROL = 0x10;
+/** Its correlated reply `{requestId, ok, error?}`. */
+export const IOS_TAG_HINGE_REPLY = 0x90;
 
 export type IosHelperOrientation =
   | 'portrait'
@@ -338,4 +348,130 @@ export function iosPacket(tag: number, payload: unknown): Uint8Array {
   out[0] = tag;
   out.set(json, 1);
   return out;
+}
+
+// ---- foldables ------------------------------------------------------------
+
+/**
+ * serve-sim numbers a dual-display simulator's screens: 1 is the outer
+ * (cover) display, 3 the folding (inner) one. Its per-display streams live
+ * at `panel/<n>/stream.mjpeg`.
+ */
+const IOS_COVER_SCREEN = 1;
+const IOS_INNER_SCREEN = 3;
+
+export function iosPanelForDisplay(display: LiveSurfaceDisplay): 1 | 3 {
+  return display === 'cover' ? IOS_COVER_SCREEN : IOS_INNER_SCREEN;
+}
+
+function isPosture(value: unknown): value is LiveSurfacePosture {
+  return LIVE_SURFACE_POSTURES.includes(value as LiveSurfacePosture);
+}
+
+function hingeAngleOf(value: unknown): number | null {
+  return typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= LIVE_SURFACE_HINGE_ANGLE_MAX
+    ? value
+    : null;
+}
+
+/**
+ * The fold state in an iOS helper's screen config, or undefined for a
+ * simulator without a hinge. The helper says so with `supportsHingeAngle`;
+ * a frame's shape is never taken as evidence of a fold.
+ */
+export function iosFoldFromScreenConfig(
+  config: Record<string, unknown>,
+): LiveSurfaceFold | undefined {
+  if (config.supportsHingeAngle !== true) return undefined;
+  const hingeAngle = hingeAngleOf(config.hingeAngle);
+  const activeDisplay: LiveSurfaceDisplay =
+    config.screenId === IOS_COVER_SCREEN
+      ? 'cover'
+      : config.screenId === IOS_INNER_SCREEN
+        ? 'inner'
+        : hingeAngle === 0
+          ? 'cover'
+          : 'inner';
+  return {
+    activeDisplay,
+    hingeAngle,
+    posture: isPosture(config.hingePose) ? config.hingePose : null,
+    postures: [...LIVE_SURFACE_POSTURES],
+    angleControl: true,
+    ...(typeof config.tableMode === 'boolean'
+      ? { tableMode: config.tableMode }
+      : {}),
+    ...(config.supportsPhysicalOrientation === true
+      ? { facingControl: true }
+      : {}),
+  };
+}
+
+export type IosHingeCommand =
+  | { control: 'pose'; value: LiveSurfacePosture }
+  | { control: 'angle'; value: number }
+  | { control: 'table'; value: boolean }
+  | { control: 'physical'; value: 'faceup' | 'facedown' };
+
+/** A `fold` input as the iOS helper's hinge command. */
+export function iosHingeCommand(input: LiveSurfaceFoldInput): IosHingeCommand {
+  if ('posture' in input) return { control: 'pose', value: input.posture };
+  if ('hingeAngle' in input)
+    return { control: 'angle', value: Math.round(input.hingeAngle) };
+  if ('facing' in input)
+    return {
+      control: 'physical',
+      value: input.facing === 'up' ? 'faceup' : 'facedown',
+    };
+  return { control: 'table', value: input.tableMode };
+}
+
+/** serve-emu's posture names (from the emulator's device_state). */
+const ANDROID_POSTURES: Record<string, LiveSurfacePosture | null> = {
+  closed: 'closed',
+  opened: 'open',
+  half_opened: 'book',
+  tent: 'tent',
+  flipped: null,
+};
+
+/** Postures serve-emu can SET: it folds or unfolds the emulator. */
+const ANDROID_SETTABLE: readonly LiveSurfacePosture[] = ['closed', 'open'];
+
+/**
+ * The fold state in serve-emu's `/api/fold` reply, or undefined for an
+ * emulator without a hinge. A book-style Android foldable has one display
+ * that bends, so the active display is the inner one unless it is closed.
+ */
+export function androidFoldFromHub(
+  value: unknown,
+): LiveSurfaceFold | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const fold = (value as { fold?: unknown }).fold;
+  if (typeof fold !== 'object' || fold === null) return undefined;
+  const { supported, posture, hingeAngle } = fold as Record<string, unknown>;
+  if (supported !== true) return undefined;
+  const ours =
+    typeof posture === 'string' ? (ANDROID_POSTURES[posture] ?? null) : null;
+  const angle = hingeAngleOf(hingeAngle);
+  return {
+    activeDisplay: ours === 'closed' || angle === 0 ? 'cover' : 'inner',
+    hingeAngle: angle,
+    posture: ours,
+    postures: [...ANDROID_SETTABLE],
+    angleControl: false,
+  };
+}
+
+/** A `fold` input as serve-emu's posture, or null when it cannot set it. */
+export function androidFoldPosture(
+  input: LiveSurfaceFoldInput,
+): 'closed' | 'opened' | null {
+  if (!('posture' in input)) return null;
+  if (input.posture === 'closed') return 'closed';
+  if (input.posture === 'open') return 'opened';
+  return null;
 }

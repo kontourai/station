@@ -13,7 +13,7 @@ import type {
   SystemIdentityResponse,
 } from '@kontourai/station-contracts/system-status';
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
-import { Badge, type SemanticTone } from '@kontourai/ui/react';
+import type { SemanticTone } from '@kontourai/ui/react';
 import type { ReactNode } from 'react';
 import { CheckGlyph } from '../../components/icons/Glyph';
 
@@ -633,50 +633,4 @@ export function autoDownloadLabel(at: string, now = new Date()): string {
   return time.toDateString() === now.toDateString()
     ? `Auto-downloads at ${clock}`
     : `Auto-downloads ${time.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${clock}`;
-}
-
-/**
- * The server card's header: its name, the running version once (with the
- * version an update moves to), and one status badge.
- */
-export function ServerUpdateHeader({
-  title,
-  headingId,
-  badge,
-  current,
-  target,
-}: {
-  title: ReactNode;
-  /** Renders the title as the section heading this id labels. */
-  headingId?: string;
-  badge?: ServerUpdateBadge | null;
-  current?: string | null;
-  target?: string | null;
-}) {
-  const Title = headingId ? 'h3' : 'p';
-  return (
-    <div className="server-update__header">
-      <div className="server-update__identity">
-        <Title id={headingId} className="server-update__title">
-          {title}
-        </Title>
-        {current && (
-          <p className="server-update__version">
-            <span>{current}</span>
-            {target && target !== current && (
-              <>
-                {' '}
-                <span aria-hidden="true">→</span>{' '}
-                <span className="sr-only">to </span>
-                <span>{target}</span>
-              </>
-            )}
-          </p>
-        )}
-      </div>
-      <span className="server-update__badge" role="status">
-        {badge && <Badge value={badge.label} tone={badge.tone} />}
-      </span>
-    </div>
-  );
 }

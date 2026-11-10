@@ -62,7 +62,7 @@ describe('MemoryTab (#771)', () => {
     render(<MemoryTab />);
 
     expect(screen.getByText("Couldn't load memory stores")).toBeTruthy();
-    expect(screen.getByText('knowledge roots unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.queryByText('No memory stores are configured.')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -85,7 +85,7 @@ describe('MemoryTab (#771)', () => {
     expect(
       screen.getByText("Couldn't load this memory store's recall graph"),
     ).toBeTruthy();
-    expect(screen.getByText('recall graph unavailable')).toBeTruthy();
+    expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(
       screen.queryByText(
         'The selected memory store has no recall graph available.',

@@ -33,6 +33,12 @@ import {
   skillExperienceInputErrors,
 } from '@kontourai/station-shared/skill-experience-values';
 import { useCallback, useRef } from 'react';
+import type { StationConnection } from '../connections/station-connection';
+import { conversationAccessFor } from '../connections/station-connection';
+import {
+  chatBelongsToStation,
+  outboundStationIdentity,
+} from '../connections/station-state';
 import { useAccountPreferences } from '../contexts/AccountPreferencesContext';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
@@ -45,6 +51,7 @@ import {
   type ChatUIState,
 } from '../contexts/active-chats-store';
 import { conversationOpenPhase } from '../contexts/conversation-open-policy';
+import { useManagedApprovalCeiling } from '../contexts/ManagedPolicyContext';
 import {
   type ObservedAgentCatalog,
   observedEngine,
@@ -70,12 +77,12 @@ import {
   type ChatErrorTranslation,
   chatErrorHintFor,
   SESSION_START_INDETERMINATE_CODE,
-  translateChatError,
 } from '../utils/chatErrorTranslation';
 import { liveTurnTarget } from '../utils/conversation-activity';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { withDeliveryCheck } from '../utils/messageDeliveryState';
+import { describeStationFailure } from '../utils/stationFailure';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
@@ -207,6 +214,7 @@ function rejectedSendRollback(
 async function removeRefusedAttachments(
   apiBase: string,
   sessionId: string,
+  requestScope?: ApiRequestScope,
 ): Promise<void> {
   const stages =
     activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [];
@@ -222,7 +230,9 @@ async function removeRefusedAttachments(
     '@kontourai/station-sdk/client'
   );
   await Promise.allSettled(
-    stageIds.map((stageId) => cancelAttachmentStage(apiBase, stageId)),
+    stageIds.map((stageId) =>
+      cancelAttachmentStage(apiBase, stageId, { requestScope }),
+    ),
   );
 }
 
@@ -314,7 +324,7 @@ function stationAnswered(error: unknown): boolean {
   return (
     typeof status === 'number' &&
     Number.isFinite(status) &&
-    stationEnvelope !== false
+    stationEnvelope === true
   );
 }
 
@@ -341,7 +351,7 @@ function withoutDeliveryCheck(
 }
 
 export function useSendMessage(
-  apiBase: string,
+  hostApiBase: string,
   onActiveSessionChange?: (newSessionId: string) => void,
   onError?: (error: Error) => void,
   handleSlashCommand?: (
@@ -368,7 +378,7 @@ export function useSendMessage(
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
   const accountPreferences = useAccountPreferences();
-  const inboxRequestScope = accountPreferences.requestScope;
+  const managedCeiling = useManagedApprovalCeiling().ceiling;
   const {
     namespace: experienceNamespace,
     status: experienceAuthorityStatus,
@@ -405,6 +415,7 @@ export function useSendMessage(
       // The durable outbound queue owns deferred replay. A busy replay must
       // stay durable, rather than also entering this legacy in-memory queue.
       options?: {
+        connection?: StationConnection;
         skillExperienceDraft?: SkillExperienceDraft;
         experienceRequestScope?: import('@kontourai/station-sdk/client').ApiRequestScope & {
           isCurrent: () => boolean;
@@ -437,6 +448,7 @@ export function useSendMessage(
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
+          projectSlug?: string;
           executionAgentId?: string;
           executionOnCurrentStation?: boolean;
           expectedDefinitionFingerprint?: string;
@@ -451,12 +463,48 @@ export function useSendMessage(
         throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
       let currentState = allChats[sessionId];
-      if (currentState?.peerChat || currentState?.peerChatInvalid) {
-        onError?.(
-          new Error('Send this message from the remote chat composer.'),
-        );
-        return false;
+      const connection = options?.connection;
+      const apiBase = connection?.targetApiBase ?? hostApiBase;
+      const requestScope = connection
+        ? {
+            ...connection.requestScope,
+            isCurrent: () => connection.isCurrent(),
+          }
+        : accountPreferences.requestScope;
+      const inboxRequestScope = requestScope;
+      const station = connection
+        ? outboundStationIdentity(connection)
+        : {
+            apiBase,
+            environmentId: stationEnvironmentId,
+            authorityNamespace: experienceNamespace ?? undefined,
+            host: true,
+          };
+      if (
+        (connection &&
+          (!connection.isCurrent() ||
+            connection.capabilities.send.state !== 'allowed')) ||
+        (currentState && !chatBelongsToStation(currentState, connection))
+      ) {
+        const reason =
+          'Reconnect to the Station that owns this conversation before sending.';
+        onError?.(new Error(reason));
+        return options?.dispatch
+          ? { kind: 'deferred' as const, reason }
+          : false;
       }
+      const remote = connection && connection.routeKind !== 'host';
+      if (
+        !connection &&
+        currentState?.stationBinding &&
+        currentState.stationBinding.environmentId !== stationEnvironmentId
+      )
+        return options?.dispatch
+          ? {
+              kind: 'deferred' as const,
+              reason: 'The owning Station is not verified.',
+            }
+          : false;
       if (
         currentState?.queuedApprovalDefaultNamespace &&
         (!experienceNamespace || experienceAuthorityStatus !== 'verified')
@@ -494,6 +542,7 @@ export function useSendMessage(
         !options?.dispatch;
       if (
         firstInteractiveSend &&
+        !remote &&
         (accountPreferences.status === 'loading' ||
           accountPreferences.status === 'error' ||
           accountPreferences.saving)
@@ -727,15 +776,14 @@ export function useSendMessage(
             throw new Error('Station authority is unavailable.');
           const requestOptions = usableInboxScope
             ? { requestScope: usableInboxScope }
-            : accountPreferences.requestScope
-              ? { requestScope: accountPreferences.requestScope }
+            : requestScope
+              ? { requestScope: requestScope }
               : {};
           const authorityIsCurrent = () =>
             authorityRef.current.namespace === experienceNamespace &&
             authorityRef.current.status !== 'unavailable' &&
             (!usableInboxScope || usableInboxScope.isCurrent()) &&
-            (!accountPreferences.requestScope ||
-              accountPreferences.requestScope.isCurrent());
+            (!requestScope || requestScope.isCurrent());
           let expectedHead: string;
           try {
             expectedHead = await readConversationInboxHead(
@@ -769,13 +817,7 @@ export function useSendMessage(
             conversationId: claimState.conversationId,
             content,
             inboxSteerHead: expectedHead,
-            station: {
-              apiBase,
-              ...(stationEnvironmentId
-                ? { environmentId: stationEnvironmentId }
-                : {}),
-              authorityNamespace: experienceNamespace,
-            },
+            station,
           });
           let timedOut = false;
           liveSteer = await Promise.race([
@@ -876,16 +918,13 @@ export function useSendMessage(
         currentState &&
         firstInteractiveSend &&
         !options?.skipPersonalApprovalDefault &&
+        !remote &&
         currentState.queuedApprovalMode === undefined &&
         (options?.executionSnapshot
           ? options.executionSnapshot.executionOnCurrentStation
           : currentState?.executionOnCurrentStation) !== false
       ) {
-        if (
-          accountPreferences.requestScope &&
-          !accountPreferences.requestScope.isCurrent()
-        )
-          return false;
+        if (requestScope && !requestScope.isCurrent()) return false;
         const catalog = queryClient.getQueryData<ObservedAgentCatalog>([
           'agents',
         ]);
@@ -985,12 +1024,7 @@ export function useSendMessage(
           const { outboundDispatch } = await import('../lib/outboundQueue');
           const durable = outboundDispatch.beginLive({
             clientTurnId: resolvedTurnId,
-            station: {
-              apiBase,
-              ...(stationEnvironmentId
-                ? { environmentId: stationEnvironmentId }
-                : {}),
-            },
+            station,
             sessionId,
             agentSlug,
             executionAgentId: currentState?.executionAgentId,
@@ -1104,10 +1138,12 @@ export function useSendMessage(
             ({ watchInFlightDelivery }) =>
               watchInFlightDelivery({
                 apiBase,
+                requestScope,
                 conversationId: sentConversationId,
                 clientTurnId: resolvedTurnId,
                 projectSlug: currentState?.projectSlug,
                 onAnswer: (outcome) => {
+                  if (connection && !connection.isCurrent()) return;
                   updateChat(
                     sessionId,
                     withDeliveryCheck(
@@ -1140,21 +1176,32 @@ export function useSendMessage(
         // the Project's answer. Outside a Project, or to a Station whose
         // chat-defaults read answered 404 (it may predate the hint), there is
         // no Project layer and it goes as the pick it always was.
-        const carriedAsHint =
+        // #4518: except under a managed approval ceiling. As a pick, a saved
+        // default above the ceiling would be refused, and one within it
+        // recorded as a choice the next, tighter policy refuses. A Station
+        // that reports a ceiling postdates the hint, so the hint goes
+        // everywhere and the server lowers it as the default it is.
+        const asHintUnderCeiling =
+          managedCeiling !== undefined &&
           carriedApprovalPick !== undefined &&
           carriedApprovalPick !== 'connection-default' &&
-          currentState?.queuedApprovalDefaultNamespace !== undefined &&
-          !!currentState.projectSlug &&
-          !(
-            accountPreferences.requestScope &&
-            queryClient.getQueryData(
-              projectChatDefaultsQueryKey(
-                accountPreferences.requestScope,
-                experienceNamespace ?? undefined,
-                currentState.projectSlug,
-              ),
-            ) === null
-          );
+          currentState?.queuedApprovalDefaultNamespace !== undefined;
+        const carriedAsHint =
+          asHintUnderCeiling ||
+          (carriedApprovalPick !== undefined &&
+            carriedApprovalPick !== 'connection-default' &&
+            currentState?.queuedApprovalDefaultNamespace !== undefined &&
+            !!currentState.projectSlug &&
+            !(
+              requestScope &&
+              queryClient.getQueryData(
+                projectChatDefaultsQueryKey(
+                  requestScope,
+                  experienceNamespace ?? undefined,
+                  currentState.projectSlug,
+                ),
+              ) === null
+            ));
         const dispatchInput = {
           apiBase,
           sessionId,
@@ -1177,13 +1224,23 @@ export function useSendMessage(
             conversationId === undefined &&
             !options?.dispatch
               ? observedEngine(
-                  queryClient.getQueryData<ObservedAgentCatalog>(['agents']),
+                  queryClient.getQueryData<ObservedAgentCatalog>(
+                    connection
+                      ? [
+                          'agents',
+                          apiBase,
+                          connection.requestScope.authorityKey,
+                        ]
+                      : ['agents'],
+                  ),
                   (options?.executionSnapshot
                     ? options.executionSnapshot.executionAgentId
                     : currentState?.executionAgentId) ?? agentSlug,
                 )
               : undefined,
-          projectSlug: currentState?.projectSlug,
+          projectSlug: options?.executionSnapshot
+            ? options.executionSnapshot.projectSlug
+            : currentState?.projectSlug,
           setApprovalMode: carriedAsHint ? undefined : carriedApprovalPick,
           setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
           requestedModel: options?.executionSnapshot
@@ -1218,7 +1275,7 @@ export function useSendMessage(
             experienceDraft?.attachmentAssignments,
           requestScope: sourceStart
             ? options?.experienceRequestScope
-            : accountPreferences.requestScope,
+            : requestScope,
           ...(carriedAsHint
             ? { personalApprovalDefault: carriedApprovalPick }
             : {}),
@@ -1235,11 +1292,7 @@ export function useSendMessage(
             !dispatchInput.skillExperience &&
             dispatchInput.executionOnCurrentStation !== false,
         );
-        if (
-          queueBusyFollowUp &&
-          accountPreferences.requestScope &&
-          !accountPreferences.requestScope.isCurrent()
-        )
+        if (queueBusyFollowUp && requestScope && !requestScope.isCurrent())
           throw new Error('The Station connection changed.');
         const queuedResult = queueBusyFollowUp
           ? await dispatchQueuedForeground(dispatchInput)
@@ -1249,11 +1302,7 @@ export function useSendMessage(
         if (queuedResult?.outcome === 'queued') {
           stopDeliveryWatch?.();
           await live?.accepted();
-          if (
-            accountPreferences.requestScope &&
-            !accountPreferences.requestScope.isCurrent()
-          )
-            return true;
+          if (requestScope && !requestScope.isCurrent()) return true;
           const latest = activeChatsStore.getSnapshot()[sessionId];
           const { input: _input, ...rollback } = rejectedSendRollback(
             transaction,
@@ -1283,6 +1332,13 @@ export function useSendMessage(
         stopDeliveryWatch?.();
         // Station answered with the turn: the transcript holds it now.
         await live?.accepted();
+        if (connection && !connection.isCurrent())
+          return options?.dispatch
+            ? {
+                kind: 'accepted' as const,
+                providerTurnId: receipt.providerTurnId,
+              }
+            : true;
         updateChat(
           sessionId,
           withDeliveryCheck(
@@ -1296,7 +1352,8 @@ export function useSendMessage(
           assignConversationId(sessionId, receipt.conversationId);
         }
         updateChat(sessionId, {
-          status: 'sending',
+          // Admission does not say the turn is still running. Its terminal
+          // event may already have settled the optimistic sending state.
           abortController: undefined,
           orchestrationSessionStarted: true,
           ...(sourceStart &&
@@ -1378,7 +1435,7 @@ export function useSendMessage(
               receipt.conversationId,
               currentState?.conversationId,
             ],
-            accountPreferences.requestScope,
+            requestScope,
           )
         ) {
           invalidate(['orchestration-sessions']);
@@ -1394,6 +1451,10 @@ export function useSendMessage(
           : true;
       } catch (error) {
         stopDeliveryWatch?.();
+        if (connection && !connection.isCurrent()) {
+          await live?.unanswered();
+          return options?.dispatch ? { kind: 'unanswered' as const } : false;
+        }
         const deliveryWasObserved = () => {
           const observedChat = activeChatsStore.getSnapshot()[sessionId];
           return (
@@ -1452,7 +1513,9 @@ export function useSendMessage(
           } else {
             // No answer from Station: only its delivery lookup can say what
             // happened, so the row is released for that, never resent blind.
-            await live.unanswered();
+            if (remote)
+              await live.indeterminate('Check delivery before retrying.');
+            else await live.unanswered();
           }
         }
         if (sourceStart) {
@@ -1468,7 +1531,7 @@ export function useSendMessage(
           clearStreamingMessage(sessionId);
           addEphemeralMessage(sessionId, {
             role: 'system',
-            content: `Visual skill start was not confirmed. Your selection is retained; inspect the conversation before trying again. ${error instanceof Error ? error.message : String(error)}`,
+            content: `Visual skill start was not confirmed. Your selection is retained; inspect the conversation before trying again. ${describeStationFailure(error).body}`,
           });
           invalidate(['orchestration-sessions']);
           return false;
@@ -1548,6 +1611,7 @@ export function useSendMessage(
                             ambientContext,
                             resolvedTurnId,
                             {
+                              connection,
                               queueOnBusy: options?.queueOnBusy,
                               onAdmission,
                               claimRetry: options?.claimRetry,
@@ -1612,6 +1676,24 @@ export function useSendMessage(
         );
         const undeliverableCause =
           queueModule?.classifyUndeliverableSend(err) ?? null;
+        if (remote && !options?.dispatch && !stationAnswered(err)) {
+          clearStreamingMessage(sessionId);
+          updateChat(sessionId, {
+            ...withDeliveryCheck(
+              activeChatsStore.getSnapshot()[sessionId],
+              resolvedTurnId,
+              'indeterminate',
+            ),
+            status: 'idle',
+            error: undefined,
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+          });
+          options?.onAdmission?.('indeterminate');
+          return false;
+        }
+
         if (undeliverableCause && mcpPromptOrigin && !options?.dispatch) {
           updateChat(sessionId, {
             status: 'error',
@@ -1633,12 +1715,7 @@ export function useSendMessage(
             if (!live)
               await outboundDispatch.recordUnanswered(
                 {
-                  station: {
-                    apiBase,
-                    ...(stationEnvironmentId
-                      ? { environmentId: stationEnvironmentId }
-                      : {}),
-                  },
+                  station,
                   clientTurnId: resolvedTurnId,
                   sessionId,
                   agentSlug,
@@ -1711,10 +1788,7 @@ export function useSendMessage(
             }
             updateChat(sessionId, {
               status: 'error',
-              error:
-                queueError instanceof Error
-                  ? `Send unavailable: ${queueError.message}`
-                  : 'Send unavailable',
+              error: describeStationFailure(queueError, connection).body,
               abortController: undefined,
             });
             return false;
@@ -1761,12 +1835,14 @@ export function useSendMessage(
                     sessionId,
                     resolvedTurnId,
                     'unconfirmed',
+                    station,
+                    sentConversationId,
                   );
                   updateChat(sessionId, { status: 'idle' });
                 } catch (discardError) {
                   updateChat(sessionId, {
                     status: 'error',
-                    error: `Discard failed: ${discardError instanceof Error ? discardError.message : String(discardError)}`,
+                    error: `Discard failed: ${describeStationFailure(discardError).body}`,
                   });
                 }
               },
@@ -1800,12 +1876,7 @@ export function useSendMessage(
         // the two raw-error surfaces produced it.
         const translated =
           foreground?.translation ??
-          translateChatError({
-            status: err.status,
-            // A validation refusal reads as its reasons, not schema keys.
-            message: userFacingErrorMessage(err),
-            code: err.code,
-          });
+          describeStationFailure(err, connection, resolvedTurnId);
         const terminalSession = foregroundIndeterminate
           ? false
           : (translated as ChatErrorTranslation).terminalSession;
@@ -1866,13 +1937,32 @@ export function useSendMessage(
         // whether this caller may start one (`callerAccess.startChat`).
         const failureHint = chatErrorHintFor(
           translated,
-          activeChatsStore.getSnapshot()[sessionId]?.conversationOpenState
-            ?.callerAccess,
+          conversationAccessFor(
+            activeChatsStore.getSnapshot()[sessionId],
+            connection,
+          ),
         );
         clearEphemeralMessages(sessionId);
-        addEphemeralMessage(sessionId, {
-          role: 'system',
+        const failureMessage = {
+          role: 'system' as const,
           sendFailure: true,
+          ...(!foregroundIndeterminate &&
+          !terminalSession &&
+          stationAnswered(err) &&
+          (translated.title === 'Not sent' ||
+            translated.title === 'Request failed')
+            ? {
+                deliveryNotice: {
+                  clientTurnId: resolvedTurnId,
+                  text: content,
+                  description: translated.body,
+                  diagnostic: [err.code, err.message]
+                    .filter(Boolean)
+                    .join(': '),
+                  state: 'not-sent' as const,
+                },
+              }
+            : {}),
           // Title on its own line, as `formatChatErrorDisplay` shapes the
           // transcript's error markers: "Error: thread … Provider session…"
           // ran the label into the engine's text.
@@ -1900,7 +1990,8 @@ export function useSendMessage(
             err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE && !dispatchClaim
               ? {
                   label: 'Remove attachments',
-                  handler: () => removeRefusedAttachments(apiBase, sessionId),
+                  handler: () =>
+                    removeRefusedAttachments(apiBase, sessionId, requestScope),
                 }
               : terminalSession ||
                   foregroundIndeterminate ||
@@ -1931,6 +2022,7 @@ export function useSendMessage(
                             ambientContext,
                             resolvedTurnId,
                             {
+                              connection,
                               queueOnBusy: options?.queueOnBusy,
                               onAdmission,
                               claimRetry: options?.claimRetry,
@@ -1940,7 +2032,35 @@ export function useSendMessage(
                       );
                     },
                   },
-        });
+        };
+
+        if (failureMessage.deliveryNotice) {
+          // A verified refusal belongs to the person's message, using the same
+          // transcript bubble and delivery actions for every Station route.
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const optimistic = transaction.optimisticMessages.find(
+            (message) => message.clientId === resolvedTurnId,
+          );
+          updateChat(sessionId, {
+            messages: [
+              ...(latest?.messages ?? []).filter(
+                (message) => message.clientId !== resolvedTurnId,
+              ),
+              {
+                ...optimistic,
+                id: optimistic?.id ?? resolvedTurnId,
+                role: 'user',
+                clientId: resolvedTurnId,
+                content,
+                timestamp: optimistic?.timestamp ?? Date.now(),
+                deliveryNotice: failureMessage.deliveryNotice,
+                action: failureMessage.action,
+              },
+            ],
+          });
+        } else {
+          addEphemeralMessage(sessionId, failureMessage);
+        }
         // The engine just answered the image question for itself; the
         // inventory read that carries its handshake answer is cached for
         // minutes and may predate that answer. Re-read it so the composer's
@@ -1994,10 +2114,10 @@ export function useSendMessage(
       accountPreferences.requestScope,
       accountPreferences.status,
       accountPreferences.saving,
+      managedCeiling,
       experienceNamespace,
       experienceAuthorityStatus,
-      inboxRequestScope,
-      apiBase,
+      hostApiBase,
       assignConversationId,
       clearEphemeralMessages,
       clearInput,
@@ -2074,12 +2194,38 @@ export function describeStopTurnOutcome(outcome: StopTurnOutcome): string {
   return 'There was no turn running to stop.';
 }
 
-export function useCancelMessage(apiBase?: string) {
+export function useCancelMessage(
+  apiBase?: string,
+  connection?: StationConnection,
+) {
   const { updateChat } = useActiveChatActions();
+  const { observation } = useAuthorityPersistence();
+  const hostEnvironmentId = observation?.environmentId;
 
   return useCallback(
     async (sessionId: string): Promise<StopTurnOutcome> => {
       const state = activeChatsStore.getSnapshot()[sessionId];
+      if (
+        !connection &&
+        state?.stationBinding &&
+        state.stationBinding.environmentId !== hostEnvironmentId
+      )
+        return {
+          kind: 'failed',
+          reason:
+            'Reconnect to the Station that owns this conversation before stopping.',
+        };
+      if (
+        (connection &&
+          (!connection.isCurrent() ||
+            connection.capabilities.stop.state !== 'allowed')) ||
+        (state && !chatBelongsToStation(state, connection))
+      )
+        return {
+          kind: 'failed',
+          reason:
+            'Reconnect to the Station that owns this conversation before stopping.',
+        };
       // the old guard required a browser abort controller,
       // which the send path clears the moment the orchestration POST returns —
       // so for most of a turn's life Stop silently did nothing at all. The
@@ -2102,6 +2248,19 @@ export function useCancelMessage(apiBase?: string) {
       }
       updateChat(sessionId, { stopPending: true });
       const target = liveTurnTarget(state, sessionId);
+      const stillOwnsTurn = () => {
+        const latest = activeChatsStore.getSnapshot()[sessionId];
+        const latestTarget = latest
+          ? liveTurnTarget(latest, sessionId)
+          : undefined;
+        return (
+          (!connection || connection.isCurrent()) &&
+          latest?.conversationId === state.conversationId &&
+          latest?.currentSessionId === state.currentSessionId &&
+          latestTarget?.threadId === target.threadId &&
+          latestTarget?.turnId === target.turnId
+        );
+      };
       let settledResult: InterruptTurnResult | undefined;
       try {
         // The browser stream is only an observer of the engine turn. Ask the
@@ -2120,13 +2279,15 @@ export function useCancelMessage(apiBase?: string) {
           ...(state.pendingClientTurnId
             ? { clientTurnId: state.pendingClientTurnId }
             : {}),
-          apiBase,
+          apiBase: connection?.targetApiBase ?? apiBase,
+          requestScope: connection?.requestScope,
         });
+        if (!stillOwnsTurn()) return { kind: 'not-running' };
         settledResult = result;
         return { kind: 'settled', result };
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error ?? '');
+        if (!stillOwnsTurn()) return { kind: 'not-running' };
+        const message = describeStationFailure(error).body;
         // The SAME derivation the continuation path uses to separate "this
         // request provably never left the browser" from "no answer, and no
         // way to know." A POST that timed out may already have interrupted
@@ -2154,22 +2315,32 @@ export function useCancelMessage(apiBase?: string) {
         const turnSettled =
           settledResult !== undefined &&
           settledResult.outcome !== 'pending-turn-start';
-        updateChat(sessionId, {
-          status: 'idle',
-          abortController: undefined,
-          stopPending: false,
-          ...(turnSettled
-            ? {
-                orchestrationTurnOpen: false,
-                error: undefined,
-                // #2309: the same receipt closes the server-named turn for
-                // this client until the record itself moves on.
-                ...(target.turnId ? { stopSettledTurnId: target.turnId } : {}),
-              }
-            : {}),
-        });
+        if (!stillOwnsTurn()) {
+          // Only release the old button claim; the replacement execution owns all other state.
+          if (
+            (!connection || connection.isCurrent()) &&
+            activeChatsStore.getSnapshot()[sessionId]?.stopPending
+          )
+            updateChat(sessionId, { stopPending: false });
+        } else
+          updateChat(sessionId, {
+            status: 'idle',
+            abortController: undefined,
+            stopPending: false,
+            ...(turnSettled
+              ? {
+                  orchestrationTurnOpen: false,
+                  error: undefined,
+                  // #2309: the same receipt closes the server-named turn for
+                  // this client until the record itself moves on.
+                  ...(target.turnId
+                    ? { stopSettledTurnId: target.turnId }
+                    : {}),
+                }
+              : {}),
+          });
       }
     },
-    [apiBase, updateChat],
+    [apiBase, connection, hostEnvironmentId, updateChat],
   );
 }

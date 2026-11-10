@@ -197,7 +197,7 @@ export function HomeStartComposer({
   projectSlug?: string;
 }) {
   const { namespace, status } = useAuthorityPersistence();
-  const { setDockState } = useNavigation();
+  const { setDockState, isDockOpen } = useNavigation();
   const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
     VISUAL_SKILLS_PREVIEW_ID,
   );
@@ -538,7 +538,7 @@ export function HomeStartComposer({
     (agent ? agentRunnability(agent).runnable : noAgentToOffer);
 
   return (
-    <>
+    <div hidden={!projectSlug && isDockOpen}>
       <StartComposer
         compact={compact}
         textareaRef={textareaRef}
@@ -778,6 +778,6 @@ export function HomeStartComposer({
           />
         </React.Suspense>
       )}
-    </>
+    </div>
   );
 }

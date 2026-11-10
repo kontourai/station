@@ -109,7 +109,8 @@ export function messageResendSource(
     message.ephemeral ||
     message.sender ||
     message.stationCheckBack ||
-    message.stationMemoryContinuation
+    message.stationMemoryContinuation ||
+    message.stationRestartContinuation
   )
     return null;
   if (

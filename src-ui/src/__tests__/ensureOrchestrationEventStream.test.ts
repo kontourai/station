@@ -301,6 +301,11 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
 
   it('invalidates the shared session read-model when a session-ending event arrives', async () => {
     const { client, invalidateQueries } = spiedClient();
+    const origin = 'https://ensure-orchestration-readmodel.example.test';
+    const ownKey = ['orchestration-sessions', origin];
+    const otherKey = ['orchestration-sessions', 'https://other-station.test'];
+    client.setQueryData(ownKey, []);
+    client.setQueryData(otherKey, []);
     vi.stubGlobal(
       'fetch',
       vi
@@ -312,18 +317,18 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
         ),
     );
 
-    ensureOrchestrationEventStream(
-      'https://ensure-orchestration-readmodel.example.test',
-      client,
-    );
+    ensureOrchestrationEventStream(origin, client);
     await vi.waitFor(() =>
       expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
     );
     await vi.waitFor(() =>
       expect(invalidateQueries).toHaveBeenCalledWith({
         queryKey: ['orchestration-sessions'],
+        predicate: expect.any(Function),
       }),
     );
+    expect(client.getQueryState(ownKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(otherKey)?.isInvalidated).toBe(false);
   });
 
   it('uses the shared client when a projection-update stream started without one', async () => {
@@ -351,6 +356,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     await vi.waitFor(() =>
       expect(invalidateQueries).toHaveBeenCalledWith({
         queryKey: ['orchestration-sessions'],
+        predicate: expect.any(Function),
       }),
     );
   });
@@ -412,6 +418,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     await vi.waitFor(() =>
       expect(invalidateQueries).toHaveBeenCalledWith({
         queryKey: ['orchestration-sessions'],
+        predicate: expect.any(Function),
       }),
     );
   });
@@ -613,6 +620,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     expect(sessionRefreshes()).toHaveLength(2);
     expect(invalidateQueries).toHaveBeenLastCalledWith({
       queryKey: ['orchestration-sessions'],
+      predicate: expect.any(Function),
     });
   });
 
@@ -636,6 +644,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     await vi.waitFor(() =>
       expect(invalidateQueries).toHaveBeenCalledWith({
         queryKey: ['orchestration-sessions'],
+        predicate: expect.any(Function),
       }),
     );
   });

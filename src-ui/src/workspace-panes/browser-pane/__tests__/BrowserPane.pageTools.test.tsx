@@ -53,12 +53,14 @@ const controlHolder: { state: LiveSurfaceControlState | null } = {
 vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
   LiveSurfaceCanvas: (props: {
     onControlState?: (state: LiveSurfaceControlState) => void;
+    overlay?: import('react').ReactNode;
   }) => {
     const { onControlState } = props;
     useEffect(() => {
       if (controlHolder.state) onControlState?.(controlHolder.state);
     }, [onControlState]);
-    return <div data-testid="live-canvas" />;
+    // As the real canvas does: the host's overlay over the stage.
+    return <div data-testid="live-canvas">{props.overlay}</div>;
   },
 }));
 
@@ -133,6 +135,9 @@ function control(
     claimControl: vi.fn(async () => {}),
     releaseControl: vi.fn(async () => {}),
     keepControlAlive: vi.fn(async () => {}),
+    immersive: false,
+    enterImmersive: vi.fn(),
+    exitImmersive: vi.fn(),
     ...overrides,
   };
 }
@@ -716,7 +721,13 @@ describe('the toolbar', () => {
       within(menu)
         .getAllByRole('group')
         .map((group) => group.getAttribute('aria-label')),
-    ).toEqual(['Capture', 'View', 'Inspect', 'Session', null]);
+    ).toEqual([
+      'Capture',
+      'View for everyone watching',
+      'Inspect',
+      'Session',
+      null,
+    ]);
     const items = within(menu).getAllByRole('menuitem');
     expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
       'Screenshot',

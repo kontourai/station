@@ -41,7 +41,8 @@ remain operator-managed private configuration; enabling the preview alone does
 not configure a source or grant an action.
 
 The runtime reads its own Station home's `security/automations.json`, validates
-both source grants and enabled rules, and polls on the existing scheduler tick.
+both source grants and every rule that is not `off`, and polls on the existing
+scheduler tick.
 Each source has its own interval (five minutes by default). Disabled previews
 perform no polling or ledger allocation. Disabling the preview or changing a
 source while its request is in flight discards that request's observations;
@@ -81,6 +82,128 @@ capacity refusal does not spend an execution attempt. Claims fence concurrent
 starts and rule rate limits. The actual provider-start boundary persists the
 invocation transition before the effect; uncertain effects retain their original
 identity and are not retried as fresh work.
+
+The actions preview is global, not a per-rule dry run. While it is disabled,
+intake still retains pending Task-action intents for `live` rules, and the
+action runtime skips them instead of refusing them. Enabling the preview can
+dispatch retained intents whose events are less than 72 hours old, whose policy
+fingerprint is unchanged, and whose episode remains open, subject to the other
+admission checks. To see what one rule would do without letting it act, use
+its `observe` mode (below), not the preview.
+
+### Per-rule observe mode
+
+Each rule has a `mode` (#4509):
+
+- `off`: intake ignores the rule.
+- `observe`: the default for a new rule. Intake evaluates the rule but never
+  acts on it.
+- `live`: the rule acts, subject to its source grant, the actions or repair
+  preview, and every consumer-time check.
+
+A rule stored before this change has `enabled: boolean` instead. The store
+reads `false` as `off` and `true` as `live`, and the next write stores `mode`.
+A rule that has both fields, or a non-boolean `enabled`, makes the
+configuration unreadable, so it fails closed.
+
+Downgrade: after any write by this version, every rule in
+`security/automations.json` carries `mode`. An older Station refuses that
+key, so it reads the whole configuration as `policy_unavailable`. That fails
+closed: its poller logs `Automation policy unavailable; poll skipped`, and
+its action consumers find no readable policy, so nothing is polled or
+dispatched. That holds until the file is restored or the rules are
+hand-edited back to `enabled`. Its validation detail (`rules[N]: unknown field
+mode`, `enabled must be a boolean`) is logged server-side only when its
+delivery history route is read.
+
+The configuration `schemaVersion` stays `1`. `AUTOMATION_SCHEMA_VERSION`
+also versions retained events and intents, so bumping it would invalidate
+retained intents. A separate configuration version would only change the
+older Station's detail to `unsupported schemaVersion`; it fails closed
+either way.
+
+Creating a rule starts observing immediately once its source is enabled and
+grants its action. An `observe` rule counts as an evaluable rule, so its
+source is polled on its interval, spending GitHub API quota. Each matched run
+records a delivery that holds that run's semantic dedupe key. Disable a rule
+with `mode: "off"` when you do not want that polling. Set a mode through
+`POST /api/isolated-repairs/configuration/enable` with
+`{kind:"rule",id,mode,expectedFingerprint}`. `enabled:true` or `false` keeps
+its earlier meaning there.
+
+For an `observe` rule, intake checks the match, then the episode, then global
+concurrency (`maxConcurrentActions`), then the rule's active limit
+(`maxActivePerRule`), then `maxStartsPerHour`. This is not `claimAction`'s
+order, which checks concurrency, the active limit and the hourly rate before
+episode state. Observe checks the episode first because, for a `live` rule,
+an event in an already-open episode never retains an intent at intake, so the
+episode is what would stop it first. Observe does not open an episode, take a
+claim, consume an attempt, or retain an intent, so neither the native Task
+runtime nor the isolated-repair controller can start work for the rule. The
+episode check covers two cases:
+
+- an unclosed real episode for the key, for example one left while the rule
+  was `live`, gives `episode-indeterminate`, `episode-exhausted` or
+  `episode-active`;
+- the rule's own observe marker gives `episode-active` for a recurring failure
+  after the first `would-start`.
+
+The concurrency and active-limit checks read the claims and active intents of
+`live` actions only. An observe rule's `would-start`s never count as active,
+so these checks do not model what the rule itself would be running had it
+been `live`: two quick failures in different episodes can both record
+`would-start` where a `live` rule would have waited on `maxActivePerRule`.
+The hourly count includes the rule's invoked `live` starts and its own
+earlier `would-start` decisions. A matching `closeOn` clears the
+marker. It also closes a real episode the rule left open while `live`, because
+a stale episode would suppress the rule's next failure once it is `live`
+again; closing starts nothing.
+
+Each matched non-notify rule gets one row in `automation_rule_decisions`,
+keyed by delivery and rule. The row records the mode, an outcome, an optional
+suppression reason, and a snapshot: rule id and name, action kind, Project,
+Agent, and episode id. It never holds instructions or event fields. The
+outcomes are:
+
+- `would-start` (observe only);
+- `suppressed` with a reason;
+- `intent-retained` (live: the intent was retained in the same transaction).
+
+`rule-active-limit` and `concurrency-limit` mean the action would have waited
+at the time of evaluation; a `live` action held by those limits waits and is
+admitted later. `GET /automations/deliveries`, `listAutomationDeliveries` and
+`station automation deliveries` return the rows as `decisions` on each
+delivery. The delivery's own `ruleId` names the first matching `live` rule
+when there is one.
+
+Switching a rule from `observe` to `live` never replays earlier events. None
+retained an intent, and the observed delivery still holds its semantic dedupe
+key, so a re-poll of the same run records `duplicate`. Only events that arrive
+afterwards can act.
+
+The policy fingerprint is still the hash of the whole source and rule, so it
+now includes `mode`. Intake retains intents only for `live` rules, so the
+fingerprint of every retained intent encodes `live`. A rule moved to `observe`
+or `off` no longer matches its fingerprint, and its pending intents are refused
+as `policy_changed`. Both consumers also check `mode === 'live'` directly. The
+cost of hashing `mode` is a one-time effect at upgrade: an intent retained
+before upgrade was hashed over `enabled: true`. If it is still pending when
+first read under `mode`, it is refused as `policy_changed`, not dispatched.
+
+Limits and gaps:
+
+- Observe decisions do not evaluate consumer-time checks: the actions or
+  repair preview, whether the Project, Agent or repair profile is current,
+  and provider admission. A `would-start` means intake-time admission
+  passed, not that a Task would have started.
+- Observe markers are pruned after the closed-episode retention (31 days),
+  while a real episode stays open until `closeOn`.
+- Both consumers refuse a pending intent whose rule is not `live` on their
+  next tick (`policy_changed`). A consumer whose preview is off does not tick,
+  though. If a rule moves to `observe` or `off` and back to `live` while that
+  preview stays off, its pending intent keeps a matching fingerprint and can
+  still dispatch within its 72-hour window. Disable and re-enable behaved the
+  same way before this change.
 
 Task creation and Session seeding alone do not start a repair turn. The actions
 runtime submits the framed prompt to the existing durable inbox, retaining the
@@ -251,7 +374,9 @@ Four findings shape the design.
   [`notification.ts`](../../packages/contracts/src/notification.ts).
 - **Ingress.**
   [`public-ingress-origin.ts`](../../src-server/services/tailscale/public-ingress-origin.ts)
-  resolves the Serve origin. It authorizes nothing.
+  resolves the Serve origin. Automations use it only for that address; its
+  separate owned-origin answer feeds browser-origin admission, not automation
+  authority.
 
 ## 3. Model
 
@@ -282,8 +407,10 @@ directory under [`src-server/services/`](../../src-server/services/).
 - `AutomationEpisodePolicy` is `{ keyFields: string[]; closeOn?:
   AutomationMatcher; maxAttempts: number }`, where `maxAttempts` defaults
   to 1.
-- `AutomationRule` is `{ id (server-issued); name; enabled; sourceId; match;
-  episode?; action; rateLimit: { maxStartsPerHour } }`.
+- `AutomationRule` is `{ id (server-issued); name; mode: 'off' | 'observe' |
+  'live'; sourceId; match; episode?; action; rateLimit: { maxStartsPerHour }
+  }`. A pre-#4509 `enabled: boolean` is read as `off`/`live`; see
+  [Per-rule observe mode](#per-rule-observe-mode).
 - Constants: `AUTOMATION_EXECUTION_LIMITS`,
   `GITHUB_AUTOMATION_EVENT_ALLOWLIST`, a closed `AutomationDeliveryOutcome`,
   and `AUTOMATION_OPERATOR_SURFACE` (API, CLI and MCP parity, like the
@@ -379,7 +506,8 @@ text. The agent fetches logs itself with `gh`.
 - **Who can create rules.** Only authenticated operator surfaces create
   rules. Never the station-control MCP and never an agent session, so an
   agent cannot widen its own triggers.
-- **Default deny.** Sources and rules are created disabled. No grants means
+- **Default deny.** Sources are created disabled and rules in `observe`
+  mode, which records decisions but never acts. No grants means
   no actions. A corrupt config or ledger fails closed with
   `policy_unavailable`.
 - **Rate limits.** A per-source attempt limiter plus the global
@@ -426,6 +554,9 @@ episode.
   rate-limited)`, `started(taskId, sessionId)`, and `failed` or
   `indeterminate`. Rows hold a bounded projection only: no payloads, no
   secrets, and no GUIDs in clear.
+- **Per-rule decisions per delivery:** `would-start`, `suppressed(reason)` or
+  `intent-retained` for each matched `observe` or `live` rule, with a bounded
+  action snapshot ([Per-rule observe mode](#per-rule-observe-mode)).
 - **Settings > Automations:** sources (URL, rotate secret, last delivery,
   enabled), rules, open episodes, recent deliveries, "retry episode", and
   send-test via `ping`.

@@ -1,15 +1,17 @@
 # Station
 
-**The agent workspace where work ships with receipts.**
+**Code from anywhere. On your own, or with your team.**
 
 [![Docs](https://img.shields.io/badge/docs-kontourai.github.io-blue)](https://kontourai.github.io/station/)
 [![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Station is Kontour's open-source, local-first workspace for agent work. Bring
-your agents, projects, and devices together, hand a Task to the agent you
-choose, and keep execution history, files, review evidence, and receipts beside
-the work. A completed run and a passed review are separate facts.
+Agent work shouldn’t be trapped in one terminal or provider. Pick up where you
+left off, bring your team into the work, and make what your agents produce
+something you can build on together.
+
+Station is open source, runs on a computer you control, and has a public SDK
+for plugins.
 
 [Product site](https://station.kontourai.io) ·
 [Documentation](https://kontourai.github.io/station/docs/) ·
@@ -17,36 +19,52 @@ the work. A completed run and a passed review are separate facts.
 [Concepts](docs/user/concepts.md) ·
 [Contributing](CONTRIBUTING.md)
 
-> **Status:** open source under active development (Apache-2.0). Run Station
-> using a signed Nightly server archive or a Nightly desktop build.
-> The portable installer requires a published release in the selected ring. See
-> [Get Station](#get-station).
+> **Status:** open source (Apache-2.0) and in active development. Install
+> the Nightly with one command, use a Nightly desktop build, or run from source.
+> v1 is coming soon; no stable release is published yet. See [Get Station](#get-station).
 
 ## Why Station
 
-Station brings several parts of agent work into one workspace:
+- **Bring the coding agents you already use.** Run a Station agent on a local
+  or hosted model, or connect supported agent CLIs and compatible custom engines. Each
+  engine keeps its own behavior and tool loop. Station supplies Project context,
+  records its activity, and connects configured workflows.
+- **Pick up where you left off.** Keep the plan, conversations, files,
+  artifacts, and results linked to the work. When you reopen a Task, check that
+  its recorded workspace is still available.
+- **Direct work from another device.** Pair a phone, tablet, or laptop with
+  scoped, revocable access. You can also send work to another computer you own
+  over SSH, using that computer’s agents and credentials.
+- **Review the changes and check results.** Configured workflows can attach
+  gate results, missing evidence, review receipts, and exceptions to the Task.
+  Creating or completing a Task doesn’t mean a gate passed.
+- **Run it on your own machine.** Station data lives under `~/.station` by
+  default. Networked features have their own settings and destinations; see
+  [Data and privacy](#data-and-privacy).
+- **Add a tool or work surface.** Plugins built on the public SDK can add
+  layouts, agents, MCP tools, model providers, knowledge, and skills.
 
-- **Evidence beside the work** — inspect gate results, missing evidence,
-  review receipts, and exceptions where the configured workflow provides them.
-  Creating or completing a Task does not by itself prove a gate passed.
-- **Supported engines, one workspace** — run Station agents on a local or
-  hosted model, or connect supported agent CLIs and compatible custom engines
-  as External agents. Each engine keeps its own behavior and tool loop;
-  Station supplies project context, execution records, and configured workflow
-  integrations.
-- **Work that outlives a chat** — Projects, Tasks, Sessions, changed files,
-  artifacts, and receipts stay linked. Reopen a Task later with its recorded
-  workspace binding and evidence, then check the workspace's current availability.
-- **Your devices, your Station** — pair a phone, tablet, or laptop to your
-  Station with scoped, revocable access, and delegate work to another
-  computer you own over SSH.
-- **Local-first ownership** — Station data lives under `~/.station` by
-  default. Networked features have separate settings and destinations;
-  review those boundaries under [Data and privacy](#data-and-privacy).
-- **Built to extend** — build on Station's core capabilities through its public
-  SDK and plugin APIs. Add layouts, agents, tools, knowledge, connections, skills,
-  and work surfaces to shape the workspace around your work. Start with the
-  included experience and extend it with your own plugins.
+## From your first idea to what you ship
+
+Plan, build, and ship with your coding agents. Start on your own, then bring
+in teammates who can make decisions with you and take the work forward
+themselves. See progress as it happens, share what you learn, and build on
+work already done.
+
+The following team experience is product direction. Current sharing limits
+are described below.
+
+### Current sharing limits
+
+You can invite people to a Project and give them a role. After signing in and
+getting their browser approved, they can read the Tasks you publish for them.
+Editing Tasks and running agents from that entry aren’t available yet. Review
+and member-presence UI include Feature Previews. Pairing connects your own
+devices; it isn’t team access. Read [sharing setup and current limits](docs/guides/deployment-authentication.md)
+before inviting someone.
+
+Plugins can also provide team-specific work surfaces. See [integrating Station](docs/guides/integrating-station.md)
+for supported extension contracts and deployment boundaries.
 
 ## What people use it for
 

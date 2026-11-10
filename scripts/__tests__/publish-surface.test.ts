@@ -4,7 +4,8 @@ import { isBuiltin } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript-api';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { ensureCliBundle } from '../run-repo-scan-suites.mjs';
 
 /**
  * Publish-surface contract for the `@kontourai/station-*` workspace packages.
@@ -198,6 +199,12 @@ function externalImports(pkg: PackageInfo): Map<string, string> {
 }
 
 describe('publish surface', () => {
+  // Packing reads the built CLI bundle. A shard that runs this suite without
+  // the repo-scan runner has none unless another suite happened to build it.
+  beforeAll(() => {
+    ensureCliBundle();
+  }, 180_000);
+
   it('has at least one publishable and one private package', () => {
     expect(publishable.length).toBeGreaterThan(0);
     expect(privateNames.size).toBeGreaterThan(0);

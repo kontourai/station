@@ -4,6 +4,7 @@ import {
   readDesktopUpdateState,
   subscribeToDesktopUpdateState,
 } from '../../platform/native/desktopUpdate';
+import { describeStationFailure } from '../../utils/stationFailure';
 
 export interface DesktopUpdateRead {
   /** Null until the native side answers, and while `enabled` is false. */
@@ -55,7 +56,7 @@ export function useDesktopUpdateState(enabled: boolean): DesktopUpdateRead {
       apply(await readDesktopUpdateState());
     })().catch((cause: unknown) => {
       if (disposed) return;
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(describeStationFailure(cause).body);
     });
     return () => {
       disposed = true;

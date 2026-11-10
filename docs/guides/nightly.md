@@ -48,10 +48,14 @@ promise that a build reaches a phone within a few hours. Play auto-update and
 tester eligibility are separate device/provider conditions. Read the final
 per-platform receipt and Play state; a job exit alone is not installation proof.
 
-**Identity.** The version is `X.Y.Z-nightly.<day>`, where `<day>` is a
-monotonic day counter (whole UTC days since 2020-01-01, deliberately not a
-calendar date), with an Android `versionCode` derived from the same counter —
-both from `scripts/lib/nightly-build-identity.mjs`. Since the reservation
+**Identity.** Native versions show the UTC build date as
+`X.Y.Z-nightly.YYYYMMDD` (for example `0.1.11-nightly.20261104`). Same-day
+rebuilds append `.1` through `.99`. CLI npm versions append the immutable
+GitHub run ID after the date, so separate publications cannot collide.
+Android `versionCode` and macOS bundle numbers retain the monotonic counter
+`days since 2020-01-01 × 100 + build`; calendar dates do not consume the
+native platform's numeric range. Both identities come from
+`scripts/lib/nightly-build-identity.mjs`. Since the reservation
 ledger was introduced, every code is reserved before the build via an
 immutable `nightly-version-code/<code>` tag, so a failed or repeated run can
 never reuse a code that might already be installed somewhere (the one
@@ -95,13 +99,17 @@ before retrying or changing a marker.
 `.github/workflows/portable-nightly-publish.yml`, called by `nightly.yml` as
 `portable-nightly` after source usability succeeds, builds the five
 `station-server-<os>-<arch>` archives through the reusable
-`portable-server-archives.yml` under version `X.Y.Z-nightly.<code>`, where
-`<code>` is the native Nightly's reserved version code (re-checked against the
-`nightly-version-code/<code>` tag). It assembles the schema v2 manifest from
+`portable-server-archives.yml` under version `X.Y.Z-nightly.YYYYMMDDNN`, where
+`NN` is the zero-padded build index (`00`–`99`), for example
+`0.1.11-nightly.2026110401`. The UTC date and build come from the native
+Nightly's reserved version code (re-checked against the
+`nightly-version-code/<code>` tag). The single numeric suffix preserves the
+installer and signed-manifest grammar and sorts after legacy counter versions.
+It assembles the schema v2 manifest from
 the archive descriptors, signs it with a throwaway key, verifies it, and
 confirms the pinned key table refuses that envelope. Publication is enabled:
 the owner set `STATION_PORTABLE_NIGHTLY_PUBLISH=enabled`, and Nightlies
-publish versioned `vX.Y.Z-nightly.<code>` releases and replace the rolling
+publish versioned `vX.Y.Z-nightly.YYYYMMDDNN` releases and replace the rolling
 `portable-nightly` manifest (as read on 2026-10-12, the newest was
 `v0.1.11-nightly.247504`). Without the gate, or on a direct dispatch, the run
 stops after the dry run and uploads only short-lived run artifacts.
@@ -174,7 +182,7 @@ draft a failed run left behind (the error names the release id to delete).
 To enable it (owner only):
 
 - Plan retention first. Each publish adds a permanent prerelease and tag
-  `vX.Y.Z-nightly.<code>` (the versioned assets pinned and rollback manifests
+  `vX.Y.Z-nightly.YYYYMMDDNN` (the versioned assets pinned and rollback manifests
   point at): one for each Nightly that builds. The default six-hour minimum permits
   about four publication opportunities a day; hourly decisions that skip add no
   release, and a shorter configured interval increases retention needs.
@@ -262,6 +270,67 @@ keeps two independent mechanisms and separately labelled actions:
   [CLI `service` reference](../reference/cli.md#service). Any other archive
   names `station upgrade` on the host, or a reinstall.
 
+A machine's [managed policy](managed-policy.md#update-control) can turn both
+checks off, make the nightly channel unavailable, or send them to a mirror.
+
+The update proposal shows **What’s new** for the offered version. Release notes
+come from the exact version’s GitHub Release, with the native updater’s notes
+available as a fallback for desktop downloads. GitHub prose is informational;
+it never determines whether an update is available or safe to install. Missing
+archives remain an explicit, retryable state; notes from another version are
+never substituted. When no update is offered, **What’s new** stays folded until
+opened. The
+sidebar icon shows a circular download indicator using the updater’s byte
+counts, or an indeterminate arc when the total size is unknown. An observed
+server download can also drive the ring while the panel stays closed.
+
+Desktop and server summaries share their badge, version, and last-check
+layout in Updates and System settings. Their channels publish independently;
+a newer app version alone does not mean a server update is available. The
+sidebar indicator signals an available update or an update in progress,
+not informational version differences or a failed background check.
+
+Controlled component examples: [phone status summary](../learn/media/updates-after-390-dark.png),
+[desktop status summary](../learn/media/updates-after-1440-light.png), and
+[release history](../learn/media/updates-history-after-390-dark.png). These
+illustrate the UI with fixture data; they do not qualify an installed app or
+a provider delivery.
+
+**Previous versions and changelogs** opens a release picker in the same panel.
+It lists versioned releases from GitHub’s most recent 100 releases; **All
+releases on GitHub** reaches older entries. Rolling release pointers are not
+presented as a particular historical version. Missing notes, network errors,
+and retry actions remain separate from the update controls.
+
+After an installed app version increases, **Updated to Station …** opens once
+on that device. The first observed installation records a baseline without a
+popup; downgrades and repeated launches do not show one. **Show changelog after
+updates** is enabled by default and can be changed in that dialog, Updates, or
+Settings → System. It is a device preference. Automatic presentation requires
+working local storage and a release identity; an unstamped development UI
+never triggers it. Changing the connected server does not trigger it.
+
+Nightly desktop planning generates GitHub release notes from the previous
+`nightly-desktop` source to the planned source. The generated notes travel
+with the cohort into the assembled updater manifest. Desktop publication
+archives the same notes in a `desktop-v<version>` GitHub prerelease before
+advancing the rolling marker. Those changelog releases carry no installers and
+do not become GitHub’s Latest release. Historical comparison links use commit
+SHAs so advancing the rolling marker cannot change their range. Mobile Nightlies read the same cohort’s changelog. If desktop publication
+did not produce an archive for a partial cohort, the notes remain unavailable.
+Earlier Nightlies without a versioned changelog are not reconstructed.
+
+Archive publication checks the Git tag reference before resolving its commit:
+GitHub's commit endpoint returns HTTP 422 for a missing tag. An existing tag
+must resolve to the planned source, and an existing archive must retain the
+same notes. Lookup failures stop publication.
+
+A changelog failure can occur after the desktop assets and updater manifest
+are live, before the rolling marker advances. Compare provider assets and the
+live manifest with the admitted cohort before choosing a recovery action;
+the failed promotion remains `NOT_VERIFIED`. Creating the missing changelog
+alone does not complete or rewrite that cohort's recovery receipt.
+
 An established built-in (embedded sidecar) server never runs the ordinary
 source check at all; its update path is the desktop app itself, including the
 built-in server in that app update and its restart confirmation. The server
@@ -291,9 +360,10 @@ A desktop or mobile app whose version a release pipeline stamped
 (`STATION_BUILD_VERSION`) compares that version with the one a prebuilt
 archive server reports on the same route, in Station's release order
 ([`release-version-order.ts`](../../packages/shared/src/release-version-order.ts)).
-A native Nightly's `X.Y.Z-nightly.<day>[.<build>]` is first written as the
-portable `X.Y.Z-nightly.<day × 100 + build>` that names the same nightly
-allocation; #2962 is meant to replace that bridge with one identity. An iOS
+A native Nightly's `X.Y.Z-nightly.YYYYMMDD[.<build>]` is first written as the
+portable `X.Y.Z-nightly.YYYYMMDDNN` that names the same nightly allocation.
+The comparison bridge also retains legacy day-counter identities; #2962
+tracks replacing the bridge with one identity. An iOS
 build's Apple marketing version is the bare `X.Y.Z`, so its web bundle is
 stamped with the cohort's full Nightly version, or a Beta's full release
 version, instead. A bare `X.Y.Z` client never counts as newer than a

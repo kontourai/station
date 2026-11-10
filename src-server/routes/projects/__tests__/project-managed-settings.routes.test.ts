@@ -18,6 +18,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { putProject } from '../../../domain/__tests__/file-storage-test-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { installManagedAppSettings } from '../../../domain/managed-settings.js';
+import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { createProjectRoutes } from '../projects.js';
 
@@ -26,6 +27,7 @@ const DENIAL = `Acme's policy manages this setting. For help, visit ${SUPPORT_UR
 
 function policy(
   settings: Record<string, { value: unknown; locked: boolean }>,
+  limits?: Record<string, unknown>,
 ): LoadedManagedPolicy {
   const document = decodeManagedPolicy('/test/policy.json', {
     kind: 'value',
@@ -34,6 +36,7 @@ function policy(
       organization: 'Acme',
       supportUrl: SUPPORT_URL,
       settings,
+      ...(limits ? { limits } : {}),
     },
   });
   return {
@@ -45,7 +48,10 @@ function policy(
 }
 
 const makeTempDir = trackTempDirs();
-afterEach(() => installManagedAppSettings(null));
+afterEach(() => {
+  installManagedAppSettings(null);
+  installManagedApprovalCeiling(null);
+});
 
 async function harness() {
   const home = makeTempDir('station-project-managed-');
@@ -154,5 +160,39 @@ describe('project writes under a managed lock', () => {
       defaultProviderId: 'project-provider',
       defaultModel: 'project-model',
     });
+  });
+
+  // #4517 + #4518: a lock on the approval default outranks the ceiling. The
+  // lock takes no value at all, so the ceiling's "the broadest allowed is
+  // Auto" would point at a value that is refused as well.
+  test('a locked approval default refuses full access with the lock, not the ceiling, on create and update', async () => {
+    const { send, stored } = await harness();
+    const loaded = policy(
+      { defaultApprovalMode: { value: 'ask', locked: true } },
+      { maxApprovalMode: 'auto' },
+    );
+    installManagedAppSettings(loaded);
+    installManagedApprovalCeiling(loaded);
+    const locked = {
+      success: false,
+      code: 'managed_setting_locked',
+      key: 'defaultApprovalMode',
+      error: DENIAL,
+    };
+
+    const created = await send('POST', '/', {
+      name: 'Other',
+      slug: 'other',
+      defaultApprovalMode: 'never',
+    });
+    expect(created.status).toBe(403);
+    expect(await json(created)).toEqual(locked);
+
+    const updated = await send('PUT', '/demo', {
+      defaultApprovalMode: 'never',
+    });
+    expect(updated.status).toBe(403);
+    expect(await json(updated)).toEqual(locked);
+    expect(stored().defaultApprovalMode).toBe('auto');
   });
 });

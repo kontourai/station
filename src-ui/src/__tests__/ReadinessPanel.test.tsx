@@ -198,6 +198,9 @@ describe('ReadinessPanel', () => {
     queryState.error = new Error('veritas readiness exited with code 2');
     render(<ReadinessPanel projectSlug="dev" />);
     expect(screen.getByRole('alert').textContent).toContain(
+      'Try again in a moment.',
+    );
+    expect(screen.getByRole('alert').textContent).not.toContain(
       'veritas readiness exited with code 2',
     );
   });

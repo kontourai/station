@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -1296,8 +1297,30 @@ export function stageNodePtyPrebuild(
     manifest === undefined ? readNodePtyPrebuildManifest(root) : manifest;
   const target = `${platform}-${arch}`;
   const record = resolved?.artifacts?.[target];
-  if (!record)
-    return { staged: false, reason: `no pinned prebuild for ${target}` };
+  if (!record) {
+    if (NODE_PTY_PREBUILD_TARGETS.includes(target)) {
+      const bundled = confinedPackageTarget(
+        installedPackagePath(root, entry),
+        `prebuilds/${target}`,
+        `unapproved node-pty prebuild for ${entry.path}`,
+        { mustExist: false, file: false },
+      );
+      const bundledStat = lstatOrNull(bundled);
+      if (bundledStat) {
+        if (!bundledStat.isDirectory())
+          throw new Error(
+            `node-pty prebuild target is not a directory: ${target}`,
+          );
+        // The upstream hook checks directory presence, so an unapproved
+        // bundled binary would otherwise suppress the required source build.
+        rmSync(bundled, { recursive: true });
+      }
+    }
+    return {
+      staged: false,
+      reason: `no pinned prebuild for ${target}; source build required`,
+    };
+  }
   if (resolved.version !== entry.version)
     throw new Error(
       `node-pty prebuild manifest pins ${resolved.version}, entry approves ${entry.version}`,

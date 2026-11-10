@@ -1,9 +1,11 @@
 import { ACCOUNT_PREFERENCE_KEYS } from '@kontourai/station-contracts/account-preferences';
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
+import { Select } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { SettingsGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { ChangelogPreference } from '../../components/updates/ChangelogPreference';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import {
   useDeviceSettings,
@@ -81,12 +83,13 @@ export function SystemSection({
           {...settingsRow('desktop-app-updates')}
           tabIndex={-1}
         >
-          <span className="settings__field-label">
-            {settingsRow('desktop-app-updates').title}
-          </span>
-          <DesktopUpdateCheck />
+          <DesktopUpdateCheck title="Desktop app updates" />
         </div>
       )}
+
+      <div {...settingsRow('show-release-notes')} tabIndex={-1}>
+        <ChangelogPreference />
+      </div>
 
       {/* The card's own "Server · {name}" heading labels this row; a row
           title above it would name the same server twice. */}
@@ -114,7 +117,7 @@ export function SystemSection({
           provenance={provenance?.serverUpdateDownloadPolicy}
         />
         <ManagedFieldset provenance={provenance?.serverUpdateDownloadPolicy}>
-          <select
+          <Select
             id="serverUpdateDownloadPolicy"
             value={config.serverUpdateDownloadPolicy ?? 'after-24h'}
             onChange={(event) =>
@@ -128,7 +131,7 @@ export function SystemSection({
             <option value="never">Never</option>
             <option value="after-24h">After 24 hours</option>
             <option value="immediately">Immediately</option>
-          </select>
+          </Select>
         </ManagedFieldset>
         <span className="settings__field-hint">
           For a Station service installed from a release archive: when it

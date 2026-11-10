@@ -1,4 +1,5 @@
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
+import { telemetrySendingForbidden } from '@kontourai/station-contracts/product-telemetry';
 import { authenticatedFetch, mutateJson } from '@kontourai/station-sdk';
 import {
   type ApiRequestScope,
@@ -113,7 +114,8 @@ export function useTelemetryNotice(enabled: boolean) {
         const state = current.publishers[publisher];
         return (
           state &&
-          state.reason !== 'DNT' &&
+          // DNT, or a managed policy that turns telemetry off (#4521).
+          !telemetrySendingForbidden(state) &&
           current.liteNotices?.[publisher]?.inventoryRevision !== revision
         );
       })

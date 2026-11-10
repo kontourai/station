@@ -4,6 +4,8 @@ import type {
   OrchestrationSessionSummary,
   TaskListRecord,
 } from '@kontourai/station-sdk';
+import type { ChatStationBindingV1 } from '../../connections/station-connection';
+import { chatBelongsToStation } from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { serverWorkLive } from '../../utils/conversation-activity';
 import {
@@ -50,6 +52,7 @@ export type WorkAttentionKind =
   | 'answer'
   | 'interrupted'
   | 'blocked'
+  | 'delivery-unconfirmed'
   | 'queued'
   | 'waiting';
 
@@ -65,6 +68,9 @@ export interface WorkActivity {
 }
 
 export interface WorkFacts {
+  chatBinding?: ChatStationBindingV1;
+  /** Host-only detail reads and controls must not borrow a bound receiver ID. */
+  hostDetails?: boolean;
   /** Recorded run root, resolved against this presentation's row identities. */
   runRootId?: string;
   station?: { id: string; label: string };
@@ -86,6 +92,7 @@ const WORK_ATTENTION_ORDER: readonly WorkAttentionKind[] = [
   'approval',
   'answer',
   'waiting',
+  'delivery-unconfirmed',
   'queued',
   'blocked',
   'interrupted',
@@ -149,6 +156,14 @@ function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
   // Requests still waiting on the user, not every one open on the server: an
   // answered one waits on the engine (utils/waiting-approvals).
   if (requestsWaitingOnUser(chat).length > 0) return 'approval';
+  if (
+    chat.outboundQueuedTurns?.some(
+      (turn) =>
+        turn.status === 'may-have-started' ||
+        (turn.status === 'invoking' && turn.awaitingLookup),
+    )
+  )
+    return 'delivery-unconfirmed';
   if (chat.status === 'queued') return 'queued';
   if (chat.orchestrationStatus === 'awaiting-approval') return 'waiting';
   return undefined;
@@ -207,7 +222,16 @@ export function buildWorkFacts({
           ? sessionByThread.get(item.orchestrationThreadId)
           : undefined;
     const chat = item.chatSessionId ? chats[item.chatSessionId] : undefined;
-    const entry: WorkFacts = {};
+    const entry: WorkFacts = {
+      chatBinding: chat?.stationBinding,
+      hostDetails:
+        item.kind !== 'remote-session' && (!chat || chatBelongsToStation(chat)),
+    };
+    if (chat?.stationBinding && chat.stationBinding.affinity.kind !== 'host')
+      entry.station = {
+        id: chat.stationBinding.environmentId,
+        label: chat.stationBinding.stationName,
+      };
     if (
       session?.delegation?.environmentKind === 'peer' &&
       session.delegation.environmentId

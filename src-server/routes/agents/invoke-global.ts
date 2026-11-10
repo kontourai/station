@@ -129,6 +129,7 @@ export async function invokeGlobalPrompt(
   });
 
   const tempAgent = await ctx.framework.createTempAgent({
+    purpose: 'agent-run',
     name: `invoke-${Date.now()}`,
     instructions: system || resolvedDefault,
     model: mainModel,
@@ -173,6 +174,7 @@ export async function invokeGlobalPrompt(
   let structureRunId: string;
   try {
     const structureAgent = await ctx.framework.createTempAgent({
+      purpose: 'agent-run',
       name: `invoke-structure-${Date.now()}`,
       instructions: 'Format the provided information as structured JSON.',
       model: fastModel || mainModel,

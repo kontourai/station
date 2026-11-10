@@ -4,6 +4,7 @@ import {
   useRegistrySourcesQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
@@ -124,6 +125,9 @@ export function MarketplaceSources({
                   </p>
                 )}
                 {source.error && <p role="status">{source.error}</p>}
+                {source.managedDenial && (
+                  <p role="status">{source.managedDenial}</p>
+                )}
               </div>
               <div>
                 <ActionRow
@@ -142,7 +146,11 @@ export function MarketplaceSources({
                     source.origin !== 'plugin' ? (
                       <Button
                         variant="secondary"
-                        disabled={mutation.isPending}
+                        // #4521: a source the managed policy refuses stays off.
+                        disabled={
+                          mutation.isPending ||
+                          source.managedDenial !== undefined
+                        }
                         onClick={() =>
                           act(source, source.enabled ? 'disable' : 'enable')
                         }
@@ -176,7 +184,9 @@ export function MarketplaceSources({
           ))}
       </details>
       {notice && <p role="status">{notice}</p>}
-      {mutation.error && <p role="alert">{mutation.error.message}</p>}
+      {mutation.error && (
+        <p role="alert">{describeStationFailure(mutation.error).body}</p>
+      )}
       {open && (
         <Dialog
           title="Add marketplace"
@@ -264,7 +274,9 @@ export function MarketplaceSources({
               Other marketplace indexes require an adapter. Private
               credential-bearing URLs are not supported.
             </p>
-            {mutation.error && <p role="alert">{mutation.error.message}</p>}
+            {mutation.error && (
+              <p role="alert">{describeStationFailure(mutation.error).body}</p>
+            )}
           </div>
         </Dialog>
       )}

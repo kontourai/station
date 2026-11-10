@@ -120,14 +120,21 @@ export const STATION_HOME_ROOTS: Readonly<
   runtime: 'state',
   'runtime-auth-health.json': 'state',
   scheduler: 'state',
+  // No-project chat workspaces may contain files created during a conversation.
+  scratch: 'state',
   security: 'state',
   'session-summaries': 'state',
   'setup-imports.json': 'state',
   skills: 'state',
   'station-home-recovery.json': 'state',
   'task-captures': 'state',
+  // #4508: recorded GitHub follow-ups and their cursors, per Task.
+  'task-follow-ups': 'state',
   'task-graph.json': 'state',
   'task-outputs': 'state',
+  // #4507: Task-owned worktree records, apart from the task store so an
+  // older Station never reads them.
+  'task-worktrees.json': 'state',
   'terminal-history': 'state',
   // Durable terminal session identities and their bounded output journals.
   'terminal-journals': 'state',
@@ -280,6 +287,9 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     ['data', 'agent-runtime', 'steps.sqlite'],
     ['scheduler', 'scheduler.sqlite'],
     ['automation', 'automation.sqlite'],
+    // #4508: Task tracker follow-ups. Created at the first poll with the
+    // preview on.
+    ['task-follow-ups', 'task-follow-ups.sqlite'],
     ['authentication', 'application-sessions.sqlite'],
     ['authentication', 'local-accounts.sqlite'],
     ['authentication', 'local-account-authority.sqlite'],

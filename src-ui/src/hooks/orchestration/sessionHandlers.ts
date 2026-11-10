@@ -1,4 +1,8 @@
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
+import type {
+  StationStateScope,
+  StationStateSource,
+} from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import {
   type ActiveChatsStore,
@@ -23,7 +27,9 @@ export function handleSessionLifecycleEvent(
     OrchestrationEvent,
     { method: 'session.started' | 'session.configured' }
   >,
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
   // Only session.configured carries a resolved approvalMode (archive#727) —
   // session.started fires first and has none, so this
   // must not overwrite an existing lastAppliedApprovalMode with undefined.
@@ -44,9 +50,7 @@ export function handleSessionLifecycleEvent(
     !Array.isArray(event.metadata.effectiveModelOptions)
       ? (event.metadata.effectiveModelOptions as Record<string, unknown>)
       : undefined;
-  const currentChat = activeChatsStore.getChatForExecutionSession(
-    event.threadId,
-  );
+  const currentChat = chatStore.getChatForExecutionSession(event.threadId);
   // #4162: a Session's engine connection is fixed when it starts, and the
   // server stamps it on that Session's own `session.started`. Without this a
   // successor Session on another connection kept its predecessor's id.
@@ -65,7 +69,7 @@ export function handleSessionLifecycleEvent(
               agentConnectionObservedFor: event.threadId,
             }
           : {};
-  activeChatsStore.updateChat(event.threadId, {
+  chatStore.updateChat(event.threadId, {
     provider: event.provider,
     orchestrationProvider: event.provider,
     ...(currentChat?.orchestrationProvider !== event.provider
@@ -127,12 +131,15 @@ const TERMINAL_SESSION_STATES = new Set([
 type SessionActivityStore = Pick<
   ActiveChatsStore,
   'getSnapshot' | 'updateChat'
->;
+> &
+  Partial<Pick<ActiveChatsStore, 'getChatForExecutionSession'>>;
 
 export function handleSessionStateChangedEvent(
   event: Extract<OrchestrationEvent, { method: 'session.state-changed' }>,
   store: SessionActivityStore = activeChatsStore,
+  station?: StationStateSource,
 ) {
+  if (typeof station === 'object') store = activeChatsStore.forStation(station);
   // archive#1076: `to` is the provider's coarse PROCESS status — 'running' means
   // the runtime attached, not that a turn is open. Mirror the archive#1034 snapshot
   // guard using the client's turn fold (orchestrationTurnOpen — set by
@@ -146,7 +153,9 @@ export function handleSessionStateChangedEvent(
   // between state-changed('running') and turn.started; that self-corrects
   // on the very next event and is strictly better than trusting process
   // status (the bug this closes).
-  const chat = store.getSnapshot()[event.threadId];
+  const chat =
+    store.getChatForExecutionSession?.(event.threadId) ??
+    store.getSnapshot()[event.threadId];
   // #2309: the server's record answers first; the legacy fold is the
   // older-server path.
   const turnActive =
@@ -198,7 +207,10 @@ export function handleSessionStateChangedEvent(
           activityHint: undefined,
           // #2456: this session's children end with it; a sibling session of
           // the same chat keeps its own (R1).
-          backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
+          backgroundTasks: backgroundTasksAfterSessionEnds(
+            event.threadId,
+            station,
+          ),
         }
       : {}),
   });
@@ -207,7 +219,9 @@ export function handleSessionStateChangedEvent(
 export function handleSessionExitedEvent(
   event: Extract<OrchestrationEvent, { method: 'session.exited' }>,
   store: SessionActivityStore = activeChatsStore,
+  station?: StationStateSource,
 ) {
+  if (typeof station === 'object') store = activeChatsStore.forStation(station);
   const chat = store.getSnapshot()[event.threadId];
   // A session the conversation has moved past (a stopped never-used
   // predecessor shares the chat's key) says nothing about the live one.
@@ -216,11 +230,16 @@ export function handleSessionExitedEvent(
   if (chat?.streamingMessage || chat?.orchestrationTurnOpen) {
     // Engine death used to tear down the streaming shell without committing
     // the buffered answer (replay: in-flight-content-dropped-on-session-exit).
-    finalizeAssistantTurn(event.threadId, undefined, {
-      turnId: chat.openTurnId,
-      createdAt: event.createdAt,
-      answerEligible: false,
-    });
+    finalizeAssistantTurn(
+      event.threadId,
+      undefined,
+      {
+        turnId: chat.openTurnId,
+        createdAt: event.createdAt,
+        answerEligible: false,
+      },
+      typeof station === 'object' ? station : undefined,
+    );
   }
   store.updateChat(event.threadId, {
     status: 'idle',
@@ -228,7 +247,7 @@ export function handleSessionExitedEvent(
     orchestrationTurnOpen: false,
     orchestrationSessionStarted: false,
     activityHint: undefined,
-    backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
+    backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId, station),
     // #2880: the note speaks for a live engine that may still acknowledge;
     // once the session has ended, nothing will.
     unacknowledgedDecisions: [],
@@ -241,26 +260,35 @@ export function handleSessionExitedEvent(
  */
 export function handleApprovalModeSetEvent(
   event: Extract<OrchestrationEvent, { method: 'session.approval-mode-set' }>,
+  station?: StationStateScope,
 ) {
+  const chatStore = activeChatsStore.forStation(station);
   const update = foldApprovalPosture(
-    activeChatsStore.getChatForExecutionSession(event.threadId),
+    chatStore.getChatForExecutionSession(event.threadId),
     event.approvalMode,
     eventStreamPosition(event),
   );
   if (Object.keys(update).length > 0)
-    activeChatsStore.updateChat(event.threadId, update);
+    chatStore.updateChat(event.threadId, update);
 }
 
 export function handleSessionStopSettledEvent(
   event: Extract<OrchestrationEvent, { method: 'session.stop-settled' }>,
+  station?: StationStateScope,
 ) {
-  observeStopSettled(event);
-  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const chatStore = activeChatsStore.forStation(station);
+  observeStopSettled(event, station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (chat?.streamingMessage || chat?.orchestrationTurnOpen) {
-    finalizeAssistantTurn(event.threadId, undefined, {
-      turnId: event.turnId ?? chat.openTurnId,
-      createdAt: event.createdAt,
-      answerEligible: false,
-    });
+    finalizeAssistantTurn(
+      event.threadId,
+      undefined,
+      {
+        turnId: event.turnId ?? chat.openTurnId,
+        createdAt: event.createdAt,
+        answerEligible: false,
+      },
+      station,
+    );
   }
 }

@@ -4,6 +4,9 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
+import { StationRequestAuthorityError } from '@kontourai/station-sdk/client';
+import type { StationConnection } from '../../connections/station-connection';
+import { chatBelongsToStation } from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import type { workObservation } from '../../contexts/work-observation';
 import { newerConversationActivity } from '../../utils/conversation-activity';
@@ -21,6 +24,7 @@ export type ConversationOpenCommit =
 
 interface ConversationOpenDockEffects {
   apiBase: string;
+  connection?: StationConnection;
   observation?: ReturnType<typeof workObservation>;
   open: Parameters<typeof commitConversationOpen>[0]['open'];
   projectName: Parameters<typeof commitConversationOpen>[0]['projectName'];
@@ -44,13 +48,22 @@ export async function resolveConversationOpenAuthoritatively(
   apiBase: string,
   observation?: ReturnType<typeof workObservation>,
   isCurrent?: () => boolean,
+  connection?: StationConnection,
 ): Promise<ConversationOpenResolution> {
-  const read = observation?.read(conversationId, 'open', isCurrent);
+  const current = () =>
+    isCurrent?.() !== false && (!connection || connection.isCurrent());
+  const read = observation?.read(conversationId, 'open', current);
   const { resolveConversationOpen } = await import(
     '@kontourai/station-sdk/conversation-open'
   );
   try {
-    const resolution = await resolveConversationOpen(conversationId, apiBase);
+    if (!current()) throw new StationRequestAuthorityError();
+    const resolution = await resolveConversationOpen(
+      conversationId,
+      connection?.targetApiBase ?? apiBase,
+      connection ? { requestScope: connection.requestScope } : undefined,
+    );
+    if (!current()) throw new StationRequestAuthorityError();
     if (resolution.status === 'unavailable') read?.failed();
     else if (resolution.status === 'resolved')
       read?.observed(
@@ -322,17 +335,20 @@ export async function openConversationForDock(
   const generation = effects.observation?.streamEpochGeneration();
   const isCurrent = () =>
     effects.observation?.streamEpochGeneration() === generation &&
-    effects.isCurrent?.() !== false;
+    effects.isCurrent?.() !== false &&
+    (!effects.connection || effects.connection.isCurrent());
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
       typeof conversation === 'string' ? conversation : conversation.id,
       effects.apiBase,
       effects.observation,
       isCurrent,
+      effects.connection,
     );
     if (!isCurrent()) return false;
     const outcome = await commitConversationOpen({
       resolution,
+      connection: effects.connection,
       open: effects.open,
       projectName: effects.projectName,
       findTab: effects.findTab,
@@ -373,15 +389,26 @@ export async function retryActiveConversationForDock(
   onUnavailable: () => void,
   readChat?: (tabId: string) => Partial<ChatUIState> | undefined,
   observation?: ReturnType<typeof workObservation>,
+  connection?: StationConnection,
 ): Promise<void> {
+  if (
+    readChat &&
+    !chatBelongsToStation(readChat(sessionId) ?? {}, connection)
+  ) {
+    onUnavailable();
+    return;
+  }
   const generation = observation?.streamEpochGeneration();
-  const isCurrent = () => observation?.streamEpochGeneration() === generation;
+  const isCurrent = () =>
+    observation?.streamEpochGeneration() === generation &&
+    (!connection || connection.isCurrent());
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
       conversationId,
       apiBase,
       observation,
       isCurrent,
+      connection,
     );
     if (!isCurrent()) return;
     updateChat(
@@ -396,6 +423,7 @@ export async function retryActiveConversationForDock(
 
 export async function commitConversationOpen({
   resolution,
+  connection,
   open,
   projectName,
   findTab,
@@ -404,6 +432,7 @@ export async function commitConversationOpen({
   agentName,
 }: {
   resolution: ConversationOpenResolution;
+  connection?: StationConnection;
   open: (
     conversationId: string,
     agentSlug: string,
@@ -414,12 +443,16 @@ export async function commitConversationOpen({
     acceptedModel?: string,
     execution?: {
       hydrateMessages: true;
+      connection?: StationConnection;
       beforeFocus?: () => boolean;
       isCurrent?: () => boolean;
     },
   ) => boolean | Promise<boolean>;
   projectName: (projectSlug: string | undefined) => string | undefined;
-  findTab: (conversationId: string) => string | undefined;
+  findTab: (
+    conversationId: string,
+    connection?: StationConnection,
+  ) => string | undefined;
   isCurrent?: () => boolean;
   readChat?: (tabId: string) => Partial<ChatUIState> | undefined;
   agentName?: (agentId: string) => string | undefined;
@@ -455,6 +488,7 @@ export async function commitConversationOpen({
     conversation.acceptedModel,
     {
       hydrateMessages: true,
+      ...(connection ? { connection } : {}),
       ...(isCurrent ? { beforeFocus: isCurrent, isCurrent } : {}),
     },
   );
@@ -471,8 +505,13 @@ export async function commitConversationOpen({
     };
   }
 
-  const tabId = findTab(conversation.id);
-  if (!tabId) {
+  const tabId = findTab(conversation.id, connection);
+  if (
+    !tabId ||
+    (connection &&
+      readChat?.(tabId) &&
+      !chatBelongsToStation(readChat(tabId)!, connection))
+  ) {
     return {
       kind: 'recovery',
       recovery: {
@@ -487,11 +526,14 @@ export async function commitConversationOpen({
   return {
     kind: 'opened',
     tabId,
-    patch: conversationOpenPatch(resolution, readChat?.(tabId), {
-      agentName:
-        resolution.status === 'resolved' && resolution.execution
-          ? agentName?.(resolution.execution.agentId)
-          : undefined,
-    }),
+    patch: {
+      ...(connection ? { stationBinding: connection.binding } : {}),
+      ...conversationOpenPatch(resolution, readChat?.(tabId), {
+        agentName:
+          resolution.status === 'resolved' && resolution.execution
+            ? agentName?.(resolution.execution.agentId)
+            : undefined,
+      }),
+    },
   };
 }

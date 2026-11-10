@@ -297,9 +297,7 @@ test('a stale revision refuses honestly, refreshes, and never retries the mutati
   fireEvent.click(
     await screen.findByRole('button', { name: 'Confirm change' }),
   );
-  expect(
-    await screen.findByText(/Someone else changed Project access first/),
-  ).toBeTruthy();
+  expect(await screen.findByText(/Try again in a moment/)).toBeTruthy();
   expect(stub.posts).toHaveLength(1);
 });
 

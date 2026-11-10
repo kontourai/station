@@ -5,6 +5,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatDockContentArea } from '../components/chat-dock/ChatDockContentArea';
 import type { ChatSession } from '../types';
+// The migration suite owns recovery interactions; this route test uses its real cached module.
+import '../components/conversation/LegacyConversationRecovery';
 
 let historyPending: Promise<void> | null = null;
 let historyError: Error | null = null;
@@ -22,7 +24,7 @@ vi.mock('../components/chat-dock/ChatDockBody', () => ({
 }));
 
 describe('ChatDockContentArea', () => {
-  test('an invalid saved remote destination cannot expose the local composer', () => {
+  test('an invalid saved remote destination cannot expose the local composer', async () => {
     const onNewChat = vi.fn();
     renderContentArea(vi.fn(), onNewChat, false, {
       id: 'invalid-remote',
@@ -43,7 +45,7 @@ describe('ChatDockContentArea', () => {
       updatedAt: 1,
     });
     expect(
-      screen.getByText(
+      await screen.findByText(
         'This remote chat’s saved destination could not be read',
       ),
     ).toBeTruthy();

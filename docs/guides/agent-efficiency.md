@@ -9,7 +9,7 @@ additional tool permission.
 
 ## Review a Project's working configuration
 
-In **Project settings → Sources → Where Agent work starts**, discover the
+In **Project settings → Sources → Where new chats start**, discover the
 repository guidance, then review the proposed rules, validation commands,
 completion criteria, checkpoints and evidence pointers before applying them.
 Only the operator in person can discover or change this host-filesystem
@@ -159,7 +159,7 @@ or causal cost savings. Those remain separate acceptance observations.
 
 [Controlled visual captures](../learn/media/agent-efficiency-captures.json) retain
 390/1440 light/dark examples. The learning comparisons show access granted →
-read refused in the same current component, with synthetic owner data. They do
+read refused in the same captured component, with synthetic owner data. They do
 not establish a live account, installed app or causal savings result.
 
 ## Run an isolated GitHub repair
@@ -170,6 +170,10 @@ off. This is a personal-host operator API preview: it has no agent/MCP grant
 surface or hosted-tenant execution. Running the model can spend provider credits.
 Docker, Python 3 and an immutable image containing the pinned Codex CLI must be
 available. The command below prepares and separately qualifies that image.
+Under a [managed policy](managed-policy.md#network-exposure) that allows no
+remote clients, the worker's relay binds loopback, and repairs are refused on
+Linux (`repair-network-local-only`), where Docker reaches the host over its
+bridge instead.
 
 Use the authenticated operator API at `/api/isolated-repairs`. Requests use the
 same current operator credential/session as other host administration; a paired
@@ -208,9 +212,15 @@ run the Project's setup commands while preparing it.
    schedule/workflow_dispatch/push event and failure/timed_out conclusion. The
    episode needs keyFields and a green closeOn matcher. This budget limits
    requests and wall time; it is not a token or billing reservation.
-6. Read `GET /configuration`, then enable the exact source and rule through
-   `POST /configuration/enable` with `{kind:"source"|"rule",id,enabled:true,
-   expectedFingerprint}`. Read a new fingerprint between writes. A stale one
+6. Read `GET /configuration`, then enable the exact source through
+   `POST /configuration/enable` with `{kind:"source",id,enabled:true,
+   expectedFingerprint}`. A new rule starts in `observe` mode: it records
+   `would-start` or `suppressed` decisions in the delivery history but never
+   starts a repair. Observing still polls the source for GitHub runs (using
+   API quota) as soon as the source is enabled. Each observed run also takes
+   its dedupe key, so turning the rule `live` later does not act on that run. When those decisions look right, send
+   `{kind:"rule",id,mode:"live",expectedFingerprint}`. Earlier observed events
+   are not replayed. Read a new fingerprint between writes. A stale one
    refuses the change. Source, rule, profile and preview checks remain separate.
 
 A matching failure creates one canonical Task and one durable repair run. The

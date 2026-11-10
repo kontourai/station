@@ -561,6 +561,16 @@ describe('pending pairing exchange persistence', () => {
       expect(observePendingPairingApproval(ENDPOINT, now, storage)).toBeNull();
     });
 
+    test('a held exchange attempt is past approval, so it is not reported as awaiting it', () => {
+      const { storage } = fakeStorage();
+      const now = 1_000_000;
+      savePendingExchange(
+        exchange({ expiresAt: now + 240_000, exchangeAttempt: true }),
+        storage,
+      );
+      expect(observePendingPairingApproval(ENDPOINT, now, storage)).toBeNull();
+    });
+
     test('does NOT delete the record it observes, unlike loadPendingExchange', () => {
       const { storage, values } = fakeStorage();
       const now = 1_000_000;

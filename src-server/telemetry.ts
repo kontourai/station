@@ -6,6 +6,11 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { platform } from 'node:os';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import {
+  type ManagedPolicySummary,
+  managedPolicyDenial,
+  managedTelemetryAllowed,
+} from '@kontourai/station-contracts/managed-policy';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { AwsInstrumentation } from '@opentelemetry/instrumentation-aws-sdk';
@@ -23,6 +28,7 @@ import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { observeOtelBootstrapConfig } from './domain/telemetry-bootstrap-config.js';
 import { resolveOtelTelemetryConfiguration } from './domain/telemetry-configuration.js';
 import { assertHostedPersistenceBeforeSchemaSync } from './runtime/bootstrap/hosted-persistence-boundary.js';
+import { bootManagedPolicy } from './runtime/bootstrap/managed-policy-boot.js';
 import {
   isSupervisedEnvironment,
   whenHomeAccessAllowed,
@@ -33,6 +39,7 @@ import {
   beginOtelExport,
   beginOtelTelemetryDelivery,
   failOtelTelemetryBootstrap,
+  markOtelTelemetryManagedOff,
 } from './telemetry-delivery-state.js';
 import { resolveHomeDir } from './utils/paths.js';
 
@@ -53,6 +60,14 @@ export interface InitializeTelemetryOptions {
     endpoint: string,
   ) => TelemetrySdk;
   log?: (message: string) => void;
+  /**
+   * #4521: the managed policy this process loaded, or null for none. Read
+   * before anything else, because `limits.telemetry: false` means no
+   * exporter whatever the saved settings, environment or Do Not Track say.
+   * Defaults to the process's one policy load; a load that fails (Station
+   * will refuse to start) registers nothing.
+   */
+  managedPolicy?: () => { summary: ManagedPolicySummary } | null;
   /**
    * Holds the home writes (schema gate, installation identity) until this
    * settles; providers still register synchronously. A supervised generation
@@ -207,6 +222,21 @@ export async function initializeTelemetry(
 ): Promise<void> {
   const env = options.env ?? process.env;
   const homeDir = options.homeDir ?? resolveHomeDir();
+  let managed: { summary: ManagedPolicySummary } | null;
+  try {
+    managed = (options.managedPolicy ?? bootManagedPolicy)();
+  } catch {
+    // An unusable policy stops Station in `main()`; until then, export
+    // nothing a policy might have forbidden.
+    failOtelTelemetryBootstrap();
+    return;
+  }
+  if (managed && !managedTelemetryAllowed(managed.summary.limits)) {
+    markOtelTelemetryManagedOff(
+      managedPolicyDenial(managed.summary, 'usage sharing: it is turned off'),
+    );
+    return;
+  }
   let saved: Pick<AppConfig, 'otelTelemetryEndpoint' | 'otelTelemetryKeyRef'>;
   try {
     assertHostedPersistenceBeforeSchemaSync(homeDir, env);

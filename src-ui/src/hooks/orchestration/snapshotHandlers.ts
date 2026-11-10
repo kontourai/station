@@ -3,6 +3,11 @@ import {
   readProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
 import type { QueryClient } from '@tanstack/react-query';
+import {
+  chatBelongsToStation,
+  type StationStateScope,
+  stationPartitionKey,
+} from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-store';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
@@ -605,6 +610,7 @@ function planSnapshot(
 }
 
 export interface ApplyOrchestrationSnapshotOptions {
+  station?: StationStateScope;
   replayThreadId?: string;
   apiBase: string;
   /**
@@ -645,14 +651,20 @@ export function applyOrchestrationSnapshot(
   // payload type now declares. Independent of the chat-status sync plan
   // below: a delegate session is never itself a tracked chat, so it has no
   // entry in `chats` and never appears in `plan.sessionUpdates`.
+  const station = options?.station;
+  if (station && !station.isCurrent()) return;
+  const chatStore = activeChatsStore.forStation(station);
   const replayId = options?.replayThreadId;
   if (replayId && !isReplayThread(replayId))
     throw new Error('Snapshot replay requires a registered replay thread');
-  if (!replayId) backgroundTasksStore.reconcileSnapshot(payload);
+  if (!replayId && options?.apiBase)
+    backgroundTasksStore.reconcileSnapshot(payload, station ?? options.apiBase);
 
   const snapshot = Object.fromEntries(
-    Object.entries(activeChatsStore.getSnapshot()).filter(([id]) =>
-      replayId ? id === replayId : !isReplayThread(id),
+    Object.entries(activeChatsStore.getSnapshot()).filter(([id, chat]) =>
+      replayId
+        ? id === replayId
+        : !isReplayThread(id) && chatBelongsToStation(chat, station),
     ),
   );
   const { plan, openTurnChatKeys, queueDrainChatKeys } = planSnapshot(
@@ -667,7 +679,7 @@ export function applyOrchestrationSnapshot(
   // live store.
   if (!replayId) {
     for (const session of payload.sessions) {
-      activeChatsStore.applyConversationActivity(session.conversationActivity);
+      chatStore.applyConversationActivity(session.conversationActivity);
     }
   }
 
@@ -707,7 +719,7 @@ export function applyOrchestrationSnapshot(
     // broadcasts to every listener, and this loop runs on the reconnect hot
     // path (archive#3350/archive#3351), so the catch-up fields ride the status sync
     // rather than following it with a second write.
-    activeChatsStore.updateChat(threadId, {
+    chatStore.updateChat(threadId, {
       ...updates,
       ...(approvalToasts ? { approvalToasts } : {}),
       ...(pendingApprovalTurnIds ? { pendingApprovalTurnIds } : {}),
@@ -727,14 +739,19 @@ export function applyOrchestrationSnapshot(
       // A failed chunk load leaves the placeholder in place.
       void import('./hydrateOpenApprovalToasts')
         .then((module) =>
-          module.hydrateOpenApprovalToasts(apiBase, threadId, placeholders),
+          module.hydrateOpenApprovalToasts(
+            apiBase,
+            threadId,
+            placeholders,
+            station,
+          ),
         )
         .catch(() => {});
     }
   }
 
   for (const threadId of plan.exitedThreadIds) {
-    activeChatsStore.updateChat(threadId, {
+    chatStore.updateChat(threadId, {
       orchestrationSessionStarted: false,
       orchestrationStatus: 'exited',
       orchestrationTurnOpen: false,
@@ -750,21 +767,64 @@ export function applyOrchestrationSnapshot(
   // The live stream's snapshot is FULL (never thread-filtered), so a
   // recorded reporter it no longer lists is gone (D2).
   if (!replayId) {
-    reconcileChildWorkSnapshot(payload.sessions);
-    // A snapshot names its Station; one without (no caller today) folds into
-    // no partition rather than a guessed one.
-    if (options?.apiBase)
-      childWorkGlobalStore.reconcileSnapshot(options.apiBase, payload.sessions);
+    reconcileChildWorkSnapshot(payload.sessions, station ?? options?.apiBase);
+    if (options?.apiBase) {
+      childWorkGlobalStore.reconcileSnapshot(
+        stationPartitionKey(station ?? options.apiBase),
+        payload.sessions,
+      );
+      const chats = Object.entries(chatStore.getSnapshot());
+      const matchingChats = (id: string) =>
+        chats
+          .filter(
+            ([key, chat]) =>
+              key === id ||
+              chat.currentSessionId === id ||
+              chat.conversationId === id,
+          )
+          .map(([key]) => key);
+      for (const session of payload.sessions) {
+        const direct = matchingChats(session.threadId);
+        const candidates = direct.length
+          ? direct
+          : session.conversationId
+            ? matchingChats(session.conversationId)
+            : [];
+        const chatKey = candidates.length === 1 ? candidates[0] : undefined;
+        if (chatKey)
+          backgroundTasksStore.bindProviderReporter(
+            station ?? options.apiBase,
+            session.threadId,
+            chatKey,
+          );
+      }
+      backgroundTasksStore.reconcileProviderReporters(
+        station ?? options.apiBase,
+        new Set(payload.sessions.map((session) => session.threadId)),
+      );
+    }
   }
 
   if (!replayId && options?.apiBase) {
     for (const chatKey of queueDrainChatKeys) {
       if (activeChatsStore.getSnapshot()[chatKey]?.queuedMessages?.length)
-        drainQueuedMessageOnTurnCompleted(options.apiBase, chatKey);
+        drainQueuedMessageOnTurnCompleted(
+          options.apiBase,
+          chatKey,
+          undefined,
+          undefined,
+          station,
+        );
     }
   }
 
-  if (!isReconnectFallback || !options || replayId) return;
+  if (
+    !isReconnectFallback ||
+    !options ||
+    replayId ||
+    (station && station.binding.affinity.kind !== 'host')
+  )
+    return;
   // Bounded catch-up guardrail (archive#1225): force a real refetch for every
   // tracked chat this snapshot named, reusing the SAME mechanism
   // `useRehydrateSessions` uses on mount (`rehydrateChatSession`) rather than

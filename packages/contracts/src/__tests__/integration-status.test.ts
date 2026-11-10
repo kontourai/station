@@ -169,3 +169,38 @@ describe('integration status boundary', () => {
     ).toBeNull();
   });
 });
+
+test('optional CLI metadata is bounded, GitHub-only and never accepts token fields or stale account facts on failure', () => {
+  const authentication = {
+    state: 'signed-in',
+    observedAt: 1000,
+    account: 'repo-owner',
+    scopes: ['repo', 'read:org', 'admin:public_key'],
+  };
+  const github = { ...connection, provider: 'github', authentication };
+  expect(parseIntegrationConnectionStatus(github)).toEqual(github);
+  for (const invalid of [
+    { ...authentication, token: 'private-token' },
+    { ...authentication, state: 'failed' },
+    { ...authentication, observedAt: -1 },
+    { ...authentication, account: 'ghp_private-token' },
+    { ...authentication, scopes: ['repo', 'repo'] },
+    { ...authentication, scopes: ['ghp_private-token'] },
+    {
+      ...authentication,
+      scopes: Array.from({ length: 33 }, (_, index) => `scope-${index}`),
+    },
+  ])
+    expect(
+      parseIntegrationConnectionStatus({ ...github, authentication: invalid }),
+    ).toBeNull();
+  expect(
+    parseIntegrationConnectionStatus({ ...connection, authentication }),
+  ).toBeNull();
+  expect(
+    parseIntegrationConnectionStatus({
+      ...github,
+      authentication: { state: 'unknown', observedAt: 0 },
+    })?.authentication,
+  ).toEqual({ state: 'unknown', observedAt: 0 });
+});

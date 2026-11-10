@@ -191,6 +191,12 @@ export function createBrowserService(
         faviconEnabled: options.experienceEnabled,
         egressPolicy: egressPolicyFor(profile, listeners, localTargets),
         onEvent: (event) => {
+          if (event.kind === 'launch-failed')
+            logger.warn('browser: Chromium could not start', {
+              projectId: profile.projectId,
+              reach: profile.reach,
+              ...event,
+            });
           if (
             event.kind === 'request-blocked' ||
             event.kind === 'egress-refused'

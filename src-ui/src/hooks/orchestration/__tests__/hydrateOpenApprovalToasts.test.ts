@@ -29,6 +29,11 @@ vi.mock('../../../contexts/ToastContext', () => ({
 }));
 vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: {
+    forStation() {
+      return this;
+    },
+    getSnapshot: () => ({ 'thread-1': chat }),
+    getChatKeyForExecutionSession: () => (chat ? 'thread-1' : undefined),
     getChatForExecutionSession: () => chat,
     updateChat: (...args: [string, Record<string, any>]) => updateChat(...args),
   },

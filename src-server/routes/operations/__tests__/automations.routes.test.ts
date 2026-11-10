@@ -2,8 +2,14 @@ import { describe, expect, test } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
+import {
+  QUALIFICATION_RULE,
+  workflowRun,
+} from '../../../services/automation/__tests__/fixtures/workflow-run-fixture.js';
+import { recordAutomationEvent } from '../../../services/automation/automation-intake.js';
 import { createAutomationLedger } from '../../../services/automation/automation-ledger.js';
 import { AutomationPolicyUnavailableError } from '../../../services/automation/automation-store.js';
+import { normalizeGitHubWorkflowRun } from '../../../services/automation/github-workflow-run.js';
 import { createAutomationRoutes } from '../automations.js';
 
 const makeTempDir = trackTempDirs();
@@ -108,6 +114,93 @@ describe('GET /automations/deliveries', () => {
     ]);
     const one = await json(await app.request('/deliveries?limit=1'));
     expect(one.data.deliveries).toHaveLength(1);
+    ledger.close();
+  });
+
+  test('returns each matched rule mode and decision with a bounded action snapshot (#4509)', async () => {
+    const ledger = createAutomationLedger({
+      directory: makeTempDir('automation-routes-decisions-'),
+    });
+    const source = {
+      id: 'source-1',
+      kind: 'github-poll' as const,
+      name: 'source',
+      enabled: true,
+      repository: 'kontourai/station',
+      grants: [
+        {
+          projectId: 'station',
+          agentId: 'repairer',
+          actions: ['dispatch-task' as const],
+        },
+      ],
+    };
+    const rule = (id: string, mode: 'observe' | 'live') => ({
+      ...QUALIFICATION_RULE,
+      id,
+      name: `Rule ${id}`,
+      mode,
+      action: {
+        kind: 'dispatch-task' as const,
+        projectId: 'station',
+        agentId: 'repairer',
+        instructions: 'SECRET-INSTRUCTIONS-NOT-PROJECTED',
+        budget: { maxTurns: 1, maxTokens: 1000, maxWallRuntimeMs: 60000 },
+      },
+    });
+    const now = Date.parse('2026-10-06T08:00:00.000Z');
+    const normalized = normalizeGitHubWorkflowRun(
+      workflowRun({ conclusion: 'failure', updatedAt: '2026-10-06T06:34:46Z' }),
+      { source, receivedAt: now },
+    );
+    if (normalized.kind !== 'event') throw new Error(normalized.reason);
+    recordAutomationEvent({
+      ledger,
+      source,
+      rules: [rule('rule-a', 'observe'), rule('rule-b', 'live')],
+      event: normalized.event,
+      transportId: normalized.event.semanticKey,
+      now,
+    });
+    const app = createAutomationRoutes(
+      {
+        listPolls: () => ledger.listPolls(),
+        preview: enabledPreview,
+        listDeliveries: (limit) => ledger.listDeliveries(limit),
+      },
+      logger,
+    );
+    const response = await app.request('/deliveries');
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain('SECRET-INSTRUCTIONS-NOT-PROJECTED');
+    expect(text).not.toContain('run.head_sha');
+    const [delivery] = JSON.parse(text).data.deliveries;
+    expect(delivery).toMatchObject({ outcome: 'matched', ruleId: 'rule-b' });
+    expect(delivery.decisions).toEqual([
+      {
+        ruleId: 'rule-a',
+        ruleName: 'Rule rule-a',
+        mode: 'observe',
+        outcome: 'would-start',
+        actionKind: 'dispatch-task',
+        projectId: 'station',
+        agentId: 'repairer',
+        episodeId: '37423043587',
+        decidedAt: '2026-10-06T08:00:00.000Z',
+      },
+      {
+        ruleId: 'rule-b',
+        ruleName: 'Rule rule-b',
+        mode: 'live',
+        outcome: 'intent-retained',
+        actionKind: 'dispatch-task',
+        projectId: 'station',
+        agentId: 'repairer',
+        episodeId: '37423043587',
+        decidedAt: '2026-10-06T08:00:00.000Z',
+      },
+    ]);
     ledger.close();
   });
 

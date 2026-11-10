@@ -16,9 +16,12 @@ import { type CSSProperties, useId, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ChildWorkActivity } from '../../components/chat/ChildWorkActivity';
 import { ChildWorkIdentity } from '../../components/chat/ChildWorkIdentity';
+import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
+import { ConversationStopControl } from '../../components/conversation/ConversationStopControl';
 import {
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
+  childWorkSummaryLabel,
   childWorkUsageClauses,
   formatChildWorkElapsed,
   latestChildTool,
@@ -51,7 +54,7 @@ function provenanceText(provenance: ChildWorkProvenance): string {
     case 'task':
       return `From task ${provenance.taskId}`;
     case 'cli':
-      return 'Started from the CLI';
+      return 'Recorded origin: CLI (reported)';
     case 'none':
       return 'No parent';
   }
@@ -124,13 +127,17 @@ export function ChildWorkRow({
   showProvenance,
   onOpenSession,
   agent,
+  stationName,
 }: {
   row: ChildWorkRowModel;
+  stationName?: string;
   agent?: SessionIconAgent;
   now: number;
   showProvenance: boolean;
   onOpenSession: (threadId: string) => void;
 }) {
+  const target = useOptionalConversationConnection();
+  const owningStationName = target?.station?.binding.stationName ?? stationName;
   const [expanded, setExpanded] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const transcriptId = useId();
@@ -175,13 +182,14 @@ export function ChildWorkRow({
   const handle = item.result?.handle;
   const sessionHandle = handle?.kind === 'session' ? handle : undefined;
   const usage = childWorkUsageClauses(item.usage);
-  const expandable = Boolean(summary) || isDelegate || usage.length > 0;
+  const expandable =
+    !running || Boolean(summary) || isDelegate || usage.length > 0;
 
   const stop = () => {
     if (row.stop === 'delegate-interrupt')
-      interrupt.mutate({ taskId: item.childId });
+      return interrupt.mutateAsync({ taskId: item.childId });
     else if (row.stop === 'provider-task-stop')
-      stopProviderTask.mutate({
+      return stopProviderTask.mutateAsync({
         threadId: item.reporterThreadId,
         taskId: item.childId,
       });
@@ -232,9 +240,13 @@ export function ChildWorkRow({
               progress={item.progress}
             />
           ) : null}
+          {item.status === 'completed' && !summary && (
+            <span className="child-work-row__note">Summary not reported</span>
+          )}
           {showProvenance && (
             <span className="child-work-row__provenance">
               {provenanceText(row.provenance)}
+              {owningStationName ? ` · Via ${owningStationName}` : ''}
             </span>
           )}
         </span>
@@ -251,7 +263,18 @@ export function ChildWorkRow({
       </button>
       {expanded && (
         <div className="child-work-row__detail">
-          {summary && <p className="child-work-row__summary">{summary}</p>}
+          {summary && (
+            <p className="child-work-row__summary">
+              <strong>{childWorkSummaryLabel(item.result?.source)}</strong>
+              {' · '}
+              <span>{summary}</span>
+            </p>
+          )}
+          {!running && !isDelegate && item.result?.source !== 'tool-return' && (
+            <p className="child-work-row__note">
+              No returned result was reported.
+            </p>
+          )}
           {summary && item.result?.summaryTruncated && (
             <p className="child-work-row__note">
               Summary cut at {CHILD_WORK_SUMMARY_MAX_CHARS.toLocaleString()}{' '}
@@ -296,29 +319,29 @@ export function ChildWorkRow({
             </Button>
           )}
           {row.stop && (
-            <Button
-              size="sm"
-              className="tap-target"
-              variant="danger-outline"
-              pending={stopRequested}
-              pendingLabel="Stopping…"
-              onClick={stop}
-              // #2486: some engines (Codex) have no softer path — stopping
-              // one subagent also ends the turn that started it. The matrix
-              // says so per engine (`stopEndsParentTurn`); this is never a
-              // copy hardcoded the same for every engine's control.
+            <span
               title={
                 row.stopEndsParentTurn
                   ? 'Stop this subagent and the turn that started it'
                   : undefined
               }
             >
-              Stop
-            </Button>
-          )}
-          {stopMutation.isError && row.stop && (
-            <span className="child-work-row__error" role="alert">
-              Could not stop this {isDelegate ? 'task' : 'subagent'}. Try again.
+              <ConversationStopControl
+                intent={
+                  isDelegate
+                    ? { kind: 'task', name: row.title }
+                    : { kind: 'turn' }
+                }
+                title={
+                  row.stopEndsParentTurn
+                    ? 'Stop this subagent and the turn that started it'
+                    : undefined
+                }
+                onCancel={stop}
+                stopPending={stopRequested}
+              >
+                Stop
+              </ConversationStopControl>
             </span>
           )}
           {noActiveTask && (

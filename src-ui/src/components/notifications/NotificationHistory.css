@@ -44,15 +44,25 @@
   background: rgb(0 0 0 / 40%);
 }
 
+/* Docked to the VISIBLE viewport's bottom edge, the one every fixed phone
+   sheet shares (`--visual-viewport-bottom-inset`, the chat dock and the shared
+   `ResponsiveDialogSurface` overlay read the same store): a fixed `bottom: 0`
+   is the layout viewport's edge, which iOS Safari's floating toolbar and a
+   software keyboard cover, so the sheet's last rows sat under the toolbar. */
 .notification-history--sheet {
   top: auto;
   right: 0;
-  bottom: 0;
+  bottom: var(--visual-viewport-bottom-inset, 0px);
   left: 0;
   width: 100%;
   max-height: min(
     85dvh,
-    calc(100dvh - var(--app-toolbar-total-height) - var(--k-space-4))
+    calc(
+      100dvh -
+      var(--visual-viewport-bottom-inset, 0px) -
+      var(--app-toolbar-total-height) -
+      var(--k-space-4)
+    )
   );
   margin-top: 0;
   padding-bottom: var(--safe-bottom, 0px);
