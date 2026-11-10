@@ -465,6 +465,45 @@ export async function readAppHomeProfileStatus(
   }
 }
 
+/** `ensureAppHomeProfile`'s containment refusal, shared with the read-only locate. */
+async function assertAppHomeProfileContained(
+  root: string,
+  dir: string,
+  fs: AppHomeFsPort,
+): Promise<void> {
+  const realRoot = await resolveBestEffortRealPath(root, fs);
+  const realDir = await resolveBestEffortRealPath(dir, fs);
+  if (!isPathContainedOrEqual(realRoot, realDir) || realRoot === realDir) {
+    throw new Error(
+      `App home profile: resolved profile dir '${dir}' is not contained in the app-homes root '${root}'; refusing to create it.`,
+    );
+  }
+}
+
+/**
+ * #4774: the directory `ensureAppHomeProfile` would return, without creating
+ * or writing anything. It refuses what ensure refuses before its first
+ * write (a profile dir outside the app-homes root, a marker that is not a
+ * regular file); it cannot see a failure of ensure's own writes. `exists`
+ * says whether the profile is there yet.
+ */
+export async function locateAppHomeProfile(
+  engineId: string,
+  options: { homeDir?: string; fs?: AppHomeFsPort } = {},
+): Promise<{ dir: string; exists: boolean }> {
+  const fs = options.fs ?? defaultFsPort();
+  const root = appHomesRootDir(options.homeDir);
+  const dir = appHomeProfileDir(engineId, options.homeDir);
+  await assertAppHomeProfileContained(root, dir, fs);
+  const markerPath = join(dir, PROFILE_MARKER_FILENAME);
+  const marker = await fs.lstat(markerPath);
+  if (marker && !marker.isFile)
+    throw new Error(
+      `App home profile: marker at '${markerPath}' is not a regular file; refusing to proceed.`,
+    );
+  return { dir, exists: marker !== null };
+}
+
 export interface EnsureAppHomeProfileResult {
   dir: string;
   created: boolean;
@@ -513,13 +552,7 @@ export async function ensureAppHomeProfile(
   // already only ever joins a validated `engineId` onto `root`, but the
   // channel-policy rule from claude-skills-materialization.ts is "check,
   // don't just construct-and-trust").
-  const realRoot = await resolveBestEffortRealPath(root, fs);
-  const realDir = await resolveBestEffortRealPath(dir, fs);
-  if (!isPathContainedOrEqual(realRoot, realDir) || realRoot === realDir) {
-    throw new Error(
-      `App home profile: resolved profile dir '${dir}' is not contained in the app-homes root '${root}'; refusing to create it.`,
-    );
-  }
+  await assertAppHomeProfileContained(root, dir, fs);
 
   const markerPath = join(dir, PROFILE_MARKER_FILENAME);
   const existingMarker = await fs.lstat(markerPath);

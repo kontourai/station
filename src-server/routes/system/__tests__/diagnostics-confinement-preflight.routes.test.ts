@@ -115,7 +115,11 @@ describe('#4774: GET /api/diagnostics/confinement-preflight', () => {
       level: 'os-profile',
       mechanismState: 'unavailable',
       mechanismReason: 'Seatbelt is macOS-only; this host is linux',
-      confinedAuthentication: { state: 'available', source: 'environment' },
+      confinedAuthentication: {
+        state: 'available',
+        source: 'environment',
+        appliesTo: 'starts-without-own-credential-profile',
+      },
     });
     expect(body.decidedAtStart).toEqual([
       'workspace-too-broad',
@@ -130,7 +134,11 @@ describe('#4774: GET /api/diagnostics/confinement-preflight', () => {
     });
     expect(claude(body)).toMatchObject({
       mechanismState: 'available',
-      confinedAuthentication: { state: 'available', source: 'environment' },
+      confinedAuthentication: {
+        state: 'available',
+        source: 'environment',
+        appliesTo: 'starts-without-own-credential-profile',
+      },
     });
   });
 
@@ -156,6 +164,7 @@ describe('#4774: GET /api/diagnostics/confinement-preflight', () => {
     expect(claude(body).confinedAuthentication).toEqual({
       state: 'available',
       source: 'config-dir',
+      appliesTo: 'starts-without-own-credential-profile',
     });
     expect(raw).not.toContain(SECRET);
     expect(raw).not.toContain(stationHome);

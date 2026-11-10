@@ -156,7 +156,11 @@ describe('#4774: the confinement preflight answers what a Claude start decides',
       appHomeEnv: async () => undefined,
       stationHome,
     });
-    expect(available).toEqual({ state: 'available', source: 'environment' });
+    expect(available).toEqual({
+      state: 'available',
+      source: 'environment',
+      appliesTo: 'starts-without-own-credential-profile',
+    });
     const text = JSON.stringify([preflight, available]);
     expect(text).not.toContain('sk-ant-fixture-secret');
     expect(text).not.toContain(stationHome);
@@ -193,6 +197,10 @@ describe('#4774: the confinement preflight answers what a Claude start decides',
       },
       stationHome,
     });
-    expect(continued).toEqual({ state: 'available', source: 'environment' });
+    expect(continued).toEqual({
+      state: 'available',
+      source: 'environment',
+      appliesTo: 'starts-without-own-credential-profile',
+    });
   });
 });

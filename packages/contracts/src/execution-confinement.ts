@@ -212,8 +212,19 @@ export type ConfinementPreflightMechanismState =
   | 'engine-reported';
 
 /**
+ * Which starts a checked credential answer covers.
+ * `starts-without-own-credential-profile`: starts that name no credential
+ * profile of their own, so the connection's active profile (or its app-home
+ * opt-in) applies. A start that names one (an Agent with its own
+ * `execution.credentialProfileRef`, a credential-recovery restart) uses
+ * that profile's confined home, and is decided when it starts.
+ */
+export type ConfinementPreflightCredentialScope =
+  'starts-without-own-credential-profile';
+
+/**
  * Whether a confined start of the engine would find a credential it can use
- * inside the confinement:
+ * inside the confinement, for the starts `appliesTo` names:
  *
  * - `available`: the start's own credential check passes (`source` names
  *   where it found one, never what).
@@ -225,17 +236,27 @@ export type ConfinementPreflightMechanismState =
  *   starts.
  */
 export type ConfinementPreflightCredential =
-  | { state: 'available'; source: 'environment' | 'config-dir' }
+  | {
+      state: 'available';
+      source: 'environment' | 'config-dir';
+      appliesTo: ConfinementPreflightCredentialScope;
+    }
   | {
       state: 'unavailable';
       fallback: 'confined-credential-unavailable';
       remedy: string;
+      appliesTo: ConfinementPreflightCredentialScope;
     }
-  | { state: 'unverified'; reason: string }
+  | {
+      state: 'unverified';
+      reason: string;
+      appliesTo: ConfinementPreflightCredentialScope;
+    }
   | { state: 'not-applicable'; reason: string };
 
 /** One engine's host-level confinement facts, for one mechanism. */
 export interface EngineConfinementPreflight {
+  /** An engine id: see {@link CONFINEMENT_PREFLIGHT_ENGINE_PATTERN}. */
   engine: string;
   mechanism: ConfinementMechanism;
   level: Exclude<ConfinementLevel, 'host'>;
@@ -265,6 +286,13 @@ export interface ConfinementPreflight {
 export const MAX_CONFINEMENT_PREFLIGHT_REASON_LENGTH = 1_024;
 /** The most engine entries a preflight may carry. */
 export const MAX_CONFINEMENT_PREFLIGHT_ENGINES = 16;
+/**
+ * The engine ids a preflight may name: lowercase letters, digits, `.`, `_`
+ * and `-`, starting with a letter or digit, at most 64 characters. Anything
+ * else (a path, a control sequence) refuses the whole answer.
+ */
+export const CONFINEMENT_PREFLIGHT_ENGINE_PATTERN =
+  /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 const PREFLIGHT_MECHANISMS = new Set<string>(['codex-sandbox', 'seatbelt']);
 const PREFLIGHT_LEVELS = new Set<string>([
@@ -283,6 +311,28 @@ const PREFLIGHT_FALLBACKS = new Set<string>([
   'resume-bound-elsewhere',
   'workspace-too-broad',
 ]);
+const PREFLIGHT_CREDENTIAL_SCOPES = new Set<string>([
+  'starts-without-own-credential-profile',
+]);
+
+/** Known fallback reasons, each at most once: no longer than the known set. */
+function preflightDecidedAtStart(
+  value: unknown,
+): ConfinementFallbackReason[] | undefined {
+  if (!Array.isArray(value) || value.length > PREFLIGHT_FALLBACKS.size)
+    return undefined;
+  const seen = new Set<string>();
+  for (const reason of value) {
+    if (
+      typeof reason !== 'string' ||
+      !PREFLIGHT_FALLBACKS.has(reason) ||
+      seen.has(reason)
+    )
+      return undefined;
+    seen.add(reason);
+  }
+  return [...seen] as ConfinementFallbackReason[];
+}
 
 function preflightText(value: unknown): value is string {
   return (
@@ -298,25 +348,36 @@ function parsePreflightCredential(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return undefined;
   const credential = value as Record<string, unknown>;
+  const appliesTo =
+    typeof credential.appliesTo === 'string' &&
+    PREFLIGHT_CREDENTIAL_SCOPES.has(credential.appliesTo)
+      ? (credential.appliesTo as ConfinementPreflightCredentialScope)
+      : undefined;
   switch (credential.state) {
     case 'available':
-      return credential.source === 'environment' ||
-        credential.source === 'config-dir'
-        ? { state: 'available', source: credential.source }
+      return appliesTo &&
+        (credential.source === 'environment' ||
+          credential.source === 'config-dir')
+        ? { state: 'available', source: credential.source, appliesTo }
         : undefined;
     case 'unavailable':
-      return credential.fallback === 'confined-credential-unavailable' &&
+      return appliesTo &&
+        credential.fallback === 'confined-credential-unavailable' &&
         preflightText(credential.remedy)
         ? {
             state: 'unavailable',
             fallback: credential.fallback,
             remedy: credential.remedy,
+            appliesTo,
           }
         : undefined;
     case 'unverified':
+      return appliesTo && preflightText(credential.reason)
+        ? { state: 'unverified', reason: credential.reason, appliesTo }
+        : undefined;
     case 'not-applicable':
       return preflightText(credential.reason)
-        ? { state: credential.state, reason: credential.reason }
+        ? { state: 'not-applicable', reason: credential.reason }
         : undefined;
     default:
       return undefined;
@@ -326,7 +387,10 @@ function parsePreflightCredential(
 /**
  * A confinement preflight read back from a Station, or `undefined` when the
  * value is not one (an unknown state, an over-long reason, too many
- * entries). Unknown extra keys are dropped.
+ * entries, an engine id outside {@link CONFINEMENT_PREFLIGHT_ENGINE_PATTERN},
+ * a `decidedAtStart` with an unknown or repeated reason). Unknown extra keys
+ * are dropped. Reason text is length-checked only; a caller that displays it
+ * sanitizes it.
  */
 export function parseConfinementPreflight(
   value: unknown,
@@ -334,13 +398,11 @@ export function parseConfinementPreflight(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return undefined;
   const preflight = value as Record<string, unknown>;
+  const decidedAtStart = preflightDecidedAtStart(preflight.decidedAtStart);
   if (
     !Array.isArray(preflight.engines) ||
     preflight.engines.length > MAX_CONFINEMENT_PREFLIGHT_ENGINES ||
-    !Array.isArray(preflight.decidedAtStart) ||
-    !preflight.decidedAtStart.every(
-      (reason) => typeof reason === 'string' && PREFLIGHT_FALLBACKS.has(reason),
-    )
+    !decidedAtStart
   )
     return undefined;
   const engines: EngineConfinementPreflight[] = [];
@@ -352,7 +414,8 @@ export function parseConfinementPreflight(
       engine.confinedAuthentication,
     );
     if (
-      !preflightText(engine.engine) ||
+      typeof engine.engine !== 'string' ||
+      !CONFINEMENT_PREFLIGHT_ENGINE_PATTERN.test(engine.engine) ||
       typeof engine.mechanism !== 'string' ||
       !PREFLIGHT_MECHANISMS.has(engine.mechanism) ||
       typeof engine.level !== 'string' ||
@@ -373,8 +436,5 @@ export function parseConfinementPreflight(
       confinedAuthentication,
     });
   }
-  return {
-    engines,
-    decidedAtStart: preflight.decidedAtStart as ConfinementFallbackReason[],
-  };
+  return { engines, decidedAtStart };
 }

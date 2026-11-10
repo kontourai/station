@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CONFINEMENT_PREFLIGHT_ENGINE_PATTERN,
   MAX_CONFINEMENT_PREFLIGHT_ENGINES,
   MAX_CONFINEMENT_PREFLIGHT_REASON_LENGTH,
   parseConfinementPreflight,
@@ -15,6 +16,7 @@ const ENTRY = {
     state: 'unavailable',
     fallback: 'confined-credential-unavailable',
     remedy: 'Set a credential.',
+    appliesTo: 'starts-without-own-credential-profile',
   },
 };
 
@@ -45,7 +47,31 @@ describe('#4774: parseConfinementPreflight', () => {
     ],
     [
       'an available credential with no source',
-      { ...ENTRY, confinedAuthentication: { state: 'available' } },
+      {
+        ...ENTRY,
+        confinedAuthentication: {
+          state: 'available',
+          appliesTo: 'starts-without-own-credential-profile',
+        },
+      },
+    ],
+    [
+      'a checked credential that does not say which starts it covers',
+      {
+        ...ENTRY,
+        confinedAuthentication: { state: 'available', source: 'environment' },
+      },
+    ],
+    [
+      'a checked credential with an unknown scope',
+      {
+        ...ENTRY,
+        confinedAuthentication: {
+          state: 'unverified',
+          reason: 'x',
+          appliesTo: 'every-start',
+        },
+      },
     ],
     [
       'an unavailable credential with another fallback',
@@ -55,10 +81,22 @@ describe('#4774: parseConfinementPreflight', () => {
           state: 'unavailable',
           fallback: 'workspace-too-broad',
           remedy: 'x',
+          appliesTo: 'starts-without-own-credential-profile',
         },
       },
     ],
     ['an empty reason', { ...ENTRY, mechanismReason: '' }],
+    [
+      'an engine id carrying a path and terminal escapes',
+      {
+        ...ENTRY,
+        engine: '/Users/jane/.station/x \u001b[2J\u001b[31mFAKE PASS',
+      },
+    ],
+    ['an engine id with an uppercase letter', { ...ENTRY, engine: 'Claude' }],
+    ['an engine id with a space', { ...ENTRY, engine: 'claude code' }],
+    ['an empty engine id', { ...ENTRY, engine: '' }],
+    ['an engine id that is not a string', { ...ENTRY, engine: 7 }],
   ])('refuses %s', (_name, entry) => {
     expect(parseConfinementPreflight(document({ engines: [entry] }))).toBe(
       undefined,
@@ -89,6 +127,58 @@ describe('#4774: parseConfinementPreflight', () => {
     expect(parseConfinementPreflight(document({ engines: at }))).toBeDefined();
     expect(
       parseConfinementPreflight(document({ engines: [...at, ENTRY] })),
+    ).toBe(undefined);
+  });
+
+  it('accepts an engine id at the length limit and refuses one past it', () => {
+    const at = `c${'x'.repeat(63)}`;
+    expect(at).toHaveLength(64);
+    expect(CONFINEMENT_PREFLIGHT_ENGINE_PATTERN.test(at)).toBe(true);
+    for (const engine of ['claude', 'codex', 'open-code_2.1']) {
+      expect(
+        parseConfinementPreflight(document({ engines: [{ ...ENTRY, engine }] }))
+          ?.engines[0]?.engine,
+      ).toBe(engine);
+    }
+    expect(
+      parseConfinementPreflight(
+        document({ engines: [{ ...ENTRY, engine: at }] }),
+      ),
+    ).toBeDefined();
+    expect(
+      parseConfinementPreflight(
+        document({ engines: [{ ...ENTRY, engine: `${at}x` }] }),
+      ),
+    ).toBe(undefined);
+  });
+
+  it('accepts every known decided-at-start reason once, and refuses a repeat or a flood', () => {
+    const all = [
+      'workspace-too-broad',
+      'config-root-pinned',
+      'resume-bound-elsewhere',
+      'confined-credential-unavailable',
+    ];
+    expect(
+      parseConfinementPreflight(document({ decidedAtStart: all }))
+        ?.decidedAtStart,
+    ).toEqual(all);
+    expect(
+      parseConfinementPreflight(
+        document({
+          decidedAtStart: ['workspace-too-broad', 'workspace-too-broad'],
+        }),
+      ),
+    ).toBe(undefined);
+    expect(
+      parseConfinementPreflight(
+        document({
+          decidedAtStart: Array.from(
+            { length: 100_000 },
+            () => 'workspace-too-broad',
+          ),
+        }),
+      ),
     ).toBe(undefined);
   });
 
