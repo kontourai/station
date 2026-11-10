@@ -1,6 +1,7 @@
 import type { AttentionItem } from '@kontourai/station-sdk';
 import { useAcknowledgeAttentionItemMutation } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import {
   attentionKindLabel,
   isPeerHostedAttentionItem,
@@ -92,12 +93,18 @@ export function AttentionHistoryItem({
             },
           ]
         : [];
+  // The Flow run console is a device developer preview. With it off here the
+  // console only says the preview is off, so a gate row offers no link to it
+  // (the same rule as the live card's `OpenFlowConsoleLink`).
+  const { flow } = useDeveloperFeatures();
+  const opensFlowConsole = isFlowGateKind(item.kind);
   const openLink = (
     <>
       {item.kind === 'session-failed' ? (
         <FailedSessionOpenLink item={item} onClose={onClose} />
       ) : (
-        item.openHref && (
+        item.openHref &&
+        (flow || !opensFlowConsole) && (
           <a
             className="notification-history__action"
             href={item.openHref}
@@ -230,12 +237,17 @@ function FailedSessionOpenLink({
   );
 }
 
+function isFlowGateKind(kind: AttentionItem['kind']): boolean {
+  return (
+    kind === 'gate-route-back' ||
+    kind === 'gate-blocked' ||
+    kind === 'gate-exception'
+  );
+}
+
 function openLinkLabel(kind: AttentionItem['kind']): string {
+  if (isFlowGateKind(kind)) return 'Open flow console';
   switch (kind) {
-    case 'gate-route-back':
-    case 'gate-blocked':
-    case 'gate-exception':
-      return 'Open flow console';
     case 'device-pairing':
       return 'Review device request';
     // #1536 D8: the requirement's route out, not a session.
