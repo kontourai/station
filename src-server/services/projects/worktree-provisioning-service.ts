@@ -29,6 +29,7 @@ import {
   worktreeProvisionTotal,
 } from '../../telemetry/metrics.js';
 import { spawnGit } from '../../utils/git-exec.js';
+import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   type LiveRepository,
@@ -608,7 +609,7 @@ export class WorktreeProvisioningService {
    * repository changed while it was preparing, so two concurrent creations
    * in one repository would refuse each other.
    */
-  private readonly repositoryQueue = new Map<string, Promise<unknown>>();
+  private readonly repositoryQueue = createKeyedSerialQueue();
   private readonly git: GitCommandRunner;
   private readonly ownRepository: (
     folder: string,
@@ -824,20 +825,7 @@ export class WorktreeProvisioningService {
     repoPath: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const key = canonicalizePath(repoPath);
-    const previous = this.repositoryQueue.get(key) ?? Promise.resolve();
-    const next = previous.then(operation, operation);
-    const settled = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.repositoryQueue.set(key, settled);
-    try {
-      return await next;
-    } finally {
-      if (this.repositoryQueue.get(key) === settled)
-        this.repositoryQueue.delete(key);
-    }
+    return this.repositoryQueue.run(canonicalizePath(repoPath), operation);
   }
 
   /**

@@ -38,6 +38,8 @@ import {
   locateGitDirectories,
   readSmallRegularFile,
 } from '../../services/projects/git-directory-confinement.js';
+import { errorMessage } from '../../utils/error-message.js';
+import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import type {
   ConfinementAvailability,
@@ -65,13 +67,8 @@ export function canonicalPath(path: string): string {
   }
 }
 
-function within(root: string, path: string): boolean {
-  const rel = relative(root, path);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-}
-
 function strictlyWithin(root: string, path: string): boolean {
-  return path !== root && within(root, path);
+  return path !== root && isCanonicalPathWithin(root, path);
 }
 
 /** A worktree's git layout, as git's own pointer files name it. */
@@ -256,7 +253,7 @@ export function seatbeltGrants(
       join(common, 'objects', 'info', 'alternates'),
       join(git.gitDir, 'config.worktree'),
     );
-    if (within(input.workspace, common)) {
+    if (isCanonicalPathWithin(input.workspace, common)) {
       // #3800: remote-tracking refs are what a later Codex start trusts a
       // nested `.codex` by, so a confined session may not write them, here
       // or packed (a linked worktree never could).
@@ -476,11 +473,11 @@ export function seatbeltWorkspaceRefusal(
   bounds: Pick<SeatbeltBounds, 'home' | 'stationHome'>,
 ): string | undefined {
   if (workspace === sep) return 'it is the filesystem root';
-  if (within(workspace, bounds.home))
+  if (isCanonicalPathWithin(workspace, bounds.home))
     return 'it is or contains the home folder';
   if (
-    within(workspace, bounds.stationHome) ||
-    within(bounds.stationHome, workspace)
+    isCanonicalPathWithin(workspace, bounds.stationHome) ||
+    isCanonicalPathWithin(bounds.stationHome, workspace)
   )
     return "it is or overlaps Station's data";
   if (strictlyWithin(bounds.home, workspace)) {
@@ -507,7 +504,7 @@ export function seatbeltWriteGrantKinds(
     return undefined;
   const kinds = new Set<ConfinementWriteGrant>();
   const git = bounds.git;
-  const linked = git && !within(bounds.workspace, git.commonDir);
+  const linked = git && !isCanonicalPathWithin(bounds.workspace, git.commonDir);
   for (const path of grants.writable) {
     if (path === bounds.workspace) kinds.add('workspace');
     else if (
@@ -685,7 +682,7 @@ export function probeSeatbelt(sandboxExec: string = SANDBOX_EXEC): {
   } catch (error) {
     return {
       ok: false,
-      reason: `the Seatbelt profile could not be probed (${error instanceof Error ? error.message : String(error)})`,
+      reason: `the Seatbelt profile could not be probed (${errorMessage(error)})`,
     };
   } finally {
     rmSync(root, { recursive: true, force: true });

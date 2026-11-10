@@ -53,6 +53,7 @@ import {
 } from 'agent-skills-ts-sdk';
 import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
 import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
@@ -730,7 +731,7 @@ export class AgentPluginLoader {
           inventory.diagnostics.push({
             pluginId: installation.pluginId,
             code: 'unavailable',
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMessage(error),
           });
         }
       }
@@ -865,7 +866,7 @@ export class AgentPluginLoader {
           inventory.diagnostics.push({
             pluginId: directoryName,
             code: declared ? 'definition-invalid' : 'unavailable',
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMessage(error),
           });
         }
       });

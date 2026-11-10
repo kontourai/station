@@ -2670,26 +2670,19 @@ export class ConnectionService {
     }> = [];
     const readQuota = adapter?.readQuotaSnapshot?.bind(adapter);
     if (state.policy.allowancePreference && readQuota) {
-      const pending = [...eligible];
       const byProfile = new Map<string, ConnectionQuotaSnapshot>();
-      await Promise.all(
-        Array.from({ length: Math.min(4, pending.length) }, async () => {
-          for (;;) {
-            const profileRef = pending.shift();
-            if (profileRef === undefined) return;
-            try {
-              const result = await readQuota({
-                connectionId,
-                credentialProfileRef: profileRef,
-              });
-              if (result.kind === 'snapshot')
-                byProfile.set(profileRef, result.snapshot);
-            } catch {
-              /* Unavailable evidence preserves enrollment order. */
-            }
-          }
-        }),
-      );
+      await mapWithConcurrency(eligible, 4, async (profileRef) => {
+        try {
+          const result = await readQuota({
+            connectionId,
+            credentialProfileRef: profileRef,
+          });
+          if (result.kind === 'snapshot')
+            byProfile.set(profileRef, result.snapshot);
+        } catch {
+          /* Unavailable evidence preserves enrollment order. */
+        }
+      });
       observations.push(
         ...eligible.map((profileRef) => ({
           profileRef,

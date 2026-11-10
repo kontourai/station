@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
 
 /**
@@ -285,7 +286,7 @@ export class MuseServeConnection {
         );
       } catch (error) {
         this.handlers.onProtocolNoise?.(
-          `notification handler threw for ${method}: ${error instanceof Error ? error.message : String(error)}`,
+          `notification handler threw for ${method}: ${errorMessage(error)}`,
         );
       }
       return;

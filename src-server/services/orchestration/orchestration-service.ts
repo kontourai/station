@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { scheduler } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
@@ -282,7 +282,10 @@ import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
-import { canonicalPath } from '../../utils/path-containment.js';
+import {
+  canonicalPath,
+  isCanonicalPathStrictlyWithin,
+} from '../../utils/path-containment.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
@@ -1868,9 +1871,7 @@ function verifyReceiverTurnEffect(
 
 /** True when `candidate` is `root` itself or a directory inside it. */
 function isWithinDirectory(root: string, candidate: string): boolean {
-  if (candidate === root) return true;
-  const rel = relative(root, candidate);
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+  return candidate === root || isCanonicalPathStrictlyWithin(root, candidate);
 }
 
 /**

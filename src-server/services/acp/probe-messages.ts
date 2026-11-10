@@ -1,3 +1,4 @@
+import { errorMessage } from '../../utils/error-message.js';
 import { ACPCommandNotFoundError } from './acp-process.js';
 
 /**
@@ -27,7 +28,7 @@ export function engineFacingProbeMessage(
   if (spawnFailed && code === 'EACCES') {
     return `Station could not run ${engine.command}: it is not executable on the computer Station runs on. Make it executable, then check the engine again.`;
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   if (message === 'ACP connection closed') {
     return `${engine.name} closed the connection before it finished starting.`;
   }

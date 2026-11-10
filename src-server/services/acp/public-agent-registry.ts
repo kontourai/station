@@ -7,13 +7,16 @@
  * `public-agent-registry-catalog.ts`.
  */
 
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   type ACPPublicRegistrySourceStatus,
   hasUnsafeTextChar,
 } from '@kontourai/station-contracts/acp';
 import { findCliBinary } from '../../providers/auth/cli-auth.js';
+import { errorMessage } from '../../utils/error-message.js';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'public-agent-registry' });
@@ -112,10 +115,6 @@ export type PublicRegistryParseResult =
       refused: PublicRegistryRefusal[];
     }
   | { ok: false; reason: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function text(
   value: unknown,
@@ -660,15 +659,18 @@ export class PublicAgentRegistrySource {
   }
 
   private async saveCache(cached: CachedIndex): Promise<void> {
+    // Unique per save: two overlapping saves in this process must not share
+    // one temporary, or the rename can publish interleaved bytes.
+    const temporary = `${this.cacheFile}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await mkdir(join(this.cacheFile, '..'), { recursive: true });
-      const temporary = `${this.cacheFile}.${process.pid}.tmp`;
       await writeFile(temporary, JSON.stringify(cached), 'utf8');
       await rename(temporary, this.cacheFile);
     } catch (error) {
+      await rm(temporary, { force: true }).catch(() => {});
       // The listing in memory is still good; only the offline copy is stale.
       logger.warn('Could not save the public agent registry copy', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }

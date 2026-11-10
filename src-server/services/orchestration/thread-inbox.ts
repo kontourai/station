@@ -53,6 +53,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   type PostToolSteerInput,
   registerPostToolInbox,
@@ -821,7 +822,7 @@ const STEER_CONFLICT_OUTCOME: PlacementOutcome = {
 };
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error);
 }
 
 /**

@@ -39,6 +39,7 @@ import {
   turnInterruptedContinueClientTurnId,
 } from '@kontourai/station-shared/conversation-message';
 import { TURN_INTERRUPTED_CONTINUE_PROMPT } from '@kontourai/station-shared/runtime-event-projection';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
 import type { RecoveredInterruptedTurn } from './interrupted-turn-recovery.js';
 import type {
@@ -283,7 +284,7 @@ export class RestartContinuation {
   private warn(turn: RecoveredInterruptedTurn, error: unknown): void {
     this.ports.logger.warn('restart continuation failed', {
       threadId: turn.threadId,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     });
   }
 }
