@@ -559,6 +559,81 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     await page.close();
   });
 
+  test('Density and Motion are labelled radio groups that arrow keys change and apply (#4692)', async () => {
+    const page = await open();
+    const density = page.getByRole('radiogroup', { name: 'Density' });
+    const comfortable = density.getByRole('radio', { name: 'Comfortable' });
+    // Comfortable is the default and is on the root before anything is chosen.
+    expect(await comfortable.isChecked()).toBe(true);
+    expect(await rootAttribute(page, 'data-density')).toBe('comfortable');
+    await comfortable.focus();
+    await page.keyboard.press('ArrowRight');
+    expect(
+      await density.getByRole('radio', { name: 'Compact' }).isChecked(),
+    ).toBe(true);
+    expect(await rootAttribute(page, 'data-density')).toBe('compact');
+    // The ring is drawn on the visible option, not the clipped input.
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.activeElement!.closest('label')!)
+            .outlineStyle,
+      ),
+    ).toBe('solid');
+    await page.keyboard.press('ArrowLeft');
+    expect(await rootAttribute(page, 'data-density')).toBe('comfortable');
+
+    const motion = page.getByRole('radiogroup', { name: 'Motion' });
+    await motion.getByRole('radio', { name: 'System' }).focus();
+    expect(await rootAttribute(page, 'data-motion')).toBeNull();
+    await page.keyboard.press('ArrowRight');
+    expect(
+      await motion.getByRole('radio', { name: 'Reduced' }).isChecked(),
+    ).toBe(true);
+    expect(await rootAttribute(page, 'data-motion')).toBe('reduce');
+    await page.close();
+  });
+
+  test('each Density and Motion option takes a 44px hit area at 390px (#4692)', async () => {
+    const page = await open();
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const density of ['comfortable', 'compact']) {
+      await page.evaluate(
+        (value) =>
+          (
+            window as unknown as {
+              store: { merge: (v: Record<string, unknown>) => void };
+            }
+          ).store.merge({ density: value }),
+        density,
+      );
+      const hits = await page.evaluate(() =>
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            '[role="radiogroup"][aria-label="Density"] label, [role="radiogroup"][aria-label="Motion"] label',
+          ),
+        ].map((target) => {
+          target.scrollIntoView({ block: 'center' });
+          const box = target.getBoundingClientRect();
+          const cx = box.left + box.width / 2;
+          const cy = box.top + box.height / 2;
+          const owns = (x: number, y: number) => {
+            const hit = document.elementFromPoint(x, y);
+            return hit === target || target.contains(hit);
+          };
+          return {
+            name: target.textContent,
+            ok: owns(cx, cy - 21) && owns(cx, cy + 21),
+          };
+        }),
+      );
+      expect(hits).toHaveLength(4);
+      for (const hit of hits)
+        expect(hit, `${density} ${hit.name}`).toMatchObject({ ok: true });
+    }
+    await page.close();
+  });
+
   test('the theme shortcut toggles mode on this page', async () => {
     const page = await open();
     const theme = () =>

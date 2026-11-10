@@ -18,6 +18,7 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../components/ResponsiveDialogSurface';
+import { flushHistoryTraversals } from './fixtures/history-traversals';
 
 class FakeViewport extends EventTarget {
   height = 700;
@@ -55,19 +56,6 @@ afterEach(async () => {
   cleanup();
   await flushHistoryTraversals();
 });
-
-/**
- * Lets every history traversal already queued land. jsdom runs `history.back()`
- * as two chained 0ms tasks (the delta is resolved in the first, the entry
- * applied in the second), so each yield below is a task turn, not a wait for
- * time to pass; four covers a traversal started by the traversal's own
- * popstate handler as well.
- */
-async function flushHistoryTraversals() {
-  for (let turn = 0; turn < 4; turn += 1) {
-    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-  }
-}
 
 function recordPopStates() {
   const landed: string[] = [];
