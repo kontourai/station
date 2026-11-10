@@ -79,6 +79,7 @@ vi.mock('../ActiveChatsContext', () => ({
   }),
 }));
 
+import { flushHistoryTraversals } from '../../__tests__/fixtures/history-traversals';
 import { PullRequestReviewPanel } from '../../components/coding-layout/PullRequestReviewPanel';
 import { DIALOG_HISTORY_KEY } from '../../components/dialog-history';
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
@@ -182,8 +183,13 @@ beforeEach(() => {
   }));
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Unmounting folds an open phone layer by travelling back. Let that Back
+  // land before anything pushes history again: jsdom cancels a queued
+  // traversal on the next `pushState`, which would leave the dialog-history
+  // module waiting for it and every later layer in this file unpublished.
+  await flushHistoryTraversals();
   vi.unstubAllGlobals();
   localStorage.clear();
   navigationStore.navigate('/', { dock: null, dockSlotPlacement: null });
