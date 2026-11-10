@@ -109,6 +109,29 @@
   box-shadow: none;
 }
 
+/* Touch swipe-to-dismiss (useSwipeToDismiss). The card keeps vertical
+   scrolling; a horizontal drag moves it and fades it toward the edge. */
+.toast-card--swipe {
+  touch-action: pan-y;
+  transform: translateX(var(--toast-swipe-offset, 0px));
+  transition:
+    transform 160ms var(--ease-spring, ease-out),
+    opacity 160ms ease-out;
+}
+.toast-card--dragging {
+  transition: none;
+  opacity: 0.85;
+}
+.toast-card--leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-card--swipe {
+    transition: none;
+  }
+}
+
 .toast-card__header,
 .toast-card__meta,
 .toast-card__conversation,

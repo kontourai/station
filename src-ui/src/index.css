@@ -6326,8 +6326,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   /* Mobile Safari zooms the whole page when an editable control below 16px
-     receives focus. Keep browser/user pinch zoom enabled and prevent only
-     that focus-triggered jump. Attribute/not selectors intentionally outrank
+     receives focus. In a browser tab keep pinch zoom enabled and prevent only
+     that focus-triggered jump; the installed app locks zoom entirely
+     (`html.is-zoom-locked`, platform/installedAppZoom.ts). Attribute/not selectors intentionally outrank
      compact component classes without an !important override. */
   :is(
     input:not([type]),
@@ -10029,4 +10030,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   margin-inline-start: 8px;
+}
+
+/* Installed app (native mobile shell or home-screen web app): no pinch or
+   double-tap page zoom. Panning stays; descendants intersect with this, so an
+   existing `pan-y` or `none` surface keeps its own gesture. */
+html.is-zoom-locked,
+html.is-zoom-locked body {
+  touch-action: pan-x pan-y;
 }

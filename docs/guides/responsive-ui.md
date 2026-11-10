@@ -211,6 +211,11 @@ every child. Terminal/editor phone controls should stay in one horizontally
 scrollable row; their input font must avoid mobile browser zoom. Test the real
 terminal/editor caller instead of assuming a CSS declaration proves this.
 
+A browser tab keeps pinch zoom. The installed app (the native iOS or Android
+shell, or a home-screen web app) locks page zoom through
+`platform/installedAppZoom.ts`. Transient toasts dismiss with a sideways touch
+swipe; approval and pairing cards keep their explicit dismiss.
+
 The chat header's **⋯** menu holds **Chat inventory** and **Browse turns** on
 desktop and phones. Keeping secondary actions there avoids wrapping the
 phone header onto a second line (#4192). This is separate from the compact Basis/answer inspection described

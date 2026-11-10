@@ -69,13 +69,29 @@ const TRIAGE_RUN_ID_PATTERN =
 
 // ── owner-only run storage ─────────────────────────────────────────────────
 
-function assertOwnerDirectory(path: string, ownerOnly: boolean): void {
+function assertOwnerDirectory(
+  path: string,
+  ownerOnly: boolean,
+  tightenWritable = false,
+): void {
   const info = lstatSync(path);
   if (!info.isDirectory() || info.isSymbolicLink()) {
     throw new Error(`Triage storage must be a real directory: ${path}`);
   }
   if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
     throw new Error(`Triage storage is not owned by this user: ${path}`);
+  }
+  if (
+    tightenWritable &&
+    typeof process.getuid === 'function' &&
+    (info.mode & 0o022) !== 0
+  ) {
+    // A Station-owned leaf another feature created under a permissive umask
+    // (for example `cache/` at 0775 under umask 0002). It is a real directory
+    // this user owns, so drop group/other write instead of refusing every run.
+    chmodSync(path, info.mode & 0o7755);
+    assertOwnerDirectory(path, ownerOnly);
+    return;
   }
   if (typeof process.getuid === 'function' && (info.mode & 0o022) !== 0) {
     throw new Error(`Triage storage is writable by group or others: ${path}`);
@@ -105,7 +121,7 @@ function createExactDirectory(path: string, ownerOnly: boolean): void {
   ensureWindowsDirectoriesTrusted(runWindowsTrustCommand, [path]);
   // Cache/triage must be exact leaves: never allow a symlink to redirect a
   // run after the whole-root alias has been admitted above.
-  assertOwnerDirectory(path, ownerOnly);
+  assertOwnerDirectory(path, ownerOnly, true);
 }
 
 /** Whether `value` is a run id a triage run directory may be named after. */
