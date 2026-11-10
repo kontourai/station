@@ -10,7 +10,7 @@ import {
   useKnowledgeRootsQuery,
   useValidateKnowledgeRootMutation,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ArchiveGlyph, BrainGlyph } from '../../components/icons/Glyph';
 import { PathAutocomplete } from '../../components/PathAutocomplete';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
@@ -140,7 +140,16 @@ function ConnectObsidianVault() {
   );
 }
 
-export function KnowledgeStoreSection() {
+/**
+ * `children` are the Station setting rows this card owns
+ * (`STATION_SETTING_KEYS_BY_SECTION.knowledge`), supplied by `SettingsView`
+ * because it holds the Station config draft and its save.
+ */
+export function KnowledgeStoreSection({
+  children,
+}: {
+  children?: ReactNode;
+} = {}) {
   const { navigate } = useNavigation();
   const rootsQuery = useKnowledgeRootsQuery({ keepPreviousData: false });
   const adaptersQuery = useKnowledgeAdaptersQuery({ keepPreviousData: false });
@@ -272,6 +281,7 @@ export function KnowledgeStoreSection() {
           })()
         )}
       </div>
+      {children}
     </SettingsSection>
   );
 }

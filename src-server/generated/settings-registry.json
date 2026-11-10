@@ -812,6 +812,15 @@
       "route": "/settings?view=knowledge&highlight=personal-knowledge-store"
     },
     {
+      "id": "knowledge-conversation-history",
+      "label": "Past conversations in Knowledge",
+      "help": "After a restart, Station adds your past conversations to Knowledge as a read-only source that Knowledge search covers.",
+      "scope": "station",
+      "section": "knowledge",
+      "route": "/settings?view=knowledge&highlight=knowledge-conversation-history",
+      "configKey": "knowledgeStores"
+    },
+    {
       "id": "app-version",
       "label": "Version",
       "scope": "informational",

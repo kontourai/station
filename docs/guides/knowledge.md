@@ -466,7 +466,10 @@ only results.
 Station's own conversation history — everything under `station runs`/the chat history, both
 native-SDK (Claude/Codex) sessions and managed-runtime chats — is itself registered as a read-only
 knowledge store root, `root:conversations`, when the `knowledgeStores` setting is on in a personal-host runtime. Hosted
-tenant runtimes suppress this root. This means
+tenant runtimes suppress this root. Turn it on in **Settings → My knowledge store → Past conversations in
+Knowledge** (off by default, because conversation history is personal) and restart Station: startup
+registers the root if it is absent. Turning the setting off later does not remove the root, and
+Station refuses to remove it (`DELETE /api/knowledge/roots/root:conversations` answers 403). This means
 `./station knowledge search`/`search_knowledge` and the K3 index cover past conversations the same
 way they cover any other root: no separate "search my chat history" surface to learn.
 
