@@ -21,18 +21,33 @@ flight. The send is written as `invoking` before its request goes out (a write
 bounded to three seconds; past it the send goes without the row and the
 composer keeps its saved draft), and the composer's saved draft is let go only
 once that row is written, so closing the app mid-send loses nothing and leaves
-no second copy to send under a new key. Station's own answer settles the row:
+no second copy to send under a new key. A saved draft is put back only into an
+empty composer (on opening a chat or switching to it): text the composer already
+holds is newer, and can be longer than the saved copy, which is capped at
+20,000 characters. Station's own answer settles the row:
 a refusal removes it and hands the text back to the composer; Station's
 "may have started" answer keeps it as unconfirmed (never resent, and it no
 longer holds back later messages in the chat); anything else, including a
-proxy's or tunnel's 502/503/504 or no answer at all, releases the row for
-Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send). A foreground send that
+proxy's or tunnel's 502/503/504, an answer that could not be read, or no answer
+at all, releases the row for
+Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send)
+and leaves the composer empty: the bubble and its row are the only copy. A send
+this device refuses before making its request (for example a follow-up to a busy
+chat that still carries an unapplied approval pick) reached nothing: its row is
+removed and the text goes back to the composer with the reason, unless the
+failure is a transport one or the browser reports no network, when it waits in
+the outbox like any unanswered send. The text is never both back in the
+composer and left in the outbox for an automatic resend.
+A foreground send that
 already has an exact-key `started` answer, or an explicitly keyed turn-start event
 matching its authored bubble, remains delivered if the original response later
 fails. An unkeyed legacy match is not proof for retiring the send, and a weaker
 lookup already in flight cannot erase a witnessed start. Acceptance retires the
 key and removes its overlapping attempts together. Durable flush dispatches
-(`options.dispatch`) retain their separate provider-turn settlement rules.
+(`options.dispatch`) retain their separate provider-turn settlement rules. A
+replay belongs to its outbox row, not to the composer: it neither clears nor
+sends the text, attachments or staged files the composer holds by then, and a
+failed replay puts nothing back in the composer.
 If a send had no live row (attachments or a failed pre-request storage write),
 an unanswered request creates an `invoking` row released for that same lookup,
 with its original delivery key, conversation and Station identity. It never
@@ -42,7 +57,10 @@ refused until delivery is settled.
 While it waits, the message reads "No answer yet · sends once Station confirms
 it never arrived" on its bubble and in the outbox list, and its chat notice's and
 the list's Discard… withdraw it only after the shared confirmation, which says
-that a message which already arrived cannot be taken back. Every open window
+that a message which already arrived cannot be taken back. Once the lookup has
+answered that Station never received the message, the chat notice's Discard…
+removes the row as the ordinary unsent message it now is (not gone yet, or Not
+sent), still retiring its key. Every open window
 re-reads the queue's finished keys on the cross-window change channel and when it
 comes back into view, so a discard in one window removes the bubble in all.
 That channel refreshes what a window shows. It starts a send there only when a
@@ -70,7 +88,9 @@ failed lookups, automatic checks pause and the message remains saved as delivery
 unconfirmed, with Check available for an explicit lookup. A valid answer resets that failure
 count. Each renderer keeps its own local retry schedule. Hiding the document, a browser offline
 event, lost connection health or `pagehide` cancels the retry and resets its
-backoff. Unmount or an authority change also cancels the old schedule. Returning
+backoff. A lookup that was out when that happened is not one of the three
+failures, whatever became of its request: Station was not heard, so nothing
+about the message was learned. Unmount or an authority change also cancels the old schedule. Returning
 to visible, online and connected starts a check immediately with fresh backoff.
 After `pagehide`, the page waits for `pageshow` and resumes only when it is also
 visible, online and connected; a hidden `pageshow` waits for visibility to return.
@@ -78,6 +98,15 @@ Successful settlement stops the schedule, and a late lookup cannot rearm a
 paused schedule.
 The timer only checks delivery: a resend still requires Station's answer that
 it never received the message.
+A flush pass asks about released rows once, as it begins. A send released while
+the pass is still sending another message (its own request got no answer) is
+asked about when that pass ends, by one further pass, instead of waiting for an
+unrelated change; a send-only pass starts no such check.
+When the outbox cannot be read, or a settlement cannot be recorded, the chats
+that hold an outbox message say that their delivery status is unavailable. A
+chat with nothing in the outbox, one on another Station, and one with a turn
+running keep their own status, and the notice clears at the next successful
+read of the queue.
 The lookup examines released rows, and rows whose app was closed, at the next
 launch or reconnect: never received → sent again with the same key; started →
 done; received → asked again later; queued in Station’s inbox → retained for
@@ -86,7 +115,19 @@ on another Station → kept as unconfirmed, with Check that asks Station once, r
 and never resends. A not-received answer enables an explicit Retry. More delivery actions → Copy message
 keeps the text available for recovery. The row also offers Discard… that removes it only after the user confirms
 "I checked, discard it" with the risk stated (its key is retired, so it is never
-sent again). Rows written with Station identity are sent to or settled by that Station;
+sent again).
+A replayed message Station accepted keeps its row, with nothing to do on it,
+until the turn it started ends, so the chat's later outbox messages follow it
+in order. That turn's own terminal event removes the row. A window that was
+reloaded, closed or cut off while the turn ran never receives that event, so
+the snapshot each new connection begins with settles it too: Station's record
+of the conversation names its open turn, and a record naming another turn, or
+none, for a row accepted before the snapshot arrived removes the row. A row
+whose turn is still the open one, or whose conversation the snapshot carries no
+record for (an older Station), waits as before. Only messages still waiting to
+be sent make a chat read queued; one whose outbox rows were all accepted keeps
+the status its turn gives it.
+Rows written with Station identity are sent to or settled by that Station;
 for another they wait, listed. A verified environment ID takes precedence over
 the address; rows that never learned an ID use the normalized address. Older
 rows without a Station identity stay with the host connection. Bound rows also require the matching authority partition.

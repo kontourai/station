@@ -5,6 +5,7 @@ import {
 import type { QueryClient } from '@tanstack/react-query';
 import {
   chatBelongsToStation,
+  outboundStationIdentity,
   type StationStateScope,
   stationPartitionKey,
 } from '../../connections/station-state';
@@ -133,6 +134,40 @@ function reconnectCatchUpUpdates(
       ? { openTurnShellSuperseded: true, openTurnStartedAt }
       : {}),
   };
+}
+
+/**
+ * A replayed outbox message Station accepted keeps its row until that turn's
+ * terminal event, and a browser that was reloaded, closed or cut off while
+ * the turn ran never receives it: a snapshot replays no events. The server's
+ * conversation record names the open turn exactly, so a record naming another
+ * turn, or none, is the server's own word that the accepted turn has ended.
+ * `records` hold the newest record this client knows for each conversation
+ * the snapshot named; the outbox applies them only to rows accepted before
+ * `observedAt`.
+ */
+function settleEndedDurableTurns(
+  records: ReadonlyMap<string, ConversationRecord>,
+  observedAt: number,
+  station?: StationStateScope,
+): void {
+  if (records.size === 0) return;
+  const observed = [...records.values()].map((record) => ({
+    conversationId: record.conversationId,
+    ...(record.openTurn ? { openTurnId: record.openTurn.turnId } : {}),
+  }));
+  void import('../../lib/outboundQueue')
+    .then(({ outboundDispatch }) =>
+      outboundDispatch.completeAcceptedTurnsNotOpen(
+        observed,
+        observedAt,
+        station ? outboundStationIdentity(station) : undefined,
+      ),
+    )
+    .catch(() => {
+      // The row stays as it was, for its terminal event or the next
+      // snapshot; the outbox reports its own storage outage.
+    });
 }
 
 type OrchestrationSnapshotSyncPlan = {
@@ -678,9 +713,31 @@ export function applyOrchestrationSnapshot(
   // plan's writes below merge onto it. A replayed snapshot never feeds the
   // live store.
   if (!replayId) {
+    const records = new Map<string, ConversationRecord>();
     for (const session of payload.sessions) {
       chatStore.applyConversationActivity(session.conversationActivity);
+      const record = newerConversationActivity(
+        records.get(session.conversationActivity?.conversationId ?? ''),
+        session.conversationActivity,
+      );
+      if (record) records.set(record.conversationId, record);
     }
+    // Another carrier (a list read, a live frame) may already have delivered
+    // a newer record than this snapshot's: the newest one known decides.
+    for (const chat of Object.values(activeChatsStore.getSnapshot())) {
+      const known = chat.conversationActivity;
+      if (
+        known &&
+        records.has(known.conversationId) &&
+        chatBelongsToStation(chat, station)
+      )
+        records.set(
+          known.conversationId,
+          newerConversationActivity(known, records.get(known.conversationId)) ??
+            known,
+        );
+    }
+    settleEndedDurableTurns(records, Date.now(), station);
   }
 
   for (const { threadId, updates } of plan.sessionUpdates) {
