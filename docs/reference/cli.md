@@ -3480,13 +3480,14 @@ remedy.
 A restart interrupts every agent turn that is running: engines do not survive
 the swap, and each of those chats shows **Turn interrupted** afterwards.
 Before the handoff, `restart` prints how many turns are running and will be
-interrupted, with the titles this device may read and a count of the rest. It
-reads them from the instance (`GET /api/system/core-update/running-turns`)
-with the credential of a Station saved on this device whose endpoint is the
-instance's server port on a loopback address (`station setup local` saves
-one). It never asks for confirmation. When it cannot read them (no such saved
-Station, a refused or unanswered read within three seconds, an older server)
-it prints nothing and restarts as before.
+interrupted, with up to ten of the titles this device may read and a count of
+the rest. It reads them from the instance
+(`GET /api/system/core-update/running-turns`) with the credential of a Station
+saved on this device whose endpoint is the instance's server port over `http`
+on a loopback IP address (`127.x.x.x` or `[::1]`, not the name `localhost`;
+`station setup local` saves one). It never asks for confirmation. When it
+cannot read them (no such saved Station, a refused or unanswered read within
+three seconds, an older server) it prints nothing and restarts as before.
 
 ```bash
 station restart --instance=smoke-a

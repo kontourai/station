@@ -518,8 +518,8 @@ Implemented today: no interrupted turn is resumed on any engine. At boot,
 interrupted-turn recovery closes each dead turn, expires the requests it was
 waiting on and writes the **Turn interrupted** notice. A turn it could not
 settle is retried within the boot (four attempts over about 1.75 seconds),
-then once a minute until it settles or Station stops; its boundary row stays
-for the next boot either way. The conversation goes on only through a new
+then once a minute until it settles or Station stops; until it settles, its
+boundary row stays for the next boot. The conversation goes on only through a new
 turn: the person's **Continue** (preview `continue-interrupted-turn`), their
 next message, or the unattended continuation below.
 

@@ -1080,7 +1080,8 @@ invalid response or failed local credential/profile custody retains an
 `indeterminate` hold. Ordinary pending-slot clear/save does not erase it. A
 failed-custody outcome also carries the completion owner's own `failure`. A
 flight that stops after its claim but before sending anything releases that
-claim as unconsumed and reports `aborted`; nothing is held.
+claim as unconsumed and reports `aborted`; nothing is held. If the release
+cannot be recorded, the outcome stays `indeterminate`.
 
 Only the exact unconsumed `request_not_confirmed` 409 or `rate_limited` 429
 response permits a retry. Held attempts survive expiry. Completed/retired
