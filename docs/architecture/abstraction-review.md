@@ -116,10 +116,10 @@ confirmed that the equals spelling works and the spaced spelling loses the
 option. [#2732](https://github.com/kontourai/station/issues/2732) tracks support
 or explicit refusal, with tests through chat and delegate callers.
 
-[Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts) uses raw
-fetch without the common authentication/target/deadline path and confirms its
-returned preview without displaying it. [#2734](https://github.com/kontourai/station/issues/2734)
-tracks the authenticated caller and visible confirmation journey. These are
+[Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts) now takes
+its target, credential and deadline from the common client path, but still
+confirms its returned preview without displaying it. [#2734](https://github.com/kontourai/station/issues/2734)
+tracks the visible confirmation journey. These are
 source/caller findings, not proof of a real restore or engine execution.
 
 The CLI's final JSON can also retain `pendingRequest` after that request has

@@ -15,6 +15,8 @@
  * Every helper here is pure; callers supply the content lookup.
  */
 
+import { isObjectRecord } from './record-guard.js';
+
 export const RUNTIME_EVENT_CONTENT_KEY = '$stationContent';
 export const RUNTIME_EVENT_CONTENT_LITERAL_KEY = '$stationLiteral';
 
@@ -82,10 +84,6 @@ export type SpillableText =
   | RuntimeEventContentRef
   | RuntimeEventContentUnavailable;
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 export function isRuntimeEventContentDigest(value: unknown): value is string {
   return typeof value === 'string' && CONTENT_DIGEST_PATTERN.test(value);
 }
@@ -94,7 +92,7 @@ export function isRuntimeEventContentRef(
   value: unknown,
 ): value is RuntimeEventContentRef {
   return (
-    isPlainRecord(value) &&
+    isObjectRecord(value) &&
     value[RUNTIME_EVENT_CONTENT_KEY] === 1 &&
     isRuntimeEventContentDigest(value.ref) &&
     (value.kind === 'string' || value.kind === 'json') &&
@@ -107,7 +105,7 @@ export function isRuntimeEventContentUnavailable(
   value: unknown,
 ): value is RuntimeEventContentUnavailable {
   return (
-    isPlainRecord(value) &&
+    isObjectRecord(value) &&
     value[RUNTIME_EVENT_CONTENT_KEY] === 1 &&
     typeof value.unavailable === 'string'
   );
@@ -117,9 +115,9 @@ export function isRuntimeEventContentLiteral(
   value: unknown,
 ): value is RuntimeEventContentLiteral {
   return (
-    isPlainRecord(value) &&
+    isObjectRecord(value) &&
     Object.keys(value).length === 1 &&
-    isPlainRecord(value[RUNTIME_EVENT_CONTENT_LITERAL_KEY])
+    isObjectRecord(value[RUNTIME_EVENT_CONTENT_LITERAL_KEY])
   );
 }
 
@@ -153,7 +151,7 @@ export function collectRuntimeEventContentRefs(
       for (const item of node) visit(item);
       return;
     }
-    if (!isPlainRecord(node)) return;
+    if (!isObjectRecord(node)) return;
     if (isRuntimeEventContentLiteral(node)) {
       for (const child of Object.values(node.$stationLiteral)) visit(child);
       return;
@@ -183,8 +181,8 @@ export function runtimeEventStoredText(event: unknown): string {
  * there).
  */
 export function requestBoundCallIds(request: unknown): string[] {
-  const payload = isPlainRecord(request) ? request.payload : undefined;
-  if (!isPlainRecord(payload)) return [];
+  const payload = isObjectRecord(request) ? request.payload : undefined;
+  if (!isObjectRecord(payload)) return [];
   return [...new Set([payload.toolCallId, payload.itemId])].filter(
     (id): id is string => typeof id === 'string' && id.length > 0,
   );
@@ -238,7 +236,7 @@ export function resolveRuntimeEventContent<T>(
     }
     if (isRuntimeEventContentUnavailable(node)) return node;
     if (Array.isArray(node)) return node.map(visit);
-    if (!isPlainRecord(node)) return node;
+    if (!isObjectRecord(node)) return node;
     if (isRuntimeEventContentLiteral(node)) {
       return mapRecord(node.$stationLiteral, visit);
     }
@@ -256,7 +254,7 @@ export function unescapeRuntimeEventContent<T>(value: T): T {
     )
       return node;
     if (Array.isArray(node)) return node.map(visit);
-    if (!isPlainRecord(node)) return node;
+    if (!isObjectRecord(node)) return node;
     if (isRuntimeEventContentLiteral(node))
       return mapRecord(node.$stationLiteral, visit);
     return mapRecord(node, visit);
@@ -336,7 +334,7 @@ export function runtimeEventContentForDisplay<T>(value: T): T {
     )
       return runtimeEventContentDisplayText(node);
     if (Array.isArray(node)) return node.map(visit);
-    if (!isPlainRecord(node)) return node;
+    if (!isObjectRecord(node)) return node;
     if (isRuntimeEventContentLiteral(node))
       return mapRecord(node.$stationLiteral, visit);
     return mapRecord(node, visit);

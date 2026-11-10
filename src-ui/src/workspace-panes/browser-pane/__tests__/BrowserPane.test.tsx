@@ -1271,7 +1271,7 @@ describe('BrowserPane Chromium acquisition (D3)', () => {
       ),
     });
     const download = await screen.findByRole('button', {
-      name: 'Download Chromium (152 MB)',
+      name: 'Download Chromium (145.0 MB)',
     });
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
     fireEvent.click(download);

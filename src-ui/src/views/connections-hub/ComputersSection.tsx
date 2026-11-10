@@ -405,7 +405,8 @@ export function ComputersSection() {
             ? `${removeTarget.name} will be disconnected and removed from this Station. Your SSH configuration and remote files are not changed.`
             : ''
         }
-        confirmLabel={remove.isPending ? 'Removing…' : 'Remove'}
+        confirmLabel="Remove"
+        pending={remove.isPending}
         onConfirm={confirmRemove}
         onCancel={() => setRemoveTarget(null)}
         variant="danger"

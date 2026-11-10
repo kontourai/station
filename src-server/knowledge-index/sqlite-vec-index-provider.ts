@@ -91,6 +91,38 @@ function toVectorBuffer(vector: number[]): Uint8Array {
   return new Uint8Array(new Float32Array(vector).buffer);
 }
 
+/**
+ * Refuses an embedder answer that cannot be published one vector per chunk:
+ * no array at all (an HTTP embedder that read an error body as `undefined`),
+ * a short or long batch, or vectors that are empty or of differing widths.
+ * `rebuildRoot` pairs vectors with chunks by position and writes them into a
+ * fixed-width table, so any of these would otherwise throw only after the
+ * root's existing rows had been deleted, leaving the root empty.
+ */
+function assertPublishableVectors(
+  vectors: unknown,
+  expectedCount: number,
+): asserts vectors is number[][] {
+  const unchanged = 'the existing index for the root was left unchanged';
+  if (!Array.isArray(vectors) || vectors.length !== expectedCount) {
+    const returned = Array.isArray(vectors)
+      ? `${vectors.length} vectors`
+      : 'no vectors';
+    throw new Error(
+      `sqlite-vec rebuildRoot: embedder returned ${returned} for ${expectedCount} chunks; ${unchanged}`,
+    );
+  }
+  const width = Array.isArray(vectors[0]) ? vectors[0].length : 0;
+  const uniform = vectors.every(
+    (vector) => Array.isArray(vector) && vector.length === width,
+  );
+  if (expectedCount > 0 && (width === 0 || !uniform)) {
+    throw new Error(
+      `sqlite-vec rebuildRoot: embedder returned an empty or inconsistently sized vector; ${unchanged}`,
+    );
+  }
+}
+
 interface SqliteVecIndexProviderOptions {
   /** Override the db file path — used by tests; defaults to
    * `{resolveHomeDir()}/knowledge-index/index.db`, matching `lancedb-provider.ts`'s
@@ -527,6 +559,10 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       pending.length > 0
         ? await deps.embedder.embed(pending.map((p) => p.text))
         : [];
+    // Checked here, BEFORE `publish` deletes the root's rows: an embedder
+    // that resolves with the wrong shape is the same failure as one that
+    // rejects, and must leave the existing partition alone in the same way.
+    assertPublishableVectors(vectors, pending.length);
 
     // Drop the root's existing partition only after the (possibly-failing) embed
     // call above has succeeded — an embedder error must never leave a root

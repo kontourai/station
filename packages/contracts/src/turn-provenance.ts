@@ -1,6 +1,7 @@
 import type { ConversationContextBoundaryProvenance } from './conversation-context-boundary.js';
 import { engineDisplayLabel } from './engine-display.js';
 import type { EngineId } from './provider.js';
+import { isObjectRecord } from './record-guard.js';
 import type { CanonicalRuntimeEvent } from './runtime-events.js';
 import {
   parseTurnProvenanceContextInjection,
@@ -451,10 +452,6 @@ export const TURN_PROVENANCE_REF_SLOTS: Readonly<
   },
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
@@ -472,7 +469,7 @@ function isNonEmptyString(value: unknown): value is string {
  */
 function isUnavailableSlot(value: unknown): boolean {
   return (
-    isRecord(value) &&
+    isObjectRecord(value) &&
     value.state === 'unavailable' &&
     isNonEmptyString(value.reason)
   );
@@ -494,7 +491,7 @@ function hasObservationList(
     Array.isArray(value.observedFrom) &&
     (!requireNonEmpty || value.observedFrom.length > 0) &&
     value.observedFrom.every(
-      (entry) => isRecord(entry) && isNonEmptyString(entry.eventId),
+      (entry) => isObjectRecord(entry) && isNonEmptyString(entry.eventId),
     )
   );
 }
@@ -505,7 +502,7 @@ function isValueSlot(
 ): boolean {
   if (isUnavailableSlot(value)) return true;
   return (
-    isRecord(value) &&
+    isObjectRecord(value) &&
     value.state === 'observed' &&
     hasObservationList(value) &&
     isValue(value.value)
@@ -515,16 +512,16 @@ function isValueSlot(
 function isRefSlot(value: unknown): boolean {
   if (isUnavailableSlot(value)) return true;
   return (
-    isRecord(value) &&
+    isObjectRecord(value) &&
     value.state === 'referenced' &&
     hasObservationList(value, { requireNonEmpty: false }) &&
-    isRecord(value.ref)
+    isObjectRecord(value.ref)
   );
 }
 
 function isEngineValue(value: unknown): boolean {
   return (
-    isRecord(value) &&
+    isObjectRecord(value) &&
     isNonEmptyString(value.provider) &&
     (value.displayName === undefined || isNonEmptyString(value.displayName))
   );
@@ -532,11 +529,11 @@ function isEngineValue(value: unknown): boolean {
 
 function isToolSummaryValue(value: unknown): boolean {
   return (
-    isRecord(value) &&
+    isObjectRecord(value) &&
     Array.isArray(value.uses) &&
     value.uses.every(
       (use) =>
-        isRecord(use) &&
+        isObjectRecord(use) &&
         isNonEmptyString(use.name) &&
         typeof use.started === 'number' &&
         typeof use.succeeded === 'number' &&
@@ -559,7 +556,7 @@ function isContextBoundaryValue(
   value: unknown,
 ): value is ConversationContextBoundaryProvenance {
   return (
-    isRecord(value) &&
+    isObjectRecord(value) &&
     isNonEmptyString(value.boundaryId) &&
     (value.policy === 'continue-from-history' ||
       value.policy === 'empty-next-cold-start' ||
@@ -589,7 +586,7 @@ function isContextBoundaryValue(
 export function isSupportedTurnProvenanceEnvelope(
   value: unknown,
 ): value is TurnProvenanceEnvelope {
-  if (!isRecord(value)) return false;
+  if (!isObjectRecord(value)) return false;
   return (
     value.envelopeVersion === TURN_PROVENANCE_ENVELOPE_VERSION &&
     isNonEmptyString(value.sessionId) &&
@@ -600,7 +597,7 @@ export function isSupportedTurnProvenanceEnvelope(
     isValueSlot(value.requestedModel, isNonEmptyString) &&
     isValueSlot(value.reportedModel, isNonEmptyString) &&
     isValueSlot(value.tools, isToolSummaryValue) &&
-    isValueSlot(value.usage, isRecord) &&
+    isValueSlot(value.usage, isObjectRecord) &&
     isRefSlot(value.routingReceipt) &&
     isRefSlot(value.sources) &&
     isRefSlot(value.trustReport) &&

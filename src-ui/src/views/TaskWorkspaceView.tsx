@@ -57,6 +57,7 @@ import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
 import { describeStationFailure } from '../utils/stationFailure';
+import { nextTabIndex } from '../utils/tab-navigation';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
 import {
   ProjectTaskRoomConversation,
@@ -611,27 +612,17 @@ function TaskWorkspaceContent({
               onClick={() => setTab(name)}
               onFocus={(event) => revealTab(event.currentTarget)}
               onKeyDown={(event) => {
-                if (
-                  !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
-                    event.key,
-                  )
-                )
-                  return;
                 const tabs = Array.from(
                   event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
                     '[role="tab"]',
                   ) ?? [],
                 ).filter((button) => button.offsetParent !== null);
-                const index = tabs.indexOf(event.currentTarget);
-                const next =
-                  event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? tabs.length - 1
-                      : (index +
-                          (event.key === 'ArrowRight' ? 1 : -1) +
-                          tabs.length) %
-                        tabs.length;
+                const next = nextTabIndex(
+                  tabs.indexOf(event.currentTarget),
+                  tabs.length,
+                  event.key,
+                );
+                if (next === null) return;
                 event.preventDefault();
                 const target = tabs[next];
                 if (target) {

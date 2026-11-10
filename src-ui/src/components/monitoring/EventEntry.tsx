@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { K } from '../../../../src-shared/monitoring-keys';
 import type { MonitoringEvent } from '../../contexts/MonitoringContext';
 import { getAgentColor, getEventType } from '../../views/monitoring-utils';
@@ -16,7 +17,12 @@ interface EventEntryProps {
   onCopyResult: (text: string) => void;
 }
 
-export function EventEntry({
+/**
+ * Memoised: the log maps up to the retention cap of these on every arrival,
+ * search keystroke and highlight reset, and a row depends only on its props.
+ * `MonitoringLogStream` hands every row the same handler functions.
+ */
+export const EventEntry = memo(function EventEntry({
   event,
   isNew,
   selectedTraceId,
@@ -54,4 +60,4 @@ export function EventEntry({
       <EventEntrySections event={event} onCopyResult={onCopyResult} />
     </div>
   );
-}
+});

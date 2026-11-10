@@ -93,6 +93,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
+import { errorMessage } from '../../utils/error-message.js';
 import { notificationSessionIdentity } from '../notifications/notification-session.js';
 import {
   type TransactionalSqliteDatabase,
@@ -870,7 +871,7 @@ export class CoordinatorWakeDelivery {
       withdrawn = this.ports.withdrawQueuedWakes(conversationId, userId);
     } catch (error) {
       this.ports.logger.warn('coordinator wakes could not be withdrawn', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     if (
@@ -1059,7 +1060,7 @@ export class CoordinatorWakeDelivery {
     } catch (error) {
       this.ports.logger.warn('coordinator wake could not be sent', {
         wakeId: wake.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       this.ports.store.settleWake(wake.id, 'failed', now, {
         reasonCode: 'send_failed',
@@ -1172,7 +1173,7 @@ export function wireCoordinatorWakes(deps: {
       if (notification) delivery.observeNotification(notification);
     } catch (error) {
       deps.logger.warn('coordinator wake could not read a notification', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   });

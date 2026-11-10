@@ -2,6 +2,7 @@ import {
   OWNED_WORK_STATUS_WORDS,
   SESSION_STATUS_WORDS,
 } from '@kontourai/station-contracts/session-attention';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 import { formatDuration } from '../../utils/relativeTime';
 import { type HomeWorkItem, TASK_AWAITS_ANSWER_LABEL } from './home-view-model';
 import type { WorkAttentionKind, WorkFacts } from './work-facts';
@@ -109,12 +110,6 @@ export interface WorkStatus {
   line: string;
 }
 
-function epochMs(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : undefined;
-}
-
 type Rung = Omit<WorkStatus, 'line'>;
 
 /**
@@ -212,7 +207,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
               : undefined,
         };
       const activity = facts?.activity;
-      const since = epochMs(activity?.turnStartedAt);
+      const since = parseEpochMs(activity?.turnStartedAt);
       const children = activity?.childWorkCount ?? 0;
       if (children > 0) {
         return {
@@ -233,7 +228,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       // computed. The turn is still open and nothing is owed to the user,
       // so the lane stays Running; the tool still running is kept as the
       // detail because it is usually why.
-      const silentSince = epochMs(
+      const silentSince = parseEpochMs(
         item.turnProgress?.progressSilence?.silentSinceEventAt,
       );
       //

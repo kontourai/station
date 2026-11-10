@@ -260,7 +260,9 @@ test('project settings remain usable above the dock at phone and desktop widths 
         expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(900 - 72);
         await page.screenshot({ path: `${out}/danger-${width}-${theme}.png` });
         await remove.click();
-        await page.getByRole('dialog', { name: 'Delete Project' }).waitFor();
+        await page
+          .getByRole('alertdialog', { name: 'Delete Project' })
+          .waitFor();
         await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       }
     }

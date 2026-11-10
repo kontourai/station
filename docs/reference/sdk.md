@@ -1486,8 +1486,8 @@ Types: `'info' | 'success' | 'warning' | 'error'`. The object form takes one
 Returns immediate-toast `notify` plus server-backed `schedule` and `dismiss`
 methods. The example uses only `notify`; it does not create an inbox, push or
 scheduled notification. Server methods still require the host's transport and
-request authorization. `dismiss` currently awaits `fetch` without checking its
-HTTP status, so its resolved promise is not proof of successful deletion.
+request authorization. `schedule` and `dismiss` both reject when the server
+answers with an error status.
 
 ```ts
 type Notifications = ReturnType<typeof useNotifications>;
@@ -5065,8 +5065,12 @@ Each keeps its earlier constructor; the new form takes the helper's
 `StationHttpError`, not a `DelegationApiError`: a page is not Station's
 refusal. `getAuthorityObservation` keeps its own two sentences and reports the
 refusal's `status` and `code`; branch on `status === 401`, not on the
-sentence. Fetchers outside `client/` (the React query domains) are not yet on
-the helper.
+sentence. Of the fetchers outside `client/` (the React query domains), the
+Task graph, Task memory, work-item, operating-state and attention fetchers
+throw the helper's `StationHttpError` too, so a refusal whose body is not JSON
+(a proxy's error page, an empty body) keeps its status instead of surfacing a
+parse exception; attention snooze keeps its own plain `Error`. Not every other
+query domain is on the helper yet.
 
 Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,

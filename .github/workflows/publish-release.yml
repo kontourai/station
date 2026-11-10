@@ -39,6 +39,7 @@ permissions:
 jobs:
   resolve:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       sha: ${{ steps.source.outputs.sha }}
       created_at: ${{ steps.source.outputs.created_at }}
@@ -156,6 +157,7 @@ jobs:
     needs: [resolve, qualification, advisory]
     if: ${{ always() && !cancelled() && needs.resolve.result == 'success' && needs.advisory.result == 'success' && (needs.qualification.result == 'success' || needs.resolve.outputs.pointer_repair_only == 'true') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: native-release-publish
     # Set once the release is public and its desktop pointer verified, so the
     # host-pointer job can run even if a later step (the ledger) fails.

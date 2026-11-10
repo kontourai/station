@@ -307,7 +307,7 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    for the monitoring event stream specifically — the same class of
  *    noise as the header connection chip, just a second instance of it.
  *  - `.toast-card__time` (NotificationContainer.tsx): `formatTimestamp`'s
- *    relative "just now" — the one remaining live-clock-derived label this
+ *    relative "now" — the one remaining live-clock-derived label this
  *    gallery ever renders a toast for
  *    (`motion-reduced-notification`).
  *  - The Profile's completed rebuild timestamp. The unavailable-time
@@ -4518,7 +4518,7 @@ const SCREENS: Screen[] = [
           // Deliberately never confirmed: this screen captures the OPEN confirm
           // dialog, not the deletion it would perform.
           await expect(
-            page.getByRole('heading', { name: 'Delete Job' }),
+            page.getByRole('heading', { name: 'Delete job' }),
           ).toBeVisible({ timeout: 10_000 });
           await expect(page.locator('.station-dialog__overlay')).toBeVisible();
         } finally {

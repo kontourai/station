@@ -42,6 +42,8 @@
 import { mkdirSync } from 'node:fs';
 import type { Readable, Writable } from 'node:stream';
 import { BROWSER_PANE_TAB_LIMIT } from '@kontourai/station-contracts/workspace-browser-pane';
+import { errorMessage } from '../../../utils/error-message.js';
+import { sleep } from '../../../utils/sleep.js';
 import {
   spawnOwnedChild,
   terminateProcessTree,
@@ -509,10 +511,7 @@ export const launchChromiumProcess: ChromiumLauncher = ({
   const exited = new Promise<string>((resolve) => {
     proc.once('exit', async (code, signal) => {
       // 'exit' can precede the last stderr chunk; the cause is often in it.
-      await Promise.race([
-        stderrEnded,
-        new Promise((r) => setTimeout(r, STDERR_DRAIN_MS)),
-      ]);
+      await Promise.race([stderrEnded, sleep(STDERR_DRAIN_MS)]);
       const tail = stderrTail.trim().split('\n').slice(-3).join(' | ');
       resolve(
         `browser process exited (code ${code ?? 'none'}, signal ${signal ?? 'none'})${tail ? `: ${tail}` : ''}`,
@@ -895,7 +894,7 @@ export class ChromiumServerHost implements BrowserHost {
       for (const off of running.unsubscribe) off();
       await launch.terminate().catch(() => {});
       await proxy.close();
-      const reason = `launch failed: ${failure instanceof Error ? failure.message : String(failure)}`;
+      const reason = `launch failed: ${errorMessage(failure)}`;
       if (failure instanceof BrowserHostExitedError) {
         this.exitFailure = failure.failure;
         this.options.onEvent?.({

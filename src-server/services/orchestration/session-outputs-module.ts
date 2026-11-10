@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
 import {
   SESSION_OUTPUTS_V1,
@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/session-outputs';
 import { TASK_DECLARED_OUTPUT_KEEP_V1 } from '@kontourai/station-contracts/task-graph';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import { isCanonicalPathStrictlyWithin } from '../../utils/path-containment.js';
 import {
   TaskDeclaredOutputKeepConflictError,
   TaskDeclaredOutputKeepDeletedError,
@@ -112,11 +113,6 @@ export interface SessionOutputsModule {
       import('@kontourai/station-contracts').TaskKeptDeclaredPullRequestOutcome
     >;
   }): Promise<SessionOutputKeepOutcome>;
-}
-
-function inside(root: string, child: string): boolean {
-  const value = relative(root, child);
-  return value !== '' && !value.startsWith('..') && !isAbsolute(value);
 }
 
 function bounded(value: unknown, max: number): value is string {
@@ -256,7 +252,8 @@ async function inspectFile(
 ): Promise<SessionOutputInspection> {
   await revalidateGuardedDirectories(workspace.root, workspace.rootDirectories);
   const target = resolve(workspace.root, descriptor.relativePath);
-  if (!inside(workspace.root, target)) throw new Error('outside workspace');
+  if (!isCanonicalPathStrictlyWithin(workspace.root, target))
+    throw new Error('outside workspace');
   const parent = dirname(target);
   const parentDirectories = await bindGuardedDirectories(parent);
   const link = await lstat(target);

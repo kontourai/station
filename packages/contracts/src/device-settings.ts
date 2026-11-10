@@ -12,6 +12,7 @@
  * files.
  */
 
+import { isObjectRecord } from './record-guard.js';
 import type { SettingValueDescriptor } from './settings-registry.js';
 
 export interface FeatureSettings {
@@ -602,10 +603,6 @@ const DEFAULT_MODEL_PICKER_PREFERENCES: ModelPickerPreferences = {
 /** The shared prior settings root #1359 shipped for `shortcutOverrides`/`modelPickerPreferences`. */
 const SHARED_PRIOR_DEVICE_SETTINGS_KEY = 'station.device-settings';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 const SHORTCUT_MODIFIERS: readonly ShortcutModifier[] = [
   'cmd',
   'ctrl',
@@ -627,7 +624,7 @@ export function normalizePriorShortcutBinding(
   value: unknown,
 ): ShortcutBinding | null | undefined {
   if (value === null) return null;
-  if (!isPlainObject(value)) return undefined;
+  if (!isObjectRecord(value)) return undefined;
   const key = value.key;
   const modifiers = value.modifiers;
   if (typeof key !== 'string' || !key.trim()) return undefined;
@@ -662,10 +659,10 @@ export function normalizePriorShortcutBinding(
 function priorReadShortcutOverrides(
   root: Record<string, unknown>,
 ): ShortcutOverrides | undefined {
-  const shortcuts = isPlainObject(root.shortcuts) ? root.shortcuts : undefined;
-  const source = isPlainObject(shortcuts?.bindings)
+  const shortcuts = isObjectRecord(root.shortcuts) ? root.shortcuts : undefined;
+  const source = isObjectRecord(shortcuts?.bindings)
     ? shortcuts!.bindings
-    : isPlainObject(root.shortcutBindings)
+    : isObjectRecord(root.shortcutBindings)
       ? root.shortcutBindings
       : undefined;
   if (!source) return undefined;
@@ -708,7 +705,7 @@ export function priorStringList(value: unknown): string[] {
 function priorReadModelPickerPreferences(
   root: Record<string, unknown>,
 ): ModelPickerPreferences | undefined {
-  if (!isPlainObject(root.modelPicker)) return undefined;
+  if (!isObjectRecord(root.modelPicker)) return undefined;
   const picker = root.modelPicker;
   return {
     favorites: priorStringList(picker.favorites),
@@ -1243,7 +1240,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
 export function extractPriorDeviceSettingsRoot(
   root: unknown,
 ): Partial<DeviceSettings> {
-  if (!isPlainObject(root)) return {};
+  if (!isObjectRecord(root)) return {};
   const values: Partial<DeviceSettings> = {};
   for (const definition of DEVICE_SETTINGS_REGISTRY) {
     if (!definition.priorRead) continue;

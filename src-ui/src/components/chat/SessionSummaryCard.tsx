@@ -11,6 +11,7 @@ import type { ChatSession } from '../../types';
 import { log } from '../../utils/logger';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
+import { ConfirmModal } from '../modals/ConfirmModal';
 
 interface GenerateRunState {
   status: 'pending' | 'error' | 'success' | 'idle';
@@ -298,29 +299,18 @@ export function SessionSummaryCard({
               },
             ]}
           />
-          {deleteConfirmation ? (
-            <div role="alertdialog" aria-label="Delete derived summary">
-              <p>
-                Delete this derived summary? The transcript and Task evidence
-                stay unchanged.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  remove.mutate({ agentSlug, conversationId });
-                  setDeleteConfirmation(false);
-                }}
-              >
-                Delete summary
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmation(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : null}
+          <ConfirmModal
+            isOpen={deleteConfirmation}
+            variant="danger"
+            title="Delete derived summary"
+            message="Delete this derived summary? The transcript and Task evidence stay unchanged."
+            confirmLabel="Delete summary"
+            onConfirm={() => {
+              remove.mutate({ agentSlug, conversationId });
+              setDeleteConfirmation(false);
+            }}
+            onCancel={() => setDeleteConfirmation(false)}
+          />
         </>
       ) : isGenerating ? (
         <p className="session-summary__generating" role="status">

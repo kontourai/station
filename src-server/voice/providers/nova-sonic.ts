@@ -5,6 +5,7 @@ import {
   type InvokeModelWithBidirectionalStreamInput,
 } from '@aws-sdk/client-bedrock-runtime';
 import { NodeHttp2Handler } from '@smithy/node-http-handler';
+import { sleep } from '../../utils/sleep.js';
 import type {
   IS2SProvider,
   S2SAudioFormat,
@@ -107,7 +108,7 @@ export class NovaSonicProvider
         const item = this.queue.shift()!;
         if (item === null) return;
         yield item;
-        await new Promise<void>((r) => setTimeout(r, 30));
+        await sleep(30);
       }
       await new Promise<void>((r) => {
         this.queueResolve = r;
