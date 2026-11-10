@@ -263,7 +263,16 @@ describe('ProjectTasksSection', () => {
   });
 
   test("names the dispatched Session's agent-reported plan progress in the list link", () => {
-    tasks[0] = { ...tasks[0], status: 'in_progress', sessionId: 'session-a' };
+    tasks = [
+      { ...tasks[0], status: 'in_progress', sessionId: 'session-a' },
+      {
+        ...tasks[0],
+        id: 'task-2',
+        title: 'Unplanned task',
+        status: 'in_progress',
+        sessionId: 'session-b',
+      },
+    ];
     useOrchestrationSessionActivityQuery.mockImplementation(
       (threadId: string) =>
         threadId === 'session-a'
@@ -296,6 +305,10 @@ describe('ProjectTasksSection', () => {
       name: /Existing task.*Agent-reported plan: 1 of 2 steps done.*Open Task/,
     });
     expect(entry.textContent).toContain('Agent plan 1/2');
+    // A Session without a plan shows nothing rather than an empty bar.
+    const unplanned = screen.getByRole('link', { name: /Unplanned task/ });
+    expect(unplanned.textContent).not.toContain('Agent plan');
+    expect(unplanned.querySelector('.task-plan-progress')).toBeNull();
   });
 
   test('opens the selected board task and refreshes its canonical records without dispatching', () => {
