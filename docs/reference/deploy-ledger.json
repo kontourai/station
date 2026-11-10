@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-11-10T17:31:04Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261110.42863491617",
+    "sha": "0d474001f59ed2b15668a5a63749ca4a05e048b7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42863491617",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261110.42863491617 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "be313818aaa2b87bade4b3ee4c2b5ac4e8135b6f",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4759](https://github.com/kontourai/station/pull/4759) fix: restore Task room focus and verify reload recovery",
+          "[#4762](https://github.com/kontourai/station/pull/4762) fix: settle sampler fixture IPC before disconnect"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-11-10T09:56:32Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261110.1",
