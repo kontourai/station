@@ -106,6 +106,10 @@ import {
 import { doctor, doctorJson } from './commands/lifecycle-doctor.js';
 import { runStationsCommand } from './commands/profile-command.js';
 import {
+  isRetiredFeaturesOption,
+  retiredFeaturesOptionError,
+} from './commands/retired-features-option.js';
+import {
   parseAllowedOriginFlag,
   runServiceCommand,
 } from './commands/service.js';
@@ -173,7 +177,6 @@ export interface ParsedLifecycleArgs {
   baseDir: string;
   buildFlag: boolean;
   clearAllowedOrigins: boolean;
-  features?: string;
   force: boolean;
   allowSharedHome: boolean;
   watch: boolean;
@@ -219,7 +222,6 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
     '--base',
     '--instance',
     '--log',
-    '--features',
     '--allowed-origin',
     '--stop-intent',
     '--lifecycle-journal',
@@ -231,6 +233,7 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
         `Lifecycle option ${arg} requires the ${arg}=<value> form.`,
       );
     }
+    if (isRetiredFeaturesOption(arg)) throw retiredFeaturesOptionError(arg);
   }
 
   const channelDefaults = {
@@ -248,7 +251,6 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
   let buildFlag = false;
   let baseDir: string | undefined;
   let homeDir: string | undefined;
-  let features: string | undefined;
   let instanceName: string | undefined;
   let host: string | undefined;
   let lifecycleJournal: string | undefined;
@@ -272,8 +274,6 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
       baseDir = arg.slice(arg.indexOf('=') + 1);
     } else if (arg.startsWith('--home=')) {
       homeDir = arg.slice(arg.indexOf('=') + 1);
-    } else if (arg.startsWith('--features=')) {
-      features = arg.slice(arg.indexOf('=') + 1);
     } else if (arg.startsWith('--instance=')) {
       instanceName = arg.slice(arg.indexOf('=') + 1);
     } else if (arg.startsWith('--host=')) {
@@ -330,7 +330,6 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
     baseDir: homeTarget.projectHome,
     homeSource: homeTarget.source,
     host,
-    features,
     instanceName,
     lifecycleJournal,
     readinessFile,
@@ -1044,7 +1043,6 @@ function buildProgram(
       baseDir: lifecycleArgs.baseDir,
       homeSource: lifecycleArgs.homeSource,
       instanceName: lifecycleArgs.instanceName,
-      features: lifecycleArgs.features,
       host: lifecycleArgs.host,
       // Ad-hoc starts honor the flag too; only `service install` persists
       // it (#1672).

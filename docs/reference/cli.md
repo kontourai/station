@@ -2498,12 +2498,12 @@ Install Station as a per-user background service, start or stop its installed
 registration, inspect its health layers, or remove the service registration:
 
 ```bash
-station service install [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]... [--clear-allowed-origins]
+station service install [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--allowed-origin=<origin>]... [--clear-allowed-origins]
 station service start [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--json]
 station service status [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--json]
 station service stop [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--json]
 station service uninstall [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>]
-station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]...
+station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--allowed-origin=<origin>]...
 ```
 
 `run` is the foreground supervisor used by installed OS units and containers.
@@ -2811,6 +2811,25 @@ origins on an `origins` line.
 server/UI identity endpoints. `--json` emits the same data for automation. An
 installed but inactive or unreachable service exits non-zero.
 
+`--features=<flags>` was removed (#3909). It only set `STATION_FEATURES`,
+whose last flag, `strands-runtime`, chose the Strands runtime for one process;
+the persisted [`runtime` setting](config.md) is now the only runtime
+selector. `start`, `dev`, `service install`, and `service run` refuse the
+option, in either form, before doing anything, and name
+`station config set runtime strands`. A service installed before #3909 with
+`--features` still passes it from its unit, so its `service run` refuses and
+Station does not start; it never starts on another runtime than the one the
+unit asked for. A launchd or systemd unit restarts it and logs the same
+refusal each time. A launcher-run service that receives this version as an
+update fails the trial and is rolled back to the previous version. `service
+status` prints a `launch options refused:` line naming the option, and, when
+it asked for `strands-runtime`, the `STATION_HOME=<home> station config set
+runtime strands --offline` command that keeps Strands, followed by the
+reinstall command (which omits `--features`). It reports `healthy: false` and
+exits 1, and `--json` carries the same as `retiredFeatures: { features,
+explanation }`. Run the `config set` command first: a reinstall without it
+starts the service on the persisted `runtime` setting, VoltAgent unless set.
+
 The unit's `PATH` is captured once, at install, from your login shell
 (`$SHELL -l`) plus the Node and system directories. A directory added to your
 profile later, or a Nix/home-manager generation that has since moved on, does
@@ -2838,7 +2857,7 @@ loaded job, and uses the environment of the shell that runs `status`.
 
 On macOS and Linux the reinstall command (here, for stale scheduling, and in
 `station upgrade` guidance) repeats the installed unit's own `service run`
-arguments: instance, home, ports, host, features and allowed origins. The
+arguments: instance, home, ports, host and allowed origins. The
 unit is named by instance alone, so a manifest in the home `status` read can
 describe an earlier install. On Windows the command comes from the manifest
 beside the task's wrapper. A service that runs an installer-owned archive is
@@ -2965,7 +2984,7 @@ release-specific and must not contain the Station home.
 Start the application server and UI. Builds automatically on first run if `dist-server/` or `dist-ui/` are missing.
 
 ```
-station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
+station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--log[=<path>]] [--allowed-origin=<origin>]...
 ```
 
 | Flag | Default | Description |
@@ -2982,7 +3001,6 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
 | `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has its `TMPDIR` there: `<home>/tmp/engine-spawn`, which Station reaps by age, or with the `chat-host-images` preview a per-session directory under `<home>/tmp/session-tmp` removed when the session exits), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
 | `--instance=<name>` | derived from `{cwd, base, ports}` | Stable instance name for targeted stop/restart flows |
-| `--features=<flags>` | — | Comma-separated feature flags (e.g. `strands-runtime`) |
 | `--log[=<path>]` | `/tmp/station-server.log` | Redirect server stdout/stderr to a log file |
 
 Detached processes are tracked per instance in `.station/instances/<instance-id>.json` (see [Instance State Mechanism](#instance-state-mechanism)). During migration, the prior `.station.pids` state file is still recognized when present.
@@ -3114,7 +3132,7 @@ stays valid across restarts. It does not fork the start logic — it derives the
 ports/instance/home, then runs the same path as [`start`](#start).
 
 ```
-station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--features=<flags>] [--dry-run]
+station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--dry-run]
 ```
 
 | Flag | Default | Description |
@@ -3125,7 +3143,6 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean]
 | `--watch` | — | Hot-reload mode, as `station start --watch` |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
-| `--features=<flags>` | — | Comma-separated feature flags |
 | `--dry-run` | — | Print the resolved ports/instance/home and exit without starting |
 
 **Ports.** The dev band is `server 39140 + offset` and `ui 40140 + offset`,

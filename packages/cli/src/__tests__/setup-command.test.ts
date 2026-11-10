@@ -1,12 +1,22 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH } from '@kontourai/station-contracts/environment-security';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LocalSelfAuthOutcome } from '../commands/local-self-auth.js';
-import { readProfileStore, upsertProfile } from '../commands/profile-store.js';
+import {
+  profilesPath,
+  readProfileStore,
+  upsertProfile,
+} from '../commands/profile-store.js';
 import { runSetupCommand } from '../commands/setup-command.js';
 
 let home: string;
@@ -77,6 +87,17 @@ describe('station setup', () => {
         },
       ],
     });
+  });
+
+  it('refuses the retired --features option before any profile or service effect (#3909)', async () => {
+    const deps = dependencies();
+    await expect(
+      runSetupCommand(['local', '--features=strands-runtime'], deps),
+    ).rejects.toThrow(
+      /^--features was removed: .*station config set runtime strands/,
+    );
+    expect(deps.installLocalService).not.toHaveBeenCalled();
+    expect(existsSync(profilesPath())).toBe(false);
   });
 
   it('publishes shared profile genesis before local setup populates its runtime', async () => {

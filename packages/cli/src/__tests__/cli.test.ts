@@ -519,10 +519,10 @@ describe('runCli', () => {
     const { parseLifecycleArgs } = await import('../cli.js');
 
     expect(
-      parseLifecycleArgs([`--base=${home}`, '--features=a=1,b']),
+      parseLifecycleArgs([`--base=${home}`, '--log=/tmp/a=1,b.log']),
     ).toMatchObject({
       baseDir: home,
-      features: 'a=1,b',
+      logFile: '/tmp/a=1,b.log',
     });
   });
 
@@ -537,6 +537,31 @@ describe('runCli', () => {
       );
     }
   });
+
+  // #3909: `--features` only set STATION_FEATURES, which nothing reads now.
+  // Lifecycle commands ignore unknown flags, so ignoring this one would start
+  // a Station that asked for Strands on VoltAgent; it is refused instead,
+  // before any lifecycle effect, and the refusal names the runtime setting.
+  test.each([
+    ['start', ['start']],
+    ['service install', ['service', 'install']],
+    ['service run', ['service', 'run']],
+  ])(
+    '%s refuses the retired --features option before any lifecycle effect',
+    async (_label, command) => {
+      const { lifecycle, runCli, service } = await loadCliWithLifecycleMocks();
+      for (const option of ['--features=strands-runtime', '--features']) {
+        await expect(
+          runCli([...command, `--base=${STATION_HOME}`, option]),
+        ).rejects.toThrow(
+          /^--features was removed: .*persisted `runtime` setting is the only runtime selector \(#3909\)\. .*station config set runtime strands/,
+        );
+      }
+      expect(lifecycle.start).not.toHaveBeenCalled();
+      expect(lifecycle.clean).not.toHaveBeenCalled();
+      expect(service.runServiceCommand).not.toHaveBeenCalled();
+    },
+  );
 
   test('rejects ephemeral service commands before creating a temp home', async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'station-cli-service-test-'));
@@ -814,7 +839,6 @@ describe('runCli', () => {
       allowedOrigins: undefined,
       baseDir: STATION_HOME,
       build: false,
-      features: undefined,
       force: true,
       homeSource: '--base',
       host: '127.0.0.1',

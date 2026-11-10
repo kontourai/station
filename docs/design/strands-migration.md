@@ -11,21 +11,24 @@ dispatch is surfaced without automatic resend. See the
 
 > **Status: historical migration assessment.** The parity table and SDK gaps
 > below record the assessment made when the Strands runtime was added; they are
-> not a current compatibility guarantee. **Successors:** the
-> [configuration reference](../reference/config.md) owns the `runtime` setting
-> and the `--features=strands-runtime` opt-in, and the
-> [environment variable reference](../reference/env-vars.md) owns
-> `STATION_FEATURES`. Verify behavior against the
+> not a current compatibility guarantee. **Successor:** the
+> [configuration reference](../reference/config.md) owns the `runtime` setting,
+> the only runtime selector since
+> [#3909](https://github.com/kontourai/station/issues/3909) removed the
+> per-process boot flag this record originally described. Verify behavior against the
 > [Strands adapter](../../src-server/runtime/frameworks/strands-adapter.ts) and
 > its tests before relying on a capability or gap described here.
 
 ## How to Test
 
 ```bash
-./station start --build --features=strands-runtime
+./station config set runtime strands --offline
+./station start --build
 ```
 
-No config file changes needed. The `--features` flag sets `STATION_FEATURES` env var, and the runtime applies `strands-runtime` to override `appConfig.runtime`.
+Station reads the persisted `runtime` setting once at startup and creates the
+Strands framework when it is `strands`. With Station running, omit `--offline`
+and restart Station after the change.
 
 ## What's Working
 
@@ -72,9 +75,8 @@ The Strands adapter calls `modelCatalog.resolveModelId()` which should add the `
 ## Architecture
 
 ```
-CLI: --features=strands-runtime
-  → env STATION_FEATURES=strands-runtime
-  → runtime.initialize() reads env, sets appConfig.runtime = 'strands'
+config/app.json: "runtime": "strands"
+  → runtime.initialize() reads appConfig.runtime
   → StrandsFramework created instead of VoltAgentFramework
 
 Tool Denial Flow:
@@ -94,6 +96,8 @@ Message Sync Flow:
 ## Files changed by the migration (paths as of this review)
 
 - `src-server/runtime/frameworks/strands-adapter.ts` — All adapter fixes
-- `packages/cli/src/cli.ts` — `--features` flag parsing
-- `packages/cli/src/commands/lifecycle.ts` — Pass `STATION_FEATURES` env var
-- `src-server/runtime/bootstrap/runtime-initialize.ts` — Apply feature flags in initialize()
+- `src-server/runtime/bootstrap/runtime-initialize.ts` — Select the framework
+  from the `runtime` setting in initialize()
+
+The migration also added a CLI `--features` option that set a
+`STATION_FEATURES` boot override; #3909 removed both.

@@ -744,7 +744,6 @@ describe('station service dispatch', () => {
       {
         ...lifecycle(baseDir),
         allowedOrigins: ['https://station.example.test'],
-        features: 'agent-mode,voice',
         host: '0.0.0.0',
         serverPort: 4242,
         uiPort: 5275,
@@ -777,7 +776,10 @@ describe('station service dispatch', () => {
         'scheduling     stale (ProcessType=Background, expected ProcessType=Interactive)',
       );
       expect(log.mock.calls.flat().join('\n')).toContain(
-        `run: station service install --instance=service-test --base=${baseDir} --port=4242 --ui-port=5275 --host=0.0.0.0 --features=agent-mode,voice --allowed-origin=https://station.example.test`,
+        `run: station service install --instance=service-test --base=${baseDir} --port=4242 --ui-port=5275 --host=0.0.0.0 --allowed-origin=https://station.example.test`,
+      );
+      expect(log.mock.calls.flat().join('\n')).not.toContain(
+        'launch options refused',
       );
       expect(installLaunchd).not.toHaveBeenCalled();
       expect(startLaunchd).not.toHaveBeenCalled();
@@ -799,6 +801,124 @@ describe('station service dispatch', () => {
       expect(process.exitCode).toBe(1);
       expect(readFileSync(unitPath, 'utf8')).toContain('Background');
     } finally {
+      log.mockRestore();
+    }
+  });
+
+  // #3909: a registration written before the flag ended still starts
+  // `service run --features=strands-runtime`, which the CLI now refuses. Status
+  // must say why the service is down, how to keep Strands, and give a
+  // reinstall command the new CLI accepts.
+  test('status names a pre-#3909 unit that still passes --features and a reinstall command without it', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { parseLifecycleArgs } = await import('../cli.js');
+    vi.stubEnv('STATION_ROOT', '');
+    const baseDir = makeTempDir('station-service-test-');
+    const unitPath = join(baseDir, 'installed.plist');
+    const registration = {
+      label: 'io.kontourai.station.service-test',
+      platform: 'darwin' as const,
+      unitPath,
+    };
+    launchdRegistration.mockReturnValue(registration);
+    const { renderLaunchdPlist } = await vi.importActual<
+      typeof import('../commands/service-launchd.js')
+    >('../commands/service-launchd.js');
+    installLaunchd.mockImplementation((instanceId, input) => {
+      writeFileSync(
+        unitPath,
+        renderLaunchdPlist({
+          ...input,
+          instanceId,
+          label: registration.label,
+        }),
+      );
+      return {
+        host: input.lifecycle.host,
+        installedAt: '',
+        instanceId,
+        label: registration.label,
+        nodePath: input.nodePath,
+        platform: 'darwin',
+        repoPath: input.repoPath,
+        serverPort: input.lifecycle.serverPort,
+        uiPort: input.lifecycle.uiPort,
+        unitPath,
+      };
+    });
+    const run = vi.fn((command: string, args: string[]) =>
+      command === 'plutil'
+        ? { status: 0, stdout: plutilJson(args.at(-1) as string) }
+        : { status: 0, stdout: '/usr/bin:/bin\n' },
+    );
+    await runServiceCommand(
+      ['install'],
+      {
+        ...lifecycle(baseDir),
+        host: '0.0.0.0',
+        serverPort: 4242,
+        uiPort: 5275,
+      },
+      { fs: serviceFs, platform: 'darwin', run },
+    );
+    // What the pre-#3909 writer produced for `--features=strands-runtime`:
+    // the option right after --host in the unit, and the value in the
+    // manifest.
+    const current = readFileSync(unitPath, 'utf8');
+    expect(current).not.toContain('--features');
+    writeFileSync(
+      unitPath,
+      current.replace(
+        '<string>--host=0.0.0.0</string>',
+        '<string>--host=0.0.0.0</string>\n    <string>--features=strands-runtime</string>',
+      ),
+    );
+    const manifestPath = join(baseDir, 'service', 'service-test.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        ...JSON.parse(readFileSync(manifestPath, 'utf8')),
+        features: 'strands-runtime',
+      }),
+      { mode: 0o600 },
+    );
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      installLaunchd.mockClear();
+      process.exitCode = undefined;
+      await runServiceCommand(['status'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run,
+      });
+      const text = log.mock.calls.flat().join('\n');
+      expect(text).toContain('scheduling     current');
+      expect(text).toContain(
+        `launch options refused: this service passes --features=strands-runtime, which Station no longer accepts (#3909), so it does not start until it is reinstalled without it. It asked for the Strands runtime: to keep Strands, run "STATION_HOME=${baseDir} station config set runtime strands --offline" before reinstalling`,
+      );
+      const reinstall = `station service install --instance=service-test --base=${baseDir} --port=4242 --ui-port=5275 --host=0.0.0.0`;
+      expect(text).toContain(`run: ${reinstall}\n`.trimEnd());
+      expect(text).not.toContain('run: station service install --features');
+      // The suggested command is one the new CLI accepts.
+      expect(parseLifecycleArgs(reinstall.split(' ').slice(3))).toMatchObject({
+        baseDir,
+        host: '0.0.0.0',
+        serverPort: 4242,
+      });
+      expect(process.exitCode).toBe(1);
+      process.exitCode = undefined;
+      await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run,
+      });
+      expect(
+        JSON.parse(String(log.mock.calls.at(-1)?.[0])).retiredFeatures,
+      ).toMatchObject({ features: 'strands-runtime' });
+      expect(process.exitCode).toBe(1);
+      expect(installLaunchd).not.toHaveBeenCalled();
+    } finally {
+      process.exitCode = undefined;
       log.mockRestore();
     }
   });
@@ -4073,7 +4193,8 @@ describe('service status remedy reproduces the installed unit (#4189)', () => {
           label: 'io.kontourai.station.default',
           lifecycle: {
             ...installedSettings(installedHome),
-            features: "a&b,<c>,'d'",
+            // Characters the plist must escape.
+            allowedOrigins: ["https://a&b.example.test/<c>'d'"],
             stationRoot: root,
           },
           servicePath: '/usr/bin:/bin',

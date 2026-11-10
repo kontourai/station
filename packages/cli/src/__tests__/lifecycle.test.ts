@@ -613,7 +613,6 @@ function writeStaleServiceManifest(
     `${JSON.stringify({
       allowedOrigins: [],
       baseDir: home,
-      features: null,
       host: '127.0.0.1',
       instanceId,
       platform,

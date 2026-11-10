@@ -243,4 +243,16 @@ describe('runDevCommand — wiring to the start path', () => {
       /Unknown station dev option/,
     );
   });
+
+  test('the retired --features option is refused with the runtime setting named (#3909)', async () => {
+    const { start, clean, ensureDir, deps } = baseDeps();
+    for (const option of ['--features=strands-runtime', '--features']) {
+      await expect(runDevCommand([option], deps)).rejects.toThrow(
+        /^--features was removed: .*station config set runtime strands/,
+      );
+    }
+    expect(start).not.toHaveBeenCalled();
+    expect(clean).not.toHaveBeenCalled();
+    expect(ensureDir).not.toHaveBeenCalled();
+  });
 });

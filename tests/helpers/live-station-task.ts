@@ -417,6 +417,7 @@ export async function startStation(
     /** Explicit inherited environment; live security fixtures pass a sanitized set. */
     environment?: NodeJS.ProcessEnv;
   } = {},
+  runtimeRestarted = false,
 ): Promise<string> {
   const args = [
     'start',
@@ -452,18 +453,6 @@ export async function startStation(
       STATION_HOME: live.home,
       STATION_E2E_SYSTEM_STATUS_READY:
         options.deterministicReadiness === false ? undefined : '1',
-      ...(options.runtimeFramework
-        ? {
-            STATION_FEATURES: [
-              ...(inherited.STATION_FEATURES ?? '')
-                .split(',')
-                .filter((feature) => feature && feature !== 'strands-runtime'),
-              ...(options.runtimeFramework === 'strands'
-                ? ['strands-runtime']
-                : []),
-            ].join(','),
-          }
-        : {}),
       ...(options.performanceReference
         ? {
             STATION_PERFORMANCE_REFERENCE: '1',
@@ -495,7 +484,51 @@ export async function startStation(
     ),
     waitForReady(live.ui, 'Station UI'),
   ]);
+  if (options.runtimeFramework) {
+    // #3909: the persisted `runtime` setting is the only runtime selector,
+    // and Station reads it once at boot. A fresh home is seeded by the
+    // server itself, so persist the choice through the config route and
+    // restart once rather than writing config/app.json before first boot.
+    const headers = e2eOperatorAuthorizationHeaders(operatorCredential);
+    const persisted = await persistedRuntimeFramework(live, headers);
+    if (persisted !== options.runtimeFramework) {
+      if (runtimeRestarted) {
+        throw new Error(
+          `Nested Station booted with runtime ${persisted} after persisting ${options.runtimeFramework}`,
+        );
+      }
+      const response = await fetch(`${live.api}/config/app`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runtime: options.runtimeFramework }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Persisting runtime ${options.runtimeFramework} failed: HTTP ${response.status}`,
+        );
+      }
+      await stopStation(live, { environment: options.environment });
+      return startStation(live, false, options, true);
+    }
+  }
   return bootstrapMatches[0]![1]!;
+}
+
+async function persistedRuntimeFramework(
+  live: LiveStation,
+  headers: Record<string, string>,
+): Promise<string> {
+  const response = await fetch(`${live.api}/config/app`, {
+    headers,
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Reading config/app failed: HTTP ${response.status}`);
+  }
+  const body = (await response.json()) as { data?: { runtime?: unknown } };
+  const runtime = body.data?.runtime;
+  return typeof runtime === 'string' ? runtime : 'voltagent';
 }
 
 export interface TaskRoomAgentEditReceipt {

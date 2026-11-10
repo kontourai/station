@@ -117,7 +117,6 @@ export interface ServiceLifecycleArgs {
   allowedOrigins?: string[];
   baseDir: string;
   clearAllowedOrigins?: boolean;
-  features?: string;
   homeSource: LifecycleHomeSource;
   host?: string;
   instanceName?: string;
@@ -168,7 +167,11 @@ export interface ServiceManifest {
   allowedOrigins?: string[];
   /** Complete config is persisted so drift guidance never resets a service. */
   baseDir?: string;
-  /** null means this registration intentionally has no feature flags. */
+  /**
+   * Written by installs before #3909: the `--features=` value the unit
+   * passes, or null for none. Installs no longer write it; a string here
+   * means the registration passes an option `service run` now refuses.
+   */
   features?: string | null;
   host: string;
   installedAt: string;
@@ -1118,7 +1121,8 @@ function renderStatus(
     state.supervisor.enabled !== false &&
     state.supervisor.linger !== false &&
     state.ready &&
-    schedulingHealthy;
+    schedulingHealthy &&
+    remedy.retiredFeatures === undefined;
   const { state: _identityState, ...instance } = state.identity;
   const result = {
     healthy,
@@ -1126,6 +1130,9 @@ function renderStatus(
     instance,
     manifest: state.manifestDetails,
     registry: state.registry,
+    ...(remedy.retiredFeatures === undefined
+      ? {}
+      : { retiredFeatures: remedy.retiredFeatures }),
     scheduling,
     ...(servicePath === null ? {} : { servicePath }),
     unit: state.unit,
@@ -1214,6 +1221,14 @@ function renderStatus(
         : `               reinstall command unavailable: ${remedy.reason}`,
     );
   };
+  // #3909: a registration that still passes --features is refused by
+  // `service run`, so name why the service is down and how to reinstall.
+  if (remedy.retiredFeatures !== undefined) {
+    console.log(
+      `launch options refused: ${remedy.retiredFeatures.explanation}`,
+    );
+    printRemedy();
+  }
   if (scheduling.status === 'stale') {
     console.log(
       `scheduling     stale (${scheduling.observed}, expected ${scheduling.expected})`,
@@ -1769,7 +1784,6 @@ export async function runServiceCommand(
     )().toISOString();
     manifest.baseDir = lifecycle.baseDir;
     manifest.stationRoot = lifecycle.stationRoot;
-    manifest.features = lifecycle.features ?? null;
     manifest.allowedOrigins = effectiveAllowedOrigins;
     let rolledBack = false;
     const compensate = async (
@@ -2110,7 +2124,8 @@ export async function runServiceCommand(
     observed.supervisor.enabled !== false &&
     observed.supervisor.linger !== false &&
     observed.ready &&
-    isSchedulingPolicyHealthy(scheduling);
+    isSchedulingPolicyHealthy(scheduling) &&
+    remedy.retiredFeatures === undefined;
   if (!healthy) {
     process.exitCode = 1;
   }
