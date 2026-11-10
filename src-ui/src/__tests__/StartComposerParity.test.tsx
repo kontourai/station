@@ -1399,10 +1399,13 @@ describe('Home and the dock start the same way', () => {
   }, 30_000);
 
   describe("Home's draft survives every way a start or hand-off can end", () => {
-    function renderHome(namespace = 'ns-1') {
+    function renderHome(
+      namespace: string | null = 'ns-1',
+      status: 'verified' | 'unavailable' = 'verified',
+    ) {
       return render(
         <AuthorityPersistenceContext.Provider
-          value={{ status: 'verified', namespace, observation: null }}
+          value={{ status, namespace, observation: null }}
         >
           <HomeStartComposer />
         </AuthorityPersistenceContext.Provider>,
@@ -1787,6 +1790,89 @@ describe('Home and the dock start the same way', () => {
       expect(field().value).toBe('A');
       expect(earlier()?.textContent).toContain('B');
     });
+
+    test.each(['concurrent', 'remounted'] as const)(
+      'an unverified Home keeps held drafts out of a %s instance',
+      async (destination) => {
+        const taken: NewChatIntent[] = [];
+        const accept = (event: Event) => {
+          event.preventDefault();
+          taken.push((event as CustomEvent<NewChatIntent>).detail);
+        };
+        const durableHomeRows = () =>
+          Object.keys(window.sessionStorage).filter((key) =>
+            key.startsWith('station-home-held-drafts-v2:'),
+          );
+        let origin: ReturnType<typeof renderHome> | undefined;
+        let other: ReturnType<typeof renderHome> | undefined;
+        window.addEventListener('station:open-new-chat', accept);
+        try {
+          origin = renderHome(null, 'unavailable');
+          const home = within(origin.container);
+          const message = () =>
+            home.getByRole('textbox', { name: 'What would you like done?' });
+          expect(home.getByRole('form', { name: 'Start work' })).toBeTruthy();
+          await home.findByRole('button', { name: /^Agent:/ });
+          expect(durableHomeRows()).toEqual([]);
+          fireEvent.change(message(), {
+            target: { value: 'UNVERIFIED_ORIGINAL' },
+          });
+          await handOffSkills();
+          expect(taken).toHaveLength(1);
+          const handoff = taken[0];
+          if (!handoff?.onClosed)
+            throw new Error('Accepted Home handoff did not provide onClosed');
+          expect(handoff.initialPrompt).toBe('UNVERIFIED_ORIGINAL');
+          expect(handoff.handoff).toEqual({ kind: 'skills' });
+          expect(message()).toHaveProperty('value', '');
+          fireEvent.change(message(), { target: { value: 'NEWER_WORK' } });
+          // Injected return is a Home-store precondition, not dock delivery proof.
+          act(() => handoff.onClosed?.('dismissed', 'UNVERIFIED_DOCK_EDITED'));
+          expect(message()).toHaveProperty('value', 'NEWER_WORK');
+          expect(
+            home.getByRole('group', { name: 'Earlier draft' }).textContent,
+          ).toContain('UNVERIFIED_DOCK_EDITED');
+          fireEvent.click(
+            home.getByRole('button', { name: 'Restore your earlier draft' }),
+          );
+          expect(message()).toHaveProperty('value', 'UNVERIFIED_DOCK_EDITED');
+          expect(
+            home.getByRole('group', { name: 'Earlier draft' }).textContent,
+          ).toContain('NEWER_WORK');
+          expect(durableHomeRows()).toEqual([]);
+          if (destination === 'remounted') {
+            origin.unmount();
+            origin = undefined;
+          }
+          other = renderHome(null, 'unavailable');
+          const next = within(other.container);
+          expect(next.getByRole('form', { name: 'Start work' })).toBeTruthy();
+          await next.findByRole('button', { name: /^Agent:/ });
+          expect(
+            next.getByRole('textbox', { name: 'What would you like done?' }),
+          ).toHaveProperty('value', '');
+          expect(
+            next.queryByRole('group', { name: 'Earlier draft' }),
+          ).toBeNull();
+          expect(
+            next.queryByText(
+              /UNVERIFIED_ORIGINAL|UNVERIFIED_DOCK_EDITED|NEWER_WORK/,
+            ),
+          ).toBeNull();
+          expect(durableHomeRows()).toEqual([]);
+          if (destination === 'concurrent') {
+            expect(message()).toHaveProperty('value', 'UNVERIFIED_DOCK_EDITED');
+            expect(
+              home.getByRole('group', { name: 'Earlier draft' }).textContent,
+            ).toContain('NEWER_WORK');
+          }
+        } finally {
+          other?.unmount();
+          origin?.unmount();
+          window.removeEventListener('station:open-new-chat', accept);
+        }
+      },
+    );
 
     test('unowned legacy held drafts stay preserved without restoring into a verified Home', async () => {
       const legacyRaw = '[ "LEGACY_UNOWNED_DRAFT" ]';
