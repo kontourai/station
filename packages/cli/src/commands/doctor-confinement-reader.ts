@@ -88,9 +88,11 @@ export async function readStationConfinementPreflight(
       reason: `no Station could be selected: ${doctorConfinementText(error instanceof Error ? error.message : String(error))}`,
     };
   }
+  // Shown in rows and `--json`: a saved name is the operator's own text, but
+  // it gets the same treatment as the Station's.
   const target: DoctorConfinementTarget = {
-    station: resolved.station ?? null,
-    source: resolved.source,
+    station: resolved.station ? doctorConfinementText(resolved.station) : null,
+    source: doctorConfinementText(resolved.source),
   };
   const named = describeConfinementTarget(target);
   const notChecked = (reason: string): DoctorConfinement => ({

@@ -1378,7 +1378,7 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Setup',
     summary: 'Check prerequisites and runtime readiness',
     usage: [
-      'station doctor [--json] [--station=<name> | --api-base=<url>]',
+      'station doctor [--json] [--station=<name> | --api-base=<url>] [--credential=<value>]',
       'station doctor --migrate-playbooks [--dry-run] [--json]',
     ],
     detail: [

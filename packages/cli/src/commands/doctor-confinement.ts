@@ -10,6 +10,7 @@ import type {
   EngineConfinementPreflight,
 } from '@kontourai/station-contracts/execution-confinement';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
+import { stripTerminalControls } from './terminal-safe.js';
 
 /** Which Station answered, by saved name and how it was selected. */
 export interface DoctorConfinementTarget {
@@ -36,16 +37,22 @@ type DoctorCheckRow = {
   detail: string;
 };
 
-/** Text from a Station or an error: paths, URLs and known secrets removed. */
+/**
+ * Text from a Station or an error, as doctor shows it: terminal escape
+ * sequences and control characters removed, then Station's free-text
+ * sanitizer (known credential shapes redacted, URLs and the absolute paths
+ * it recognizes replaced), at most 1,024 characters.
+ */
 export function doctorConfinementText(text: string): string {
-  return sanitizeFreeText(text, 1_024);
+  return sanitizeFreeText(stripTerminalControls(text), 1_024);
 }
 
 /**
  * The preflight with every free-text field passed through
- * {@link doctorConfinementText}, so `--json` carries no path either: the
- * server already removes them, and an older or other server is not trusted
- * to.
+ * {@link doctorConfinementText}, so `--json` carries the same text the rows
+ * show: the server already sanitizes it, and an older or other server is not
+ * trusted to. The other fields are closed values the contract parser
+ * checked.
  */
 export function sanitizeConfinementPreflight(
   preflight: ConfinementPreflight,
@@ -80,11 +87,14 @@ export function describeConfinementTarget(
 ): string {
   if (!target) return 'the selected Station';
   return target.station
-    ? `Station "${target.station}"`
-    : `the Station selected by ${target.source}`;
+    ? `Station "${doctorConfinementText(target.station)}"`
+    : `the Station selected by ${doctorConfinementText(target.source)}`;
 }
 
-function mechanismCheck(entry: EngineConfinementPreflight): DoctorCheckRow {
+function mechanismCheck(
+  entry: EngineConfinementPreflight,
+  named: string,
+): DoctorCheckRow {
   const label = `Confinement mechanism (${entry.engine}: ${entry.mechanism})`;
   const reason = doctorConfinementText(entry.mechanismReason);
   const notApplicable =
@@ -96,13 +106,13 @@ function mechanismCheck(entry: EngineConfinementPreflight): DoctorCheckRow {
       return {
         label,
         status: 'pass',
-        detail: `Available on this host: ${reason}.${notApplicable}`,
+        detail: `Available on the host of ${named}: ${reason}.${notApplicable}`,
       };
     case 'unavailable':
       return {
         label,
         status: 'warn',
-        detail: `Unavailable on this host: ${reason}. A ${entry.engine} start that requires ${entry.level} confinement is refused.${notApplicable}`,
+        detail: `Unavailable on the host of ${named}: ${reason}. A ${entry.engine} start that requires ${entry.level} confinement is refused there.${notApplicable}`,
       };
     case 'engine-reported':
       return {
@@ -113,37 +123,61 @@ function mechanismCheck(entry: EngineConfinementPreflight): DoctorCheckRow {
   }
 }
 
+/** What a checked credential answer covers, from its `appliesTo`. */
+function credentialScope(engine: string): string {
+  return `This covers starts that name no credential profile of their own (the ${engine} connection's active credential profile or app-home setting applies); an Agent with its own credential profile, or a credential-recovery restart, is decided at start.`;
+}
+
 function credentialCheck(
   entry: EngineConfinementPreflight,
+  named: string,
 ): DoctorCheckRow | null {
   const label = `Confined credential (${entry.engine})`;
   const credential = entry.confinedAuthentication;
+  if (credential.state === 'not-applicable')
+    // Folded into the mechanism row: nothing was checked, and a row of
+    // its own would read either as healthy or as a problem.
+    return null;
+  const scope = credentialScope(entry.engine);
+  if (entry.mechanismState === 'unavailable') {
+    // No plan engages the mechanism there, so a start that requires it is
+    // refused (`resolveConfinement`) before any credential is checked, and
+    // one that does not require it is not confined at all.
+    const found =
+      credential.state === 'available'
+        ? 'finds one'
+        : credential.state === 'unavailable'
+          ? 'finds none'
+          : 'could not be completed';
+    return {
+      label,
+      status: 'warn',
+      detail: `Moot on the host of ${named}: ${entry.mechanism} is unavailable there, so a ${entry.engine} start that requires ${entry.level} confinement is refused before any credential is checked. The credential check itself ${found}. ${scope}`,
+    };
+  }
   switch (credential.state) {
     case 'available':
       return {
         label,
         status: 'pass',
-        detail:
+        detail: `${
           credential.source === 'environment'
             ? 'A credential a confined start can use is in its environment.'
-            : "A credential a confined start can use is enrolled in Station's confined configuration.",
+            : "A credential a confined start can use is enrolled in Station's confined configuration."
+        } ${scope}`,
       };
     case 'unavailable':
       return {
         label,
         status: 'warn',
-        detail: `None a confined start can use (${credential.fallback}): a start that asks for confinement runs at Auto with nothing engaged. ${doctorConfinementText(credential.remedy)}`,
+        detail: `None a confined start can use (${credential.fallback}): a start that asks for confinement runs at Auto with nothing engaged. ${doctorConfinementText(credential.remedy)} ${scope}`,
       };
     case 'unverified':
       return {
         label,
         status: 'warn',
-        detail: `Not verified: ${doctorConfinementText(credential.reason)}`,
+        detail: `Not verified: ${doctorConfinementText(credential.reason)} ${scope}`,
       };
-    case 'not-applicable':
-      // Folded into the mechanism row: nothing was checked, and a row of
-      // its own would read either as healthy or as a problem.
-      return null;
   }
 }
 
@@ -170,10 +204,11 @@ export function confinementDoctorChecks(
         detail: `${describeConfinementTarget(confinement.target)} reported no engine it can confine.`,
       },
     ];
+  const named = describeConfinementTarget(confinement.target);
   return confinement.preflight.engines.flatMap((entry) => {
-    const credential = credentialCheck(entry);
+    const credential = credentialCheck(entry, named);
     return credential
-      ? [mechanismCheck(entry), credential]
-      : [mechanismCheck(entry)];
+      ? [mechanismCheck(entry, named), credential]
+      : [mechanismCheck(entry, named)];
   });
 }

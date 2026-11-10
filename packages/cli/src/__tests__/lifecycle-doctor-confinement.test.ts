@@ -42,6 +42,10 @@ function stubDeps(overrides: Partial<DoctorDeps> = {}): Partial<DoctorDeps> {
   };
 }
 
+const SCOPE = 'starts-without-own-credential-profile';
+const SCOPE_TEXT =
+  "This covers starts that name no credential profile of their own (the claude connection's active credential profile or app-home setting applies); an Agent with its own credential profile, or a credential-recovery restart, is decided at start.";
+
 const DECIDED_AT_START = [
   'workspace-too-broad',
   'config-root-pinned',
@@ -79,12 +83,20 @@ function preflight(claude: Record<string, unknown>): ConfinementPreflight {
 const MECHANISM_UNAVAILABLE = preflight({
   mechanismState: 'unavailable',
   mechanismReason: 'Seatbelt is macOS-only; this host is linux',
-  confinedAuthentication: { state: 'available', source: 'environment' },
+  confinedAuthentication: {
+    state: 'available',
+    source: 'environment',
+    appliesTo: SCOPE,
+  },
 });
 const BOTH_AVAILABLE = preflight({
   mechanismState: 'available',
   mechanismReason: 'the Seatbelt profile applies on this host',
-  confinedAuthentication: { state: 'available', source: 'config-dir' },
+  confinedAuthentication: {
+    state: 'available',
+    source: 'config-dir',
+    appliesTo: SCOPE,
+  },
 });
 const CREDENTIAL_UNAVAILABLE = preflight({
   mechanismState: 'available',
@@ -93,6 +105,7 @@ const CREDENTIAL_UNAVAILABLE = preflight({
     state: 'unavailable',
     fallback: 'confined-credential-unavailable',
     remedy: 'Set ANTHROPIC_API_KEY in the Claude connection environment.',
+    appliesTo: SCOPE,
   },
 });
 
@@ -144,7 +157,7 @@ function confinementRows(
 }
 
 describe('#4774: station doctor reports the Station confinement preflight', () => {
-  test('mechanism unavailable: a warn row with the provider reason; the credential row passes', async () => {
+  test("mechanism unavailable: a warn row naming the Station's host; the credential row says it is moot there", async () => {
     const deps = readerDeps(answering(MECHANISM_UNAVAILABLE));
     const report = await reportFor(deps);
     expect(deps.fetchPreflight).toHaveBeenCalledWith(
@@ -160,16 +173,16 @@ describe('#4774: station doctor reports the Station confinement preflight', () =
       {
         label: 'Confinement mechanism (claude: seatbelt)',
         status: 'warn',
-        detail: expect.stringContaining(
-          'Unavailable on this host: Seatbelt is macOS-only; this host is linux.',
-        ),
+        detail:
+          'Unavailable on the host of Station "laptop": Seatbelt is macOS-only; this host is linux. A claude start that requires os-profile confinement is refused there.',
       },
       {
         label: 'Confined credential (claude)',
-        status: 'pass',
-        detail: expect.stringContaining('in its environment'),
+        status: 'warn',
+        detail: `Moot on the host of Station "laptop": seatbelt is unavailable there, so a claude start that requires os-profile confinement is refused before any credential is checked. The credential check itself finds one. ${SCOPE_TEXT}`,
       },
     ]);
+    expect(confinementRows(report)[2].detail).not.toContain('runs at Auto');
     expect(report.confinement).toEqual({
       checked: true,
       target: { station: 'laptop', source: 'default-station' },
@@ -183,7 +196,12 @@ describe('#4774: station doctor reports the Station confinement preflight', () =
       row.label.includes('claude'),
     );
     expect(rows.map((row) => row.status)).toEqual(['pass', 'pass']);
-    expect(rows[1].detail).toContain("Station's confined configuration");
+    expect(rows[0].detail).toBe(
+      'Available on the host of Station "laptop": the Seatbelt profile applies on this host.',
+    );
+    expect(rows[1].detail).toBe(
+      `A credential a confined start can use is enrolled in Station's confined configuration. ${SCOPE_TEXT}`,
+    );
   });
 
   test('credential unavailable: a warn row naming the fallback and the remedy', async () => {
@@ -197,9 +215,7 @@ describe('#4774: station doctor reports the Station confinement preflight', () =
     ).toEqual({
       label: 'Confined credential (claude)',
       status: 'warn',
-      detail: expect.stringMatching(
-        /confined-credential-unavailable.*runs at Auto.*ANTHROPIC_API_KEY/,
-      ),
+      detail: `None a confined start can use (confined-credential-unavailable): a start that asks for confinement runs at Auto with nothing engaged. Set ANTHROPIC_API_KEY in the Claude connection environment. ${SCOPE_TEXT}`,
     });
     // Warn-level only: confinement does not change readiness or exit.
     expect(
@@ -336,6 +352,7 @@ describe('#4774: station doctor reports the Station confinement preflight', () =
       confinedAuthentication: {
         state: 'unverified',
         reason: `profile at ${HOST_PATH} failed with ${SECRET}`,
+        appliesTo: SCOPE,
       },
     });
     const write = vi.fn();
@@ -358,7 +375,7 @@ describe('#4774: station doctor reports the Station confinement preflight', () =
             engine: 'claude',
             mechanism: 'seatbelt',
             mechanismState: 'unavailable',
-            confinedAuthentication: { state: 'unverified' },
+            confinedAuthentication: { state: 'unverified', appliesTo: SCOPE },
           },
         ],
       },
@@ -366,5 +383,123 @@ describe('#4774: station doctor reports the Station confinement preflight', () =
     expect(text).not.toContain(SECRET);
     expect(text).not.toContain(HOST_PATH);
     expect(text).not.toContain('/Users/someone');
+  });
+
+  describe('a hostile or older Station', () => {
+    const ESCAPES = '\u001b[2J\u001b[31m';
+
+    async function rowsFor(body: unknown) {
+      const report = await reportFor(readerDeps(answering(body)));
+      return { report, rows: confinementRows(report) };
+    }
+
+    function expectNotChecked(
+      result: Awaited<ReturnType<typeof rowsFor>>,
+    ): void {
+      expect(result.rows).toEqual([
+        {
+          label: 'Confinement preflight',
+          status: 'warn',
+          detail:
+            'Not checked: Station "laptop" answered with something other than a confinement preflight.',
+        },
+      ]);
+      expect(result.report.confinement).toMatchObject({ checked: false });
+    }
+
+    test('an engine id carrying a path and terminal escapes: not checked, never a row label', async () => {
+      const engine = `/Users/jane/.station/x ${ESCAPES}FAKE PASS`;
+      const result = await rowsFor({
+        ...BOTH_AVAILABLE,
+        engines: [{ ...BOTH_AVAILABLE.engines[1], engine }],
+      });
+      expectNotChecked(result);
+      expect(JSON.stringify(result.report)).not.toContain('FAKE PASS');
+    });
+
+    test('a flood of decided-at-start entries: not checked', async () => {
+      expectNotChecked(
+        await rowsFor({
+          ...BOTH_AVAILABLE,
+          decidedAtStart: Array.from(
+            { length: 100_000 },
+            () => 'workspace-too-broad',
+          ),
+        }),
+      );
+    });
+
+    test('a repeated decided-at-start entry: not checked', async () => {
+      expectNotChecked(
+        await rowsFor({
+          ...BOTH_AVAILABLE,
+          decidedAtStart: ['workspace-too-broad', 'workspace-too-broad'],
+        }),
+      );
+    });
+
+    test('a checked credential without its scope (an older answer): not checked', async () => {
+      expectNotChecked(
+        await rowsFor(
+          preflight({
+            mechanismState: 'available',
+            mechanismReason: 'ok',
+            confinedAuthentication: {
+              state: 'available',
+              source: 'config-dir',
+            },
+          }),
+        ),
+      );
+    });
+
+    test('control characters and escapes in reason text are removed from rows and --json', async () => {
+      const hostile = preflight({
+        mechanismState: 'unavailable',
+        mechanismReason: `probe ${ESCAPES}failed\u0007\u001b]0;title\u0007 here\u202e`,
+        confinedAuthentication: {
+          state: 'unverified',
+          reason: `could not ${ESCAPES}read\u0000 it`,
+          appliesTo: SCOPE,
+        },
+      });
+      const deps = readerDeps(answering(hostile), {
+        resolveTarget: () => ({
+          apiBase: 'http://127.0.0.1:43141',
+          source: 'default-station' as const,
+          station: `lap${ESCAPES}top`,
+        }),
+      });
+      const report = await reportFor(deps);
+      const rows = confinementRows(report).filter((row) =>
+        row.label.includes('claude'),
+      );
+      expect(rows[0].detail).toBe(
+        'Unavailable on the host of Station "laptop": probe failed here. A claude start that requires os-profile confinement is refused there.',
+      );
+      expect(rows[1].detail).toContain(
+        'The credential check itself could not be completed.',
+      );
+      const write = vi.fn();
+      await doctorJson(
+        { write, setExitCode: vi.fn(), now: () => new Date(0) },
+        stubDeps({
+          inspectConfinement: () => readStationConfinementPreflight([], deps),
+        }),
+      );
+      const text = write.mock.calls[0][0] as string;
+      const document = JSON.parse(text);
+      expect(document.report.confinement.target.station).toBe('laptop');
+      expect(document.report.confinement.preflight.engines[1]).toMatchObject({
+        mechanismReason: 'probe failed here',
+        confinedAuthentication: { reason: 'could not read it' },
+      });
+      // Nothing of the sequences reaches either output.
+      for (const output of [JSON.stringify(report.checks), text]) {
+        expect(output).not.toMatch(/\\u001b|\\u0007|\\u0000|\\u202e/);
+        expect(output).not.toContain('[2J');
+        expect(output).not.toContain('title');
+      }
+    });
   });
 });
