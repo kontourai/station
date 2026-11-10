@@ -61,12 +61,15 @@ never creates another Task.
 4. Keep gate state, evidence, route-backs, and receipts with the work as it
    progresses.
 
-The Project’s **Tasks** list shows each local Task’s title, recorded status,
-and assigned Agent when known. Select its title or **Open Task** to enter its
-Task Room. **Details** opens inspection and dispatch controls; the optional board
+The Project’s **Tasks** list shows each local Task’s title, recorded status, and
+assigned Agent when known. Select its title or **Open Task** to enter its Task
+Room. **Details** opens inspection and dispatch controls; the optional board
 continues to group Tasks by status. The list separates **Now** (ready, active,
 blocked or awaiting review), **Backlog**, and **History**. These views do not
-change status. **Refresh tasks** reads current Task records.
+change status. A row or board card can also show its Session's agent-reported
+plan progress, which never changes status either; see
+[Getting started](../user/getting-started.md#start-your-first-task).
+**Refresh tasks** reads current Task records.
 Status is not a percentage complete or proof that an Agent is running. A
 connected GitHub issue offers **Start Task**, which creates a Task with its
 description and latest comments in the shared document, or opens its existing
