@@ -177,7 +177,8 @@ Sending a message to an ACP-connected agent is identical, from the UI's perspect
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
 
-The chat composer defaults to Queue while a turn runs. Its Steer mode uses a
+The chat composer defaults to Queue while an ACP turn runs (Steer is the
+default only for native steering). Its Steer mode uses a
 conservative safe-waiting fallback for ACP connections: the current adapters
 provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
