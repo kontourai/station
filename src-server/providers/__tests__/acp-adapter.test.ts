@@ -528,7 +528,7 @@ describe('AcpAdapter', () => {
         toolRequestFromPayload((opened as any).payload).toolName,
         grant,
       ),
-    ).toBe('Allow write for this session');
+    ).toBe('Allow all write calls for this session');
     // …and that is exactly what the grant covers: the next `write` is
     // allowed without a second request.
     await adapter.respondToRequest(

@@ -24,6 +24,7 @@ import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import type {
+  ToolRequestRuleGrant,
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -171,6 +172,8 @@ export type ChatContentPart = {
   approvalSessionGrant?: ToolRequestSessionGrant;
   /** See `MessagePart.approvalServerGrant`. */
   approvalServerGrant?: ToolRequestServerGrant;
+  /** See `MessagePart.approvalRuleGrant`. */
+  approvalRuleGrant?: ToolRequestRuleGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'

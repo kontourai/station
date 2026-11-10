@@ -134,8 +134,12 @@ The only channel today is `modelOptions.approvalMode`. It is read by
   - At each turn, `setPermissionMode` is called only when the mode is defined
     and changed (`:1468-1511`). An absent or `connection-default` mode is a
     **no-op**, and that no-op is the #2409 bug.
-  - Escalating to `never` without the spawn grant publishes a `runtime.warning`
-    with code `approval-escalation-requires-restart` (`:1479-1506`).
+  - A turn whose resolved mode is `never` on an engine without the spawn
+    grant (`turnNeedsEngineRelaunch`) first parks the idle engine, so the turn
+    restarts it in place from its resume cursor at the recorded `never`, with
+    the grant. Where parking refuses (an open request, running child work, no
+    resume cursor), the escalation reaches the live engine, which publishes a
+    `runtime.warning` with code `approval-escalation-requires-restart`.
   - Applied reports come from `session.configured` metadata (`:1324-1345`), the
     SDK init message (`claude-adapter-events.ts:392-415`), and `turn.started`
     metadata (`:1605-1616`).

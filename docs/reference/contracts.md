@@ -100,6 +100,26 @@ materializer. Existing staging owner/tenant identity, grants and `stage_*` codes
 remain unchanged. The [CLI](cli.md#delegate) and [SDK](sdk.md#delegatetaskapibase-input-options-with-files)
 references describe cleanup and uncertain delivery outcomes.
 
+### Station orchestration instructions receipt
+
+`ResolvedAgentDefinition.stationInstructions` (`@kontourai/station-contracts/provider`)
+carries Station-owned orchestration guidance, composed for one Session from the
+Station Control tools it is actually offered. It is separate from the
+Agent-authored `systemPrompt`, and is set only for the Claude system-prompt
+append, after an authored prompt. `SessionCapabilityDeliveryMetadata.stationInstructions`
+(`StationInstructionsReceipt`) is the receipt: `version: 1`, the composed
+`sections` ids, the text `digest`, the `channel` (`system-prompt-append` or
+`first-turn`) and, for the first-turn channel, the `firstTurnText` that the
+first message carries. `delivered` is written only by the Claude adapter, after
+it checks that `station-control` is among the servers it gave the session; it
+reports whether the append reached the engine, not whether the model followed
+it. The first-turn channel never sets it, so absent means "not confirmed", not
+"not delivered". Both fields are additive and optional and are absent unless
+the `station-orchestration-instructions` Feature Preview was on when the
+Session was resolved. The
+[orchestration instructions section](../guides/self-configuring-agent.md#orchestration-instructions)
+describes delivery per engine.
+
 ## Modules
 
 `@kontourai/station-contracts/session-goal` owns provider-neutral Goal,
@@ -356,7 +376,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). A validated continuation without an owned-worktree binding reports its server-read bound workspace; owned worktrees retain the existing repository-root receipt form; the optional `confinement` is the started session's recorded confinement, attached after the start |
 | `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0; retained in 0.10.0 for stored events and legacy `answers` callers. Use the `input-request` shapes for new callers |
-| `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
+| `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared. `SessionGrantScope` (`server` \| `rule`) scopes a session decision option |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header (including `h264` access units and their `keyframe` flag), input events, control lease, stream params, their strict wire parsers, the length-prefixed binary record envelope, and an H.264 SPS reader (`parseLiveSurfaceH264Sequence`) |
@@ -2486,3 +2506,25 @@ qualification limits.
 defaulting to `true`. It controls the installed app’s first-launch changelog
 after an upgrade; it does not control update downloads, installation, or
 release availability.
+
+### Shared Task agent request contracts
+
+`task-room-work` also declares separately negotiated shared work, context, and
+result versions. Shared requests bind an expected actor, Task incarnation,
+operation, Agent, exact model, brief revision and digest, selected published
+results, prompt, and new or existing thread. The expected actor is an equality
+precondition; it is not authority. Result content digests cover the published
+UTF-8 Markdown, including any published truncation notice. A reference does not
+grant the private full answer. Unknown request fields are rejected. The closed
+`SharedWithdrawalCommand` carries the work version, expected actor, Project and
+Task identity including incarnation, operation ID, and original canonical input
+digest. These are equality preconditions, not credentials or authority. A closed
+`SharedWorkRefusalReply` adds `kind: not-sent` and a bounded refusal reason to
+that identity. A future receiver may issue it only before durable acceptance or
+mutation; it is an attestation, not a credential.
+
+`AgentExecutionConfig.sharedTurns` is an operator-owned, versioned model-only
+declaration with a nonempty unique allowlist. It is separate from Agent audience
+and Project execute permission. It neither provides compute consent by itself
+nor establishes runtime confinement. Shared routes and admission are not
+implemented by these declarations.

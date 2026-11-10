@@ -405,6 +405,7 @@ function errorCode(error: unknown): string | undefined {
 const DELEGATION_REFUSAL_CODES = new Set([
   'delegation_depth_exceeded',
   'delegation_lineage_unavailable',
+  'delegated_tool_blocked',
 ]);
 
 function delegationRefusal(c: Context, error: unknown): Response | undefined {
@@ -541,9 +542,11 @@ const respondToRequestCommandSchema = z.object({
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
   // Typed, optional: an older client omits it and keeps the per-tool grant.
-  // Only an `acceptForSession` answer reads it, and only an authentic
-  // Station browser request honours it (the adapter's grant computation).
-  sessionGrantScope: z.literal('server').optional(),
+  // Only an `acceptForSession` answer reads it, and only a request that
+  // offered the scope honours it (the adapter's grant computation): `server`
+  // for an authentic Station browser call, `rule` for a Claude Bash ask with
+  // suggested command prefixes.
+  sessionGrantScope: z.enum(['server', 'rule']).optional(),
   // docs/design/event-content-spill.md: proof the client loaded a spilled
   // request's full content before allowing it. Checked by the service.
   viewedContentDigest: z
@@ -2767,6 +2770,7 @@ export function createOrchestrationRoutes(
             409,
           )
         : undefined;
+    const receivedAt = performance.now();
     try {
       const {
         delegation: claimedDelegation,
@@ -2993,6 +2997,7 @@ export function createOrchestrationRoutes(
       const resolvedDelegation = await deps.resolveRequestDelegation?.(
         c.req.raw,
         {
+          tool: 'send_message',
           ...(claimedDelegation
             ? { delegation: claimedDelegation as AgentDelegationContext }
             : {}),
@@ -3350,6 +3355,20 @@ export function createOrchestrationRoutes(
           stagedBindingForRelease,
         );
       }
+      // A refusal with no closed code reaches the client only as generic
+      // "try again" copy, and nothing else records it: name it here, or the
+      // failure cannot be diagnosed afterwards.
+      if (!errorCode(error))
+        (deps.logger.warn ?? deps.logger.debug)(
+          'Foreground chat message refused without a failure code',
+          {
+            conversationId: (getBody(c) as { conversationId?: unknown })
+              .conversationId,
+            errorName: error instanceof Error ? error.name : typeof error,
+            error: errorMessage(error).slice(0, 500),
+            elapsedMs: Math.round(performance.now() - receivedAt),
+          },
+        );
       return c.json(
         {
           success: false,
@@ -4344,6 +4363,7 @@ export function createOrchestrationRoutes(
       const resolvedDelegation = await deps.resolveRequestDelegation?.(
         c.req.raw,
         {
+          tool: 'delegate_task',
           ...(claimedDelegation
             ? { delegation: claimedDelegation as AgentDelegationContext }
             : {}),

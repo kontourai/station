@@ -328,7 +328,13 @@
 
     "src-ui/src/components/chat-dock/useInboxPanelController.ts",
 
-    "src-ui/src/utils/stationFailure.ts"
+    "src-ui/src/utils/stationFailure.ts",
+
+    "src-ui/src/components/inbox-row/inbox-row-actions.ts",
+
+    "src-ui/src/components/drafts/DiscardDraftButton.tsx",
+
+    "src-ui/src/utils/activity-snooze-store.ts"
   ],
 
   "checks": [

@@ -331,3 +331,87 @@ test.describe('Command palette', () => {
     );
   });
 });
+
+/**
+ * #4694: the toolbar's visible entry. Before it the palette opened only from
+ * its keyboard shortcut, so a touch device could not reach it at all.
+ */
+async function expectGuidedEmptyState(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Command palette' });
+  await expect(dialog).toBeVisible();
+  const sections = dialog.locator('.command-palette__group-label');
+  await expect(sections.nth(0)).toHaveText('Suggestions');
+  await expect(dialog.getByText('Places', { exact: true })).toBeVisible();
+}
+
+test.describe('Command palette entry — touch', () => {
+  test.use({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await seedRoutes(page);
+  });
+
+  test('tapping the toolbar entry opens the palette and Esc returns to it', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const entry = page
+      .getByRole('banner')
+      .getByRole('button', { name: 'Search or jump to…' });
+    await entry.tap();
+    await expectGuidedEmptyState(page);
+
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('dialog', { name: 'Command palette' }),
+    ).toHaveCount(0);
+    await expect(entry).toBeFocused();
+  });
+});
+
+test.describe('Command palette entry — desktop', () => {
+  test.beforeEach(async ({ page }) => {
+    await seedRoutes(page);
+  });
+
+  test('the pill opens a guided list that the arrow keys walk in drawn order', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const entry = page
+      .getByRole('banner')
+      .getByRole('button', { name: 'Search or jump to…' });
+    await expect(entry).toContainText(/⌘K|Ctrl\+K/);
+    await entry.click();
+    await expectGuidedEmptyState(page);
+
+    const input = page.getByRole('combobox', { name: 'Search commands' });
+    const active = () =>
+      input.evaluate(
+        (node) =>
+          document.getElementById(
+            node.getAttribute('aria-activedescendant') ?? '',
+          )?.textContent ?? '',
+      );
+    const options = page.getByRole('option');
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+    const first = await active();
+    await input.press('ArrowDown');
+    await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+    expect(await active()).not.toBe(first);
+
+    await expect(
+      page.getByRole('list', { name: 'Palette keys' }),
+    ).toContainText('Esc');
+
+    await input.press('Escape');
+    await expect(
+      page.getByRole('dialog', { name: 'Command palette' }),
+    ).toHaveCount(0);
+    await expect(entry).toBeFocused();
+  });
+});

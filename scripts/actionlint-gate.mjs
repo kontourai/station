@@ -294,6 +294,8 @@ export const REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF = `kontourai/.github/.githu
 export const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
   '28deabbf24f0ab55911d311df5372d30bea0dba4';
 const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
+const AGENT_CONTEXT_BUDGET_WORKFLOW =
+  '.github/workflows/agent-context-budget.yml';
 export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
 /** The reviewed revision of the org's docs-kit gate reusable workflow:
  * kontourai/.github ac67c2a, Corpus v2 gate retaining #55's isolated npm
@@ -598,6 +600,7 @@ const EXACT_TARGET_SKIP_GUARDS = Object.freeze({
   'manual-completion-diagnostics': `\${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (needs['full-regression'].result == 'success' || needs['full-regression'].result == 'failure') }}`,
 });
 const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
+  AGENT_CONTEXT_BUDGET_WORKFLOW,
   '.github/workflows/build-ios.yml',
   '.github/workflows/ci.yml',
   '.github/workflows/desktop-clean-checkout.yml',
@@ -1479,6 +1482,32 @@ export function persistentRunnerPolicyFindings(workflows) {
 function stepsUseAction(steps, action) {
   return (steps ?? []).some(
     (step) => typeof step?.uses === 'string' && step.uses.startsWith(action),
+  );
+}
+
+/**
+ * The agent context budget comparison is the one base-controlled PR job that
+ * reads candidate bytes without a checkout: it fetches the head's budget JSON
+ * through the contents API and parses it with jq. Under pull_request_target it
+ * must never check out or execute pull-request head code, so it may hold
+ * exactly one shell step, no action (checkout included), no secrets, and only
+ * contents: read on a hosted ubuntu-22.04 runner.
+ */
+function isExactAgentContextBudgetJob(jobId, job) {
+  const steps = job?.steps;
+  return (
+    jobId === 'budget' &&
+    hasOnlyReadContentsPermission(job.permissions) &&
+    job['runs-on'] === 'ubuntu-22.04' &&
+    job.uses === undefined &&
+    job.container === undefined &&
+    job.services === undefined &&
+    Array.isArray(steps) &&
+    steps.length === 1 &&
+    steps[0]?.uses === undefined &&
+    typeof steps[0]?.run === 'string' &&
+    steps[0].shell === undefined &&
+    !containsSecretReference(job)
   );
 }
 
@@ -3107,14 +3136,16 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
           ? hasExactDependencyReviewSteps(job)
           : file === SECURITY_ANALYSIS_WORKFLOW
             ? false
-            : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
-              exactDocsGateCall ||
-              exactDeliveryCall ||
-              hasExplicitCheckout(
-                job,
-                FAST_CHECKOUT_REPOSITORY,
-                FAST_CHECKOUT_REF,
-              );
+            : file === AGENT_CONTEXT_BUDGET_WORKFLOW
+              ? isExactAgentContextBudgetJob(jobId, job)
+              : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
+                exactDocsGateCall ||
+                exactDeliveryCall ||
+                hasExplicitCheckout(
+                  job,
+                  FAST_CHECKOUT_REPOSITORY,
+                  FAST_CHECKOUT_REF,
+                );
     if (!hasExactReviewedSteps)
       findings.push({
         file,
@@ -3126,7 +3157,9 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
             : file === SECURITY_ANALYSIS_WORKFLOW &&
                 jobId === DEPENDENCY_REVIEW_JOB
               ? 'dependency-review must retain the exact hosted pull_request_target action-only topology'
-              : 'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
+              : file === AGENT_CONTEXT_BUDGET_WORKFLOW
+                ? 'agent-context-budget must keep its exact no-checkout topology: one shell step, no actions, no secrets, contents: read, hosted ubuntu-22.04'
+                : 'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
       });
     const jobWithoutSteps = { ...job, steps: undefined };
     if (containsSecretReference(jobWithoutSteps))

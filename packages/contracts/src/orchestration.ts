@@ -4,7 +4,10 @@ import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
-import type { InputRequestContent } from './input-request.js';
+import type {
+  InputRequestContent,
+  SessionGrantScope,
+} from './input-request.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -157,10 +160,15 @@ export type OrchestrationCommand =
        * Only with `acceptForSession`. `server` widens the session grant from
        * the one tool to the whole in-process Station browser server, and only
        * where the request offered it (an authentic `station-browser` call).
+       * `rule` narrows it to the Bash command prefixes the engine suggested,
+       * only where the request offered them (a Claude Bash ask); Station
+       * then mints no tool grant. A scope the request did not offer, and a
+       * `rule` answer to an engine other than Claude, is a one-call accept.
        * Absent keeps the per-tool grant, so an older client's answer is
-       * unchanged. An engine that cannot honour it takes the per-tool grant.
+       * unchanged. An engine without the server grant takes the per-tool
+       * grant for `server`.
        */
-      sessionGrantScope?: 'server';
+      sessionGrantScope?: SessionGrantScope;
       /**
        * docs/design/event-content-spill.md: required to allow a request whose
        * content EventStore stored out of line (`spilledContent` set). The
@@ -1182,6 +1190,7 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * one the user chose: an otherwise-unbound ACP or confined Codex session
    * runs under `<stationHome>/runtime/<engine>-workspaces/session/<digest>`,
    * and (#4389) a chat with no Project runs in `<stationHome>/scratch/<id>`.
+   * New Windows folders substitute a per-Station root outside private data.
    * The server decides (`isStationChatFolder`), so clients name the folder
    * ("Chat workspace") instead of printing a hash path, and never match the
    * path themselves.
