@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import type { ProjectTaskRoomAppendOutcome } from '@kontourai/station-contracts/project-task-room';
 import type { TaskRoomWorkInput } from '@kontourai/station-contracts/task-room-work';
 import { TaskRoomWorkNotSentError } from '@kontourai/station-sdk/project-task-rooms';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -431,17 +432,17 @@ test('waits until the human mutation releases its pending lock before restoring 
   expect(document.activeElement).toBe(textbox);
 });
 
-test.each(['refused', 'unknown'] as const)(
+test.each(['rejected', 'unknown'] as const)(
   'does not restore focus or clear the draft after a %s human send',
   async (outcome) => {
     let finish!: () => void;
     mocks.message.mockImplementationOnce(
       () =>
-        new Promise((resolve, reject) => {
+        new Promise<ProjectTaskRoomAppendOutcome>((resolve, reject) => {
           finish = () =>
             outcome === 'unknown'
               ? reject(new Error('acknowledgement lost'))
-              : resolve({ kind: 'refused' });
+              : resolve({ kind: 'rejected', reason: 'unsupported' });
         }),
     );
     render(<TaskRoomComposer {...props} />);
