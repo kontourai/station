@@ -1190,6 +1190,20 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   `claude-confined-credential` prerequisite, without attempting a login. It
   checks `confined-homes/claude`; a selected credential profile's twin is
   not modelled.
+
+  The confinement preflight (#4774,
+  [confinement-preflight.ts](../../src-server/security/confinement/confinement-preflight.ts),
+  `GET /api/diagnostics/confinement-preflight`, read by `station doctor`)
+  answers the two host-level facts before any start: each provider's own
+  `availability()` from the list a start resolves from
+  (`DEFAULT_CONFINEMENT_PROVIDERS`), and the credential step
+  `confinedClaudeDecision` itself calls (`confinedClaudeCredentialCheck`),
+  over the inputs a fresh start without its own credential profile builds:
+  the augmented spawn environment, the connection's environment and the
+  default credential profile's app home. The other three fallbacks depend on
+  the workspace or the conversation and are reported as decided at start.
+  Codex's engine-native sandbox is reported as decided by the engine at
+  start.
 - **What a confined session does not load.** Its `CLAUDE_CONFIG_DIR` is
   Station's, so the operator's own `CLAUDE.md`, settings, hooks, plugins and
   MCP configuration do not apply. The workspace's project settings still do.
