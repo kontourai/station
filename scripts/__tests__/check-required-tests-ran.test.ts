@@ -36,6 +36,7 @@ type AssertionResult = {
   ancestorTitles: string[];
   title: string;
   status: string;
+  duration?: number;
 };
 type Report = {
   testResults: { name: string; assertionResults: AssertionResult[] }[];
@@ -55,6 +56,18 @@ function withTitle(report: Report, title: string): AssertionResult {
   const found = results(report).filter((result) => result.title === title);
   expect(found).toHaveLength(1);
   return found[0];
+}
+
+/** As the reporter writes a test skipped before its body started. */
+function skipBeforeStart(result: AssertionResult) {
+  result.status = 'skipped';
+  delete result.duration;
+}
+
+/** As the reporter writes a test whose body called `ctx.skip()`. */
+function skipAtRuntime(result: AssertionResult) {
+  expect(typeof result.duration).toBe('number');
+  result.status = 'skipped';
 }
 
 function writeReport(contents: unknown): string {
@@ -107,13 +120,23 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
 
   test('fails and names a must-pass leg that was skipped', () => {
     const report = seatbeltReport();
-    withTitle(report, MUST_PASS_TITLE).status = 'skipped';
+    skipBeforeStart(withTitle(report, MUST_PASS_TITLE));
     const result = check(writeReport(report));
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       `skipped, and must not skip: ${id(MUST_PASS_TITLE)}`,
     );
     expect(result.stderr).toContain('1 of 50 required test(s)');
+  });
+
+  test('fails and names a must-pass leg that skipped itself at runtime', () => {
+    const report = seatbeltReport();
+    skipAtRuntime(withTitle(report, MUST_PASS_TITLE));
+    const result = check(writeReport(report));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `skipped at runtime, and must not skip: ${id(MUST_PASS_TITLE)}`,
+    );
   });
 
   test('fails and names a leg that is absent from the report', () => {
@@ -143,15 +166,18 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
   });
 
   test('fails on a host that skipped the whole suite, naming every leg', () => {
-    // What a Linux runner writes: same titles, every one skipped.
+    // What a Linux runner writes: same titles, every one skipped unstarted.
     const report = seatbeltReport();
-    for (const result of results(report)) result.status = 'skipped';
+    for (const result of results(report)) skipBeforeStart(result);
     const result = check(writeReport(report));
     expect(result.status).toBe(1);
-    // 48 must-pass legs fail; the two runtime-skip legs are allowed.
-    expect(result.stderr).toContain('48 of 50 required test(s)');
+    expect(result.stderr).toContain('50 of 50 required test(s)');
     expect(result.stderr).toContain(
       `skipped, and must not skip: ${id('the probe ran the production profile, not a stand-in')}`,
+    );
+    // A skip that never started is not the runtime skip the profile allows.
+    expect(result.stderr).toContain(
+      `skipped before it started, not at runtime: ${id(MAY_SKIP_TITLE)}`,
     );
   });
 
@@ -172,13 +198,23 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
 
   test('allows a runtime skip of a leg the profile marks mayRuntimeSkip, and says so', () => {
     const report = seatbeltReport();
-    withTitle(report, MAY_SKIP_TITLE).status = 'skipped';
+    skipAtRuntime(withTitle(report, MAY_SKIP_TITLE));
     const result = check(writeReport(report));
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
       `skipped at runtime (allowed by the profile): ${id(MAY_SKIP_TITLE)}`,
     );
     expect(result.stdout).toContain('49 passed, 1 allowed runtime skip(s)');
+  });
+
+  test('fails a mayRuntimeSkip leg that a filter or skipped suite left out', () => {
+    const report = seatbeltReport();
+    skipBeforeStart(withTitle(report, MAY_SKIP_TITLE));
+    const result = check(writeReport(report));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `skipped before it started, not at runtime: ${id(MAY_SKIP_TITLE)}`,
+    );
   });
 
   test('still fails a mayRuntimeSkip leg that failed', () => {
@@ -191,10 +227,9 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
 
   test('fails a leg that appears twice rather than picking one', () => {
     const report = seatbeltReport();
-    results(report).push({
-      ...withTitle(report, MUST_PASS_TITLE),
-      status: 'skipped',
-    });
+    const copy = { ...withTitle(report, MUST_PASS_TITLE) };
+    skipBeforeStart(copy);
+    results(report).push(copy);
     const result = check(writeReport(report));
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
@@ -298,17 +333,42 @@ describe('statuses read from a real run of every skip form', () => {
   const shapes = join(FIXTURES, 'vitest-statuses.report.json');
 
   test.each([
-    ['a describe.skipIf suite', ['a skipped suite', 'inside a skipped suite']],
-    ['a test.skipIf', ['a running suite', 'skipped by skipIf']],
-    ['a ctx.skip()', ['a running suite', 'skipped at runtime']],
-  ])('%s fails a must-pass id', (_label, titles) => {
+    [
+      'a describe.skipIf suite',
+      ['a skipped suite', 'inside a skipped suite'],
+      'skipped',
+    ],
+    ['a test.skipIf', ['a running suite', 'skipped by skipIf'], 'skipped'],
+    [
+      'a ctx.skip()',
+      ['a running suite', 'skipped at runtime'],
+      'skipped at runtime',
+    ],
+  ])('%s fails a must-pass id', (_label, titles, reading) => {
     const result = check(shapes, {
       profile: 'shapes',
       profiles: profileFor({ mustPass: [titles] }),
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      `skipped, and must not skip: ${STATUS_FILE} > ${titles.join(' > ')}`,
+      `${reading}, and must not skip: ${STATUS_FILE} > ${titles.join(' > ')}`,
+    );
+  });
+
+  test.each([
+    ['a describe.skipIf suite', ['a skipped suite', 'inside a skipped suite']],
+    ['a test.skipIf', ['a running suite', 'skipped by skipIf']],
+  ])('%s is not a runtime skip', (_label, titles) => {
+    const result = check(shapes, {
+      profile: 'shapes',
+      profiles: profileFor({
+        mustPass: [['a running suite', 'passes']],
+        mayRuntimeSkip: [{ test: titles, reason: 'x' }],
+      }),
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `skipped before it started, not at runtime: ${STATUS_FILE} > ${titles.join(' > ')}`,
     );
   });
 

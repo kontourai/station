@@ -2818,8 +2818,10 @@ node scripts/check-required-tests-ran.mjs --profile <name> --report <report.json
 It reads the Vitest JSON report and matches each id exactly: the file
 relative to the checkout plus the full describe and test title path. It
 exits 0 only when every `mustPass` id is present once and passed, and every
-`mayRuntimeSkip` id is present once and passed or skipped. Exit 1 names each
-id that was absent, skipped, failed or duplicated; exit 2 means the report or
+`mayRuntimeSkip` id is present once and either passed or skipped after its
+body started (`ctx.skip()`; the reporter records a duration only for a test
+that started). Exit 1 names each id that was absent, skipped, failed or
+duplicated; exit 2 means the report or
 profile is missing, empty or malformed. `notRequired` entries only record a
 deliberate exclusion and are not checked. Renaming a pinned test therefore
 fails the check; `scripts/__tests__/check-required-tests-ran.test.ts` also

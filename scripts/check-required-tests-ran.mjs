@@ -11,7 +11,8 @@
  * `scripts/required-test-profiles.json`, and exits 0 only when:
  *
  * - every `mustPass` id is present exactly once and passed, and
- * - every `mayRuntimeSkip` id is present exactly once and passed or skipped.
+ * - every `mayRuntimeSkip` id is present exactly once and either passed or
+ *   skipped after its body started (`ctx.skip()`).
  *
  * An id is the test file relative to `--root` (default: the working
  * directory) plus the exact title path (describe titles, then the test
@@ -184,7 +185,14 @@ function readReport(reportPath, root) {
           `report testResults[${index}].assertionResults[${position}] is not a Vitest assertion result`,
         );
       const key = testIdKey(file, [...result.ancestorTitles, result.title]);
-      statuses.set(key, [...(statuses.get(key) ?? []), result.status]);
+      // The reporter gives a duration only to a test whose body started. A
+      // skipped result without one was skipped before it ran: a skipped
+      // suite, `test.skipIf`, or a name filter that left it out.
+      const status =
+        result.status === 'skipped' && typeof result.duration === 'number'
+          ? 'skipped at runtime'
+          : result.status;
+      statuses.set(key, [...(statuses.get(key) ?? []), status]);
     }
   }
   return statuses;
@@ -203,9 +211,12 @@ function evaluateRequiredTests(required, statuses) {
         `ambiguous (${found.length} results: ${found.join(', ')}): ${label}`,
       );
     else if (found[0] === 'passed') continue;
-    else if (found[0] === 'skipped' && id.mayRuntimeSkip) skipped.push(label);
-    else if (found[0] === 'skipped')
-      failures.push(`skipped, and must not skip: ${label}`);
+    else if (found[0] === 'skipped at runtime' && id.mayRuntimeSkip)
+      skipped.push(label);
+    else if (found[0] === 'skipped' && id.mayRuntimeSkip)
+      failures.push(`skipped before it started, not at runtime: ${label}`);
+    else if (found[0] === 'skipped' || found[0] === 'skipped at runtime')
+      failures.push(`${found[0]}, and must not skip: ${label}`);
     else failures.push(`${found[0]}: ${label}`);
   }
   return { failures, skipped };
