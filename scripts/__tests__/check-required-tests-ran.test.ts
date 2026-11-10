@@ -545,6 +545,18 @@ describe('the pinned profile agrees with the real test file', () => {
     // Nothing ran, and the file was collected at all.
     expect(statuses.length).toBeGreaterThan(0);
     expect(new Set(statuses)).toEqual(new Set(['skipped']));
+    // Live canary for the reporter premise the runtime-skip rule rests on:
+    // a test that never started has no duration. The fixtures above are
+    // frozen, so only this run notices a Vitest that changes it.
+    const timedButNeverStarted = collected.testResults.flatMap((file) =>
+      file.assertionResults
+        .filter((result) => typeof result.duration === 'number')
+        .map((result) => [...result.ancestorTitles, result.title].join(' > ')),
+    );
+    expect(
+      timedButNeverStarted,
+      'Vitest wrote a duration for a test that never started. check-required-tests-ran.mjs reads a skipped result with a duration as a runtime skip, so a skipped suite or filtered-out mayRuntimeSkip leg would now pass; revisit that rule before trusting the check.',
+    ).toEqual([]);
 
     // Every pinned id present: rewrite the collected report as passed and
     // let the real check decide, so this agrees with how the lane matches.
