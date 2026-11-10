@@ -15,6 +15,8 @@ import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { childExitedBeforeReadinessMessage } from '../../packages/cli/src/commands/lifecycle.js';
+import { getSpecsForSuite } from '../../tests/e2e-manifest.mjs';
+import { resolveE2ERunnerSelection } from '../lib/e2e-runner-options.mjs';
 import {
   appendE2EStartupOutputTail,
   assertSupportedE2EPlatform,
@@ -1983,9 +1985,77 @@ describe('e2eProviderConfigEnv external source isolation', () => {
 });
 
 describe('suiteStationE2EEnv', () => {
-  test.each(['smoke-live', 'product', 'first-run'])(
-    'keeps %s history isolated with the correct authentication boundary',
-    (suite) => {
+  const smokeLiveSpecs = getSpecsForSuite('smoke-live');
+  const humanOnlySelection = resolveE2ERunnerSelection(
+    ['--spec=./tests/task-room-reload-recovery.spec.ts'],
+    'smoke-live',
+    smokeLiveSpecs,
+  ).specs;
+  const museOnlySelection = resolveE2ERunnerSelection(
+    ['--spec=tests/agents-new-muse-echo-turn.spec.ts'],
+    'smoke-live',
+    smokeLiveSpecs,
+  ).specs;
+  const mixedSelection = resolveE2ERunnerSelection(
+    [
+      '--spec=tests/task-room-reload-recovery.spec.ts',
+      '--spec=tests/agents-new-muse-echo-turn.spec.ts',
+    ],
+    'smoke-live',
+    smokeLiveSpecs,
+  ).specs;
+  const fullSelection = resolveE2ERunnerSelection(
+    [],
+    'smoke-live',
+    smokeLiveSpecs,
+  ).specs;
+
+  test.each([
+    {
+      label: 'smoke-live default',
+      suite: 'smoke-live',
+      selectedSpecs: undefined,
+      retainsHostAuthentication: true,
+    },
+    {
+      label: 'product',
+      suite: 'product',
+      selectedSpecs: undefined,
+      retainsHostAuthentication: false,
+    },
+    {
+      label: 'first-run',
+      suite: 'first-run',
+      selectedSpecs: undefined,
+      retainsHostAuthentication: false,
+    },
+    {
+      label: 'smoke-live full selection',
+      suite: 'smoke-live',
+      selectedSpecs: fullSelection,
+      retainsHostAuthentication: true,
+    },
+    {
+      label: 'smoke-live Muse selection',
+      suite: 'smoke-live',
+      selectedSpecs: museOnlySelection,
+      retainsHostAuthentication: true,
+    },
+    {
+      label: 'smoke-live mixed selection',
+      suite: 'smoke-live',
+      selectedSpecs: mixedSelection,
+      retainsHostAuthentication: true,
+    },
+    {
+      label: 'smoke-live human-only selection',
+      suite: 'smoke-live',
+      selectedSpecs: humanOnlySelection,
+      retainsHostAuthentication: false,
+    },
+  ])(
+    'keeps $label history isolated with the correct authentication boundary',
+    ({ suite, selectedSpecs, retainsHostAuthentication }) => {
       const roots = {
         claude: '/fixture/claude',
         codex: '/fixture/codex',
@@ -1995,17 +2065,22 @@ describe('suiteStationE2EEnv', () => {
       const inherited = {
         CLAUDE_CONFIG_DIR: '/host/claude',
         CODEX_HOME: '/host/codex',
+        STATION_E2E_SYSTEM_STATUS_READY: 'inherited-ready',
+        STATION_E2E_MUSE_PROVIDER: 'inherited-muse',
       };
-      const env = e2eProviderConfigEnv(suite, roots, inherited);
+      const env = {
+        ...inherited,
+        ...e2eProviderConfigEnv(suite, roots, inherited, selectedSpecs),
+      };
       expect(env.STATION_EXTERNAL_CLAUDE_SOURCE_ROOT).toBe(roots.claude);
       expect(env.STATION_EXTERNAL_CODEX_SOURCE_ROOT).toBe(roots.codex);
       expect(env.STATION_EXTERNAL_OPENCODE_SOURCE_ROOT).toBe(roots.opencode);
       expect(env.STATION_EXTERNAL_GROK_SOURCE_ROOT).toBe(roots.grok);
       expect(env.CLAUDE_CONFIG_DIR).toBe(
-        suite === 'smoke-live' ? inherited.CLAUDE_CONFIG_DIR : roots.claude,
+        retainsHostAuthentication ? inherited.CLAUDE_CONFIG_DIR : roots.claude,
       );
       expect(env.CODEX_HOME).toBe(
-        suite === 'smoke-live' ? inherited.CODEX_HOME : roots.codex,
+        retainsHostAuthentication ? inherited.CODEX_HOME : roots.codex,
       );
       expect(e2eProviderConfigEnv('smoke-live', roots, {})).toMatchObject({
         CLAUDE_CONFIG_DIR: undefined,
@@ -2031,15 +2106,36 @@ describe('suiteStationE2EEnv', () => {
     expect(suiteStationE2EEnv('product')).toEqual({
       STATION_E2E_SYSTEM_STATUS_READY: '1',
     });
+    expect(humanOnlySelection).toEqual([
+      'tests/task-room-reload-recovery.spec.ts',
+    ]);
+    const env = suiteStationE2EEnv('smoke-live', humanOnlySelection);
+    expect(Object.hasOwn(env, 'STATION_E2E_SYSTEM_STATUS_READY')).toBe(true);
+    expect(Object.hasOwn(env, 'STATION_E2E_MUSE_PROVIDER')).toBe(true);
+    expect({
+      STATION_E2E_SYSTEM_STATUS_READY: 'inherited-ready',
+      STATION_E2E_MUSE_PROVIDER: 'inherited-muse',
+      ...env,
+    }).toMatchObject({
+      STATION_E2E_SYSTEM_STATUS_READY: undefined,
+      STATION_E2E_MUSE_PROVIDER: undefined,
+    });
   });
 
   // #550: the muse real-turn journey needs muse's own `echo` provider, which
   // Station only reaches when this variable names it.
   test('gives the smoke-live server muse’s echo provider, and only that suite', () => {
-    expect(suiteStationE2EEnv('smoke-live')).toEqual({
-      STATION_E2E_SYSTEM_STATUS_READY: '1',
-      STATION_E2E_MUSE_PROVIDER: 'echo',
-    });
+    for (const selection of [
+      undefined,
+      fullSelection,
+      museOnlySelection,
+      mixedSelection,
+    ]) {
+      expect(suiteStationE2EEnv('smoke-live', selection)).toEqual({
+        STATION_E2E_SYSTEM_STATUS_READY: '1',
+        STATION_E2E_MUSE_PROVIDER: 'echo',
+      });
+    }
 
     // station#4464: the key must be PRESENT-and-undefined in every other
     // branch, not absent. Both consumers spread this object after

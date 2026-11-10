@@ -1879,13 +1879,21 @@ export function isCleanInstallE2ESuite(suite) {
   return suite === 'first-run' || suite === 'starter-clean-install';
 }
 
+function isHumanOnlyTaskRecoverySelection(suite, selectedSpecs) {
+  return (
+    suite === 'smoke-live' &&
+    selectedSpecs?.length === 1 &&
+    selectedSpecs[0] === 'tests/task-room-reload-recovery.spec.ts'
+  );
+}
+
 /**
  * Keep clean-install proof independent from any telemetry configuration in the
  * invoking shell. Empty endpoints prevent both direct product telemetry and
  * OTLP exports; the explicit enablement flag also proves the product's own
  * disabled path rather than merely relying on absent configuration.
  */
-export function suiteStationE2EEnv(suite) {
+export function suiteStationE2EEnv(suite, selectedSpecs = undefined) {
   // station#4464 arbiter rule, same shape as `STATION_E2E_SCREENS` below: an
   // EXPLICIT key in every branch, never a conditional spread. Both consumers
   // spread this after `...process.env`, so a stray `STATION_E2E_MUSE_PROVIDER`
@@ -1893,8 +1901,9 @@ export function suiteStationE2EEnv(suite) {
   // into a suite that never asked for it. `undefined` is not stringified —
   // Node's `spawn` omits any key whose value is `undefined` — so the
   // non-smoke-live suites hand the child no such variable at all.
+  const humanOnly = isHumanOnlyTaskRecoverySelection(suite, selectedSpecs);
   const museProvider =
-    suite === 'smoke-live' ? SMOKE_LIVE_MUSE_PROVIDER : undefined;
+    suite === 'smoke-live' && !humanOnly ? SMOKE_LIVE_MUSE_PROVIDER : undefined;
   // #875: explicit in every branch for the same inherited-environment reason
   // as the Muse override. Only the screenshot server requests suppression;
   // the server still requires its temp-home + e2e-screenshot instance
@@ -1919,7 +1928,7 @@ export function suiteStationE2EEnv(suite) {
       STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
     };
   return {
-    STATION_E2E_SYSTEM_STATUS_READY: '1',
+    STATION_E2E_SYSTEM_STATUS_READY: humanOnly ? undefined : '1',
     STATION_E2E_MUSE_PROVIDER: museProvider,
     STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
   };
@@ -1953,15 +1962,26 @@ export function establishedUserPlaywrightEnv(suite) {
 }
 
 /** Isolate imported history without removing authentication from live engines. */
-export function e2eProviderConfigEnv(suite, roots, inheritedEnv = process.env) {
+export function e2eProviderConfigEnv(
+  suite,
+  roots,
+  inheritedEnv = process.env,
+  selectedSpecs = undefined,
+) {
+  const retainHostAuthentication =
+    suite === 'smoke-live' &&
+    !isHumanOnlyTaskRecoverySelection(suite, selectedSpecs);
   return {
     STATION_EXTERNAL_CLAUDE_SOURCE_ROOT: roots.claude,
     STATION_EXTERNAL_CODEX_SOURCE_ROOT: roots.codex,
     STATION_EXTERNAL_OPENCODE_SOURCE_ROOT: roots.opencode,
     STATION_EXTERNAL_GROK_SOURCE_ROOT: roots.grok,
-    CLAUDE_CONFIG_DIR:
-      suite === 'smoke-live' ? inheritedEnv.CLAUDE_CONFIG_DIR : roots.claude,
-    CODEX_HOME: suite === 'smoke-live' ? inheritedEnv.CODEX_HOME : roots.codex,
+    CLAUDE_CONFIG_DIR: retainHostAuthentication
+      ? inheritedEnv.CLAUDE_CONFIG_DIR
+      : roots.claude,
+    CODEX_HOME: retainHostAuthentication
+      ? inheritedEnv.CODEX_HOME
+      : roots.codex,
   };
 }
 
@@ -2103,7 +2123,6 @@ async function main() {
     grep,
     screens,
   } = resolveE2ERunnerSelection(argv, suite, suiteSpecs);
-  const stationE2EEnv = suiteStationE2EEnv(suite);
   if (selectedSpecs.length === 0) {
     throw new Error(`E2E suite '${suite}' has no specs.`);
   }
@@ -2124,20 +2143,24 @@ async function main() {
     );
     return;
   }
+  const humanOnly = isHumanOnlyTaskRecoverySelection(suite, specs);
+  const stationE2EEnv = suiteStationE2EEnv(suite, specs);
   assertSupportedE2EPlatform();
   assertPlaywrightBrowsersInstalled(process.cwd());
-  const prunedResults = sweepRetainedE2ETestResults(process.cwd());
-  if (prunedResults > 0)
-    console.log(
-      `[e2e] pruned ${prunedResults} retained Playwright result root(s)`,
-    );
-  const recovered = await recoverInterruptedE2ERuns();
-  const reclaimed = sweepInterruptedBuildDirs();
-  const recoveredCount = recovered + reclaimed;
-  if (recoveredCount > 0) {
-    console.log(
-      `[e2e] reclaimed ${recoveredCount} interrupted E2E run${recoveredCount === 1 ? '' : 's'}`,
-    );
+  if (!humanOnly) {
+    const prunedResults = sweepRetainedE2ETestResults(process.cwd());
+    if (prunedResults > 0)
+      console.log(
+        `[e2e] pruned ${prunedResults} retained Playwright result root(s)`,
+      );
+    const recovered = await recoverInterruptedE2ERuns();
+    const reclaimed = sweepInterruptedBuildDirs();
+    const recoveredCount = recovered + reclaimed;
+    if (recoveredCount > 0) {
+      console.log(
+        `[e2e] reclaimed ${recoveredCount} interrupted E2E run${recoveredCount === 1 ? '' : 's'}`,
+      );
+    }
   }
   // CROSS-FILE COUPLE — three server-side containment gates transcribe this
   // exact `e2e-${suite}-${Date.now()}-${base36}` shape as a regex and treat a
@@ -2256,12 +2279,17 @@ async function main() {
                 // device helper can still name one explicitly.
                 STATION_MOBILE_DEVICE_HUB_URL: undefined,
                 ...stationE2EEnv,
-                ...e2eProviderConfigEnv(suite, {
-                  claude: claudeConfigDir,
-                  codex: codexConfigDir,
-                  opencode: openCodeDataDir,
-                  grok: grokHomeDir,
-                }),
+                ...e2eProviderConfigEnv(
+                  suite,
+                  {
+                    claude: claudeConfigDir,
+                    codex: codexConfigDir,
+                    opencode: openCodeDataDir,
+                    grok: grokHomeDir,
+                  },
+                  process.env,
+                  specs,
+                ),
               },
               onSpawn: (child) => {
                 const launcher = processIdentity(child.pid);
@@ -2475,6 +2503,19 @@ async function main() {
             ...establishedUserPlaywrightEnv(suite),
             CLAUDE_CONFIG_DIR: claudeConfigDir,
             CODEX_HOME: codexConfigDir,
+            ...(humanOnly
+              ? e2eProviderConfigEnv(
+                  suite,
+                  {
+                    claude: claudeConfigDir,
+                    codex: codexConfigDir,
+                    opencode: openCodeDataDir,
+                    grok: grokHomeDir,
+                  },
+                  process.env,
+                  specs,
+                )
+              : {}),
             STATION_E2E_UI_DIR: join(process.cwd(), `dist-ui-${instance}`),
             STATION_CRITICAL_BROWSER_REPORT: criticalSmoke
               ? join(
@@ -2536,7 +2577,7 @@ async function main() {
             );
           }
         }
-        if (cleanup.errors.length === 0) {
+        if (cleanup.errors.length === 0 && !humanOnly) {
           const pruned = sweepRetainedE2ETestResults(process.cwd());
           if (pruned > 0) {
             console.log(
