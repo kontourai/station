@@ -180,6 +180,20 @@ describe('ChatInputArea: one capability contract while a turn runs', () => {
     expect(props.onClearAttachments).toHaveBeenCalledTimes(1);
   });
 
+  test('on a host that queues files, a running turn’s draft with files queues', () => {
+    const props = renderComposer({
+      input: 'with a file',
+      attachments: [FILE],
+      busyQueueTakesFiles: true,
+    });
+    expect(screen.queryByText(/running turn/)).toBeNull();
+    const send = screen.getByRole('button', { name: 'Send' });
+    expect((send as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(send);
+    expect(props.onQueueFollowUp).toHaveBeenCalledOnce();
+    expect(props.onSend).not.toHaveBeenCalled();
+  });
+
   test('the same draft sends once no turn is running', () => {
     renderComposer({
       input: 'with a file',

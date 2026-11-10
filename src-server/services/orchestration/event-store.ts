@@ -5906,6 +5906,17 @@ export class EventStore {
   }
 
   /**
+   * Store a queued follow-up's file and return
+   * its content address, or `undefined` when it could not be written. Only
+   * bytes the sender supplied reach here, so the reference proves possession;
+   * placement reads them back through {@link readAttachmentBlob}.
+   */
+  storeQueuedAttachmentBlob(bytes: Buffer): string | undefined {
+    const ref = this.attachmentBlobs.writeBytes(bytes);
+    return ref === attachmentBlobRefFor(bytes) ? ref : undefined;
+  }
+
+  /**
    * Pure fold over immutable `conversation.forked` rows.  Do not route this
    * through any projection ensure/rehydrate path: detail reads must never
    * mutate the event store.

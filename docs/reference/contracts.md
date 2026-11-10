@@ -927,6 +927,14 @@ and its status and limits, and
 `isCoordinatorWakeClientTurnId`. The handshake advertises the routes as
 `StationCapabilityFlags.coordinatorSession`, withdrawn on a hosted Station.
 
+`@kontourai/station-contracts/chat-attachment` also owns
+`QueuedChatAttachmentDescriptor` (kind, name, MIME type, size), the form a
+queued follow-up's files take on `ConversationInboxEntry.attachments`, and
+`QUEUED_ATTACHMENT_UNAVAILABLE_CODE` (`attachment_unavailable`), an inbox
+entry's refusal when a held file is no longer stored. A host that holds files
+with busy follow-ups advertises `StationCapabilityFlags.followUpAttachments`,
+withdrawn on a hosted Station.
+
 `@kontourai/station-contracts/station-control-refusal` owns the refusal view
 a transcript shows for a station-control tool (`StationControlRefusalView`:
 code, sentence, out-of-scope reason), `parseStationControlRefusal`, which
@@ -1022,6 +1030,7 @@ non-retryable.
 | `delegation_files_turn_refused` | `provider_error` | `false` |
 | `delegation_files_outcome_unknown` | `indeterminate` | `false` |
 | `delegation_files_cleanup_failed` | `provider_error` | `false` |
+| `attachment_unavailable` | `input_unsupported` | `false` |
 | `stage_not_found` | `input_unsupported` | `false` |
 | `stage_expired` | `input_unsupported` | `false` |
 | `stage_forbidden` | `permission_denied` | `false` |

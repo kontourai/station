@@ -1,5 +1,6 @@
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
+import type { QueuedChatAttachmentDescriptor } from './chat-attachment.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
@@ -1749,6 +1750,11 @@ export interface ConversationInboxEntry {
   /** 1 for the next to be sent, among entries still waiting; absent once settled. */
   position?: number;
   message: string;
+  /**
+   * Files sent with the message, when it carries any (`followUpAttachments`
+   * hosts). Descriptors only; the bytes stay on the Station.
+   */
+  attachments?: QueuedChatAttachmentDescriptor[];
   createdAt: string;
   updatedAt: string;
   /** The turn it started, once `sent`. */
@@ -1766,7 +1772,9 @@ export interface ConversationInboxEntry {
    * `continuation_workspace_corrupt_worktree_binding`,
    * `continuation_workspace_worktree_gone`,
    * `continuation_workspace_different_project`,
-   * `continuation_workspace_worktree_moved`, or `start_refused` for any
+   * `continuation_workspace_worktree_moved`, `attachment_unavailable` (a file
+   * held with the message was no longer stored), `attachment_input_unsupported`
+   * (the engine takes no files), or `start_refused` for any
    * other refusal.
    */
   reasonCode?: string;
