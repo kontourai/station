@@ -5069,8 +5069,8 @@ sentence. Of the fetchers outside `client/` (the React query domains), the
 Task graph, Task memory, work-item, operating-state and attention fetchers
 throw the helper's `StationHttpError` too, so a refusal whose body is not JSON
 (a proxy's error page, an empty body) keeps its status instead of surfacing a
-parse exception; attention snooze keeps its own plain `Error`. The other query
-domains are not yet on the helper.
+parse exception; attention snooze keeps its own plain `Error`. Not every other
+query domain is on the helper yet.
 
 Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
