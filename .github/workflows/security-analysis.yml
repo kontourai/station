@@ -24,6 +24,7 @@ jobs:
     name: Dependency review
     if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:

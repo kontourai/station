@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedProcess,
@@ -191,16 +192,6 @@ function readPackageScripts() {
     .scripts;
 }
 
-function npmInvocation() {
-  const npmCli = process.env.npm_execpath;
-  return npmCli
-    ? { executable: process.execPath, prefix: [npmCli] }
-    : {
-        executable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
-        prefix: [],
-      };
-}
-
 /** Run one phase as an owned process group bounded by its canonical deadline. */
 export async function runPhaseProcess(
   step,
@@ -218,7 +209,7 @@ export async function runPhaseProcess(
     },
   } = {},
 ) {
-  const { executable, prefix } = npmInvocation();
+  const { command, args } = npmInvocation(step.args);
   const label = `full-regression phase ${step.id}`;
   // The canonical lane binds STATION_VERIFICATION_HISTORY_REF to the request's
   // HEAD, so history-reading tests (commit-message corpora) inspect the
@@ -226,13 +217,12 @@ export async function runPhaseProcess(
   const env = bindVerificationRequestEnvironment(process.env, {
     headSha: git(['rev-parse', 'HEAD'], cwd).toString('utf8').trim(),
   });
-  const execution = executeOwnedProcess(
-    executable,
-    [...prefix, ...step.args],
-    spawnProcess,
-    label,
-    { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
-  );
+  const execution = executeOwnedProcess(command, args, spawnProcess, label, {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
   // Stream the child's bytes to this job log as they arrive, and validate
   // them through the same capture the canonical runner uses.
   execution.child.stdout?.on('data', (chunk) => forward.stdout(chunk));

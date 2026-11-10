@@ -620,11 +620,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3101 slice F: runs the fixture policy's real main() as a child process
   // against a small real Git graph (merge base versus main's tip).
   'scripts/__tests__/test-fixture-policy.process.test.ts',
-  // Same shape one gate over: runs the pre-push typecheck scope guard as a
-  // real child process — once against a stub `npm` so its REFUSAL exit
-  // status is proven, once with an empty scope so the skip path's zero is
-  // proven. Two bounded single-shot children; the real 82s aggregate never
-  // starts.
+  // Runs the real pre-push hook through `git push` from a disposable linked
+  // worktree with stubbed gate commands, so each gate's Git reads are real
+  // subprocesses in the hook's own environment. Bounded single-shot children.
+  // (The file keeps its name from the retired pre-push typecheck scope guard.)
   'scripts/__tests__/prepush-typecheck.test.ts',
   // Host typecheck slots: spawns fleets of six short-lived fake compilers
   // against a PRIVATE slot directory (never the host's), SIGKILLs one holder

@@ -41,6 +41,7 @@ jobs:
     # artifacts are read back from this run by name below.
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     permissions: { contents: read }
     steps:
       - name: Require the identity the staging phase bound before any promotion job can run
@@ -79,6 +80,7 @@ jobs:
     needs: [admit-cohort]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -135,6 +137,7 @@ jobs:
     needs: [admit-cohort, create-promotion-fence]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' && needs.create-promotion-fence.result == 'success' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     environment: native-release
     permissions: { contents: read, actions: read, id-token: write }
     env:
@@ -243,6 +246,7 @@ jobs:
     needs: [admit-cohort, create-promotion-fence]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' && needs.create-promotion-fence.result == 'success' }}
     runs-on: macos-15
+    timeout-minutes: 60
     environment: native-release
     permissions: { contents: write, actions: read }
     steps:
@@ -368,6 +372,7 @@ jobs:
     needs: [create-promotion-fence, promote-android, promote-macos]
     if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.create-promotion-fence.result == 'success' && (needs.promote-android.result == 'success' || needs.promote-macos.result == 'success') }}
     runs-on: macos-15
+    timeout-minutes: 60
     environment: native-release
     permissions: { contents: read, id-token: write, attestations: write }
     env:
@@ -476,6 +481,7 @@ jobs:
     needs: [protected-finalize, deliver-ios]
     if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     permissions: { contents: write, attestations: read }
     outputs:
       final_attestation: ${{ steps.final_attestation.outcome }}
@@ -609,6 +615,7 @@ jobs:
     needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion]
     if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.create-promotion-fence.result != 'skipped' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     permissions: { contents: write, actions: read }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -666,6 +673,7 @@ jobs:
     needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion, clear-promotion-fence]
     if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success' || needs.clear-promotion-fence.result != 'success') }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

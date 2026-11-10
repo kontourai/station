@@ -27,6 +27,15 @@ describe('static gate input detection', () => {
       'schemas/agent-plugins/1.0.0/plugin.schema.json',
       // The root manifest names the typecheck:examples chain (#2343).
       'package.json',
+      // Reviewed exception inventories the focus-visible, responsive-surface
+      // and accent-foreground ratchets read.
+      'docs/ui/focus-outline-exceptions.json',
+      'docs/ui/responsive-surfaces.json',
+      'docs/ui/accent-foreground-exceptions.json',
+      // a11y-ratchet reads the root biome config to confirm its preset is on.
+      'biome.json',
+      // font-origin-ratchet scans the desktop shell's CSP.
+      'src-desktop/tauri.conf.json',
     ]) {
       expect(isStaticGateInput(path), path).toBe(true);
     }
@@ -41,15 +50,22 @@ describe('static gate input detection', () => {
     expect(isStaticGateInput('scripts/motion-contract-ratchet.mjs')).toBe(true);
   });
 
-  it('ignores paths no ratchet reads', () => {
+  /**
+   * These are not inputs of the shared set, so they do not run every gate.
+   * They are still text station-vocabulary-gate scans; the scope decision
+   * below runs that one gate for them.
+   */
+  it('keeps paths outside the shared roots out of the every-gate inputs', () => {
     for (const path of [
       'docs/design/motion.md',
       'README.md',
       '.github/workflows/ci.yml',
-      'src-desktop/tauri.conf.json',
-      // Only the ROOT manifest is an input.
+      'src-desktop/src/lib.rs',
+      // Only the named files are inputs, not their siblings.
       'src-desktop/package.json',
       'package.json.bak',
+      'src-ui/biome.json',
+      'docs/uix/responsive-surfaces.json',
     ]) {
       expect(isStaticGateInput(path), path).toBe(false);
     }
@@ -79,19 +95,61 @@ describe('scope decision', () => {
   it('skips only when the scope was computed and matched nothing', () => {
     const decision = decideStaticGateScope({
       baseSha: 'abc123',
-      changedPaths: ['README.md', 'docs/x.md'],
+      // Neither is text the vocabulary gate scans, nor a shared input.
+      changedPaths: ['docs/assets/diagram.png', 'pnpm-lock.yaml'],
     });
     expect(decision.run).toBe(false);
+    expect(decision.gates).toEqual([]);
     expect(decision.reason).toContain('none of the 2 path(s)');
   });
 
-  it('runs when an input changed, and names what matched', () => {
+  it('runs every gate when a shared input changed, and names what matched', () => {
     const decision = decideStaticGateScope({
       baseSha: 'abc123',
       changedPaths: ['README.md', 'src-ui/src/views/HomeView.css'],
     });
     expect(decision.run).toBe(true);
+    expect(decision.gates).toEqual([...PREPUSH_STATIC_GATES]);
+    expect(decision.matched).toEqual(['src-ui/src/views/HomeView.css']);
     expect(decision.reason).toContain('src-ui/src/views/HomeView.css');
+  });
+
+  it('runs every gate when only an inventory or config outside the source roots changed', () => {
+    for (const path of [
+      'docs/ui/responsive-surfaces.json',
+      'biome.json',
+      'src-desktop/tauri.conf.json',
+    ]) {
+      const decision = decideStaticGateScope({
+        baseSha: 'abc123',
+        changedPaths: [path],
+      });
+      expect(decision.run, path).toBe(true);
+      expect(decision.gates, path).toEqual([...PREPUSH_STATIC_GATES]);
+    }
+  });
+
+  /**
+   * station-vocabulary-gate scans every tracked text file, so docs, workflow
+   * and Rust edits are its inputs even though no other gate here reads them.
+   * A skip for those pushes let retired vocabulary through to the merge queue.
+   */
+  it('runs the vocabulary gate alone when only text outside the shared inputs changed', () => {
+    for (const path of [
+      'docs/design/motion.md',
+      'README.md',
+      '.github/workflows/ci.yml',
+      'src-desktop/src/lib.rs',
+    ]) {
+      const decision = decideStaticGateScope({
+        baseSha: 'abc123',
+        changedPaths: [path, 'docs/assets/diagram.png'],
+      });
+      expect(decision.run, path).toBe(true);
+      expect(decision.gates, path).toEqual(['station-vocabulary-gate']);
+      expect(decision.matched, path).toEqual([path]);
+      expect(decision.reason, path).toContain(path);
+    }
   });
 
   /**
@@ -104,6 +162,7 @@ describe('scope decision', () => {
       changedPaths: [],
     });
     expect(decision.run).toBe(true);
+    expect(decision.gates).toEqual([...PREPUSH_STATIC_GATES]);
     expect(decision.reason).toContain('cannot be scoped');
   });
 });

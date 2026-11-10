@@ -12,7 +12,6 @@
 // question BEFORE writing anything. The output is a report plus matching
 // Veritas guidance. It runs no evidence checks and exits 2 when the edit scope
 // or required governance context cannot be read.
-import { execFileSync } from 'node:child_process';
 import { decideOrchestrationTransferScope } from './check-prepush-orchestration-transfer.mjs';
 import { decideSdkBarrelScope } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
@@ -33,7 +32,7 @@ import { fixturePolicyCommands } from './test-fixture-policy.mjs';
 
 function resolveBaseSha(base) {
   try {
-    return execFileSync('git', ['rev-parse', base], {
+    return execFileSyncBounded('git', ['rev-parse', base], {
       encoding: 'utf8',
       windowsHide: true,
     }).trim();

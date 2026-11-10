@@ -41,8 +41,8 @@
  *   node scripts/test-temp-dir-ratchet.mjs [--update]
  */
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const BASELINE_PATH = 'scripts/test-temp-dir-baseline.json';
@@ -78,7 +78,7 @@ export function listScannedFiles(cwd = process.cwd()) {
   // Tracked AND untracked-but-not-ignored: a brand-new test file is exactly
   // the case this gate exists for, and it is invisible to `git ls-files`
   // alone until it is committed.
-  const output = execFileSync(
+  const output = execFileSyncBounded(
     'git',
     [
       'ls-files',
@@ -88,7 +88,7 @@ export function listScannedFiles(cwd = process.cwd()) {
       '--',
       ...SCAN_ROOTS,
     ],
-    { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true },
+    { cwd, encoding: 'utf8', windowsHide: true },
   );
   return [...new Set(output.split('\n'))]
     .filter((file) => CODE_PATH.test(file) && TEST_PATH.test(file))
