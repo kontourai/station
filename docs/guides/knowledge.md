@@ -495,10 +495,13 @@ Station user actually gets a knowledge store in the first place, without reading
 ### Settings: My knowledge store
 
 Settings has a **My knowledge store** section that displays the first personal
-root returned by the server. A personal root is available outside a particular
+root returned by the server, skipping private memory roots and the read-only
+`root:conversations` root. A personal root is available outside a particular
 Project; whether an Agent can read or write it depends on its tools, engine,
 authority, and the adapter (conversation history is read-only). Knowledge is
 optional: Station does not show a global setup prompt or create/import a store automatically.
+The same section holds **Past conversations in Knowledge**, the
+[`root:conversations`](#rootconversations-past-conversations-as-a-knowledge-root) setting.
 
 **Creating one is a single click.** If you don't have a personal knowledge store yet, the section
 shows a "Create recommended store" action. There's no path to type: the server defaults the

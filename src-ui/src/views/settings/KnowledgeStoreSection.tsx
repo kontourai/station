@@ -1,8 +1,9 @@
 /**
  * Settings card for the first registered personal Knowledge root.
- * The scope tag also includes read-only conversation roots; this UI selection
- * is not a server-enforced one-writable-store invariant. Obsidian connection
- * still requires validation of the exact currently entered path.
+ * The scope tag also covers the read-only conversation root and private
+ * memory roots, which this selection skips; it is not a server-enforced
+ * one-writable-store invariant. Obsidian connection still requires validation
+ * of the exact currently entered path.
  */
 import {
   useCreateKnowledgeRootMutation,
@@ -24,6 +25,13 @@ import { settingsRow } from './settings-catalog';
 
 const PERSONAL_DEFAULT_ADAPTER_ID = 'kit-default-store';
 const OBSIDIAN_ADAPTER_ID = 'kit-obsidian-store';
+/**
+ * The adapter of `root:conversations`, which Station registers at startup when
+ * Past conversations in Knowledge is on. It is personal-scoped but read-only and
+ * cannot be removed, so treating it as the personal store would claim personal
+ * knowledge is on and withdraw the create action for good.
+ */
+const CONVERSATION_ADAPTER_ID = 'conversation-store';
 
 /** The connection form appears only while this UI's first-personal-root lookup is empty. */
 function ConnectObsidianVault() {
@@ -207,7 +215,9 @@ export function KnowledgeStoreSection({
           (() => {
             const personalRoot = (rootsQuery.data ?? []).find(
               (root) =>
-                root.scope.kind === 'personal' && root.readPolicy === undefined,
+                root.scope.kind === 'personal' &&
+                root.readPolicy === undefined &&
+                root.adapterId !== CONVERSATION_ADAPTER_ID,
             );
 
             if (!personalRoot) {
