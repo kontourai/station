@@ -115,8 +115,8 @@ Board leaves the sidebar and a notice offers **Undo**. **⌘Z** on macOS or
 **Ctrl+Z** on Windows and Linux also undoes the latest one. Station deletes or
 moves the Board only when the notice closes, so Undo leaves the saved Board as
 it is, including edits made on another device in the meantime. The notice stays
-while you point at it or it has focus. Deleting the open Board returns to Home;
-Undo returns to the Board if you are still there. If Station changes, or the
+while you point at it or it has focus. Deleting or moving the open Board returns
+to Home; Undo returns to the Board if you are still there. If Station changes, or the
 page closes or reloads before the notice closes, the Board is kept. A refused
 delete or move is reported, and the Board comes back.
 

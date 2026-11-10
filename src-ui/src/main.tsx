@@ -54,7 +54,7 @@ import { ConversationWorkStateProvider } from './components/chat-dock/useConvers
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
 import { StartupHandoff } from './components/StartupHandoff';
-import { UndoableActionShortcut } from './components/undo/undoable-actions';
+import { UndoableActionShortcut } from './components/undo/UndoableActionShortcut';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
 import { ActivityReviewProvider } from './contexts/ActivityReviewContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';

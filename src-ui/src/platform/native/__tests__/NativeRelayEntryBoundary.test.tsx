@@ -194,7 +194,7 @@ vi.mock('../../../components/chat-dock/inbox-dismissals', () => ({
   },
 }));
 // #4688: registers Mod+Z inside the operator-only Undo boundary above.
-vi.mock('../../../components/undo/undoable-actions', () => ({
+vi.mock('../../../components/undo/UndoableActionShortcut', () => ({
   UndoableActionShortcut: Through,
 }));
 vi.mock('../../../core/PermissionManager', () => ({

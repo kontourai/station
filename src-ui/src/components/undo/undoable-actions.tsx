@@ -1,13 +1,16 @@
-import type { ReactNode } from 'react';
 import { useSyncExternalStore } from 'react';
 import { ToastActionError, toastStore } from '../../contexts/ToastContext';
-import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import {
+  resetPendingUndoForTest,
+  trackPendingUndo,
+  untrackPendingUndo,
+} from './UndoableActionShortcut';
 
 /**
  * General Undo (#4688): one way to take back a reversible action.
  *
- * An action is offered as a toast with an Undo button, and Mod+Z undoes the
- * most recent one. The destructive write is DEFERRED: `commit` runs only when
+ * An action is offered as a toast with an Undo button, and Mod+Z
+ * (`UndoableActionShortcut`, always mounted) undoes the most recent one. The destructive write is DEFERRED: `commit` runs only when
  * the toast leaves the screen without Undo (it expired, was closed, or every
  * notification was dismissed). Undo therefore never restores a snapshot; it
  * cancels a write that has not happened, so anything changed elsewhere in the
@@ -61,6 +64,7 @@ function publish() {
 }
 
 function remove(entry: Entry) {
+  untrackPendingUndo(entry.toastId);
   entries = entries.filter((candidate) => candidate !== entry);
   publish();
 }
@@ -79,6 +83,7 @@ function settle(entry: Entry, reason: 'closed' | 'scope') {
     return;
   }
   entry.state = 'committing';
+  untrackPendingUndo(entry.toastId);
   publish();
   let pending: Promise<unknown>;
   try {
@@ -133,6 +138,7 @@ export function offerUndoableAction(action: UndoableAction): void {
     offeredAt: sequence,
   };
   entries = [...entries, entry];
+  trackPendingUndo(entry.toastId);
   publish();
   toastStore.upsert({
     id: entry.toastId,
@@ -142,19 +148,6 @@ export function offerUndoableAction(action: UndoableAction): void {
     actions: [{ label: 'Undo', onClick: () => undo(entry) }],
     onDismiss: (reason) => settle(entry, reason),
   });
-}
-
-/**
- * Undoes the most recent pending action through its toast, so a refusal is
- * shown in the same place as a click's. False when nothing is pending.
- */
-export function undoLatestAction(): boolean {
-  const latest = [...entries]
-    .reverse()
-    .find((entry) => entry.state === 'pending');
-  if (!latest) return false;
-  toastStore.runAction(latest.toastId, 0);
-  return true;
 }
 
 function subscribe(listener: () => void) {
@@ -188,21 +181,6 @@ export function usePendingUndoKeys(): ReadonlySet<string> {
 /** Test seam: forgets every offer without committing it. */
 export function resetUndoableActionsForTest() {
   entries = [];
+  resetPendingUndoForTest();
   publish();
-}
-
-/**
- * Registers Mod+Z for the most recent undoable action. Inside a text field,
- * editor or terminal the registry leaves Mod+Z to that field (#4383), so its
- * own Undo always wins.
- */
-export function UndoableActionShortcut({ children }: { children: ReactNode }) {
-  useKeyboardShortcut(
-    'app.undoLastAction',
-    'z',
-    ['cmd'],
-    'Undo last action',
-    () => (undoLatestAction() ? undefined : false),
-  );
-  return children;
 }

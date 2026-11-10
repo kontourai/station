@@ -14,13 +14,13 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
+import { UndoableActionShortcut } from '../components/undo/UndoableActionShortcut';
 import {
   offerUndoableAction,
   pendingUndoKeys,
   resetUndoableActionsForTest,
   UNDO_WINDOW_MS,
   type UndoableAction,
-  UndoableActionShortcut,
 } from '../components/undo/undoable-actions';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';

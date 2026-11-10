@@ -316,10 +316,8 @@ vi.mock('@kontourai/station-sdk', () => {
 
 import * as React from 'react';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
-import {
-  resetUndoableActionsForTest,
-  UndoableActionShortcut,
-} from '../components/undo/undoable-actions';
+import { UndoableActionShortcut } from '../components/undo/UndoableActionShortcut';
+import { resetUndoableActionsForTest } from '../components/undo/undoable-actions';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { toastStore } from '../contexts/ToastContext';
@@ -1828,6 +1826,27 @@ describe('undoing a Board delete or move', () => {
     expect(navigate).toHaveBeenLastCalledWith('/');
     pressUndo();
     expect(navigate).toHaveBeenLastCalledWith('/boards/daily');
+  });
+
+  test('moving the open Board leaves it, and Undo returns to it', async () => {
+    boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
+    projects.push({ id: '1', slug: 'demo', name: 'Demo' });
+    pathname.value = '/boards/daily';
+    await renderSidebar(<ProjectSidebar />);
+    boardMenu('Daily brief');
+    act(() => {
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'Move to project…' }),
+      );
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Demo' }));
+    });
+    expect(navigate).toHaveBeenLastCalledWith('/');
+    pressUndo();
+    expect(navigate).toHaveBeenLastCalledWith('/boards/daily');
+    await closeUndoWindow();
+    expect(calls.promote).toEqual([]);
   });
 
   test('a refused delete is shown and the Board comes back', async () => {

@@ -470,10 +470,20 @@ export function ProjectSidebarBoards({
    * The list is re-read before the row is released, so it does not flash
    * back between the write and the refetch. The notice is scoped to the
    * connected Station, so switching Station drops the write unsent.
+   *
+   * Leaving the open Board when it is deleted or moved (#4458): its address
+   * is about to stop naming a personal Board. Undo returns to it only if the
+   * viewer is still where this left them.
    */
+  const leaveIfOpen = (slug: string) => {
+    const path = boardPath(slug);
+    if (activePath !== path) return undefined;
+    navigate(HOME_PATH);
+    return () => {
+      if (window.location.pathname === HOME_PATH) navigate(path);
+    };
+  };
   const deleteWithUndo = (board: { slug: string; name: string }) => {
-    const path = boardPath(board.slug);
-    const wasOpen = activePath === path;
     offerUndoableAction({
       key: boardUndoKey(board.slug),
       message: `Deleted ${board.name}`,
@@ -483,14 +493,8 @@ export function ProjectSidebarBoards({
         await deleteBoard.mutateAsync(board.slug);
         await refetch();
       },
-      // Back to the Board only if the viewer is still where Delete left them.
-      onUndo: wasOpen
-        ? () => {
-            if (window.location.pathname === HOME_PATH) navigate(path);
-          }
-        : undefined,
+      onUndo: leaveIfOpen(board.slug),
     });
-    if (wasOpen) navigate(HOME_PATH);
   };
   const moveWithUndo = (
     board: { slug: string; name: string },
@@ -508,6 +512,7 @@ export function ProjectSidebarBoards({
         });
         await refetch();
       },
+      onUndo: leaveIfOpen(board.slug),
     });
   };
 
