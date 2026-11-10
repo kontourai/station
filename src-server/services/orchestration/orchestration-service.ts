@@ -141,6 +141,7 @@ import {
   isSessionLifecycleStateAtRest,
   SESSION_ENDED_REJECTION_CODE,
   SESSION_LIFECYCLE_TRANSITIONS,
+  validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
 import type {
@@ -1443,6 +1444,13 @@ function peerDelegationLifecyclePath(
  */
 export type OrchestrationTurnAdmission = (input: {
   threadId: string;
+  /**
+   * #4511: who caused the turn, classified by the server
+   * (`classifyTurnDispatchOrigin`): `interactive` only for a person's own
+   * authenticated send. Absent where the seam cannot know (a prepared-turn
+   * resume), which an observer must treat as not a person's turn.
+   */
+  dispatchOrigin?: TurnDispatchOrigin;
 }) => { allowed: true } | { allowed: false; reason: string };
 
 /**
@@ -8961,11 +8969,70 @@ export class OrchestrationService {
     return () => this.turnAdmissions.delete(admission);
   }
 
-  private assertTurnAdmitted(threadId: string): void {
+  private assertTurnAdmitted(
+    threadId: string,
+    dispatchOrigin?: TurnDispatchOrigin,
+  ): void {
     for (const admission of this.turnAdmissions) {
-      const result = admission({ threadId });
+      const result = admission({
+        threadId,
+        ...(dispatchOrigin ? { dispatchOrigin } : {}),
+      });
       if (!result.allowed) throw new Error(result.reason);
     }
+  }
+
+  /**
+   * #4511: marks a Session blocked with a server-written reason, so it reads
+   * "Session blocked: <reason>" in Needs you. Only from a state that may move
+   * to `blocked`; a Session already blocked or ended keeps its state.
+   * Returns whether the transition was recorded.
+   */
+  recordSessionBlocked(input: { threadId: string; message: string }): boolean {
+    this.initialize();
+    const session =
+      this.sessionReadModel.get(input.threadId) ??
+      this.options.eventStore?.readSessionByThread(input.threadId);
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(input.threadId)
+        .map((event) => event.payload) ?? [];
+    const current = projectSessionLifecycle({ session, events }).lifecycleState;
+    if (
+      current === 'blocked' ||
+      !validateSessionLifecycleTransition(current, 'blocked').ok
+    )
+      return false;
+    this.projectAndPublishEvent(
+      createManualSessionTransitionEvent({
+        provider: session.provider,
+        threadId: input.threadId,
+        from: current,
+        to: 'blocked',
+        reason: 'manual_update',
+        source: 'system_recovery',
+        message: input.message,
+      }),
+    );
+    return true;
+  }
+
+  /**
+   * #4511: a person's turn into a Session an automation started at `auto`
+   * must not inherit that posture. Records Ask unless a decision was already
+   * recorded for the conversation (a person's own pick stands).
+   */
+  recordAskWhereUndecided(threadId: string): void {
+    if (this.approvalPosture.decision(threadId)) return;
+    const provider = this.threadProviderForPosture(threadId);
+    if (!provider || !this.approvalKnobForThread(threadId, provider)) return;
+    this.recordApprovalModeDecision({
+      threadId,
+      provider,
+      approvalMode: 'ask',
+      basedOnSequence: null,
+    });
   }
 
   /**
@@ -9214,7 +9281,13 @@ export class OrchestrationService {
           // Monitor envelopes register here, at the one execution choke
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
-          this.assertTurnAdmitted(submittedInput.threadId);
+          this.assertTurnAdmitted(
+            submittedInput.threadId,
+            classifyTurnDispatchOrigin(
+              internal?.dispatchOrigin,
+              context?.clientOrigin,
+            ),
+          );
           await this.authorizedConversationWorkspace(submittedInput.threadId);
           const current = await this.readSession(
             submittedInput.threadId,
@@ -9990,7 +10063,10 @@ export class OrchestrationService {
                             );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
-                            this.assertTurnAdmitted(turnInput.threadId);
+                            this.assertTurnAdmitted(
+                              turnInput.threadId,
+                              dispatchOrigin,
+                            );
                             this.assertForkContextAtProviderTurn(
                               turnInput,
                               context,

@@ -5312,9 +5312,43 @@ refused with 400 rather than clamped, an unavailable ledger answers 503 with
 Feature Preview. Disabled previews return 404 with `feature_preview_disabled`,
 `previewId` and `settingsPath`, before opening the ledger. The `polls` projection
 reports last-poll time, cursor and coverage/failure outcome; `partial` means the
-GitHub page omitted additional runs and did not advance the cursor. No `/automations` mutation is mounted or
-scope-classified yet. Use the [SDK client](../../packages/sdk/src/client/automations.ts)
-or `station automation deliveries`.
+GitHub page omitted additional runs and did not advance the cursor. A delivery
+whose action is held by a limit reads `suppressed` with that reason. Use the
+[SDK client](../../packages/sdk/src/client/automations.ts) or
+`station automation deliveries`.
+
+### Automation Operator Routes
+
+The rest of `AUTOMATION_OPERATOR_SURFACE` (#4513) is served from the same
+[source](../../src-server/routes/operations/automations.ts), all `no-store`,
+404 in hosted mode, and under the `access:manage` pairing scope for every
+method. Every mutation also requires the operator in person (the same proof as
+`/api/isolated-repairs`); anything else answers 403 `operator_required`.
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /automations/sources` | `{configurationFingerprint, sources}`; sources never carry a webhook secret. |
+| `POST /automations/sources` | Creates a disabled `github-poll` source (201). |
+| `PUT /automations/sources/:target/enable` | `{expectedFingerprint}`; 409 `repair_surface_required` for a source granting `isolated-repair` or `publish-branch`. |
+| `PUT /automations/sources/:target/disable` | Optional `{expectedFingerprint}`. |
+| `DELETE /automations/sources/:target` | Only once no rule names the source. |
+| `GET /automations/rules` | `{configurationFingerprint, rules}`. |
+| `POST /automations/rules` | A `dispatch-task` rule with `sourceId`, created in `observe` (201). |
+| `PUT /automations/rules/:target` | Replaces a `dispatch-task` rule's name, matcher, episode, action and rate limit at `expectedFingerprint`; never its source or mode. |
+| `PUT /automations/rules/:target/enable` | `{expectedFingerprint}`; sets `live` (`dispatch-task` only). |
+| `PUT /automations/rules/:target/disable` | Sets `off`; optional `{expectedFingerprint}`. |
+| `DELETE /automations/rules/:target` | A `dispatch-task` rule. |
+| `GET /automations/episodes?limit=<1-200>` | `{episodes}`: unclosed episodes, newest first, without their internal key. |
+| `POST /automations/episodes/:ruleId:episodeId/retry` | One more attempt for an exhausted episode; `{ruleId, episodeId, retry}`. |
+
+Everything except disable and delete also needs the
+`github-automation-observations` Feature Preview (404
+`feature_preview_disabled` otherwise). A missing source, rule or episode
+answers 404 `automation_not_found`; a stale fingerprint or invalid change 409
+`invalid_automation`; an unreadable policy 503 `policy_unavailable`. A retry
+refusal answers 409 with `not-exhausted`, `indeterminate`, `active`,
+`no-intent`, `stale` or `policy-unavailable`. See
+[Operator surface](../design/automations.md#operator-surface).
 
 ### Open File with System Handler
 

@@ -62,6 +62,7 @@ describe('station dev-mode Vite proxy (#3254)', () => {
         '/bedrock',
         '/monitoring',
         '/scheduler',
+        '/automations',
         '/notifications',
         '/tools',
         '/observability',
@@ -86,6 +87,25 @@ describe('station dev-mode Vite proxy (#3254)', () => {
     ).toBe('/config');
     expect(
       bypass({ method: 'GET', url: '/api/x', headers: { accept: '*/*' } }),
+    ).toBeUndefined();
+    // #4513: `/automations` is both the UI's Automations page and the
+    // Automation operator API; a page navigation still gets the SPA.
+    const automations = stationDevProxy({ STATION_DEV_API_PORT: '47310' })?.[
+      '/automations'
+    ]?.bypass as (req: object) => string | undefined;
+    expect(
+      automations({
+        method: 'GET',
+        url: '/automations',
+        headers: { accept: 'text/html' },
+      }),
+    ).toBe('/automations');
+    expect(
+      automations({
+        method: 'GET',
+        url: '/automations/rules',
+        headers: { accept: 'application/json' },
+      }),
     ).toBeUndefined();
     expect(
       bypass({

@@ -1,0 +1,9 @@
+{
+  "revision": "9930faf6130f72312317fe8e5bfecb27d2fb5527",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the generated Settings registry delta: github-automations now publishes its existing catalog label, Station scope, section and canonical deep link. Retry writes the Station-owned Automation ledger, not account/device preferences, and server operator authorization remains separate from this metadata. The existing architecture and deep-link explanations remain accurate. The canonical registry gate and all 11 generator tests pass; captured Settings renders already exercised this exact route. No new config key, secret, permission or source route is introduced.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed the generated Settings registry delta: github-automations now publishes its existing catalog label, Station scope, section and canonical deep link. Retry writes the Station-owned Automation ledger, not account/device preferences, and server operator authorization remains separate from this metadata. The existing architecture and deep-link explanations remain accurate. The canonical registry gate and all 11 generator tests pass; captured Settings renders already exercised this exact route. No new config key, secret, permission or source route is introduced.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]}
+  ]
+}

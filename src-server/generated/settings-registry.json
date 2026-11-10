@@ -167,6 +167,13 @@
       "route": "/settings?view=answer-shares&highlight=shared-answers"
     },
     {
+      "id": "github-automations",
+      "label": "GitHub automations",
+      "scope": "station",
+      "section": "github-automations",
+      "route": "/settings?view=github-automations&highlight=github-automations"
+    },
+    {
       "id": "plugin-visibility",
       "label": "Plugin visibility",
       "scope": "station",

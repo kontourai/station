@@ -1,3 +1,4 @@
+import type { AutomationTaskProjection } from './automation';
 import type { ClientOrigin } from './client-origin.js';
 import type { EngineId, ProviderSession } from './provider.js';
 
@@ -656,6 +657,12 @@ export interface TaskRecord {
    * that worktree or the Project checkout is unknown.
    */
   taskWorktreeUnknown?: true;
+  /**
+   * #4511: read projection only, never stored or accepted. The immutable
+   * authority an automation-started Task was created under, from the
+   * server's private intent bound to this exact Task incarnation.
+   */
+  automation?: AutomationTaskProjection;
   /** Provider-neutral source of this task, when it originated from an
    * external work-item provider (e.g. `'github'`). Absent for tasks created
    * directly in Station. */

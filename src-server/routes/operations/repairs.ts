@@ -1,12 +1,10 @@
-import {
-  AUTOMATION_ACTION_KINDS,
-  AUTOMATION_RULE_MODES,
-} from '@kontourai/station-contracts/automation';
+import { AUTOMATION_RULE_MODES } from '@kontourai/station-contracts/automation';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import type { IsolatedRepairController } from '../../services/automation/repair-controller.js';
 import type { RepairOperator } from '../../services/automation/repair-store.js';
+import { automationPollSourceSchema } from './automations.js';
 
 /** Personal operator API. No MCP tool, unattended caller, or hosted tenant can grant publication. */
 export function createIsolatedRepairRoutes(options: {
@@ -111,28 +109,7 @@ export function createIsolatedRepairRoutes(options: {
     return c.json({ success: true, data });
   });
   app.post('/sources', async (c) => {
-    const input = z
-      .object({
-        kind: z.literal('github-poll'),
-        name: z.string().min(1).max(128),
-        repository: z.string().min(1).max(200),
-        credentialSecretBinding: z.string().min(1).max(128).optional(),
-        pollIntervalMs: z.number().int().positive().optional(),
-        grants: z
-          .array(
-            z
-              .object({
-                projectId: z.string().min(1).max(128),
-                agentId: z.string().min(1).max(128),
-                actions: z.array(z.enum(AUTOMATION_ACTION_KINDS)),
-              })
-              .strict(),
-          )
-          .max(32)
-          .optional(),
-      })
-      .strict()
-      .parse(await body(c.req.raw));
+    const input = automationPollSourceSchema.parse(await body(c.req.raw));
     return c.json({
       success: true,
       data: await options.controller!.createSource(

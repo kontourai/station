@@ -1,0 +1,7 @@
+{
+  "revision": "dae342190c9d0d37a48aa075ff4d8bd0c1ad2a76",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the runtime authority delta: an immutable recorded revocation now remains decisive after rule restoration and runtime restart; it cannot become current authority again. This preserves the documented stop/manual-follow-up contract. The new provider-boundary regression passed with the guard, admitted an unwanted second provider turn when the guard was removed from a clean committed baseline, and the guard is restored. Existing isolated-repair setup, grant, publication and recovery instructions are unchanged.","inputs":["docs/guides/agent-efficiency.md","src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}

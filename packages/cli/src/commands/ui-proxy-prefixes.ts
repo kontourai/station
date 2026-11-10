@@ -6,7 +6,7 @@
  * request has no matching static asset. Mirrors the non-`/api` mounts in
  * `src-server/runtime/routes/runtime-routes.ts` (`/agents`, `/acp`, `/events`,
  * `/integrations`, `/config`, `/bedrock`, `/monitoring`, `/scheduler`,
- * `/notifications`) plus bare framework routes registered directly on the
+ * `/automations`, `/notifications`) plus bare framework routes registered directly on the
  * same Hono app by `@voltagent/server-core`/`@voltagent/server-hono` that are
  * not declared in `runtime-routes.ts` at all: `/tools` and `/observability`
  * (confirmed via their framework route registrations in
@@ -29,6 +29,9 @@ export const UI_PROXY_BACKEND_PREFIXES: string[] = [
   '/bedrock',
   '/monitoring',
   '/scheduler',
+  // #4513: the Automation operator API. A page navigation to the UI's own
+  // `/automations` route prefers text/html and still gets the SPA.
+  '/automations',
   '/notifications',
   '/tools',
   '/observability',

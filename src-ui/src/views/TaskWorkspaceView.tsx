@@ -773,6 +773,11 @@ function TaskWorkspaceContent({
             taskCreatedAt={graph.task.createdAt}
           />
         )}
+        {/* #4511: why an automation started (and stopped) this Task is shown
+          outright, not folded into the record details. */}
+        {graph.task.automation ? (
+          <AutomationMandateSection automation={graph.task.automation} />
+        ) : null}
         <details className="task-workspace__record-details">
           <summary>Task identity and workspace</summary>
           <TaskIdentitySection task={graph.task} />
@@ -1284,6 +1289,104 @@ function TaskIdentitySection({ task }: { task: TaskRecord }) {
           <TaskDetail label="Work item" value={task.workItemRef} />
         ) : null}
         <TaskDetail label="Last action origin" value={originDetail} />
+      </dl>
+    </section>
+  );
+}
+
+/**
+ * #4511: the read-only authority an automation-started Task was created
+ * under. Everything here is server-derived from the private intent bound to
+ * this Task; nothing is editable.
+ */
+function AutomationMandateSection({
+  automation,
+}: {
+  automation: NonNullable<TaskRecord['automation']>;
+}) {
+  const { mandate } = automation;
+  const fields = mandate.event.fields;
+  const action = mandate.action;
+  const runUrl = fields['run.html_url'];
+  return (
+    <section
+      className="task-workspace__section"
+      aria-labelledby="task-automation-mandate"
+    >
+      <h3
+        id="task-automation-mandate"
+        className="task-workspace__section-title"
+      >
+        Started by automation
+      </h3>
+      {automation.revocation ? (
+        <p className="task-workspace__work-item-note" role="status">
+          {automation.revocation.message}
+        </p>
+      ) : null}
+      {automation.personTakeoverAt ? (
+        <p className="task-workspace__work-item-note">
+          A person took over this Task’s chat; it runs under their own
+          authority.
+        </p>
+      ) : null}
+      <dl className="task-workspace__details">
+        <TaskDetail label="Rule" value={mandate.ruleName} />
+        <TaskDetail label="Rule ID" value={mandate.ruleId} />
+        <TaskDetail
+          label="Policy version at start"
+          value={mandate.policyFingerprint.slice(0, 12)}
+        />
+        <TaskDetail label="Episode" value={mandate.episodeId} />
+        {mandate.retry ? (
+          <TaskDetail label="Operator retry" value={String(mandate.retry)} />
+        ) : null}
+        <TaskDetail label="Repository" value={fields.repository} />
+        <TaskDetail label="Workflow" value={fields['workflow.path']} />
+        <TaskDetail label="Run" value={fields['run.id']} />
+        <TaskDetail label="Conclusion" value={fields['run.conclusion']} />
+        <div className="task-workspace__detail">
+          <dt>Run link</dt>
+          <dd>
+            {runUrl?.startsWith('https://github.com/') ? (
+              <a href={runUrl} target="_blank" rel="noreferrer">
+                {runUrl}
+              </a>
+            ) : (
+              unavailable(runUrl)
+            )}
+          </dd>
+        </div>
+        <TaskDetail
+          label="Action"
+          value={`${action.kind} · Agent ${action.agentId}`}
+        />
+        {action.kind === 'dispatch-task' ? (
+          <>
+            <TaskDetail
+              label="Approval"
+              value={action.approvalMode ?? 'Agent default'}
+            />
+            <TaskDetail
+              label="Budget"
+              value={`${action.budget.maxTurns} turns · ${action.budget.maxTokens.toLocaleString()} tokens · ${Math.round(action.budget.maxWallRuntimeMs / 60_000)} min`}
+            />
+          </>
+        ) : null}
+        <TaskDetail label="Instructions" value={action.instructions} />
+        <TaskDetail
+          label="Amendments"
+          value={
+            automation.amendments.length === 0
+              ? 'None'
+              : automation.amendments
+                  .map(
+                    (amendment) =>
+                      `${amendment.at} (${amendment.changed.join(', ')})`,
+                  )
+                  .join('; ')
+          }
+        />
       </dl>
     </section>
   );

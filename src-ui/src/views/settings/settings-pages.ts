@@ -36,6 +36,7 @@ export const SETTINGS_PAGES = [
     sections: [
       'system',
       'feature-previews',
+      'github-automations',
       'browser-devices',
       'device-hosts',
       'host-runtime',
