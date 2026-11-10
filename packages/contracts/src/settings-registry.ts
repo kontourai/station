@@ -547,15 +547,12 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Past conversations in Knowledge',
-    help: 'After a restart, Station adds your past conversations to Knowledge as a read-only source that Knowledge search covers.',
-    // Read once at personal runtime initialization by
-    // ensureConversationKnowledgeRoot (conversation-root-bootstrap.ts), which
-    // registers root:conversations only when this is true and the root is
-    // absent. Nothing reads it later, and DELETE /api/knowledge/roots refuses
-    // the conversation root (RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR), so turning
-    // it off cannot take the root away; the description says so.
+    help: 'After a restart, adds past conversations on this Station to Knowledge, searchable after a reindex and not removable later.',
+    // Read once at personal startup (ensureConversationKnowledgeRoot); hosted
+    // startup skips it. Indexing is a separate operator-run rebuild, and
+    // DELETE /api/knowledge/roots refuses this root, so off cannot remove it.
     description:
-      'Add past conversations to Knowledge as the read-only root:conversations source, so Knowledge search covers them once indexed. Off by default because conversation history is personal. Applies after a restart. Turning it off later does not remove the source, and Station cannot remove it. Hosted Stations do not offer it.',
+      'Adds past conversations on this Station to Knowledge as a read-only source. They become searchable after a Knowledge reindex, which needs an embedding connection and the Station operator. Off by default because conversation history is personal. Applies after a restart. Turning it off does not remove the source. No effect on a hosted Station.',
     defaultValue: false,
   }),
   defineSetting({

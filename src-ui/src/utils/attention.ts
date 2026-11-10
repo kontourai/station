@@ -21,6 +21,18 @@ import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
  * ~624). Shared between AttentionCard and AttentionHistoryItem so the two
  * surfaces can't drift.
  */
+/**
+ * Kinds whose `openHref` is the Flow run console. Do not link there while the
+ * Flow preview is off (`useDeveloperFeatures().flow`).
+ */
+export function isFlowGateKind(kind: AttentionItem['kind']): boolean {
+  return (
+    kind === 'gate-route-back' ||
+    kind === 'gate-blocked' ||
+    kind === 'gate-exception'
+  );
+}
+
 export function attentionKindLabel(kind: AttentionItem['kind']): string {
   return notificationCategoryLabel(kind);
 }

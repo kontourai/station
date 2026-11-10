@@ -478,10 +478,10 @@ encoding) and remains what `views/settings/registry-row.tsx` renders and what
 `settings-catalog.ts` searches. Four keys nothing reads — `gitRemote`,
 `defaultEmbeddingProvider`, `defaultEmbeddingModel`, `defaultVectorDbProvider`
 — are `userFacing: false`: a row for a key nothing reads is a control that
-persists and does nothing. Unlike those keys, `knowledgeStores` has the startup
-consumer described above, so it has a Settings row. Their `help`
-sentences say exactly that rather than describing behavior that does not
-exist.
+persists and does nothing; the `help` sentences of those four keys say
+exactly that rather than describing behavior that does not exist. Unlike
+them, `knowledgeStores` has the startup consumer described above, so it has a
+Settings row.
 
 ### 4.2 Project overrides (epic #2144 slice 2)
 
