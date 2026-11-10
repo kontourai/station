@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import {
   attentionKindLabel,
+  isFlowGateKind,
   isPeerHostedAttentionItem,
   peerAttentionElsewhereText,
   sessionFailureCause,
@@ -234,14 +235,6 @@ function FailedSessionOpenLink({
     >
       {openLinkLabel(item.kind)}
     </a>
-  );
-}
-
-function isFlowGateKind(kind: AttentionItem['kind']): boolean {
-  return (
-    kind === 'gate-route-back' ||
-    kind === 'gate-blocked' ||
-    kind === 'gate-exception'
   );
 }
 

@@ -1111,11 +1111,11 @@ function GateRouteBackDetail({ item }: { item: GateRouteBackAttentionItem }) {
 }
 
 /**
- * Shared affordance for `gate-route-back` and `gate-blocked`: a deep link
- * into the owning Flow run console plus an optional re-evaluate, which posts
- * to the same `POST .../runs/:runId/evaluate` route the console itself uses
- * — resolving the gate here produces the identical run-history trail as
- * resolving it in place.
+ * Shared affordance for `gate-route-back` and `gate-blocked`: Re-evaluate,
+ * which posts to the same `POST .../runs/:runId/evaluate` route the console
+ * itself uses — resolving the gate here produces the identical run-history
+ * trail as resolving it in place — plus a deep link into the owning Flow run
+ * console while the device Flow preview is on (`OpenFlowConsoleLink`).
  */
 function GateReEvaluateAction({
   item,

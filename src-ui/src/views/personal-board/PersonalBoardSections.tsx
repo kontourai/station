@@ -11,6 +11,8 @@ import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
+import { isFlowGateKind } from '../../utils/attention';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import { latestSessionPerConversation } from '../sessions/conversation-groups';
@@ -122,6 +124,9 @@ function AttentionSection({
 }) {
   const scope = useHostRequestAuthorityScope();
   const query = useBoardAttentionQuery(scope);
+  // A Flow gate item opens the Flow run console, a device developer preview;
+  // with it off here that page only says so, so the title is not a link.
+  const { flow } = useDeveloperFeatures();
   const rows = (query.data?.items ?? [])
     .filter(isPendingAttentionItem)
     .filter(
@@ -135,7 +140,9 @@ function AttentionSection({
         <ul className="personal-board__rows">
           {rows.map((item) => (
             <li key={item.id}>
-              {'openHref' in item && item.openHref ? (
+              {'openHref' in item &&
+              item.openHref &&
+              (flow || !isFlowGateKind(item.kind)) ? (
                 <StationLink href={item.openHref}>{item.title}</StationLink>
               ) : (
                 <span>{item.title}</span>
