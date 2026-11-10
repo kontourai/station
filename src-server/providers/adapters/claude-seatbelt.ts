@@ -194,6 +194,29 @@ export interface ConfinedClaudeDecisionInput {
 }
 
 /**
+ * The credential step of {@link confinedClaudeDecision}: the configuration
+ * directory a confined start would use, and whether a credential usable
+ * there exists. It needs no workspace, so the confinement preflight (#4774)
+ * calls it too; the decision calls it, so the two cannot answer differently
+ * for the same inputs.
+ */
+export function confinedClaudeCredentialCheck(
+  input: Pick<
+    ConfinedClaudeDecisionInput,
+    'appHomeEnv' | 'env' | 'stationHome'
+  >,
+): { configDir: string; credential: ConfinedClaudeCredential } {
+  const configDir = confinedClaudeConfigDir(
+    input.appHomeEnv,
+    input.stationHome,
+  );
+  return {
+    configDir,
+    credential: confinedClaudeCredential(input.env, configDir),
+  };
+}
+
+/**
  * Why a start that asked for Seatbelt runs at Auto with nothing engaged
  * instead, derived in order from checks, or the configuration directory a
  * confined start uses.
@@ -214,11 +237,8 @@ export function confinedClaudeDecision(
     })
   )
     return { fallback: 'workspace-too-broad' };
-  const configDir = confinedClaudeConfigDir(
-    input.appHomeEnv,
-    input.stationHome,
-  );
-  if (!confinedClaudeCredential(input.env, configDir).available)
+  const { configDir, credential } = confinedClaudeCredentialCheck(input);
+  if (!credential.available)
     return { fallback: 'confined-credential-unavailable' };
   return { configDir, workspace };
 }

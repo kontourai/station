@@ -166,13 +166,18 @@ import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
 import { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
+import { claudeConfinedCredentialPreflight } from '../../providers/adapters/claude-confinement-preflight.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import { createCredentialProfileAppHomeEnvResolver } from '../../providers/app-home/credential-profile-env.js';
+import { augmentedSpawnEnv } from '../../providers/auth/cli-auth.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
+import { confinementPreflight } from '../../security/confinement/confinement-preflight.js';
+import { DEFAULT_CONFINEMENT_PROVIDERS } from '../../security/confinement/default-confinement-providers.js';
+import { canonicalPath } from '../../security/confinement/seatbelt.js';
 import {
   createManagedListenerAdmission,
   type ManagedListenerAdmission,
@@ -892,6 +897,28 @@ export class StationRuntime {
   private readonly codexRolloutSource = new CodexRolloutSessionSource();
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
+  // The Claude adapter's app-home and connection-launch resolvers, held here
+  // so the confinement preflight (#4774) reads the same ones a start does.
+  // Comments on their use sit at the adapter options below.
+  private readonly claudeAppHomeEnv = createCredentialProfileAppHomeEnvResolver(
+    {
+      engine: 'claude',
+      loadConnectionSettings: async () =>
+        (await this.configLoader.loadAppConfig()).agentConnections?.claude,
+      warn: (message) =>
+        (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
+          message,
+        ),
+    },
+  );
+  private readonly claudeConnectionLaunch = async () => {
+    const config = await this.configLoader.loadAppConfig();
+    return engineProxyLaunch(
+      'claude',
+      config.agentConnections?.claude?.config,
+      this.providerService.listProviderConnections(),
+    );
+  };
   private claudeAdapter = new ClaudeAdapter({
     isCoordinatorSession: (threadId) => {
       const principal =
@@ -966,15 +993,7 @@ export class StationRuntime {
     // never be attributed to credentials that were not actually applied.
     // #2966: a selected profile's env overlay joins its home key here
     // (`credential-profile-env.ts` owns the merge and its exclusions).
-    getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
-      engine: 'claude',
-      loadConnectionSettings: async () =>
-        (await this.configLoader.loadAppConfig()).agentConnections?.claude,
-      warn: (message) =>
-        (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          message,
-        ),
-    }),
+    getAppHomeEnv: this.claudeAppHomeEnv,
     // station#2072: per-connection env overrides + explicit config home
     // (`config.env`, `config.configHome`) — re-sanitized and tilde-expanded
     // by `connectionSpawnEnv`, so a hand-edited config file meets the same
@@ -983,14 +1002,7 @@ export class StationRuntime {
     // byte-identical spawn env. Lazy-captured posture identical to
     // `getAppHomeEnv` above: only invoked at spawn time, well after
     // construction.
-    getConnectionLaunch: async () => {
-      const config = await this.configLoader.loadAppConfig();
-      return engineProxyLaunch(
-        'claude',
-        config.agentConnections?.claude?.config,
-        this.providerService.listProviderConnections(),
-      );
-    },
+    getConnectionLaunch: this.claudeConnectionLaunch,
     // Station#1157 review fix (MEDIUM): the built-in station-control MCP
     // server needs THIS instance's actual bound port, not
     // `process.env.PORT`/`STATION_PORT` (stale/unset under `PORT=0`/
@@ -5404,6 +5416,27 @@ export class StationRuntime {
       getUsageTelemetry: () => this.usageTelemetry,
       skillService: this.skillService,
       configLoader: this.configLoader,
+      readConfinementPreflight: () =>
+        confinementPreflight({
+          providers: DEFAULT_CONFINEMENT_PROVIDERS,
+          credentialChecks: {
+            claude: () =>
+              claudeConfinedCredentialPreflight({
+                baseEnv: async () => {
+                  // As the adapter's `resolveAugmentedSpawnEnv`.
+                  try {
+                    return await augmentedSpawnEnv();
+                  } catch {
+                    return process.env;
+                  }
+                },
+                connectionEnv: async () =>
+                  (await this.claudeConnectionLaunch()).env,
+                appHomeEnv: () => this.claudeAppHomeEnv(undefined),
+                stationHome: canonicalPath(resolveHomeDir()),
+              }),
+          },
+        }),
       feedbackService: this.feedbackService,
       fileTreeService: this.fileTreeService,
       storageAdapter: this.storageAdapter,

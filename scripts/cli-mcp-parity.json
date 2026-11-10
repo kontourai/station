@@ -271,7 +271,7 @@
     },
     "doctor": {
       "exempt": "local-host",
-      "reason": "Acts on this machine's install, not a Station API."
+      "reason": "Acts on this machine's install; its one Station read (GET /api/diagnostics/confinement-preflight) is a diagnostic of that install, not an action."
     },
     "environment access": {
       "exempt": "person-only",
