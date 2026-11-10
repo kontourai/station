@@ -55,5 +55,5 @@ jobs:
         if: ${{ !cancelled() }}
         run: >-
           node scripts/check-required-tests-ran.mjs
-          --profile seatbelt-kernel
+          --profile-name seatbelt-kernel
           --report "$RUNNER_TEMP/seatbelt-process.report.json"

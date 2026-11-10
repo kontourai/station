@@ -2812,7 +2812,7 @@ with `scripts/check-required-tests-ran.mjs` (#4772):
 ```sh
 npx vitest run --root . <test-file> --reporter=default --reporter=json \
   --outputFile.json=<report.json>
-node scripts/check-required-tests-ran.mjs --profile <name> --report <report.json>
+node scripts/check-required-tests-ran.mjs --profile-name <name> --report <report.json>
 ```
 
 It reads the Vitest JSON report and matches each id exactly: the file

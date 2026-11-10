@@ -2,7 +2,7 @@
 /**
  * Did the named tests actually run? (#4772)
  *
- *     node scripts/check-required-tests-ran.mjs --profile <name> --report <vitest-json>
+ *     node scripts/check-required-tests-ran.mjs --profile-name <name> --report <vitest-json>
  *
  * A green Vitest run proves nothing about a test it skipped or never
  * collected. This reads the JSON report a real Vitest run wrote
@@ -12,7 +12,8 @@
  *
  * - every `mustPass` id is present exactly once and passed, and
  * - every `mayRuntimeSkip` id is present exactly once and either passed or
- *   skipped after its body started (`ctx.skip()`).
+ *   skipped after the test started (`ctx.skip()` in its body or in a
+ *   `beforeEach` hook).
  *
  * An id is the test file relative to `--root` (default: the working
  * directory) plus the exact title path (describe titles, then the test
@@ -20,11 +21,17 @@
  * `notRequired` entries are documentation of a deliberate exclusion and are
  * never checked against the report.
  *
+ * It reads only the pinned ids, not the run's overall result: a run can have
+ * other failing tests while every pinned id passed. It complements the test
+ * step's own exit status and does not replace it.
+ *
  * Exit status: 0 every required id ran; 1 at least one did not (each is named
- * on stderr); 2 the report or profile is missing, empty or malformed, or the
- * arguments are wrong. Nothing here reads a missing input as success.
+ * on stderr); 2 an input is unusable (the report or profile file is missing,
+ * unreadable, a directory, empty or malformed, a profile entry is invalid, or
+ * the arguments are wrong), with one line on stderr. Nothing here reads a
+ * missing input as success.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -70,15 +77,44 @@ function describeTestId(file, titles) {
 }
 
 /**
+ * A file's text, or an InputError naming why it cannot be read (missing, a
+ * directory, permission denied, ...), so an unusable input exits 2, never 1.
+ */
+function readInput(kind, filePath) {
+  try {
+    return readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT')
+      throw new InputError(`${kind} not found: ${filePath}`);
+    throw new InputError(
+      `${kind} is unreadable (${error?.code ?? error?.message}): ${filePath}`,
+    );
+  }
+}
+
+/** A `{test, reason}` entry; the reason must say something. */
+function reasonedEntry(item, list, where) {
+  if (
+    !isPlainObject(item) ||
+    !hasExactKeys(item, ['test', 'reason']) ||
+    typeof item.reason !== 'string' ||
+    item.reason.trim() === ''
+  )
+    throw new InputError(
+      `${where}: ${list} needs {test, reason} with a nonempty reason string`,
+    );
+  return titlePath(item.test, where);
+}
+
+/**
  * The named profile, validated. Unknown keys, empty `mustPass` lists and an
  * id listed twice are refused so the profile cannot silently shrink.
  */
 function loadProfile(profilesPath, name) {
-  if (!existsSync(profilesPath))
-    throw new InputError(`profile file not found: ${profilesPath}`);
+  const text = readInput('profile file', profilesPath);
   let profiles;
   try {
-    profiles = JSON.parse(readFileSync(profilesPath, 'utf8'));
+    profiles = JSON.parse(text);
   } catch (error) {
     throw new InputError(
       `profile file is not valid JSON: ${profilesPath}: ${error.message}`,
@@ -123,16 +159,12 @@ function loadProfile(profilesPath, name) {
     };
     for (const titles of entry.mustPass)
       required.push(classify(titlePath(titles, where), false));
-    for (const item of entry.mayRuntimeSkip) {
-      if (!isPlainObject(item) || !hasExactKeys(item, ['test', 'reason']))
-        throw new InputError(`${where}: mayRuntimeSkip needs {test, reason}`);
-      required.push(classify(titlePath(item.test, where), true));
-    }
-    for (const item of entry.notRequired) {
-      if (!isPlainObject(item) || !hasExactKeys(item, ['test', 'reason']))
-        throw new InputError(`${where}: notRequired needs {test, reason}`);
-      classify(titlePath(item.test, where), false);
-    }
+    for (const item of entry.mayRuntimeSkip)
+      required.push(
+        classify(reasonedEntry(item, 'mayRuntimeSkip', where), true),
+      );
+    for (const item of entry.notRequired)
+      classify(reasonedEntry(item, 'notRequired', where), false);
   }
   return { name, required, notRequired: seen.size - required.length };
 }
@@ -142,9 +174,7 @@ function loadProfile(profilesPath, name) {
  * the reporter writes; one that does not makes the whole report unusable.
  */
 function readReport(reportPath, root) {
-  if (!existsSync(reportPath))
-    throw new InputError(`report not found: ${reportPath}`);
-  const text = readFileSync(reportPath, 'utf8');
+  const text = readInput('report', reportPath);
   if (text.trim() === '')
     throw new InputError(`report is empty: ${reportPath}`);
   let report;
@@ -185,9 +215,11 @@ function readReport(reportPath, root) {
           `report testResults[${index}].assertionResults[${position}] is not a Vitest assertion result`,
         );
       const key = testIdKey(file, [...result.ancestorTitles, result.title]);
-      // The reporter gives a duration only to a test whose body started. A
-      // skipped result without one was skipped before it ran: a skipped
-      // suite, `test.skipIf`, or a name filter that left it out.
+      // The reporter gives a duration only to a test that started (its
+      // `beforeEach` hooks or body ran). A skipped result without one was
+      // skipped before it started: a skipped suite, `test.skipIf`, or a name
+      // filter that left it out. The agreement test re-checks this premise
+      // against the installed Vitest.
       const status =
         result.status === 'skipped' && typeof result.duration === 'number'
           ? 'skipped at runtime'
@@ -224,13 +256,13 @@ function evaluateRequiredTests(required, statuses) {
 
 function parseArguments(argv) {
   const options = {
-    profiles: DEFAULT_PROFILES_PATH,
+    profilesFile: DEFAULT_PROFILES_PATH,
     root: process.cwd(),
   };
   const names = new Map([
-    ['--profile', 'profile'],
+    ['--profile-name', 'profileName'],
     ['--report', 'report'],
-    ['--profiles', 'profiles'],
+    ['--profiles-file', 'profilesFile'],
     ['--root', 'root'],
   ]);
   for (let index = 0; index < argv.length; index += 2) {
@@ -238,12 +270,12 @@ function parseArguments(argv) {
     const value = argv[index + 1];
     if (!key || value === undefined || value === '')
       throw new InputError(
-        'usage: check-required-tests-ran.mjs --profile <name> --report <vitest-json> [--root <dir>] [--profiles <json>]',
+        'usage: check-required-tests-ran.mjs --profile-name <name> --report <vitest-json> [--root <dir>] [--profiles-file <json>]',
       );
     options[key] = value;
   }
-  if (!options.profile || !options.report)
-    throw new InputError('--profile and --report are both required');
+  if (!options.profileName || !options.report)
+    throw new InputError('--profile-name and --report are both required');
   return options;
 }
 
@@ -253,7 +285,10 @@ function main(argv = process.argv.slice(2)) {
   try {
     const options = parseArguments(argv);
     const root = path.resolve(options.root);
-    profile = loadProfile(path.resolve(options.profiles), options.profile);
+    profile = loadProfile(
+      path.resolve(options.profilesFile),
+      options.profileName,
+    );
     statuses = readReport(path.resolve(options.report), root);
   } catch (error) {
     if (!(error instanceof InputError)) throw error;

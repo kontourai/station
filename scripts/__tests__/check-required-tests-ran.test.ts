@@ -13,7 +13,7 @@
  * changed, so they keep the reporter's exact shape.
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -79,31 +79,47 @@ function writeReport(contents: unknown): string {
   return path;
 }
 
-function check(
-  report: string,
-  { profile = 'seatbelt-kernel', profiles = PROFILES } = {},
-) {
-  const result = spawnSync(
-    process.execPath,
-    [
-      CHECK,
-      '--profile',
-      profile,
-      '--report',
-      report,
-      '--root',
-      '/station',
-      '--profiles',
-      profiles,
-    ],
-    { cwd: ROOT, encoding: 'utf8', timeout: 30_000, windowsHide: true },
-  );
+function runCheck(args: string[]) {
+  const result = spawnSync(process.execPath, [CHECK, ...args], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    timeout: 30_000,
+    windowsHide: true,
+  });
   expect(result.error).toBeUndefined();
   return {
     status: result.status,
     stdout: result.stdout,
     stderr: result.stderr,
   };
+}
+
+function check(
+  report: string,
+  { profile = 'seatbelt-kernel', profiles = PROFILES } = {},
+) {
+  return runCheck([
+    '--profile-name',
+    profile,
+    '--report',
+    report,
+    '--root',
+    '/station',
+    '--profiles-file',
+    profiles,
+  ]);
+}
+
+/** One `[required-tests] FAIL:` line on stderr, nothing on stdout, no stack. */
+function expectInputFailure(
+  result: ReturnType<typeof runCheck>,
+  message: RegExp,
+) {
+  expect(result.status, result.stderr).toBe(2);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toMatch(message);
+  expect(result.stderr.trimEnd().split('\n')).toHaveLength(1);
+  expect(result.stderr).not.toMatch(/\n\s+at /);
 }
 
 const id = (title: string) => `${SEATBELT_FILE} > ${SUITE} > ${title}`;
@@ -276,12 +292,111 @@ describe('an unusable report fails closed', () => {
     expect(result.stderr).toMatch(/^\[required-tests\] FAIL: report /);
   });
 
+  test('a report path that is a directory exits 2 without a stack', () => {
+    const result = check(makeTempDir('required-tests-report-dir-'));
+    expectInputFailure(
+      result,
+      /^\[required-tests\] FAIL: report is unreadable \(EISDIR\): /,
+    );
+  });
+
+  // Permission bits do not deny the owner on every host (root, Windows), so
+  // this runs only where the denial was observed to take effect.
+  test('a report the process may not read exits 2 without a stack', (ctx) => {
+    const report = writeReport(JSON.stringify(seatbeltReport()));
+    chmodSync(report, 0o000);
+    let denied = false;
+    try {
+      readFileSync(report);
+    } catch (error) {
+      denied = (error as NodeJS.ErrnoException).code === 'EACCES';
+    }
+    if (!denied) {
+      chmodSync(report, 0o600);
+      ctx.skip('this host does not deny the owner a mode-000 file');
+    }
+    try {
+      expectInputFailure(
+        check(report),
+        /^\[required-tests\] FAIL: report is unreadable \(EACCES\): /,
+      );
+    } finally {
+      chmodSync(report, 0o600);
+    }
+  });
+
+  test('a missing profile file exits 2', () => {
+    const result = check(join(FIXTURES, 'seatbelt-process-macos.report.json'), {
+      profiles: join(makeTempDir('required-tests-none-'), 'none.json'),
+    });
+    expectInputFailure(
+      result,
+      /^\[required-tests\] FAIL: profile file not found: /,
+    );
+  });
+
+  test('a profile file that is a directory exits 2 without a stack', () => {
+    const result = check(join(FIXTURES, 'seatbelt-process-macos.report.json'), {
+      profiles: makeTempDir('required-tests-profile-dir-'),
+    });
+    expectInputFailure(
+      result,
+      /^\[required-tests\] FAIL: profile file is unreadable \(EISDIR\): /,
+    );
+  });
+
+  test.each([
+    ['no arguments', []],
+    ['only a report', ['--report', 'report.json']],
+    [
+      'an unknown flag (the name before --profile-name)',
+      ['--profile', 'seatbelt-kernel'],
+    ],
+    ['a flag without its value', ['--profile-name']],
+  ])('%s is a usage error that exits 2', (_label, args) => {
+    expectInputFailure(runCheck(args), /^\[required-tests\] FAIL: /);
+  });
+
   test('an unknown profile exits 2', () => {
     const result = check(join(FIXTURES, 'seatbelt-process-macos.report.json'), {
       profile: 'no-such-profile',
     });
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('no profile named "no-such-profile"');
+  });
+
+  test.each([
+    ['mayRuntimeSkip', 'an empty', ''],
+    ['mayRuntimeSkip', 'a whitespace-only', '  '],
+    ['mayRuntimeSkip', 'a numeric', 7],
+    ['notRequired', 'an empty', ''],
+    ['notRequired', 'a numeric', 7],
+  ])('a %s entry with %s reason exits 2', (list, _label, reason) => {
+    const profiles = join(makeTempDir('required-tests-profile-'), 'p.json');
+    writeFileSync(
+      profiles,
+      JSON.stringify({
+        unreasoned: {
+          description: 'x',
+          files: {
+            [SEATBELT_FILE]: {
+              mustPass: [[SUITE, MUST_PASS_TITLE]],
+              mayRuntimeSkip: [],
+              notRequired: [],
+              [list]: [{ test: [SUITE, MAY_SKIP_TITLE], reason }],
+            },
+          },
+        },
+      }),
+    );
+    const result = check(join(FIXTURES, 'seatbelt-process-macos.report.json'), {
+      profile: 'unreasoned',
+      profiles,
+    });
+    expectInputFailure(
+      result,
+      new RegExp(`${list} needs \\{test, reason\\} with a nonempty reason`),
+    );
   });
 
   test('a profile that lists a test twice exits 2', () => {
@@ -438,7 +553,7 @@ describe('the pinned profile agrees with the real test file', () => {
     const rewritten = writeReport(collected);
     const result = spawnSync(
       process.execPath,
-      [CHECK, '--profile', 'seatbelt-kernel', '--report', rewritten],
+      [CHECK, '--profile-name', 'seatbelt-kernel', '--report', rewritten],
       { cwd: ROOT, encoding: 'utf8', timeout: 30_000, windowsHide: true },
     );
     expect(result.stderr).toBe('');
