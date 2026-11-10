@@ -1,0 +1,7 @@
+{
+  "revision": "4feecfa29540a7df191952536ac2564facc971e1",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed Getting Started's recorded ScheduleView.css dependency at 4feecfa29540a7df191952536ac2564facc971e1. The styling change removes the unused local chevron rules and adds only the history disclosure host's 44px minimum height and maximum width; the shared native DisclosureToggle owns its caret and visible focus. The guide's scheduled-readiness, navigation and setup instructions remain accurate and were not changed. The existing mounted ScheduleView owner passed 18 tests after the missing-disclosure RED, reaching ordinary Tab, Enter, Space, retained collapse focus and reopen with the test unchanged. This is data-mocked component interaction, not browser geometry, actual hit-target measurement, authenticated history, persistence, provider, native or release proof. No unrelated Getting Started claims or captured scenes were recertified.","inputs":["docs/user/getting-started.md","src-ui/src/views/ScheduleView.css"]}
+  ]
+}
