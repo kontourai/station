@@ -43,6 +43,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { openApprovalConversation } from '../../lib/openApprovalConversation';
 import {
@@ -1306,7 +1307,14 @@ function OpenSessionLink({
   );
 }
 
+/**
+ * The Flow run console is a device developer preview. With it off here the
+ * console only says the preview is off, so the gate card offers no link; its
+ * Re-evaluate and exception actions post to the server and still work.
+ */
 function OpenFlowConsoleLink({ href }: { href: string }) {
+  const { flow } = useDeveloperFeatures();
+  if (!flow) return null;
   return (
     <a className="attention-open-link" href={href}>
       Open flow console
