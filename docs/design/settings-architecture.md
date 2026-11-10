@@ -128,7 +128,7 @@ confirmation and Developer navigation. The account preference contract is
 [`account-preferences.ts`](../../packages/contracts/src/account-preferences.ts).
 The device registry remains the defaults and legacy-storage owner for those
 keys; an active account overlays it without copying account values into the
-browser's device envelope. The mode and color theme this device last rendered are
+browser's device envelope. The mode, color theme, density and motion this device last rendered are
 cached separately for first paint ([appearance cache](../../src-ui/src/lib/appearance-cache.ts));
 that cache is not a device setting and yields once the account answers or
 the page gets a definite "no person" (signed out, a refused credential; not
@@ -138,6 +138,12 @@ while a session or relay account is still being checked).
 and Full width. It changes assistant answers only; phone answers use the
 available width. The shared device-setting key `chatAnswerWidth` supplies the
 legacy/default value and participates in account preferences.
+
+**Customize → Appearance → Display** offers Density (Comfortable, the 13px
+default, or Compact, the earlier 12px sizes) and Motion (System, the default,
+or Reduced). The device-setting keys `density` and `motion` are account
+preferences like the mode, kept in the account's appearance sibling file and
+cached with it for first paint ([theming](../guides/theming.md#density-and-motion)).
 
 Device scope retains microphone and output providers, push permission, haptics,
 Return behavior, keyboard shortcuts, panel dimensions/placement and navigation
@@ -159,7 +165,7 @@ closing the page can lose those pending changes. Errors belong to the authority
 that initiated the save. The client refreshes on activation, focus and reconnect.
 It reports loading and save failure separately from saved values. Account changes retire
 the in-memory overlay; late responses cannot populate the replacement authority.
-Only the rendered appearance (mode and color theme) outlives it: it is held
+Only the rendered appearance (mode, color theme, density and motion) outlives it: it is held
 for that account until it answers again, a different account binds, or a
 definite no-person answer, so a reconnect does not flash the device's
 appearance and another person never inherits it.
@@ -418,8 +424,8 @@ Customize opens Agents, Skills, Connections, Plugins, Appearance and Settings
 at their existing routes. Developer joins that chooser, before Settings, when
 enabled. Settings stays reachable from the profile menu, Customize, its keyboard
 shortcut and the command palette. The Appearance page owns the mode (System, the
-default, which follows the device, or Light or Dark), the color
-theme, its flavor and its accent; Settings' Appearance topic keeps the mode
+default, which follows the device, or Light or Dark), density, motion, the
+color theme, its flavor and its accent; Settings' Appearance topic keeps the mode
 toggle, the phone-only haptics row, the terminal screen reader mode row, and
 Theme and Accent color rows that link to the page. The footer replaces its
 command-palette chip and duplicate notification bell; the header bell and
