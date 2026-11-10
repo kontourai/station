@@ -114,9 +114,10 @@
 .toast-card--swipe {
   touch-action: pan-y;
   transform: translateX(var(--toast-swipe-offset, 0px));
+  /* Motion tokens collapse under prefers-reduced-motion (tokens.css). */
   transition:
-    transform 160ms var(--ease-spring, ease-out),
-    opacity 160ms ease-out;
+    transform var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
 }
 .toast-card--dragging {
   transition: none;
@@ -125,11 +126,6 @@
 .toast-card--leaving {
   opacity: 0;
   pointer-events: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .toast-card--swipe {
-    transition: none;
-  }
 }
 
 .toast-card__header,

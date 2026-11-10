@@ -14,8 +14,8 @@ const MIN_DISMISS_PX = 72;
 const DISMISS_FRACTION = 0.35;
 const FLING_PX_PER_MS = 0.5;
 const MIN_FLING_PX = 32;
-/** Matches the slide-out transition in NotificationContainer.css. */
-export const SWIPE_DISMISS_EXIT_MS = 160;
+/** `--motion-fast`, the slide-out transition in NotificationContainer.css. */
+export const SWIPE_DISMISS_EXIT_MS = 150;
 
 export function useSwipeToDismiss(enabled: boolean, onDismiss: () => void) {
   const [offset, setOffset] = useState<number | null>(null);
