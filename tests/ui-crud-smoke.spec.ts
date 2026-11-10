@@ -210,7 +210,9 @@ test.describe('UI CRUD Smoke', () => {
     // §8 moved Delete out of the header row and behind More actions.
     await page.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Delete' }).click();
-    const deleteDialog = page.getByRole('alertdialog', { name: 'Delete Agent' });
+    const deleteDialog = page.getByRole('alertdialog', {
+      name: 'Delete Agent',
+    });
     await expect(deleteDialog).toBeVisible();
     // `exact` matters: the dialog's own close button is "Close Delete Agent".
     await deleteDialog

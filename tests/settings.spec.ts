@@ -431,7 +431,9 @@ test.describe('Settings', () => {
   }) => {
     await page.getByRole('link', { name: 'Advanced', exact: true }).click();
     await page.getByRole('button', { name: 'Reset Station settings' }).click();
-    const dialog = page.getByRole('alertdialog', { name: 'Reset Station settings' });
+    const dialog = page.getByRole('alertdialog', {
+      name: 'Reset Station settings',
+    });
     await expect(dialog).toBeVisible();
     // The one sentence that holds whatever this Station currently stores: the
     // list of cleared labels varies with the instance, the device-scope
