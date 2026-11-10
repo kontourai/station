@@ -1,5 +1,6 @@
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
-import { Fragment } from 'react';
+import { Fragment, useId } from 'react';
+import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { WarningGlyph } from '../../components/icons/Glyph';
 import {
   cronToHuman,
@@ -33,21 +34,6 @@ const IconX = () => (
     focusable="false"
   >
     <path d="M4 4l8 8M12 4l-8 8" />
-  </svg>
-);
-
-const IconChevron = () => (
-  <svg
-    viewBox="0 0 16 16"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    focusable="false"
-  >
-    <path d="M6 4l4 4-4 4" />
   </svg>
 );
 
@@ -119,6 +105,7 @@ export function ScheduleJobsTable({
   sortedJobs: Array<SchedulerJob & { successRate: number }>;
   toggleSort: (key: string) => void;
 }) {
+  const historyId = useId();
   const jobKey = (job: SchedulerJob) => `${job.provider}:${job.name}`;
 
   return (
@@ -171,6 +158,9 @@ export function ScheduleJobsTable({
           <tbody>
             {sortedJobs.map((job) => {
               const key = jobKey(job);
+              const detailId = `${historyId}-${encodeURIComponent(
+                JSON.stringify([job.provider, job.name]),
+              )}`;
               const isExpanded = expanded === key;
               const running = isRunning(job.name);
               const missed = getMissedCount(job.name);
@@ -189,15 +179,24 @@ export function ScheduleJobsTable({
                     data-testid={`job-row-${job.name}`}
                     className={`schedule__row ${isExpanded ? 'schedule__row--expanded' : ''}`}
                     aria-expanded={isExpanded}
-                    onClick={() => onExpand(isExpanded ? null : key)}
+                    onClick={(event) => {
+                      if (
+                        event.target instanceof Element &&
+                        event.target.closest('.schedule__history-toggle')
+                      )
+                        return;
+                      onExpand(isExpanded ? null : key);
+                    }}
                   >
                     <td className="schedule__td schedule__td--name">
-                      <span
-                        className={`schedule__chevron ${isExpanded ? 'schedule__chevron--open' : ''}`}
+                      <DisclosureToggle
+                        className="schedule__history-toggle"
+                        expanded={isExpanded}
+                        controls={detailId}
+                        onToggle={() => onExpand(isExpanded ? null : key)}
                       >
-                        <IconChevron />
-                      </span>
-                      {job.name}
+                        {job.name}
+                      </DisclosureToggle>
                       {job.target && (
                         <span className="schedule__td--muted">
                           {job.target.kind === 'dedicated'
@@ -345,7 +344,7 @@ export function ScheduleJobsTable({
                       className="schedule__detail-row"
                     >
                       <td colSpan={7}>
-                        <div className="schedule__detail">
+                        <div className="schedule__detail" id={detailId}>
                           <div className="schedule__detail-header">
                             <span>{job.name} — Run History</span>
                           </div>

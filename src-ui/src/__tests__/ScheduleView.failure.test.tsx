@@ -30,6 +30,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const schedulerHooks = vi.hoisted(() => ({
@@ -410,6 +411,48 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       error: null,
     };
   }
+
+  test('opens, closes and reopens the selected job history from the keyboard', async () => {
+    seedTwoRunnableJobs();
+    const user = userEvent.setup();
+    render(<ScheduleView />);
+
+    const disclosure = screen.getByRole('button', { name: 'nightly-digest' });
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    for (
+      let step = 0;
+      step < 12 && document.activeElement !== disclosure;
+      step += 1
+    ) {
+      await user.tab();
+    }
+    expect(document.activeElement).toBe(disclosure);
+
+    await user.keyboard('{Enter}');
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByText('nightly-digest — Run History', { exact: true }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('weekly-report — Run History', { exact: true }),
+    ).toBeNull();
+
+    await user.keyboard(' ');
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      screen.queryByText('nightly-digest — Run History', { exact: true }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(disclosure);
+
+    await user.keyboard('{Enter}');
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByText('nightly-digest — Run History', { exact: true }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('weekly-report — Run History', { exact: true }),
+    ).toBeNull();
+  });
 
   test('focuses exact Scheduler runs and follows same-view history changes', async () => {
     seedStarterJob();
