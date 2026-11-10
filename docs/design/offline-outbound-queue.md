@@ -36,7 +36,10 @@ this device refuses before making its request (for example a follow-up to a busy
 chat that still carries an unapplied approval pick) reached nothing: its row is
 removed and the text goes back to the composer with the reason, unless the
 failure is a transport one or the browser reports no network, when it waits in
-the outbox like any unanswered send. The text is never both back in the
+the outbox like any unanswered send. On a paired Station's connection (any
+route other than the host's), a send that fails without that Station's own
+answer, a refusal on this device included, keeps its row as unconfirmed instead:
+never resent, and the composer stays empty. The text is never both back in the
 composer and left in the outbox for an automatic resend.
 A foreground send that
 already has an exact-key `started` answer, or an explicitly keyed turn-start event
@@ -89,8 +92,8 @@ unconfirmed, with Check available for an explicit lookup. A valid answer resets 
 count. Each renderer keeps its own local retry schedule. Hiding the document, a browser offline
 event, lost connection health or `pagehide` cancels the retry and resets its
 backoff. A lookup that was out when that happened is not one of the three
-failures, whatever became of its request: Station was not heard, so nothing
-about the message was learned. Unmount or an authority change also cancels the old schedule. Returning
+failures, whatever became of its request: an answer that arrives after it is
+not used, so nothing about the message was learned. Unmount or an authority change also cancels the old schedule. Returning
 to visible, online and connected starts a check immediately with fresh backoff.
 After `pagehide`, the page waits for `pageshow` and resumes only when it is also
 visible, online and connected; a hidden `pageshow` waits for visibility to return.
@@ -119,14 +122,16 @@ sent again).
 A replayed message Station accepted keeps its row, with nothing to do on it,
 until the turn it started ends, so the chat's later outbox messages follow it
 in order. That turn's own terminal event removes the row. A window that was
-reloaded, closed or cut off while the turn ran never receives that event, so
-the snapshot each new connection begins with settles it too: Station's record
+reloaded or closed while the turn ran, or cut off for longer than its
+reconnect can replay, never receives that event, so
+the snapshot a connection is given settles it too: Station's record
 of the conversation names its open turn, and a record naming another turn, or
 none, for a row accepted before the snapshot arrived removes the row. A row
 whose turn is still the open one, or whose conversation the snapshot carries no
-record for (an older Station), waits as before. Only messages still waiting to
-be sent make a chat read queued; one whose outbox rows were all accepted keeps
-the status its turn gives it.
+record for (an older Station), waits as before. A chat reads queued only while
+it lists an outbox row Station has not accepted (waiting to be sent, not sent,
+or unconfirmed); one whose listed rows were all accepted keeps the status its
+turn gives it.
 Rows written with Station identity are sent to or settled by that Station;
 for another they wait, listed. A verified environment ID takes precedence over
 the address; rows that never learned an ID use the normalized address. Older
