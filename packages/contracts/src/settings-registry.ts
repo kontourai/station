@@ -547,7 +547,7 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Past conversations in Knowledge',
-    help: 'After a restart, adds past conversations on this Station to Knowledge, searchable after a reindex and not removable later.',
+    help: 'After a restart, adds past conversations on this Station to Knowledge, searchable after a reindex; turning it off later does not remove them.',
     // Read once at personal startup (ensureConversationKnowledgeRoot); hosted
     // startup skips it. Indexing is a separate operator-run rebuild, and
     // DELETE /api/knowledge/roots refuses this root, so off cannot remove it.
