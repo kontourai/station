@@ -6,10 +6,10 @@
  * is the one `ClaudeAdapter.prepareSeatbeltStart` builds; a change there is
  * not seen by this test.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { canonicalPath } from '../../security/confinement/seatbelt.js';
 import { claudeConfinedCredentialPreflight } from '../adapters/claude-confinement-preflight.js';
 import { confinedClaudeDecision } from '../adapters/claude-seatbelt.js';
@@ -77,18 +77,15 @@ describe('#4774: the confinement preflight answers what a Claude start decides',
   let stationHome: string;
   let home: string;
   let workspace: string;
+  const makeTempDir = trackTempDirs();
 
   beforeEach(() => {
-    root = canonicalPath(mkdtempSync(join(tmpdir(), 'station-preflight-')));
+    root = canonicalPath(makeTempDir('station-preflight-'));
     stationHome = join(root, 'station-home');
     home = join(root, 'home');
     workspace = join(root, 'workspace');
     for (const dir of [stationHome, home, workspace])
       mkdirSync(dir, { recursive: true });
-  });
-
-  afterEach(() => {
-    rmSync(root, { recursive: true, force: true });
   });
 
   function arrange(c: Case): Env | undefined {

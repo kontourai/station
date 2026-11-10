@@ -4,13 +4,13 @@
  * injected through the Seatbelt provider's own dependencies) and the real
  * Claude credential check against a temporary Station home.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { claudeConfinedCredentialPreflight } from '../../../providers/adapters/claude-confinement-preflight.js';
 import { codexSandboxConfinementProvider } from '../../../providers/adapters/codex-confinement.js';
 import { confinementPreflight } from '../../../security/confinement/confinement-preflight.js';
@@ -49,16 +49,15 @@ describe('#4774: GET /api/diagnostics/confinement-preflight', () => {
   let root: string;
   let stationHome: string;
 
+  const makeTempDir = trackTempDirs();
+
   beforeEach(() => {
-    root = canonicalPath(
-      mkdtempSync(join(tmpdir(), 'station-preflight-route-')),
-    );
+    root = canonicalPath(makeTempDir('station-preflight-route-'));
     stationHome = join(root, 'station-home');
     mkdirSync(stationHome, { recursive: true });
   });
 
   afterEach(() => {
-    rmSync(root, { recursive: true, force: true });
     vi.clearAllMocks();
   });
 
