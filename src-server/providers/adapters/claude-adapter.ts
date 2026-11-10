@@ -70,11 +70,14 @@ import {
 } from '@kontourai/station-shared/mcp-tool-selection';
 import {
   type ClaudeAskReason,
+  ruleGrantPermissionUpdates,
   sessionGrantPermissionUpdates,
   type ToolRequestGrantInput,
+  type ToolRequestRuleGrant,
   type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestIsPlainCall,
+  toolRequestRuleGrant,
   toolRequestServerGrant,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -296,6 +299,11 @@ type PendingRequest = {
    * same `toolRequestServerGrant` computation the surfaces offer from.
    */
   serverGrant: ToolRequestServerGrant;
+  /**
+   * The command-prefix grant the request offered, if any: the same
+   * `toolRequestRuleGrant` computation the surfaces offer from.
+   */
+  ruleGrant?: ToolRequestRuleGrant;
   /** #3390: the form an `AskUserQuestion` opened, answered with content. */
   inputRequest?: InputRequestForm;
   eventId: string;
@@ -819,7 +827,7 @@ type ClaudeSessionRecord = {
    * Tool-level session grants from `acceptForSession`. The SDK's own session
    * rule is scoped to its suggested `PermissionUpdate` — for Bash that is the
    * command pattern, not the tool — so a second, different Bash command
-   * re-prompts even after "Allow Bash for this session". Station remembers
+   * re-prompts even after "Allow all Bash commands for this session". Station remembers
    * the tool name itself here (mirrors station-agent-adapter's
    * `approvedTools`) so the grant covers the whole tool for this session.
    */
@@ -1614,6 +1622,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     engineId: engineId('claude'),
     abortSettlement: 'await',
     workloadScope: 'engine-process' as const,
+    // `respondToRequest` forwards only the offered Bash prefix rules.
+    sessionGrantScopes: ['rule'] as const,
     recovery: {
       sameSession: true,
       maxAttempts: 1,
@@ -3443,19 +3453,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error('This request does not accept question answers.');
     record.pendingRequests.delete(requestId);
     const grant = pending.sessionGrant;
+    const scope = context?.sessionGrantScope;
     // #2916 / #2915: where no session grant is offered (a plan exit, or an
     // escalation with no directory to forward), the answer is for this one
-    // call: nothing is minted and no suggestion is forwarded.
+    // call: nothing is minted and no suggestion is forwarded. So is a
+    // command-prefix answer to a request that offered no prefix: it never
+    // falls back to a wider grant.
     const effectiveDecision =
-      decision === 'acceptForSession' && grant === 'none' ? 'accept' : decision;
+      decision === 'acceptForSession' &&
+      (grant === 'none' || (scope === 'rule' && !pending.ruleGrant))
+        ? 'accept'
+        : decision;
     // #2915: only a tool grant mints a Station tool grant. An edit-mode grant
     // forwards the engine's acceptEdits mode change alone, and a folder grant
     // its directory suggestions alone (the approved directory is then the
     // engine's state); neither mints anything.
+    // A scoped answer (`server`, `rule`) mints no tool grant.
     if (
       effectiveDecision === 'acceptForSession' &&
       grant === 'tool' &&
-      context?.sessionGrantScope !== 'server'
+      scope === undefined
     ) {
       record.approvedTools.add(pending.toolName);
     }
@@ -3474,12 +3491,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     ) {
       record.serverGrants.add(STATION_BROWSER_MCP_SERVER_ID);
     }
+    // Owner decision: the typed `sessionGrantScope: 'rule'` forwards only
+    // the engine's suggested Bash prefix rules, with the session as
+    // destination, so the engine itself stops asking for matching commands.
     const result = mapClaudeDecisionToPermissionResult(
       effectiveDecision,
       pending.toolInput,
-      context?.sessionGrantScope === 'server'
+      scope === 'server'
         ? undefined
-        : pending.suggestions &&
+        : scope === 'rule'
+          ? ruleGrantPermissionUpdates(pending.suggestions)
+          : pending.suggestions &&
             // Full access is the server's recorded decision alone: an
             // engine-suggested switch into it is never forwarded, even under
             // a tool grant that forwards every other suggestion.
@@ -4516,7 +4538,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // engine's literal escalation reasons, its ask flags and its
         // structured reason: a safety check, an ask rule on a single
         // command, any PowerShell ask, or an ask whose frame was not read.
-        // A chained Bash command hides its parts' ask rules (see
+        // A chained Bash command hides its parts' ask rules, and Claude's
+        // Bash command-analysis warnings are plain calls (see
         // `claudeAskEscalates`).
         if (
           !inputRequest &&
@@ -4566,7 +4589,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             { toolName, threadId: input.threadId, reason: notApplied },
           );
         }
-        // Tool-level session grant: "Allow Bash for this session" must cover
+        // Tool-level session grant: "Allow all Bash commands for this session" must cover
         // every later Bash call, not just the SDK-suggested command pattern.
         // Checked after agent autoApprove (authored policy stays first) and
         // before publishing, so granted tools never re-prompt. Denies are
@@ -4578,6 +4601,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // engine remembers each allowed host itself, so each new host asks.
         const sessionGrant = toolRequestSessionGrant(request);
         const serverGrant = toolRequestServerGrant(request);
+        const ruleGrant = toolRequestRuleGrant(request);
         if (
           !inputRequest &&
           !explicitAsk &&
@@ -4680,6 +4704,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             ...(options.agentID ? { agentId: options.agentID } : {}),
             sessionGrant,
             serverGrant,
+            ...(ruleGrant ? { ruleGrant } : {}),
             eventId,
             ...(inputRequest ? { inputRequest } : {}),
           });

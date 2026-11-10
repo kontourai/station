@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
+  ToolRequestRuleGrant,
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from './tool-request-preview.js';
@@ -152,6 +153,11 @@ export interface MessagePart {
    * (`toolRequestServerGrantFromPayload`); `'none'` or absent offers nothing.
    */
   approvalServerGrant?: ToolRequestServerGrant;
+  /**
+   * The command-prefix grant that request also offers
+   * (`toolRequestRuleGrantFromPayload`); absent offers nothing.
+   */
+  approvalRuleGrant?: ToolRequestRuleGrant;
   /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`

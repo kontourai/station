@@ -5776,12 +5776,15 @@ await respondToRequest(requestScope.apiBase, {
 }, { requestScope });
 ```
 
-`RespondToRequestInput` also takes an optional `sessionGrantScope: 'server'`
-with `decision: 'acceptForSession'`. It widens the grant to the built-in
-Station browser server and only where the request offered that choice. Omit it
-for the per-tool grant; a Station that predates the field ignores it.
+`RespondToRequestInput` also takes an optional `sessionGrantScope` with
+`decision: 'acceptForSession'`. `'server'` widens the grant to the built-in
+Station browser server; `'rule'` narrows it to the Bash command prefixes a
+Claude engine suggested. Each applies only where the request offered that
+choice; otherwise the answer is a one-call accept. Omit it for the per-tool
+grant. A Station that predates `'server'` ignores it; one that predates
+`'rule'` refuses the command.
 The approval decision option carries the same optional `sessionGrantScope`;
-renderers must forward it separately from `acceptForSession` so the server
+renderers must forward it separately from `acceptForSession` so a scoped
 choice cannot collapse into ordinary per-tool trust.
 
 The host captures `requestScope`; do not reconstruct it from a URL or title.

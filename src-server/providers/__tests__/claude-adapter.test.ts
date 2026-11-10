@@ -123,7 +123,10 @@ vi.mock('../auth/cli-auth.js', () => ({
 }));
 
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
+import {
+  toolRequestRuleGrantFromPayload,
+  toolRequestSessionGrantFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import {
   createStagedPreToolPolicyEvaluator,
@@ -2851,7 +2854,7 @@ describe('ClaudeAdapter', () => {
         });
         const answer = async (
           decision: 'accept' | 'acceptForSession' | 'decline',
-          context?: { sessionGrantScope?: 'server' },
+          context?: { sessionGrantScope?: 'server' | 'rule' },
         ) => {
           await adapter.respondToRequest(
             threadId,
@@ -4691,14 +4694,6 @@ describe('ClaudeAdapter', () => {
           },
         ],
         [
-          'compound with decision_reason',
-          {
-            ...bashCompound,
-            decision_reason:
-              'This command uses the `&` background operator, which defers execution past approval-time safety checks. Approve only if you trust it.',
-          },
-        ],
-        [
           'compound with a directory suggestion',
           {
             ...bashCompound,
@@ -4758,6 +4753,30 @@ describe('ClaudeAdapter', () => {
         decision_reason_type: 'sandboxOverride',
         tool_use_id: 'toolu_bash',
       };
+      /**
+       * Claude's Bash command-analysis warnings, verbatim from a real
+       * Station event log: type `other`, no suggestions. Plain calls (owner
+       * decision): a whole-tool grant checks no prefix rule.
+       */
+      const bashWarning = (
+        decision_reason: string,
+        command = 'cd ../other && git status',
+      ): ClaudeCanUseToolRequest => ({
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: { command },
+        description: command,
+        permission_suggestions: [],
+        decision_reason,
+        decision_reason_type: 'other',
+        tool_use_id: 'toolu_bash',
+      });
+      const BASH_WARNINGS = [
+        "A variable in this command can't be checked before it runs",
+        'Contains brace with quote character (expansion obfuscation)',
+        'Tilde in assignment value — bash may expand at assignment time',
+        'This command changes directory before running a version-control command, which can pick up untrusted hooks or repository configuration from the target directory. Approve only if you trust it.',
+      ];
       /** `other` with a reason that is not the ordinary one. */
       const bashShellOperators: ClaudeCanUseToolRequest = {
         tool_name: 'Bash',
@@ -4898,13 +4917,178 @@ describe('ClaudeAdapter', () => {
           await askFrame(bashSandboxOverride),
           'sandboxOverride',
         );
-        await expectPrompt(await askFrame(bashShellOperators), 'other prose');
+        // Owner decision: Bash `other` prose is a command-analysis warning,
+        // which the whole-tool grant answers.
+        await expect(askFrame(bashShellOperators)).resolves.toMatchObject({
+          kind: 'allowed',
+        });
 
         // The grant is intact after all of them.
         await expect(askFrame(bashOrdinary('git diff'))).resolves.toMatchObject(
           { kind: 'allowed' },
         );
         await adapter.stopSession('thread-frame-bash');
+      });
+
+      test("a Bash grant answers Claude's command-analysis warnings and still prompts for a blocked path", async () => {
+        const { adapter, askFrame } = await grantHarness(
+          'thread-frame-warnings',
+        );
+        // Before the grant, a warning ask prompts and offers the whole tool.
+        const first = await askFrame(bashWarning(BASH_WARNINGS[0]));
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(first.event.payload).toMatchObject({
+          decisionReason: BASH_WARNINGS[0],
+          claudeAsk: { decisionReasonType: 'other' },
+        });
+        expect(toolRequestSessionGrantFromPayload(first.event.payload)).toBe(
+          'tool',
+        );
+        await first.answer('decline');
+
+        const mint = await askFrame(bashOrdinary('git status'));
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+
+        // Each warning, and a chained command carrying one, is answered
+        // with no `request.opened`.
+        for (const reason of BASH_WARNINGS)
+          await expect(
+            askFrame(bashWarning(reason)),
+            reason,
+          ).resolves.toMatchObject({
+            kind: 'allowed',
+            result: { behavior: 'allow' },
+          });
+        await expect(
+          askFrame({ ...bashCompound, decision_reason: BASH_WARNINGS[0] }),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+
+        // A path outside the workspace still prompts under the grant.
+        await expectPrompt(
+          await askFrame({
+            ...bashWarning(BASH_WARNINGS[0], 'cat /outside/f'),
+            blocked_path: '/outside/f',
+          }),
+          'blocked path',
+        );
+        await adapter.stopSession('thread-frame-warnings');
+      });
+
+      describe("the command-prefix answer (sessionGrantScope: 'rule')", () => {
+        const RULE = { sessionGrantScope: 'rule' as const };
+        /** As the live probe against SDK 0.3.304 saw it: a prefix suggestion. */
+        const npmLs: ClaudeCanUseToolRequest = {
+          tool_name: 'Bash',
+          display_name: 'Bash',
+          input: { command: 'npm ls react' },
+          description: 'npm ls react',
+          permission_suggestions: [
+            {
+              type: 'addRules',
+              rules: [{ toolName: 'Bash', ruleContent: 'npm ls *' }],
+              behavior: 'allow',
+              destination: 'localSettings',
+            },
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          ],
+          decision_reason: 'This command requires approval',
+          decision_reason_type: 'other',
+          tool_use_id: 'toolu_npm',
+        };
+
+        test('forwards only the Bash prefix rule for the session and mints no tool grant', async () => {
+          const { adapter, askFrame } = await grantHarness('thread-rule-scope');
+          const asked = await askFrame(npmLs);
+          if (asked.kind !== 'prompted') throw new Error('expected a prompt');
+          expect(toolRequestRuleGrantFromPayload(asked.event.payload)).toEqual({
+            rules: ['npm ls *'],
+            label: 'Allow "npm ls *" for this session',
+          });
+          await expect(asked.answer('acceptForSession', RULE)).resolves.toEqual(
+            {
+              behavior: 'allow',
+              updatedInput: { command: 'npm ls react' },
+              updatedPermissions: [
+                {
+                  type: 'addRules',
+                  rules: [{ toolName: 'Bash', ruleContent: 'npm ls *' }],
+                  behavior: 'allow',
+                  destination: 'session',
+                },
+              ],
+            },
+          );
+          // No Station tool grant: a different Bash command still prompts.
+          const next = await askFrame(bashOrdinary('git log'));
+          expect(next.kind).toBe('prompted');
+          if (next.kind === 'prompted') await next.answer('decline');
+          await adapter.stopSession('thread-rule-scope');
+        });
+
+        test('a rule answer to a request that offered no prefix is a one-call accept', async () => {
+          const { adapter, askFrame } =
+            await grantHarness('thread-rule-forged');
+          // An exact-command suggestion offers no prefix choice.
+          const exact = await askFrame({
+            ...npmLs,
+            input: { command: 'npm --version' },
+            permission_suggestions: [
+              {
+                type: 'addRules',
+                rules: [{ toolName: 'Bash', ruleContent: 'npm --version' }],
+                behavior: 'allow',
+                destination: 'localSettings',
+              },
+            ],
+          });
+          if (exact.kind !== 'prompted') throw new Error('expected a prompt');
+          expect(
+            toolRequestRuleGrantFromPayload(exact.event.payload),
+          ).toBeUndefined();
+          await expect(exact.answer('acceptForSession', RULE)).resolves.toEqual(
+            {
+              behavior: 'allow',
+              updatedInput: { command: 'npm --version' },
+              updatedPermissions: undefined,
+            },
+          );
+          // Nothing was minted: the next Bash call prompts.
+          const next = await askFrame(bashOrdinary('git log'));
+          expect(next.kind).toBe('prompted');
+          if (next.kind === 'prompted') await next.answer('decline');
+          await adapter.stopSession('thread-rule-forged');
+        });
+
+        test('a rule answer forwards no prefix the person was not shown (three prefixes)', async () => {
+          const { adapter, askFrame } = await grantHarness(
+            'thread-rule-unshown',
+          );
+          const three = await askFrame({
+            ...npmLs,
+            permission_suggestions: ['npm ls *', 'npm pkg *', 'rm *'].map(
+              (ruleContent) => ({
+                type: 'addRules' as const,
+                rules: [{ toolName: 'Bash', ruleContent }],
+                behavior: 'allow' as const,
+                destination: 'localSettings' as const,
+              }),
+            ),
+          });
+          if (three.kind !== 'prompted') throw new Error('expected a prompt');
+          // Too many prefixes for a short label: no prefix choice offered.
+          expect(
+            toolRequestRuleGrantFromPayload(three.event.payload),
+          ).toBeUndefined();
+          await expect(three.answer('acceptForSession', RULE)).resolves.toEqual(
+            {
+              behavior: 'allow',
+              updatedInput: { command: 'npm ls react' },
+              updatedPermissions: undefined,
+            },
+          );
+          await adapter.stopSession('thread-rule-unshown');
+        });
       });
 
       test('an ask whose frame was never recorded prompts under a Bash grant, and its payload says so', async () => {
@@ -5116,6 +5300,14 @@ describe('ClaudeAdapter', () => {
           ).resolves.toMatchObject({ kind: 'allowed' });
 
         for (const [label, frame] of [
+          // Only a person's own session answer covers a Bash
+          // command-analysis warning; a pattern leaves it to a person.
+          ['shell operators warning', bashShellOperators],
+          ['variable warning', bashWarning(BASH_WARNINGS[0])],
+          [
+            'chained command warning',
+            { ...bashCompound, decision_reason: BASH_WARNINGS[1] },
+          ],
           ['safetyCheck', bashSafetyCheck],
           ['rule', bashAskRule],
           ...compoundEscalations,
@@ -5129,7 +5321,6 @@ describe('ClaudeAdapter', () => {
           ],
           ['ordinary ask flagged classifier_approvable', bashFlaggedOrdinary],
           ['sandboxOverride', bashSandboxOverride],
-          ['other prose', bashShellOperators],
           ['WebFetch ask rule', webFetchAskRule],
           ['sensitive-file edit', editSensitiveFile],
         ] as const) {

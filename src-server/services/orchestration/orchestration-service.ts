@@ -45,6 +45,7 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
 import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
+import type { SessionGrantScope } from '@kontourai/station-contracts/input-request';
 import {
   type LearningReviewRevisionRef,
   parseLearningContextContributions,
@@ -11513,21 +11514,30 @@ export class OrchestrationService {
               ? { standing: this.approvalPosture.decision(command.threadId) }
               : 'downgrade'
             : undefined;
+          // A `rule` answer is the narrowest session choice. Only the Claude
+          // adapter that declares it honours it; any other adapter would read
+          // it as the per-tool grant, which is wider, so it is a one-call
+          // accept there.
+          const ruleElsewhere =
+            command.decision === 'acceptForSession' &&
+            command.sessionGrantScope === 'rule' &&
+            !adapter.metadata.sessionGrantScopes?.includes('rule');
           const decision =
-            editModeAnswer === 'downgrade' ? 'accept' : command.decision;
+            editModeAnswer === 'downgrade' || ruleElsewhere
+              ? 'accept'
+              : command.decision;
           // #2344: an adapter that records the decision itself (the Station
           // agent's ApprovalRegistry) attributes the approving device, as the
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
-          const serverScope =
-            decision === 'acceptForSession' &&
-            command.sessionGrantScope === 'server';
+          const grantScope =
+            decision === 'acceptForSession'
+              ? command.sessionGrantScope
+              : undefined;
           const requestContext =
-            inputForm || context?.clientOrigin || serverScope
+            inputForm || context?.clientOrigin || grantScope
               ? {
-                  ...(serverScope
-                    ? { sessionGrantScope: 'server' as const }
-                    : {}),
+                  ...(grantScope ? { sessionGrantScope: grantScope } : {}),
                   ...(context?.clientOrigin
                     ? { clientOrigin: context.clientOrigin }
                     : {}),
@@ -14321,16 +14331,20 @@ export class OrchestrationService {
    * session answer whose grant (`toolRequestSessionGrantFromPayload`, the
    * computation the approval surfaces and the Claude adapter use) is
    * `edit-mode`, read from the request as it stands before it is answered.
+   * A scoped answer (`sessionGrantScope`) is never one: an edit request
+   * offers no scope, so the adapter takes it as a one-call accept.
    */
   private isEditModeSessionAnswer(
     command: {
       threadId: string;
       requestId: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      sessionGrantScope?: SessionGrantScope;
     },
     provider: EngineId,
   ): boolean {
     if (command.decision !== 'acceptForSession') return false;
+    if (command.sessionGrantScope !== undefined) return false;
     if (!this.approvalKnobForThread(command.threadId, provider)) return false;
     let current: ReturnType<EventStore['readCurrentRequestEvent']> | undefined;
     try {

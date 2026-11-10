@@ -148,13 +148,22 @@ export interface InputRequestDecisionBody {
   options: InputRequestDecisionOption[];
 }
 
+/**
+ * How an `acceptForSession` answer is scoped, beyond the per-tool grant it
+ * makes when absent. `server`: the whole in-process Station browser server.
+ * `rule`: only the Bash command prefixes the engine suggested (Claude).
+ * Each is honoured only where the request offered it; otherwise the answer
+ * is a one-call accept.
+ */
+export type SessionGrantScope = 'server' | 'rule';
+
 export interface InputRequestDecisionOption {
   id: string;
   label: string;
   effect: 'allow' | 'deny';
   scope: 'once' | 'session';
-  /** With an allow/session option: the separately authorized Station browser grant. */
-  sessionGrantScope?: 'server';
+  /** With an allow/session option: the separately authorized scope of the grant. */
+  sessionGrantScope?: SessionGrantScope;
 }
 
 /**
