@@ -547,19 +547,12 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Past conversations in Knowledge',
-    help: 'After a restart, past conversations on this Station join Knowledge read-only, searchable after a reindex; turning this off does not remove them.',
-    // Read once at personal runtime initialization by
-    // ensureConversationKnowledgeRoot (conversation-root-bootstrap.ts), which
-    // registers root:conversations only when this is true and the root is
-    // absent; hosted initialization returns before that. Nothing indexes the
-    // root automatically: POST /api/knowledge/index/rebuild
-    // (knowledge-index-routes.ts) builds it, needs an embedding connection and,
-    // for this session-backed root, the local operator. That build reads every
-    // session on the Station. DELETE /api/knowledge/roots refuses the
-    // conversation root (RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR), so turning this
-    // off cannot take the root away.
+    help: 'After a restart, adds past conversations on this Station to Knowledge, searchable after a reindex and not removable later.',
+    // Read once at personal startup (ensureConversationKnowledgeRoot); hosted
+    // startup skips it. Indexing is a separate operator-run rebuild, and
+    // DELETE /api/knowledge/roots refuses this root, so off cannot remove it.
     description:
-      'Adds past conversations on this Station to Knowledge as the read-only root:conversations source. Nothing indexes them automatically: they become searchable after a Knowledge reindex (`station knowledge reindex`), which needs an embedding connection and this Station’s operator. Off by default because conversation history is personal. Applies after a restart. Turning it off later does not remove the source, and Station cannot remove it. Has no effect on a hosted Station.',
+      'Adds past conversations on this Station to Knowledge as a read-only source. They become searchable after a Knowledge reindex, which needs an embedding connection and the Station operator. Off by default because conversation history is personal. Applies after a restart. Turning it off does not remove the source. No effect on a hosted Station.',
     defaultValue: false,
   }),
   defineSetting({

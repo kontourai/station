@@ -1113,9 +1113,8 @@ function GateRouteBackDetail({ item }: { item: GateRouteBackAttentionItem }) {
 /**
  * Shared affordance for `gate-route-back` and `gate-blocked`: Re-evaluate,
  * which posts to the same `POST .../runs/:runId/evaluate` route the console
- * itself uses — resolving the gate here produces the identical run-history
- * trail as resolving it in place — plus a deep link into the owning Flow run
- * console while the device Flow preview is on (`OpenFlowConsoleLink`).
+ * uses (so the run history is identical), plus a link to the Flow run console
+ * while the Flow preview is on.
  */
 function GateReEvaluateAction({
   item,
@@ -1307,11 +1306,7 @@ function OpenSessionLink({
   );
 }
 
-/**
- * The Flow run console is a device developer preview. With it off here the
- * console only says the preview is off, so the gate card offers no link; its
- * Re-evaluate and exception actions post to the server and still work.
- */
+/** No link while the Flow preview is off: the console would only say so. */
 function OpenFlowConsoleLink({ href }: { href: string }) {
   const { flow } = useDeveloperFeatures();
   if (!flow) return null;

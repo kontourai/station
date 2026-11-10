@@ -1333,9 +1333,7 @@ describe('settings catalog completeness', () => {
       expect(visible.textContent).toContain(
         'Searchable after a Knowledge reindex',
       );
-      expect(visible.textContent).toContain(
-        'Turning it off later does not remove them',
-      );
+      expect(visible.textContent).toContain('cannot be removed later');
 
       fireEvent.click(toggle);
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));

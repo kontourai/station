@@ -25,12 +25,7 @@ import { settingsRow } from './settings-catalog';
 
 const PERSONAL_DEFAULT_ADAPTER_ID = 'kit-default-store';
 const OBSIDIAN_ADAPTER_ID = 'kit-obsidian-store';
-/**
- * The adapter of `root:conversations`, which Station registers at startup when
- * Past conversations in Knowledge is on. It is personal-scoped but read-only and
- * cannot be removed, so treating it as the personal store would claim personal
- * knowledge is on and withdraw the create action for good.
- */
+/** `root:conversations`: personal-scoped but read-only, so not the person's store. */
 const CONVERSATION_ADAPTER_ID = 'conversation-store';
 
 /** The connection form appears only while this UI's first-personal-root lookup is empty. */
@@ -148,11 +143,7 @@ function ConnectObsidianVault() {
   );
 }
 
-/**
- * `children` are the Station setting rows this card owns
- * (`STATION_SETTING_KEYS_BY_SECTION.knowledge`), supplied by `SettingsView`
- * because it holds the Station config draft and its save.
- */
+/** `children`: this card's Station setting rows; `SettingsView` owns their draft and save. */
 export function KnowledgeStoreSection({
   children,
 }: {

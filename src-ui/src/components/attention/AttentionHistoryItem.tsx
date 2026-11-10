@@ -94,9 +94,7 @@ export function AttentionHistoryItem({
             },
           ]
         : [];
-  // The Flow run console is a device developer preview. With it off here the
-  // console only says the preview is off, so a gate row offers no link to it
-  // (the same rule as the live card's `OpenFlowConsoleLink`).
+  // Same rule as the live card's `OpenFlowConsoleLink`.
   const { flow } = useDeveloperFeatures();
   const opensFlowConsole = isFlowGateKind(item.kind);
   const openLink = (

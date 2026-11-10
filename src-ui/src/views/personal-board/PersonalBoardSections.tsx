@@ -124,8 +124,7 @@ function AttentionSection({
 }) {
   const scope = useHostRequestAuthorityScope();
   const query = useBoardAttentionQuery(scope);
-  // A Flow gate item opens the Flow run console, a device developer preview;
-  // with it off here that page only says so, so the title is not a link.
+  // No Flow console link while the Flow preview is off (`isFlowGateKind`).
   const { flow } = useDeveloperFeatures();
   const rows = (query.data?.items ?? [])
     .filter(isPendingAttentionItem)

@@ -22,9 +22,8 @@ import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
  * surfaces can't drift.
  */
 /**
- * The attention kinds a Flow gate produces. Their `openHref` is the Flow run
- * console, a device developer preview: with it off, a surface must not link
- * there (see `useDeveloperFeatures().flow`).
+ * Kinds whose `openHref` is the Flow run console. Do not link there while the
+ * Flow preview is off (`useDeveloperFeatures().flow`).
  */
 export function isFlowGateKind(kind: AttentionItem['kind']): boolean {
   return (
