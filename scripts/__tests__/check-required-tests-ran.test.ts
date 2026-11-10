@@ -13,8 +13,9 @@
  * changed, so they keep the reporter's exact shape.
  */
 import { spawnSync } from 'node:child_process';
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
@@ -22,6 +23,9 @@ const ROOT = resolve(import.meta.dirname, '../..');
 const CHECK = join(ROOT, 'scripts/check-required-tests-ran.mjs');
 const PROFILES = join(ROOT, 'scripts/required-test-profiles.json');
 const FIXTURES = join(ROOT, 'scripts/__tests__/fixtures/required-tests-ran');
+const MACOS_REPORT = join(FIXTURES, 'seatbelt-process-macos.report.json');
+const WORKFLOW = join(ROOT, '.github/workflows/seatbelt-kernel.yml');
+const USAGE = /^\[required-tests\] FAIL: usage: check-required-tests-ran\.mjs /;
 const SEATBELT_FILE =
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts';
 const SUITE = 'Seatbelt profile under the real kernel';
@@ -325,6 +329,35 @@ describe('an unusable report fails closed', () => {
     }
   });
 
+  // A FIFO with no writer would block the read forever; the check must refuse
+  // it before reading. Windows has no mkfifo, so this runs only where one was
+  // created.
+  test('a report path that is a FIFO exits 2 without blocking', {
+    timeout: 40_000,
+  }, (ctx) => {
+    const fifo = join(makeTempDir('required-tests-fifo-'), 'report.json');
+    const made = spawnSync('mkfifo', [fifo], {
+      encoding: 'utf8',
+      timeout: 5_000,
+      windowsHide: true,
+    });
+    let isFifo = false;
+    try {
+      isFifo = made.status === 0 && statSync(fifo).isFIFO();
+    } catch {
+      isFifo = false;
+    }
+    if (!isFifo)
+      ctx.skip(
+        `could not create a FIFO on this host (mkfifo: ${made.error?.message ?? made.stderr ?? made.status})`,
+      );
+    // runCheck's 30 s child timeout turns a hang into result.error.
+    expectInputFailure(
+      check(fifo),
+      /^\[required-tests\] FAIL: report is not a regular file \(a FIFO\): /,
+    );
+  });
+
   test('a missing profile file exits 2', () => {
     const result = check(join(FIXTURES, 'seatbelt-process-macos.report.json'), {
       profiles: join(makeTempDir('required-tests-none-'), 'none.json'),
@@ -348,14 +381,66 @@ describe('an unusable report fails closed', () => {
   test.each([
     ['no arguments', []],
     ['only a report', ['--report', 'report.json']],
-    [
-      'an unknown flag (the name before --profile-name)',
-      ['--profile', 'seatbelt-kernel'],
-    ],
     ['a flag without its value', ['--profile-name']],
   ])('%s is a usage error that exits 2', (_label, args) => {
     expectInputFailure(runCheck(args), /^\[required-tests\] FAIL: /);
   });
+
+  test('the retired name for --profile-name is refused in an otherwise passing command', () => {
+    // The same command with --profile-name exits 0 (the first test above),
+    // so this fails if the retired name is ever accepted as an alias again.
+    expectInputFailure(
+      runCheck([
+        '--profile',
+        'seatbelt-kernel',
+        '--report',
+        MACOS_REPORT,
+        '--root',
+        '/station',
+      ]),
+      USAGE,
+    );
+  });
+
+  test.each([
+    [
+      '--report',
+      [
+        '--profile-name',
+        'seatbelt-kernel',
+        '--report',
+        join(FIXTURES, 'does-not-exist.report.json'),
+        '--report',
+        MACOS_REPORT,
+        '--root',
+        '/station',
+      ],
+    ],
+    [
+      '--profile-name',
+      [
+        '--profile-name',
+        'no-such-profile',
+        '--profile-name',
+        'seatbelt-kernel',
+        '--report',
+        MACOS_REPORT,
+        '--root',
+        '/station',
+      ],
+    ],
+  ])(
+    '%s given twice exits 2 even when the last value would pass',
+    (flag, args) => {
+      expectInputFailure(
+        runCheck(args),
+        new RegExp(
+          `^\\[required-tests\\] FAIL: ${flag} given more than once$`,
+          'm',
+        ),
+      );
+    },
+  );
 
   test('an unknown profile exits 2', () => {
     const result = check(join(FIXTURES, 'seatbelt-process-macos.report.json'), {
@@ -423,6 +508,45 @@ describe('an unusable report fails closed', () => {
     });
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('listed twice');
+  });
+});
+
+describe('the hosted workflow invokes the check with arguments it accepts', () => {
+  type Step = { name?: string; run?: string };
+  type Workflow = { jobs: Record<string, { steps?: Step[] }> };
+
+  test('the seatbelt-kernel workflow check step passes over the real macOS report', () => {
+    const workflow = load(readFileSync(WORKFLOW, 'utf8')) as Workflow;
+    const runs = Object.values(workflow.jobs)
+      .flatMap((job) => job.steps ?? [])
+      .map((step) => step.run ?? '')
+      .filter((run) => run.includes('scripts/check-required-tests-ran.mjs'));
+    expect(runs, 'no step in seatbelt-kernel.yml runs the check').toHaveLength(
+      1,
+    );
+    // The step is one folded command line; split it the way the shell would
+    // for plain and double-quoted words, and refuse anything fancier.
+    const command = runs[0].trim();
+    expect(command).not.toMatch(/[|;&<>`\n\\]|\$\(/);
+    const words = [...command.matchAll(/"([^"]*)"|(\S+)/g)].map(
+      (match) => match[1] ?? match[2],
+    );
+    expect(words.slice(0, 2)).toEqual([
+      'node',
+      'scripts/check-required-tests-ran.mjs',
+    ]);
+    // Only the runner's report path is replaced, by the real macOS report the
+    // workflow's test step writes; --root maps its /station checkout path.
+    const args = words
+      .slice(2)
+      .map((word) => (word.includes('$RUNNER_TEMP') ? MACOS_REPORT : word));
+    expect(args).toContain(MACOS_REPORT);
+    const result = runCheck([...args, '--root', '/station']);
+    expect(
+      result.status,
+      `the workflow's arguments ${JSON.stringify(words.slice(2))} were refused: ${result.stderr}`,
+    ).toBe(0);
+    expect(result.stdout).toMatch(/^\[required-tests\] OK: profile "/);
   });
 });
 

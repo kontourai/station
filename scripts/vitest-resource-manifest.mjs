@@ -295,8 +295,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
   'scripts/__tests__/ci-event-environment.test.ts',
   // Runs the required-tests check as short Node children over report
-  // fixtures, and one nested Vitest collection (no test bodies run) of the
-  // Seatbelt process file to compare its ids with the pinned profile.
+  // fixtures (one with the hosted workflow's own arguments, one over a FIFO
+  // from a bounded mkfifo), and one nested Vitest collection (no test bodies
+  // run) of the Seatbelt process file to compare its ids with the pinned
+  // profile.
   'scripts/__tests__/check-required-tests-ran.test.ts',
   // Builds disposable Git repositories to prove the real-ledger freshness
   // check keeps the job's event mode through the worker env scrub.

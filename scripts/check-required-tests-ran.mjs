@@ -27,11 +27,12 @@
  *
  * Exit status: 0 every required id ran; 1 at least one did not (each is named
  * on stderr); 2 an input is unusable (the report or profile file is missing,
- * unreadable, a directory, empty or malformed, a profile entry is invalid, or
- * the arguments are wrong), with one line on stderr. Nothing here reads a
- * missing input as success.
+ * unreadable, a directory or another non-regular file such as a FIFO, empty
+ * or malformed, a profile entry is invalid, or the arguments are wrong,
+ * including a flag given more than once), with one line on stderr. Nothing
+ * here reads a missing input as success.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -76,14 +77,32 @@ function describeTestId(file, titles) {
   return `${file} > ${titles.join(' > ')}`;
 }
 
+/** What a path is when it is neither a regular file nor a directory. */
+function specialFileKind(stats) {
+  if (stats.isFIFO()) return 'a FIFO';
+  if (stats.isSocket()) return 'a socket';
+  if (stats.isCharacterDevice() || stats.isBlockDevice()) return 'a device';
+  return 'another special file';
+}
+
 /**
  * A file's text, or an InputError naming why it cannot be read (missing, a
  * directory, permission denied, ...), so an unusable input exits 2, never 1.
+ * A FIFO, socket or device is refused before reading: a FIFO with no writer
+ * would block the read forever. A directory is left to the read, which
+ * refuses it with EISDIR.
  */
 function readInput(kind, filePath) {
   try {
+    // statSync follows symlinks, so a dangling one is ENOENT: not found.
+    const stats = statSync(filePath);
+    if (!stats.isFile() && !stats.isDirectory())
+      throw new InputError(
+        `${kind} is not a regular file (${specialFileKind(stats)}): ${filePath}`,
+      );
     return readFileSync(filePath, 'utf8');
   } catch (error) {
+    if (error instanceof InputError) throw error;
     if (error?.code === 'ENOENT')
       throw new InputError(`${kind} not found: ${filePath}`);
     throw new InputError(
@@ -265,13 +284,19 @@ function parseArguments(argv) {
     ['--profiles-file', 'profilesFile'],
     ['--root', 'root'],
   ]);
+  const given = new Set();
   for (let index = 0; index < argv.length; index += 2) {
-    const key = names.get(argv[index]);
+    const flag = argv[index];
+    const key = names.get(flag);
     const value = argv[index + 1];
     if (!key || value === undefined || value === '')
       throw new InputError(
         'usage: check-required-tests-ran.mjs --profile-name <name> --report <vitest-json> [--root <dir>] [--profiles-file <json>]',
       );
+    // Last-one-wins would let `--report missing.json --report good.json`
+    // check a different file than the caller meant to name.
+    if (given.has(flag)) throw new InputError(`${flag} given more than once`);
+    given.add(flag);
     options[key] = value;
   }
   if (!options.profileName || !options.report)
