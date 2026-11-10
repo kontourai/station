@@ -2823,9 +2823,10 @@ test started (`ctx.skip()` in its body or a `beforeEach` hook; the reporter
 records a duration only for a test that started). Exit 1 names each id that
 was absent, skipped, failed or duplicated. Exit 2, with one line, means an
 input is unusable: the report or profile file is missing, unreadable, a
-directory, empty or malformed, a profile entry is invalid (a
-`mayRuntimeSkip` or `notRequired` entry needs a nonempty `reason`), or the
-arguments are wrong. The check reads only the pinned ids, not the run's
+directory or another non-regular file such as a FIFO, empty or malformed, a
+profile entry is invalid (a `mayRuntimeSkip` or `notRequired` entry needs a
+nonempty `reason`), or the arguments are wrong, including a flag given more
+than once. The check reads only the pinned ids, not the run's
 overall result, so it complements the test step's own exit status and does
 not replace it. `notRequired` entries only record a deliberate exclusion and
 are not checked. Renaming a pinned test therefore
