@@ -2236,6 +2236,38 @@ function telemetryConsentScreens(): Screen[] {
                     0,
                     select.getBoundingClientRect().top - barBottom - 8,
                   );
+                  // The same for the collapsed dock bar pinned at the bottom
+                  // of a phone: a control left straddling its top edge is
+                  // partly behind it. Lower the content by the smallest step
+                  // that leaves no control across either bar's edge (the
+                  // select only moves further below the toolbar).
+                  const dock = document.querySelector(
+                    '[data-testid="chat-dock-mobile-header"]',
+                  );
+                  if (!dock) return;
+                  const dockTop = dock.getBoundingClientRect().top;
+                  const boxes = [
+                    ...document.querySelectorAll<HTMLElement>(
+                      '.content-view :is(input, select, textarea, button, a[href], summary)',
+                    ),
+                  ]
+                    .map((control) => control.getBoundingClientRect())
+                    .filter((box) => box.height > 0);
+                  const across = (edge: number, shift: number) =>
+                    boxes.some(
+                      (box) =>
+                        box.top + shift < edge && box.bottom + shift > edge,
+                    );
+                  for (let lower = 0; lower <= 240; lower += 2) {
+                    if (!across(barBottom, lower) && !across(dockTop, lower)) {
+                      if (lower > 0)
+                        (scroller ?? document.scrollingElement)?.scrollBy(
+                          0,
+                          -lower,
+                        );
+                      return;
+                    }
+                  }
                 });
             }
           }
