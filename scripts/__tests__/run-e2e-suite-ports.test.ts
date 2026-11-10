@@ -2219,7 +2219,7 @@ describe('startWithPortRetry (#1177 review round 1)', () => {
         warn: vi.fn(),
       };
       if (kind === 'fresh') {
-        await expect(startWithPortRetry(deps)).resolves.toEqual({
+        await expect(startWithPortRetry(deps)).resolves.toMatchObject({
           serverPort: 3272,
           uiPort: 5304,
         });
@@ -2233,12 +2233,52 @@ describe('startWithPortRetry (#1177 review round 1)', () => {
     },
   );
 
-  function harness(outputs: Array<{ code: number; output: string }>) {
+  type NativeOutcome = {
+    code: number | null;
+    signal: string | null;
+    error: boolean;
+    timedOut: boolean | null;
+  };
+
+  type RetryAttempt = {
+    ordinal: number;
+    serverPort: number;
+    uiPort: number;
+    start: {
+      state: 'pending' | 'returned' | 'threw';
+      code: number | null;
+      nativeOutcome: NativeOutcome | null;
+    };
+    retryKind: 'boot-race' | 'port-overlap' | 'fatal' | null;
+    recoveryStop: {
+      state: 'pending' | 'returned' | 'threw';
+      nativeOutcome: NativeOutcome | null;
+    } | null;
+  };
+
+  function harness(
+    outputs: Array<{
+      code: number;
+      output: string;
+      nativeOutcome?: NativeOutcome;
+    }>,
+    options: {
+      startFailure?: Error;
+      stopFailure?: Error;
+      stopOutcome?: NativeOutcome | null;
+    } = {},
+  ) {
+    const attempts: RetryAttempt[] = [];
     const calls: Array<{ serverPort: number; uiPort: number }> = [];
     const stops: number[] = [];
     const warnings: string[] = [];
+    const stopOutcome =
+      options.stopOutcome === undefined
+        ? { code: 0, signal: null, error: false, timedOut: false }
+        : options.stopOutcome;
     let index = 0;
     return {
+      attempts,
       calls,
       stops,
       warnings,
@@ -2247,14 +2287,19 @@ describe('startWithPortRetry (#1177 review round 1)', () => {
         logPath: '/tmp/e2e-test-instance.log',
         preferredPorts: { server: 3242, ui: 5274 },
         maxAttempts: 3,
+        attempts,
         pickServerPort: async (bias: number) => bias,
         pickUiPort: async (bias: number) => bias,
         startInstance: async (serverPort: number, uiPort: number) => {
           calls.push({ serverPort, uiPort });
+          if (options.startFailure) throw options.startFailure;
           return outputs[Math.min(index++, outputs.length - 1)];
         },
-        stopInstance: async () => {
+        stopInstance: async (onOutcome?: (outcome: NativeOutcome) => void) => {
           stops.push(index);
+          if (stopOutcome) onOutcome?.(stopOutcome);
+          if (options.stopFailure) throw options.stopFailure;
+          return stopOutcome;
         },
         warn: (message: string) => {
           warnings.push(message);
@@ -2263,58 +2308,409 @@ describe('startWithPortRetry (#1177 review round 1)', () => {
     };
   }
 
+  test('a single successful start returns its recorded attempt', async () => {
+    const { deps, attempts, calls, stops } = harness([
+      {
+        code: 0,
+        output: '',
+        nativeOutcome: {
+          code: 0,
+          signal: null,
+          error: false,
+          timedOut: false,
+        },
+      },
+    ]);
+
+    const result = await startWithPortRetry(deps);
+
+    expect(calls).toEqual([{ serverPort: 3242, uiPort: 5274 }]);
+    expect(stops).toHaveLength(0);
+    expect(attempts).toEqual([
+      {
+        ordinal: 1,
+        serverPort: 3242,
+        uiPort: 5274,
+        start: {
+          state: 'returned',
+          code: 0,
+          nativeOutcome: {
+            code: 0,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+        retryKind: null,
+        recoveryStop: null,
+      },
+    ]);
+    expect(result).toEqual({
+      serverPort: 3242,
+      uiPort: 5274,
+      attempts,
+    });
+  });
+
   test('a boot-race advances to the next +30 block, cleans up, and succeeds', async () => {
-    const { deps, calls, stops } = harness([
+    const { deps, attempts, calls, stops } = harness([
       {
         code: 1,
         output:
           'Timed out waiting for http://localhost:3242/api/system/identity (managed boot identity mismatch)',
+        nativeOutcome: {
+          code: 1,
+          signal: null,
+          error: false,
+          timedOut: false,
+        },
       },
-      { code: 0, output: '' },
+      {
+        code: 0,
+        output: '',
+        nativeOutcome: {
+          code: 0,
+          signal: null,
+          error: false,
+          timedOut: false,
+        },
+      },
     ]);
+
     const result = await startWithPortRetry(deps);
+
     expect(calls.map((call) => call.serverPort)).toEqual([3242, 3272]);
-    expect(stops).toHaveLength(1);
-    expect(result).toEqual({ serverPort: 3272, uiPort: 5304 });
+    expect(stops).toEqual([1]);
+    expect(attempts).toEqual([
+      {
+        ordinal: 1,
+        serverPort: 3242,
+        uiPort: 5274,
+        start: {
+          state: 'returned',
+          code: 1,
+          nativeOutcome: {
+            code: 1,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+        retryKind: 'boot-race',
+        recoveryStop: {
+          state: 'returned',
+          nativeOutcome: {
+            code: 0,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+      },
+      {
+        ordinal: 2,
+        serverPort: 3272,
+        uiPort: 5304,
+        start: {
+          state: 'returned',
+          code: 0,
+          nativeOutcome: {
+            code: 0,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+        retryKind: null,
+        recoveryStop: null,
+      },
+    ]);
+    expect(result).toEqual({
+      serverPort: 3272,
+      uiPort: 5304,
+      attempts,
+    });
   });
 
-  test('an exact selected-port bind race advances and cleans up', async () => {
-    const { deps, calls, stops } = harness([
+  test('an exact selected-port bind race advances and preserves unknown native status', async () => {
+    const { deps, attempts, calls, stops } = harness([
       {
         code: 1,
         output:
           'Failed to start server: Port 3242 is already in use or unavailable.',
+        nativeOutcome: {
+          code: null,
+          signal: null,
+          error: true,
+          timedOut: null,
+        },
       },
-      { code: 0, output: '' },
+      {
+        code: 0,
+        output: '',
+        nativeOutcome: {
+          code: 0,
+          signal: null,
+          error: false,
+          timedOut: false,
+        },
+      },
     ]);
+
     const result = await startWithPortRetry(deps);
+
     expect(calls.map((call) => call.serverPort)).toEqual([3242, 3272]);
-    expect(stops).toHaveLength(1);
-    expect(result).toEqual({ serverPort: 3272, uiPort: 5304 });
-  });
-
-  test('a fatal failure aborts immediately without cleanup retries', async () => {
-    const { deps, calls, stops } = harness([
-      { code: 2, output: 'Build failed: esbuild exited with code 1' },
+    expect(stops).toEqual([1]);
+    expect(attempts).toHaveLength(2);
+    expect(attempts).toMatchObject([
+      {
+        ordinal: 1,
+        serverPort: 3242,
+        uiPort: 5274,
+        start: {
+          state: 'returned',
+          code: 1,
+          nativeOutcome: {
+            code: null,
+            signal: null,
+            error: true,
+            timedOut: null,
+          },
+        },
+        retryKind: 'boot-race',
+        recoveryStop: {
+          state: 'returned',
+          nativeOutcome: {
+            code: 0,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+      },
+      {
+        ordinal: 2,
+        serverPort: 3272,
+        uiPort: 5304,
+        start: {
+          state: 'returned',
+          code: 0,
+          nativeOutcome: {
+            code: 0,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+        retryKind: null,
+        recoveryStop: null,
+      },
     ]);
-    await expect(startWithPortRetry(deps)).rejects.toThrow(
-      /for e2e-test-instance \(exit 2\) — not a port collision/,
-    );
-    expect(calls).toHaveLength(1);
-    expect(stops).toHaveLength(0);
+    expect(result).toEqual({
+      serverPort: 3272,
+      uiPort: 5304,
+      attempts,
+    });
   });
 
-  test('exhaustion reports the last classified failure with its output tail (review MED-1)', async () => {
-    const { deps } = harness([
+  test.each(['returned', 'thrown'] as const)(
+    'a fatal %s start retains partial facts without cleanup retries',
+    async (kind) => {
+      const original = new Error('starter transport failed');
+      const { deps, attempts, calls, stops } = harness(
+        [
+          {
+            code: 2,
+            output: 'Build failed: esbuild exited with code 1',
+            nativeOutcome: {
+              code: 2,
+              signal: null,
+              error: false,
+              timedOut: false,
+            },
+          },
+        ],
+        kind === 'thrown' ? { startFailure: original } : {},
+      );
+
+      const failure = await startWithPortRetry(deps).catch(
+        (error: unknown) => error,
+      );
+
+      if (kind === 'thrown') {
+        expect(failure).toBe(original);
+        expect(attempts).toEqual([
+          {
+            ordinal: 1,
+            serverPort: 3242,
+            uiPort: 5274,
+            start: {
+              state: 'threw',
+              code: null,
+              nativeOutcome: null,
+            },
+            retryKind: null,
+            recoveryStop: null,
+          },
+        ]);
+      } else {
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure).toHaveProperty(
+          'message',
+          expect.stringMatching(
+            /for e2e-test-instance \(exit 2\) — not a port collision/,
+          ),
+        );
+        expect(attempts).toEqual([
+          {
+            ordinal: 1,
+            serverPort: 3242,
+            uiPort: 5274,
+            start: {
+              state: 'returned',
+              code: 2,
+              nativeOutcome: {
+                code: 2,
+                signal: null,
+                error: false,
+                timedOut: false,
+              },
+            },
+            retryKind: 'fatal',
+            recoveryStop: null,
+          },
+        ]);
+      }
+      expect(calls).toHaveLength(1);
+      expect(stops).toHaveLength(0);
+    },
+  );
+
+  test('a rejected recovery stop retains its native outcome and original rejection', async () => {
+    const original = new Error('recovery stop failed');
+    const { deps, attempts, calls, stops } = harness(
+      [
+        {
+          code: 1,
+          output:
+            'Timed out waiting for http://localhost:3242/api/system/identity (fetch failed)',
+          nativeOutcome: {
+            code: 1,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+        {
+          code: 0,
+          output: '',
+          nativeOutcome: {
+            code: 0,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+      ],
+      {
+        stopFailure: original,
+        stopOutcome: {
+          code: 7,
+          signal: null,
+          error: false,
+          timedOut: false,
+        },
+      },
+    );
+
+    const failure = await startWithPortRetry(deps).catch(
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBe(original);
+    expect(calls).toEqual([{ serverPort: 3242, uiPort: 5274 }]);
+    expect(stops).toEqual([1]);
+    expect(attempts).toEqual([
+      {
+        ordinal: 1,
+        serverPort: 3242,
+        uiPort: 5274,
+        start: {
+          state: 'returned',
+          code: 1,
+          nativeOutcome: {
+            code: 1,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+        retryKind: 'boot-race',
+        recoveryStop: {
+          state: 'threw',
+          nativeOutcome: {
+            code: 7,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+      },
+    ]);
+  });
+
+  test('exhaustion retains all eight attempts and the last classified failure', async () => {
+    const { deps, attempts, calls, stops } = harness([
       {
         code: 1,
         output:
           'Timed out waiting for http://localhost:3242/api/system/identity (fetch failed)',
+        nativeOutcome: {
+          code: 1,
+          signal: null,
+          error: false,
+          timedOut: false,
+        },
       },
     ]);
+    deps.maxAttempts = 8;
+
     await expect(startWithPortRetry(deps)).rejects.toThrow(
       /last failure was 'boot-race'[\s\S]*fetch failed/,
     );
+
+    const serverPorts = [3242, 3272, 3302, 3332, 3362, 3392, 3422, 3452];
+    const uiPorts = [5274, 5304, 5334, 5364, 5394, 5424, 5454, 5484];
+    expect(calls.map((call) => call.serverPort)).toEqual(serverPorts);
+    expect(stops).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(attempts).toHaveLength(8);
+    for (const [index, attempt] of attempts.entries()) {
+      expect(attempt).toEqual({
+        ordinal: index + 1,
+        serverPort: serverPorts[index],
+        uiPort: uiPorts[index],
+        start: {
+          state: 'returned',
+          code: 1,
+          nativeOutcome: {
+            code: 1,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+        retryKind: 'boot-race',
+        recoveryStop: {
+          state: 'returned',
+          nativeOutcome: {
+            code: 0,
+            signal: null,
+            error: false,
+            timedOut: false,
+          },
+        },
+      });
+    }
   });
 });
 

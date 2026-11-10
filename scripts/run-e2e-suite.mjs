@@ -540,6 +540,25 @@ function lifecycleProcessIdentity(identity) {
   };
 }
 
+function nativeCommandOutcome(value) {
+  if (
+    !value ||
+    (value.code !== null && !Number.isInteger(value.code)) ||
+    (value.signal !== null &&
+      (typeof value.signal !== 'string' ||
+        !/^SIG[A-Z0-9]+$/.test(value.signal))) ||
+    typeof value.error !== 'boolean' ||
+    (value.timedOut !== null && typeof value.timedOut !== 'boolean')
+  )
+    return null;
+  return {
+    code: value.code,
+    signal: value.signal,
+    error: value.error,
+    timedOut: value.timedOut,
+  };
+}
+
 function emitSuiteLifecycleEvidence(
   instance,
   journal,
@@ -547,6 +566,7 @@ function emitSuiteLifecycleEvidence(
   start,
   stop,
   cleanup,
+  attempts,
 ) {
   try {
     const evidence = readLifecycleEvidence(journal, instance, {
@@ -574,6 +594,25 @@ function emitSuiteLifecycleEvidence(
         },
         start: start?.outcome ?? null,
         stop,
+        attempts: attempts.map((attempt) => ({
+          ordinal: attempt.ordinal,
+          serverPort: attempt.serverPort,
+          uiPort: attempt.uiPort,
+          start: {
+            state: attempt.start.state,
+            code: attempt.start.code,
+            nativeOutcome: nativeCommandOutcome(attempt.start.nativeOutcome),
+          },
+          retryKind: attempt.retryKind,
+          recoveryStop: attempt.recoveryStop
+            ? {
+                state: attempt.recoveryStop.state,
+                nativeOutcome: nativeCommandOutcome(
+                  attempt.recoveryStop.nativeOutcome,
+                ),
+              }
+            : null,
+        })),
         cleanup: {
           settled: cleanup.settled,
           errorsPresent: cleanup.errors.length > 0,
@@ -1795,7 +1834,10 @@ export async function startWithPortRetry({
   stopInstance,
   warn,
   onStarted = () => {},
+  attempts = [],
 }) {
+  if (!Array.isArray(attempts) || attempts.length !== 0)
+    throw new Error('E2E attempt records must start as an empty array');
   let lastFailure = null;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const serverBias = preferredPorts.server + attempt * 30;
@@ -1811,7 +1853,27 @@ export async function startWithPortRetry({
     } catch {
       // A first start commonly has no log yet.
     }
-    const result = await startInstance(serverPort, uiPort);
+    const record = {
+      ordinal: attempt + 1,
+      serverPort,
+      uiPort,
+      start: { state: 'pending', code: null, nativeOutcome: null },
+      retryKind: null,
+      recoveryStop: null,
+    };
+    attempts.push(record);
+    let result;
+    try {
+      result = await startInstance(serverPort, uiPort);
+    } catch (error) {
+      record.start.state = 'threw';
+      throw error;
+    }
+    record.start = {
+      state: 'returned',
+      code: Number.isInteger(result?.code) ? result.code : null,
+      nativeOutcome: nativeCommandOutcome(result?.nativeOutcome),
+    };
     if (result.code === 0) {
       onStarted({
         label,
@@ -1820,7 +1882,7 @@ export async function startWithPortRetry({
         observedBytes: result.observedBytes ?? 0,
         outputTruncated: result.outputTruncated === true,
       });
-      return { serverPort, uiPort };
+      return { serverPort, uiPort, attempts };
     }
 
     let output = result.output;
@@ -1855,6 +1917,7 @@ export async function startWithPortRetry({
       if (descriptor !== undefined) closeSync(descriptor);
     }
     const failureKind = classifyStartFailure(output, serverPort);
+    record.retryKind = failureKind;
     if (failureKind === 'fatal') {
       throw new Error(
         `./station start failed for ${label} (exit ${result.code}) — not a port collision; aborting.` +
@@ -1872,7 +1935,19 @@ export async function startWithPortRetry({
     );
     // A partial start may have detached the daemon already. A failed stop is
     // not best effort: continuing would reuse contested ports and outputs.
-    await stopInstance();
+    record.recoveryStop = { state: 'pending', nativeOutcome: null };
+    const retainStopOutcome = (outcome) => {
+      record.recoveryStop.nativeOutcome = nativeCommandOutcome(outcome);
+    };
+    try {
+      const outcome = await stopInstance(retainStopOutcome);
+      if (record.recoveryStop.nativeOutcome === null)
+        retainStopOutcome(outcome);
+      record.recoveryStop.state = 'returned';
+    } catch (error) {
+      record.recoveryStop.state = 'threw';
+      throw error;
+    }
   }
   throw new Error(
     `./station start for ${label} did not survive ${maxAttempts} port-block attempts; ` +
@@ -2438,11 +2513,14 @@ async function main() {
   const lifecycleJournal = join(testResultsRoot, 'lifecycle.ndjson');
   let lifecycleStart = null;
   let lifecycleStop = null;
-  const stopWithEvidence = () => {
+  const lifecycleAttempts = [];
+  const stopWithEvidence = async (onOutcome) => {
     lifecycleStop = null;
-    return stopE2EInstance(instance, (outcome) => {
-      lifecycleStop = outcome;
+    await stopE2EInstance(instance, (outcome) => {
+      lifecycleStop = nativeCommandOutcome(outcome);
+      onOutcome?.(lifecycleStop);
     });
+    return lifecycleStop;
   };
   // Fixture writers and external-session readers share isolated history roots.
   // The live server can retain CLI authentication without importing host history.
@@ -2473,6 +2551,7 @@ async function main() {
       logPath: serverLog,
       preferredPorts,
       maxAttempts: MAX_START_ATTEMPTS,
+      attempts: lifecycleAttempts,
       pickServerPort: (bias) => findPreferredPortBlock(bias, 3),
       pickUiPort: (bias, chosenServerPort) =>
         findPreferredPortOutside(bias, chosenServerPort, 3),
@@ -2571,6 +2650,12 @@ async function main() {
               },
             },
           );
+          const activeAttempt = lifecycleAttempts.at(-1);
+          if (activeAttempt) {
+            activeAttempt.start.nativeOutcome = nativeCommandOutcome(
+              result.nativeOutcome,
+            );
+          }
           lifecycleStart = { ...lease?.start, outcome: result.nativeOutcome };
           if (groupSamplingFailure) throw groupSamplingFailure;
           if (result.code !== 0) return result;
@@ -2629,6 +2714,7 @@ async function main() {
       lifecycleStart,
       lifecycleStop,
       cleanup,
+      lifecycleAttempts,
     );
     if (cleanup.errors.length) {
       throw new Error(
@@ -2826,6 +2912,7 @@ async function main() {
           lifecycleStart,
           lifecycleStop,
           cleanup,
+          lifecycleAttempts,
         );
         if (runFailure) {
           if (existsSync(serverLog))
