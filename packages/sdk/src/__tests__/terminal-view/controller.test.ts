@@ -380,6 +380,18 @@ describe('TerminalController', () => {
     expect(session.resize).not.toHaveBeenCalled();
     controller.dispose();
   });
+
+  // The symbols face loads once per page; its load can settle after the view
+  // that awaited it was disposed.
+  it('lays the grid out again for a font refresh, but not once disposed', async () => {
+    const { controller, renderer } = await startController();
+    const laidOut = renderer.sizes.length;
+    controller.refreshFont();
+    expect(renderer.sizes).toHaveLength(laidOut + 1);
+    controller.dispose();
+    controller.refreshFont();
+    expect(renderer.sizes).toHaveLength(laidOut + 1);
+  });
 });
 
 /**

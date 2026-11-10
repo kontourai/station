@@ -203,24 +203,37 @@ function Scrollbar({
       aria-controls={controls}
       tabIndex={-1}
       onPointerDown={(event) => {
+        // A touch or pen contact reports button 0, like the primary button.
+        const terminal = controller;
+        if (!terminal || event.button !== 0) return;
         const target = event.currentTarget;
-        const rect = target.getBoundingClientRect();
-        const jump = (clientY: number) =>
-          controller?.scrollTo(
+        const jump = (clientY: number) => {
+          // Read at each move: output arriving mid-drag changes the total.
+          const rect = target.getBoundingClientRect();
+          const live = terminal.getSnapshot().scrollbar;
+          terminal.scrollTo(
             Math.round(
-              ((clientY - rect.top) / rect.height) * scrollbar.total -
-                scrollbar.length / 2,
+              ((clientY - rect.top) / rect.height) * live.total -
+                live.length / 2,
             ),
           );
+        };
         jump(event.clientY);
         target.setPointerCapture(event.pointerId);
-        const move = (e: PointerEvent) => jump(e.clientY);
-        target.addEventListener('pointermove', move);
-        target.addEventListener(
+        // One abort signal per drag. A drag also ends when the browser
+        // cancels it or takes the capture away; left attached, `pointermove`
+        // scrolls the terminal whenever the pointer crosses the track.
+        const gesture = new AbortController();
+        const { signal } = gesture;
+        target.addEventListener('pointermove', (e) => jump(e.clientY), {
+          signal,
+        });
+        for (const ended of [
           'pointerup',
-          () => target.removeEventListener('pointermove', move),
-          { once: true },
-        );
+          'pointercancel',
+          'lostpointercapture',
+        ] as const)
+          target.addEventListener(ended, () => gesture.abort(), { signal });
       }}
     >
       <div
@@ -519,7 +532,9 @@ export function TerminalView({
       },
     );
     setController(next);
-    void loadSymbolsFont().then(() => next.setFont({ ...font }));
+    // The view's font may have changed while the face was downloading, and
+    // this controller may be gone; it re-measures with what it holds now.
+    void loadSymbolsFont().then(() => next.refreshFont());
     void next.start();
     return () => {
       next.dispose();
