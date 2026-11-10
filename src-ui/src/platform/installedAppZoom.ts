@@ -14,6 +14,8 @@
  * - and a cancelled `gesturestart` for older iOS Safari standalone apps.
  */
 
+import './installedAppZoom.css';
+
 const LOCKED_CLASS = 'is-zoom-locked';
 const LOCK_PARTS = ['maximum-scale=1', 'user-scalable=no'] as const;
 
