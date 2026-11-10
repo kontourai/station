@@ -1219,6 +1219,14 @@ export interface OrchestrationSessionSummary extends ProviderSession {
     latest: ClientOrigin;
     hasOtherOrigins: boolean;
   };
+  /**
+   * `'provider'` when this session's most recent `turn.started` is a turn the
+   * engine opened on its own (`isProviderTriggeredTurn`): a reply to
+   * background work, not to a send. Absent for any other latest turn. An
+   * inbox reads it so an engine-opened turn does not bring back a
+   * conversation the person dismissed.
+   */
+  latestTurnTrigger?: 'provider';
   lastEventAt?: string;
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Current terminal runtime error text when the event fold can prove one. */

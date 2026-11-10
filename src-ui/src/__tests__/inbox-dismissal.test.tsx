@@ -210,6 +210,70 @@ describe('inbox dismissal through the rendered panel', () => {
     ).toBeTruthy();
   });
 
+  it('stays dismissed through a turn the engine opened on its own, until it fails', async () => {
+    const ready: HomeWorkItem = { ...thread, lifecycleLabel: 'Ready' };
+    const row = () =>
+      screen.queryByRole('button', { name: 'Review the inbox, Station' });
+    const view = render(<Harness items={[ready]} />);
+    dismiss();
+    expect(row()).toBeNull();
+    // Background work finished and the engine answered it: running, then done.
+    view.rerender(
+      <Harness
+        items={[
+          {
+            ...ready,
+            lifecycleLabel: 'Running',
+            engineOpenedTurn: true,
+            updatedAt: NOW + 1000,
+          },
+        ]}
+      />,
+    );
+    expect(row()).toBeNull();
+    view.rerender(
+      <Harness
+        items={[
+          {
+            ...ready,
+            lifecycleLabel: 'Ready',
+            engineOpenedTurn: true,
+            updatedAt: NOW + 2000,
+          },
+        ]}
+      />,
+    );
+    expect(row()).toBeNull();
+    // An engine-opened turn that fails still needs the person.
+    view.rerender(
+      <Harness
+        items={[
+          {
+            ...ready,
+            lifecycleLabel: 'Failed',
+            engineOpenedTurn: true,
+            updatedAt: NOW + 3000,
+          },
+        ]}
+      />,
+    );
+    await waitFor(() => expect(row()).toBeTruthy(), { timeout: 3000 });
+  });
+
+  it('a turn the person sent still brings a dismissed conversation back', async () => {
+    const ready: HomeWorkItem = { ...thread, lifecycleLabel: 'Ready' };
+    const view = render(<Harness items={[ready]} />);
+    dismiss();
+    view.rerender(<Harness items={[{ ...ready, updatedAt: NOW + 2000 }]} />);
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole('button', { name: 'Review the inbox, Station' }),
+        ).toBeTruthy(),
+      { timeout: 3000 },
+    );
+  });
+
   it('keeps Needs-you counts in step with dismissal and a new attention request', () => {
     const attention: HomeWorkItem = {
       ...thread,
