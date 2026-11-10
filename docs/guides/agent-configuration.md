@@ -357,6 +357,10 @@ Claude Code these always reach a person:
   (#2932);
 - a chained Bash command (`a && b`, a pipeline) when any part raises a
   safety check, and every PowerShell command (#2932);
+- a Bash command the engine flags with a command-analysis warning, such as
+  "A variable in this command can't be checked before it runs" or a `cd`
+  before a version-control command. A person's own "Allow all Bash commands
+  for this session" covers these; a pattern does not;
 - a sandbox network-host ask (each new host prompts), a call that disables
   the sandbox, a tool whose approval is the user's own interaction, and an
   MCP tool the organization requires approval for (#2932);
@@ -387,7 +391,8 @@ title); it isn't shown the session's working directories or why the engine
 asks. On Claude Code its allow answers a plain call without a prompt, unless an
 effective authored Ask rule requires approval, for the input it reviewed, and everything in the list above still reaches a person,
 including a read outside the working directories that the guardian allowed.
-Like a `Bash` pattern, a guardian allow answers a chained Bash command,
+Like a `Bash` pattern, a guardian allow answers a chained Bash command that
+carries no command-analysis warning,
 including the chained-command gaps described above: an ask rule or an
 outside-directory write hidden inside the chain does not prompt. On ACP engines its allow answers any call except a
 plan exit, a question, or a sandbox network-host ask. A guardian deny in

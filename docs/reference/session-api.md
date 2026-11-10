@@ -1094,8 +1094,10 @@ Bash call whose suggestions carry one or two `addRules` allow rules for Bash
 in prefix form (`npm ls *` or `npm ls:*`); an exact-command rule offers
 nothing. The adapter forwards only those rules, with `destination:
 'session'`, so the engine allows later matching commands itself, and Station
-mints no tool grant. A `rule` answer to a request that offered none is a
-one-call accept, never a wider grant. The inbox offers it as the
+mints no tool grant. A `rule` answer to a request that offered none, or to
+an engine that does not declare the scope (every engine but Claude), is a
+one-call accept, never a wider grant. A prefix containing `*` or `"` is
+not offered. The inbox offers it as the
 `acceptForSessionRule` action.
 
 A Claude Session also treats these as escalations that always prompt, even
@@ -1138,11 +1140,13 @@ to forward.
 - A chained Bash command (`subcommandResults`: `a && b`, `a; b`, a pipeline)
   whose request carries `classifier_approvable`, a `matchedAskRule`, a
   blocked path, a directory suggestion, a sandbox override or an ask flag.
-- An ask of type `other` on a tool other than Bash whose reason is not
-  exactly `This command requires approval`. A Bash ask of type `other` is a
-  plain call with any reason: the engine's Bash command-analysis warnings
-  ("A variable in this command can't be checked before it runs", …) say a
-  command-prefix rule cannot be checked, and a whole-tool grant checks none.
+- An ask of type `other` whose reason is not exactly `This command requires
+  approval`, and a chained Bash command with any reason text. One exception:
+  a person's own Bash session grant answers the engine's Bash
+  command-analysis warnings ("A variable in this command can't be checked
+  before it runs", …), which say a command-prefix rule cannot be checked; a
+  whole-tool grant checks none. `autoApprove` and the guardian still prompt
+  for them.
 - An ask whose request Station could not read. This fails closed: a changed
   or missing request costs a prompt, never a grant.
 

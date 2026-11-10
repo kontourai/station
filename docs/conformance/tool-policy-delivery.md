@@ -48,8 +48,10 @@ allow answers it only where `toolRequestIsPlainCall` holds and no effective
 authored Ask requires approval, and it is used
 once. A different input, which another `PreToolUse` hook's `updatedInput` can
 produce, consumes the allow without using it, and the request prompts. A
-chained Bash command is a plain call, so a guardian allow answers it,
-including what the chained-command gaps below leave invisible. When an allow
+chained Bash command with no reason text is a plain call, so a guardian
+allow answers it, including what the chained-command gaps below leave
+invisible. A Bash command-analysis warning is not a plain call here: it
+reaches a person, as it does under `autoApprove`. When an allow
 is not applied the adapter logs that and why. An escalation, a plan exit or a question reaches a person, and a
 call the engine allows itself never consults the allow. The guardian is asked
 once per call. At most 256 unanswered allows are kept per session; beyond
@@ -615,10 +617,12 @@ What this costs, and what it still does not cover:
 - **Every PowerShell ask prompts.** See the type bullet above: a PowerShell
   grant or pattern answers nothing. The list of PowerShell security warnings
   there was read in the engine's code, not captured.
-- **Bash `other` reasons are not read.** A Bash ask of type `other` is a
-  plain call whatever its text, so a safety check the engine sent as `other`
-  with no `classifier_approvable` would be answered too. In 2.1.278 a safety
-  check arrives as `safetyCheck` or carries `classifier_approvable`.
+- **A person's Bash session grant does not read Bash `other` reasons.**
+  Under that grant a Bash ask of type `other` is a plain call whatever its
+  text, so a safety check the engine sent as `other` with no
+  `classifier_approvable` would be answered too. `autoApprove` and the
+  guardian still read the text and prompt. In 2.1.278 a safety check
+  arrives as `safetyCheck` or carries `classifier_approvable`.
 - **A different frame shape costs prompts, with one exception.** A request
   Station cannot parse is not recorded, so all Claude asks would prompt and
   offer no tool grant. A session can run an installed `claude` newer than
