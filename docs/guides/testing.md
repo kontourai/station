@@ -2826,7 +2826,8 @@ profile is missing, empty or malformed. `notRequired` entries only record a
 deliberate exclusion and are not checked. Renaming a pinned test therefore
 fails the check; `scripts/__tests__/check-required-tests-ran.test.ts` also
 collects the real file, without running a test body, wherever the corpus
-runs it, and fails when a pinned id is no longer registered there.
+runs it, and fails unless the profile classifies exactly the tests the file
+registers, so a new leg or a deleted profile entry fails too.
 
 The `seatbelt-kernel` profile pins the kernel legs of
 `src-server/security/confinement/__tests__/seatbelt.process.test.ts`:

@@ -399,7 +399,7 @@ describe('statuses read from a real run of every skip form', () => {
 });
 
 describe('the pinned profile agrees with the real test file', () => {
-  test('every pinned id is collected from seatbelt.process.test.ts on this host', {
+  test('the profile classifies exactly the tests seatbelt.process.test.ts registers on this host', {
     timeout: 120_000,
   }, () => {
     // A filtered run collects every registered test, skipped or not, without
@@ -443,5 +443,34 @@ describe('the pinned profile agrees with the real test file', () => {
     );
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
+
+    // And the reverse: every test the file registers is classified, so a new
+    // leg, or an id deleted from the profile, fails here rather than leaving
+    // the profile silently smaller than the file.
+    type Entry = { test: string[] };
+    const profile: Record<
+      string,
+      {
+        mustPass: string[][];
+        mayRuntimeSkip: Entry[];
+        notRequired: Entry[];
+      }
+    > = JSON.parse(readFileSync(PROFILES, 'utf8'))['seatbelt-kernel'].files;
+    expect(Object.keys(profile)).toEqual([SEATBELT_FILE]);
+    const { mustPass, mayRuntimeSkip, notRequired } = profile[SEATBELT_FILE];
+    const classified = [
+      ...mustPass,
+      ...mayRuntimeSkip.map((entry) => entry.test),
+      ...notRequired.map((entry) => entry.test),
+    ].map((titles) => JSON.stringify(titles));
+    const registered = collected.testResults.flatMap((file) =>
+      file.assertionResults.map((entry) =>
+        JSON.stringify([...entry.ancestorTitles, entry.title]),
+      ),
+    );
+    expect(registered.filter((key) => !classified.includes(key))).toEqual([]);
+    expect(classified.filter((key) => !registered.includes(key))).toEqual([]);
+    // 48 + 2 + 1 today; pinned beside the derivation above.
+    expect(registered).toHaveLength(51);
   });
 });

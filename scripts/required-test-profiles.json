@@ -219,7 +219,7 @@
               "Seatbelt profile under the real kernel",
               "the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined"
             ],
-            "reason": "Guarded by test.skipIf(!claudeExecutable) and its title gains a host-dependent suffix when skipped, so it has no stable id. A hosted macOS runner has no Claude Code installed; this leg still runs only on a developer Mac with claude on PATH."
+            "reason": "Guarded by test.skipIf(!claudeExecutable): it needs Claude Code on PATH, which a hosted macOS runner does not have, so requiring it would fail every hosted run. It still runs on a developer Mac with claude on PATH."
           }
         ]
       }

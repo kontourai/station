@@ -8,7 +8,7 @@
  * profile does not apply: Linux, Windows, or a macOS without a working
  * `sandbox-exec`. On a macOS host that can apply it, it must run.
  *
- * The suite title is the same on every host so each test keeps one exact id:
+ * Titles are the same on every host so each test keeps one exact id:
  * `scripts/required-test-profiles.json` pins these ids, and
  * `scripts/check-required-tests-ran.mjs` fails a report in which they were
  * skipped or absent (#4772).
@@ -449,7 +449,8 @@ describe.skipIf(!probe.ok)(
     });
 
     test.skipIf(!claudeExecutable)(
-      `the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined${claudeExecutable ? '' : ' (SKIPPED: no claude on PATH)'}`,
+      // One title on every host, so a skipped run reports the same id (#4772).
+      'the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined',
       async () => {
         // A fake env credential: no request reaches a model, and the
         // operator's own login is never involved.
