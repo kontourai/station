@@ -732,7 +732,11 @@ async function runPlaybookMigrationReport(
  */
 function lifecycleSelector(args: string[]): StopOptions {
   const lifecycleArgs = parseLifecycleArgs(args);
-  const hasExplicitBase = args.some((arg) => arg.startsWith('--base='));
+  // `--home` and `--base` name the same directory (station#4299), so either
+  // one is "the home was named".
+  const hasExplicitBase = args.some(
+    (arg) => arg.startsWith('--base=') || arg.startsWith('--home='),
+  );
   const hasSelector =
     args.some((arg) => arg.startsWith('--instance=')) ||
     args.some((arg) => arg.startsWith('--port=')) ||
@@ -752,6 +756,24 @@ function lifecycleSelector(args: string[]): StopOptions {
     // keeps records in that home's Station root (#2675).
     stateHome: lifecycleArgs.baseDir,
   };
+}
+
+/**
+ * `station registry [url]` (and its `plugin registry` twin) takes one optional
+ * registry reference and no options. A first argument that starts with a dash
+ * is a flag this command does not have, never a reference to save: before
+ * this, `station registry --station=work` stored `--station=work` as the
+ * registry URL.
+ */
+async function showOrSaveRegistryFromArgs(
+  label: string,
+  reference: string | undefined,
+): Promise<void> {
+  if (reference?.startsWith('-')) {
+    failUnknownCommand(`${label} option ${reference}`);
+    return;
+  }
+  await registry(reference);
 }
 
 function buildProgram(
@@ -908,7 +930,7 @@ function buildProgram(
           );
           break;
         }
-        await registry(subArgs[0]);
+        await showOrSaveRegistryFromArgs('plugin registry', subArgs[0]);
         break;
       case 'init':
         init(subArgs[0]);
@@ -1120,6 +1142,7 @@ function buildProgram(
           : didYouMean(action, actionsFor('supervisor') ?? []),
         `Valid supervisor actions: ${(actionsFor('supervisor') ?? []).join(', ')}.`,
       );
+      return;
     }
     supervisorStatus({
       ...lifecycleSelector(rest),
@@ -1400,7 +1423,7 @@ function buildProgram(
       await installRegistryPlugin(registryId, parseCoreArgs(args.slice(2)));
       return;
     }
-    await registry(args[0]);
+    await showOrSaveRegistryFromArgs('registry', args[0]);
   });
 
   return program;

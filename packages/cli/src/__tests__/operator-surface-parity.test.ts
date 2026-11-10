@@ -228,10 +228,14 @@ describe('automation operator surface', () => {
     );
   });
 
-  it('refuses a non-numeric limit before any request', async () => {
-    await expect(
-      dispatch('automation', ['deliveries', '--limit=lots']),
-    ).rejects.toThrow('--limit must be a positive integer.');
+  it('refuses a non-numeric or zero limit before any request', async () => {
+    // `--limit=0` used to pass the check whose own message says "positive".
+    for (const limit of ['--limit=lots', '--limit=0', '--limit']) {
+      await expect(
+        dispatch('automation', ['deliveries', limit]),
+        limit,
+      ).rejects.toThrow('--limit must be a positive integer.');
+    }
     expect(requests).toEqual([]);
   });
 });

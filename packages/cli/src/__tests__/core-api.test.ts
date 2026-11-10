@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   configureApiCredential,
   parseCoreArgs,
+  parseWholeNumber,
+  parseWholeNumberFlag,
   resolveApiBase,
 } from '../commands/core-api.js';
 import { DEFAULT_SERVER_PORT } from '../commands/helpers.js';
@@ -199,5 +201,111 @@ describe('requestJson refusals (#1796)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('requestText failures', () => {
+  it('keeps the HTTP status and the envelope code on the thrown error', async () => {
+    const { requestText } = await import('../commands/core-api.js');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: false,
+              code: 'conversation-not-found',
+              error: 'Conversation not found',
+            }),
+            { status: 404, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    );
+    try {
+      await expect(
+        requestText('http://127.0.0.1:1', '/agents/a/conversations/c/export'),
+      ).rejects.toMatchObject({
+        message: 'Conversation not found',
+        status: 404,
+        code: 'conversation-not-found',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the status when the error body is not JSON', async () => {
+    const { requestText } = await import('../commands/core-api.js');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () => new Response('<html>Bad Gateway</html>', { status: 502 }),
+      ),
+    );
+    try {
+      const failure = await requestText('http://127.0.0.1:1', '/x').catch(
+        (error: unknown) => error,
+      );
+      expect(failure).toMatchObject({
+        message: 'Request failed with HTTP 502',
+        status: 502,
+      });
+      expect(failure).not.toHaveProperty('code');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('parseWholeNumberFlag', () => {
+  it('reads an absent flag as unset and a digit string as its number', () => {
+    expect(parseWholeNumberFlag(parseCoreArgs([]), 'limit')).toBeUndefined();
+    expect(parseWholeNumberFlag(parseCoreArgs(['--limit=0']), 'limit')).toBe(0);
+    expect(
+      parseWholeNumberFlag(parseCoreArgs(['--limit=25']), 'limit', {
+        min: 1,
+        max: 100,
+      }),
+    ).toBe(25);
+  });
+
+  it.each(['7abc', '30s', '1.5', '1e3', '-1', '+1', ' 1', ''])(
+    'refuses %j instead of truncating or coercing it',
+    (raw) => {
+      expect(() =>
+        parseWholeNumberFlag(parseCoreArgs([`--limit=${raw}`]), 'limit'),
+      ).toThrow(`--limit must be a whole number. Got: ${raw}`);
+    },
+  );
+
+  it('names the accepted range, and enforces both ends of it', () => {
+    const read = (value: string, bounds: { min?: number; max?: number }) =>
+      parseWholeNumberFlag(parseCoreArgs([`--n=${value}`]), 'n', bounds);
+
+    expect(() => read('0', { min: 1 })).toThrow(
+      '--n must be a positive integer. Got: 0',
+    );
+    expect(() => read('4', { min: 5 })).toThrow(
+      '--n must be a whole number of at least 5. Got: 4',
+    );
+    expect(() => read('101', { min: 1, max: 100 })).toThrow(
+      '--n must be a whole number from 1 to 100. Got: 101',
+    );
+    expect(read('100', { min: 1, max: 100 })).toBe(100);
+  });
+
+  it('refuses a bare flag, which is what the space-separated form parses to', () => {
+    expect(() =>
+      parseWholeNumberFlag(parseCoreArgs(['--limit', '5']), 'limit', {
+        min: 1,
+      }),
+    ).toThrow('--limit must be a positive integer. Pass it as --limit=<n>.');
+  });
+
+  it('labels a positional by the name the caller gives it', () => {
+    expect(parseWholeNumber('12', 'count')).toBe(12);
+    expect(() => parseWholeNumber('abc', 'count')).toThrow(
+      'count must be a whole number. Got: abc',
+    );
   });
 });

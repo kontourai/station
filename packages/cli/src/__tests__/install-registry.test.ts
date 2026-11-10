@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs';
@@ -104,6 +105,84 @@ describe('install-registry helpers', () => {
         readFileSync(join(home, 'config', 'app.json'), 'utf-8'),
       ).registryUrl;
       expect(migratedUrl).toBe(legacyUrl);
+      log.mockRestore();
+    });
+
+    test('`station registry <url>` keeps the other settings and writes the bytes `station config set --offline` writes', async () => {
+      const { home } = createRegistryHome();
+      const appJson = join(home, 'config', 'app.json');
+      writeFileSync(appJson, JSON.stringify({ logLevel: 'debug' }));
+      process.env.STATION_HOME = home;
+      const { showOrSaveRegistry } = await import(
+        '../commands/install-registry.js'
+      );
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await showOrSaveRegistry('acme/registry');
+
+      // Two-space indent, no trailing newline: what the server's own writer
+      // and `config set --offline` produce for this file.
+      expect(readFileSync(appJson, 'utf-8')).toBe(
+        JSON.stringify(
+          { logLevel: 'debug', registryUrl: 'acme/registry' },
+          null,
+          2,
+        ),
+      );
+      expect(readdirSync(join(home, 'config'))).toEqual(['app.json']);
+      log.mockRestore();
+    });
+
+    test.each<[label: string, content: string, message: RegExp]>([
+      ['is not valid JSON', '{ "logLevel": "debug", ', /is not valid JSON/],
+      ['is JSON null', 'null', /must contain a JSON object/],
+      ['is a JSON array', '[]', /must contain a JSON object/],
+    ])(
+      '`station registry <url>` refuses, and leaves untouched, an app.json that %s',
+      async (_label, content, message) => {
+        const { home } = createRegistryHome();
+        const appJson = join(home, 'config', 'app.json');
+        writeFileSync(appJson, content);
+        process.env.STATION_HOME = home;
+        const { showOrSaveRegistry } = await import(
+          '../commands/install-registry.js'
+        );
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+        // It used to replace the whole file with `{ registryUrl }`, discarding
+        // every other setting behind a hand-edit typo.
+        await expect(showOrSaveRegistry('acme/registry')).rejects.toThrow(
+          message,
+        );
+
+        expect(readFileSync(appJson, 'utf-8')).toBe(content);
+        expect(log).not.toHaveBeenCalledWith(
+          expect.stringContaining('Registry URL saved'),
+        );
+        log.mockRestore();
+      },
+    );
+
+    test('listing with a legacy value does not overwrite an app.json it cannot parse', async () => {
+      const { root, home } = createRegistryHome();
+      writeLocalRegistry(home, root); // writes legacy `config.json`
+      const appJson = join(home, 'config', 'app.json');
+      const corrupt = '{ "logLevel": "debug", ';
+      writeFileSync(appJson, corrupt);
+      process.env.STATION_HOME = home;
+      const { showOrSaveRegistry } = await import(
+        '../commands/install-registry.js'
+      );
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      // The legacy value still resolves the listing; only its forward-copy
+      // into the unreadable file is skipped.
+      await showOrSaveRegistry();
+
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining('Fetching registry from'),
+      );
+      expect(readFileSync(appJson, 'utf-8')).toBe(corrupt);
       log.mockRestore();
     });
 
