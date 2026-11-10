@@ -129,7 +129,8 @@ export function useConversationInbox(
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
     refetchInterval: (current) =>
-      isFinalInboxError(current.state.error)
+      current.state.error instanceof StationHttpError &&
+      [401, 403, 404].includes(current.state.error.status)
         ? false
         : active || visibleInboxEntries(current.state.data).length > 0
           ? constrainedNetwork
