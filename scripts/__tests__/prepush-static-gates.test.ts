@@ -64,7 +64,7 @@ describe('static gate input detection', () => {
       // Only the named files are inputs, not their siblings.
       'src-desktop/package.json',
       'package.json.bak',
-      'src-ui/biome.json',
+      'docs/biome.json',
       'docs/uix/responsive-surfaces.json',
     ]) {
       expect(isStaticGateInput(path), path).toBe(false);
