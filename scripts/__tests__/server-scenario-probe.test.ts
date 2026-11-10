@@ -38,15 +38,59 @@ process.on('message', (message) => {
     actions.set(message.id, message.action);
 });
 const send = process.send.bind(process);
+let pendingFixtureSends = 0;
+let shutdownRequested = false;
+let disconnectStarted = false;
+
+function finishShutdown() {
+  if (!shutdownRequested || pendingFixtureSends !== 0 || disconnectStarted) return;
+  disconnectStarted = true;
+  process.disconnect();
+}
+
+function sendFixture(message) {
+  pendingFixtureSends += 1;
+  const complete = (error) => {
+    if (error) {
+      process.exitCode = 1;
+      console.error('fixture IPC send failed:', message.type, error.stack);
+    }
+    pendingFixtureSends -= 1;
+    finishShutdown();
+  };
+  try {
+    return send(message, complete);
+  } catch (error) {
+    complete(error);
+  }
+}
+
+process.on('message', (message) => {
+  if (message?.type === 'fixture-shutdown') {
+    shutdownRequested = true;
+    finishShutdown();
+  }
+});
+
+process.once('disconnect', () => {
+  if (!disconnectStarted || pendingFixtureSends !== 0) {
+    process.exitCode = 1;
+    console.error('fixture IPC disconnected before send settlement');
+  }
+});
+
 process.send = function (message, ...args) {
+  if (typeof message?.type === 'string' &&
+      message.type.startsWith('fixture-'))
+    return sendFixture(message);
   const reset = message?.type === 'server-scenario-probe' &&
     actions.get(message.id) === 'reset';
   const count = reset ? histogram.count : undefined;
   const result = send(message, ...args);
-  if (reset) send({ type: 'fixture-reset-observation', id: message.id, count });
+  if (reset) sendFixture({ type: 'fixture-reset-observation', id: message.id, count });
   if (message?.type === 'server-scenario-probe' && process.argv[3] === 'protocol') {
     repliedIds.push(message.id);
-    send({
+    sendFixture({
       type: 'fixture-probe-reply-boundary', id: message.id,
       repliedIds: [...repliedIds], nativeCount: histogram.count,
     });
@@ -73,7 +117,7 @@ process.on('message', (message) => {
     actionMs: performance.now() - started,
   });
 });
-process.once('disconnect', () => process.exit(0));
+process.once('disconnect', () => process.exit(process.exitCode ?? 0));
 process.send({ type: 'fixture-ready' });
 `;
 
@@ -141,7 +185,10 @@ try {
     const invalid = JSON.parse(input);
     const request = { type: 'server-scenario-probe', id: 10, action: 'sample' };
     if (Object.hasOwn(invalid, 'value')) request.remainingBudgetMs = invalid.value;
-    receipt.reply = await response('server-scenario-probe', 10, () => child.send(request));
+    const reply = response('server-scenario-probe', 10);
+    const boundary = response('fixture-probe-reply-boundary', 10);
+    child.send(request);
+    [receipt.reply, receipt.boundary] = await Promise.all([reply, boundary]);
   } else if (mode === 'overlap' || mode === 'cancel-other') {
     const first = response('server-scenario-probe', 10);
     const overlapping = response('server-scenario-probe', 11);
@@ -198,9 +245,15 @@ try {
 } finally {
   let timer;
   try {
-    if (child.connected) child.disconnect();
+    const shutdownSent = new Promise((resolve, reject) => {
+      if (!child.connected)
+        return reject(Error('fixture disconnected before shutdown'));
+      child.send({ type: 'fixture-shutdown' }, (error) => {
+        error ? reject(error) : resolve();
+      });
+    });
     const [result] = await Promise.race([
-      Promise.all([exited, disconnected]),
+      Promise.all([exited, disconnected, shutdownSent]),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(Error('fixture child exit/disconnect timed out: ' +
           JSON.stringify({ ...lifecycle, connected: child.connected,
