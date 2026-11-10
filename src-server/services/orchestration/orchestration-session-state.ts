@@ -49,6 +49,8 @@ import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-ev
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
@@ -659,6 +661,7 @@ export function buildOrchestrationSessionSummary(options: {
     ) ??
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
+  const latestTurnTrigger = extractLatestTurnTrigger(events);
   const lastRuntimeError = findTerminalFailureEvent(events);
   const controlMode = base.controlMode ?? 'station-owned';
   const { draft, firstSendOutcome } = deriveSessionDraft({
@@ -745,6 +748,7 @@ export function buildOrchestrationSessionSummary(options: {
     isPersisted: Boolean(options.persisted),
     eventCount: options.eventCount ?? options.events?.length ?? 0,
     ...(turnOrigin ? { turnOrigin } : {}),
+    ...(latestTurnTrigger ? { latestTurnTrigger } : {}),
     ...lifecycleWithoutProjectSlug,
     ...(assignedAgentSlug
       ? { assignedAgentSlug: agentId(assignedAgentSlug) }
@@ -852,6 +856,22 @@ export function clientOriginIdentity(origin: ClientOrigin): string {
       ? `device:${origin.actor.deviceId}`
       : origin.actor.kind;
   return JSON.stringify([actor, origin.reported.surface]);
+}
+
+/**
+ * `'provider'` when the newest `turn.started` is a turn the engine opened on
+ * its own (a reply to background work no one sent), read through the one
+ * shared derivation. Absent for any other latest turn, or none.
+ */
+function extractLatestTurnTrigger(
+  events: CanonicalRuntimeEvent[],
+): OrchestrationSessionSummary['latestTurnTrigger'] {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.method !== 'turn.started') continue;
+    return isProviderTriggeredTurn(event) ? PROVIDER_TURN_TRIGGER : undefined;
+  }
+  return undefined;
 }
 
 function extractTurnOrigin(

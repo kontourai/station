@@ -720,6 +720,8 @@ or search the inbox, find matching **Dismissed** results, and choose
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
+A turn the engine opens on its own, such as its reply when background work
+finishes, does not bring it back unless that turn fails, stops or needs you.
 Hidden **Third-party** sessions stay hidden through external updates until you
 restore them or bring them into Station.
 
