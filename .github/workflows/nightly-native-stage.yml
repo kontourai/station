@@ -541,7 +541,7 @@ jobs:
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-pc-windows-msvc }
-      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { workspaces: src-desktop, key: windows-nightly-x64 }
       - run: npm run dependencies:ci
       - name: Build the exact reserved Windows version
@@ -597,6 +597,7 @@ jobs:
     name: Assemble one desktop manifest
     needs: [plan-cohort, stage-macos, stage-windows]
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     environment: native-release
     permissions: { contents: read, id-token: write, attestations: write }
     steps:

@@ -195,7 +195,7 @@ describe('a saved engine that never connected', () => {
       }),
     );
     fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
+      within(screen.getByRole('alertdialog')).getByRole('button', {
         name: 'Remove',
       }),
     );

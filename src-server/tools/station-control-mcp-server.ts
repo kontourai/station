@@ -105,6 +105,38 @@ function withToolSideRefusal<
   return guarded as Callback;
 }
 
+/**
+ * `inputSchema` as `tools/list` carries it: without the `$schema` dialect URL
+ * the SDK stamps on every converted schema. A tool schema that names no
+ * dialect is read as JSON Schema 2020-12, the dialect that URL names, so it
+ * told no engine anything while costing about 58 bytes a tool in every
+ * session's context (`agent-context-budget.json`). Validation is unchanged:
+ * calls are still checked by the wrapped schema itself.
+ */
+function listedWithoutDialect<Schema extends StandardSchemaWithJSON>(
+  schema: Schema,
+): Schema {
+  const standard = schema['~standard'];
+  type Convert = typeof standard.jsonSchema.input;
+  const strip =
+    (convert: Convert): Convert =>
+    (options) => {
+      const { $schema: _dialect, ...listed } = convert(options);
+      return listed;
+    };
+  const listed = {
+    ...standard,
+    jsonSchema: {
+      input: strip(standard.jsonSchema.input),
+      output: strip(standard.jsonSchema.output),
+    },
+  };
+  return new Proxy(schema, {
+    get: (target, key, receiver) =>
+      key === '~standard' ? listed : Reflect.get(target, key, receiver),
+  });
+}
+
 function stationControlToolMetadata(name: string) {
   const groups: [string, RegExp][] = [
     ['Knowledge', /knowledge/],
@@ -205,7 +237,7 @@ export class StationControlToolRegistry {
       {
         description:
           'List available Station tool families. Load a family to discover its tools.',
-        inputSchema: z.object({}),
+        inputSchema: listedWithoutDialect(z.object({})),
         annotations: { readOnlyHint: true },
       },
       async () => {
@@ -229,7 +261,9 @@ export class StationControlToolRegistry {
       {
         description:
           'Load one Station tool family. Visibility never grants permission to call its tools.',
-        inputSchema: z.object({ family: z.string().min(1).max(80) }),
+        inputSchema: listedWithoutDialect(
+          z.object({ family: z.string().min(1).max(80) }),
+        ),
         annotations: { readOnlyHint: true },
       },
       async ({ family }) => {
@@ -290,7 +324,7 @@ export class StationControlToolRegistry {
             ...(options ? { 'ai.kontour/durable-replay': options.replay } : {}),
           },
           description,
-          inputSchema: z.object(shape),
+          inputSchema: listedWithoutDialect(z.object(shape)),
         },
         withToolSideRefusal(name, callback),
       ),
@@ -309,7 +343,11 @@ export class StationControlToolRegistry {
       name,
       this.server.registerTool(
         name,
-        { ...stationControlToolMetadata(name), description, inputSchema },
+        {
+          ...stationControlToolMetadata(name),
+          description,
+          inputSchema: listedWithoutDialect(inputSchema),
+        },
         withToolSideRefusal(name, callback),
       ),
     );
@@ -352,7 +390,7 @@ export class StationControlToolRegistry {
         name,
         {
           description,
-          inputSchema,
+          inputSchema: listedWithoutDialect(inputSchema),
           ...metadata,
           ...config,
           _meta: { ...metadata._meta, ...config._meta },

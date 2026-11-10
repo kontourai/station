@@ -143,13 +143,14 @@ export function ConversationHistory({
               className="conversation-history__clear-btn"
               onClick={() => menu.setShowClearAllConfirm(true)}
             >
-              Clear All
+              Clear all
             </button>
           )}
           <button
             type="button"
             className="conversation-history__close-btn"
             onClick={onClose}
+            aria-label="Close history"
           >
             ×
           </button>
@@ -257,7 +258,7 @@ export function ConversationHistory({
 
       <ConfirmModal
         isOpen={confirmConversationDelete && !!menu.deleteConfirm}
-        title="Delete Conversation"
+        title="Delete conversation"
         message={`Delete "${menu.deleteConfirm?.conv.title || 'this conversation'}"? This cannot be undone.`}
         confirmLabel="Delete"
         cancelLabel="Cancel"
@@ -278,9 +279,9 @@ export function ConversationHistory({
 
       <ConfirmModal
         isOpen={menu.showClearAllConfirm}
-        title="Clear All Conversations"
+        title="Clear all conversations"
         message={`Delete all ${mutableConversations.length} editable conversations? History kept by an external engine stays available.`}
-        confirmLabel="Clear All"
+        confirmLabel="Clear all"
         cancelLabel="Cancel"
         variant="danger"
         onConfirm={() => menu.clearAll(mutableConversations)}

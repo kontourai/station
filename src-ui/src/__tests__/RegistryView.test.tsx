@@ -1013,7 +1013,7 @@ describe('RegistryView', () => {
     expect(
       (
         within(screen.getByTestId('registry-detail')).getByRole('button', {
-          name: 'Checking installed status...',
+          name: 'Checking installed status…',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -1166,7 +1166,7 @@ describe('RegistryView', () => {
     expect(
       (
         within(screen.getByTestId('registry-detail')).getByRole('button', {
-          name: 'Checking installed status...',
+          name: 'Checking installed status…',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);

@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 
 /**
  * #3800: the `.codex` directories a session not started as `host` would load
@@ -147,11 +148,6 @@ function ancestors(path: string): string[] {
   return chain;
 }
 
-function within(root: string, path: string): boolean {
-  const rel = relative(root, path);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-}
-
 async function findOnPath(
   cwd: string,
   root: string | undefined,
@@ -160,7 +156,7 @@ async function findOnPath(
   gitTimeoutMs: number | undefined,
 ): Promise<string | undefined> {
   const chain = ancestors(cwd);
-  const bounded = root !== undefined && within(root, cwd);
+  const bounded = root !== undefined && isCanonicalPathWithin(root, cwd);
   // The trusted repository: the innermost one containing the authorized
   // root, as this path spells it, and only if it is the one the canonical
   // root has. Without a server root, none: every `.codex` is refused.
@@ -186,7 +182,7 @@ async function findOnPath(
     if (
       bounded &&
       dir !== root &&
-      within(root, dir) &&
+      isCanonicalPathWithin(root, dir) &&
       exists(join(dir, '.git'))
     )
       workTree =

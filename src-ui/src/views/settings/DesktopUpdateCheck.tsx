@@ -21,6 +21,7 @@ import {
 } from '../../platform/native/desktopUpdate';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { formatBytes } from '../../utils/formatBytes';
+import { formatDateTime } from '../../utils/relativeTime';
 import { TechnicalDetails } from './coreUpdatePresentation';
 import '../../components/desktop-update/DesktopUpdate.css';
 
@@ -29,10 +30,6 @@ const POLICY_LABELS: Record<DesktopUpdateDownloadPolicy, string> = {
   'after-24h': 'After 24 hours',
   immediately: 'Immediately',
 };
-
-function formatTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleString();
-}
 
 function StatusLine({ state }: { state: DesktopUpdateState }) {
   const { phase } = state;
@@ -53,7 +50,7 @@ function StatusLine({ state }: { state: DesktopUpdateState }) {
             ? 'It downloads when you choose.'
             : state.autoDownloadAt <= Date.now()
               ? 'It downloads automatically at the next check.'
-              : `It downloads automatically after ${formatTime(state.autoDownloadAt)}.`}
+              : `It downloads automatically after ${formatDateTime(state.autoDownloadAt)}.`}
         </p>
       );
     case 'downloading': {

@@ -1,4 +1,5 @@
 import type { StationRoute } from '@kontourai/station-contracts/station-routes';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   createDirectHttpAccessMethod,
   createHostTunnelAccessMethod,
@@ -41,10 +42,6 @@ const AUTHORITY_KEY_PREFIX = '-credential-authority:';
  */
 const RETIRED_GENERATION_KEY_PREFIX = '-retired-generation:';
 const RETIRED_AUTHORITY_KEY_PREFIX = '-retired-credential-authority:';
-
-function uuid(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
 
 /**
  * The slice of the Web Locks API this store uses, named structurally so the
@@ -99,7 +96,7 @@ export class ConnectionStore {
    * the invalidation the pairing just made.
    */
   private counterView = new Map<string, number>();
-  private readonly leaseInstance = uuid();
+  private readonly leaseInstance = randomCorrelationId();
   private leaseSequence = 0;
   private readonly profileLeases = new Map<
     string,
@@ -313,7 +310,7 @@ export class ConnectionStore {
     return normalizeConnectionProfile(
       connection,
       this.endpointFor(rawUrl),
-      connection.id ?? uuid(),
+      connection.id ?? randomCorrelationId(),
     );
   }
 
@@ -637,7 +634,7 @@ export class ConnectionStore {
       return existing;
     }
     const conn: SavedConnection = this.normalize({
-      id: uuid(),
+      id: randomCorrelationId(),
       name: name || url,
       url,
     });
@@ -674,7 +671,7 @@ export class ConnectionStore {
         );
       return existing;
     }
-    const id = uuid();
+    const id = randomCorrelationId();
     const connection = this.normalize({
       id,
       name: input.name.trim() || input.applicationOrigin,
@@ -723,7 +720,7 @@ export class ConnectionStore {
       );
       return selected;
     }
-    const id = uuid();
+    const id = randomCorrelationId();
     const method = createHostTunnelAccessMethod({
       id: `access:ssh:${id}`,
       hostAlias: input.hostAlias,

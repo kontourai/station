@@ -1413,7 +1413,7 @@ describe('CLI core commands over HTTP', () => {
       'Pending approval request: Approve the write? (id: req-open-1) on thread managed-approval-thread',
     );
     expect(stderrText).toContain(
-      "station approvals respond 'managed-approval-thread' 'req-open-1' <accept|acceptForSession|decline|cancel>",
+      'station approvals respond managed-approval-thread req-open-1 <accept|acceptForSession|decline|cancel>',
     );
   });
 
@@ -1774,7 +1774,48 @@ describe('CLI core commands over HTTP', () => {
         `--api-base=${apiBase}`,
       ]),
     ).rejects.toThrow('--conversation requires a non-empty value');
+    // `--project <slug>` parses as a bare flag plus a positional. It used to be
+    // dropped, sending "myproj hi" as the message with no project binding.
+    await expect(
+      runCli([
+        'chat',
+        'codex',
+        '--project',
+        'myproj',
+        'hi',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('--project requires a non-empty value');
     expect(orchestrationCommands).toEqual([]);
+  });
+
+  test('rejects space-separated selector flags instead of acting without them', async () => {
+    const { runCli } = await import('../cli.js');
+
+    // Dropping `--turn` interrupted the CURRENT turn rather than the named one.
+    await expect(
+      runCli([
+        'sessions',
+        'interrupt',
+        'codex',
+        'runtime-thread',
+        '--turn',
+        'turn-1',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('--turn requires a non-empty value');
+    expect(orchestrationCommands).not.toContainEqual(
+      expect.objectContaining({ type: 'interruptTurn' }),
+    );
+
+    // Dropping `--agent` or `--thread` listed every agent's approvals.
+    _consoleLog.mockClear();
+    for (const flag of ['--agent', '--thread']) {
+      await expect(
+        runCli(['approvals', 'list', flag, 'codex', `--api-base=${apiBase}`]),
+      ).rejects.toThrow(`${flag} requires a non-empty value`);
+    }
+    expect(_consoleLog).not.toHaveBeenCalled();
   });
 
   test('scopes shared ACP-provider sessions to their connection metadata', async () => {
@@ -1821,7 +1862,7 @@ describe('CLI core commands over HTTP', () => {
     ]);
 
     expect(stderrWrite).toHaveBeenCalledWith(
-      "Session: dogfood-thread\nResume: station chat 'custom-box' --session='dogfood-thread' <message>\n",
+      'Session: dogfood-thread\nResume: station chat custom-box --session=dogfood-thread <message>\n',
     );
   });
 
@@ -3194,7 +3235,7 @@ describe('CLI core commands over HTTP', () => {
       'Pending approval request: Approve the write? (id: req-open-1) on thread request-opened-thread',
     );
     expect(stderrText).toContain(
-      "station approvals respond 'request-opened-thread' 'req-open-1' <accept|acceptForSession|decline|cancel>",
+      'station approvals respond request-opened-thread req-open-1 <accept|acceptForSession|decline|cancel>',
     );
     expect(stderrText.match(/Pending approval request/g)?.length).toBe(1);
   });
@@ -3221,7 +3262,7 @@ describe('CLI core commands over HTTP', () => {
       requestType: 'approval',
       title: 'Approve the write?',
       respondCommand:
-        "station approvals respond 'request-opened-json-thread' 'req-open-1' <accept|acceptForSession|decline|cancel>",
+        'station approvals respond request-opened-json-thread req-open-1 <accept|acceptForSession|decline|cancel>',
     });
     expect(payload.lifecycleState).toBe('needs_input');
   });

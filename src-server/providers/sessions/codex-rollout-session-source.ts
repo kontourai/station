@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative, sep } from 'node:path';
@@ -24,6 +23,13 @@ import type {
   AttachedSessionSource,
   AttachedSessionSourceOutcome,
 } from './attached-session-source.js';
+import {
+  asRecord,
+  boundedInteger,
+  digest,
+  isPlainRecord,
+  text,
+} from './session-source-values.js';
 import {
   deriveConfigHomeAffinity,
   readLeadingLine,
@@ -1316,18 +1322,9 @@ function canonicalRegularFile(root: string, candidate: string): string | null {
   }
 }
 
-function isPlainRecord(value: Record<string, unknown>): boolean {
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
 function filesystemIdentity(path: string): string {
   const stat = lstatSync(path);
   return `${stat.dev}:${stat.ino}`;
-}
-
-function digest(parts: unknown[]): string {
-  return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
 
 function compareCandidates(
@@ -1369,10 +1366,6 @@ function tokenFigure(value: unknown): number | undefined {
     : undefined;
 }
 
-function text(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
 function boundedText(value: unknown): string | undefined {
   const valueText = text(value);
   return valueText && Buffer.byteLength(valueText) <= MAX_CURSOR_TEXT_BYTES
@@ -1387,19 +1380,6 @@ function boundedPathText(value: unknown): string | undefined {
     : undefined;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
 function isOffset(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
-}
-
-function boundedInteger(name: string, value: number, ceiling: number): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > ceiling) {
-    throw new RangeError(
-      `${name} must be an integer from 1 through ${ceiling}.`,
-    );
-  }
-  return value;
 }

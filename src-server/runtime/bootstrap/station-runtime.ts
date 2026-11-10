@@ -4083,7 +4083,7 @@ export class StationRuntime {
           .catch((error: unknown) => {
             clearTimeout(slow);
             this.logger?.warn?.('Server update readiness failed', {
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             });
           });
       }

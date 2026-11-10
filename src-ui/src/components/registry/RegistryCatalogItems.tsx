@@ -161,9 +161,9 @@ export function RegistryCatalogDetail({
               }}
             >
               {checkingInstalled
-                ? 'Checking installed status...'
+                ? 'Checking installed status…'
                 : pending
-                  ? 'Working...'
+                  ? 'Working…'
                   : 'Remove Plugin'}
             </Button>
           </>
@@ -182,9 +182,9 @@ export function RegistryCatalogDetail({
             {installRefusal
               ? 'Unavailable'
               : checkingInstalled
-                ? 'Checking installed status...'
+                ? 'Checking installed status…'
                 : pending
-                  ? 'Working...'
+                  ? 'Working…'
                   : getRegistryActionLabel(tab, installed, item)}
           </Button>
         )}

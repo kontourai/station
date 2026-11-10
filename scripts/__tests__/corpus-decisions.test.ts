@@ -7,7 +7,7 @@ import {
 } from '../corpus-decisions.mjs';
 import { FAST_BASE_ENV } from '../run-ci-fast.mjs';
 
-const CORPUS_PACKAGE = `--package=https://codeload.github.com/kontourai/corpus/tar.gz/${CORPUS_PIN}`;
+const CORPUS_PACKAGE = `--package=github:kontourai/corpus#${CORPUS_PIN}`;
 
 describe('Corpus decisions wrapper', () => {
   it('declares the registry with the numbered-ADR freeze in corpus.json', () => {

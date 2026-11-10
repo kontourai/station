@@ -307,7 +307,7 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    for the monitoring event stream specifically — the same class of
  *    noise as the header connection chip, just a second instance of it.
  *  - `.toast-card__time` (NotificationContainer.tsx): `formatTimestamp`'s
- *    relative "just now" — the one remaining live-clock-derived label this
+ *    relative "now" — the one remaining live-clock-derived label this
  *    gallery ever renders a toast for
  *    (`motion-reduced-notification`).
  *  - The Profile's completed rebuild timestamp. The unavailable-time
@@ -2570,6 +2570,12 @@ function taskCapabilityScreens(): Screen[] {
       let request: ReturnType<typeof createAuthenticatedE2ERequest>;
       let previousEnabled = false;
       let previewChanged = false;
+      let reviewPreviousEnabled = false;
+      let reviewChanged = false;
+      let releasePreview!: () => void;
+      let previewRequested!: Promise<void>;
+      let previewRoute: ((route: Route) => Promise<void>) | undefined;
+      let pageForCleanup: Page | undefined;
       let projectCreated = false;
       const screen: Screen = {
         name: `task-capabilities-${theme}-${viewport.width === DESKTOP.width ? 'desktop' : 'mobile'}`,
@@ -2577,6 +2583,7 @@ function taskCapabilityScreens(): Screen[] {
         path: '/',
         viewport,
         async beforeGoto(page) {
+          pageForCleanup = page;
           request = createAuthenticatedE2ERequest(page.request);
           const previews = await request.get(
             `${resolveE2EApiBase()}/api/feature-previews`,
@@ -2588,6 +2595,17 @@ function taskCapabilityScreens(): Screen[] {
           );
           expect(preview).toBeDefined();
           previousEnabled = preview.enabled;
+          const reviewPreview = catalog.data.find(
+            (entry: { id: string }) => entry.id === 'task-review',
+          );
+          expect(reviewPreview).toBeDefined();
+          reviewPreviousEnabled = reviewPreview.enabled;
+          const enabledReview = await request.put(
+            `${resolveE2EApiBase()}/api/feature-previews/task-review`,
+            { data: { enabled: true } },
+          );
+          expect(enabledReview.ok()).toBe(true);
+          reviewChanged = true;
           const enabled = await request.put(
             `${resolveE2EApiBase()}/api/feature-previews/task-capabilities`,
             { data: { enabled: true } },
@@ -2611,8 +2629,205 @@ function taskCapabilityScreens(): Screen[] {
           const created = await task.json();
           expect(created.data.id).toBeTruthy();
           screen.path = `/tasks/${encodeURIComponent(created.data.id)}?taskView=overview`;
+          let requested!: () => void;
+          previewRequested = new Promise<void>((resolveRequested) => {
+            requested = resolveRequested;
+          });
+          const release = new Promise<void>((resolveRelease) => {
+            releasePreview = resolveRelease;
+          });
+          previewRoute = async (route) => {
+            if (route.request().method() !== 'GET') return route.continue();
+            const response = await route.fetch();
+            requested();
+            await release;
+            await route.fulfill({ response });
+          };
+          await page.route('**/api/feature-previews', previewRoute);
         },
         async afterGoto(page) {
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
+          const testInfo = test.info();
+          const tabs = page.getByRole('tablist', { name: 'Task views' });
+          const overview = tabs.getByRole('tab', { name: 'Overview' });
+          const details = tabs.getByRole('tab', { name: 'Details' });
+          const visibleWithinStrip = async () => {
+            const strip = await tabs.boundingBox();
+            const tab = await details.boundingBox();
+            expect(strip).not.toBeNull();
+            expect(tab).not.toBeNull();
+            expect(tab!.x).toBeGreaterThanOrEqual(strip!.x);
+            expect(tab!.x + tab!.width).toBeLessThanOrEqual(
+              strip!.x + strip!.width,
+            );
+          };
+          await overview.focus();
+          const readingPosition = await page.evaluate(() => window.scrollY);
+          await page.keyboard.press('End');
+          await expect(details).toBeFocused();
+          await expect(details).toHaveAttribute('aria-selected', 'true');
+          await expect(page).toHaveURL(/taskView=details/);
+          await visibleWithinStrip();
+          const detailsPanel = page.getByRole('tabpanel', { name: 'Details' });
+          await detailsPanel.evaluate((panel) => {
+            panel.scrollTop = 100;
+          });
+          const panelScroll = await detailsPanel.evaluate(
+            (panel) => panel.scrollTop,
+          );
+          expect(panelScroll).toBeGreaterThan(0);
+          expect(await page.evaluate(() => window.scrollY)).toBe(
+            readingPosition,
+          );
+          if (viewport.width === MOBILE.width) {
+            for (const width of [390, 393]) {
+              await page.setViewportSize({ width, height: viewport.height });
+              await tabs.evaluate((strip) => {
+                strip.scrollLeft = 0;
+              });
+              writeFileSync(
+                join(
+                  GALLERY_DIR,
+                  GALLERY_DIAGNOSTICS,
+                  `task-tabs-${theme}-${width}-clipped-injected.png`,
+                ),
+                await page.screenshot({
+                  path: testInfo.outputPath(
+                    `task-tabs-${theme}-${width}-clipped-injected.png`,
+                  ),
+                }),
+              );
+              await page.keyboard.press('Shift+Tab');
+              await page.keyboard.press('Tab');
+              await expect(details).toBeFocused();
+              await expect(details).toHaveAttribute('aria-selected', 'true');
+              expect(
+                await detailsPanel.evaluate((panel) => panel.scrollTop),
+              ).toBe(panelScroll);
+              await visibleWithinStrip();
+              const outline = await details.evaluate(
+                (button) => getComputedStyle(button).outlineWidth,
+              );
+              expect(Number.parseFloat(outline)).toBeGreaterThan(0);
+              expect(await page.evaluate(() => window.scrollY)).toBe(
+                readingPosition,
+              );
+              writeFileSync(
+                join(
+                  GALLERY_DIR,
+                  GALLERY_DIAGNOSTICS,
+                  `task-tabs-${theme}-${width}-focus-revealed.png`,
+                ),
+                await page.screenshot({
+                  path: testInfo.outputPath(
+                    `task-tabs-${theme}-${width}-focus-revealed.png`,
+                  ),
+                }),
+              );
+            }
+            const cdp = await page.context().newCDPSession(page);
+            let touchFailure: unknown;
+            try {
+              await cdp.send('Emulation.setTouchEmulationEnabled', {
+                enabled: true,
+              });
+              for (const width of [390, 393]) {
+                await page.setViewportSize({ width, height: viewport.height });
+                const box = await tabs.boundingBox();
+                expect(box).not.toBeNull();
+                await tabs.evaluate((strip) => {
+                  strip.scrollLeft = 0;
+                });
+                const y = box!.y + box!.height / 2;
+                await cdp.send('Input.dispatchTouchEvent', {
+                  type: 'touchStart',
+                  touchPoints: [{ x: box!.x + box!.width - 35, y }],
+                });
+                await cdp.send('Input.dispatchTouchEvent', {
+                  type: 'touchMove',
+                  touchPoints: [{ x: box!.x + 35, y }],
+                });
+                await cdp.send('Input.dispatchTouchEvent', {
+                  type: 'touchEnd',
+                  touchPoints: [],
+                });
+                await expect
+                  .poll(() => tabs.evaluate((strip) => strip.scrollLeft))
+                  .toBeGreaterThan(0);
+                await expect(details).toHaveAttribute('aria-selected', 'true');
+                expect(
+                  await detailsPanel.evaluate((panel) => panel.scrollTop),
+                ).toBe(panelScroll);
+              }
+            } catch (error) {
+              touchFailure = error;
+            } finally {
+              try {
+                await cdp.send('Emulation.setTouchEmulationEnabled', {
+                  enabled: false,
+                });
+              } catch (error) {
+                touchFailure ??= error;
+              }
+              try {
+                await cdp.detach();
+              } catch (error) {
+                touchFailure ??= error;
+              }
+            }
+            if (touchFailure) throw touchFailure;
+            await page.setViewportSize(viewport);
+          }
+          await previewRequested;
+          await expect(tabs.getByRole('tab', { name: 'Review' })).toHaveCount(
+            0,
+          );
+          releasePreview();
+          const review = tabs.getByRole('tab', { name: 'Review' });
+          await expect(review).toBeVisible();
+          await expect(details).toHaveAttribute('aria-selected', 'true');
+          await visibleWithinStrip();
+          await tabs.getByRole('tab', { name: 'Conversation' }).click();
+          await page.keyboard.press('ArrowRight');
+          await expect(review).toBeFocused();
+          await expect(review).toHaveAttribute('aria-selected', 'true');
+          await expect(page).toHaveURL(/taskView=review/);
+          await page.keyboard.press('ArrowRight');
+          await expect(page).toHaveURL(/taskView=work-chats/);
+          await page.keyboard.press('ArrowLeft');
+          await expect(page).toHaveURL(/taskView=review/);
+          await page.goto(screen.path);
+          await page.goBack();
+          await expect(page).toHaveURL(/taskView=review/);
+          await expect(review).toHaveAttribute('aria-selected', 'true');
+          await page.goForward();
+          await expect(page).toHaveURL(/taskView=overview/);
+          await expect(overview).toHaveAttribute('aria-selected', 'true');
+          await overview.focus();
+          await page.keyboard.press('Home');
+          await expect(overview).toBeFocused();
+          await expect(overview).toHaveAttribute('aria-selected', 'true');
+          if (previewRoute) {
+            await page.unroute('**/api/feature-previews', previewRoute);
+            previewRoute = undefined;
+          }
+          const restoredReview = await request.put(
+            `${resolveE2EApiBase()}/api/feature-previews/task-review`,
+            { data: { enabled: reviewPreviousEnabled } },
+          );
+          expect(restoredReview.ok()).toBe(true);
+          reviewChanged = false;
+          if (!reviewPreviousEnabled) {
+            await page.goto(screen.path);
+            await expect(tabs.getByRole('tab', { name: 'Review' })).toHaveCount(
+              0,
+            );
+            await expect(overview).toHaveAttribute('aria-selected', 'true');
+          }
           await page.evaluate(
             (selected) =>
               document.documentElement.setAttribute('data-theme', selected),
@@ -2673,6 +2888,19 @@ function taskCapabilityScreens(): Screen[] {
               expect(deleted.ok()).toBe(true);
             }
           } finally {
+            releasePreview?.();
+            if (previewRoute)
+              await pageForCleanup?.unroute(
+                '**/api/feature-previews',
+                previewRoute,
+              );
+            if (reviewChanged) {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/task-review`,
+                { data: { enabled: reviewPreviousEnabled } },
+              );
+              expect(restored.ok()).toBe(true);
+            }
             if (previewChanged) {
               const restored = await request.put(
                 `${resolveE2EApiBase()}/api/feature-previews/task-capabilities`,
@@ -4302,7 +4530,7 @@ const SCREENS: Screen[] = [
           // Deliberately never confirmed: this screen captures the OPEN confirm
           // dialog, not the deletion it would perform.
           await expect(
-            page.getByRole('heading', { name: 'Delete Job' }),
+            page.getByRole('heading', { name: 'Delete job' }),
           ).toBeVisible({ timeout: 10_000 });
           await expect(page.locator('.station-dialog__overlay')).toBeVisible();
         } finally {

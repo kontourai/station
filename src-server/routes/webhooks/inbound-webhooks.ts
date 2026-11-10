@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ExecutionTarget } from '@kontourai/station-contracts/execution-target';
 import { Hono } from 'hono';
+import { readBoundedRequestBodyBytes } from '../../security/bounded-request-body.js';
 import { managedApprovalCeilingFailureBody } from '../../security/managed-approval-ceiling.js';
 import {
   managedCapabilityRefusalBody,
@@ -235,33 +236,12 @@ async function readBoundedBody(request: Request): Promise<Uint8Array | null> {
   ) {
     return null;
   }
-  if (!request.body) return new Uint8Array();
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    while (true) {
-      const next = await reader.read();
-      if (next.done) break;
-      length += next.value.byteLength;
-      if (length > INBOUND_WEBHOOK_MAX_BODY_BYTES) {
-        await reader.cancel().catch(() => {});
-        return null;
-      }
-      chunks.push(next.value);
-    }
-  } catch {
-    return null;
-  } finally {
-    reader.releaseLock();
-  }
-  const body = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
+  const result = await readBoundedRequestBodyBytes(
+    request,
+    INBOUND_WEBHOOK_MAX_BODY_BYTES,
+  );
+  if (result.status === 'no-body') return new Uint8Array();
+  return result.status === 'ok' ? result.bytes : null;
 }
 
 function targetFor(payload: WebhookPayload): ExecutionTarget {

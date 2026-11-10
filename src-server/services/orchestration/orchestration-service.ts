@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { scheduler } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
@@ -45,6 +45,7 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
 import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
+import type { SessionGrantScope } from '@kontourai/station-contracts/input-request';
 import {
   type LearningReviewRevisionRef,
   parseLearningContextContributions,
@@ -165,7 +166,10 @@ import {
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
-import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
+import {
+  type SessionUsageAggregate,
+  sessionStartedResumedNativeSession,
+} from '@kontourai/station-shared/usage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import {
   readAuthorizedUsageExport,
@@ -279,7 +283,10 @@ import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
-import { canonicalPath } from '../../utils/path-containment.js';
+import {
+  canonicalPath,
+  isCanonicalPathStrictlyWithin,
+} from '../../utils/path-containment.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
@@ -1592,6 +1599,25 @@ function taskBriefStartRecord(brief: {
   };
 }
 
+/**
+ * The engine now running this session resumed an existing native transcript,
+ * read from its latest `session.started` (the adapter's recorded fact).
+ */
+function resumesNativeTranscript(
+  events: readonly { method?: unknown; metadata?: unknown }[],
+): boolean {
+  let started: (typeof events)[number] | undefined;
+  for (let index = events.length - 1; index >= 0 && !started; index -= 1)
+    if (events[index].method === 'session.started') started = events[index];
+  return (
+    !!started?.metadata &&
+    typeof started.metadata === 'object' &&
+    sessionStartedResumedNativeSession({
+      metadata: started.metadata as Record<string, unknown>,
+    })
+  );
+}
+
 /** No turn has started in this session yet (the first-turn rule above). */
 function isGenuineFirstTurn(events: readonly { method?: unknown }[]): boolean {
   return !events.some((event) => event.method === 'turn.started');
@@ -1846,9 +1872,7 @@ function verifyReceiverTurnEffect(
 
 /** True when `candidate` is `root` itself or a directory inside it. */
 function isWithinDirectory(root: string, candidate: string): boolean {
-  if (candidate === root) return true;
-  const rel = relative(root, candidate);
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+  return candidate === root || isCanonicalPathStrictlyWithin(root, candidate);
 }
 
 /**
@@ -9284,8 +9308,16 @@ export class OrchestrationService {
           const genuineFirstTurn =
             !!current &&
             !current.events.some((event) => event.method === 'turn.started');
+          // A successor whose engine resumed the predecessor's native
+          // transcript already holds the budget and image line the earlier
+          // first turn delivered; repeating them only grows the history
+          // resent on every model call. Recovery notes are new and still go.
+          const resumedNativeConversation =
+            genuineFirstTurn &&
+            resumesNativeTranscript(stationGuideEvents ?? current.events);
           const workloadLimits =
             genuineFirstTurn &&
+            !resumedNativeConversation &&
             adapter.metadata.workloadScope === 'engine-process'
               ? this.options.workloadEngineLimits?.(submittedInput.threadId)
               : undefined;
@@ -9315,7 +9347,9 @@ export class OrchestrationService {
           ].filter((part): part is string => part !== undefined);
           // The chat-host-images preview's one line, on the same first turn.
           const pendingHostImageGuide =
-            current && isGenuineFirstTurn(current.events)
+            current &&
+            isGenuineFirstTurn(current.events) &&
+            !resumedNativeConversation
               ? await this.hostImages.instructionFor(submittedInput.threadId)
               : undefined;
           const firstTurnContext = [
@@ -11481,21 +11515,30 @@ export class OrchestrationService {
               ? { standing: this.approvalPosture.decision(command.threadId) }
               : 'downgrade'
             : undefined;
+          // A `rule` answer is the narrowest session choice. Only the Claude
+          // adapter that declares it honours it; any other adapter would read
+          // it as the per-tool grant, which is wider, so it is a one-call
+          // accept there.
+          const ruleElsewhere =
+            command.decision === 'acceptForSession' &&
+            command.sessionGrantScope === 'rule' &&
+            !adapter.metadata.sessionGrantScopes?.includes('rule');
           const decision =
-            editModeAnswer === 'downgrade' ? 'accept' : command.decision;
+            editModeAnswer === 'downgrade' || ruleElsewhere
+              ? 'accept'
+              : command.decision;
           // #2344: an adapter that records the decision itself (the Station
           // agent's ApprovalRegistry) attributes the approving device, as the
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
-          const serverScope =
-            decision === 'acceptForSession' &&
-            command.sessionGrantScope === 'server';
+          const grantScope =
+            decision === 'acceptForSession'
+              ? command.sessionGrantScope
+              : undefined;
           const requestContext =
-            inputForm || context?.clientOrigin || serverScope
+            inputForm || context?.clientOrigin || grantScope
               ? {
-                  ...(serverScope
-                    ? { sessionGrantScope: 'server' as const }
-                    : {}),
+                  ...(grantScope ? { sessionGrantScope: grantScope } : {}),
                   ...(context?.clientOrigin
                     ? { clientOrigin: context.clientOrigin }
                     : {}),
@@ -14289,16 +14332,20 @@ export class OrchestrationService {
    * session answer whose grant (`toolRequestSessionGrantFromPayload`, the
    * computation the approval surfaces and the Claude adapter use) is
    * `edit-mode`, read from the request as it stands before it is answered.
+   * A scoped answer (`sessionGrantScope`) is never one: an edit request
+   * offers no scope, so the adapter takes it as a one-call accept.
    */
   private isEditModeSessionAnswer(
     command: {
       threadId: string;
       requestId: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      sessionGrantScope?: SessionGrantScope;
     },
     provider: EngineId,
   ): boolean {
     if (command.decision !== 'acceptForSession') return false;
+    if (command.sessionGrantScope !== undefined) return false;
     if (!this.approvalKnobForThread(command.threadId, provider)) return false;
     let current: ReturnType<EventStore['readCurrentRequestEvent']> | undefined;
     try {

@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-shared/runtime-event-projection';
 import {
   toolRequestFromPayload,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -192,6 +193,7 @@ export function unansweredApprovalRequests(
         : {}),
       approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
       approvalServerGrant: toolRequestServerGrantFromPayload(request.payload),
+      approvalRuleGrant: toolRequestRuleGrantFromPayload(request.payload),
     };
   });
 }

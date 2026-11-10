@@ -1,13 +1,9 @@
 import {
-  MS_PER_DAY,
-  MS_PER_HOUR,
-  MS_PER_MINUTE,
-} from '@kontourai/station-contracts/time';
-import {
   type ConversationListItem,
   useConversationInventoryQuery,
 } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
+import { relativeTimeFromIso } from '../../utils/relativeTime';
 import { type AutoSelectItem, AutoSelectModal } from './AutoSelectModal';
 
 interface SessionPickerModalProps {
@@ -45,21 +41,6 @@ export function SessionPickerModal({
     [inventoryQuery.data],
   );
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / MS_PER_MINUTE);
-    const diffHours = Math.floor(diffMs / MS_PER_HOUR);
-    const diffDays = Math.floor(diffMs / MS_PER_DAY);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  };
-
   const items: AutoSelectItem<ConversationListItem>[] = conversations.map(
     (conv) => {
       const agent = agents.find((a) => a.slug === conv.agentSlug);
@@ -72,7 +53,7 @@ export function SessionPickerModal({
         subtitle: [agent?.name || conv.agentSlug, project?.name]
           .filter(Boolean)
           .join(' · '),
-        timestamp: formatDate(conv.updatedAt),
+        timestamp: relativeTimeFromIso(conv.updatedAt),
         isActive,
         metadata: conv,
       };

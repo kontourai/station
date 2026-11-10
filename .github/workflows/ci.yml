@@ -84,6 +84,79 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/pr-source-admission.mjs
 
+  # #4748: the pinned actionlint archive used to be fetched from GitHub's
+  # release CDN by every consumer, and a 504 there failed merge-queue shards
+  # before they executed anything. This job fetches and checksums it once. It
+  # checks out nothing, reads no secret and runs no candidate code: it only
+  # downloads the fixed 1.7.12 Linux archive, verifies its digest and uploads
+  # that exact archive under a run- and attempt-scoped name. Its artifact id is
+  # the only handoff. Each consumer (fast-checks-shard, fast-checks-statics,
+  # fork-smoke) downloads that id into a fresh path and re-verifies the digest
+  # before it runs `tar`. Its admission is the union of the statics and
+  # fork-smoke guards, so it runs exactly when one of its consumers can run.
+  # actionlint-gate.mjs pins this job by digest: any edit needs a reviewed new
+  # digest there.
+  actionlint-artifact:
+    name: Pinned actionlint artifact
+    needs: [classify, pr-admission]
+    if: ${{ always() && !cancelled() && ((needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')) || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository)) }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    # Four download attempts of at most 60 seconds plus 45 seconds of backoff
+    # fit the five-minute step bound; the job fence adds upload and setup.
+    timeout-minutes: 8
+    outputs:
+      artifact-id: ${{ steps.artifact.outputs.artifact-id }}
+    steps:
+      - name: Download and verify pinned actionlint
+        timeout-minutes: 5
+        env:
+          ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          ACTIONLINT_URL: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+        run: |
+          set -euo pipefail
+          download="$RUNNER_TEMP/actionlint-download"
+          mkdir "$download"
+          archive="$download/$ACTIONLINT_ARCHIVE"
+          attempt=1
+          until curl --fail --location --silent --show-error --connect-timeout 10 --max-time 60 --output "$archive" "$ACTIONLINT_URL"; do
+            if [ "$attempt" -ge 4 ]; then
+              echo "pinned actionlint download failed after $attempt attempts" >&2
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep $((attempt * 5))
+          done
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status
+
+      - name: Upload verified actionlint archive
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pinned-actionlint-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/actionlint-download/actionlint_1.7.12_linux_amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+
+      # An empty `artifact-ids` input makes the pinned download action fall
+      # back to downloading every artifact of the run, so the id is exposed
+      # only once it is a positive integer. Nothing else is written to the
+      # job output file.
+      - name: Validate uploaded artifact id
+        id: artifact
+        env:
+          UPLOADED_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$UPLOADED_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "uploaded artifact id is not a positive integer: '$UPLOADED_ARTIFACT_ID'" >&2
+            exit 1
+          fi
+          echo "artifact-id=$UPLOADED_ARTIFACT_ID" >> "$GITHUB_OUTPUT"
+
   # #2709: `fast-checks` is the required check. The affected-test selection
   # outgrew one runner's fifteen-minute budget, so it is computed once here,
   # run as one to four planned slices in fast-checks-shard, and the fixed
@@ -248,7 +321,7 @@ jobs:
 
   fast-checks-shard:
     name: fast-checks shard ${{ matrix.shard }}
-    needs: fast-checks-plan
+    needs: [fast-checks-plan, actionlint-artifact]
     # The status function is load-bearing (#2709 re-land). Without one,
     # GitHub prefixes success(), which is false when ANY ancestor did not
     # succeed -- and `classify` is skipped on every pull_request_target, so
@@ -258,8 +331,10 @@ jobs:
     # can only do under that job's admission guard) AND planned. A legacy
     # candidate (transitional) or an explicitly empty plan skips the shards;
     # the aggregator independently verifies an empty plan before accepting it. ci-fast-checks-job-graph.test.ts evaluates this
-    # under GitHub's job-status semantics for every event.
-    if: ${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}
+    # under GitHub's job-status semantics for every event. The pinned actionlint
+    # artifact must also have succeeded (#4748): a shard never falls back to
+    # fetching the archive itself.
+    if: ${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}
     permissions:
       contents: read
     concurrency:
@@ -329,18 +404,33 @@ jobs:
 
       # The lane's static invariants put actionlint on PATH before its tests
       # ran; a selected test that shells out to it sees the same binary here.
+      # The archive comes from the trusted actionlint-artifact job by exact
+      # artifact id and is re-verified before it is extracted (#4748).
+      - name: Download pinned actionlint artifact
+        if: ${{ steps.slice.outputs.empty == 'false' }}
+        timeout-minutes: 2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.actionlint-artifact.outputs.artifact-id }}
+          path: ${{ runner.temp }}/actionlint-artifact
+          merge-multiple: true
+
       - name: Install pinned actionlint
         if: ${{ steps.slice.outputs.empty == 'false' }}
-        timeout-minutes: 5
+        timeout-minutes: 3
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
-          mkdir -p "$RUNNER_TEMP/actionlint"
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
-            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
-          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
-          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint-artifact/$ACTIONLINT_ARCHIVE"
+          if [ ! -f "$archive" ] || [ -L "$archive" ]; then
+            echo "pinned actionlint archive is missing from the downloaded artifact" >&2
+            exit 1
+          fi
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint"
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
       - run: npm run dependencies:ci
@@ -433,10 +523,12 @@ jobs:
 
   fast-checks-statics:
     name: fast-checks statics
-    needs: [classify, pr-admission]
+    needs: [classify, pr-admission, actionlint-artifact]
     # `always()` permits same-repository PR feedback after its intentionally
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
-    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    # The pinned actionlint artifact must have succeeded (#4748); statics never
+    # falls back to fetching the archive itself.
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && needs.actionlint-artifact.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -480,17 +572,29 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
+      - name: Download pinned actionlint artifact
+        timeout-minutes: 2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.actionlint-artifact.outputs.artifact-id }}
+          path: ${{ runner.temp }}/actionlint-artifact
+          merge-multiple: true
+
       - name: Install pinned actionlint
-        timeout-minutes: 5
+        timeout-minutes: 3
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
-          mkdir -p "$RUNNER_TEMP/actionlint"
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
-            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
-          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
-          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint-artifact/$ACTIONLINT_ARCHIVE"
+          if [ ! -f "$archive" ] || [ -L "$archive" ]; then
+            echo "pinned actionlint archive is missing from the downloaded artifact" >&2
+            exit 1
+          fi
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint"
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
       - run: npm run dependencies:ci
@@ -861,9 +965,12 @@ jobs:
 
   fork-smoke:
     name: Fork pull-request smoke
+    needs: actionlint-artifact
     # This is intentionally exact: untrusted fork code is admitted only to an
-    # ephemeral hosted runner, never to the persistent self-hosted fleet.
-    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}
+    # ephemeral hosted runner, never to the persistent self-hosted fleet. The
+    # trusted actionlint-artifact job (no checkout, no candidate code) must
+    # have succeeded (#4748); fork-smoke never fetches the archive itself.
+    if: ${{ always() && !cancelled() && needs.actionlint-artifact.result == 'success' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}
     permissions:
       contents: read
     runs-on: ubuntu-24.04
@@ -888,16 +995,29 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
+      # No step timeouts here: the job fence has no slack for bounded steps
+      # (ci-workflow-contract.test.ts), exactly as before this artifact handoff.
+      - name: Download pinned actionlint artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.actionlint-artifact.outputs.artifact-id }}
+          path: ${{ runner.temp }}/actionlint-artifact
+          merge-multiple: true
+
       - name: Install pinned actionlint
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
-          mkdir -p "$RUNNER_TEMP/actionlint"
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
-            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
-          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
-          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint-artifact/$ACTIONLINT_ARCHIVE"
+          if [ ! -f "$archive" ] || [ -L "$archive" ]; then
+            echo "pinned actionlint archive is missing from the downloaded artifact" >&2
+            exit 1
+          fi
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint"
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
       - run: npm run dependencies:ci

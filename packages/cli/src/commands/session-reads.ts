@@ -41,6 +41,7 @@ import {
   waitForSession,
 } from '@kontourai/station-sdk/client';
 import {
+  abortableSleep,
   cliRequestScope,
   optionalValueFlag,
   type ParsedCoreArgs,
@@ -147,22 +148,6 @@ const isUnreachable = (error: unknown) =>
 function firstSentence(message: string): string {
   const end = message.indexOf('. ');
   return end === -1 ? message : message.slice(0, end + 1);
-}
-
-function abortableSleep(
-  ms: number,
-  signal: AbortSignal | undefined,
-): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal?.aborted) return resolve();
-    const done = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', done);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    signal?.addEventListener('abort', done, { once: true });
-  });
 }
 
 /** What one answer says, or `undefined` to keep waiting. */

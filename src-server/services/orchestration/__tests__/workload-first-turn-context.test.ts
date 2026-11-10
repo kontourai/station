@@ -208,6 +208,52 @@ describe('Station first-turn workload context', () => {
     expect(second?.input).toBe('Again');
   });
 
+  test('a successor that resumed the native conversation is not told its budget again', async () => {
+    const adapter = new FakeAdapter(true);
+    const orchestration = start(adapter, () => LIMITS);
+    const conversationId = 'conversation-resumed';
+    await startSession(orchestration, conversationId);
+    const first = await send(orchestration, adapter, conversationId, 'Hello');
+    expect(first?.input).toContain('## Station workload budget');
+
+    // The engine exits between turns; the next message starts a successor
+    // Session that resumes the same native transcript, which already holds
+    // the budget the first turn delivered.
+    async function successorOf(resumed: boolean) {
+      const successor = `${conversationId}:session:${randomUUID()}`;
+      eventStore.reserveNextConversationSession({
+        conversationId,
+        predecessorSessionId: conversationId,
+        proposedSessionId: successor,
+        createdAt: new Date().toISOString(),
+      });
+      await startSession(orchestration, successor);
+      adapter.publish({
+        method: 'session.started',
+        threadId: successor,
+        sessionId: successor,
+        initialState: 'created',
+        metadata: resumed ? { nativeSessionResumed: true } : {},
+      });
+      await waitFor(() =>
+        eventStore
+          .listEvents(successor)
+          .some((event) => event.method === 'session.started'),
+      );
+      return successor;
+    }
+
+    const resumed = await successorOf(true);
+    const again = await send(orchestration, adapter, resumed, 'Continue');
+    expect(again?.input).toBe('Continue');
+
+    // A successor on a fresh native conversation has never been told.
+    const fresh = await successorOf(false);
+    const told = await send(orchestration, adapter, fresh, 'Restart');
+    expect(told?.input).toContain('## Station workload budget');
+    expect(told?.input.endsWith('\nRestart')).toBe(true);
+  });
+
   test('no budget is claimed without enforcement or for an undeclared engine', async () => {
     const unenforced = new FakeAdapter(true);
     const orchestration = start(unenforced, () => undefined);

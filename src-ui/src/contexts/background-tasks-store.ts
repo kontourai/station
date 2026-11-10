@@ -39,6 +39,7 @@ import type {
   OrchestrationEvent,
   OrchestrationSnapshotPayload,
 } from '../hooks/orchestration/types';
+import { parseEpochMs } from '../utils/parseEpochMs';
 import type { ChatBackgroundTask } from './active-chats-state';
 import { childWorkGlobalStore } from './child-work-global-store';
 
@@ -123,9 +124,7 @@ export function createEmptyBackgroundTasksState(): BackgroundTasksState {
 }
 
 function parseTime(iso: string | undefined, fallback: number): number {
-  if (!iso) return fallback;
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  return parseEpochMs(iso) ?? fallback;
 }
 
 function metaString(

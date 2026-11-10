@@ -1,5 +1,435 @@
 [
   {
+    "timestampUtc": "2026-11-10T17:31:04Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261110.42863491617",
+    "sha": "0d474001f59ed2b15668a5a63749ca4a05e048b7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42863491617",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261110.42863491617 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "be313818aaa2b87bade4b3ee4c2b5ac4e8135b6f",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4759](https://github.com/kontourai/station/pull/4759) fix: restore Task room focus and verify reload recovery",
+          "[#4762](https://github.com/kontourai/station/pull/4762) fix: settle sampler fixture IPC before disconnect"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-11-10T09:56:32Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261110.1",
+    "sha": "be313818aaa2b87bade4b3ee4c2b5ac4e8135b6f",
+    "artifactBuiltAt": "2026-11-10T09:02:45.307Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42785864317",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42785864317)"
+    ],
+    "changelog": {
+      "previousSha": "d318c4d7f802789b018288bebc2a87e840734f10",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4750](https://github.com/kontourai/station/pull/4750) fix(ci): share verified actionlint artifact across checks",
+          "[#4758](https://github.com/kontourai/station/pull/4758) fix(approvals): make Claude session grants cover Bash warnings and offer prefix grants"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4761](https://github.com/kontourai/station/pull/4761) chore(deps): fetch Corpus from the public GitHub repo, not a codeload tarball URL"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-10T09:56:29Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261110.1",
+    "sha": "be313818aaa2b87bade4b3ee4c2b5ac4e8135b6f",
+    "artifactBuiltAt": "2026-11-10T09:01:49.590Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42785864317",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42785864317)"
+    ],
+    "changelog": {
+      "previousSha": "d318c4d7f802789b018288bebc2a87e840734f10",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4750](https://github.com/kontourai/station/pull/4750) fix(ci): share verified actionlint artifact across checks",
+          "[#4758](https://github.com/kontourai/station/pull/4758) fix(approvals): make Claude session grants cover Bash warnings and offer prefix grants"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4761](https://github.com/kontourai/station/pull/4761) chore(deps): fetch Corpus from the public GitHub repo, not a codeload tarball URL"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-10T09:04:05Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261110.42785864317",
+    "sha": "be313818aaa2b87bade4b3ee4c2b5ac4e8135b6f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42785864317",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261110.42785864317 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "d318c4d7f802789b018288bebc2a87e840734f10",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4750](https://github.com/kontourai/station/pull/4750) fix(ci): share verified actionlint artifact across checks",
+          "[#4758](https://github.com/kontourai/station/pull/4758) fix(approvals): make Claude session grants cover Bash warnings and offer prefix grants"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4761](https://github.com/kontourai/station/pull/4761) chore(deps): fetch Corpus from the public GitHub repo, not a codeload tarball URL"
+        ]
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-10T02:49:26Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261110",
+    "sha": "d318c4d7f802789b018288bebc2a87e840734f10",
+    "artifactBuiltAt": "2026-11-10T01:59:13.037Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42738156510",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42738156510)"
+    ],
+    "changelog": {
+      "previousSha": "96d457f436f40bab99e7a28af8948fe937ddec45",
+      "groups": {
+        "feat": [
+          "[#4737](https://github.com/kontourai/station/pull/4737) feat(dev): seed a dev Station home from a pruned read-only snapshot",
+          "[#4736](https://github.com/kontourai/station/pull/4736) feat(dev): stream free scripted turns through the real Ollama adapter"
+        ],
+        "fix": [
+          "[#4757](https://github.com/kontourai/station/pull/4757) fix: prime server scenario sampling before synchronous actions",
+          "[#4751](https://github.com/kontourai/station/pull/4751) fix(desktop): validate Windows managed-update policy ACLs",
+          "[#4754](https://github.com/kontourai/station/pull/4754) fix(ollama): report a failed stream's message, not [object Object]",
+          "[#4728](https://github.com/kontourai/station/pull/4728) fix: don't resend first-turn budget to a resumed successor Session",
+          "[#4746](https://github.com/kontourai/station/pull/4746) fix(ci): measure agent context growth against the merge base"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4731](https://github.com/kontourai/station/pull/4731) chore(scripts): enforce windowsHide on child-process launches with a ratchet",
+          "[#4753](https://github.com/kontourai/station/pull/4753) test(gallery): retain bounded overlap diagnostics",
+          "[#4747](https://github.com/kontourai/station/pull/4747) test(orchestration): isolate Windows profile and scratch fixtures",
+          "[#4734](https://github.com/kontourai/station/pull/4734) chore(agents): load the Veritas governance block once",
+          "[#4744](https://github.com/kontourai/station/pull/4744) perf(station-control): list tool schemas without the dialect URL; trim restated limits",
+          "[#4741](https://github.com/kontourai/station/pull/4741) test(evals): add a station-control tool-use eval harness",
+          "[#4742](https://github.com/kontourai/station/pull/4742) test: pin resumed successors receiving no first-turn Station instructions"
+        ]
+      },
+      "note": null,
+      "commitCount": 14
+    }
+  },
+  {
+    "timestampUtc": "2026-11-10T02:49:22Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261110",
+    "sha": "d318c4d7f802789b018288bebc2a87e840734f10",
+    "artifactBuiltAt": "2026-11-10T01:59:01.022Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42738156510",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42738156510)"
+    ],
+    "changelog": {
+      "previousSha": "96d457f436f40bab99e7a28af8948fe937ddec45",
+      "groups": {
+        "feat": [
+          "[#4737](https://github.com/kontourai/station/pull/4737) feat(dev): seed a dev Station home from a pruned read-only snapshot",
+          "[#4736](https://github.com/kontourai/station/pull/4736) feat(dev): stream free scripted turns through the real Ollama adapter"
+        ],
+        "fix": [
+          "[#4757](https://github.com/kontourai/station/pull/4757) fix: prime server scenario sampling before synchronous actions",
+          "[#4751](https://github.com/kontourai/station/pull/4751) fix(desktop): validate Windows managed-update policy ACLs",
+          "[#4754](https://github.com/kontourai/station/pull/4754) fix(ollama): report a failed stream's message, not [object Object]",
+          "[#4728](https://github.com/kontourai/station/pull/4728) fix: don't resend first-turn budget to a resumed successor Session",
+          "[#4746](https://github.com/kontourai/station/pull/4746) fix(ci): measure agent context growth against the merge base"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4731](https://github.com/kontourai/station/pull/4731) chore(scripts): enforce windowsHide on child-process launches with a ratchet",
+          "[#4753](https://github.com/kontourai/station/pull/4753) test(gallery): retain bounded overlap diagnostics",
+          "[#4747](https://github.com/kontourai/station/pull/4747) test(orchestration): isolate Windows profile and scratch fixtures",
+          "[#4734](https://github.com/kontourai/station/pull/4734) chore(agents): load the Veritas governance block once",
+          "[#4744](https://github.com/kontourai/station/pull/4744) perf(station-control): list tool schemas without the dialect URL; trim restated limits",
+          "[#4741](https://github.com/kontourai/station/pull/4741) test(evals): add a station-control tool-use eval harness",
+          "[#4742](https://github.com/kontourai/station/pull/4742) test: pin resumed successors receiving no first-turn Station instructions"
+        ]
+      },
+      "note": null,
+      "commitCount": 14
+    }
+  },
+  {
+    "timestampUtc": "2026-11-10T02:00:12Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261110.42738156510",
+    "sha": "d318c4d7f802789b018288bebc2a87e840734f10",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42738156510",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261110.42738156510 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "309f2231d40cf86b6d2ad8c6ed4434b02fbf6e5d",
+      "groups": {
+        "feat": [
+          "[#4737](https://github.com/kontourai/station/pull/4737) feat(dev): seed a dev Station home from a pruned read-only snapshot"
+        ],
+        "fix": [
+          "[#4757](https://github.com/kontourai/station/pull/4757) fix: prime server scenario sampling before synchronous actions",
+          "[#4751](https://github.com/kontourai/station/pull/4751) fix(desktop): validate Windows managed-update policy ACLs",
+          "[#4754](https://github.com/kontourai/station/pull/4754) fix(ollama): report a failed stream's message, not [object Object]"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4731](https://github.com/kontourai/station/pull/4731) chore(scripts): enforce windowsHide on child-process launches with a ratchet",
+          "[#4753](https://github.com/kontourai/station/pull/4753) test(gallery): retain bounded overlap diagnostics"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-11-09T18:02:13Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261109.42668201934",
+    "sha": "309f2231d40cf86b6d2ad8c6ed4434b02fbf6e5d",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42668201934",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261109.42668201934 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "427db9ad6a6ca2cf52efa048824199f8a9da1fb2",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4728](https://github.com/kontourai/station/pull/4728) fix: don't resend first-turn budget to a resumed successor Session"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-11-09T07:25:06Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261109.42577827028",
+    "sha": "427db9ad6a6ca2cf52efa048824199f8a9da1fb2",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42577827028",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261109.42577827028 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "96d457f436f40bab99e7a28af8948fe937ddec45",
+      "groups": {
+        "feat": [
+          "[#4736](https://github.com/kontourai/station/pull/4736) feat(dev): stream free scripted turns through the real Ollama adapter"
+        ],
+        "fix": [
+          "[#4746](https://github.com/kontourai/station/pull/4746) fix(ci): measure agent context growth against the merge base"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4747](https://github.com/kontourai/station/pull/4747) test(orchestration): isolate Windows profile and scratch fixtures",
+          "[#4734](https://github.com/kontourai/station/pull/4734) chore(agents): load the Veritas governance block once",
+          "[#4744](https://github.com/kontourai/station/pull/4744) perf(station-control): list tool schemas without the dialect URL; trim restated limits",
+          "[#4741](https://github.com/kontourai/station/pull/4741) test(evals): add a station-control tool-use eval harness",
+          "[#4742](https://github.com/kontourai/station/pull/4742) test: pin resumed successors receiving no first-turn Station instructions"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-11-09T01:08:09Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261109",
+    "sha": "96d457f436f40bab99e7a28af8948fe937ddec45",
+    "artifactBuiltAt": "2026-11-09T00:19:17.021Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42538339733",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42538339733)"
+    ],
+    "changelog": {
+      "previousSha": "38fd175a281fc0fb7b0671c3aa1b4cf55609de79",
+      "groups": {
+        "feat": [
+          "[#4666](https://github.com/kontourai/station/pull/4666) feat: add shared Task request contracts and SDK negotiation"
+        ],
+        "fix": [
+          "[#4733](https://github.com/kontourai/station/pull/4733) fix(claude): name new sessions so the engine skips its title request",
+          "[#4727](https://github.com/kontourai/station/pull/4727) fix(sdk): recover chat streams stuck reconnecting",
+          "[#4726](https://github.com/kontourai/station/pull/4726) fix(server): stop history reads from wedging Station",
+          "[#4725](https://github.com/kontourai/station/pull/4725) fix(ui): keep focused Task tabs visible",
+          "[#4724](https://github.com/kontourai/station/pull/4724) fix(claude): record an engine death the SDK never reports",
+          "[#4663](https://github.com/kontourai/station/pull/4663) fix(ui): preserve focus across sidebar and Stations manager transitions"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4730](https://github.com/kontourai/station/pull/4730) test: budget the agent context Station injects"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-11-09T01:08:06Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.20261109",
+    "sha": "96d457f436f40bab99e7a28af8948fe937ddec45",
+    "artifactBuiltAt": "2026-11-09T00:18:42.833Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42538339733",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42538339733)"
+    ],
+    "changelog": {
+      "previousSha": "38fd175a281fc0fb7b0671c3aa1b4cf55609de79",
+      "groups": {
+        "feat": [
+          "[#4666](https://github.com/kontourai/station/pull/4666) feat: add shared Task request contracts and SDK negotiation"
+        ],
+        "fix": [
+          "[#4733](https://github.com/kontourai/station/pull/4733) fix(claude): name new sessions so the engine skips its title request",
+          "[#4727](https://github.com/kontourai/station/pull/4727) fix(sdk): recover chat streams stuck reconnecting",
+          "[#4726](https://github.com/kontourai/station/pull/4726) fix(server): stop history reads from wedging Station",
+          "[#4725](https://github.com/kontourai/station/pull/4725) fix(ui): keep focused Task tabs visible",
+          "[#4724](https://github.com/kontourai/station/pull/4724) fix(claude): record an engine death the SDK never reports",
+          "[#4663](https://github.com/kontourai/station/pull/4663) fix(ui): preserve focus across sidebar and Stations manager transitions"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4730](https://github.com/kontourai/station/pull/4730) test: budget the agent context Station injects"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-11-09T00:20:25Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261109.42538339733",
+    "sha": "96d457f436f40bab99e7a28af8948fe937ddec45",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42538339733",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261109.42538339733 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "38fd175a281fc0fb7b0671c3aa1b4cf55609de79",
+      "groups": {
+        "feat": [
+          "[#4666](https://github.com/kontourai/station/pull/4666) feat: add shared Task request contracts and SDK negotiation"
+        ],
+        "fix": [
+          "[#4733](https://github.com/kontourai/station/pull/4733) fix(claude): name new sessions so the engine skips its title request",
+          "[#4727](https://github.com/kontourai/station/pull/4727) fix(sdk): recover chat streams stuck reconnecting",
+          "[#4726](https://github.com/kontourai/station/pull/4726) fix(server): stop history reads from wedging Station",
+          "[#4725](https://github.com/kontourai/station/pull/4725) fix(ui): keep focused Task tabs visible",
+          "[#4724](https://github.com/kontourai/station/pull/4724) fix(claude): record an engine death the SDK never reports",
+          "[#4663](https://github.com/kontourai/station/pull/4663) fix(ui): preserve focus across sidebar and Stations manager transitions"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4730](https://github.com/kontourai/station/pull/4730) test: budget the agent context Station injects"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-11-08T17:13:09Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261108.1",

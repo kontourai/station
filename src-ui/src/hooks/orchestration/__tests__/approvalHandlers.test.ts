@@ -140,7 +140,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
       'Allow Once',
-      'Allow Bash for this session',
+      'Allow all Bash commands for this session',
       'Deny',
     ]);
   });
@@ -167,7 +167,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
       'Why: Tidy up txt.exe \u00b7 echo ab \u23ce rm -rf /',
     );
     expect(toast.actions.map((action) => action.label)).toContain(
-      'Allow Bash for this session',
+      'Allow all Bash commands for this session',
     );
   });
 
@@ -302,7 +302,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     const toast = approvalToast();
     expect(toast.actions[1].label).toBe(
-      'Allow station-control.list_agents for this session',
+      'Allow all station-control.list_agents calls for this session',
     );
     expect(toast.toolPreview).toBe('{"status":"active"}');
   });
@@ -484,7 +484,7 @@ describe('the Station browser server grant on the toast', () => {
     );
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
       'Allow Once',
-      'Allow station-browser.browser_click for this session',
+      'Allow all station-browser.browser_click calls for this session',
       LABEL,
       'Deny',
     ]);
@@ -497,7 +497,7 @@ describe('the Station browser server grant on the toast', () => {
     );
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
       'Allow Once',
-      'Allow station-browser.browser_click for this session',
+      'Allow all station-browser.browser_click calls for this session',
       'Deny',
     ]);
   });
@@ -595,7 +595,11 @@ describe('#2344: the toast reports what happened to its answer', () => {
     expect(showToolApproval).toHaveBeenCalledTimes(2);
     expect(
       showToolApproval.mock.calls[1]?.[0].actions.map((a) => a.label),
-    ).toEqual(['Allow Once', 'Allow Bash for this session', 'Deny']);
+    ).toEqual([
+      'Allow Once',
+      'Allow all Bash commands for this session',
+      'Deny',
+    ]);
   });
 
   test('a failure after the request settled elsewhere offers no dead prompt', async () => {

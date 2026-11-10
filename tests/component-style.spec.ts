@@ -189,7 +189,7 @@ for (const theme of ['light', 'dark']) {
       const trigger = page.getByRole('button', { name: 'Remove server' });
       await trigger.click();
       const dialog = page.getByRole('alertdialog', {
-        name: 'Delete Tool Server',
+        name: 'Delete tool server',
       });
       await expect(dialog).toBeVisible();
       await expect(

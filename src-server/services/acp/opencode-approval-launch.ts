@@ -40,6 +40,7 @@
  * whatever OpenCode's defaults and the user's rules say.
  */
 import { type ParseError, parse } from 'jsonc-parser';
+import { isRecord } from '../../utils/is-record.js';
 
 export const OPENCODE_CONFIG_CONTENT_ENV = 'OPENCODE_CONFIG_CONTENT';
 
@@ -236,10 +237,6 @@ export function stationOpenCodeApprovalConfig(
   };
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 /**
  * Objects merge key by key; anything else from `overlay` replaces. A key
  * `overlay` sets is moved after the base's keys, so where key order is
@@ -255,7 +252,7 @@ function mergeConfig(
     const existing = merged[key];
     delete merged[key];
     merged[key] =
-      isPlainObject(existing) && isPlainObject(value)
+      isRecord(existing) && isRecord(value)
         ? mergeConfig(existing, value)
         : value;
   }
@@ -295,7 +292,7 @@ export function withStationOpenCodeApprovalConfig(
     const parsed: unknown = parse(substituteEnvTokens(inherited, env), errors, {
       allowTrailingComma: true,
     });
-    if (errors.length > 0 || !isPlainObject(parsed)) {
+    if (errors.length > 0 || !isRecord(parsed)) {
       throw new Error(
         `Station could not start OpenCode with its approval mode: ${OPENCODE_CONFIG_CONTENT_ENV} in Station's environment is not a JSON object, so Station's approval rules cannot be added to it. Fix or unset it, then start the chat again.`,
       );

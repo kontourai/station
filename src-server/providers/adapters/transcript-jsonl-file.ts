@@ -29,7 +29,8 @@ export type TranscriptJsonlRecord =
   | { tooLarge: true }
   | ({ tooLarge?: undefined } & Record<string, unknown>);
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
+/** `value` as a plain record, or `undefined` for anything else (arrays too). */
+export function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;

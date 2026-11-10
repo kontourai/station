@@ -62,6 +62,43 @@ export interface ControllerSnapshot {
   scrollbar: { total: number; offset: number; length: number };
 }
 
+/**
+ * Snapshot fields rebuilt as a fresh object for every worker frame and every
+ * cursor blink, usually holding the numbers they held before.
+ */
+const FLAT_SNAPSHOT_FIELDS: ReadonlySet<string> = new Set([
+  'cursorCss',
+  'scrollbar',
+]);
+
+/**
+ * Whether a patched field leaves the snapshot as it was. The flat fields are
+ * compared by their own fields, so an unchanged cursor or scrollbar does not
+ * replace the snapshot and re-render the view on every frame.
+ */
+function sameSnapshotValue(
+  key: string,
+  previous: unknown,
+  next: unknown,
+): boolean {
+  if (previous === next) return true;
+  if (
+    !FLAT_SNAPSHOT_FIELDS.has(key) ||
+    typeof previous !== 'object' ||
+    typeof next !== 'object' ||
+    previous === null ||
+    next === null
+  )
+    return false;
+  const fields = Object.keys(previous);
+  return (
+    fields.length === Object.keys(next).length &&
+    fields.every(
+      (field) => Reflect.get(previous, field) === Reflect.get(next, field),
+    )
+  );
+}
+
 export interface ControllerOptions {
   font: FontSpec;
   screenReader: boolean;
@@ -171,7 +208,8 @@ export class TerminalController {
 
   private update(patch: Partial<ControllerSnapshot>): void {
     const changed = Object.entries(patch).some(
-      ([key, value]) => Reflect.get(this.snapshot, key) !== value,
+      ([key, value]) =>
+        !sameSnapshotValue(key, Reflect.get(this.snapshot, key), value),
     );
     if (!changed) return;
     this.snapshot = { ...this.snapshot, ...patch };
@@ -481,6 +519,7 @@ export class TerminalController {
   }
 
   setFont(font: FontSpec): void {
+    if (this.disposed) return;
     this.options = { ...this.options, font };
     if (!this.metrics) return;
     this.metrics = (this.options.measureCell ?? measureCell)(
@@ -488,6 +527,15 @@ export class TerminalController {
       window.devicePixelRatio || 1,
     );
     this.relayout(true);
+  }
+
+  /**
+   * Measures again with the font this view has now. A face that finished
+   * loading changes the glyphs' metrics without changing the spec, and the
+   * spec may have changed since whoever awaited the load last saw it.
+   */
+  refreshFont(): void {
+    this.setFont({ ...this.options.font });
   }
 
   // ─── frames ──────────────────────────────────────────────────────────────

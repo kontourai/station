@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import { Hono } from 'hono';
+import { KnowledgeDocumentExistsError } from '../../services/knowledge/knowledge-documents.js';
 import { observeKnowledgeOperation } from '../../services/knowledge/knowledge-observability.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import {
@@ -19,6 +20,18 @@ function documentErrorResponse(c: Context, error: unknown) {
     return c.json(
       { success: false, error: persistence.error },
       persistence.status,
+    );
+  }
+  if (error instanceof KnowledgeDocumentExistsError) {
+    // A conflict the caller can resolve, not the 503 "store needs repair" a
+    // duplicate used to be reported as.
+    return c.json(
+      {
+        success: false,
+        error:
+          'A document with this filename already exists in this namespace. Update or delete it instead.',
+      },
+      409,
     );
   }
   return c.json(

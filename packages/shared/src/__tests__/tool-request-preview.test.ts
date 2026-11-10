@@ -3,6 +3,7 @@ import {
   claudeAskEscalates,
   directoryPermissionUpdateKind,
   MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+  ruleGrantPermissionUpdates,
   STATION_BROWSER_SERVER_GRANT_LABEL,
   sessionGrantPermissionUpdates,
   TOOL_REQUEST_ARGS_FIELDS,
@@ -15,6 +16,8 @@ import {
   toolRequestNeedsPerson,
   toolRequestPreview,
   toolRequestPreviewFromPayload,
+  toolRequestRuleGrant,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrant,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrant,
@@ -422,7 +425,9 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
     claudeAsk: unknown,
     decisionReason: unknown,
     toolName = 'Bash',
-  ) => claudeAskEscalates({ toolName, claudeAsk, decisionReason });
+    bashWarnings: 'plain' | 'escalate' = 'escalate',
+  ) =>
+    claudeAskEscalates({ toolName, claudeAsk, decisionReason }, bashWarnings);
   const acceptEdits = {
     type: 'setMode',
     mode: 'acceptEdits',
@@ -471,12 +476,28 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       expect(claudeAskEscalates(powerShell)).toBe(true);
       expect(toolRequestSessionGrant(powerShell)).toBe('none');
       expect(toolRequestIsPlainCall(powerShell)).toBe(false);
-      // An empty or blank reason is no reason.
-      for (const decisionReason of [undefined, null, '', '  '])
-        expect(
-          toolRequestSessionGrant(compound({ decisionReason })),
-          String(decisionReason),
-        ).toBe('tool');
+      // Reason text alone does not keep a person's whole-tool session grant
+      // from a chain (owner decision): the engine's command-analysis
+      // warnings say a prefix rule cannot be checked, and a whole-tool grant
+      // checks none. A pattern or the guardian still leaves any reason text
+      // to a person; an empty or blank reason is no reason.
+      for (const [decisionReason, plainForPattern] of [
+        [undefined, true],
+        [null, true],
+        ['', true],
+        ['  ', true],
+        [ORDINARY, false],
+        ["A variable in this command can't be checked before it runs", false],
+        [1, false],
+      ] as const) {
+        const request = compound({ decisionReason });
+        expect(toolRequestSessionGrant(request), String(decisionReason)).toBe(
+          'tool',
+        );
+        expect(toolRequestIsPlainCall(request), String(decisionReason)).toBe(
+          plainForPattern,
+        );
+      }
     });
 
     test.each([
@@ -508,8 +529,6 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
           },
         },
       ],
-      ['any reason text', { decisionReason: ORDINARY }],
-      ['a reason that is not text', { decisionReason: 1 }],
       ['a blocked path', { blockedPath: '/outside/f' }],
       [
         'an addDirectories suggestion',
@@ -551,7 +570,16 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       expect(toolRequestSessionGrant(request)).not.toBe('tool');
     });
 
-    test('claudeAskEscalates itself reads the three signals about a part', () => {
+    test('claudeAskEscalates reads the reason text of a chain only when strict', () => {
+      expect(claudeAskEscalates(compound({ decisionReason: 'warning' }))).toBe(
+        true,
+      );
+      expect(
+        claudeAskEscalates(compound({ decisionReason: 'warning' }), 'plain'),
+      ).toBe(false);
+    });
+
+    test('claudeAskEscalates itself reads the two signals about a part, read plainly', () => {
       expect(claudeAskEscalates(compound())).toBe(false);
       expect(
         claudeAskEscalates(
@@ -568,9 +596,9 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
           compound({ matchedAskRule: { source: 'x', toolName: 'Bash' } }),
         ),
       ).toBe(true);
-      expect(claudeAskEscalates(compound({ decisionReason: 'warning' }))).toBe(
-        true,
-      );
+      expect(
+        claudeAskEscalates(compound({ decisionReason: 'warning' }), 'plain'),
+      ).toBe(false);
     });
 
     test('a read-rule suggestion from a part keeps the folder option and no tool grant', () => {
@@ -591,9 +619,23 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
     });
   });
 
-  test('type other is a plain call only with the ordinary reason text', () => {
-    expect(escalates({ decisionReasonType: 'other' }, ORDINARY)).toBe(false);
+  test('type other is a plain call only with the ordinary text, read strictly', () => {
     for (const reason of [
+      'This command uses shell operators that require approval for safety',
+      "A variable in this command can't be checked before it runs",
+      '',
+      undefined,
+      42,
+    ])
+      expect(
+        escalates({ decisionReasonType: 'other' }, reason),
+        String(reason),
+      ).toBe(true);
+    expect(escalates({ decisionReasonType: 'other' }, ORDINARY)).toBe(false);
+  });
+
+  test('type other is a plain call on Bash with any reason read plainly, elsewhere only with the ordinary text', () => {
+    const reasons = [
       'This command uses shell operators that require approval for safety',
       'Process substitution requires manual approval',
       `${ORDINARY}.`,
@@ -602,11 +644,23 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       undefined,
       null,
       42,
-    ])
+    ];
+    for (const toolName of ['Bash', 'WebFetch', 'mcp__x__y'])
       expect(
-        escalates({ decisionReasonType: 'other' }, reason),
-        String(reason),
-      ).toBe(true);
+        escalates({ decisionReasonType: 'other' }, ORDINARY, toolName, 'plain'),
+        toolName,
+      ).toBe(false);
+    for (const reason of reasons) {
+      expect(
+        escalates({ decisionReasonType: 'other' }, reason, 'Bash', 'plain'),
+        `Bash ${String(reason)}`,
+      ).toBe(false);
+      for (const toolName of ['WebFetch', 'mcp__x__y', 'PowerShell', 'bash'])
+        expect(
+          escalates({ decisionReasonType: 'other' }, reason, toolName, 'plain'),
+          `${toolName} ${String(reason)}`,
+        ).toBe(true);
+    }
     expect(
       toolRequestSessionGrant({
         toolName: 'Bash',
@@ -776,6 +830,317 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       ),
     ).toBe('none');
     expect(toolRequestSessionGrantFromPayload(payload)).toBe('tool');
+  });
+});
+
+describe("Claude's Bash command-analysis warnings (owner decision)", () => {
+  // Verbatim `decisionReason` texts from the owner's Station event log, sent
+  // with `decision_reason_type: 'other'` and no or empty suggestions.
+  const WARNINGS = [
+    "A variable in this command can't be checked before it runs",
+    'Contains brace with quote character (expansion obfuscation)',
+    'Tilde in assignment value — bash may expand at assignment time',
+    'This command changes directory before running a version-control command, which can pick up untrusted hooks or repository configuration from the target directory. Approve only if you trust it.',
+  ];
+  /** A `request.opened` payload as the Claude adapter publishes it. */
+  const opened = (
+    decisionReason: string | undefined,
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    toolName: 'Bash',
+    toolCallId: 'toolu_1',
+    toolInput: { command: 'cd ../x && git status', description: 'status' },
+    suggestions: [],
+    ...(decisionReason !== undefined ? { decisionReason } : {}),
+    claudeAsk: { decisionReasonType: 'other' },
+    permissionMode: 'default',
+    ...extra,
+  });
+
+  test.each(WARNINGS)(
+    'a Bash ask warning "%s" is a plain call: whole-tool grant',
+    (reason) => {
+      for (const payload of [
+        opened(reason),
+        opened(reason, { suggestions: undefined }),
+      ]) {
+        expect(toolRequestSessionGrantFromPayload(payload)).toBe('tool');
+        expect(
+          toolRequestGrantLabel(
+            'Bash',
+            toolRequestSessionGrantFromPayload(payload),
+          ),
+        ).toBe('Allow all Bash commands for this session');
+        // No prefix was suggested, so no narrow choice.
+        expect(toolRequestRuleGrantFromPayload(payload)).toBeUndefined();
+        // A pattern, the guardian and a delegated child still leave it to a
+        // person: only a person's own session answer covers the warning.
+        expect(
+          toolRequestIsPlainCall({
+            toolName: 'Bash',
+            toolInput: payload.toolInput,
+            decisionReason: payload.decisionReason,
+            claudeAsk: payload.claudeAsk,
+            suggestions: payload.suggestions,
+          }),
+        ).toBe(false);
+      }
+    },
+  );
+
+  test('a Bash other ask with no reason text is a plain call too', () => {
+    expect(toolRequestSessionGrantFromPayload(opened(undefined))).toBe('tool');
+  });
+
+  test.each([
+    ['a blocked path', { blockedPath: '/outside/f' }],
+    [
+      'a matched ask rule',
+      {
+        matchedAskRule: {
+          source: 'projectSettings',
+          toolName: 'Bash',
+          ruleContent: 'git push:*',
+        },
+      },
+    ],
+    [
+      'a sandbox override',
+      {
+        toolInput: {
+          command: 'cd ../x && git status',
+          dangerouslyDisableSandbox: true,
+        },
+      },
+    ],
+    ['suppressAlwaysAllowRule', { suppressAlwaysAllowRule: true }],
+    ['defaultToNo', { defaultToNo: true }],
+    ['requiresUserInteraction', { requiresUserInteraction: true }],
+    [
+      'classifierApprovable',
+      {
+        claudeAsk: { decisionReasonType: 'other', classifierApprovable: false },
+      },
+    ],
+    [
+      'a decision reason code',
+      {
+        claudeAsk: {
+          decisionReasonType: 'other',
+          decisionReasonCode: 'outside_reads_blocked',
+        },
+      },
+    ],
+    ['reason type rule', { claudeAsk: { decisionReasonType: 'rule' } }],
+    [
+      'reason type safetyCheck',
+      { claudeAsk: { decisionReasonType: 'safetyCheck' } },
+    ],
+    [
+      'reason type workingDir',
+      { claudeAsk: { decisionReasonType: 'workingDir' } },
+    ],
+    [
+      'reason type sandboxOverride',
+      { claudeAsk: { decisionReasonType: 'sandboxOverride' } },
+    ],
+    ['an unread frame', { claudeAsk: null }],
+    [
+      'a PowerShell ask',
+      {
+        toolName: 'PowerShell',
+        claudeAsk: { decisionReasonType: 'subcommandResults' },
+      },
+    ],
+  ])('still prompts with %s: no tool grant', (_label, extra) => {
+    for (const reason of [WARNINGS[0], 'This command requires approval']) {
+      const payload = opened(reason, extra);
+      expect(toolRequestSessionGrantFromPayload(payload), String(reason)).toBe(
+        'none',
+      );
+      expect(toolRequestRuleGrantFromPayload(payload)).toBeUndefined();
+    }
+  });
+
+  test.each([
+    ['dangerouslyDisableSandbox'],
+    ['requiresUserInteraction'],
+    ['Your organization requires approval for this tool'],
+  ])('the literal escalation reason %s still prompts', (reason) => {
+    expect(toolRequestSessionGrantFromPayload(opened(reason))).toBe('none');
+  });
+
+  test('a directory suggestion still offers only the folder', () => {
+    const payload = opened(WARNINGS[0], {
+      suggestions: [
+        {
+          type: 'addDirectories',
+          directories: ['/outside'],
+          destination: 'session',
+        },
+      ],
+    });
+    expect(toolRequestSessionGrantFromPayload(payload)).toBe('folder');
+    expect(toolRequestRuleGrantFromPayload(payload)).toBeUndefined();
+  });
+
+  test('a chained Bash command with warning text but no ask rule is plain', () => {
+    expect(
+      toolRequestSessionGrantFromPayload(
+        opened(WARNINGS[1], {
+          claudeAsk: { decisionReasonType: 'subcommandResults' },
+        }),
+      ),
+    ).toBe('tool');
+  });
+});
+
+describe('the command-prefix session grant (owner decision)', () => {
+  const prefix = (ruleContent: string, toolName = 'Bash') => ({
+    type: 'addRules',
+    rules: [{ toolName, ruleContent }],
+    behavior: 'allow',
+    destination: 'localSettings',
+  });
+  /** A plain Claude Bash ask, as the live probe against SDK 0.3.304 saw it. */
+  const opened = (
+    suggestions: unknown[],
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    toolName: 'Bash',
+    toolInput: { command: 'npm ls react' },
+    decisionReason: 'This command requires approval',
+    claudeAsk: { decisionReasonType: 'other' },
+    suggestions,
+    ...extra,
+  });
+
+  test.each([['npm ls *'], ['npm pkg *'], ['npm ls:*']])(
+    'offers %s, labelled with the prefix',
+    (rule) => {
+      const grant = toolRequestRuleGrantFromPayload(opened([prefix(rule)]));
+      expect(grant).toEqual({
+        rules: [rule],
+        label: `Allow "${rule}" for this session`,
+      });
+      // The whole-tool choice stays beside it.
+      expect(toolRequestSessionGrantFromPayload(opened([prefix(rule)]))).toBe(
+        'tool',
+      );
+    },
+  );
+
+  test('also on a Bash warning ask, and for two prefixes', () => {
+    expect(
+      toolRequestRuleGrantFromPayload(
+        opened([prefix('npm ls *')], {
+          decisionReason:
+            "A variable in this command can't be checked before it runs",
+        }),
+      )?.label,
+    ).toBe('Allow "npm ls *" for this session');
+    expect(
+      toolRequestRuleGrantFromPayload(
+        opened([prefix('npm ls *'), prefix('npm pkg *')], {
+          claudeAsk: { decisionReasonType: 'subcommandResults' },
+        }),
+      )?.label,
+    ).toBe('Allow "npm ls *" and "npm pkg *" for this session');
+  });
+
+  test.each([
+    ['an exact-command rule', opened([prefix('npm --version')])],
+    ['a bare wildcard', opened([prefix(' *')])],
+    ['a wildcard prefix', opened([prefix('* *')])],
+    ['a wildcard colon prefix', opened([prefix('*:*')])],
+    ['a quoted prefix', opened([prefix('echo "a" *')])],
+    ['three prefixes', opened([prefix('a *'), prefix('b *'), prefix('c *')])],
+    ['a Read rule', opened([prefix('//etc/**', 'Read')])],
+    ['a deny rule', opened([{ ...prefix('npm ls *'), behavior: 'deny' }])],
+    ['a non-Bash tool', opened([prefix('npm ls *')], { toolName: 'WebFetch' })],
+    [
+      'a PowerShell tool',
+      opened([prefix('npm ls *')], { toolName: 'PowerShell' }),
+    ],
+    // Another engine: no claudeAsk.
+    ['another engine', opened([prefix('npm ls *')], { claudeAsk: undefined })],
+    ['an unread frame', opened([prefix('npm ls *')], { claudeAsk: null })],
+    ['an escalation', opened([prefix('npm ls *')], { blockedPath: '/x' })],
+    [
+      'a rule the preview would redact',
+      // Within the length bound, so only the redaction refuses it.
+      opened([prefix('curl -u ghp_0123456789abcdefghijklmnopqrstuvwxyzAB *')]),
+    ],
+    [
+      'a rule longer than the label bound',
+      opened([prefix(`${'x'.repeat(70)} *`)]),
+    ],
+  ])('is not offered for %s', (_label, payload) => {
+    expect(toolRequestRuleGrantFromPayload(payload)).toBeUndefined();
+  });
+
+  test('forwards only the Bash prefix rules of allow updates', () => {
+    const mode = {
+      type: 'setMode',
+      mode: 'acceptEdits',
+      destination: 'session',
+    };
+    const mixed = {
+      type: 'addRules',
+      rules: [
+        { toolName: 'Bash', ruleContent: 'npm ls *' },
+        { toolName: 'Bash', ruleContent: 'npm --version' },
+        { toolName: 'Read', ruleContent: '//etc/**' },
+      ],
+      behavior: 'allow',
+      destination: 'localSettings',
+    };
+    expect(
+      ruleGrantPermissionUpdates([
+        mode,
+        mixed,
+        { type: 'addDirectories', directories: ['/x'], destination: 'session' },
+        { ...prefix('rm *'), behavior: 'deny' },
+      ]),
+    ).toEqual([
+      {
+        type: 'addRules',
+        rules: [{ toolName: 'Bash', ruleContent: 'npm ls *' }],
+        behavior: 'allow',
+        destination: 'localSettings',
+      },
+    ]);
+    expect(ruleGrantPermissionUpdates()).toEqual([]);
+  });
+
+  test('toolRequestRuleGrant reads the same request fields', () => {
+    expect(
+      toolRequestRuleGrant({
+        toolName: 'Bash',
+        claudeAsk: { decisionReasonType: 'other' },
+        suggestions: [prefix('npm ls *')],
+      })?.rules,
+    ).toEqual(['npm ls *']);
+  });
+});
+
+describe('session grant labels', () => {
+  test('a whole-tool grant says "all"', () => {
+    expect(toolRequestGrantLabel('Bash', 'tool')).toBe(
+      'Allow all Bash commands for this session',
+    );
+    expect(toolRequestGrantLabel('PowerShell', 'tool')).toBe(
+      'Allow all PowerShell commands for this session',
+    );
+    expect(toolRequestGrantLabel('WebFetch', 'tool')).toBe(
+      'Allow all WebFetch calls for this session',
+    );
+    expect(toolRequestGrantLabel('mcp__github__create_issue', 'tool')).toBe(
+      'Allow all github.create_issue calls for this session',
+    );
+    expect(toolRequestGrantLabel(undefined, 'tool')).toBe(
+      'Allow for this session',
+    );
   });
 });
 
@@ -1285,7 +1650,7 @@ describe('toolRequestPreview — display form (#3382)', () => {
   test('the tool name in "wants to use" and in the grant button is sanitised too', () => {
     expect(toolRequestDisplayName(`Ba${RLO}sh${BEL}`)).toBe('Bash');
     expect(toolRequestGrantLabel(`Ba${RLO}sh${NEL}`, 'tool')).toBe(
-      'Allow Bash for this session',
+      'Allow all Bash commands for this session',
     );
   });
 });

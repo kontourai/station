@@ -23,8 +23,8 @@
 // if any of them falls out of the scanned list.
 
 import { readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 const SCAN_PATHSPECS = [
   'src-ui/index.html',
@@ -72,17 +72,7 @@ export function inspectFiles(files, readFile) {
 }
 
 function main() {
-  const files = execFileSyncBounded(
-    'git',
-    ['ls-files', '--', ...SCAN_PATHSPECS],
-    {
-      encoding: 'utf8',
-      windowsHide: true,
-    },
-  )
-    .trim()
-    .split('\n')
-    .filter(Boolean);
+  const files = gitLsFiles(['--', ...SCAN_PATHSPECS]);
   assertScanScope(files);
   const findings = inspectFiles(files, (file) => readFileSync(file, 'utf8'));
   if (findings.length > 0) {
