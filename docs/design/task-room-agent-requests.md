@@ -468,7 +468,15 @@ the active tab.
 ## Room polish behavior
 
 The room and thread share Enter-to-send behavior with Shift+Enter for newlines
-and IME composition preserved. Only the message scroller follows new messages;
+and IME composition preserved.
+
+After a confirmed or duplicate human-message send, the composer restores typing
+focus only if the original textarea, connection authority and Task incarnation
+remain current and the input has unlocked. Focus deliberately moved to another
+connected control takes precedence. Refused or uncertain sends retain their
+existing draft and retry behavior.
+
+Only the message scroller follows new messages;
 readers above the newest message can jump back. Hidden presence facts do not
 suppress the empty state. Failed run facts retain the original request and
 same-Session retry, with the server's normal admission checks. Joining and
