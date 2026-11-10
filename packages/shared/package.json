@@ -112,6 +112,7 @@
     "./orchestration-store-quarantine": "./src/orchestration-store-quarantine.ts",
     "./setup-import-bounds": "./src/setup-import-bounds.ts",
     "./random-id": "./src/random-id.ts",
+    "./base64url": "./src/base64url.ts",
     "./terminal-capability": "./src/terminal-capability.ts",
     "./skill-experience-author": "./src/skill-experience-author.ts",
     "./skill-experience-values": "./src/skill-experience-values.ts",

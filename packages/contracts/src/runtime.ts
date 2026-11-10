@@ -1,3 +1,5 @@
+import { isRecord } from './record-guard.js';
+
 export interface ToolCallResponse {
   success: boolean;
   response?: unknown;
@@ -130,16 +132,10 @@ export interface ConversationStatsResponse {
 const isFiniteNonnegative = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
 function isConversationModelStats(
   value: unknown,
 ): value is ConversationModelStats {
-  if (!isPlainRecord(value)) return false;
+  if (!isRecord(value)) return false;
   const candidate = value;
   return (
     ['turns', 'toolCalls'].every((key) =>
@@ -198,7 +194,7 @@ export function parseConversationStatsResponse(
     (candidate.notFound !== undefined && candidate.notFound !== true) ||
     !isConversationStatsMeasurement(candidate.measurement) ||
     (candidate.modelStats !== undefined &&
-      (!isPlainRecord(candidate.modelStats) ||
+      (!isRecord(candidate.modelStats) ||
         !Object.values(candidate.modelStats).every(isConversationModelStats)))
   )
     return undefined;
@@ -208,7 +204,7 @@ export function parseConversationStatsResponse(
 /** `undefined` is valid (the field is optional); a malformed record is not. */
 function isConversationStatsMeasurement(value: unknown): boolean {
   if (value === undefined) return true;
-  if (!isPlainRecord(value)) return false;
+  if (!isRecord(value)) return false;
   return (
     (value.source === 'station-memory' || value.source === 'engine-events') &&
     (value.provider === undefined || typeof value.provider === 'string')

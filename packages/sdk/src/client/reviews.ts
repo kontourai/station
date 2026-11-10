@@ -169,22 +169,20 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
       reject(signal.reason ?? new Error('Request aborted'));
       return;
     }
-    const timer = setTimeout(resolve, ms);
-    const timerHandle: unknown = timer;
-    if (
-      typeof timerHandle === 'object' &&
-      timerHandle !== null &&
-      'unref' in timerHandle &&
-      typeof timerHandle.unref === 'function'
-    )
-      timerHandle.unref();
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        reject(signal.reason ?? new Error('Request aborted'));
-      },
-      { once: true },
-    );
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new Error('Request aborted'));
+    };
+    // The timer stays referenced: a caller awaiting this poll (the CLI does,
+    // under top-level await) must not have its process exit between polls
+    // because the wait was the only pending work. Abort clears it, so a
+    // cancelled poll never holds the process open.
+    const timer = setTimeout(() => {
+      // One listener per poll would otherwise accumulate on a long-lived
+      // caller signal for the life of the review.
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }

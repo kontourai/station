@@ -10,7 +10,12 @@ import type {
 } from '@kontourai/station-contracts/task-memory';
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch, StationHttpError } from '../client/http';
+import { envelopeError } from '../client/api-error-message';
+import {
+  authenticatedFetch,
+  readJsonBody,
+  StationHttpError,
+} from '../client/http';
 import { type QueryConfig, useApiMutation, useApiQuery } from '../query-core';
 
 // ── Task memory (#4003) ──────────────────────────────────────────────────
@@ -55,18 +60,24 @@ interface MemoryResult<T> {
   current?: TaskSummaryRevision | null;
 }
 
+/**
+ * The canonical envelope read, kept local because a stale-base refusal also
+ * carries `current` beside the envelope. Every other refusal throws the
+ * `StationHttpError` from `envelopeError` (status, `code`, `details`), and a
+ * body that is not JSON (a proxy's error page, an empty body) reports the
+ * status instead of a parse exception.
+ */
 async function readResult<T>(response: Response, fallback: string): Promise<T> {
-  const result = (await response.json()) as MemoryResult<T>;
+  const body = await readJsonBody(response);
+  const result = (body ?? {}) as MemoryResult<T>;
   if (response.ok && result.success && result.data !== undefined)
     return result.data;
-  const message = apiErrorMessage(result, fallback);
   if (result.code === 'task_summary_stale_base')
-    throw new TaskSummaryConflictError(message, result.current ?? null);
-  throw new StationHttpError(
-    response.status,
-    message,
-    result.code ? { code: result.code } : undefined,
-  );
+    throw new TaskSummaryConflictError(
+      apiErrorMessage(result, fallback),
+      result.current ?? null,
+    );
+  throw envelopeError(response, body, fallback);
 }
 
 const memoryPath = async (taskId: string, rest = '') =>
