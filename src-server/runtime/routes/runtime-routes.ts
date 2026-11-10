@@ -248,6 +248,7 @@ import {
 import { TelemetryIncidentLinks } from '../../services/telemetry-incident-links.js';
 import { TaskWalkthroughStore } from '../../services/walkthroughs/task-walkthrough-store.js';
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
+import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
@@ -10525,7 +10526,11 @@ export function configureRuntimeRoutes(
     if (readAuthorityForRequest(routeContext.req.raw).mode === 'hosted') {
       return routeContext.json({ success: true, data: [] });
     }
-    const limit = Number(routeContext.req.query('limit') || 50);
+    const limit =
+      boundedIntQuery(routeContext.req.query('limit'), {
+        min: 0,
+        max: 1000,
+      }) ?? 50;
     const adapter = context.memoryAdapters.values().next().value;
     if (!adapter) {
       return routeContext.json({ success: true, data: [] });

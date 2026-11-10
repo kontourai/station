@@ -345,6 +345,27 @@ describe('Scheduler Routes', () => {
     expect(body.data[0]).toHaveProperty('status');
   });
 
+  test.each([
+    ['is not a number', 'count=abc', 5, 20],
+    ['is negative', 'count=-3', 0, 1],
+    ['is larger than the route serves', 'count=999999', 1000, 1000],
+  ])(
+    'a count that %s reaches the scheduler as a bounded integer',
+    async (_label, query, previewCount, logCount) => {
+      const { app, svc } = setup();
+
+      await app.request(`/jobs/preview-schedule?cron=0+8+*+*+1-5&${query}`);
+      expect(svc.previewSchedule).toHaveBeenCalledWith(
+        '0 8 * * 1-5',
+        previewCount,
+        undefined,
+      );
+
+      await app.request(`/jobs/daily-report/logs?${query}`);
+      expect(svc.getJobLogs).toHaveBeenCalledWith('daily-report', logCount);
+    },
+  );
+
   test('POST /jobs creates a job and returns { success, data }', async () => {
     const { app, svc } = setup();
     const body = await json(
