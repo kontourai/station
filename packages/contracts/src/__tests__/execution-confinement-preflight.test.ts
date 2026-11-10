@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CONFINEMENT_PREFLIGHT_ENGINE_PATTERN,
   MAX_CONFINEMENT_PREFLIGHT_ENGINES,
   MAX_CONFINEMENT_PREFLIGHT_REASON_LENGTH,
   parseConfinementPreflight,
@@ -133,7 +132,6 @@ describe('#4774: parseConfinementPreflight', () => {
   it('accepts an engine id at the length limit and refuses one past it', () => {
     const at = `c${'x'.repeat(63)}`;
     expect(at).toHaveLength(64);
-    expect(CONFINEMENT_PREFLIGHT_ENGINE_PATTERN.test(at)).toBe(true);
     for (const engine of ['claude', 'codex', 'open-code_2.1']) {
       expect(
         parseConfinementPreflight(document({ engines: [{ ...ENTRY, engine }] }))

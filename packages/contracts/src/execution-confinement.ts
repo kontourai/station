@@ -291,8 +291,7 @@ export const MAX_CONFINEMENT_PREFLIGHT_ENGINES = 16;
  * and `-`, starting with a letter or digit, at most 64 characters. Anything
  * else (a path, a control sequence) refuses the whole answer.
  */
-export const CONFINEMENT_PREFLIGHT_ENGINE_PATTERN =
-  /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const CONFINEMENT_PREFLIGHT_ENGINE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 const PREFLIGHT_MECHANISMS = new Set<string>(['codex-sandbox', 'seatbelt']);
 const PREFLIGHT_LEVELS = new Set<string>([
