@@ -74,7 +74,7 @@
     "veritas:coverage": "node scripts/run-veritas-readiness.mjs --check coverage --working-tree",
     "veritas:shadow": "node scripts/run-veritas-readiness.mjs --working-tree",
     "trust-reconcile-verify": "npm run full:regression",
-    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && node scripts/test-temp-dir-ratchet.mjs && node scripts/type-laundering-gate.mjs && node scripts/conversation-boundary-gate.mjs && node scripts/check-durability-provider-branches.mjs && npm run test:fixtures:guard",
+    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && node scripts/test-temp-dir-ratchet.mjs && node scripts/windows-hide-ratchet.mjs && node scripts/type-laundering-gate.mjs && node scripts/conversation-boundary-gate.mjs && node scripts/check-durability-provider-branches.mjs && npm run test:fixtures:guard",
     "durability:provider-branch:gate": "node scripts/check-durability-provider-branches.mjs",
     "coding-composition:gate": "node scripts/coding-composition-inventory-gate.mjs",
     "agent-identity:inventory": "node scripts/agent-identity-supported-surface-inventory.mjs",
@@ -97,6 +97,7 @@
     "ui-copy-length:ratchet": "node scripts/ui-copy-length.mjs",
     "random-uuid:guard": "node scripts/random-uuid-guard.mjs",
     "test-temp-dir:ratchet": "node scripts/test-temp-dir-ratchet.mjs",
+    "windows-hide:ratchet": "node scripts/windows-hide-ratchet.mjs",
     "dialog-surface-class:guard": "node scripts/dialog-surface-class-guard.mjs",
     "knowledge-kit-import:gate": "node scripts/knowledge-kit-import-gate.mjs",
     "builder-delivery-viewer-import:gate": "node scripts/builder-delivery-viewer-import-gate.mjs",
@@ -505,7 +506,7 @@
     "yaml": "2.9.1",
     "yazl": "^3.3.1",
     "oxlint": "1.90.0",
-    "@kontourai/corpus": "https://codeload.github.com/kontourai/corpus/tar.gz/dfadba4e64883e6187fb42e32911ca9f091e0fa7"
+    "@kontourai/corpus": "github:kontourai/corpus#dfadba4e64883e6187fb42e32911ca9f091e0fa7"
   },
   "license": "Apache-2.0"
 }

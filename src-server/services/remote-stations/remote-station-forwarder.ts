@@ -24,6 +24,8 @@
  * minted (`isRemoteStationTarget`). Later remote work (#2875,
  * provider-neutral workspace preparation) resolves through the same call.
  */
+
+import { errorMessage } from '../../utils/error-message.js';
 import type { PeerCredentialStore } from '../peers/peer-credential-store.js';
 import type {
   SshEnvironmentService,
@@ -476,9 +478,9 @@ export function createRemoteStationForwarder(
     } catch (error) {
       deps.warn?.(
         `[remote-station-forwarder] peer credential lookup failed for environmentId=${environmentId}; ` +
-          `the SSH-tunneled target carries no credential: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `the SSH-tunneled target carries no credential: ${errorMessage(
+            error,
+          )}`,
       );
     }
     const localUrl =

@@ -20,6 +20,7 @@ import {
 } from '../../contexts/ToastContext';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
+import { relativeTime } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
 import {
@@ -33,21 +34,6 @@ import './NotificationContainer.css';
 import { selectToastStackItems } from './toast-stack-layout';
 
 type Notification = ReturnType<typeof useNotificationHistory>[number];
-
-function formatTimestamp(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-
-  if (seconds < 60) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
 
 function ToastCard({
   notification,
@@ -215,7 +201,7 @@ function ToastCard({
                 </span>
               )}
               <time className="toast-card__time">
-                {formatTimestamp(notification.timestamp)}
+                {relativeTime(notification.timestamp, Date.now())}
               </time>
             </div>
           )}

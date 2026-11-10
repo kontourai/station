@@ -43,6 +43,7 @@ import { mutateJsonFile } from '../../domain/file-storage-helpers.js';
 export { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
 
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
+import { sleep } from '../../utils/sleep.js';
 
 /** `{ [skillName]: stats }`, as persisted (without `qualityScore`). */
 export type SkillUsageRecord = Record<string, SkillStats>;
@@ -323,9 +324,7 @@ export class SkillUsageService {
         // Yield the lock's own poll granularity before reacquiring, so a
         // sibling process polling for it wins the race at least as often as we
         // do instead of being starved by a continuously busy local queue.
-        await new Promise((resolveSleep) =>
-          setTimeout(resolveSleep, LOCK_FAIRNESS_YIELD_MS),
-        );
+        await sleep(LOCK_FAIRNESS_YIELD_MS);
       }
     }
   }

@@ -4,13 +4,8 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import { isSessionLifecycleStateAtRest } from '@kontourai/station-contracts/session-lifecycle';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 import { type HomeWorkItem, isTerminalLifecycle } from './home-view-model';
-
-function epochMs(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
 
 /**
  * Layers the conversation inventory's per-conversation facts onto work items:
@@ -30,7 +25,7 @@ export function withConversationInventory<T extends HomeWorkItem>(
   return items.map((item) => {
     const conversation = inventoryById.get(item.id);
     if (!conversation) return item;
-    const acknowledgedAt = epochMs(conversation.acknowledgedAt);
+    const acknowledgedAt = parseEpochMs(conversation.acknowledgedAt);
     // The inventory's change time is a finish time only when the inventory
     // itself read the conversation at rest. It is re-read on a throttle, so
     // a copy read while the work ran holds its START time, and a cached copy
@@ -40,7 +35,7 @@ export function withConversationInventory<T extends HomeWorkItem>(
       isTerminalLifecycle(item.lifecycleLabel) &&
       conversation.lifecycleState !== undefined &&
       isSessionLifecycleStateAtRest(conversation.lifecycleState)
-        ? epochMs(conversation.lifecycleChangedAt)
+        ? parseEpochMs(conversation.lifecycleChangedAt)
         : undefined;
     const terminalAt =
       inventoryTerminalAt !== undefined && item.terminalAt !== undefined

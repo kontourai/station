@@ -50,6 +50,7 @@ import {
   SecretBindingResolutionError,
 } from '../../services/secrets/secret-binding-administration.js';
 import { acpOps } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
 import {
   acpConnectionSchema,
@@ -582,7 +583,7 @@ export function createACPRoutes(
     void registerFirstHandshakeACPConnection(ctx, config).catch((error) => {
       ctx.logger?.warn?.('ACP first-handshake registration failed', {
         id: config.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     });
   });

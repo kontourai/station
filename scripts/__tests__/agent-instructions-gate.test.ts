@@ -35,7 +35,7 @@ function fixture(overrides: Record<string, string> = {}) {
     ]),
   );
   files.set(resolve(root, 'AGENTS.md'), '# root\n');
-  files.set(resolve(root, 'CLAUDE.md'), `@AGENTS.md\n\n${governance}`);
+  files.set(resolve(root, 'CLAUDE.md'), '@AGENTS.md\n');
   files.set(
     resolve(root, 'docs/guides/testing.md'),
     readFileSync('docs/guides/testing.md', 'utf8'),
@@ -153,18 +153,16 @@ describe('agent instruction topology', () => {
       }),
     ).toContain('AGENTS.md exceeds tokens budget (9999 > 1536)');
     expect(
-      instructionGateErrors({ ...fixture({ 'CLAUDE.md': '@AGENTS.md\n' }) }),
-    ).toContain(
-      'CLAUDE.md must be the root AGENTS wrapper plus the canonical governance block',
-    );
-    expect(
       instructionGateErrors({
-        ...fixture({
-          'CLAUDE.md': `@AGENTS.md\n\n${governance.replace('Veritas', 'Other')}`,
-        }),
+        ...fixture({ 'CLAUDE.md': `@AGENTS.md\n\n${governance}` }),
       }),
     ).toContain(
-      'CLAUDE.md must be the root AGENTS wrapper plus the canonical governance block',
+      'CLAUDE.md must only import the root AGENTS.md, which carries the governance block',
+    );
+    expect(
+      instructionGateErrors({ ...fixture({ 'CLAUDE.md': '# root\n' }) }),
+    ).toContain(
+      'CLAUDE.md must only import the root AGENTS.md, which carries the governance block',
     );
     expect(
       instructionGateErrors({

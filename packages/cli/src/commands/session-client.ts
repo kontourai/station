@@ -943,7 +943,34 @@ function printResumeHint({
   );
 }
 
-function shellQuote(value: string): string {
+/**
+ * One argument of a command the operator is meant to copy and paste (the
+ * `Respond:`/`Resume:` hints, and `respondCommand` under `--json`).
+ *
+ * A token made only of characters no shell treats specially is printed bare,
+ * so the usual ids read the same everywhere. Anything else is quoted for the
+ * shell this process runs under. POSIX: single quotes, with `'` escaped.
+ * Windows: double quotes, as `homeFlag` in `lifecycle.ts` does (#2805) —
+ * cmd.exe keeps single quotes as literal characters, so a pasted
+ * `respond 'thr_1' 'req_1'` named ids that do not exist. An embedded `"` is
+ * backslash-escaped the way a Windows program's argument parser expects.
+ * Both Windows shells still expand `%VAR%` (cmd) or `$name` (PowerShell)
+ * inside double quotes; a value containing those needs editing by hand.
+ */
+export function shellQuote(
+  value: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (/^[\w.:/-]+$/.test(value)) return value;
+  if (platform === 'win32') {
+    // Backslashes are literal to a Windows argument parser except before a
+    // quote, so only those runs (and a trailing run, which would otherwise
+    // escape the closing quote) are doubled.
+    const escaped = value
+      .replace(/(\\*)"/g, '$1$1\\"')
+      .replace(/(\\+)$/, '$1$1');
+    return `"${escaped}"`;
+  }
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 

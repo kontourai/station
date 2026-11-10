@@ -41,6 +41,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
+  optionalValueFlag,
   type ParsedCoreArgs,
   printJsonMode,
   requirePositional,
@@ -416,10 +417,8 @@ async function runApprovalsList(
   apiBase: string,
   parsed: ParsedCoreArgs,
 ): Promise<void> {
-  const agentSlug =
-    typeof parsed.flags.agent === 'string' ? parsed.flags.agent : undefined;
-  const threadId =
-    typeof parsed.flags.thread === 'string' ? parsed.flags.thread : undefined;
+  const agentSlug = optionalValueFlag(parsed, 'agent');
+  const threadId = optionalValueFlag(parsed, 'thread');
   const jsonMode = parsed.flags.json === true;
   const watch = parsed.flags.watch === true;
 

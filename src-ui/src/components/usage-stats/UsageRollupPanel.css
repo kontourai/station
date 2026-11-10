@@ -69,20 +69,6 @@
   text-align: left;
   white-space: nowrap;
 }
-.usage-rollup__drawer {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  background: rgb(0 0 0 / 45%);
-  display: flex;
-  justify-content: flex-end;
-}
-.usage-rollup__drawer > div {
-  width: min(30rem, 100%);
-  overflow: auto;
-  padding: 1.5rem;
-  background: var(--bg-secondary);
-}
 @media (max-width: 40rem) {
   .usage-rollup__header,
   .usage-rollup__controls,
@@ -96,10 +82,6 @@
   }
   .usage-rollup__controls fieldset {
     flex-wrap: wrap;
-  }
-  .usage-rollup__drawer > div {
-    width: 100%;
-    min-height: 100%;
   }
 }
 

@@ -13,6 +13,7 @@ import {
   useTaskRoomAgentRequestsQuery,
 } from '@kontourai/station-sdk/project-task-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { applyReturnFocus } from '@kontourai/station-shared/return-focus';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
@@ -157,9 +158,44 @@ export function TaskRoomComposer({
     setDraftOwner(owner),
   );
   const currentOwner = useRef(owner);
-  currentOwner.current = owner;
+  const ownerGeneration = useRef(0);
   const connectionChanged = draftOwner !== undefined && draftOwner !== owner;
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const [returnToMessage, setReturnToMessage] = useState<{
+    element: HTMLTextAreaElement;
+    owner: string;
+    generation: number;
+    isCurrent: () => boolean;
+    cancelled: boolean;
+  }>();
+  const focusReturnAttempt = useRef<typeof returnToMessage>(undefined);
+  useLayoutEffect(() => {
+    if (currentOwner.current !== owner) {
+      currentOwner.current = owner;
+      ownerGeneration.current += 1;
+    }
+    const cancelCompetingFocus = () => {
+      const attempt = focusReturnAttempt.current;
+      const active = document.activeElement;
+      if (
+        attempt &&
+        active &&
+        active !== document.body &&
+        active !== document.documentElement &&
+        active.isConnected &&
+        active !== attempt.element
+      ) {
+        attempt.cancelled = true;
+      }
+    };
+    document.addEventListener('focusin', cancelCompetingFocus, true);
+    return () => {
+      document.removeEventListener('focusin', cancelCompetingFocus, true);
+      if (focusReturnAttempt.current)
+        focusReturnAttempt.current.cancelled = true;
+      focusReturnAttempt.current = undefined;
+    };
+  }, [owner]);
   const id = useId();
   const discardRecovery = () => {
     if (
@@ -257,6 +293,41 @@ export function TaskRoomComposer({
     !!unconfirmedMessage ||
     connectionChanged ||
     recoveryHeld;
+  useLayoutEffect(() => {
+    if (!returnToMessage) return;
+    if (
+      returnToMessage.cancelled ||
+      focusReturnAttempt.current !== returnToMessage ||
+      returnToMessage.owner !== owner ||
+      returnToMessage.generation !== ownerGeneration.current ||
+      !returnToMessage.isCurrent() ||
+      !scope?.isCurrent() ||
+      !writable ||
+      textarea.current !== returnToMessage.element
+    ) {
+      if (focusReturnAttempt.current === returnToMessage)
+        focusReturnAttempt.current = undefined;
+      setReturnToMessage(undefined);
+      return;
+    }
+    const active = document.activeElement;
+    if (
+      active &&
+      active !== document.body &&
+      active !== document.documentElement &&
+      active.isConnected &&
+      active !== returnToMessage.element
+    ) {
+      returnToMessage.cancelled = true;
+      focusReturnAttempt.current = undefined;
+      setReturnToMessage(undefined);
+      return;
+    }
+    if (locked) return;
+    focusReturnAttempt.current = undefined;
+    setReturnToMessage(undefined);
+    applyReturnFocus([returnToMessage.element], returnToMessage.element);
+  }, [returnToMessage, owner, scope, writable, locked]);
   const candidates = [
     ...(options.isError ? [] : (options.data?.targets ?? [])).map((target) => ({
       ...target,
@@ -335,6 +406,20 @@ export function TaskRoomComposer({
       !scope?.isCurrent()
     )
       return;
+    const focusedMessage =
+      document.activeElement === textarea.current ? textarea.current : null;
+    const sendGeneration = ownerGeneration.current;
+    const focusAttempt = focusedMessage
+      ? {
+          element: focusedMessage,
+          owner,
+          generation: sendGeneration,
+          isCurrent: () => scope.isCurrent(),
+          cancelled: false,
+        }
+      : undefined;
+    focusReturnAttempt.current = focusAttempt;
+    let focusReturnQueued = false;
     setNotice('');
     sendInFlight.current = true;
     setPreparing(true);
@@ -577,10 +662,15 @@ export function TaskRoomComposer({
         if (
           !mounted.current ||
           currentOwner.current !== owner ||
+          ownerGeneration.current !== sendGeneration ||
           !scope.isCurrent()
         )
           return;
         if (outcome.kind === 'committed' || outcome.kind === 'duplicate') {
+          if (focusAttempt && !focusAttempt.cancelled) {
+            focusReturnQueued = true;
+            setReturnToMessage(focusAttempt);
+          }
           setDraft((current) => (current === draft ? '' : current));
           setLeadingPerson(undefined);
           attachments.clear();
@@ -597,6 +687,8 @@ export function TaskRoomComposer({
     } catch (error) {
       setNotice(describeStationFailure(error).body);
     } finally {
+      if (!focusReturnQueued && focusReturnAttempt.current === focusAttempt)
+        focusReturnAttempt.current = undefined;
       sendInFlight.current = false;
       setPreparing(false);
     }

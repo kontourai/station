@@ -471,6 +471,8 @@ describe('Seatbelt breadth', () => {
     [STATION_HOME, "it is or overlaps Station's data"],
     [`${STATION_HOME}/workspaces/x`, "it is or overlaps Station's data"],
     [`${HOME}/.claude`, 'it is inside ~/.claude'],
+    // A hidden folder whose name starts with two dots is still inside home.
+    [`${HOME}/..cache/project`, 'it is inside ~/..cache'],
     [`${HOME}/Library/Mobile`, 'it is inside ~/Library'],
   ])('a workspace at %s cannot be confined: %s', (workspace, reason) => {
     expect(

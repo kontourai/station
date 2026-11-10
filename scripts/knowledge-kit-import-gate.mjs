@@ -50,8 +50,8 @@
 // repo's existing `node_modules` references, in packages/cli and
 // packages/shared, are never adjacent to `@kontourai`/`flow-agents` tokens).
 import { readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 // Matches `@kontourai/flow-agents/kits`, `/build`, or `/src` — i.e. any
 // subpath past the package's declared `exports` map (`"."` and
@@ -131,11 +131,7 @@ const SCOPED_EXTENSIONS = [
 ];
 
 function listTrackedFiles() {
-  const out = execFileSyncBounded('git', ['ls-files', '--', ...SCOPED_DIRS], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  return out.trim().split('\n').filter(Boolean);
+  return gitLsFiles(['--', ...SCOPED_DIRS]);
 }
 
 function isScopedSourceFile(file) {

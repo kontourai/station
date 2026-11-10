@@ -3,6 +3,7 @@ import type {
   NativeRelayLinkV1,
 } from '@kontourai/station-contracts/native-relay-link';
 import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
+import { encodeBase64Url } from './base64url.js';
 
 const VERSION = 'station-native-relay-link/v1';
 const MAX_BYTES = 16 * 1024;
@@ -211,11 +212,7 @@ export function encodeNativeRelayLink(
   const validated = envelope(value, options);
   const bytes = new TextEncoder().encode(JSON.stringify(validated));
   if (bytes.length > MAX_BYTES) invalid();
-  const encoded = btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  return `${scheme}://relay#relay-link=${encoded}`;
+  return `${scheme}://relay#relay-link=${encodeBase64Url(bytes)}`;
 }
 
 /** Inspection codec only; this parser grants no native or application authority. */

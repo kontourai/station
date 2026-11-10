@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import type { ProjectTaskRoomAppendOutcome } from '@kontourai/station-contracts/project-task-room';
 import type { TaskRoomWorkInput } from '@kontourai/station-contracts/task-room-work';
 import { TaskRoomWorkNotSentError } from '@kontourai/station-sdk/project-task-rooms';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -10,6 +11,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { Suspense, startTransition, useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 function render(ui: Parameters<typeof renderView>[0]) {
@@ -21,6 +23,17 @@ function render(ui: Parameters<typeof renderView>[0]) {
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     ),
   });
+}
+
+function moveFocusToBody() {
+  const focused = document.activeElement;
+  if (!(focused instanceof HTMLTextAreaElement))
+    throw new Error('Expected the pending message input to hold focus');
+  // jsdom refuses blur on a disabled textarea; do not simulate an outside claim.
+  const disabled = focused.disabled;
+  focused.disabled = false;
+  focused.blur();
+  focused.disabled = disabled;
 }
 const mocks = vi.hoisted(() => ({
   brief: {
@@ -37,12 +50,13 @@ const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   agent: vi.fn(),
   message: vi.fn(),
+  messagePending: false,
   upload: vi.fn(),
   scope: {
     apiBase: 'http://station.test',
     authorityKey: 'home-a',
     draftRecoveryKey: 'home-a-authorization-1',
-    isCurrent: () => true,
+    isCurrent: (): boolean => true,
   },
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -72,7 +86,7 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   TaskRoomWorkNotSentError: class extends Error {},
   useAppendProjectTaskRoomHumanMessageMutation: () => ({
     mutateAsync: mocks.message,
-    isPending: false,
+    isPending: mocks.messagePending,
   }),
   useSubmitTaskRoomAgentRequestMutation: () => ({
     mutateAsync: mocks.agent,
@@ -160,6 +174,7 @@ beforeEach(() => {
     data: { records: [], context: mocks.brief },
     isError: false,
   });
+  mocks.messagePending = false;
   mocks.message.mockReset().mockResolvedValue({ kind: 'committed' });
 });
 
@@ -361,6 +376,346 @@ test('a message acknowledgement preserves text entered for the next message', as
   fireEvent.change(textbox, { target: { value: 'Next thought' } });
   await act(async () => acknowledge({ kind: 'committed' }));
   expect((textbox as HTMLTextAreaElement).value).toBe('Next thought');
+});
+
+test.each(['committed', 'duplicate'] as const)(
+  'returns to the original input after a %s Enter send and body focus loss',
+  async (kind) => {
+    let acknowledge!: (value: { kind: typeof kind }) => void;
+    mocks.message.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          acknowledge = resolve;
+        }),
+    );
+    render(<TaskRoomComposer {...props} />);
+    const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+    textbox.focus();
+    fireEvent.change(textbox, { target: { value: 'Hello team' } });
+    fireEvent.keyDown(textbox, { key: 'Enter' });
+    await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+    expect(textbox.matches(':disabled')).toBe(true);
+    // Model focus falling to body while the disabled input is pending; jsdom
+    // does not reproduce the browser's disable-driven focus loss.
+    act(() => moveFocusToBody());
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => acknowledge({ kind }));
+    expect(textbox.matches(':disabled')).toBe(false);
+    expect(document.activeElement).toBe(textbox);
+    expect((textbox as HTMLTextAreaElement).value).toBe('');
+  },
+);
+
+test('waits until the human mutation releases its pending lock before restoring focus', async () => {
+  let acknowledge!: (value: { kind: 'committed' }) => void;
+  mocks.message.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  const view = render(<TaskRoomComposer {...props} />);
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+  textbox.focus();
+  fireEvent.change(textbox, { target: { value: 'Hello team' } });
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+  act(() => moveFocusToBody());
+  mocks.messagePending = true;
+  view.rerender(<TaskRoomComposer {...props} />);
+  await act(async () => acknowledge({ kind: 'committed' }));
+  expect(textbox.matches(':disabled')).toBe(true);
+  expect(document.activeElement).toBe(document.body);
+  mocks.messagePending = false;
+  view.rerender(<TaskRoomComposer {...props} />);
+  expect(textbox.matches(':disabled')).toBe(false);
+  expect(document.activeElement).toBe(textbox);
+});
+
+test.each(['rejected', 'unknown'] as const)(
+  'does not restore focus or clear the draft after a %s human send',
+  async (outcome) => {
+    let finish!: () => void;
+    mocks.message.mockImplementationOnce(
+      () =>
+        new Promise<ProjectTaskRoomAppendOutcome>((resolve, reject) => {
+          finish = () =>
+            outcome === 'unknown'
+              ? reject(new Error('acknowledgement lost'))
+              : resolve({ kind: 'rejected', reason: 'unsupported' });
+        }),
+    );
+    render(<TaskRoomComposer {...props} />);
+    const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+    textbox.focus();
+    fireEvent.change(textbox, { target: { value: 'Keep this draft' } });
+    fireEvent.keyDown(textbox, { key: 'Enter' });
+    await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+    act(() => moveFocusToBody());
+    await act(async () => finish());
+    expect(document.activeElement).toBe(document.body);
+    expect((textbox as HTMLTextAreaElement).value).toBe('Keep this draft');
+  },
+);
+
+test('a confirmed send preserves focus deliberately moved outside the composer', async () => {
+  let acknowledge!: (value: { kind: 'committed' }) => void;
+  mocks.message.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  render(<TaskRoomComposer {...props} />);
+  const outside = document.createElement('button');
+  document.body.append(outside);
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+  textbox.focus();
+  fireEvent.change(textbox, { target: { value: 'Hello team' } });
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+  outside.focus();
+  await act(async () => acknowledge({ kind: 'committed' }));
+  expect(document.activeElement).toBe(outside);
+  outside.remove();
+});
+
+test.each(['task', 'authority', 'authority-roundtrip', 'unmount'] as const)(
+  'a stale send cannot focus the composer after %s',
+  async (change) => {
+    let acknowledge!: (value: { kind: 'committed' }) => void;
+    mocks.message.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          acknowledge = resolve;
+        }),
+    );
+    const view = render(<TaskRoomComposer {...props} />);
+    const original = screen.getByRole('textbox', { name: 'Message the Task' });
+    original.focus();
+    fireEvent.change(original, { target: { value: 'Hello team' } });
+    fireEvent.keyDown(original, { key: 'Enter' });
+    await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+    act(() => moveFocusToBody());
+    if (change === 'unmount') {
+      view.unmount();
+      render(<TaskRoomComposer {...props} taskId="task-2" />);
+    } else if (change === 'task') {
+      view.rerender(<TaskRoomComposer {...props} taskId="task-2" />);
+    } else {
+      mocks.scope.authorityKey = 'home-b';
+      view.rerender(<TaskRoomComposer {...props} />);
+      if (change === 'authority-roundtrip') {
+        mocks.scope.authorityKey = 'home-a';
+        view.rerender(<TaskRoomComposer {...props} />);
+      }
+    }
+    const successor = screen.getByRole('textbox', { name: 'Message the Task' });
+    await act(async () => acknowledge({ kind: 'committed' }));
+    expect(document.activeElement).not.toBe(successor);
+    expect(document.activeElement).toBe(document.body);
+  },
+);
+
+test('an abandoned speculative Task render does not strand the committed owner send', async () => {
+  let acknowledge!: (value: { kind: 'committed' }) => void;
+  mocks.message.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  const suspended = new Promise<never>(() => {});
+  const attemptedOwners: string[] = [];
+  let selectTask!: (taskId: string) => void;
+  function SuspendAfterComposer({ taskId }: { taskId: string }) {
+    attemptedOwners.push(taskId);
+    if (taskId === 'speculative-task') throw suspended;
+    return null;
+  }
+  function Caller() {
+    const [taskId, setTaskId] = useState(props.taskId);
+    selectTask = setTaskId;
+    return (
+      <Suspense fallback={<p>Loading replacement Task</p>}>
+        <TaskRoomComposer {...props} taskId={taskId} />
+        <SuspendAfterComposer taskId={taskId} />
+      </Suspense>
+    );
+  }
+  render(<Caller />);
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+  textbox.focus();
+  fireEvent.change(textbox, { target: { value: 'Committed owner message' } });
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+  act(() => moveFocusToBody());
+  await act(async () => {
+    startTransition(() => selectTask('speculative-task'));
+  });
+  // React reached the sibling after rendering the changed Composer, then suspended.
+  expect(attemptedOwners).toContain('speculative-task');
+  expect(screen.queryByText('Loading replacement Task')).toBeNull();
+  expect(screen.getByRole('textbox', { name: 'Message the Task' })).toBe(
+    textbox,
+  );
+  act(() => selectTask(props.taskId));
+  await act(async () => acknowledge({ kind: 'committed' }));
+  expect((textbox as HTMLTextAreaElement).value).toBe('');
+  expect(textbox.matches(':disabled')).toBe(false);
+  expect(document.activeElement).toBe(textbox);
+  expect(
+    screen.queryByRole('button', { name: 'Retry same room message' }),
+  ).toBeNull();
+});
+
+test.each([
+  'before acknowledgement',
+  'at acknowledgement',
+  'during unlock wait',
+])(
+  'competing focus %s stays canceled after its control disappears before unlock',
+  async (timing) => {
+    let acknowledge!: (value: { kind: 'committed' }) => void;
+    mocks.message.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          acknowledge = resolve;
+        }),
+    );
+    const view = render(<TaskRoomComposer {...props} />);
+    const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    try {
+      textbox.focus();
+      fireEvent.change(textbox, { target: { value: 'Keep the chosen focus' } });
+      fireEvent.keyDown(textbox, { key: 'Enter' });
+      await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+      act(() => moveFocusToBody());
+      mocks.messagePending = true;
+      view.rerender(<TaskRoomComposer {...props} />);
+      if (timing !== 'during unlock wait') {
+        act(() => outside.focus());
+        expect(document.activeElement).toBe(outside);
+        if (timing === 'before acknowledgement') act(() => outside.remove());
+      }
+      await act(async () => acknowledge({ kind: 'committed' }));
+      expect(textbox.matches(':disabled')).toBe(true);
+      if (timing === 'during unlock wait') {
+        act(() => outside.focus());
+        expect(document.activeElement).toBe(outside);
+      }
+      act(() => outside.remove());
+      expect(document.activeElement).toBe(document.body);
+      mocks.messagePending = false;
+      view.rerender(<TaskRoomComposer {...props} />);
+      expect((textbox as HTMLTextAreaElement).value).toBe('');
+      expect(textbox.matches(':disabled')).toBe(false);
+      expect(document.activeElement).toBe(document.body);
+    } finally {
+      outside.remove();
+    }
+  },
+);
+
+test('a new incarnation of the same Task cannot receive focus from an earlier send', async () => {
+  let acknowledge!: (value: { kind: 'committed' }) => void;
+  mocks.message.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  const view = render(<TaskRoomComposer {...props} />);
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+  textbox.focus();
+  fireEvent.change(textbox, { target: { value: 'Original incarnation' } });
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+  act(() => moveFocusToBody());
+  view.rerender(
+    <TaskRoomComposer {...props} taskCreatedAt="2026-10-01T00:00:00.000Z" />,
+  );
+  await act(async () => acknowledge({ kind: 'committed' }));
+  expect(document.activeElement).toBe(document.body);
+  expect(document.activeElement).not.toBe(
+    screen.getByRole('textbox', { name: 'Message the Task' }),
+  );
+});
+
+test('a revoked captured authority cannot restore focus after acknowledgement', async () => {
+  let acknowledge!: (value: { kind: 'committed' }) => void;
+  let current = true;
+  mocks.scope.isCurrent = () => current;
+  mocks.message.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  try {
+    render(<TaskRoomComposer {...props} />);
+    const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+    textbox.focus();
+    fireEvent.change(textbox, { target: { value: 'Original authority' } });
+    fireEvent.keyDown(textbox, { key: 'Enter' });
+    await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+    act(() => moveFocusToBody());
+    current = false;
+    await act(async () => acknowledge({ kind: 'committed' }));
+    expect(document.activeElement).toBe(document.body);
+    expect((textbox as HTMLTextAreaElement).value).toBe('Original authority');
+  } finally {
+    mocks.scope.isCurrent = () => true;
+  }
+});
+
+test('a pending restoration is canceled after an authority round trip before unlock', async () => {
+  let acknowledge!: (value: { kind: 'committed' }) => void;
+  mocks.message.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  const view = render(<TaskRoomComposer {...props} />);
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+  textbox.focus();
+  fireEvent.change(textbox, { target: { value: 'Original authority' } });
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+  act(() => moveFocusToBody());
+  mocks.messagePending = true;
+  view.rerender(<TaskRoomComposer {...props} />);
+  await act(async () => acknowledge({ kind: 'committed' }));
+  mocks.scope.authorityKey = 'home-b';
+  view.rerender(<TaskRoomComposer {...props} />);
+  mocks.scope.authorityKey = 'home-a';
+  view.rerender(<TaskRoomComposer {...props} />);
+  mocks.messagePending = false;
+  view.rerender(<TaskRoomComposer {...props} />);
+  expect(document.activeElement).toBe(document.body);
+});
+
+test('repeated Enter while a human send is pending invokes one mutation', async () => {
+  let acknowledge!: (value: { kind: 'committed' }) => void;
+  mocks.message.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  render(<TaskRoomComposer {...props} />);
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+  textbox.focus();
+  fireEvent.change(textbox, { target: { value: 'Only once' } });
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  expect(mocks.message).toHaveBeenCalledOnce();
+  await act(async () => acknowledge({ kind: 'committed' }));
 });
 
 test('a hand-typed exact agent mention sends the request without selecting a picker item', async () => {

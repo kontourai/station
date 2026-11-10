@@ -2,15 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
+import { formatBytes } from '../../utils/formatBytes';
 import {
   type BrowserPaneApi,
   browserPaneKeys,
   describeBrowserFailure,
 } from './browserPaneApi';
-
-function megabytes(bytes: number): string {
-  return `${Math.max(1, Math.round(bytes / 1_000_000))} MB`;
-}
 
 /**
  * Chromium acquisition (D3). The download happens only on the operator's
@@ -78,7 +75,8 @@ export function BrowserAcquisitionPanel({
       <div className="browser-pane__acquisition" role="status">
         <p>
           Downloading Chromium {status.version}:{' '}
-          {megabytes(status.receivedBytes)} of {megabytes(status.totalBytes)}.
+          {formatBytes(status.receivedBytes)} of{' '}
+          {formatBytes(status.totalBytes)}.
         </p>
         <progress
           aria-label="Chromium download progress"
@@ -106,7 +104,7 @@ export function BrowserAcquisitionPanel({
   if (status.state === 'needs-consent' || status.state === 'failed') {
     const size =
       status.state === 'needs-consent'
-        ? ` (${megabytes(status.downloadBytes)})`
+        ? ` (${formatBytes(status.downloadBytes)})`
         : '';
     const canDownload = status.state === 'needs-consent' || status.retryable;
     return (

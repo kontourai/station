@@ -100,6 +100,7 @@ import {
   isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
+import { errorMessage } from '../../utils/error-message.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   evaluateSessionWait,
@@ -1423,7 +1424,7 @@ export class DelegationResultDelivery {
         this.onFoldEvent(threadId, method);
       } catch (error) {
         this.ports.logger.warn('delegation result delivery failed', {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     });
@@ -1797,7 +1798,7 @@ export class DelegationResultDelivery {
       .catch((error) => {
         this.ports.logger.warn('delegation result delivery failed', {
           deliveryId: row.deliveryId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       })
       .finally(() => this.inFlight.delete(key));
@@ -1915,10 +1916,7 @@ export class DelegationResultDelivery {
       // a turn (no Agent binding) settles instead of retrying forever.
       const attempts = store.countAttempt(row, true);
       if (attempts >= DELEGATION_RESULT_MAX_ATTEMPTS)
-        return this.giveUp(
-          row,
-          `start refused: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        return this.giveUp(row, `start refused: ${errorMessage(error)}`);
       this.scheduleRetry(row, 'failure');
       return;
     }
@@ -1994,7 +1992,7 @@ export class DelegationResultDelivery {
           : 'delegation result re-check failed',
         {
           deliveryId: row.deliveryId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
           ...(storeClosed
             ? {}
             : { stack: error instanceof Error ? error.stack : undefined }),

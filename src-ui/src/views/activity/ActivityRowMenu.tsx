@@ -1,12 +1,6 @@
-import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useFixedMenuPlacement } from '../../hooks/useFixedMenuPlacement';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import './ActivityRowMenu.css';
@@ -19,12 +13,9 @@ export interface ActivityRowAction {
   tone?: 'danger';
 }
 
-const MENU_GAP_PX = 4;
 /** Twin of `.activity-row-menu__panel`'s `min-width`. */
 const MENU_MIN_WIDTH_PX = 200;
-const VIEWPORT_GUTTER_PX = 8;
 const MENU_ROW_PX = 44;
-const MENU_PADDING_PX = 8;
 
 /**
  * The Activity row's ONE trailing control: a "⋯" that opens a `role="menu"`
@@ -42,38 +33,17 @@ export function ActivityRowMenu({
   actions: readonly ActivityRowAction[];
 }) {
   const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState<CSSProperties>({});
   const triggerRef = useRef<HTMLButtonElement>(null);
   const describedById = useId();
   const close = useCallback(() => setOpen(false), []);
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
 
-  const place = useCallback(() => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const roomNeeded =
-      actions.length * MENU_ROW_PX + MENU_PADDING_PX + MENU_GAP_PX;
-    const next: CSSProperties =
-      window.innerHeight - rect.bottom >= roomNeeded
-        ? { top: rect.bottom + MENU_GAP_PX }
-        : { bottom: window.innerHeight - rect.top + MENU_GAP_PX };
-    if (rect.right >= MENU_MIN_WIDTH_PX + VIEWPORT_GUTTER_PX) {
-      next.right = Math.max(VIEWPORT_GUTTER_PX, window.innerWidth - rect.right);
-    } else {
-      next.left = VIEWPORT_GUTTER_PX;
-    }
-    setPosition(next);
-  }, [actions.length]);
-
-  useEffect(() => {
-    if (!open) return;
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    return () => {
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
-    };
-  }, [open, place]);
+  const { position, place } = useFixedMenuPlacement(triggerRef, open, {
+    preferredSide: 'below',
+    minWidthPx: MENU_MIN_WIDTH_PX,
+    rowPx: MENU_ROW_PX,
+    rowCount: actions.length,
+  });
 
   const triggerProps = useMenuTriggerToggle(
     open,

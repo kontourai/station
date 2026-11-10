@@ -9,7 +9,8 @@ import type {
   WorkItemsListResponse,
 } from '@kontourai/station-contracts/work-item-provider';
 import { _getApiBase } from '../api';
-import { StationHttpError } from '../client/http';
+import { envelopeError } from '../client/api-error-message';
+import { readJsonBody } from '../client/http';
 import { type QueryConfig, useApiMutation, useApiQuery } from '../query-core';
 
 // ── Work-item provider seam (roadmap #583, part of epic #580, S3) ────────
@@ -49,11 +50,10 @@ async function fetchWorkItemsJson(
   const response = await authenticatedFetch(
     `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/work-items`,
   );
-  const result = await response.json();
-  if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to load work items'));
-  }
-  return result.data as WorkItemsListResponse;
+  return readResult<WorkItemsListResponse>(
+    response,
+    'Failed to load work items',
+  );
 }
 
 export function useWorkItemsQuery(
@@ -86,11 +86,10 @@ async function fetchWorkItemClaimJson(
   const response = await authenticatedFetch(
     `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/work-items/claim?subjectId=${encodeURIComponent(subjectId)}`,
   );
-  const result = await response.json();
-  if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to load claim status'));
-  }
-  return result.data as WorkItemClaimStatus;
+  return readResult<WorkItemClaimStatus>(
+    response,
+    'Failed to load claim status',
+  );
 }
 
 export function useWorkItemClaimQuery(
@@ -121,17 +120,19 @@ export interface StartTaskFromWorkItemInput {
   workspaceBinding?: TaskCreateInput['workspaceBinding'];
 }
 
+/**
+ * The canonical envelope read with this domain's own fallback sentence: a
+ * refusal throws the `StationHttpError` from `envelopeError` (status, `code`,
+ * `details`), and a body that is not JSON (a proxy's error page, an empty
+ * body) reports the status instead of a parse exception.
+ */
 async function readResult<T>(response: Response, fallback: string): Promise<T> {
-  const result = (await response.json()) as {
-    success?: boolean;
-    data?: T;
-    error?: string;
-  };
-  if (!response.ok || !result.success || result.data === undefined)
-    throw new StationHttpError(
-      response.status,
-      apiErrorMessage(result, fallback),
-    );
+  const result = (await readJsonBody(response)) as
+    | { success?: boolean; data?: T }
+    | null
+    | undefined;
+  if (!response.ok || !result?.success || result.data === undefined)
+    throw envelopeError(response, result, fallback);
   return result.data;
 }
 
@@ -186,5 +187,4 @@ export function useTaskWorkItemQuery(
   );
 }
 
-import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';

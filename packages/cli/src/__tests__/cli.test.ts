@@ -184,6 +184,7 @@ async function loadCliWithLifecycleMocks() {
     shortcut: vi.fn(),
     start: vi.fn(),
     stop: vi.fn(),
+    supervisorStatus: vi.fn(),
     upgrade: vi.fn(),
     validateLifecyclePorts: vi.fn(),
   };
@@ -1012,6 +1013,70 @@ describe('runCli', () => {
       expect.objectContaining({ instanceName: 'smoke-a', stateHome: flagHome }),
     );
   });
+
+  // `--home` and `--base` name one directory, so naming either narrows the
+  // match by home. Before this, `--home=/a --port=4000` matched by port alone
+  // and could stop an instance whose home was /b.
+  test.each(['--home', '--base'])(
+    'narrows stop by the named home when %s accompanies another selector',
+    async (flag) => {
+      process.env.STATION_HOME = ENV_HOME;
+      const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
+      const flagHome = join(dirname(ENV_HOME), 'flag-home');
+
+      await runCli(['stop', `${flag}=${flagHome}`, '--port=4000']);
+
+      expect(lifecycle.stop).toHaveBeenCalledWith({
+        baseDir: flagHome,
+        instanceName: undefined,
+        serverPort: 4000,
+        stateHome: flagHome,
+        uiPort: undefined,
+      });
+    },
+  );
+
+  test('an unknown supervisor action fails without running status', async () => {
+    const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await runCli(['supervisor', 'stauts']);
+
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toHaveBeenCalledWith('Unknown command: supervisor stauts');
+    expect(lifecycle.supervisorStatus).not.toHaveBeenCalled();
+
+    process.exitCode = undefined;
+    await runCli(['supervisor', 'status', '--json']);
+
+    expect(process.exitCode).toBeUndefined();
+    expect(lifecycle.supervisorStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ json: true }),
+    );
+  });
+
+  test.each<[args: string[], label: string]>([
+    [['registry', '--station=work'], 'registry option --station=work'],
+    [['plugin', 'registry', '--offline'], 'plugin registry option --offline'],
+  ])(
+    'refuses a flag where %j takes a registry reference',
+    async (args, label) => {
+      const { install, runCli } = await loadCliWithLifecycleMocks();
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await runCli(args);
+
+      expect(process.exitCode).toBe(1);
+      expect(stderr).toHaveBeenCalledWith(`Unknown command: ${label}`);
+      expect(install.registry).not.toHaveBeenCalled();
+
+      process.exitCode = undefined;
+      await runCli([...args.slice(0, -1), 'acme/registry']);
+
+      expect(process.exitCode).toBeUndefined();
+      expect(install.registry).toHaveBeenCalledWith('acme/registry');
+    },
+  );
 
   test('dispatches core resource commands through the shared core command handler', async () => {
     const runCoreCommand = vi.fn().mockResolvedValue(undefined);

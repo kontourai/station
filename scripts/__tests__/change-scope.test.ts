@@ -8,8 +8,10 @@ describe('branch-delta scoping', () => {
       calls.push(args);
       return 'src-ui/src/App.tsx\0src-server/index.ts\0';
     });
+    // --no-renames: a move must report its source path too, or a file moved
+    // out of a gated root would not count as a change to that root.
     expect(calls).toEqual([
-      ['diff', '--name-only', '-z', 'origin/main...HEAD'],
+      ['diff', '--no-renames', '--name-only', '-z', 'origin/main...HEAD'],
     ]);
     expect(paths).toEqual(['src-ui/src/App.tsx', 'src-server/index.ts']);
   });

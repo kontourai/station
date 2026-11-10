@@ -27,6 +27,7 @@ import {
   canGrant as roleGrantable,
 } from '../../components/people/projectRoles';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
+import { formatDateTime } from '../../utils/relativeTime';
 import { projectAccessErrorMessage } from './projectAccessErrorText';
 
 /** Shares the authorized administration view; enablement stays with the caller. */
@@ -274,7 +275,7 @@ export function AccessPanelView({
               <p>
                 {ROLE_NAMES[invitation.role]} ·{' '}
                 <Badge value={invitation.status} /> · Expires{' '}
-                {new Date(invitation.expiresAt).toLocaleString()}
+                {formatDateTime(invitation.expiresAt)}
               </p>
             </div>
             {invitation.status === 'pending' && (

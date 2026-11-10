@@ -48,8 +48,10 @@ allow answers it only where `toolRequestIsPlainCall` holds and no effective
 authored Ask requires approval, and it is used
 once. A different input, which another `PreToolUse` hook's `updatedInput` can
 produce, consumes the allow without using it, and the request prompts. A
-chained Bash command is a plain call, so a guardian allow answers it,
-including what the chained-command gaps below leave invisible. When an allow
+chained Bash command with no reason text is a plain call, so a guardian
+allow answers it, including what the chained-command gaps below leave
+invisible. A Bash command-analysis warning is not a plain call here: it
+reaches a person, as it does under `autoApprove`. When an allow
 is not applied the adapter logs that and why. An escalation, a plan exit or a question reaches a person, and a
 call the engine allows itself never consults the allow. The guardian is asked
 once per call. At most 256 unanswered allows are kept per session; beyond
@@ -360,8 +362,18 @@ One shared computation, `toolRequestSessionGrant`, decides what a session
 answer grants. The adapter honours it and the toast, inline card (on a phone,
 its request sheet's overflow item, #3331) and inbox card label it:
 
-- A plain call to a tool grants every later call to that tool ("Allow Bash for
-  this session"). Only this case mints a Station tool grant.
+- A plain call to a tool grants every later call to that tool ("Allow all
+  Bash commands for this session", "Allow all WebFetch calls for this
+  session"). Only this case mints a Station tool grant.
+- A plain Claude Bash call whose suggestions carry one or two command-prefix
+  allow rules (`npm ls *`, or `npm ls:*`) also offers the narrower choice
+  "Allow "npm ls *" for this session", computed by `toolRequestRuleGrant`
+  and answered with `acceptForSession` plus the typed
+  `sessionGrantScope: 'rule'`. The adapter forwards only those Bash rules,
+  with `destination: 'session'`, so the engine stops asking for matching
+  commands; Station mints no tool grant. An exact-command rule
+  (`npm --version`) offers no such choice. A `rule` answer to a request that
+  offered none is a one-call accept.
 - An authentic `station-browser` plain call also offers the server-wide choice
   "Allow the Station browser for this session", computed by
   `toolRequestServerGrant` and answered with `acceptForSession` plus the typed
@@ -528,15 +540,24 @@ session grant and `toolRequestIsPlainCall`:
 - Type `subcommandResults` on Bash is a chained command (`a && b`, `a; b`, a
   pipeline). By owner decision it is a plain call, so a Bash grant or
   `autoApprove` answers it, unless the request carries
-  `classifier_approvable`, any `decision_reason` text, a `matched_ask_rule`,
-  or one of the other signals above (a blocked path, a directory suggestion,
-  a sandbox override, an ask flag). What that leaves invisible is listed
-  under the gaps below.
-- Type `other` escalates unless its reason is exactly `This command requires
-  approval`, what 2.1.278 sends for a single Bash command no rule matched.
-  Its other `other` reasons are checks: shell operators, an
-  unparseable command, a `cd` before a write, a sed write, process
-  substitution.
+  `classifier_approvable`, a `matched_ask_rule`, or one of the other signals
+  above (a blocked path, a directory suggestion, a sandbox override, an ask
+  flag). Its `decision_reason` text (a warning such as a `&` background
+  operator) does not stop a person's own Bash session grant, but still
+  reaches a person under `autoApprove` or the approval guardian. What that
+  leaves invisible is listed under the gaps below.
+- Type `other` on Bash: besides `This command requires approval`, what
+  2.1.278 sends for a single command no rule matched, the engine sends its
+  command-analysis warnings under `other`: shell operators, an unparseable
+  command, a variable it cannot check before the command runs, brace or
+  tilde expansion, a `cd` before a version-control command or a write, a sed
+  write, process substitution. Each says a command-prefix rule cannot be
+  checked against the command. By owner decision a person's whole-tool
+  session grant ("Allow all Bash commands for this session") answers them,
+  since it checks no rule. An agent's `autoApprove` pattern, the approval
+  guardian and a delegated child do not: those still reach a person. On any
+  other tool, type `other` escalates unless its reason is exactly `This
+  command requires approval`.
 - No reason type is a plain call, except on a shell tool. It is the ordinary
   ask of an MCP tool, WebFetch, and a file edit inside the working
   directories. An ordinary Bash ask carries type `other` in 2.1.278, so a
@@ -579,8 +600,13 @@ What this costs, and what it still does not cover:
     /outside/f`) keeps its `addDirectories` suggestion and prompts, as does
     a single command.
   - (iii) a part's warning that is not a safety check.
+  - (iv) under a person's Bash session grant only: a command-analysis
+    warning that concerns a write outside the working directories (a `cd`
+    before a write, a sed write, a `&` background operator in a chain) when
+    the engine sends it with no blocked path. Whether it does was not
+    captured.
 
-  These gaps exist on `main` today: before Station read the structured
+  These gaps (i) to (iii) exist on `main` today: before Station read the structured
   reason, a Bash grant answered every chained command. Closing them needs
   the engine to send the nested reasons. The request shapes for (i) and
   (ii), and for the two guarantees, were captured from live turns against
@@ -591,10 +617,12 @@ What this costs, and what it still does not cover:
 - **Every PowerShell ask prompts.** See the type bullet above: a PowerShell
   grant or pattern answers nothing. The list of PowerShell security warnings
   there was read in the engine's code, not captured.
-- **The ordinary Bash ask is recognised by its text.** `other` covers both
-  the ordinary ask and safety prose, and only the text tells them apart. The
-  text was read in 2.1.278. If a later engine rewords it, ordinary Bash calls
-  prompt until the literal is updated; a rewording never widens a grant.
+- **A person's Bash session grant does not read Bash `other` reasons.**
+  Under that grant a Bash ask of type `other` is a plain call whatever its
+  text, so a safety check the engine sent as `other` with no
+  `classifier_approvable` would be answered too. `autoApprove` and the
+  guardian still read the text and prompt. In 2.1.278 a safety check
+  arrives as `safetyCheck` or carries `classifier_approvable`.
 - **A different frame shape costs prompts, with one exception.** A request
   Station cannot parse is not recorded, so all Claude asks would prompt and
   offer no tool grant. A session can run an installed `claude` newer than

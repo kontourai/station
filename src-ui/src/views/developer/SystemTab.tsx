@@ -21,7 +21,7 @@ import { BuildProvenance } from '../settings/BuildProvenance';
 import { SystemPerformance } from './SystemPerformance';
 import { SystemServices } from './SystemServices';
 import './SystemTab.css';
-import { relativeTimeAgo } from '../../utils/relativeTime';
+import { formatDateTime, relativeTimeAgo } from '../../utils/relativeTime';
 
 export default function SystemTab({ apiBase }: { apiBase: string }) {
   const [view, setView] = useState('overview');
@@ -224,7 +224,7 @@ export default function SystemTab({ apiBase }: { apiBase: string }) {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleString();
+  return formatDateTime(value, value);
 }
 function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);

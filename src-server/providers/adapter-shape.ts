@@ -6,7 +6,10 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
-import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
+import type {
+  InputRequestContent,
+  SessionGrantScope,
+} from '@kontourai/station-contracts/input-request';
 import type { ModelInventoryExecutionIdentity } from '@kontourai/station-contracts/model-inventory';
 import type {
   EngineId,
@@ -294,6 +297,12 @@ export interface ProviderAdapterMetadata {
   /** Native process sandbox can enforce Station's independent-review policy. */
   reviewIsolation?: 'read-only';
   /**
+   * The narrowing session-grant scopes this adapter honours. Absent: none.
+   * A `rule` answer to an adapter that does not declare it is a one-call
+   * accept, because the adapter would read it as its wider per-tool grant.
+   */
+  sessionGrantScopes?: readonly 'rule'[];
+  /**
    * Positive declaration of model omission and override behavior at each
    * lifecycle point. Absence is intentionally fail-closed for model input.
    */
@@ -541,12 +550,14 @@ export interface ProviderAdapterShape {
       inputContent?: InputRequestContent;
       expectedRequestEventId?: string;
       /**
-       * With `acceptForSession`: widen the grant to the whole in-process
-       * Station browser server. Honoured only by the Claude adapter, and only
-       * for a request that offered it; other adapters ignore it and grant as
+       * With `acceptForSession`: `server` widens the grant to the whole
+       * in-process Station browser server; `rule` narrows it to the Bash
+       * command prefixes the engine suggested. Honoured only by the Claude
+       * adapter, and only for a request that offered that scope (otherwise a
+       * one-call accept); other adapters ignore it and grant as
        * `acceptForSession` always did.
        */
-      sessionGrantScope?: 'server';
+      sessionGrantScope?: SessionGrantScope;
     },
   ): Promise<void>;
   stopSession(threadId: string): Promise<void>;

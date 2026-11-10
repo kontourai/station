@@ -1,3 +1,5 @@
+import { isObjectRecord } from './record-guard.js';
+
 export interface ACPConnectionConfig {
   id: string;
   name: string;
@@ -325,10 +327,6 @@ function isHttpsUrl(value: unknown): boolean {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function boundedStringList(
   value: unknown,
   field: string,
@@ -357,7 +355,7 @@ function validateStatusRule(
   statusCommand: unknown,
   errors: string[],
 ): void {
-  if (!isRecord(rule)) {
+  if (!isObjectRecord(rule)) {
     errors.push('auth.statusRule must be an object');
     return;
   }
@@ -434,7 +432,7 @@ function validateTermsNotices(notices: unknown, errors: string[]): void {
   }
   notices.forEach((notice, index) => {
     const at = `auth.subscriptionTermsNotices[${index}]`;
-    if (!isRecord(notice)) {
+    if (!isObjectRecord(notice)) {
       errors.push(`${at} must be an object`);
       return;
     }
@@ -499,7 +497,7 @@ export function validateACPEngineDescriptor(
   }
 
   if (entry.install !== undefined) {
-    if (!isRecord(entry.install)) {
+    if (!isObjectRecord(entry.install)) {
       errors.push('install must be an object keyed by platform');
     } else {
       for (const [platform, recipe] of Object.entries(entry.install)) {
@@ -512,7 +510,7 @@ export function validateACPEngineDescriptor(
           errors.push(`${at}: unknown platform`);
           continue;
         }
-        if (!isRecord(recipe)) {
+        if (!isObjectRecord(recipe)) {
           errors.push(`${at} must be an object`);
           continue;
         }
@@ -542,7 +540,7 @@ export function validateACPEngineDescriptor(
 
   const credentialEnvVars = new Set(entry.auth?.credentialEnvVars ?? []);
   if (entry.launchEnv !== undefined) {
-    if (!isRecord(entry.launchEnv)) {
+    if (!isObjectRecord(entry.launchEnv)) {
       errors.push('launchEnv must be an object');
     } else {
       const names = Object.keys(entry.launchEnv);
@@ -578,7 +576,7 @@ export function validateACPEngineDescriptor(
   }
 
   if (entry.auth !== undefined) {
-    if (!isRecord(entry.auth)) {
+    if (!isObjectRecord(entry.auth)) {
       errors.push('auth must be an object');
     } else {
       const auth = entry.auth;

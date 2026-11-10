@@ -1,6 +1,7 @@
 import type { DiffComment } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { formatDateTime } from '../../utils/relativeTime';
 
 interface DiffCommentThreadProps {
   comments: DiffComment[];
@@ -11,12 +12,6 @@ interface DiffCommentThreadProps {
   onCancel: () => void;
   onStartReply: () => void;
   onDelete: (id: string) => void;
-}
-
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.valueOf())) return '';
-  return date.toLocaleString();
 }
 
 /**
@@ -50,7 +45,7 @@ export function DiffCommentThread({
           <div className="diff-comment__body">{comment.body}</div>
           <div className="diff-comment__meta">
             <span className="diff-comment__time">
-              {formatTime(comment.createdAt)}
+              {formatDateTime(comment.createdAt)}
             </span>
             <button
               type="button"

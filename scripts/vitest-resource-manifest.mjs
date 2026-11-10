@@ -213,6 +213,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Real IPC child observes the native histogram at reset acknowledgement and blocks for 80ms.
+  'scripts/__tests__/server-scenario-probe.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   // A real detached engine-shaped process and the scope holder Station spawns.
@@ -618,11 +620,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3101 slice F: runs the fixture policy's real main() as a child process
   // against a small real Git graph (merge base versus main's tip).
   'scripts/__tests__/test-fixture-policy.process.test.ts',
-  // Same shape one gate over: runs the pre-push typecheck scope guard as a
-  // real child process — once against a stub `npm` so its REFUSAL exit
-  // status is proven, once with an empty scope so the skip path's zero is
-  // proven. Two bounded single-shot children; the real 82s aggregate never
-  // starts.
+  // Runs the real pre-push hook through `git push` from a disposable linked
+  // worktree with stubbed gate commands, so each gate's Git reads are real
+  // subprocesses in the hook's own environment. Bounded single-shot children.
+  // (The file keeps its name from the retired pre-push typecheck scope guard.)
   'scripts/__tests__/prepush-typecheck.test.ts',
   // Host typecheck slots: spawns fleets of six short-lived fake compilers
   // against a PRIVATE slot directory (never the host's), SIGKILLs one holder
@@ -686,6 +687,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2176: its real-tree half, split out for the repo-scans job; same
   // `git ls-files`/child-process shape as the file above.
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Same shape as the test temp-dir ratchet: the windowsHide ratchet runs as
+  // a real child process against throwaway git repositories so its `FAIL:`
+  // sentence and exit status are proven. Bounded single-shot children per case.
+  'scripts/__tests__/windows-hide-ratchet.test.ts',
   // Runs the type-laundering gate as a real child process from a checkout
   // path containing a space (known-bad and clean control) so the entry check
   // that made it a silent no-op is proven, not just the scanner. Two bounded

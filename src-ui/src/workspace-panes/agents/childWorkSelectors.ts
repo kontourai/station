@@ -3,6 +3,7 @@ import type {
   ChildWorkRegistryState,
 } from '@kontourai/station-contracts/child-work';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 
 /**
  * #2459: the Agents pane's read of child work — Station delegates from the
@@ -91,12 +92,6 @@ export interface ChildWorkSelectorInput {
   delegateParentOf?: (threadId: string) => string | undefined;
   /** A tool call's start (ms), for a legacy subagent with no `startedAt`. */
   toolCallStartedAt?: (toolCallId: string) => number | undefined;
-}
-
-function parseTime(iso: string | undefined): number | undefined {
-  if (!iso) return undefined;
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function itemKey(item: ChildWorkItem): string {
@@ -282,11 +277,11 @@ function buildCandidates(input: ChildWorkSelectorInput): Candidate[] {
     const reportedDepth =
       item.producer === 'engine-subagent' && item.depth ? item.depth - 1 : 0;
     const startedAtMs =
-      parseTime(item.startedAt) ??
+      parseEpochMs(item.startedAt) ??
       (item.parent?.toolCallId
         ? input.toolCallStartedAt?.(item.parent.toolCallId)
         : undefined);
-    const endedAtMs = parseTime(item.endedAt);
+    const endedAtMs = parseEpochMs(item.endedAt);
     const stopEndsParentTurn =
       stop === 'provider-task-stop'
         ? engineStopEndsParentTurn(provider)

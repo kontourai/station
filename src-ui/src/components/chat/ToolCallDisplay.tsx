@@ -12,6 +12,7 @@ import {
 import { approvalDecisionBody } from '@kontourai/station-shared/input-request';
 import {
   STATION_BROWSER_SERVER_GRANT_LABEL,
+  type ToolRequestRuleGrant,
   type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
@@ -33,6 +34,7 @@ import {
 } from '../../hooks/orchestration/answerRequest';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
+import { formatBytes } from '../../utils/formatBytes';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { attentionWord } from '../../views/home/work-status';
 import { Button } from '../Button';
@@ -53,7 +55,6 @@ import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
 import {
   boundedToolResultText,
-  formatWithheldBytes,
   fullToolResultText,
 } from './bounded-tool-result';
 import { ClaudeArtifactCard } from './ClaudeArtifactCard';
@@ -132,6 +133,7 @@ export interface ToolCallData {
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
   approvalServerGrant?: ToolRequestServerGrant;
+  approvalRuleGrant?: ToolRequestRuleGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -149,7 +151,7 @@ export interface ToolCallData {
 export type ToolApprovalOutcome = 'answered' | 'already-settled';
 
 type ToolApprovalHandler = (
-  action: 'once' | 'trust' | 'trust-server' | 'deny',
+  action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
 ) => undefined | Promise<ToolApprovalOutcome | undefined>;
 
 interface ToolCallDisplayProps {
@@ -509,13 +511,23 @@ function ToolCallRow({
             serverGrant={
               contentGate.serverGrant ?? toolCall.approvalServerGrant ?? 'none'
             }
+            ruleGrant={
+              contentGate.ruleGrant === undefined
+                ? toolCall.approvalRuleGrant
+                : (contentGate.ruleGrant ?? undefined)
+            }
             sessionGrant={
               // Grants derive from the resolved request once it is loaded.
-              // A part without the projected grant (a registry-route
-              // request) is judged by its tool name alone.
+              // A registry-route part (no request binding) is judged by its
+              // tool name alone. An orchestration request without the
+              // projected grant offers none: the adapter judges it from
+              // fields the name does not carry, so the name could offer a
+              // grant the adapter refuses.
               contentGate.sessionGrant ??
               toolCall.approvalSessionGrant ??
-              toolRequestSessionGrant({ toolName: grantToolName })
+              (toolCall.approvalThreadId
+                ? 'none'
+                : toolRequestSessionGrant({ toolName: grantToolName }))
             }
             summary={label}
             details={
@@ -566,10 +578,12 @@ function gatedDecisionBody(
   gate: ApprovalContentGate | undefined,
   grantLabel: string | undefined,
   serverGrant: ToolRequestServerGrant,
+  ruleGrant: ToolRequestRuleGrant | undefined,
 ) {
   const body = approvalDecisionBody(
     grantLabel,
     serverGrant === 'server' ? STATION_BROWSER_SERVER_GRANT_LABEL : undefined,
+    ruleGrant?.label,
   );
   return !gate || gate.allowable
     ? body
@@ -655,7 +669,7 @@ function useApprovalDecision(
     detail?: string;
   } | null>(null);
   const [localChosen, setChosen] = useState<
-    'once' | 'trust' | 'trust-server' | 'deny'
+    'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny'
   >();
   const chosen = shared
     ? shared.decision === 'decline'
@@ -663,7 +677,9 @@ function useApprovalDecision(
       : shared.decision === 'acceptForSession'
         ? shared.sessionGrantScope === 'server'
           ? 'trust-server'
-          : 'trust'
+          : shared.sessionGrantScope === 'rule'
+            ? 'trust-rule'
+            : 'trust'
         : 'once'
     : localChosen;
   const failure =
@@ -674,7 +690,9 @@ function useApprovalDecision(
             'Station has not confirmed this decision. Check its status before trying again.',
         }
       : null);
-  const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
+  const decide = (
+    action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
+  ) => {
     if (denied || phase !== 'idle' || admission.current) return;
     admission.current = true;
     setChosen(action);
@@ -804,6 +822,8 @@ interface ToolApprovalControlProps {
   /** Allow is offered only once `contentGate.allowable` (see useApprovalContent). */
   contentGate?: ApprovalContentGate;
   serverGrant: ToolRequestServerGrant;
+  /** The command-prefix choice, where the request offers one. */
+  ruleGrant?: ToolRequestRuleGrant;
   reference?: ApprovalAnswerReference;
   onCheck?: () => Promise<'pending' | 'already-settled'>;
   /** The request's reported tool name — never the row's display name. */
@@ -870,6 +890,7 @@ function ToolApprovalControls({
 
 function ToolApprovalSheet({
   serverGrant,
+  ruleGrant,
   contentGate,
   reference,
   onApprove,
@@ -903,7 +924,7 @@ function ToolApprovalSheet({
   );
   const actions = (
     <DecisionActionRow
-      body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
+      body={gatedDecisionBody(contentGate, grantLabel, serverGrant, ruleGrant)}
       busy={busy}
       inFlight={inFlight}
       chosen={chosen}
@@ -952,6 +973,7 @@ function ToolApprovalButtons({
   contentGate,
   grantToolName,
   serverGrant,
+  ruleGrant,
   sessionGrant,
 }: ToolApprovalControlProps) {
   const { phase, failure, decide, check, checking, busy } = useApprovalDecision(
@@ -969,7 +991,12 @@ function ToolApprovalButtons({
     <>
       <ApprovalContentStatus gate={contentGate} />
       <DecisionButtons
-        body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
+        body={gatedDecisionBody(
+          contentGate,
+          grantLabel,
+          serverGrant,
+          ruleGrant,
+        )}
         busy={busy}
         onChoose={decide}
       />
@@ -1126,7 +1153,7 @@ function ToolCallDetails({
                       "Output truncated" badge, which says the engine withheld
                       data before it ever arrived. This one says only that the
                       preview is showing part of what DID arrive. */}
-                  {'\n'}… {formatWithheldBytes(boundedResult.withheldBytes)}
+                  {'\n'}… {formatBytes(boundedResult.withheldBytes)}
                   {' not shown in this preview — '}
                   <button
                     type="button"

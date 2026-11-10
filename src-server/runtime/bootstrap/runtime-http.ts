@@ -41,6 +41,7 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
 import { jsonRevalidation } from '../../routes/conditional-get.js';
+import { readBoundedRequestBodyBytes } from '../../security/bounded-request-body.js';
 import {
   clientProtocolApplies,
   evaluateClientProtocol,
@@ -1838,35 +1839,10 @@ async function readBoundedBody(
   request: Request,
   maxBytes: number,
 ): Promise<BoundedBodyResult> {
-  const stream = request.body;
-  if (!stream) return 'no-stream';
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      total += result.value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => {});
-        return 'too-large';
-      }
-      chunks.push(result.value);
-    }
-  } catch {
-    await reader.cancel().catch(() => {});
-    return 'no-stream';
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+  const result = await readBoundedRequestBodyBytes(request, maxBytes);
+  if (result.status === 'ok') return result.bytes;
+  // A body stream that failed part-way reads as no stream, as it always has.
+  return result.status === 'too-large' ? 'too-large' : 'no-stream';
 }
 
 export function deviceSessionCookieName(

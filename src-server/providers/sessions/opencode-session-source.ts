@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
@@ -26,6 +25,13 @@ import type {
   AttachedSessionSource,
   AttachedSessionSourceOutcome,
 } from './attached-session-source.js';
+import {
+  asRecord,
+  boundedInteger,
+  digest,
+  isPlainRecord,
+  text,
+} from './session-source-values.js';
 import {
   deriveConfigHomeAffinity,
   resolveConfigHomeAffinity,
@@ -1629,10 +1635,6 @@ function errorCode(error: unknown): string {
   return 'unknown';
 }
 
-function digest(parts: unknown[]): string {
-  return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
-}
-
 function millisTimestamp(value: number): string {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : EPOCH;
@@ -1651,10 +1653,6 @@ function diagnosticText(value: unknown): string | undefined {
     : undefined;
 }
 
-function text(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
 function boundedId(value: unknown): string | undefined {
   const valueText = text(value);
   return valueText && Buffer.byteLength(valueText) <= MAX_ID_BYTES
@@ -1669,24 +1667,6 @@ function boundedPath(value: unknown): string | undefined {
     : undefined;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function isPlainRecord(value: Record<string, unknown>): boolean {
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
 function isCount(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
-}
-
-function boundedInteger(name: string, value: number, ceiling: number): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > ceiling) {
-    throw new RangeError(
-      `${name} must be an integer from 1 through ${ceiling}.`,
-    );
-  }
-  return value;
 }

@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import { isPrincipalRef } from '@kontourai/station-contracts/principal';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 import { z } from 'zod/v3';
 import type { ApplicationSessionSigner } from './application-session';
 
@@ -186,17 +187,8 @@ export interface NativeApplicationSessionTransportV1 {
   }): Promise<unknown>;
 }
 
-function base64url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
 function encode(value: unknown): string {
-  return base64url(new TextEncoder().encode(JSON.stringify(value)));
+  return encodeBase64Url(new TextEncoder().encode(JSON.stringify(value)));
 }
 
 function decodeHostSegment(value: string): Uint8Array<ArrayBuffer> {
@@ -206,13 +198,13 @@ function decodeHostSegment(value: string): Uint8Array<ArrayBuffer> {
     atob(value.replace(/-/g, '+').replace(/_/g, '/')),
     (character) => character.charCodeAt(0),
   );
-  if (base64url(bytes) !== value)
+  if (encodeBase64Url(bytes) !== value)
     throw new Error('Native host account proof base64url data is invalid.');
   return bytes;
 }
 
 async function hashText(value: string) {
-  return base64url(
+  return encodeBase64Url(
     new Uint8Array(
       await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
     ),
@@ -397,7 +389,7 @@ export async function serializedCredentialsHash(
   const serialized = JSON.stringify(credentials);
   if (typeof serialized !== 'string')
     throw new Error('Native provider credentials are not JSON serializable.');
-  return base64url(
+  return encodeBase64Url(
     new Uint8Array(
       await crypto.subtle.digest(
         'SHA-256',
@@ -460,7 +452,7 @@ export async function applicationSessionKeyThumbprint(
   publicKey: ApplicationSessionPublicKey,
 ): Promise<string> {
   const key = parsePublicKey(publicKey);
-  return base64url(
+  return encodeBase64Url(
     new Uint8Array(
       await crypto.subtle.digest(
         'SHA-256',
@@ -564,7 +556,7 @@ export async function createNativeApplicationSessionProof(
   )
     throw new Error('Native application session proof window has expired.');
   const iat = Math.floor(nowMs / 1000);
-  const jti = base64url(crypto.getRandomValues(new Uint8Array(16)));
+  const jti = encodeBase64Url(crypto.getRandomValues(new Uint8Array(16)));
   const header = encode({
     alg: 'ES256',
     typ: APPLICATION_SESSION_NATIVE_PROOF_TYPE,
@@ -595,7 +587,7 @@ export async function createNativeApplicationSessionProof(
     throw new Error(
       'Native application session signer returned an incompatible signature.',
     );
-  return `${signingInput}.${base64url(signature)}`;
+  return `${signingInput}.${encodeBase64Url(signature)}`;
 }
 
 function parseChallenge(
@@ -1093,7 +1085,7 @@ export class NativeApplicationSessionClient {
         nonce: current.nonce,
         method: request.method,
         path,
-        credentialHash: base64url(
+        credentialHash: encodeBase64Url(
           new Uint8Array(
             await crypto.subtle.digest(
               'SHA-256',

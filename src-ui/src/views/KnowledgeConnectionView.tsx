@@ -269,7 +269,7 @@ export function KnowledgeConnectionView({
                   }}
                   disabled={saveMutation.isPending || !dirty}
                 >
-                  {saveMutation.isPending ? 'Saving...' : 'Save'}
+                  {saveMutation.isPending ? 'Saving…' : 'Save'}
                 </button>
                 <button
                   type="button"
@@ -280,7 +280,7 @@ export function KnowledgeConnectionView({
                   }}
                   disabled={testMutation.isPending}
                 >
-                  {testMutation.isPending ? 'Testing...' : 'Test Connection'}
+                  {testMutation.isPending ? 'Testing…' : 'Test connection'}
                 </button>
                 {testResult && (
                   <span

@@ -7,6 +7,47 @@ import { useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { IntegrationEditorPanel } from '../views/integrations/IntegrationEditorPanel';
 
+/** A stateful host for the variable editor: edits round-trip through `onUpdate`. */
+function VariableEditorFixture({
+  onSave,
+}: {
+  onSave: (form: unknown) => void;
+}) {
+  const [form, setForm] = useState<any>({
+    id: 'demo-server',
+    displayName: 'Demo Server',
+    description: 'Test server',
+    kind: 'mcp',
+    transport: 'stdio',
+    command: 'npx',
+    args: [],
+    env: { PLAIN: 'value' },
+    secretEnv: { FIRST: 'one', SECOND: 'two' },
+    connected: false,
+  });
+  return (
+    <IntegrationEditorPanel
+      editForm={form}
+      isNew={false}
+      locked={false}
+      message={null}
+      viewMode="form"
+      rawJson=""
+      rawError={null}
+      savePending={false}
+      reconnectPending={false}
+      onReconnect={vi.fn()}
+      onDelete={vi.fn()}
+      onSave={() => onSave(form)}
+      onSwitchToForm={vi.fn()}
+      onSwitchToRaw={vi.fn()}
+      onRawJsonChange={vi.fn()}
+      onUpdate={setForm}
+      onUnlock={vi.fn()}
+    />
+  );
+}
+
 describe('IntegrationEditorPanel', () => {
   test('edits trust policy and shows recorded person changes', () => {
     const save = vi.fn();
@@ -501,5 +542,33 @@ describe('IntegrationEditorPanel', () => {
         /reaches this server itself, so Station can.t gate its calls/,
       ),
     ).toBeTruthy();
+  });
+
+  test('renaming a variable keeps its row in place and drops the old name', () => {
+    const save = vi.fn();
+    render(<VariableEditorFixture onSave={save} />);
+    const nameInputs = () =>
+      screen.getAllByPlaceholderText('KEY') as HTMLInputElement[];
+    const names = () => nameInputs().map((input) => input.value);
+    expect(names()).toEqual(['PLAIN', 'FIRST', 'SECOND']);
+
+    // The row being typed in must stay where it is: rows are keyed by
+    // position, so a rename that reordered them moved the caret to another
+    // variable on the next keystroke.
+    fireEvent.change(nameInputs()[1], { target: { value: 'FIRST_KEY' } });
+    expect(names()).toEqual(['PLAIN', 'FIRST_KEY', 'SECOND']);
+
+    // A variable from `env` is renamed there, not copied under a new name.
+    fireEvent.change(nameInputs()[0], { target: { value: 'RENAMED' } });
+    expect(names()).toEqual(['RENAMED', 'FIRST_KEY', 'SECOND']);
+    expect(screen.getByRole('button', { name: 'Remove SECOND' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: { RENAMED: 'value' },
+        secretEnv: { FIRST_KEY: 'one', SECOND: 'two' },
+      }),
+    );
   });
 });

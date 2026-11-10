@@ -4,6 +4,7 @@ import type {
   ProviderDeclaredHandshake,
   ProviderDeclaredHandshakeFact,
 } from '@kontourai/station-contracts/catalog';
+import { isRecord } from '../../utils/is-record.js';
 import type { AcpSessionModelState, InitializeResult } from './acp-process.js';
 
 /**
@@ -34,10 +35,6 @@ type AcpSessionLifecycleCapability =
 
 const SESSION_LIFECYCLE_CAPABILITIES: readonly AcpSessionLifecycleCapability[] =
   ['list', 'resume', 'close', 'fork', 'delete'];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 const REFUSED = Symbol('refused');
 type Bounded<T> = T | undefined | typeof REFUSED;
