@@ -173,7 +173,9 @@ describe('listing every open pull request', () => {
     expect(calls[0].join(' ')).not.toContain('after=');
     expect(calls[1].slice(-2)).toEqual(['-f', 'after=cursor-1']);
     // A starved pull request on the second page is now reachable.
-    expect(selectStarved(nodes).map((node) => node.number)).toContain(3);
+    expect(
+      selectStarved(nodes).map((node: { number: number }) => node.number),
+    ).toContain(3);
   });
 
   test('refuses a further page that names no cursor rather than re-reading the first', () => {

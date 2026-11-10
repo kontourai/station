@@ -225,9 +225,11 @@ function Scrollbar({
         // scrolls the terminal whenever the pointer crosses the track.
         const gesture = new AbortController();
         const { signal } = gesture;
-        target.addEventListener('pointermove', (e) => jump(e.clientY), {
-          signal,
-        });
+        target.addEventListener(
+          'pointermove',
+          (e: PointerEvent) => jump(e.clientY),
+          { signal },
+        );
         for (const ended of [
           'pointerup',
           'pointercancel',
