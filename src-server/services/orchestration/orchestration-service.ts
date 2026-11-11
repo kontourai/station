@@ -1158,7 +1158,8 @@ interface OrchestrationServiceOptions {
   isFullAccessGrantorCurrent?: (deviceId: string) => boolean;
   /**
    * #2494: the confinement mechanisms a start can resolve to. Absent:
-   * Codex's own sandbox and Station's Seatbelt profile for Claude.
+   * Codex's own sandbox and, for Claude, Station's bubblewrap sandbox on
+   * Linux or Seatbelt profile elsewhere (`defaultConfinementProviders`).
    */
   confinementProviders?: readonly ConfinementProvider[];
   /** Private exact PR point read; it never shares the public route's branch resolver. */

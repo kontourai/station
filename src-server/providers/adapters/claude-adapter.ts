@@ -254,8 +254,10 @@ import {
   withdrawQueuedClaudeTurn,
 } from './claude-sdk-turns.js';
 import {
+  type ClaudeSpawnWrapMechanism,
   CONFINED_CLAUDE_CREDENTIAL_SETUP,
   type ConfinedClaudeLaunch,
+  claudeSpawnWrapLabel,
   claudeSpawnWrapProvider,
   confinedClaudeConfigDir,
   confinedClaudeCredential,
@@ -1210,9 +1212,12 @@ export interface ClaudeAdapterOptions {
   logger?: ClaudeAdapterLogger;
 }
 
-/** #2494: a start confined by Seatbelt, prepared before its spawn. */
+/**
+ * #2494: a start confined by a spawn-wrapped mechanism (Seatbelt, or
+ * bubblewrap since #4770), prepared before its spawn.
+ */
 interface SeatbeltStart {
-  plan: ConfinementPlan;
+  plan: ConfinementPlan & { mechanism: ClaudeSpawnWrapMechanism };
   provider: ConfinementProvider<SeatbeltEvidence>;
   launch: ConfinedClaudeLaunch;
   /** The app-home layer pointing the engine at its Station-owned home. */
@@ -1296,7 +1301,7 @@ const CONFINEMENT_FALLBACK_MESSAGES: Record<ConfinementFallbackReason, string> =
     'resume-bound-elsewhere':
       'Full access runs as Auto: this session resumes a conversation recorded under another Claude configuration home.',
     'workspace-too-broad':
-      "Full access runs as Auto: this session's folder is or contains your home folder or Station's data, so confining it to that folder would confine nothing.",
+      "Full access runs as Auto: this session's folder is or contains your home folder, Station's data or a secret store the sandbox hides, so confining it to that folder would confine nothing.",
   };
 
 const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
@@ -1835,6 +1840,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       },
       globalConfigPinned: context.globalConfigPinned,
       stationHome,
+      mechanism: plan.mechanism,
     });
     let fallback = 'fallback' in decision ? decision.fallback : undefined;
     if (
@@ -1869,7 +1875,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return {
       input,
       confined: {
-        plan,
+        plan: { ...plan, mechanism: plan.mechanism },
         provider:
           this.options.seatbeltProvider ??
           claudeSpawnWrapProvider(plan.mechanism),
@@ -1936,7 +1942,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const stderr = engineProcess.stderrTail();
     throw new ConfinementRefusedError(
       'confinement_not_observed',
-      `This claude session requires ${seatbelt.plan.level} confinement, but the started engine was not observed inside its ${seatbelt.plan.mechanism} profile (${posture}). ${
+      `This claude session requires ${seatbelt.plan.level} confinement, but the started engine was not observed inside its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} (${posture}). ${
         handshake === 'failed'
           ? `The engine did not answer its startup handshake${stderr ? `: ${stderr}` : ''}.`
           : 'The engine was not spawned through the profile Station built.'
@@ -2001,11 +2007,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error('Claude does not support a completed-turn fork cutoff.');
     // #2494: adoption deliberately pins the global configuration root
     // (archive#896 decision 2), which a confined engine may not write, so a
-    // plan for Seatbelt runs at Auto here instead.
-    const adoptionFallback =
-      input.confinementPlan?.mechanism === 'seatbelt'
-        ? ('config-root-pinned' as const)
-        : undefined;
+    // plan for a spawn-wrapped mechanism (Seatbelt, or bubblewrap since
+    // #4770) runs at Auto here instead.
+    const adoptionFallback = isClaudeSpawnWrapMechanism(
+      input.confinementPlan?.mechanism,
+    )
+      ? ('config-root-pinned' as const)
+      : undefined;
     if (adoptionFallback && input.confinementPlan)
       input = withConfinementFallback(
         input,
@@ -2258,7 +2266,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       assertRequiredConfinementObserved(
         observedConfinementRecord(seatbelt.plan, 'configured-but-failed'),
         this.provider,
-        `Its ${seatbelt.plan.mechanism} profile would grant writes past the workspace, its git subset and the Station-owned directories, or cannot be built.`,
+        `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} would grant writes past the workspace, its git subset and the Station-owned directories, or cannot be built.`,
       );
     }
     const seatbeltSpawn = seatbelt
@@ -2645,7 +2653,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           );
           throw new ConfinementRefusedError(
             'confinement_not_observed',
-            `This claude session was observed inside its Seatbelt profile, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
+            `This claude session was observed inside its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)}, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
           );
         }
         record.allowsBypassPermissions = true;

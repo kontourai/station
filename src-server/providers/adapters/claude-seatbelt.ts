@@ -27,6 +27,7 @@ import {
   bubblewrapConfinementProvider,
   bubblewrapGrants,
   bubblewrapHiddenPaths,
+  bubblewrapWorkspaceRefusal,
   bubblewrapWriteGrantKinds,
 } from '../../security/confinement/bubblewrap.js';
 import type {
@@ -198,6 +199,13 @@ export function isClaudeSpawnWrapMechanism(
   return mechanism === 'seatbelt' || mechanism === 'bubblewrap';
 }
 
+/** How a refusal names a spawn-wrapped mechanism to a person. */
+export function claudeSpawnWrapLabel(
+  mechanism: ClaudeSpawnWrapMechanism,
+): string {
+  return mechanism === 'bubblewrap' ? 'bubblewrap sandbox' : 'Seatbelt profile';
+}
+
 /** The server's own provider for a spawn-wrapped mechanism. */
 export function claudeSpawnWrapProvider(
   mechanism: ClaudeSpawnWrapMechanism,
@@ -228,6 +236,13 @@ export interface ConfinedClaudeDecisionInput {
   globalConfigPinned: boolean;
   stationHome: string;
   home?: string;
+  /**
+   * #4770: the mechanism the plan names (Seatbelt by default). Under
+   * bubblewrap a workspace inside or containing a path the sandbox hides is
+   * too broad as well (`bubblewrapWorkspaceRefusal`).
+   */
+  mechanism?: ClaudeSpawnWrapMechanism;
+  stationRoot?: string;
 }
 
 /**
@@ -254,9 +269,9 @@ export function confinedClaudeCredentialCheck(
 }
 
 /**
- * Why a start that asked for Seatbelt runs at Auto with nothing engaged
- * instead, derived in order from checks, or the configuration directory a
- * confined start uses.
+ * Why a start that asked for Seatbelt or bubblewrap runs at Auto with
+ * nothing engaged instead, derived in order from checks, or the
+ * configuration directory a confined start uses.
  */
 export function confinedClaudeDecision(
   input: ConfinedClaudeDecisionInput,
@@ -271,7 +286,16 @@ export function confinedClaudeDecision(
     seatbeltWorkspaceRefusal(workspace, {
       home,
       stationHome: input.stationHome,
-    })
+    }) ||
+    (input.mechanism === 'bubblewrap' &&
+      bubblewrapWorkspaceRefusal(
+        workspace,
+        bubblewrapHiddenPaths({
+          home,
+          stationHome: input.stationHome,
+          ...(input.stationRoot ? { stationRoot: input.stationRoot } : {}),
+        }).hidden,
+      ))
   )
     return { fallback: 'workspace-too-broad' };
   const { configDir, credential } = confinedClaudeCredentialCheck(input);

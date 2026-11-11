@@ -114,7 +114,8 @@ export type ConfinementWriteGrant =
  *   under another configuration home.
  * - `workspace-too-broad`: the workspace is or contains the home folder or
  *   Station's data, or sits in a hidden folder or `~/Library`, so a write
- *   grant on it would confine nothing.
+ *   grant on it would confine nothing. Under bubblewrap (#4770), also a
+ *   workspace inside or containing a path the sandbox hides.
  */
 export type ConfinementFallbackReason =
   | 'confined-credential-unavailable'

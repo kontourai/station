@@ -10,25 +10,33 @@
  * secret stores and Station's data under empty read-only mounts. Bubblewrap
  * execs the engine only once that is in place.
  *
+ * It needs bubblewrap 0.8.0 or later (`--disable-userns`).
+ *
+ * No git metadata is writable in this change, by choice: the workspace's
+ * `.git` (a directory or a linked worktree's pointer file) stays read-only
+ * whenever it exists, so a confined session cannot stage or commit. Git
+ * replaces a branch ref by renaming `<ref>.lock` over it, so a mount can
+ * grant it only with its whole directory, which exposes the sibling
+ * branches there; and an absent `config.worktree` cannot be covered without
+ * creating it. Both need a design of their own.
+ *
  * What it cannot do, unlike the Seatbelt profile, because a mount covers a
  * path that exists and nothing else:
  *
- * - Grant one file that git replaces by rename (a branch ref, its lock and
- *   its log): git writes `<ref>.lock` beside the ref and renames it over
- *   the ref, which needs the whole directory. So no git metadata is
- *   writable: the workspace's `.git` (a directory or a linked worktree's
- *   pointer file) stays read-only, and a confined session cannot stage or
- *   commit.
  * - Deny a name at any depth: only an existing `.codex` or `.claude` at the
  *   root of a write grant is read-only. One created anywhere, or an existing
- *   nested one, stays writable.
+ *   nested one, stays writable (a known gap against #3800).
  * - Hide a secret path that does not exist when the session starts.
- * - Refuse a read: a hidden directory reads as empty and a hidden file as
- *   empty (`/dev/null`), where Seatbelt refuses the read itself.
  *
- * Its network is open (#4769), as Seatbelt's is. Unix sockets outside the
- * hidden paths (an `ssh-agent` socket under `/tmp`, an abstract socket)
- * stay connectable.
+ * A hidden directory reads as empty. A hidden file is `/dev/null` on a
+ * `nodev` mount, so opening it is refused (`Permission denied`), as Seatbelt
+ * refuses it. A hidden Unix socket is not a socket inside, so a connection
+ * to it is refused.
+ *
+ * Its network is open (#4769), as Seatbelt's is, and the network namespace
+ * is shared: abstract Unix sockets (a session bus or X11 listening on one,
+ * discoverable through `/proc/net/unix`) and Unix sockets outside the hidden
+ * paths (an `ssh-agent` socket under `/tmp`) stay connectable.
  */
 import { spawnSync } from 'node:child_process';
 import {
@@ -121,11 +129,31 @@ const OPTION_ARITY: Readonly<Record<string, number>> = {
 const ENGINE_CONFIG_NAMES: readonly string[] = ['.codex', '.claude'];
 
 /**
- * The paths a confined process may not read on Linux: the Seatbelt list
- * (`seatbeltHiddenPaths`), plus the login keyring's files and the user's
- * runtime directory, which holds the session bus (through which the Secret
- * Service hands out unlocked keyring items) and the keyring's SSH agent
- * socket. `readable` re-opens Station's installed binaries.
+ * Sockets of daemons that act for whoever connects, hidden so a confined
+ * process cannot drive them: a read-only mount does not stop `connect()`,
+ * and the process keeps its user's supplementary groups (`docker`). The
+ * container runtimes (which can mount the host), the system bus, and the
+ * X11 display (which can type into the operator's windows).
+ */
+const DAEMON_SOCKET_PATHS: readonly string[] = [
+  '/run/docker.sock',
+  '/var/run/docker.sock',
+  '/run/podman',
+  '/run/containerd',
+  '/run/dbus/system_bus_socket',
+  '/tmp/.X11-unix',
+];
+
+/**
+ * The paths a confined process may not read or connect to on Linux: the
+ * Seatbelt list (`seatbeltHiddenPaths`); the login keyring's files; the
+ * user's runtime directory, which holds the session bus (through which the
+ * Secret Service hands out unlocked keyring items), the keyring's SSH agent
+ * socket and a rootless Docker or Podman socket; the user's Docker socket
+ * directory and X11 cookie; and the daemon sockets above. Each is
+ * symlink-resolved, so `/var/run/docker.sock` and `/run/docker.sock` name
+ * one path where `/var/run` links to `/run`. `readable` re-opens Station's
+ * installed binaries.
  */
 export function bubblewrapHiddenPaths(
   options: {
@@ -145,14 +173,37 @@ export function bubblewrapHiddenPaths(
         ? null
         : `/run/user/${uid}`
       : options.runtimeDir;
+  const extra = [
+    join(home, '.local', 'share', 'keyrings'),
+    join(home, '.docker', 'run'),
+    join(home, '.Xauthority'),
+    ...(runtimeDir ? [runtimeDir] : []),
+    ...DAEMON_SOCKET_PATHS,
+  ].map(canonicalPath);
   return {
-    hidden: [
-      ...base.hidden,
-      canonicalPath(join(home, '.local', 'share', 'keyrings')),
-      ...(runtimeDir ? [canonicalPath(runtimeDir)] : []),
-    ],
+    hidden: [...new Set([...base.hidden, ...extra])],
     readable: base.readable,
   };
+}
+
+/**
+ * Why `workspace` cannot be a bubblewrap write grant beyond the Seatbelt
+ * rule (`seatbeltWorkspaceRefusal`), or `undefined`: a workspace inside a
+ * hidden path would expose it, and one containing a hidden path (a secret
+ * store linked into it, so its resolved path is there) would re-open it
+ * writable over the mount that hides it.
+ */
+export function bubblewrapWorkspaceRefusal(
+  workspace: string,
+  hidden: readonly string[],
+): string | undefined {
+  for (const path of hidden) {
+    if (isCanonicalPathWithin(path, workspace))
+      return 'it is inside a path the sandbox hides';
+    if (isCanonicalPathWithin(workspace, path))
+      return 'it contains a path the sandbox hides';
+  }
+  return undefined;
 }
 
 export interface BubblewrapGrantInput {
@@ -165,12 +216,23 @@ export interface BubblewrapGrantInput {
   readable: readonly string[];
 }
 
+/** Whether `path` exists, a dangling link included. */
+function present(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The write and read grants of a confined start under bubblewrap: the
  * workspace, the session's Station temp directory and the Station-owned
  * configuration directory, with the workspace's own `.git` read-only
- * whenever the workspace has a git layout (its directory, or a linked
- * worktree's pointer file). No other git directory is granted, so the
+ * whenever it exists (its directory, or a linked worktree's pointer file),
+ * even when its layout cannot be read. No other git directory is granted,
+ * so the
  * shared repository, its refs and hooks stay read-only too.
  */
 export function bubblewrapGrants(
@@ -180,7 +242,11 @@ export function bubblewrapGrants(
     writable: [input.workspace, input.stationTempDir, input.stationConfigDir],
     readable: [...input.readable],
     writableFiles: [],
-    writeDenied: input.git ? [join(input.workspace, '.git')] : [],
+    // Whenever a `.git` exists, even one whose layout cannot be read.
+    writeDenied:
+      input.git || present(join(input.workspace, '.git'))
+        ? [join(input.workspace, '.git')]
+        : [],
     writeDeniedExact: [],
     writeDeniedNames: [...ENGINE_CONFIG_NAMES],
     hidden: [...input.hidden],
@@ -221,8 +287,8 @@ function nearestExisting(path: string): string {
  *
  * Refused (it throws) rather than silently narrowed or widened: a grant of a
  * single file, an exact-path deny, a writable grant that does not exist, a
- * denied path that cannot be covered without covering a whole grant, and a
- * network policy other than `full`.
+ * hidden path inside a write grant, a denied path that cannot be covered
+ * without covering a whole grant, and a network policy other than `full`.
  */
 export function bubblewrapArgs(spec: ConfinementSpawnSpec): string[] {
   if (spec.network !== 'full')
@@ -237,6 +303,12 @@ export function bubblewrapArgs(spec: ConfinementSpawnSpec): string[] {
       'The bubblewrap sandbox cannot deny a path exactly while its contents stay writable.',
     );
   const writable = grants.writable.map(requireAbsolute);
+  // A write grant mounted later would re-open a hidden path inside it.
+  for (const path of (grants.hidden ?? []).map(requireAbsolute))
+    if (writable.some((grant) => isCanonicalPathWithin(grant, path)))
+      throw new Error(
+        'A hidden confinement path is inside a write grant, which would re-open it.',
+      );
   const hidden = hiddenMounts(grants.hidden ?? []);
   const args: string[] = [...BUBBLEWRAP_BASE_ARGS, ...hidden.args];
   for (const path of grants.readable.map(requireAbsolute))
@@ -353,7 +425,7 @@ function parseOptions(args: readonly string[]): MountOperation[] | undefined {
  * an option Station never emits, mount anything writable past the
  * workspace, the session's Station temp directory and a directory directly
  * under Station's confined homes, or leave the workspace's `.git` writable
- * while it has a git layout.
+ * while it has a git layout or a `.git` exists.
  */
 export function bubblewrapWriteGrantKinds(
   args: readonly string[],
@@ -379,7 +451,7 @@ export function bubblewrapWriteGrantKinds(
       kinds.add('station-config');
     else return undefined;
   }
-  if (bounds.git) {
+  if (bounds.git || present(join(bounds.workspace, '.git'))) {
     const dotGit = join(bounds.workspace, '.git');
     const covered = operations.some(
       ({ option, values }, index) =>
@@ -424,15 +496,59 @@ const PROBE_FAILURES: Readonly<Record<number, string>> = {
   4: 'a write inside the workspace was refused',
   5: "a hidden file's content was readable",
   6: "the workspace's .git was writable",
+  7: "a write to the session's temp directory inside the hidden Station home was refused",
+  8: 'a write to the hidden Station home outside its grants was not refused',
 };
 
+/** The oldest bubblewrap with `--disable-userns`. */
+export const MIN_BUBBLEWRAP_VERSION: readonly [number, number, number] = [
+  0, 8, 0,
+];
+
 /**
- * Whether the production sandbox applies AND enforces on this host: the
- * real argument shape (the real hidden list, a linked worktree's pointer
- * file, an engine configuration directory) around `/bin/sh` in a throwaway
- * directory, which must be able to write the workspace and must be refused
- * a write outside it, the content of a hidden directory's file and of a
- * hidden file, and a write to `.git`. A host
+ * Why the bubblewrap that printed `versionOutput` (`bwrap --version`)
+ * cannot run Station's sandbox, or `undefined` when it is new enough or the
+ * output names no version (the probe then decides).
+ */
+export function bubblewrapVersionRefusal(
+  versionOutput: string,
+): string | undefined {
+  const found = /bubblewrap\s+(\d+)\.(\d+)(?:\.(\d+))?/.exec(versionOutput);
+  if (!found) return undefined;
+  const version = [Number(found[1]), Number(found[2]), Number(found[3] ?? 0)];
+  for (const [index, part] of version.entries()) {
+    const minimum = MIN_BUBBLEWRAP_VERSION[index]!;
+    if (part > minimum) return undefined;
+    if (part < minimum)
+      return `bubblewrap ${version.join('.')} is older than ${MIN_BUBBLEWRAP_VERSION.join('.')}, which the sandbox needs for --disable-userns`;
+  }
+  return undefined;
+}
+
+/** The reason a probe that ran and failed gives. */
+function probeFailure(result: ReturnType<typeof spawnSync>): string {
+  if (result.error) return result.error.message;
+  if (result.status !== null && PROBE_FAILURES[result.status])
+    return PROBE_FAILURES[result.status]!;
+  const said = String(result.stderr ?? '')
+    .trim()
+    .split('\n')
+    .pop()
+    ?.slice(0, 300);
+  return said || `exit ${result.status ?? result.signal}`;
+}
+
+/**
+ * Whether the production sandbox applies AND enforces on this host. It
+ * first refuses a bubblewrap older than {@link MIN_BUBBLEWRAP_VERSION},
+ * naming the version. Then it runs the real argument shape (the real hidden
+ * list, a linked worktree's pointer file, an engine configuration
+ * directory, and the session's temp and configuration directories inside a
+ * hidden Station home, as a start mounts them) around `/bin/sh` in a
+ * throwaway directory. The shell must be able to write the workspace and
+ * the temp directory, and must be refused a write outside the workspace, a
+ * write to the hidden home outside its grants, the content of a hidden
+ * directory's file and of a hidden file, and a write to `.git`. A host
  * without unprivileged user namespaces (a kernel setting, AppArmor's
  * `apparmor_restrict_unprivileged_userns`, a container's seccomp profile)
  * fails here, with bubblewrap's own reason.
@@ -443,16 +559,27 @@ export function probeBubblewrap(bwrap: string = BUBBLEWRAP): {
 } {
   let root: string | undefined;
   try {
+    const version = spawnSync(bwrap, ['--version'], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      windowsHide: true,
+    });
+    const tooOld = bubblewrapVersionRefusal(
+      `${version.stdout ?? ''}${version.stderr ?? ''}`,
+    );
+    if (tooOld)
+      return {
+        ok: false,
+        reason: `the bubblewrap sandbox cannot apply (${tooOld})`,
+      };
     root = canonicalPath(mkdtempSync(join(tmpdir(), 'station-bubblewrap-')));
     const workspace = join(root, 'workspace');
     const secret = join(root, 'secret');
     const common = join(root, 'repository.git');
-    for (const dir of [
-      join(workspace, '.claude'),
-      join(root, 'tmp'),
-      join(root, 'config'),
-      secret,
-    ])
+    const stationHome = join(root, 'station-home');
+    const temp = join(stationHome, 'tmp', 'session');
+    const config = join(stationHome, 'config');
+    for (const dir of [join(workspace, '.claude'), temp, config, secret])
       mkdirSync(dir, { recursive: true });
     const pointer = `gitdir: ${join(common, 'worktrees', 'workspace')}\n`;
     writeFileSync(join(workspace, '.git'), pointer);
@@ -462,6 +589,8 @@ export function probeBubblewrap(bwrap: string = BUBBLEWRAP): {
     const { hidden, readable } = bubblewrapHiddenPaths();
     const outside = join(root, 'outside');
     const inside = join(workspace, 'inside');
+    const inTemp = join(temp, 'inside');
+    const inHiddenHome = join(stationHome, 'outside-grants');
     const args = bubblewrapArgs({
       command: '/bin/sh',
       args: [
@@ -474,6 +603,8 @@ export function probeBubblewrap(bwrap: string = BUBBLEWRAP): {
           'if grep -q probe "$3" 2>/dev/null; then exit 5; fi',
           'if grep -q probe "$5" 2>/dev/null; then exit 5; fi',
           'if (echo probe > "$4") 2>/dev/null; then exit 6; fi',
+          '(echo probe > "$6") || exit 7',
+          'if (echo probe > "$7") 2>/dev/null; then exit 8; fi',
           'exit 0',
         ].join('\n'),
         'probe',
@@ -482,18 +613,20 @@ export function probeBubblewrap(bwrap: string = BUBBLEWRAP): {
         join(secret, 'key'),
         join(workspace, '.git'),
         secretFile,
+        inTemp,
+        inHiddenHome,
       ],
       cwd: workspace,
       env: {},
       grants: bubblewrapGrants({
         workspace,
-        stationTempDir: join(root, 'tmp'),
-        stationConfigDir: join(root, 'config'),
+        stationTempDir: temp,
+        stationConfigDir: config,
         git: {
           gitDir: join(common, 'worktrees', 'workspace'),
           commonDir: common,
         },
-        hidden: [...hidden, secret, secretFile],
+        hidden: [...hidden, secret, secretFile, stationHome],
         readable,
       }),
       network: 'full',
@@ -509,21 +642,18 @@ export function probeBubblewrap(bwrap: string = BUBBLEWRAP): {
     const enforced =
       result.status === 0 &&
       !existsSync(outside) &&
+      !existsSync(inHiddenHome) &&
       existsSync(inside) &&
+      existsSync(inTemp) &&
       readFileSync(join(workspace, '.git'), 'utf8') === pointer;
     if (enforced)
       return {
         ok: true,
         reason: 'the bubblewrap sandbox applies and enforces on this host',
       };
-    const said = (result.stderr ?? '').trim().split('\n').pop()?.slice(0, 300);
-    const detail =
-      result.error?.message ??
-      (result.status !== null && PROBE_FAILURES[result.status]) ??
-      (said || `exit ${result.status ?? result.signal}`);
     return {
       ok: false,
-      reason: `the bubblewrap sandbox did not apply (${detail})`,
+      reason: `the bubblewrap sandbox did not apply (${probeFailure(result)})`,
     };
   } catch (error) {
     return {

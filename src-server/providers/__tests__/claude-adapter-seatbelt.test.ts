@@ -625,26 +625,40 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     });
   });
 
-  test('adoption pins the global config root, so it is never confined: Auto, recorded', async () => {
-    createAdapter();
-    mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
-    const query = startingQuery(Promise.resolve({}));
-    await adapter.adoptSession({
-      provider: 'claude',
-      threadId: 'adopted',
-      sourceSessionId: 'vendor-source',
-      sourceKind: 'claude-transcript',
-      cwd: workspace,
-      confinement: 'workspace',
-      modelOptions: { approvalMode: 'never' },
-      confinementPlan: SEATBELT_PLAN,
-    });
-    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(FAKE_CLAUDE_COMMAND);
-    expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
-    expect((await started('adopted')).stationConfinementRecord).toMatchObject({
-      fallback: 'config-root-pinned',
-    });
-  });
+  test.each([
+    ['seatbelt', SEATBELT_PLAN],
+    ['bubblewrap', BUBBLEWRAP_PLAN],
+  ] as const)(
+    'adoption pins the global config root, so a %s plan is never confined: Auto, recorded',
+    async (mechanism, plan) => {
+      // The server's own provider for the mechanism, as production picks it.
+      createAdapter({ serverProvider: true });
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      const query = startingQuery(Promise.resolve({}));
+      const threadId = `adopted-${mechanism}`;
+      await adapter.adoptSession({
+        provider: 'claude',
+        threadId,
+        sourceSessionId: 'vendor-source',
+        sourceKind: 'claude-transcript',
+        cwd: workspace,
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: plan,
+      });
+      expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(
+        FAKE_CLAUDE_COMMAND,
+      );
+      // Never full access outside a sandbox.
+      expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
+      expect(query.options?.permissionMode).not.toBe('bypassPermissions');
+      expect((await started(threadId)).stationConfinementRecord).toMatchObject({
+        posture: 'no-mechanism',
+        required: false,
+        fallback: 'config-root-pinned',
+      });
+    },
+  );
 
   test('chat-host-images: a confined session image root is exactly its Seatbelt TMPDIR, and no unused session-tmp folder is created', async () => {
     vi.stubEnv('STATION_HOME', stationHome);
@@ -897,7 +911,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       name: 'ConfinementRefusedError',
       code: 'confinement_not_observed',
       message: expect.stringContaining(
-        'not observed inside its bubblewrap profile (configured-but-failed)',
+        'not observed inside its bubblewrap sandbox (configured-but-failed)',
       ),
     });
     expect(mockQuery).toHaveBeenCalledTimes(1);

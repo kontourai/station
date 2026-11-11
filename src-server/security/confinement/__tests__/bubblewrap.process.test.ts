@@ -24,6 +24,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
@@ -193,7 +194,7 @@ describe.skipIf(!probe.ok)(
       };
     }
 
-    test('the probe ran the production sandbox, not a stand-in', () => {
+    test('the probe passed on this host, and the provider a start consults reports the sandbox available', () => {
       expect(probe.ok).toBe(true);
       // The provider a start consults answers from the same probe.
       expect(provider.availability()).toEqual({
@@ -361,16 +362,17 @@ describe.skipIf(!probe.ok)(
       rmSync(join(repo, 'm.txt'), { force: true });
     });
 
-    test('secret stores and Station data do not reveal their content; Station installs stay readable', async () => {
-      for (const secret of [
-        join(home, '.ssh', 'id_ed25519'),
-        join(home, '.netrc'),
-        join(stationHome, 'station.sqlite'),
-      ]) {
-        const result = await confined(
-          worktree,
-          `cat "${secret}" 2>/dev/null; true`,
-        );
+    test('secret stores and Station data cannot be read; Station installs stay readable', async () => {
+      for (const [secret, refusal] of [
+        // Inside a hidden directory: an empty mount, so no such file.
+        [join(home, '.ssh', 'id_ed25519'), /No such file or directory/],
+        // A hidden file: `/dev/null` on a nodev mount, so opening it fails.
+        [join(home, '.netrc'), /Permission denied/],
+        [join(stationHome, 'station.sqlite'), /No such file or directory/],
+      ] as const) {
+        const result = await confined(worktree, `cat "${secret}"`);
+        expect(result.status, secret).not.toBe(0);
+        expect(result.stderr, secret).toMatch(refusal);
         expect(result.stdout, secret).toBe('');
       }
       const installed = await confined(
@@ -425,10 +427,8 @@ describe.skipIf(!probe.ok)(
           secret.replace(home, `${home}/../${home.split('/').pop()}`),
         ];
         for (const spelling of spellings) {
-          const result = await confined(
-            worktree,
-            `cat "${spelling}" 2>/dev/null; true`,
-          );
+          const result = await confined(worktree, `cat "${spelling}"`);
+          expect(result.status, spelling).not.toBe(0);
           expect(result.stdout, spelling).not.toContain(marker);
         }
       },
@@ -604,6 +604,89 @@ describe.skipIf(!probe.ok)(
       } finally {
         rmSync(prelinked, { force: true });
       }
+    });
+
+    /** A client that exits 0 once `path` accepts a connection, else 3. */
+    function connectScript(path: string): string {
+      const client = `require('net').connect(${JSON.stringify(path)}).on('connect',()=>process.exit(0)).on('error',(e)=>{console.error(e.code);process.exit(3)})`;
+      return `"${process.execPath}" -e "${client.replaceAll('"', '\\"')}"`;
+    }
+
+    test('a listening socket at a hidden path refuses a connection from inside', async () => {
+      // A daemon socket the operator's user may use, created before the
+      // start where the sandbox hides it (the user's Docker socket
+      // directory), and a control socket outside every hidden path.
+      const hiddenDir = join(home, '.docker', 'run');
+      mkdirSync(hiddenDir, { recursive: true });
+      const hiddenSocket = join(hiddenDir, 'docker.sock');
+      const controlSocket = join(outside, 'control.sock');
+      const servers = [hiddenSocket, controlSocket].map((path) => {
+        rmSync(path, { force: true });
+        // The clients only connect; each is closed at once.
+        const server = createServer((socket) => {
+          socket.on('error', () => undefined);
+          socket.destroy();
+        });
+        server.listen(path);
+        return server;
+      });
+      try {
+        await Promise.all(
+          servers.map(
+            (server) =>
+              new Promise((resolve) => server.once('listening', resolve)),
+          ),
+        );
+        // Positive controls: both accept outside, and connect works inside.
+        const reachable = spawnSync(
+          '/bin/sh',
+          ['-c', connectScript(hiddenSocket)],
+          { encoding: 'utf8', windowsHide: true },
+        );
+        expect(reachable.status, reachable.stderr).toBe(0);
+        const control = await confined(worktree, connectScript(controlSocket));
+        expect(control.status, control.stderr).toBe(0);
+        const hidden = await confined(worktree, connectScript(hiddenSocket));
+        expect(hidden.status).toBe(3);
+        expect(hidden.stderr).toMatch(/ECONNREFUSED|ENOENT|ENOTSOCK|EACCES/);
+      } finally {
+        for (const server of servers) server.close();
+      }
+    });
+
+    test("the host's Docker socket refuses a connection from inside", async (ctx) => {
+      // Runs where the Docker socket exists and this user can connect to it
+      // outside the sandbox (a docker group member, or a test harness that
+      // made one); the refusal inside is then the sandbox's.
+      const socket = canonicalPath('/run/docker.sock');
+      const outsideConnect = existsSync(socket)
+        ? spawnSync('/bin/sh', ['-c', connectScript(socket)], {
+            encoding: 'utf8',
+            windowsHide: true,
+          })
+        : undefined;
+      if (outsideConnect?.status !== 0) {
+        process.stderr.write(
+          `\n[bubblewrap.process] SKIPPED Docker socket denial: no Docker socket this user can connect to outside the sandbox (${outsideConnect ? outsideConnect.stderr.trim() : 'none'})\n`,
+        );
+        ctx.skip('no Docker socket this user can reach outside the sandbox');
+      }
+      const inside = await confined(worktree, connectScript(socket));
+      expect(inside.status).toBe(3);
+    });
+
+    test('an existing .git is read-only even when its layout cannot be read', async () => {
+      const scratch = join(root, 'unreadable-git');
+      mkdirSync(scratch, { recursive: true });
+      writeFileSync(join(scratch, '.git'), 'not a git pointer\n');
+      const result = await confined(
+        scratch,
+        `echo "gitdir: /tmp/evil" > "${scratch}/.git"`,
+      );
+      expect(result.status).not.toBe(0);
+      expect(readFileSync(join(scratch, '.git'), 'utf8')).toBe(
+        'not a git pointer\n',
+      );
     });
 
     test('a granted path does not grant its sibling that shares the prefix', async () => {

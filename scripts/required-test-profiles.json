@@ -232,7 +232,7 @@
         "mustPass": [
           [
             "bubblewrap sandbox under the real kernel",
-            "the probe ran the production sandbox, not a stand-in"
+            "the probe passed on this host, and the provider a start consults reports the sandbox available"
           ],
           [
             "bubblewrap sandbox under the real kernel",
@@ -328,7 +328,7 @@
           ],
           [
             "bubblewrap sandbox under the real kernel",
-            "secret stores and Station data do not reveal their content; Station installs stay readable"
+            "secret stores and Station data cannot be read; Station installs stay readable"
           ],
           [
             "bubblewrap sandbox under the real kernel",
@@ -404,6 +404,14 @@
           ],
           [
             "bubblewrap sandbox under the real kernel",
+            "a listening socket at a hidden path refuses a connection from inside"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an existing .git is read-only even when its layout cannot be read"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
             "a granted path does not grant its sibling that shares the prefix"
           ],
           [
@@ -418,6 +426,13 @@
               "a nested user namespace cannot be created inside, so the mounts cannot be rearranged"
             ],
             "reason": "Skips at runtime (ctx.skip) when `unshare --user` cannot create a user namespace even outside the sandbox (util-linux missing, or a host policy), so the refusal inside would prove nothing. A skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "bubblewrap sandbox under the real kernel",
+              "the host's Docker socket refuses a connection from inside"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when no Docker socket exists that this user can connect to outside the sandbox, so the refusal inside would prove nothing. A hosted runner whose user is in the docker group runs it; a skip is recorded, a failure is not accepted. The hidden-socket leg proves the mechanism on every host."
           }
         ],
         "notRequired": []

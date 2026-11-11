@@ -5,11 +5,14 @@
  * evidence. Nothing is spawned. The kernel's behaviour under the production
  * arguments is `bubblewrap.process.test.ts`.
  */
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { prepareConfinedClaudeLaunch } from '../../../providers/adapters/claude-seatbelt.js';
+import {
+  confinedClaudeDecision,
+  prepareConfinedClaudeLaunch,
+} from '../../../providers/adapters/claude-seatbelt.js';
 import { codexSandboxConfinementProvider } from '../../../providers/adapters/codex-confinement.js';
 import {
   BUBBLEWRAP,
@@ -18,6 +21,8 @@ import {
   bubblewrapConfinementProvider,
   bubblewrapGrants,
   bubblewrapHiddenPaths,
+  bubblewrapVersionRefusal,
+  bubblewrapWorkspaceRefusal,
   bubblewrapWriteGrantKinds,
   confineWithBubblewrap,
   createBubblewrapConfinementProvider,
@@ -287,7 +292,7 @@ describe('bubblewrap grants', () => {
     ).toBe(false);
   });
 
-  test('hides the Seatbelt list, the login keyring and the runtime directory', () => {
+  test('hides the Seatbelt list, the login keyring, the runtime directory and the daemon sockets', () => {
     const options = {
       home: '/home/op',
       stationRoot: '/home/op/.station',
@@ -297,16 +302,46 @@ describe('bubblewrap grants', () => {
       ...options,
       runtimeDir: '/run/user/1000',
     }).hidden;
-    expect(hidden).toEqual([
+    // Pinned independently of the builder: each path, symlink-resolved as
+    // every confinement path is (/var/run links to /run on most hosts, so
+    // the two Docker paths may be one).
+    const expected = [
       ...seatbeltHiddenPaths(options).hidden,
-      // Symlink-resolved, as every confinement path is (/run is a link on
-      // some hosts).
-      canonicalPath('/home/op/.local/share/keyrings'),
-      canonicalPath('/run/user/1000'),
-    ]);
+      '/home/op/.local/share/keyrings',
+      '/home/op/.docker/run',
+      '/home/op/.Xauthority',
+      '/run/user/1000',
+      '/run/docker.sock',
+      '/var/run/docker.sock',
+      '/run/podman',
+      '/run/containerd',
+      '/run/dbus/system_bus_socket',
+      '/tmp/.X11-unix',
+    ].map(canonicalPath);
+    expect(hidden).toEqual([...new Set(expected)]);
     expect(
       bubblewrapHiddenPaths({ ...options, runtimeDir: null }).hidden,
     ).not.toContain(canonicalPath('/run/user/1000'));
+  });
+
+  test('an existing .git is read-only even when its layout cannot be read', () => {
+    const where = layout();
+    writeFileSync(join(where.workspace, '.git'), 'not a git pointer\n');
+    const grants = grantsFor(where);
+    const dotGit = join(where.workspace, '.git');
+    expect(grants.writeDenied).toEqual([dotGit]);
+    const args = bubblewrapArgs(specFor(where, grants));
+    expect(at(args, '--ro-bind', dotGit, dotGit)).toBeGreaterThan(
+      at(args, '--bind', where.workspace, where.workspace),
+    );
+    // And arguments that leave it writable are out of bounds.
+    const index = at(args, '--ro-bind', dotGit, dotGit);
+    expect(
+      bubblewrapWriteGrantKinds(
+        [...args.slice(0, index), ...args.slice(index + 3)],
+        where.bounds,
+      ),
+    ).toBeUndefined();
   });
 });
 
@@ -671,5 +706,76 @@ describe('a confined Claude launch under bubblewrap', () => {
     });
     launch.cleanup();
     expect(launch.writeGrants).toBeUndefined();
+  });
+});
+
+describe('bubblewrap version', () => {
+  test.each([
+    ['bubblewrap 0.6.1', 'bubblewrap 0.6.1 is older than 0.8.0'],
+    ['bubblewrap 0.7.0\n', 'bubblewrap 0.7.0 is older than 0.8.0'],
+  ])('%s is refused, naming the version', (output, reason) => {
+    expect(bubblewrapVersionRefusal(output)).toContain(reason);
+    expect(bubblewrapVersionRefusal(output)).toContain('--disable-userns');
+  });
+
+  test.each([
+    'bubblewrap 0.8.0',
+    'bubblewrap 0.9.0',
+    'bubblewrap 0.11.0',
+    'bubblewrap 1.0',
+    'something else',
+  ])('%s is not refused by version', (output) => {
+    expect(bubblewrapVersionRefusal(output)).toBeUndefined();
+  });
+});
+
+describe('a workspace and the hidden paths', () => {
+  test('a workspace inside or containing a hidden path is refused; a disjoint one is not', () => {
+    const hidden = ['/home/op/.ssh', '/run/user/1000'];
+    expect(bubblewrapWorkspaceRefusal('/run/user/1000/ws', hidden)).toBe(
+      'it is inside a path the sandbox hides',
+    );
+    expect(bubblewrapWorkspaceRefusal('/run/user', hidden)).toBe(
+      'it contains a path the sandbox hides',
+    );
+    expect(bubblewrapWorkspaceRefusal('/srv/ws', hidden)).toBeUndefined();
+  });
+
+  test('arguments refuse a hidden path inside a write grant rather than re-open it', () => {
+    const where = layout();
+    const secret = join(where.workspace, 'linked-secret');
+    writeFileSync(secret, 'x');
+    expect(() =>
+      bubblewrapArgs(
+        specFor(where, {
+          ...grantsFor(where),
+          hidden: [...(grantsFor(where).hidden ?? []), secret],
+        }),
+      ),
+    ).toThrow(/hidden confinement path is inside a write grant/);
+  });
+
+  test('a bubblewrap start whose workspace holds a secret store linked into it falls back as too broad', () => {
+    const where = layout();
+    // `~/.netrc` is a link to a file inside the workspace: its resolved path
+    // is there.
+    writeFileSync(join(where.workspace, 'netrc'), 'machine x\n');
+    const netrc = join(where.home, '.netrc');
+    rmSync(netrc);
+    symlinkSync(join(where.workspace, 'netrc'), netrc);
+    const decide = (mechanism: 'seatbelt' | 'bubblewrap') =>
+      confinedClaudeDecision({
+        cwd: where.workspace,
+        appHomeEnv: undefined,
+        env: { ANTHROPIC_API_KEY: 'sk-ant-api03-fake-for-tests' },
+        globalConfigPinned: false,
+        stationHome: where.stationHome,
+        stationRoot: where.stationRoot,
+        home: where.home,
+        mechanism,
+      });
+    expect(decide('bubblewrap')).toEqual({ fallback: 'workspace-too-broad' });
+    // Seatbelt's rule is unchanged here.
+    expect(decide('seatbelt')).toMatchObject({ workspace: where.workspace });
   });
 });
