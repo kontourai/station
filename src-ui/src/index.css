@@ -8103,16 +8103,26 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: var(--bg-tertiary);
 }
 
-.provider-overview__dot {
-  width: 6px;
-  height: 6px;
+/* One status dot for a model connection, in the list row and the summary. */
+.provider-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--text-muted);
+  background: var(--k-text-muted);
 }
 
-.provider-overview__dot--active {
-  background: var(--success-text, #22c55e);
+.provider-status-dot--ready {
+  background: var(--k-positive);
+}
+
+.provider-status-dot--warn {
+  background: var(--k-caution);
+}
+
+.provider-status-dot--error {
+  background: var(--k-negative);
 }
 
 /* Quick Setup (shown when no providers exist) */

@@ -6,7 +6,7 @@ import {
 } from '@kontourai/station-contracts/tool';
 import type { ReactNode } from 'react';
 import type { HostActionId } from '../../components/host-action/host-action-copy';
-import type { ProviderTypeOption } from './types';
+import type { ProviderConnection, ProviderTypeOption } from './types';
 
 /**
  * The provider catalog is the one source of truth for provider choices and
@@ -274,7 +274,7 @@ export type ProviderReadiness =
   | 'Disabled'
   | 'Unreachable';
 
-type ProviderTone = 'ready' | 'warn' | 'error' | 'disabled';
+export type ProviderTone = 'ready' | 'warn' | 'error' | 'disabled';
 
 type ProviderCatalogKind = 'model' | 'agent' | 'command';
 
@@ -739,4 +739,38 @@ export function resolveProviderChoicePresentation(
 ): ProviderChoicePresentation {
   const presentation = resolveProviderPresentation(input);
   return { badge: presentation.readiness, detail: presentation.detail };
+}
+
+/**
+ * How a saved model connection presents, for every place that lists one. The
+ * list row and the summary card both read this, so they cannot disagree about
+ * whether the same connection is ready.
+ */
+export function modelConnectionPresentation(
+  connection: ProviderConnection,
+): ProviderPresentation {
+  return resolveProviderPresentation({
+    id: connection.id,
+    kind: 'model',
+    type: connection.type,
+    name: connection.name,
+    enabled: connection.enabled,
+    status: connection.status,
+    prerequisites: connection.prerequisites,
+    ...(connection.readinessEvidence
+      ? { readinessEvidence: connection.readinessEvidence }
+      : {}),
+    setup: null,
+    href: '',
+  });
+}
+
+/** The status dot for a connection's tone. Decorative: the row states the status in words. */
+export function ProviderStatusDot({ tone }: { tone: ProviderTone }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`provider-status-dot provider-status-dot--${tone}`}
+    />
+  );
 }
