@@ -15,6 +15,11 @@ authority and `orchestration:operate`. The current Codex adapter supports save
 paused, pause and clear; resume and Station-managed execution are unavailable.
 See [Session Goals](api.md#session-goals) for commands and uncertain outcomes.
 
+A Session that started in a worktree of its own records what became of its
+output once: `GET` or `POST /api/orchestration/sessions/:threadId/worktree-settlement`
+(discarded, kept, released or cleaned up without a decision). No composer
+control calls it yet. See [Worktree output settlement](api.md#worktree-output-settlement).
+
 For foreground chat, the canonical execution surface is
 `POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
