@@ -256,6 +256,16 @@ function ProjectRoomSession({
       }),
     [setDraft],
   );
+  // Clears the whole envelope only if it is still the revision that was
+  // asked; any edit since (text, recipient or reply) keeps the newer draft
+  // intact (#4810 delta 1). Every edit makes a new envelope object.
+  const clearDraftIfCurrent = useCallback(
+    (revision: ProjectRoomDraft) =>
+      setDraft((current) =>
+        current === revision ? EMPTY_PROJECT_DRAFT : current,
+      ),
+    [setDraft],
+  );
   const setRecipient = useCallback(
     (update: Update<ProjectRoomDraft['recipient']>) =>
       setDraft(({ recipient: previous, ...rest }) => {
@@ -698,6 +708,8 @@ function ProjectRoomSession({
               replyTo={replyTo}
               replyAuthor={replyTo ? authorOf(replyTo) : undefined}
               setReplyTo={setReplyTo}
+              draft={draft}
+              clearDraftIfCurrent={clearDraftIfCurrent}
               recipient={recipient}
               setRecipient={setRecipient}
               participants={participants}
@@ -824,6 +836,8 @@ function ProjectRoomComposer({
   replyTo,
   replyAuthor,
   setReplyTo,
+  draft,
+  clearDraftIfCurrent,
   recipient,
   setRecipient,
   participants,
@@ -846,6 +860,8 @@ function ProjectRoomComposer({
   replyTo?: string;
   replyAuthor?: string;
   setReplyTo(value: Update<string | undefined>): void;
+  draft: ProjectRoomDraft;
+  clearDraftIfCurrent(revision: ProjectRoomDraft): void;
   recipient?: { id: string; name: string };
   setRecipient(value: Update<ProjectRoomDraft['recipient']>): void;
   participants: ProjectRoomBrowserView['actor'][];
@@ -891,10 +907,14 @@ function ProjectRoomComposer({
       setRecipientNotice(
         'The saved Agent is unavailable. Your draft is kept as a message.',
       );
-    }
+    } else if (current.name !== recipient.name)
+      // A renamed Agent keeps its identity; show its current name (#4810 delta 3).
+      setRecipient({ id: recipient.id, name: current.name });
   }, [recipient, agents, catalog.isSuccess, catalog.data, setRecipient]);
   const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
   const agentPanel = useRef<{ ask(agentId: string): void }>(null);
+  // The draft revision an in-flight @agent ask was made from.
+  const askedRevision = useRef<ProjectRoomDraft | undefined>(undefined);
   const candidates: RoomMentionCandidate[] = [
     ...participants
       .filter((actor) => actor.id !== view.actor.id && actor.kind === 'person')
@@ -955,15 +975,10 @@ function ProjectRoomComposer({
           blocked={!restored || blocked}
           toolsSlot={toolsSlot}
           askRef={agentPanel}
-          onAsked={(asked) => {
-            // Clear only what was acknowledged: an edit made meanwhile stays.
-            setText((current) => (current === asked.text ? '' : current));
-            setRecipient((current) =>
-              current?.id === asked.agentId ? undefined : current,
-            );
-            setReplyTo((current) =>
-              current === asked.replyTo ? undefined : current,
-            );
+          onAsked={() => {
+            const revision = askedRevision.current;
+            askedRevision.current = undefined;
+            if (revision) clearDraftIfCurrent(revision);
           }}
           prepareRecap={prepareRecap}
           refresh={refresh}
@@ -980,8 +995,10 @@ function ProjectRoomComposer({
           mention.find(value, caret);
         }}
         onSend={() => {
-          if (recipient) agentPanel.current?.ask(recipient.id);
-          else send();
+          if (recipient) {
+            askedRevision.current = draft;
+            agentPanel.current?.ask(recipient.id);
+          } else send();
         }}
         canSend={canSend}
         pending={sending}
@@ -1128,8 +1145,8 @@ function ProjectRoomAgentPanel({
   toolsSlot: HTMLElement | null;
   /** Lets an @agent pick in the composer ask through this same request path. */
   askRef: Ref<{ ask(agentId: string): void }>;
-  /** An @agent request was acknowledged; the composer clears that snapshot. */
-  onAsked(asked: { text: string; agentId: string; replyTo?: string }): void;
+  /** An @agent request was acknowledged; the composer clears that revision. */
+  onAsked(): void;
 }) {
   const guard = {
     expectedRoomId: roomId,
@@ -1259,12 +1276,7 @@ function ProjectRoomAgentPanel({
       sessionStorage.setItem(storageKey, JSON.stringify(next));
       setOpen(false);
       setNotice('');
-      if (mentioned)
-        onAsked({
-          text: saved.intent.text,
-          agentId: saved.intent.agentId,
-          ...(saved.intent.replyTo ? { replyTo: saved.intent.replyTo } : {}),
-        });
+      if (mentioned) onAsked();
       if (result.state === 'published') refresh();
     } catch (error) {
       if (!mounted.current) return;
@@ -1413,6 +1425,22 @@ function ProjectRoomAgentPanel({
                 onClick={() => void act('inspect')}
               >
                 Inspect request
+              </Button>
+            ) : !retained.requestId ? (
+              // Without a handle there is nothing to inspect or cancel; the
+              // reader can still let it go (#4810 delta 2).
+              <Button
+                disabled={agent.request.isPending}
+                onClick={() => {
+                  sessionStorage.removeItem(storageKey);
+                  setRetained(undefined);
+                  setHandle(undefined);
+                  setNotice(
+                    'Request abandoned. It may already have run; check the room before asking again.',
+                  );
+                }}
+              >
+                Abandon this request
               </Button>
             ) : undefined
           }
