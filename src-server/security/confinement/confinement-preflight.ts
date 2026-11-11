@@ -27,8 +27,11 @@ import { canonicalPath } from './seatbelt.js';
  * The fallbacks a preflight cannot decide: each depends on the start's
  * workspace or conversation, and is decided when the Session starts.
  */
-export const CONFINEMENT_DECIDED_AT_START: readonly ConfinementFallbackReason[] =
-  ['workspace-too-broad', 'config-root-pinned', 'resume-bound-elsewhere'];
+const CONFINEMENT_DECIDED_AT_START: readonly ConfinementFallbackReason[] = [
+  'workspace-too-broad',
+  'config-root-pinned',
+  'resume-bound-elsewhere',
+];
 
 export interface ConfinementPreflightInput {
   providers: readonly ConfinementProvider[];
