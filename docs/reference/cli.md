@@ -3893,6 +3893,13 @@ be remote. Per engine:
   `appliesTo: starts-without-own-credential-profile` in `--json`); an Agent
   with its own credential profile, or a credential-recovery restart, is
   decided at start.
+- `Restricted network (<engine>: <mechanism>)` (#4769): `pass` when that
+  mechanism can limit a confined start to Station's egress broker on that
+  Station's host, `warn` with the reason when it cannot (Codex's own sandbox
+  and bubblewrap never can; an unavailable mechanism cannot either). Under a
+  restricted [`confinedNetwork`](config.md#optional-fields) policy, a start
+  that requires confinement is refused there. An older Station reports no
+  such row; `--json` carries it as `restrictedNetwork`.
 - `Confinement preflight`: one `warn` "Not checked: <reason>" row when no
   answer was obtained: no server answered, no credential is held, the
   Station refused it, an older Station answered HTTP 404, or the answer is

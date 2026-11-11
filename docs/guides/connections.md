@@ -1202,6 +1202,20 @@ created, as above. On Windows such a session is refused, because no
 confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
+By default a confined session's network is open. Set the Station's
+[`confinedNetwork`](../reference/config.md#optional-fields) to `restricted`
+to limit it: such a session then reaches only its model endpoint and the
+hosts you list, through a broker Station runs for it, and every other
+connection is blocked and shown in its activity with the host it tried. On
+macOS this also stops it connecting to an SSH agent socket. The Claude
+connection must use Anthropic's API or an `https:` `ANTHROPIC_BASE_URL`; one
+that uses Bedrock, Vertex or Foundry is refused while the network is
+restricted. On Linux, and for Codex, a restricted network is not available
+yet, so such a session is refused, naming why, rather than run open. Tools
+inside the session reach the listed hosts over HTTPS only, through the proxy
+variables Station sets; `ssh` and plain HTTP are blocked. See
+[restricted network](../design/approval-posture-server-ordered.md#restricted-network-4769).
+
 A Codex session that does not run as `host` (started by you in person, or
 from a device you granted full access) runs under a Codex permission profile
 Station defines, `station-workspace`. Its sandbox lets it write only inside
