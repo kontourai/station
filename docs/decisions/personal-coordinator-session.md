@@ -21,6 +21,8 @@ evidence:
     ref: src-ui/src/lib/productNames.ts
   - kind: doc
     ref: docs/user/houston.md
+  - kind: doc
+    ref: docs/guides/feature-previews.md
 ---
 
 # Personal coordinator Session
@@ -28,6 +30,32 @@ evidence:
 #3628 gives a person one persistent chat that delegates, is woken when their
 work needs them, and brings back results and decisions. The product calls it
 **Houston** and its overview **Mission Control**.
+
+## Feature Preview
+
+The whole coordinator is behind the default-off `coordinator-session` Feature
+Preview (label **Coordinator chat**): it was not hardened when it shipped, and
+repository policy puts such a capability behind a preview. The selector is read
+at each consuming branch:
+
+- every coordinator route, removal and the picture included, refuses with
+  `feature_preview_disabled`; no maintenance route stays open, because nothing
+  runs that would need one;
+- the wake records nothing, drops waiting items at their next flush, refuses a
+  queued wake at placement (`coordinator_preview_disabled`) without releasing
+  its items, and settles a wake a restart cut short without sending it, so
+  turning the preview back on does not deliver a backlog;
+- the agent resolver, the Claude adapter and the service's tools-successor and
+  Station Control refresh treat the designated chat as ordinary, and
+  designation-derived credentials are refused;
+- Project supervision and the working picture need it as well;
+- the UI reads nothing and shows no Home section, menu action or tools notice.
+
+Designations are kept, so turning it back on restores the person's coordinator.
+The `coordinatorSession` capability stays a static protocol fact: an off
+preview answers its own refusal, distinguishable from an older host. The
+preview is bound in `station-runtime.ts`, where the Session tool grant is
+composed, on the same personal-host condition as the routes.
 
 ## Names
 

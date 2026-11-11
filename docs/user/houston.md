@@ -10,8 +10,12 @@ happened and bring you the result or the decision.
 
 ## Set up Houston
 
-1. Open a chat.
-2. Open the chat's **More** menu (the **⋯** sheet on a phone) and choose
+Houston is a Feature Preview and starts off. Until it is on, Home has no
+Houston section and chats offer no Houston action.
+
+1. In **Settings → Advanced → Feature previews**, turn on **Coordinator chat**.
+2. Open a chat.
+3. Open the chat's **More** menu (the **⋯** sheet on a phone) and choose
    **Make this Houston**.
 
 Home (Mission Control) now shows a **Houston** card with **Talk to Houston**,
@@ -36,6 +40,13 @@ follows the engine's declared capability.
 Houston acts with your normal permissions and approval mode, and asks you for
 approvals as any chat does. Anything your Agent configures, including its own
 auto-approvals, still applies.
+
+## Turn Houston off
+
+Turning **Coordinator chat** off keeps which chat is your Houston, so turning it
+back on restores it. While it is off that chat is an ordinary chat: Station
+records nothing for it, does not send messages already waiting for it (they are
+not sent later either), and does not give it Station's tools.
 
 ## When Houston is woken
 
@@ -77,7 +88,7 @@ still waiting for that chat are withdrawn together.
 
 ## Working picture
 
-Turn on **Coordinator working picture** in Settings → Advanced → Feature
+Turn on **Coordinator working picture** as well in Settings → Advanced → Feature
 previews to let Houston keep a short picture of work in flight, waiting on you
 and recently finished. Home shows notes for conversations you can still read.
 The picture follows you when you replace Houston; finished notes show for

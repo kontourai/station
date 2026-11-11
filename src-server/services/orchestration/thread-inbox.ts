@@ -704,8 +704,8 @@ export interface ThreadInboxDeliveryPorts {
    * A sender's own placement policy, checked when an entry is about to be
    * placed, after the live send rule. A refusal settles the entry `refused`
    * with that code; nothing is sent. #3628: a coordinator wake whose
-   * conversation is no longer the coordinator, that waited too long, or that
-   * names a Session its person can no longer read.
+   * conversation is no longer the coordinator, that waited too long, that
+   * names a Session its person can no longer read, or whose preview is off.
    */
   placementRefusal?(input: {
     readonly conversationId: string;
@@ -834,7 +834,7 @@ function errorText(error: unknown): string {
  * `start_deadline`, `unreadable_entry` and `placement_policy_failed`; a
  * sender's `placementRefusal` policy sets its own (#3628:
  * `coordinator_retired`, `coordinator_wake_expired`,
- * `coordinator_source_unreadable`).
+ * `coordinator_source_unreadable`, `coordinator_preview_disabled`).
  */
 const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
   SESSION_ENDED_REJECTION_CODE,
