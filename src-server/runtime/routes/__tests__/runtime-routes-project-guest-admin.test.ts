@@ -1490,6 +1490,76 @@ describe('project guest administration over the production composition', () => {
     );
   });
 
+  test('Project Room channels: a member creates, posts in and archives a channel through the production mount', async () => {
+    const h = await setup();
+    const { project, guest } = await h.shareWithGuestAdmin(
+      'channel-project',
+      'Channel Project',
+    );
+    const projectBase = '/api/projects/channel-project';
+    const send = (method: string, value: unknown) =>
+      guest({
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    const opened = await h.request(
+      `${projectBase}/room/init`,
+      send('POST', { expectedProjectId: project.id }),
+    );
+    expect(opened.status, await opened.clone().text()).toBe(200);
+    const actorId = (
+      await readJson<{ data: { actor: { id: string } } }>(
+        await h.request(`${projectBase}/room`, guest()),
+      )
+    ).data.actor.id;
+    const guards = { expectedProjectId: project.id, expectedActorId: actorId };
+    const created = await h.request(
+      `${projectBase}/channels`,
+      send('POST', { ...guards, name: 'design' }),
+    );
+    expect(created.status, await created.clone().text()).toBe(200);
+    const channelId = (await readJson<{ data: { channelId: string } }>(created))
+      .data.channelId;
+    const channel = `${projectBase}/channels/${channelId}`;
+    const message = () =>
+      h.request(
+        `${channel}/messages`,
+        send('POST', {
+          ...guards,
+          expectedRoomId: channelId,
+          intentId: crypto.randomUUID(),
+          text: 'Channel message',
+        }),
+      );
+    const posted = await message();
+    expect(posted.status, await posted.clone().text()).toBe(200);
+    const archived = await h.request(
+      channel,
+      send('PATCH', { ...guards, archived: true }),
+    );
+    expect(archived.status, await archived.clone().text()).toBe(200);
+    expect((await message()).status).toBe(409);
+    const history = await h.request(`${channel}/messages`, guest());
+    expect(history.status).toBe(200);
+    expect(
+      (await readJson<{ data: { messages: unknown[] } }>(history)).data
+        .messages,
+    ).toHaveLength(1);
+    // Only the exact channel leaves are admitted past the Project read guard.
+    for (const [method, path] of [
+      ['POST', `${channel}/messages/extra`],
+      ['POST', `${channel}/note`],
+      ['PUT', `${projectBase}/channels`],
+      ['DELETE', channel],
+      ['PATCH', `${channel}/messages`],
+    ])
+      expect(
+        (await h.request(path, send(method, guards))).status,
+        `${method} ${path}`,
+      ).toBe(403);
+  });
+
   test('Project Room production mount requires exact incarnation and independent transport and member actions', async () => {
     const h = await setup();
     const { project, scope, guest, credential } = await h.shareWithGuestAdmin(

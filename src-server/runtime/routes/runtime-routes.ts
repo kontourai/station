@@ -1635,14 +1635,24 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   );
 }
 
-/** Only these leaves delegate membership actions to the Room service. */
-function isProjectMemberRoomAction(method: string, path: string) {
+/**
+ * Only these leaves delegate membership actions to the Room service: the
+ * default room's, each channel's same per-room leaves (#4792), and channel
+ * create and update. The service checks each one's own member action.
+ */
+export function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
-      /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
         path,
-      )) ||
-    (method === 'PUT' && /^\/api\/projects\/[^/]+\/room\/note$/.test(path))
+      ) ||
+        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+          path,
+        ))) ||
+    (method === 'PUT' &&
+      /^\/api\/projects\/[^/]+\/(?:room|channels\/[^/]+)\/note$/.test(path)) ||
+    (method === 'PATCH' &&
+      /^\/api\/projects\/[^/]+\/channels\/[^/]+$/.test(path))
   );
 }
 
