@@ -418,6 +418,53 @@ describe('locateAppHomeProfile refuses what ensure could not create (#4774)', ()
     }
   });
 
+  /**
+   * The refusal for an entry on the way to the profile dir that exists but
+   * cannot be resolved: `app-homes` as a real dangling symlink, or as one
+   * link of a real two-link loop. Skipped, with the reason, where the host
+   * cannot create symlinks.
+   */
+  describe.each([
+    [
+      'a dangling symlink',
+      (root: string) => {
+        const target = join(scratch, 'missing-app-homes');
+        symlinkSync(target, root);
+        return [target];
+      },
+    ],
+    [
+      'part of a symlink loop',
+      (root: string) => {
+        const other = join(homeDir, 'app-homes-loop');
+        symlinkSync(other, root);
+        symlinkSync(root, other);
+        return [];
+      },
+    ],
+  ])('an app-homes root that is %s', (_name, link) => {
+    test('ensure fails, locate refuses, and nothing is created at or through the link', async (context) => {
+      const root = join(homeDir, 'app-homes');
+      let targets: string[] = [];
+      try {
+        targets = link(root);
+      } catch (error) {
+        context.skip(`this host cannot create symlinks: ${String(error)}`);
+      }
+      const before = readdirSync(homeDir).sort();
+      await expect(ensureAppHomeProfile('claude', { homeDir })).rejects.toThrow();
+      await expect(locateAppHomeProfile('claude', { homeDir })).rejects.toThrow(
+        /exists but cannot be resolved/,
+      );
+      await expect(
+        locateCredentialProfileAppHome('claude', 'work', { homeDir }),
+      ).rejects.toThrow(/exists but cannot be resolved/);
+      expect(lstatSync(root).isSymbolicLink()).toBe(true);
+      expect(readdirSync(homeDir).sort()).toEqual(before);
+      for (const target of targets) expect(existsSync(target)).toBe(false);
+    });
+  });
+
   test('an existing profile is located even where nothing more could be created', async () => {
     const { dir } = await ensureAppHomeProfile('claude', { homeDir });
     // Ensure needs no write for an existing profile, so locate needs none.

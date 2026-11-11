@@ -13,6 +13,7 @@
  */
 import {
   chmodSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -22,7 +23,15 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, relative } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type TestContext,
+  test,
+  vi,
+} from 'vitest';
 import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -411,6 +420,84 @@ describe('#4774: createStationConfinementPreflight', () => {
           chmodSync(root, 0o755);
         }
       });
+
+      /**
+       * `app-homes` as a real symlink that cannot be resolved: dangling, or
+       * one link of a two-link loop. Returns the paths that must still not
+       * exist afterwards; skips, with the reason, where the host cannot
+       * create symlinks.
+       */
+      const UNRESOLVABLE_APP_HOMES = [
+        [
+          'a dangling symlink',
+          () => {
+            const target = join(
+              makeTempDir('station-preflight-missing-'),
+              'missing-app-homes',
+            );
+            symlinkSync(target, join(stationHome, 'app-homes'));
+            return [target];
+          },
+        ],
+        [
+          'part of a symlink loop',
+          () => {
+            const root = join(stationHome, 'app-homes');
+            const other = join(stationHome, 'app-homes-loop');
+            symlinkSync(other, root);
+            symlinkSync(root, other);
+            return [];
+          },
+        ],
+      ] as const;
+
+      function linkAppHomes(
+        link: () => string[],
+        context: TestContext,
+      ): string[] {
+        try {
+          return link();
+        } catch (error) {
+          return context.skip(
+            `this host cannot create symlinks: ${String(error)}`,
+          );
+        }
+      }
+
+      function expectLinkUntouched(targets: string[]) {
+        expect(
+          lstatSync(join(stationHome, 'app-homes')).isSymbolicLink(),
+        ).toBe(true);
+        for (const target of targets) expect(existsSync(target)).toBe(false);
+      }
+
+      test.for(UNRESOLVABLE_APP_HOMES)(
+        'the app-homes directory is %s',
+        async ([, link], context) => {
+          const targets = linkAppHomes(link, context);
+          await expectRefusedLikeStart();
+          expectLinkUntouched(targets);
+        },
+      );
+
+      test.for(UNRESOLVABLE_APP_HOMES)(
+        'the legacy app-home opt-in degrades to the global configuration where the app-homes directory is %s',
+        async ([, link], context) => {
+          const targets = linkAppHomes(link, context);
+          const settings = { config: { useAppHome: true } };
+          await expect(
+            createCredentialProfileAppHomeEnvResolver(
+              settingsLoader(settings),
+            )(),
+          ).resolves.toBeUndefined();
+          const before = snapshot(stationHome);
+          await expect(
+            createCredentialProfileAppHomeEnvPeek(settingsLoader(settings))(),
+          ).resolves.toBeUndefined();
+          expect(snapshot(stationHome)).toEqual(before);
+          expectLinkUntouched(targets);
+        },
+      );
 
       test('the legacy app-home opt-in degrades to the global configuration, as its start does', async () => {
         mkdirSync(join(stationHome, 'app-homes'), { recursive: true });
