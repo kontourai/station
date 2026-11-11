@@ -26,7 +26,6 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -927,7 +926,11 @@ describe.skipIf(!probe.ok)(
     describe('with a restricted network (#4769)', () => {
       const servers: Server[] = [];
       let workspace: string;
-      let socketDir: string;
+      // Removed in an after-hook even when a leg fails.
+      const makeShortTempDir = trackTempDirs({
+        lifetime: 'file',
+        base: '/tmp',
+      });
       let socketPath: string;
       let otherPort: number;
       let upstreamPort: number;
@@ -958,8 +961,7 @@ describe.skipIf(!probe.ok)(
         outsidePort = await listen(outside, '0.0.0.0');
         // A Unix socket at a known path, as an SSH agent's is (a short one:
         // a socket path is limited to 104 bytes here).
-        socketDir = mkdtempSync('/tmp/sbn-');
-        socketPath = join(socketDir, 'agent.sock');
+        socketPath = join(makeShortTempDir('sbn-'), 'agent.sock');
         const unix = createServer((socket) => quiet(socket).end('unix\n'));
         await new Promise<void>((resolve) => unix.listen(socketPath, resolve));
         servers.push(other, upstream, outside, unix);
@@ -975,7 +977,6 @@ describe.skipIf(!probe.ok)(
       afterAll(async () => {
         await broker?.close();
         for (const server of servers) server.close();
-        rmSync(socketDir, { recursive: true, force: true });
       });
 
       /** Runs the client under the production restricted profile. */
