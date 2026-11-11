@@ -1,4 +1,3 @@
-import type { Page } from '@playwright/test';
 import { expect, test } from 'vitest';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
@@ -30,9 +29,6 @@ const TOUCH_PHONE = {
   isMobile: true,
 };
 
-const box = (page: Page, name: string | RegExp) =>
-  page.getByRole('button', { name }).first().boundingBox();
-
 test('on a touch phone each message has a visible, named, 44px More actions button that opens its actions (#4810 gallery delta 1)', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(
     fixture,
@@ -44,13 +40,19 @@ test('on a touch phone each message has a visible, named, 44px More actions butt
     // Each message's actions are reachable without a long press.
     const more = page.getByRole('button', { name: /^More actions for / });
     expect(await more.count()).toBe(6);
-    const first = page.getByRole('button', {
-      name: "More actions for Ana Ruiz's message",
-    });
+    // One author's messages are told apart by their time.
+    const first = page
+      .getByRole('button', { name: /^More actions for Ana Ruiz's message at / })
+      .first();
+    const names = await more.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('aria-label')),
+    );
+    expect(new Set(names).size).toBe(6);
     expect(await first.getAttribute('aria-expanded')).toBe('false');
-    const size = await box(page, "More actions for Ana Ruiz's message");
-    expect(size!.width).toBeGreaterThanOrEqual(44);
-    expect(size!.height).toBeGreaterThanOrEqual(44);
+    const size = await first.boundingBox();
+    // The gallery hit-target audit's own floor (sub-pixel layout rounds).
+    expect(size!.width).toBeGreaterThanOrEqual(43.5);
+    expect(size!.height).toBeGreaterThanOrEqual(43.5);
     // Closed actions are not in the accessibility tree.
     expect(await page.getByRole('button', { name: /^Reply to / }).count()).toBe(
       0,
@@ -63,7 +65,7 @@ test('on a touch phone each message has a visible, named, 44px More actions butt
       await page.evaluate(() =>
         document.activeElement?.getAttribute('aria-label'),
       ),
-    ).toBe("More actions for Ana Ruiz's message");
+    ).toBe(await first.getAttribute('aria-label'));
 
     // Opening moves focus into the actions; the controls relation resolves.
     await page.keyboard.press('Enter');
@@ -79,7 +81,7 @@ test('on a touch phone each message has a visible, named, 44px More actions butt
       ),
     ).toBe(true);
     const replyBox = await reply.boundingBox();
-    expect(replyBox!.height).toBeGreaterThanOrEqual(44);
+    expect(replyBox!.height).toBeGreaterThanOrEqual(43.5);
 
     // Escape closes and returns focus to the button.
     await page.keyboard.press('Escape');
@@ -88,7 +90,7 @@ test('on a touch phone each message has a visible, named, 44px More actions butt
       await page.evaluate(() =>
         document.activeElement?.getAttribute('aria-label'),
       ),
-    ).toBe("More actions for Ana Ruiz's message");
+    ).toBe(await first.getAttribute('aria-label'));
 
     // Touch: tap opens; a tap outside closes and returns focus to the button.
     await first.tap();
@@ -100,7 +102,7 @@ test('on a touch phone each message has a visible, named, 44px More actions butt
       await page.evaluate(() =>
         document.activeElement?.getAttribute('aria-label'),
       ),
-    ).toBe("More actions for Ana Ruiz's message");
+    ).toBe(await first.getAttribute('aria-label'));
     expect(errors).toEqual([]);
   } finally {
     await browser.close();

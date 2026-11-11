@@ -354,20 +354,6 @@
   padding-inline: var(--k-space-1);
 }
 
-.room-conversation--compact .room-row__actions {
-  top: calc(-1 * var(--k-space-5));
-  /* Touch has no hover: the bar exists only once a long press opens it, so an
-     invisible bar is neither a target nor clipped at the list edge. */
-  visibility: hidden;
-}
-
-.room-conversation--compact .room-row--actions-open .room-row__actions,
-.room-conversation--compact.room-conversation--hover
-  .room-row--message:hover
-  .room-row__actions {
-  visibility: visible;
-}
-
 .room-conversation--compact .room-row__actions .button,
 .room-conversation--compact .room-row__system-actions .button,
 .room-conversation--compact .room-conversation__older.button,
@@ -388,4 +374,47 @@
 
 .room-conversation--compact .room-row--system.room-row--failed {
   margin-inline-start: 0;
+}
+
+/* Touch and phone layouts have no hover: each message with actions shows a
+   quiet 44px More button that opens them in the row's flow, below the
+   message, so they are never an invisible target or clipped at the list
+   edge (RoomConversation sets the class). */
+.room-conversation--more .room-row--message:has(> .room-row__more) {
+  grid-template-columns: var(--room-avatar-size) minmax(0, 1fr) 44px;
+}
+
+.room-conversation--more .button.room-row__more {
+  --icon-button-size: 44px;
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+  /* Muted keeps it quiet and still meets 3:1 for a non-text control. */
+  color: var(--k-text-muted);
+}
+
+.room-conversation--more .room-row--message:focus-within .room-row__more,
+.room-conversation--more .room-row--actions-open .room-row__more {
+  color: var(--k-text);
+}
+
+.room-conversation--more .room-row__actions {
+  position: static;
+  display: none;
+  grid-column: 2 / -1;
+  opacity: 1;
+  pointer-events: auto;
+  box-shadow: none;
+}
+
+.room-conversation--more .room-row--actions-open .room-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--k-space-1);
+  margin-top: var(--k-space-1);
+}
+
+.room-conversation--more .room-row__actions .button {
+  min-height: 44px;
 }

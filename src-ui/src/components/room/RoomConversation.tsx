@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -16,6 +17,8 @@ import {
   restoreChatScrollAnchor,
 } from '../chat/chatScrollAnchor';
 import { TranscriptVirtualizer } from '../chat/TranscriptVirtualizer';
+import { IconButton } from '../IconButton';
+import { MoreGlyph } from '../icons/Glyph';
 import { useTouchKeyboard } from './composerKeys';
 import {
   groupRows,
@@ -103,14 +106,60 @@ function Row({
   placement,
   unread,
   actionsOpen,
+  showMore,
   onLongPress,
+  onCloseActions,
 }: {
   row: RoomConversationRow;
   placement: RoomRowPlacement;
   unread: boolean;
   actionsOpen: boolean;
+  /** Touch and phone layouts: a visible button opens the actions. */
+  showMore: boolean;
+  /** Opens (or toggles) this row's actions. */
   onLongPress(id: string): void;
+  onCloseActions(): void;
 }) {
+  const actionsId = useId();
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const rowElement = useRef<HTMLDivElement>(null);
+  const actionsElement = useRef<HTMLDivElement>(null);
+  // Opening by the button or a long press moves focus into the actions.
+  useEffect(() => {
+    if (!actionsOpen || !showMore) return;
+    actionsElement.current
+      ?.querySelector<HTMLElement>('button:not(:disabled), [href]')
+      ?.focus();
+  }, [actionsOpen, showMore]);
+  // A tap outside closes them; focus that was inside returns to the button.
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const close = (event: PointerEvent) => {
+      if (rowElement.current?.contains(event.target as Node)) return;
+      const hadFocus = actionsElement.current?.contains(document.activeElement);
+      onCloseActions();
+      if (!hadFocus) return;
+      // The tap's own focus change lands after this; restore on its click
+      // unless it pressed another control, which keeps its focus.
+      const button = moreButton.current;
+      const restore = () => {
+        window.clearTimeout(expire);
+        const active = document.activeElement;
+        if (!active?.closest('button, a[href], input, select, textarea'))
+          button?.focus();
+      };
+      const expire = window.setTimeout(
+        () => document.removeEventListener('click', restore, true),
+        1000,
+      );
+      document.addEventListener('click', restore, {
+        capture: true,
+        once: true,
+      });
+    };
+    document.addEventListener('pointerdown', close, true);
+    return () => document.removeEventListener('pointerdown', close, true);
+  }, [actionsOpen, onCloseActions]);
   const press = useRef<number | undefined>(undefined);
   const origin = useRef<{ x: number; y: number } | undefined>(undefined);
   const cancelPress = useCallback(() => {
@@ -192,6 +241,7 @@ function Row({
           .filter(Boolean)
           .join(' ')}
         data-room-author={row.author?.agent ? 'agent' : 'person'}
+        ref={rowElement}
         {...touchHandlers}
       >
         <div className="room-row__gutter">
@@ -228,11 +278,35 @@ function Row({
           {row.attachments}
           {row.footer && <div className="room-row__footer">{row.footer}</div>}
         </div>
+        {row.actions && showMore && (
+          <IconButton
+            ref={moreButton}
+            className="room-row__more"
+            // The time tells one author's messages apart.
+            aria-label={`More actions for ${row.author?.label ?? 'this'}'s message${row.at && Number.isFinite(Date.parse(row.at)) ? ` at ${roomShortTime(row.at)}` : ''}`}
+            aria-expanded={actionsOpen}
+            aria-controls={actionsId}
+            onClick={() =>
+              actionsOpen ? onCloseActions() : onLongPress(row.id)
+            }
+          >
+            <MoreGlyph />
+          </IconButton>
+        )}
         {row.actions && (
           <div
+            ref={actionsElement}
+            id={actionsId}
             className="room-row__actions"
             role="toolbar"
             aria-label={`Actions for ${row.author?.label ?? 'message'}`}
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape' || !actionsOpen) return;
+              event.preventDefault();
+              event.stopPropagation();
+              onCloseActions();
+              moreButton.current?.focus();
+            }}
           >
             {row.actions}
           </div>
@@ -250,6 +324,7 @@ function Row({
  */
 export function RoomConversation({
   label,
+  regionLabel,
   rows,
   loading = false,
   status,
@@ -262,6 +337,8 @@ export function RoomConversation({
 }: {
   /** Accessible name of the message list. */
   label: string;
+  /** Accessible name of the scroll region, e.g. "Messages in #general". */
+  regionLabel?: string;
   /** Oldest first. */
   rows: readonly RoomConversationRow[];
   loading?: boolean;
@@ -276,7 +353,7 @@ export function RoomConversation({
   trailing?: ReactNode;
   className?: string;
 }) {
-  const scroller = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [isFollowing, setIsFollowing] = useState(true);
@@ -457,15 +534,7 @@ export function RoomConversation({
     if (reader && hasOlder && element.scrollTop <= OLDER_BAND_PX) loadOlder();
   };
 
-  useEffect(() => {
-    if (!actionsFor) return;
-    const close = (event: PointerEvent) => {
-      const target = event.target as Element | null;
-      if (!target?.closest('.room-row--actions-open')) setActionsFor(undefined);
-    };
-    document.addEventListener('pointerdown', close, true);
-    return () => document.removeEventListener('pointerdown', close, true);
-  }, [actionsFor]);
+  const closeActions = useCallback(() => setActionsFor(undefined), []);
 
   const renderRow = (row: RoomConversationRow, index: number) => {
     const placement = placements[index];
@@ -476,7 +545,9 @@ export function RoomConversation({
         placement={placement}
         unread={row.id === unreadFrom}
         actionsOpen={actionsFor === row.id}
+        showMore={compact || touch}
         onLongPress={setActionsFor}
+        onCloseActions={closeActions}
       />
     );
   };
@@ -492,17 +563,18 @@ export function RoomConversation({
       className={[
         'room-conversation',
         compact && 'room-conversation--compact',
+        (compact || touch) && 'room-conversation--more',
         !touch && 'room-conversation--hover',
         className,
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: passive listeners only tell a reader's scroll from a programmatic one. */}
-      <div
+      {/* A named region (a labelled section) so its tab stop says what it
+          scrolls; keyboard readers scroll the history with arrows and Page keys. */}
+      <section
         ref={scroller}
-        // Keyboard readers scroll the history with arrows and Page keys even
-        // when no row shows a control (phone action bars open on long press).
+        aria-label={regionLabel ?? `Messages in ${label}`}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroll region must be focusable to be keyboard-scrollable (WCAG 2.1.1).
         tabIndex={0}
         className="room-conversation__scroller"
@@ -562,7 +634,7 @@ export function RoomConversation({
             )}
           </div>
         </div>
-      </div>
+      </section>
       {!isFollowing && (
         <Button
           className="room-conversation__jump"

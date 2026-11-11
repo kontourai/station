@@ -664,6 +664,7 @@ function ProjectRoomSession({
         <>
           <RoomConversation
             label="Conversation"
+            regionLabel="Messages in # Project room"
             className="project-room__conversation"
             rows={rows}
             loading={room.history.isPending}
