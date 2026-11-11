@@ -2304,8 +2304,11 @@ three rules:
 
 Versions are the conversation's own sequence. An agent conversation uses the
 epoch milliseconds of its inventory `updatedAt` (`readState.version` on
-`GET /api/conversations`). Its marker is the inventory's own acknowledgement,
-so `acknowledgedAt` is the stored fact and `readState` the derived answer. A
+`GET /api/conversations`). Its marker lives in the inventory's acknowledgement
+store under the person's key. On a personal Station that is the inventory's own
+acknowledgement, so `acknowledgedAt` is the stored fact and `readState` the
+derived answer. On a hosted Station `acknowledgedAt` stays the tenant's "last
+viewed" record, and `readState` is the person's own. A
 Project room uses its `checkpoint.lastSeq`. A Task room uses
 `checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
 new marker. Nothing recorded what anyone had seen before read state was kept.

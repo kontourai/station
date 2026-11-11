@@ -2066,6 +2066,10 @@ Snapshot and caught-up session summaries use the same scope as the stream:
 Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 `threadId` filters the stream and caller authorization still applies. Coalesced
 activity may also arrive as `orchestration:activity`, without a durable cursor.
+The global stream (no `threadId`) also carries `read-markers:changed` with an
+empty payload and no `id`, only to the person whose
+[read marker](contracts.md#read-marker-contracts) moved; re-read the inventory
+and read-marker summaries.
 The browser opts in to general events with `?includeGeneral=1` on the shared
 orchestration stream only when its current authority's boot payload advertises
 `sharedRealtime: true`. A missing or failed boot read selects the legacy path;
