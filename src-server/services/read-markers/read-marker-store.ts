@@ -150,6 +150,8 @@ function decodePersonMarkers(
 
 export class FileReadMarkerStore implements ReadMarkerStore {
   private readonly store: JsonFileStore<ReadMarkerStoreData>;
+  /** The same file, read as the first format only by the upgrade. */
+  private readonly legacy: JsonFileStore<LegacyReadMarkerStoreData>;
   private readonly path: string;
 
   /**
@@ -180,6 +182,15 @@ export class FileReadMarkerStore implements ReadMarkerStore {
         onCorruption: 'throw',
       },
     );
+    this.legacy = new JsonFileStore(
+      path,
+      { version: LEGACY_STORE_VERSION, markers: {} },
+      {
+        durableAtomicWrite: true,
+        atomicWriteDurability: 'tear-safe',
+        onCorruption: 'throw',
+      },
+    );
     if (fresh)
       this.store.write({
         version: STORE_VERSION,
@@ -195,7 +206,7 @@ export class FileReadMarkerStore implements ReadMarkerStore {
    */
   pendingUpgrade(): { createdAt: number } | undefined {
     try {
-      const legacy = this.store.read(decodeLegacyReadMarkerStore);
+      const legacy = this.legacy.read(decodeLegacyReadMarkerStore);
       return { createdAt: legacy.createdAt ?? 0 };
     } catch {
       return undefined;
@@ -217,7 +228,7 @@ export class FileReadMarkerStore implements ReadMarkerStore {
     }>;
     now: Date;
   }): void {
-    const legacy = this.store.read(decodeLegacyReadMarkerStore);
+    const legacy = this.legacy.read(decodeLegacyReadMarkerStore);
     const markers: Record<string, unknown> = { ...legacy.markers };
     for (const marker of input.markers) {
       const forPerson = decodePersonMarkers(

@@ -563,9 +563,10 @@ test('reading content versions is an indexed lookup that never touches the event
     try {
       createAgentConversationVersionSource({
         memoryAdapters: new Map(),
+        // Only the point read is reached here (never, for this item).
         sessionConversationReader: {
           readSessionConversation: async () => null,
-        },
+        } as never,
         authorityFor: () =>
           sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
         conversationContent: station.eventStore,

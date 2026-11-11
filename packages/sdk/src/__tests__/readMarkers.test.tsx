@@ -259,7 +259,7 @@ describe('useAcknowledgeConversationMutation (the inbox open path)', () => {
       seenVersion: 0,
       unread: true,
     });
-    answer(jsonResponse({ success: true }));
+    answer(jsonResponse({ success: true }, 200));
     await expect(outcome).resolves.toBeUndefined();
   });
 });

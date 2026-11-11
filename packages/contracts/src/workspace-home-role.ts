@@ -290,6 +290,8 @@ export const WORKSPACE_HOME_PROJECTION_FIELD_DESCRIPTIONS = {
   acknowledgedAt: 'When you last opened each conversation',
   unread: 'Whether each conversation changed since you last read it',
   readVersion: 'Which version of each conversation its read state describes',
+  readStateUnavailable:
+    'Whether the read state of each conversation could not be read',
   terminalAt: 'When each conversation finished',
   executionProviders: 'Which engines each conversation ran on',
   cwdLabel: 'Working-directory hints for sessions',
