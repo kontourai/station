@@ -531,6 +531,22 @@ describe('room markers', () => {
     });
   });
 
+  test('a room marker is monotonic: an older or replayed mark never moves it back', async () => {
+    const s = station({
+      room: { roomId: 'room-1', lastSeq: 9, members: ['ada'] },
+    });
+    const room: ReadMarkerTarget = {
+      kind: 'project-room',
+      projectSlug: 'alpha',
+      roomId: 'room-1',
+    };
+    expect((await json(await s.mark('ada', room, 7))).data.seenVersion).toBe(7);
+    const late = await json(await s.mark('ada', room, 2));
+    expect(late.data).toMatchObject({ seenVersion: 7, unreadCount: 2 });
+    const summary = await json(await s.summary('ada', [room]));
+    expect(summary.data.items[0].seenVersion).toBe(7);
+  });
+
   test('a Task room marker belongs to its epoch; a re-homed room starts unread', async () => {
     const taskRoom = {
       channelId: 'ch-1',
