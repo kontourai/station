@@ -104,7 +104,6 @@ import {
 import {
   canonicalPath,
   type SeatbeltEvidence,
-  seatbeltConfinementProvider,
 } from '../../security/confinement/seatbelt.js';
 import {
   assertEngineAllowedByManagedPolicy,
@@ -255,12 +254,16 @@ import {
   withdrawQueuedClaudeTurn,
 } from './claude-sdk-turns.js';
 import {
+  type ClaudeSpawnWrapMechanism,
   CONFINED_CLAUDE_CREDENTIAL_SETUP,
   type ConfinedClaudeLaunch,
+  claudeSpawnWrapLabel,
+  claudeSpawnWrapProvider,
   confinedClaudeConfigDir,
   confinedClaudeCredential,
   confinedClaudeDecision,
   confinedClaudeSpawn,
+  isClaudeSpawnWrapMechanism,
   prepareConfinedClaudeLaunch,
 } from './claude-seatbelt.js';
 import {
@@ -1194,8 +1197,9 @@ export interface ClaudeAdapterOptions {
    */
   engineExitStreamGraceMs?: number;
   /**
-   * #2494: the Seatbelt provider a start whose plan names `seatbelt` is
-   * confined through. Defaults to the server's own; injected by tests.
+   * #2494: the provider a start whose plan names a spawn-wrapped mechanism
+   * (`seatbelt`, or `bubblewrap` since #4770) is confined through. Defaults
+   * to the server's own for that mechanism; injected by tests.
    */
   seatbeltProvider?: ConfinementProvider<SeatbeltEvidence>;
   /** #2494: Station's runtime home for confined sessions; injected by tests. */
@@ -1208,9 +1212,12 @@ export interface ClaudeAdapterOptions {
   logger?: ClaudeAdapterLogger;
 }
 
-/** #2494: a start confined by Seatbelt, prepared before its spawn. */
+/**
+ * #2494: a start confined by a spawn-wrapped mechanism (Seatbelt, or
+ * bubblewrap since #4770), prepared before its spawn.
+ */
 interface SeatbeltStart {
-  plan: ConfinementPlan;
+  plan: ConfinementPlan & { mechanism: ClaudeSpawnWrapMechanism };
   provider: ConfinementProvider<SeatbeltEvidence>;
   launch: ConfinedClaudeLaunch;
   /** The app-home layer pointing the engine at its Station-owned home. */
@@ -1277,7 +1284,7 @@ function withoutUnconfinedFullAccess<T extends ProviderSessionStartInput>(
   input: T,
 ): T {
   return (input.confinement ?? 'workspace') === 'workspace' &&
-    input.confinementPlan?.mechanism !== 'seatbelt' &&
+    !isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism) &&
     readApprovalMode(input.modelOptions) === 'never'
     ? {
         ...input,
@@ -1747,7 +1754,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // #2494: a plan that engages Seatbelt confines this start, or (for a
       // reason a check derives) runs it at Auto with nothing engaged. Every
       // other start takes the same synchronous path as before.
-      if (input.confinementPlan?.mechanism !== 'seatbelt')
+      if (!isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism))
         return this.startTrackedSession(
           input,
           input.persistSession === true,
@@ -1788,7 +1795,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         artifactsEnv,
       );
       if (seatbelt.fallback)
-        this.publishConfinementFallback(input.threadId, seatbelt.fallback);
+        this.publishConfinementFallback(
+          input.threadId,
+          seatbelt.fallback,
+          input.confinementPlan?.mechanism,
+        );
       return session;
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
@@ -1819,7 +1830,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     fallback?: ConfinementFallbackReason;
   }> {
     const plan = input.confinementPlan;
-    if (plan?.mechanism !== 'seatbelt') return { input };
+    if (!plan || !isClaudeSpawnWrapMechanism(plan.mechanism)) return { input };
     const stationHome = canonicalPath(
       this.options.confinedStationHome ?? resolveHomeDir(),
     );
@@ -1833,6 +1844,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       },
       globalConfigPinned: context.globalConfigPinned,
       stationHome,
+      mechanism: plan.mechanism,
     });
     let fallback = 'fallback' in decision ? decision.fallback : undefined;
     if (
@@ -1860,14 +1872,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       workspace: decision.workspace,
       configDir: decision.configDir,
       stationHome,
+      mechanism: plan.mechanism,
     });
     // The secure-store override is dropped by the spawn wrapper, from
     // whichever layer it comes, not here.
     return {
       input,
       confined: {
-        plan,
-        provider: this.options.seatbeltProvider ?? seatbeltConfinementProvider,
+        plan: { ...plan, mechanism: plan.mechanism },
+        provider:
+          this.options.seatbeltProvider ??
+          claudeSpawnWrapProvider(plan.mechanism),
         launch,
         appHomeEnv: {
           ...context.appHomeEnv,
@@ -1931,7 +1946,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const stderr = engineProcess.stderrTail();
     throw new ConfinementRefusedError(
       'confinement_not_observed',
-      `This claude session requires ${seatbelt.plan.level} confinement, but the started engine was not observed inside its Seatbelt profile (${posture}). ${
+      `This claude session requires ${seatbelt.plan.level} confinement, but the started engine was not observed inside its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} (${posture}). ${
         handshake === 'failed'
           ? `The engine did not answer its startup handshake${stderr ? `: ${stderr}` : ''}.`
           : 'The engine was not spawned through the profile Station built.'
@@ -1965,7 +1980,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private publishConfinementFallback(
     threadId: string,
     reason: ConfinementFallbackReason,
+    mechanism?: ConfinementPlan['mechanism'],
   ): void {
+    // #4770: bubblewrap also refuses a folder holding a hidden secret.
+    const message =
+      reason === 'workspace-too-broad' && mechanism === 'bubblewrap'
+        ? `${CONFINEMENT_FALLBACK_MESSAGES[reason]} Under the bubblewrap sandbox this also covers a folder inside, or containing, a secret store the sandbox hides.`
+        : CONFINEMENT_FALLBACK_MESSAGES[reason];
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1973,7 +1994,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       createdAt: new Date().toISOString(),
       method: 'runtime.warning',
       severity: 'warning',
-      message: CONFINEMENT_FALLBACK_MESSAGES[reason],
+      message,
       code: CONFINED_FULL_ACCESS_UNAVAILABLE_CODE,
       details: { reason },
     });
@@ -1996,11 +2017,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error('Claude does not support a completed-turn fork cutoff.');
     // #2494: adoption deliberately pins the global configuration root
     // (archive#896 decision 2), which a confined engine may not write, so a
-    // plan for Seatbelt runs at Auto here instead.
-    const adoptionFallback =
-      input.confinementPlan?.mechanism === 'seatbelt'
-        ? ('config-root-pinned' as const)
-        : undefined;
+    // plan for a spawn-wrapped mechanism (Seatbelt, or bubblewrap since
+    // #4770) runs at Auto here instead.
+    const adoptionFallback = isClaudeSpawnWrapMechanism(
+      input.confinementPlan?.mechanism,
+    )
+      ? ('config-root-pinned' as const)
+      : undefined;
     if (adoptionFallback && input.confinementPlan)
       input = withConfinementFallback(
         input,
@@ -2253,7 +2276,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       assertRequiredConfinementObserved(
         observedConfinementRecord(seatbelt.plan, 'configured-but-failed'),
         this.provider,
-        'Its Seatbelt profile would grant writes past the workspace, its git subset and the Station-owned directories.',
+        seatbelt.launch.buildError
+          ? `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} cannot be built: ${seatbelt.launch.buildError}`
+          : `Its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)} would grant writes past the workspace, its git subset and the Station-owned directories.`,
       );
     }
     const seatbeltSpawn = seatbelt
@@ -2640,7 +2665,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           );
           throw new ConfinementRefusedError(
             'confinement_not_observed',
-            `This claude session was observed inside its Seatbelt profile, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
+            `This claude session was observed inside its ${claudeSpawnWrapLabel(seatbelt.plan.mechanism)}, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
           );
         }
         record.allowsBypassPermissions = true;

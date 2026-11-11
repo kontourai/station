@@ -36,6 +36,16 @@ describe('#4774: parseConfinementPreflight', () => {
     ).toEqual({ engines: [ENTRY], decidedAtStart: ['workspace-too-broad'] });
   });
 
+  it.each(['codex-sandbox', 'seatbelt', 'bubblewrap'])(
+    'reads an entry for every mechanism a Station can report: %s',
+    (mechanism) => {
+      const entry = { ...ENTRY, mechanism };
+      expect(
+        parseConfinementPreflight(document({ engines: [entry] }))?.engines,
+      ).toEqual([entry]);
+    },
+  );
+
   it.each([
     ['an unknown mechanism state', { ...ENTRY, mechanismState: 'probably' }],
     ['an unknown mechanism', { ...ENTRY, mechanism: 'firejail' }],

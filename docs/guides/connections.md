@@ -1158,23 +1158,48 @@ active credential profile applied) would find a credential. An Agent with its
 own credential profile is decided when it starts. See
 [`doctor`](../reference/cli.md#doctor).
 
+On Linux, the same session runs inside Station's bubblewrap sandbox, with the
+same credential rule, Station-owned configuration directory and environment
+allowlist. It needs the `bubblewrap` package, version 0.8.0 or later, and a
+kernel that lets `/usr/bin/bwrap` create user namespaces. Without them such a start is
+refused, naming why, rather than run unconfined. Inside the sandbox the
+workspace's git metadata is read-only, so the session can read status and
+history but cannot stage or commit. It can still create a `.claude` or
+`.codex` folder in the workspace, which your next unconfined session there
+would load: check for one before you start such a session yourself. The readiness entry is macOS-only;
+`station doctor` answers both questions on Linux too.
+
 A confined session also gets only an allowlisted environment. Variables you
 set in the connection's `env` pass, as do paths, locale, proxy and TLS
 settings, `CLAUDE_*` and `ANTHROPIC_*`, the git author and committer
 identity, and `EDITOR`/`VISUAL`. Everything else in Station's environment is
 dropped: `GH_TOKEN`, `NPM_TOKEN`, cloud keys, and toolchain variables such as
 `NVM_DIR`, `JAVA_HOME`, `GOPATH` or `PYENV_ROOT` (set them in the
-connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
-push with your SSH agent. In a linked worktree it can commit to its own
-branch, but `git stash`, `fetch` and `pull` are refused: they write shared
-refs (`refs/stash`, remote-tracking refs, `packed-refs`) that it may not
-change. In a folder whose `.git` is inside it, `fetch`, `pull` and ref
-packing are refused too: its remote-tracking refs are what a later Codex
-session trusts the folder's `.codex` by. It also cannot create or change any `.claude` or `.codex`
-directory in the folder, at any depth, which other sessions there would
-load. On Linux and
-Windows such a session is
-refused, because no confinement exists for it there. See
+connection's `env` if its tools need them). It does not inherit
+`SSH_AUTH_SOCK`, but on macOS it can still connect to an SSH agent socket
+whose path it can find, so do not rely on confinement to keep your agent
+from it there. On Linux the sandbox has its own `/tmp` and hides the
+runtime directory and the 1Password and Bitwarden agent sockets, so an
+agent socket in any of those is not reachable. Any other agent socket it
+can find stays reachable, including one directly in your home folder or
+inside a folder in it (`~/.cache/...`) that is not on the hidden list, so
+do not rely on confinement to keep an agent from it on Linux either. The
+sandbox mounts back each entry of every folder it shadows (your home
+folder, `/run`, and the folders on the way to a hidden path such as
+`~/.config`, `~/.claude` and `~/.codex`); more than 1,000 entries across
+them refuses a confined start, naming the folder. Leftover files such as
+`~/.claude.json.tmp.*` count toward that limit. Under Seatbelt (macOS), in a linked worktree
+it can commit to its own branch, but `git stash`, `fetch` and `pull` are
+refused: they write shared refs (`refs/stash`, remote-tracking refs,
+`packed-refs`) that it may not change. In a folder whose `.git` is inside
+it, `fetch`, `pull` and ref packing are refused too: its remote-tracking
+refs are what a later Codex session trusts the folder's `.codex` by. It also
+cannot create or change any `.claude` or `.codex` directory in the folder,
+at any depth, which other sessions there would load. Under bubblewrap
+(Linux) git metadata is read-only and existing `.claude` and `.codex`
+folders at the folder's root cannot be changed, but new ones can be
+created, as above. On Windows such a session is refused, because no
+confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
 A Codex session that does not run as `host` (started by you in person, or

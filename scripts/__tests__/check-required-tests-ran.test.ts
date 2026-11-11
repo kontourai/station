@@ -6,6 +6,9 @@
  * checkout path replaced by `/station`:
  * - `seatbelt-process-macos.report.json`: `seatbelt.process.test.ts` run on a
  *   macOS host where `sandbox-exec` applies the production profile (51 passed).
+ * - `bubblewrap-process-linux.report.json`: `bubblewrap.process.test.ts` run
+ *   on a Linux kernel where `bwrap` applies the production sandbox (#4770,
+ *   55 passed).
  * - `vitest-statuses.report.json`: a throwaway file with a `describe.skipIf`
  *   suite, a `test.skipIf`, a `ctx.skip()`, a failure and a `test.todo`, so
  *   the statuses the reporter writes for each are read from a real run.
@@ -25,6 +28,13 @@ const PROFILES = join(ROOT, 'scripts/required-test-profiles.json');
 const FIXTURES = join(ROOT, 'scripts/__tests__/fixtures/required-tests-ran');
 const MACOS_REPORT = join(FIXTURES, 'seatbelt-process-macos.report.json');
 const WORKFLOW = join(ROOT, '.github/workflows/seatbelt-kernel.yml');
+const LINUX_REPORT = join(FIXTURES, 'bubblewrap-process-linux.report.json');
+const BUBBLEWRAP_WORKFLOW = join(
+  ROOT,
+  '.github/workflows/bubblewrap-kernel.yml',
+);
+const BUBBLEWRAP_FILE =
+  'src-server/security/confinement/__tests__/bubblewrap.process.test.ts';
 const USAGE = /^\[required-tests\] FAIL: usage: check-required-tests-ran\.mjs /;
 const SEATBELT_FILE =
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts';
@@ -515,39 +525,44 @@ describe('the hosted workflow invokes the check with arguments it accepts', () =
   type Step = { name?: string; run?: string };
   type Workflow = { jobs: Record<string, { steps?: Step[] }> };
 
-  test('the seatbelt-kernel workflow check step passes over the real macOS report', () => {
-    const workflow = load(readFileSync(WORKFLOW, 'utf8')) as Workflow;
-    const runs = Object.values(workflow.jobs)
-      .flatMap((job) => job.steps ?? [])
-      .map((step) => step.run ?? '')
-      .filter((run) => run.includes('scripts/check-required-tests-ran.mjs'));
-    expect(runs, 'no step in seatbelt-kernel.yml runs the check').toHaveLength(
-      1,
-    );
-    // The step is one folded command line; split it the way the shell would
-    // for plain and double-quoted words, and refuse anything fancier.
-    const command = runs[0].trim();
-    expect(command).not.toMatch(/[|;&<>`\n\\]|\$\(/);
-    const words = [...command.matchAll(/"([^"]*)"|(\S+)/g)].map(
-      (match) => match[1] ?? match[2],
-    );
-    expect(words.slice(0, 2)).toEqual([
-      'node',
-      'scripts/check-required-tests-ran.mjs',
-    ]);
-    // Only the runner's report path is replaced, by the real macOS report the
-    // workflow's test step writes; --root maps its /station checkout path.
-    const args = words
-      .slice(2)
-      .map((word) => (word.includes('$RUNNER_TEMP') ? MACOS_REPORT : word));
-    expect(args).toContain(MACOS_REPORT);
-    const result = runCheck([...args, '--root', '/station']);
-    expect(
-      result.status,
-      `the workflow's arguments ${JSON.stringify(words.slice(2))} were refused: ${result.stderr}`,
-    ).toBe(0);
-    expect(result.stdout).toMatch(/^\[required-tests\] OK: profile "/);
-  });
+  test.each([
+    ['seatbelt-kernel', 'macOS', WORKFLOW, MACOS_REPORT],
+    ['linux-bubblewrap-kernel', 'Linux', BUBBLEWRAP_WORKFLOW, LINUX_REPORT],
+  ])(
+    'the %s workflow check step passes over the real %s report',
+    (profile, _host, workflowFile, realReport) => {
+      const workflow = load(readFileSync(workflowFile, 'utf8')) as Workflow;
+      const runs = Object.values(workflow.jobs)
+        .flatMap((job) => job.steps ?? [])
+        .map((step) => step.run ?? '')
+        .filter((run) => run.includes('scripts/check-required-tests-ran.mjs'));
+      expect(runs, `no step in ${workflowFile} runs the check`).toHaveLength(1);
+      // The step is one folded command line; split it the way the shell would
+      // for plain and double-quoted words, and refuse anything fancier.
+      const command = runs[0].trim();
+      expect(command).not.toMatch(/[|;&<>`\n\\]|\$\(/);
+      const words = [...command.matchAll(/"([^"]*)"|(\S+)/g)].map(
+        (match) => match[1] ?? match[2],
+      );
+      expect(words.slice(0, 2)).toEqual([
+        'node',
+        'scripts/check-required-tests-ran.mjs',
+      ]);
+      expect(words).toContain(profile);
+      // Only the runner's report path is replaced, by the real report the
+      // workflow's test step writes; --root maps its /station checkout path.
+      const args = words
+        .slice(2)
+        .map((word) => (word.includes('$RUNNER_TEMP') ? realReport : word));
+      expect(args).toContain(realReport);
+      const result = runCheck([...args, '--root', '/station']);
+      expect(
+        result.status,
+        `the workflow's arguments ${JSON.stringify(words.slice(2))} were refused: ${result.stderr}`,
+      ).toBe(0);
+      expect(result.stdout).toMatch(/^\[required-tests\] OK: profile "/);
+    },
+  );
 });
 
 describe('statuses read from a real run of every skip form', () => {
@@ -638,90 +653,110 @@ describe('statuses read from a real run of every skip form', () => {
 });
 
 describe('the pinned profile agrees with the real test file', () => {
-  test('the profile classifies exactly the tests seatbelt.process.test.ts registers on this host', {
-    timeout: 120_000,
-  }, () => {
-    // A filtered run collects every registered test, skipped or not, without
-    // running a body or hook. `vitest list` is not used: it omits tests under
-    // a skipped describe, which is every leg here on a non-macOS host.
-    const report = join(makeTempDir('required-tests-collect-'), 'report.json');
-    const run = spawnSync(
-      process.execPath,
-      [
-        join(ROOT, 'node_modules/vitest/vitest.mjs'),
-        'run',
-        '--root',
-        ROOT,
-        SEATBELT_FILE,
-        '--testNamePattern=(?!)',
-        '--reporter=json',
-        `--outputFile=${report}`,
-      ],
-      { cwd: ROOT, encoding: 'utf8', timeout: 110_000, windowsHide: true },
-    );
-    const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
-    expect(run.error, output).toBeUndefined();
-    expect(run.status, output).toBe(0);
-    const collected: Report = JSON.parse(readFileSync(report, 'utf8'));
-    const statuses = collected.testResults.flatMap((file) =>
-      file.assertionResults.map((result) => result.status),
-    );
-    // Nothing ran, and the file was collected at all.
-    expect(statuses.length).toBeGreaterThan(0);
-    expect(new Set(statuses)).toEqual(new Set(['skipped']));
-    // Live canary for the reporter premise the runtime-skip rule rests on:
-    // a test that never started has no duration. The fixtures above are
-    // frozen, so only this run notices a Vitest that changes it.
-    const timedButNeverStarted = collected.testResults.flatMap((file) =>
-      file.assertionResults
-        .filter((result) => typeof result.duration === 'number')
-        .map((result) => [...result.ancestorTitles, result.title].join(' > ')),
-    );
-    expect(
-      timedButNeverStarted,
-      'Vitest wrote a duration for a test that never started. check-required-tests-ran.mjs reads a skipped result with a duration as a runtime skip, so a skipped suite or filtered-out mayRuntimeSkip leg would now pass; revisit that rule before trusting the check.',
-    ).toEqual([]);
+  test.each([
+    // 48 must-pass + 2 may-skip + 1 not-required today.
+    ['seatbelt.process.test.ts', 'seatbelt-kernel', SEATBELT_FILE, 51],
+    // 52 must-pass + 3 may-skip today (#4770).
+    [
+      'bubblewrap.process.test.ts',
+      'linux-bubblewrap-kernel',
+      BUBBLEWRAP_FILE,
+      55,
+    ],
+  ] as const)(
+    'the profile classifies exactly the tests %s registers on this host',
+    {
+      timeout: 120_000,
+    },
+    (_name, profileName, testFile, registeredCount) => {
+      // A filtered run collects every registered test, skipped or not, without
+      // running a body or hook. `vitest list` is not used: it omits tests under
+      // a skipped describe, which is every leg here on a host that cannot
+      // apply the mechanism.
+      const report = join(
+        makeTempDir('required-tests-collect-'),
+        'report.json',
+      );
+      const run = spawnSync(
+        process.execPath,
+        [
+          join(ROOT, 'node_modules/vitest/vitest.mjs'),
+          'run',
+          '--root',
+          ROOT,
+          testFile,
+          '--testNamePattern=(?!)',
+          '--reporter=json',
+          `--outputFile=${report}`,
+        ],
+        { cwd: ROOT, encoding: 'utf8', timeout: 110_000, windowsHide: true },
+      );
+      const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+      expect(run.error, output).toBeUndefined();
+      expect(run.status, output).toBe(0);
+      const collected: Report = JSON.parse(readFileSync(report, 'utf8'));
+      const statuses = collected.testResults.flatMap((file) =>
+        file.assertionResults.map((result) => result.status),
+      );
+      // Nothing ran, and the file was collected at all.
+      expect(statuses.length).toBeGreaterThan(0);
+      expect(new Set(statuses)).toEqual(new Set(['skipped']));
+      // Live canary for the reporter premise the runtime-skip rule rests on:
+      // a test that never started has no duration. The fixtures above are
+      // frozen, so only this run notices a Vitest that changes it.
+      const timedButNeverStarted = collected.testResults.flatMap((file) =>
+        file.assertionResults
+          .filter((result) => typeof result.duration === 'number')
+          .map((result) =>
+            [...result.ancestorTitles, result.title].join(' > '),
+          ),
+      );
+      expect(
+        timedButNeverStarted,
+        'Vitest wrote a duration for a test that never started. check-required-tests-ran.mjs reads a skipped result with a duration as a runtime skip, so a skipped suite or filtered-out mayRuntimeSkip leg would now pass; revisit that rule before trusting the check.',
+      ).toEqual([]);
 
-    // Every pinned id present: rewrite the collected report as passed and
-    // let the real check decide, so this agrees with how the lane matches.
-    for (const file of collected.testResults)
-      for (const result of file.assertionResults) result.status = 'passed';
-    const rewritten = writeReport(collected);
-    const result = spawnSync(
-      process.execPath,
-      [CHECK, '--profile-name', 'seatbelt-kernel', '--report', rewritten],
-      { cwd: ROOT, encoding: 'utf8', timeout: 30_000, windowsHide: true },
-    );
-    expect(result.stderr).toBe('');
-    expect(result.status).toBe(0);
+      // Every pinned id present: rewrite the collected report as passed and
+      // let the real check decide, so this agrees with how the lane matches.
+      for (const file of collected.testResults)
+        for (const result of file.assertionResults) result.status = 'passed';
+      const rewritten = writeReport(collected);
+      const result = spawnSync(
+        process.execPath,
+        [CHECK, '--profile-name', profileName, '--report', rewritten],
+        { cwd: ROOT, encoding: 'utf8', timeout: 30_000, windowsHide: true },
+      );
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
 
-    // And the reverse: every test the file registers is classified, so a new
-    // leg, or an id deleted from the profile, fails here rather than leaving
-    // the profile silently smaller than the file.
-    type Entry = { test: string[] };
-    const profile: Record<
-      string,
-      {
-        mustPass: string[][];
-        mayRuntimeSkip: Entry[];
-        notRequired: Entry[];
-      }
-    > = JSON.parse(readFileSync(PROFILES, 'utf8'))['seatbelt-kernel'].files;
-    expect(Object.keys(profile)).toEqual([SEATBELT_FILE]);
-    const { mustPass, mayRuntimeSkip, notRequired } = profile[SEATBELT_FILE];
-    const classified = [
-      ...mustPass,
-      ...mayRuntimeSkip.map((entry) => entry.test),
-      ...notRequired.map((entry) => entry.test),
-    ].map((titles) => JSON.stringify(titles));
-    const registered = collected.testResults.flatMap((file) =>
-      file.assertionResults.map((entry) =>
-        JSON.stringify([...entry.ancestorTitles, entry.title]),
-      ),
-    );
-    expect(registered.filter((key) => !classified.includes(key))).toEqual([]);
-    expect(classified.filter((key) => !registered.includes(key))).toEqual([]);
-    // 48 + 2 + 1 today; pinned beside the derivation above.
-    expect(registered).toHaveLength(51);
-  });
+      // And the reverse: every test the file registers is classified, so a new
+      // leg, or an id deleted from the profile, fails here rather than leaving
+      // the profile silently smaller than the file.
+      type Entry = { test: string[] };
+      const profile: Record<
+        string,
+        {
+          mustPass: string[][];
+          mayRuntimeSkip: Entry[];
+          notRequired: Entry[];
+        }
+      > = JSON.parse(readFileSync(PROFILES, 'utf8'))[profileName].files;
+      expect(Object.keys(profile)).toEqual([testFile]);
+      const { mustPass, mayRuntimeSkip, notRequired } = profile[testFile];
+      const classified = [
+        ...mustPass,
+        ...mayRuntimeSkip.map((entry) => entry.test),
+        ...notRequired.map((entry) => entry.test),
+      ].map((titles) => JSON.stringify(titles));
+      const registered = collected.testResults.flatMap((file) =>
+        file.assertionResults.map((entry) =>
+          JSON.stringify([...entry.ancestorTitles, entry.title]),
+        ),
+      );
+      expect(registered.filter((key) => !classified.includes(key))).toEqual([]);
+      expect(classified.filter((key) => !registered.includes(key))).toEqual([]);
+      // Pinned beside the derivation above, per row.
+      expect(registered).toHaveLength(registeredCount);
+    },
+  );
 });

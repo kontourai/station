@@ -322,7 +322,8 @@ with a real turn in `permissionMode: 'default'`:
   `hasTrustDialogAccepted`), the same rule did **not** shadow the callback. The
   user tier carries no such precondition: `~/.claude/settings.json` applies to
   every session regardless, because the operator wrote it for themselves.
-  A full-access session Station runs inside its Seatbelt profile (#2494) reads
+  A full-access session Station runs inside its Seatbelt profile (#2494), or
+  on Linux its bubblewrap sandbox (#4770), reads
   both the user tier and that trust from a Station-owned configuration
   directory instead, never the operator's
   ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).

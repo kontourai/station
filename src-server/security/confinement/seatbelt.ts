@@ -153,6 +153,21 @@ export async function discoverSeatbeltGitLayout(
 export function seatbeltHiddenPaths(
   options: { home?: string; stationRoot?: string; stationHome?: string } = {},
 ): { hidden: string[]; readable: string[] } {
+  const stationRoot = options.stationRoot ?? resolveStationRoot();
+  return {
+    hidden: hiddenSecretPaths(options).map(canonicalPath),
+    readable: [canonicalPath(join(stationRoot, 'installs'))],
+  };
+}
+
+/**
+ * The paths {@link seatbeltHiddenPaths} hides, as named (not
+ * symlink-resolved): the bubblewrap sandbox (#4770) also hides a link at
+ * one of these paths itself, not only what it points to.
+ */
+export function hiddenSecretPaths(
+  options: { home?: string; stationRoot?: string; stationHome?: string } = {},
+): string[] {
   const home = options.home ?? homedir();
   const stationRoot = options.stationRoot ?? resolveStationRoot();
   const stationHome = options.stationHome ?? resolveHomeDir();
@@ -174,10 +189,7 @@ export function seatbeltHiddenPaths(
     join('.claude', '.credentials.json'),
     join('.codex', 'auth.json'),
   ].map((entry) => join(home, entry));
-  return {
-    hidden: [...fromHome, stationRoot, stationHome].map(canonicalPath),
-    readable: [canonicalPath(join(stationRoot, 'installs'))],
-  };
+  return [...fromHome, stationRoot, stationHome];
 }
 
 /**
@@ -401,6 +413,20 @@ export function seatbeltConfigRoot(stationHome: string): string {
 
 /** A confined session's temp directory name: `session-<owner pid>-<random>`. */
 const SESSION_DIR = /^session-(\d+)-[A-Za-z0-9]{6}$/;
+
+/**
+ * Whether `path` is a confined session's own temp directory: directly in
+ * `stationHome`'s confined-session root, named `session-<pid>-<random>`.
+ */
+export function isConfinedSessionTempDir(
+  path: string,
+  stationHome: string,
+): boolean {
+  return (
+    dirname(path) === seatbeltTempRoot(stationHome) &&
+    SESSION_DIR.test(basename(path))
+  );
+}
 
 /** The prefix `mkdtemp` completes for a session owned by `pid`. */
 export function seatbeltSessionDirPrefix(pid: number = process.pid): string {

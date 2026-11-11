@@ -3868,7 +3868,8 @@ any config read does, may still write a default `config/app.json` when none
 exists and may rewrite an existing one when it normalizes it (for example
 filling missing defaults or removing legacy, internal or retired keys). On
 macOS the first read may run the one-time Seatbelt
-probe a confined start would also run, in a throwaway temporary directory it
+probe a confined start would also run (on Linux, the bubblewrap probe), in a
+throwaway temporary directory it
 removes; that probe pauses the server for up to 10 seconds, and its result,
 a failure included, is kept for the server process and used by later
 starts.
@@ -4058,7 +4059,7 @@ interface DoctorReport {
         preflight: {
           engines: Array<{
             engine: string;
-            mechanism: 'codex-sandbox' | 'seatbelt';
+            mechanism: 'codex-sandbox' | 'seatbelt' | 'bubblewrap';
             level: 'os-profile' | 'container' | 'microvm';
             mechanismState: 'available' | 'unavailable' | 'engine-reported';
             mechanismReason: string;

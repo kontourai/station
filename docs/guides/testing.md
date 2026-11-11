@@ -361,6 +361,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`agent-context-budget.yml`](../../.github/workflows/agent-context-budget.yml) | — | **PR: Agent context budget** | PR events, including label changes. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
+| [`bubblewrap-kernel.yml`](../../.github/workflows/bubblewrap-kernel.yml) | — | **Tool: bubblewrap kernel legs** | manual dispatch. |
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events; merge queue; manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
@@ -2853,6 +2854,37 @@ The `seatbelt-kernel` profile pins the kernel legs of
   still be present and must not fail.
 - **Not required:** the live Claude Code handshake runs only where `claude`
   is on PATH, which a hosted runner does not have.
+
+The `linux-bubblewrap-kernel` profile pins the kernel legs of
+`src-server/security/confinement/__tests__/bubblewrap.process.test.ts`
+(#4770):
+
+- **Where they run:** a Linux host where `/usr/bin/bwrap` applies the
+  production sandbox, which needs unprivileged user namespaces. That means a
+  developer's Linux machine, a container started with
+  `--security-opt seccomp=unconfined --security-opt apparmor=unconfined
+  --security-opt systempaths=unconfined` (Docker's defaults refuse the
+  namespaces and the new `/proc`), or the dispatch-only
+  [`Tool: bubblewrap kernel legs`](../../.github/workflows/bubblewrap-kernel.yml)
+  workflow. That workflow installs bubblewrap on a hosted Ubuntu runner,
+  gives `/usr/bin/bwrap` an AppArmor profile allowing user namespaces when
+  Ubuntu restricts them, and then runs the check. Run it in a container from
+  a copy of the checkout with a Linux `node_modules` installed there, never
+  the host's.
+- **Where they do not:** macOS and Windows lanes skip the whole suite. A
+  hosted Linux corpus lane runs the legs only if bubblewrap applies there;
+  no corpus lane checks that they did not skip.
+- **Allowed to skip at runtime:** the nested user namespace leg skips when
+  `unshare --user` cannot create one even outside the sandbox, and the
+  Docker socket leg skips when no Docker socket exists that the user can
+  connect to outside it. To run the Docker leg in a container, serve a
+  root-owned socket at `/run/docker.sock` for a `docker` group the test user
+  belongs to. The DNS leg skips when the host cannot resolve a name outside
+  the sandbox either. The suite's fixtures live under `/var/tmp`, outside the
+  sandbox's private `/tmp`.
+- **Required, unlike on macOS:** the live Claude Code handshake. It uses
+  `claude` on PATH, or else the Agent SDK's own binary for the platform,
+  which `npm run dependencies:ci` installs.
 
 ### Connected Agents Checklist
 
