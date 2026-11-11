@@ -401,7 +401,7 @@ export async function prepareConfinedClaudeLaunch(input: {
 }
 
 /** #4769: Claude Code's API when no base URL is configured. */
-export const CLAUDE_DEFAULT_MODEL_ENDPOINT: EgressTarget = {
+const CLAUDE_DEFAULT_MODEL_ENDPOINT: EgressTarget = {
   host: 'api.anthropic.com',
   port: 443,
 };
@@ -476,7 +476,7 @@ const PROXY_KEYS = [
  * (telemetry, error reports, update checks) is turned off, since its hosts
  * are not allowed and would only add refusals.
  */
-export function restrictedNetworkEnv(
+function restrictedNetworkEnv(
   env: Readonly<Record<string, string>>,
   port: number,
 ): Record<string, string> {

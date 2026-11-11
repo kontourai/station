@@ -29,21 +29,21 @@ import {
 } from 'node:net';
 
 /** The port an allowed-host entry without one means. */
-export const EGRESS_DEFAULT_PORT = 443;
+const EGRESS_DEFAULT_PORT = 443;
 /** The longest host name DNS can carry. */
-export const MAX_EGRESS_HOST_LENGTH = 253;
+const MAX_EGRESS_HOST_LENGTH = 253;
 /** The most allowed-host entries a policy may list. */
-export const MAX_EGRESS_ALLOWED_HOSTS = 256;
+const MAX_EGRESS_ALLOWED_HOSTS = 256;
 /** The decision records a broker keeps, oldest dropped first. */
 export const MAX_EGRESS_DECISIONS = 256;
 /** How long a client has to finish its request header. */
-export const EGRESS_HEADER_DEADLINE_MS = 10_000;
+const EGRESS_HEADER_DEADLINE_MS = 10_000;
 /** The longest request header the broker reads. */
-export const MAX_EGRESS_HEADER_BYTES = 8 * 1024;
+const MAX_EGRESS_HEADER_BYTES = 8 * 1024;
 /** How long the broker waits for an allowed upstream to accept. */
-export const EGRESS_CONNECT_TIMEOUT_MS = 15_000;
+const EGRESS_CONNECT_TIMEOUT_MS = 15_000;
 /** The most connections a broker holds open at once. */
-export const MAX_EGRESS_CONNECTIONS = 256;
+const MAX_EGRESS_CONNECTIONS = 256;
 
 /** A `CONNECT` target: a lowercase host name or an IP literal, and a port. */
 export interface EgressTarget {
@@ -167,7 +167,7 @@ export function parseEgressHostRule(text: string): EgressHostRule | undefined {
 }
 
 /** Whether `rule` admits `target`. */
-export function egressRuleMatches(
+function egressRuleMatches(
   rule: EgressHostRule,
   target: EgressTarget,
 ): boolean {

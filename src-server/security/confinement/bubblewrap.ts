@@ -126,7 +126,7 @@ export const BUBBLEWRAP_BASE_ARGS: readonly string[] = [
  * egress broker on the host's loopback is not on; bridging the two needs a
  * forwarder inside the sandbox that this change does not build.
  */
-export const BUBBLEWRAP_NETWORK_RESTRICTION_UNAVAILABLE =
+const BUBBLEWRAP_NETWORK_RESTRICTION_UNAVAILABLE =
   'restricted network is not available with the bubblewrap sandbox yet';
 
 /** The arguments each bubblewrap option Station emits takes. */
