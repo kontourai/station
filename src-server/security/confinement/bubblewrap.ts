@@ -501,7 +501,7 @@ const PROBE_FAILURES: Readonly<Record<number, string>> = {
 };
 
 /** The oldest bubblewrap with `--disable-userns`. */
-export const MIN_BUBBLEWRAP_VERSION: readonly [number, number, number] = [
+const MIN_BUBBLEWRAP_VERSION: readonly [number, number, number] = [
   0, 8, 0,
 ];
 
