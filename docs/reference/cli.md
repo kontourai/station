@@ -3993,6 +3993,10 @@ The JSON document has this top-level schema:
               "fallback": "confined-credential-unavailable",
               "remedy": "Give confined Claude sessions a credential of their own: ...",
               "appliesTo": "starts-without-own-credential-profile"
+            },
+            "restrictedNetwork": {
+              "state": "available",
+              "reason": "A restricted start reaches only Station's egress broker, which admits the engine's model endpoint and the allowed hosts."
             }
           }
         ],
@@ -4083,6 +4087,11 @@ interface DoctorReport {
                   appliesTo: 'starts-without-own-credential-profile';
                 }
               | { state: 'not-applicable'; reason: string };
+            /** #4769: absent from a Station that predates it. */
+            restrictedNetwork?: {
+              state: 'available' | 'unavailable';
+              reason: string;
+            };
           }>;
           decidedAtStart: string[];
         };
