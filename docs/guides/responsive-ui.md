@@ -220,7 +220,8 @@ reader; it does not add another modal. Closing returns focus to the opener.
 ### Coding tools on phones
 
 The Coding workbench uses the shared mobile predicate to replace the desktop
-rail with a header tool picker. Its Tools Dialog lists the current host's panes
+rail with a header tool picker; on the Chat page it leads the chat's own mobile
+header rather than adding a bar above it. Its Tools Dialog lists the current host's panes
 with labels and counts; the same navigation owner selects them. The tool gets
 the full workbench width. See [mobile tool navigation](../design/placement.md#mobile-tool-navigation-2026-10-27).
 
