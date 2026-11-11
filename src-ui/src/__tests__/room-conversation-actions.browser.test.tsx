@@ -33,7 +33,7 @@ const TOUCH_PHONE = {
 const box = (page: Page, name: string | RegExp) =>
   page.getByRole('button', { name }).first().boundingBox();
 
-test('on a touch phone each message has a visible, named, 44px More actions button that opens its actions', async () => {
+test('on a touch phone each message has a visible, named, 44px More actions button that opens its actions (#4810 gallery delta 1)', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(
     fixture,
     [],
@@ -41,13 +41,6 @@ test('on a touch phone each message has a visible, named, 44px More actions butt
   );
   try {
     await page.getByRole('list', { name: 'Conversation' }).waitFor();
-    const region = page.getByRole('region', { name: 'Messages in #general' });
-    expect(await region.count()).toBe(1);
-    // The scroll region keeps the list inside it.
-    expect(
-      await region.getByRole('list', { name: 'Conversation' }).count(),
-    ).toBe(1);
-
     // Each message's actions are reachable without a long press.
     const more = page.getByRole('button', { name: /^More actions for / });
     expect(await more.count()).toBe(6);
@@ -64,7 +57,7 @@ test('on a touch phone each message has a visible, named, 44px More actions butt
     );
 
     // Keyboard: from the scroll region, Tab reaches the first More button.
-    await region.focus();
+    await page.locator('.room-conversation__scroller').focus();
     await page.keyboard.press('Tab');
     expect(
       await page.evaluate(() =>
@@ -108,6 +101,32 @@ test('on a touch phone each message has a visible, named, 44px More actions butt
         document.activeElement?.getAttribute('aria-label'),
       ),
     ).toBe("More actions for Ana Ruiz's message");
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('the focusable scroll area is a named region around the message list (#4810 gallery delta 2)', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(
+    fixture,
+    [],
+    TOUCH_PHONE,
+  );
+  try {
+    await page.getByRole('list', { name: 'Conversation' }).waitFor();
+    const region = page.getByRole('region', { name: 'Messages in #general' });
+    expect(await region.count()).toBe(1);
+    // The scroll region keeps the list inside it.
+    expect(
+      await region.getByRole('list', { name: 'Conversation' }).count(),
+    ).toBe(1);
+
+    expect(
+      await page
+        .locator('.room-conversation__scroller')
+        .evaluate((element) => element.tabIndex),
+    ).toBe(0);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
