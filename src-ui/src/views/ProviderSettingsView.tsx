@@ -445,7 +445,7 @@ export function ProviderSettingsView({
       id: p.id,
       name: described.name,
       subtitle: `${presentation.readiness} · ${described.subtitle}`,
-      icon: <ProviderStatusDot tone={presentation.tone} />,
+      icon: <ProviderStatusDot tone={presentation.tone} row />,
     };
   });
 

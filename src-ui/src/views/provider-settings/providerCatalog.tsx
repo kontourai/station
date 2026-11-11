@@ -7,6 +7,7 @@ import {
 import type { ReactNode } from 'react';
 import type { HostActionId } from '../../components/host-action/host-action-copy';
 import type { ProviderConnection, ProviderTypeOption } from './types';
+import './provider-status-dot.css';
 
 /**
  * The provider catalog is the one source of truth for provider choices and
@@ -765,12 +766,27 @@ export function modelConnectionPresentation(
   });
 }
 
-/** The status dot for a connection's tone. Decorative: the row states the status in words. */
-export function ProviderStatusDot({ tone }: { tone: ProviderTone }) {
+/**
+ * The status dot for a connection's tone. Decorative: the row states the
+ * status in words. `row` is the list row's slightly larger size.
+ */
+export function ProviderStatusDot({
+  tone,
+  row = false,
+}: {
+  tone: ProviderTone;
+  row?: boolean;
+}) {
+  const toneClass =
+    tone === 'ready'
+      ? ' provider-overview__dot--active'
+      : tone === 'disabled'
+        ? ''
+        : ` provider-overview__dot--${tone}`;
   return (
     <span
       aria-hidden="true"
-      className={`provider-status-dot provider-status-dot--${tone}`}
+      className={`provider-overview__dot${toneClass}${row ? ' provider-overview__dot--row' : ''}`}
     />
   );
 }

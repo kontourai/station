@@ -305,7 +305,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       render(<ProviderSettingsView onNavigate={onNavigate} />);
 
       expect(screen.queryByText('No model connections yet')).toBeNull();
-      expect(screen.getAllByText('No model connection selected')).toHaveLength(1);
+      expect(screen.getAllByText('No model connection selected')).toHaveLength(
+        1,
+      );
     });
 
     // modelConnections is EMPTY (nothing exists regardless of the
