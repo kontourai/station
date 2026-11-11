@@ -193,6 +193,8 @@ export function stationControlCallerRecordSources(runtime: {
     };
   };
   getProject(slug: string): { readonly id: string };
+  /** The `coordinator-session` preview: off, no coordinator credential is honored. */
+  coordinatorEnabled(): boolean;
 }): StationControlCallerRecordSources {
   return {
     actingPrincipal: (sessionId) =>
@@ -211,9 +213,11 @@ export function stationControlCallerRecordSources(runtime: {
     conversationId: (sessionId) =>
       runtime.eventStore?.conversationForSession(sessionId)?.conversationId,
     coordinatorOwner: (conversationId) =>
-      runtime.eventStore
-        ?.coordinatorStore?.()
-        .designationForConversation(conversationId)?.actor.userId,
+      runtime.coordinatorEnabled()
+        ? runtime.eventStore
+            ?.coordinatorStore?.()
+            .designationForConversation(conversationId)?.actor.userId
+        : undefined,
   };
 }
 
