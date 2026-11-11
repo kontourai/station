@@ -3636,11 +3636,21 @@ function roomConversationScreens(): Screen[] {
                       };
                     }),
                   );
-                const covered = bodies.filter(
-                  (body) => overlaps(body, port!) && overlaps(body, pill!),
-                );
+                // Only what the list shows can be covered: clip to its port.
+                const covered = bodies
+                  .map((body) => {
+                    const top = Math.max(body.y, port!.y);
+                    const bottom = Math.min(
+                      body.y + body.height,
+                      port!.y + port!.height,
+                    );
+                    return { ...body, y: top, height: bottom - top };
+                  })
+                  .filter((body) => body.height > 1 && overlaps(body, pill!));
                 expect(covered, 'jump control covers message text').toEqual([]);
               }
+              // A resting desktop pointer would hold a row's hover bar open.
+              await page.mouse.move(0, 0);
             }
             await expectSeparateFaces();
           },
