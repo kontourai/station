@@ -3,16 +3,16 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
+  PROJECT_ROOM_LIMITS,
+  parseProjectRoomChannel,
+  parseProjectRoomChannelList,
+} from '@kontourai/station-contracts/project-room';
+import {
   parseProjectRoomBrowserView,
   parseProjectRoomHistory,
   parseProjectRoomMessage,
   parseProjectRoomNote,
 } from '@kontourai/station-contracts/project-room-browser';
-import {
-  PROJECT_ROOM_LIMITS,
-  parseProjectRoomChannel,
-  parseProjectRoomChannelList,
-} from '@kontourai/station-contracts/project-room';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';

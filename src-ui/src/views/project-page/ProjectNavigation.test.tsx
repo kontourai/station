@@ -72,9 +72,7 @@ describe('Project destination navigation', () => {
   test('honors direct destination and existing Starter Work links on mount', () => {
     const first = mount('?section=room');
     expect(
-      screen
-        .getByRole('link', { name: 'Room' })
-        .getAttribute('aria-current'),
+      screen.getByRole('link', { name: 'Room' }).getAttribute('aria-current'),
     ).toBe('location');
     first.unmount();
     mount('?starter=start-task');
@@ -119,9 +117,9 @@ test('member navigation exposes the shared room and work without operator destin
       <ProjectNavigation slug="team" member />
     </NavigationProvider>,
   );
-  expect(
-    screen.getByRole('link', { name: 'Room' }).getAttribute('href'),
-  ).toBe('/projects/team?section=room');
+  expect(screen.getByRole('link', { name: 'Room' }).getAttribute('href')).toBe(
+    '/projects/team?section=room',
+  );
   expect(screen.getByRole('link', { name: 'Tasks' })).toBeTruthy();
   expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
   expect(

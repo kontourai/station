@@ -12,10 +12,10 @@ import {
   initializeProjectRoom,
   listProjectRoomChannels,
   ProjectRoomProtocolError,
-  updateProjectRoomChannel,
   parseProjectRoomMessageIntent,
   saveProjectRoomNote,
   sendProjectRoomMessage,
+  updateProjectRoomChannel,
 } from '../client/project-rooms';
 
 const roomId = '11111111-1111-4111-8111-111111111111';
