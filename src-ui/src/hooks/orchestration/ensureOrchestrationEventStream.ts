@@ -401,12 +401,21 @@ function requestConversationInventoryRefresh(apiBase: string): void {
     );
     if (!client) return;
     const queryKey = streamQueryPrefix('conversation-inventory', apiBase);
-    // Owed read-marker summaries are re-read in this same pass, so they wait
-    // for their own reads in flight too.
+    // #3075: owed read state is re-read in this same pass: every inventory
+    // this stream's Station and authority own, scoped or not (the dock's
+    // own query names no read target), and the read-marker summaries. They
+    // wait for their own reads in flight too.
+    const authority =
+      streamConnections.get(apiBase)?.requestScope.authorityKey ??
+      currentStreamAuthorityKey(apiBase, client);
+    const readState = {
+      type: 'active' as const,
+      predicate: (query: { queryKey: readonly unknown[] }) =>
+        isReadStateQuery(query.queryKey, apiBase, authority),
+    };
     const busy = () =>
       client.isFetching({ queryKey, type: 'active' }) > 0 ||
-      (state.readMarkersOwed &&
-        client.isFetching({ queryKey: ['read-markers'], type: 'active' }) > 0);
+      (state.readMarkersOwed && client.isFetching(readState) > 0);
     if (busy()) {
       const stop = client.getQueryCache().subscribe(() => {
         if (busy()) return;
@@ -431,10 +440,7 @@ function requestConversationInventoryRefresh(apiBase: string): void {
     );
     if (state.readMarkersOwed) {
       state.readMarkersOwed = false;
-      void client.invalidateQueries(
-        { queryKey: ['read-markers'], type: 'active' },
-        { cancelRefetch: false },
-      );
+      void client.invalidateQueries(readState, { cancelRefetch: false });
     }
   };
   const elapsed = Date.now() - state.inventoryLastAt;

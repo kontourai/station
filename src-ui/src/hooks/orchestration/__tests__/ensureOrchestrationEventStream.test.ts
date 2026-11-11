@@ -177,7 +177,7 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       'current',
     );
     const release = ensureOrchestrationEventStream(apiBase, client);
-    const fetches = { inventory: 0, summary: 0 };
+    const fetches = { inventory: 0, dockInventory: 0, summary: 0 };
     let cancelled = 0;
     const settle: Array<() => void> = [];
     const observe = (
@@ -202,6 +202,9 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     };
     const stops = [
       observe(['conversation-inventory', apiBase, 'current'], 'inventory'),
+      // The dock's own inventory query names no read target, so its key is
+      // unscoped (`useConversationInventoryQuery()`); it must refresh too.
+      observe(['conversation-inventory'], 'dockInventory'),
       observe(
         ['read-markers', 'summary', ['agent-conversation:c1']],
         'summary',
@@ -209,7 +212,7 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     ];
     try {
       await settleAll();
-      expect(fetches).toEqual({ inventory: 1, summary: 1 });
+      expect(fetches).toEqual({ inventory: 1, dockInventory: 1, summary: 1 });
 
       // 25 marks from another client, the first refetch still in flight.
       for (let i = 0; i < 25; i += 1) {
@@ -228,6 +231,8 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       expect(fetches.inventory - 1).toBeLessThanOrEqual(2);
       expect(fetches.summary - 1).toBeGreaterThanOrEqual(1);
       expect(fetches.summary - 1).toBeLessThanOrEqual(2);
+      expect(fetches.dockInventory - 1).toBeGreaterThanOrEqual(1);
+      expect(fetches.dockInventory - 1).toBeLessThanOrEqual(2);
     } finally {
       for (const stop of stops) stop();
       release();
