@@ -1202,6 +1202,35 @@ created, as above. On Windows such a session is refused, because no
 confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
+By default a confined session's network is open. Set the Station's
+[`confinedNetwork`](../reference/config.md#optional-fields) to `restricted`
+to limit it. This covers only confined sessions: sessions at Auto or Ask,
+and your own sessions, are not confined and their network is not restricted
+at all. On macOS a restricted session's own connections go only to a broker
+Station runs for it, which lets through its model endpoint and the hosts you
+list; a connection to anything else is blocked and shown as a warning with
+the host it tried (a toast while the session is open, and in its
+diagnostics log). The sandbox also stops it asking macOS services to make a
+request for it (a background download, opening a URL in another app) and
+connecting to an SSH agent socket, and Station does not give it its own
+browser. The Claude connection must use Anthropic's API or an `https:`
+`ANTHROPIC_BASE_URL`. Such a session is refused, naming why, rather than run
+open: on Linux and for Codex, where a restricted network is not available
+yet; with a connection that uses Bedrock, Vertex or Foundry; and where it
+would otherwise run at Auto (no confined credential, a folder too broad to
+confine, a resume recorded elsewhere, an adoption). Tools inside the session
+reach the listed hosts over HTTPS only, through the proxy variables Station
+sets; `ssh` and plain HTTP are blocked. Station also does not let such a
+session drive a device, render HTML previews, start or steer other
+sessions, or change Station's settings, since each would act outside its
+sandbox. Station's settings route refuses an agent that tries to change
+`confinedNetwork`; as for the terminal shell, an agent running on the host
+with a shell of its own could still edit Station's configuration files. A
+session that is
+started at Auto or Ask, by anyone or anything, runs with an open network:
+only confined sessions are restricted. See
+[restricted network](../design/approval-posture-server-ordered.md#restricted-network-4769).
+
 A Codex session that does not run as `host` (started by you in person, or
 from a device you granted full access) runs under a Codex permission profile
 Station defines, `station-workspace`. Its sandbox lets it write only inside

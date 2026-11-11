@@ -8,12 +8,20 @@
  * profile does not apply: Linux, Windows, or a macOS without a working
  * `sandbox-exec`. On a macOS host that can apply it, it must run.
  *
+ * #4769: the nested `with a restricted network` legs run the production
+ * broker-only profile and the production spawn wrapper with a real egress
+ * broker. Nothing reaches the internet: an "outside" host is a local
+ * listener the profile does not allow, and the broker's upstreams are local
+ * stand-ins reached through its `lookup` and `dial` seams; the broker's
+ * policy itself is unit-tested in `egress-broker.test.ts`.
+ *
  * Titles are the same on every host so each test keeps one exact id:
  * `scripts/required-test-profiles.json` pins these ids, and
  * `scripts/check-required-tests-ran.mjs` fails a report in which they were
  * skipped or absent (#4772).
  */
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createSocket } from 'node:dgram';
 import {
   existsSync,
   lstatSync,
@@ -23,10 +31,17 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
+import {
+  connect,
+  createServer,
+  type Server,
+  type Socket,
+  connect as tcpConnect,
+} from 'node:net';
+import { homedir, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
-import { query } from '@anthropic-ai/claude-agent-sdk';
-import { beforeAll, describe, expect, test } from 'vitest';
+import { query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createClaudeEngineProcess } from '../../../providers/adapters/claude-code-spawn.js';
 import {
@@ -34,11 +49,18 @@ import {
   prepareConfinedClaudeLaunch,
 } from '../../../providers/adapters/claude-seatbelt.js';
 import {
+  type EgressBroker,
+  type EgressDecisionRecord,
+  parseEgressHostRule,
+  startEgressBroker,
+} from '../egress-broker.js';
+import {
   canonicalPath,
   createSeatbeltConfinementProvider,
   probeSeatbelt,
   SANDBOX_EXEC,
   seatbeltProfile,
+  seatbeltProfileNetwork,
 } from '../seatbelt.js';
 
 const probe =
@@ -105,6 +127,82 @@ function git(cwd: string, ...args: string[]): string {
     windowsHide: true,
   }).trim();
 }
+
+/**
+ * A Node client the confined process runs: `tcp <host> <port>`, `unix
+ * <path>`, `udp <host> <port>`, or `connect <host:port>` through the broker
+ * named by `HTTPS_PROXY`, sending `ping` once tunnelled. It prints one line:
+ * what happened.
+ */
+const CLIENT = `
+const net = require('node:net');
+const dgram = require('node:dgram');
+const [kind, a, b] = process.argv.slice(1);
+const done = (text) => { process.stdout.write(text + '\\n'); process.exit(0); };
+setTimeout(() => done('TIMEOUT'), 8000).unref();
+if (kind === 'udp') {
+  const socket = dgram.createSocket('udp4');
+  socket.on('error', (error) => done('ERR ' + error.code));
+  socket.send('x', Number(b), a, (error) => done(error ? 'ERR ' + error.code : 'SENT'));
+} else if (kind === 'connect') {
+  const proxy = new URL(process.env.HTTPS_PROXY);
+  const socket = net.connect(Number(proxy.port), proxy.hostname);
+  let text = '';
+  socket.on('connect', () => socket.write('CONNECT ' + a + ' HTTP/1.1\\r\\nHost: ' + a + '\\r\\n\\r\\n'));
+  socket.on('data', (chunk) => {
+    text += chunk.toString('latin1');
+    if (text.startsWith('HTTP/1.1 200') && text.includes('\\r\\n\\r\\n') && !text.includes('upstream:')) socket.write('ping');
+    if (text.includes('upstream:ping')) done('TUNNELLED ' + text.split('\\r\\n')[0]);
+  });
+  socket.on('close', () => done('CLOSED ' + text.split('\\r\\n')[0]));
+  socket.on('error', (error) => done('ERR ' + error.code));
+} else {
+  const socket = kind === 'unix' ? net.connect({ path: a }) : net.connect(Number(b), a);
+  socket.on('connect', () => done('CONNECTED'));
+  socket.on('error', (error) => done('ERR ' + error.code));
+}
+`;
+
+/** A stand-in's socket: a client that leaves first is not an error here. */
+function quiet(socket: Socket): Socket {
+  socket.on('error', () => undefined);
+  return socket;
+}
+
+async function listen(server: Server, host = '127.0.0.1'): Promise<number> {
+  await new Promise<void>((resolve) => server.listen(0, host, resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('no port');
+  return address.port;
+}
+
+/** An address of this host that is not loopback, when it has one. */
+function nonLoopbackAddress(): string | undefined {
+  for (const entries of Object.values(networkInterfaces()))
+    for (const entry of entries ?? [])
+      if (entry.family === 'IPv4' && !entry.internal) return entry.address;
+  return undefined;
+}
+
+/**
+ * #4769: a background `URLSession` upload of a file to a URL, waiting up to
+ * the given seconds: the request runs in `nsurlsessiond`, outside the
+ * calling process. Prints how the task ended.
+ */
+const URLSESSION_UPLOAD_PROBE = `import Foundation
+final class Done: NSObject, URLSessionDataDelegate {
+  func urlSession(_ s: URLSession, task: URLSessionTask, didCompleteWithError e: Error?) {
+    print("complete status=\\((task.response as? HTTPURLResponse)?.statusCode ?? -1) error=\\(e != nil)")
+    exit(0)
+  }
+}
+let configuration = URLSessionConfiguration.background(withIdentifier: "station.probe.\\(Int.random(in: 0..<1_000_000_000))")
+let session = URLSession(configuration: configuration, delegate: Done(), delegateQueue: nil)
+var request = URLRequest(url: URL(string: CommandLine.arguments[1])!)
+request.httpMethod = "POST"
+session.uploadTask(with: request, fromFile: URL(fileURLWithPath: CommandLine.arguments[2])).resume()
+RunLoop.current.run(until: Date(timeIntervalSinceNow: Double(CommandLine.arguments[3]) ?? 8))
+`;
 
 describe.skipIf(!probe.ok)(
   // One title on every host, so a skipped run reports the same ids (#4772).
@@ -842,6 +940,493 @@ describe.skipIf(!probe.ok)(
       } finally {
         outsider.kill();
       }
+    });
+
+    // #4769: the restricted network. Its own listeners, broker and workspace;
+    // the outer home, Station home and provider.
+    describe('with a restricted network (#4769)', () => {
+      const servers: Server[] = [];
+      let workspace: string;
+      // Removed in an after-hook even when a leg fails.
+      const makeShortTempDir = trackTempDirs({
+        lifetime: 'file',
+        base: '/tmp',
+      });
+      let socketPath: string;
+      let otherPort: number;
+      let upstreamPort: number;
+      let outsidePort: number;
+      let broker: EgressBroker;
+      /** What the broker handed its `onDecision`, in order. */
+      const decisions: EgressDecisionRecord[] = [];
+
+      beforeAll(async () => {
+        workspace = join(
+          canonicalPath(makeTempDir('seatbelt-network-')),
+          'workspace',
+        );
+        mkdirSync(workspace, { recursive: true });
+        // A listener on another loopback port: Station's own port, say.
+        const other = createServer((socket) => quiet(socket).end('other\n'));
+        otherPort = await listen(other);
+        // The broker's upstream for an allowed host.
+        const upstream = createServer((socket) =>
+          quiet(socket).once('data', (chunk) =>
+            socket.end(`upstream:${chunk}`),
+          ),
+        );
+        upstreamPort = await listen(upstream);
+        // A listener on every address: "outside" when reached by this host's
+        // non-loopback address.
+        const outside = createServer((socket) =>
+          quiet(socket).end('outside\n'),
+        );
+        outsidePort = await listen(outside, '0.0.0.0');
+        // A Unix socket at a known path, as an SSH agent's is (a short one:
+        // a socket path is limited to 104 bytes here).
+        socketPath = join(makeShortTempDir('sbn-'), 'agent.sock');
+        const unix = createServer((socket) => quiet(socket).end('unix\n'));
+        await new Promise<void>((resolve) => unix.listen(socketPath, resolve));
+        servers.push(other, upstream, outside, unix);
+        broker = await startEgressBroker({
+          allowedHosts: [parseEgressHostRule('allowed.test')!],
+          onDecision: (record) => decisions.push(record),
+          // Hermetic: documentation addresses, dialled to the local stand-in.
+          lookup: async (host) =>
+            host === 'allowed.test' ? ['203.0.113.10'] : ['203.0.113.11'],
+          dial: () => connect(upstreamPort, '127.0.0.1'),
+        });
+      });
+
+      afterAll(async () => {
+        await broker?.close();
+        for (const server of servers) server.close();
+      });
+
+      /** Runs the client under the production restricted profile. */
+      async function confinedClient(...args: string[]) {
+        return confinedCommand(process.execPath, ['-e', CLIENT, ...args]);
+      }
+
+      /** Runs `command` under the production restricted profile. */
+      async function confinedCommand(command: string, args: string[]) {
+        const launch = await prepareConfinedClaudeLaunch({
+          workspace: canonicalPath(workspace),
+          configDir: join(stationHome, 'confined-homes', 'claude'),
+          stationHome,
+          home,
+          stationRoot,
+        });
+        const wrapper = confinedClaudeSpawn(provider, launch, new Set(), {
+          broker,
+        });
+        const wrapped = wrapper.wrap({
+          command,
+          args,
+          cwd: workspace,
+          env: { PATH: '/usr/bin:/bin', HOME: home },
+        });
+        // Asynchronous: the broker answers from this process's event loop.
+        const result = await new Promise<{
+          status: number | null;
+          stdout: string;
+          stderr: string;
+        }>((resolve, reject) => {
+          const child = spawn(wrapped.command, wrapped.args, {
+            cwd: wrapped.cwd,
+            env: wrapped.env,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: 30_000,
+            windowsHide: true,
+          });
+          let stdout = '';
+          let stderr = '';
+          child.stdout.on('data', (chunk) => {
+            stdout += chunk;
+          });
+          child.stderr.on('data', (chunk) => {
+            stderr += chunk;
+          });
+          child.once('error', reject);
+          child.once('close', (status) => resolve({ status, stdout, stderr }));
+        });
+        launch.cleanup();
+        return {
+          status: result.status,
+          line: result.stdout.trim(),
+          stderr: result.stderr,
+          wrapped,
+          network: wrapper.pending()?.network?.(),
+        };
+      }
+
+      /** Runs the client with no sandbox, as a control. */
+      function unconfinedClient(...args: string[]): string {
+        return spawnSync(process.execPath, ['-e', CLIENT, ...args], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          windowsHide: true,
+        }).stdout.trim();
+      }
+
+      test('the spawn is the restricted profile: one rule, to the broker port, and the proxy points at it', async () => {
+        const result = await confinedClient(
+          'tcp',
+          '127.0.0.1',
+          String(broker.port),
+        );
+        expect(result.wrapped.command).toBe(SANDBOX_EXEC);
+        const profile = result.wrapped.args[1]!;
+        expect(profile).not.toContain('(allow network*)');
+        expect(profile).toContain(
+          `(allow network-outbound (remote tcp4 "localhost:${broker.port}"))`,
+        );
+        expect(profile).toContain('(deny mach-lookup)');
+        expect(seatbeltProfileNetwork(profile)).toBe('restricted');
+        expect(result.network).toBe('restricted');
+        expect(result.wrapped.env.HTTPS_PROXY).toBe(
+          `http://127.0.0.1:${broker.port}`,
+        );
+        expect(result.line, result.stderr).toBe('CONNECTED');
+      });
+
+      test('a direct TCP connection to another loopback port is refused by the kernel', async () => {
+        expect(unconfinedClient('tcp', '127.0.0.1', String(otherPort))).toBe(
+          'CONNECTED',
+        );
+        const result = await confinedClient(
+          'tcp',
+          '127.0.0.1',
+          String(otherPort),
+        );
+        expect(result.line, result.stderr).toBe('ERR EPERM');
+      });
+
+      test('a direct TCP connection to an outside address is refused by the kernel', async () => {
+        // Refused before any packet leaves: EPERM, not a timeout.
+        const result = await confinedClient('tcp', '192.0.2.1', '443');
+        expect(result.line, result.stderr).toBe('ERR EPERM');
+      });
+
+      test("a direct TCP connection to this host's own non-loopback address is refused by the kernel", async (ctx) => {
+        const address = nonLoopbackAddress();
+        if (!address) {
+          ctx.skip('this host has no non-loopback IPv4 address to compare');
+          return;
+        }
+        expect(unconfinedClient('tcp', address, String(outsidePort))).toBe(
+          'CONNECTED',
+        );
+        const result = await confinedClient(
+          'tcp',
+          address,
+          String(outsidePort),
+        );
+        expect(result.line, result.stderr).toBe('ERR EPERM');
+      });
+
+      test('a Unix socket at a known path is refused by the kernel', async () => {
+        expect(unconfinedClient('unix', socketPath)).toBe('CONNECTED');
+        const result = await confinedClient('unix', socketPath);
+        expect(result.line, result.stderr).toBe('ERR EPERM');
+      });
+
+      test('a UDP datagram is refused by the kernel', async () => {
+        const receiver = createSocket('udp4');
+        await new Promise<void>((resolve) =>
+          receiver.bind(0, '127.0.0.1', resolve),
+        );
+        try {
+          const port = String(receiver.address().port);
+          expect(unconfinedClient('udp', '127.0.0.1', port)).toBe('SENT');
+          const result = await confinedClient('udp', '127.0.0.1', port);
+          expect(result.line, result.stderr).toBe('ERR EPERM');
+        } finally {
+          receiver.close();
+        }
+      });
+
+      test('a connection to the broker port over IPv6 loopback is refused by the kernel', async (ctx) => {
+        // Another listener holding the broker's port on ::1, which the
+        // broker itself does not hold.
+        const v6 = createServer((socket) => quiet(socket).end('v6\n'));
+        const bound = await new Promise<boolean>((resolve) => {
+          v6.once('error', () => resolve(false));
+          v6.listen(broker.port, '::1', () => resolve(true));
+        });
+        if (!bound) {
+          ctx.skip('this host cannot listen on ::1 at the broker port');
+          return;
+        }
+        try {
+          expect(unconfinedClient('tcp', '::1', String(broker.port))).toBe(
+            'CONNECTED',
+          );
+          const result = await confinedClient(
+            'tcp',
+            '::1',
+            String(broker.port),
+          );
+          expect(result.line, result.stderr).toBe('ERR EPERM');
+        } finally {
+          v6.close();
+        }
+      });
+
+      test('a Mach service outside the allow-list is refused: configd answers scutil outside the profile and not inside it', async () => {
+        // No toolchain needed: `scutil --dns` asks configd (a Mach service
+        // the restricted profile does not list) for the resolver setup.
+        const outside = spawnSync('/usr/sbin/scutil', ['--dns'], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          windowsHide: true,
+        });
+        expect(outside.status).toBe(0);
+        expect(outside.stdout).toContain('resolver #');
+        const inside = await confinedCommand('/usr/sbin/scutil', ['--dns']);
+        expect(inside.status, inside.line).not.toBe(0);
+        expect(inside.line).not.toContain('resolver #');
+      });
+
+      test('a background URLSession upload, which nsurlsessiond carries out of process, cannot reach a listener outside the broker', async (ctx) => {
+        // The reviewed escape (#4769): a background session hands the
+        // request to a daemon that runs outside the sandbox.
+        const dir = makeTempDir('seatbelt-urlsession-');
+        writeFileSync(join(dir, 'upload.swift'), URLSESSION_UPLOAD_PROBE);
+        const compiled = spawnSync(
+          '/usr/bin/swiftc',
+          ['-o', join(dir, 'upload'), join(dir, 'upload.swift')],
+          { encoding: 'utf8', timeout: 120_000, windowsHide: true },
+        );
+        if (compiled.status !== 0) {
+          ctx.skip(
+            `swiftc cannot build the probe on this host: ${(compiled.error?.message ?? compiled.stderr ?? '').slice(0, 200)}`,
+          );
+          return;
+        }
+        const received: string[] = [];
+        const outside = createServer((socket) => {
+          let text = '';
+          quiet(socket).on('data', (chunk) => {
+            text += chunk;
+            if (!text.includes('\r\n\r\n')) return;
+            received.push(text.split('\r\n')[0]!);
+            socket.end('HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n');
+          });
+        });
+        const port = await listen(outside);
+        const file = join(workspace, 'upload.txt');
+        writeFileSync(file, 'workspace content\n');
+        const url = `http://127.0.0.1:${port}/upload`;
+        try {
+          // The positive control: unconfined, the daemon delivers it.
+          await new Promise<void>((resolve) => {
+            const child = spawn(join(dir, 'upload'), [url, file, '6'], {
+              stdio: 'ignore',
+              windowsHide: true,
+            });
+            child.once('close', () => resolve());
+            child.once('error', () => resolve());
+          });
+          if (received.length === 0) {
+            ctx.skip(
+              'nsurlsessiond did not deliver the upload even unconfined',
+            );
+            return;
+          }
+          received.length = 0;
+          const result = await confinedCommand(join(dir, 'upload'), [
+            url,
+            file,
+            '6',
+          ]);
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+          expect(received, `${result.line}\n${result.stderr}`).toEqual([]);
+        } finally {
+          outside.close();
+        }
+      }, 180_000);
+
+      test('a connection through the broker to an allowed host is tunnelled to it', async () => {
+        const before = decisions.length;
+        const result = await confinedClient('connect', 'allowed.test:443');
+        expect(result.line, result.stderr).toBe(
+          'TUNNELLED HTTP/1.1 200 Connection Established',
+        );
+        expect(decisions.slice(before)).toEqual([
+          {
+            at: expect.any(String),
+            verdict: 'allowed',
+            reason: 'allowed-host',
+            host: 'allowed.test',
+            port: 443,
+          },
+        ]);
+      });
+
+      test('a connection through the broker to a host that is not allowed gets 403, and is recorded', async () => {
+        const before = decisions.length;
+        const result = await confinedClient('connect', 'denied.test:443');
+        expect(result.line, result.stderr).toBe(
+          'CLOSED HTTP/1.1 403 Forbidden',
+        );
+        expect(decisions.slice(before)).toEqual([
+          {
+            at: expect.any(String),
+            verdict: 'denied',
+            reason: 'not-allowed',
+            host: 'denied.test',
+            port: 443,
+          },
+        ]);
+      });
+
+      test.skipIf(!claudeExecutable)(
+        // One title on every host, so a skipped run reports the same id (#4772).
+        'the installed Claude Code answers its handshake inside the restricted profile, and its model request reaches the model endpoint only through the broker',
+        async () => {
+          // The model endpoint is a local stand-in that records the first
+          // bytes it receives: a TLS ClientHello arriving there came through
+          // the broker's tunnel, since the profile refuses a direct connect.
+          let received: Buffer | undefined;
+          let arrived: () => void = () => undefined;
+          const reached = new Promise<void>((resolve) => {
+            arrived = resolve;
+          });
+          const model = createServer((socket: Socket) => {
+            quiet(socket).once('data', (chunk: Buffer) => {
+              received = chunk;
+              arrived();
+              socket.destroy();
+            });
+          });
+          const modelPort = await listen(model);
+          const modelDecisions: EgressDecisionRecord[] = [];
+          const modelBroker = await startEgressBroker({
+            allowedHosts: [],
+            onDecision: (record) => modelDecisions.push(record),
+            lookup: async () => ['127.0.0.1'],
+            dial: (_address, port) => tcpConnect(port, '127.0.0.1'),
+          });
+          const launch = await prepareConfinedClaudeLaunch({
+            workspace: canonicalPath(workspace),
+            configDir: join(stationHome, 'confined-homes', 'claude'),
+            stationHome,
+            stationRoot,
+          });
+          const confinedSpawn = confinedClaudeSpawn(
+            provider,
+            launch,
+            new Set(),
+            {
+              broker: modelBroker,
+            },
+          );
+          const engine = createClaudeEngineProcess(
+            undefined,
+            confinedSpawn.wrap,
+          );
+          let release: () => void = () => undefined;
+          const held = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          let sent = false;
+          // One user message once the handshake is answered, then held open.
+          const prompt: AsyncIterable<SDKUserMessage> = {
+            [Symbol.asyncIterator]: () => ({
+              next: async () => {
+                if (!sent) {
+                  sent = true;
+                  return {
+                    done: false,
+                    value: {
+                      type: 'user',
+                      message: { role: 'user', content: 'Say ok.' },
+                      parent_tool_use_id: null,
+                      session_id: '',
+                    },
+                  };
+                }
+                await held;
+                return { done: true, value: undefined };
+              },
+            }),
+          };
+          const live = query({
+            prompt,
+            options: {
+              pathToClaudeCodeExecutable: claudeExecutable!,
+              cwd: workspace,
+              settingSources: [],
+              persistSession: false,
+              env: {
+                PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+                HOME: homedir(),
+                USER: process.env.USER ?? 'station',
+                // A fake credential: the stand-in never answers, so no model
+                // is reached and the operator's login is never involved.
+                ANTHROPIC_API_KEY: 'sk-ant-api03-fake-for-station-tests',
+                ANTHROPIC_BASE_URL: `https://model.test:${modelPort}`,
+                DISABLE_AUTOUPDATER: '1',
+              },
+              spawnClaudeCodeProcess: engine.spawn,
+            },
+          });
+          let handshake: 'completed' | 'failed' = 'failed';
+          const drained = (async () => {
+            try {
+              for await (const _message of live) {
+                // Drained so the engine keeps going; nothing to read.
+              }
+            } catch {
+              // The engine is closed below.
+            }
+          })();
+          try {
+            await Promise.race([
+              live.initializationResult(),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('timed out')), 45_000),
+              ),
+            ]);
+            handshake = 'completed';
+            await Promise.race([
+              reached,
+              new Promise((resolve) => setTimeout(resolve, 45_000)),
+            ]);
+          } finally {
+            release();
+            live.close();
+            await engine.terminate();
+            await drained;
+            launch.cleanup();
+            await modelBroker.close();
+            model.close();
+          }
+          const spawned = engine.spawned();
+          expect(spawned?.command).toBe(SANDBOX_EXEC);
+          expect(seatbeltProfileNetwork(spawned?.args[1])).toBe('restricted');
+          expect(
+            confinedSpawn.pending()?.observe({
+              spawned,
+              handshake,
+              bounds: launch.bounds,
+            }),
+            engine.stderrTail(),
+          ).toBe('confined');
+          expect(confinedSpawn.pending()?.network?.()).toBe('restricted');
+          // A TLS handshake record (0x16), through the tunnel.
+          expect(received?.[0], JSON.stringify(modelDecisions)).toBe(0x16);
+          expect(modelDecisions).toContainEqual({
+            at: expect.any(String),
+            verdict: 'allowed',
+            reason: 'model-endpoint',
+            host: 'model.test',
+            port: modelPort,
+          });
+        },
+        120_000,
+      );
     });
   },
 );

@@ -31,8 +31,11 @@
  * (`hiddenMounts`), never by a mount over the path itself, so the host
  * replacing a hidden file or socket during the session does not expose it.
  *
- * Its network is open (#4769), as Seatbelt's is, and the network namespace
- * is shared: abstract Unix sockets (a session bus or X11 listening on one,
+ * Its network is open, and a restricted network (#4769) is refused by name
+ * (`BUBBLEWRAP_NETWORK_RESTRICTION_UNAVAILABLE`): the network namespace is
+ * shared, and the private one `--unshare-net` gives has no route to a
+ * broker on the host without a forwarder Station does not ship yet. So
+ * abstract Unix sockets (a session bus or X11 listening on one,
  * discoverable through `/proc/net/unix`) stay connectable. So does any Unix
  * socket that is not on the hidden list and not directly in a shadowed
  * directory after the start: one outside the shadowed directories and
@@ -116,6 +119,15 @@ export const BUBBLEWRAP_BASE_ARGS: readonly string[] = [
   '--tmpfs',
   '/tmp',
 ];
+
+/**
+ * #4769: why the sandbox cannot restrict the network, named in a refusal.
+ * `--unshare-net` leaves the process only a private loopback, which the
+ * egress broker on the host's loopback is not on; bridging the two needs a
+ * forwarder inside the sandbox that this change does not build.
+ */
+const BUBBLEWRAP_NETWORK_RESTRICTION_UNAVAILABLE =
+  'restricted network is not available with the bubblewrap sandbox yet';
 
 /** The arguments each bubblewrap option Station emits takes. */
 const OPTION_ARITY: Readonly<Record<string, number>> = {
@@ -338,6 +350,8 @@ function nearestExisting(path: string): string {
  * without covering a whole grant, and a network policy other than `full`.
  */
 export function bubblewrapArgs(spec: ConfinementSpawnSpec): string[] {
+  if (spec.network === 'broker')
+    throw new Error(`A ${BUBBLEWRAP_NETWORK_RESTRICTION_UNAVAILABLE}.`);
   if (spec.network !== 'full')
     throw new Error('The bubblewrap sandbox does not restrict the network.');
   const grants = spec.grants;
@@ -872,6 +886,8 @@ export function createBubblewrapConfinementProvider(
     supportedIsolationModes: ['shared', 'worktree'],
     engagement: 'spawn-wrapper',
     engines: [PROVIDER_CLAUDE],
+    restrictsNetwork: false,
+    networkRestrictionUnavailable: BUBBLEWRAP_NETWORK_RESTRICTION_UNAVAILABLE,
     availability(): ConfinementAvailability {
       const platform = (deps.platform ?? osPlatform)();
       if (platform !== 'linux')

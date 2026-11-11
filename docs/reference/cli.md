@@ -3898,6 +3898,13 @@ be remote. Per engine:
   `appliesTo: starts-without-own-credential-profile` in `--json`); an Agent
   with its own credential profile, or a credential-recovery restart, is
   decided at start.
+- `Restricted network (<engine>: <mechanism>)` (#4769): `pass` when that
+  mechanism can limit a confined start to Station's egress broker on that
+  Station's host, `warn` with the reason when it cannot (Codex's own sandbox
+  and bubblewrap never can; an unavailable mechanism cannot either). Under a
+  restricted [`confinedNetwork`](config.md#optional-fields) policy, a start
+  that requires confinement is refused there. An older Station reports no
+  such row; `--json` carries it as `restrictedNetwork`.
 - `Confinement preflight`: one `warn` "Not checked: <reason>" row when no
   answer was obtained: no server answered, no credential is held, the
   Station refused it, an older Station answered HTTP 404, or the answer is
@@ -3991,6 +3998,10 @@ The JSON document has this top-level schema:
               "fallback": "confined-credential-unavailable",
               "remedy": "Give confined Claude sessions a credential of their own: ...",
               "appliesTo": "starts-without-own-credential-profile"
+            },
+            "restrictedNetwork": {
+              "state": "available",
+              "reason": "The Seatbelt profile allows outbound IPv4 TCP only to this host's addresses at the egress broker's port, and Mach lookups only to a reviewed list of local services; the broker admits the engine's model endpoint and the allowed hosts."
             }
           }
         ],
@@ -4081,6 +4092,11 @@ interface DoctorReport {
                   appliesTo: 'starts-without-own-credential-profile';
                 }
               | { state: 'not-applicable'; reason: string };
+            /** #4769: absent from a Station that predates it. */
+            restrictedNetwork?: {
+              state: 'available' | 'unavailable';
+              reason: string;
+            };
           }>;
           decidedAtStart: string[];
         };

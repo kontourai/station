@@ -85,6 +85,7 @@ import {
   mayRunCommandsOnHostCurrently,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
+import { sessionNetworkRestricted } from '../../security/confinement/confinement-provider.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
@@ -2742,6 +2743,10 @@ export function configureRuntimeRoutes(
         });
         return verdict.allowed ? undefined : verdict.reason;
       },
+      // #4769: a session whose start ran with a restricted network is
+      // refused the tools that would have Station act outside its sandbox.
+      networkRestrictedSession: (sessionId) =>
+        sessionNetworkRestricted(context.orchestrationEventStore, sessionId),
       onRefusal: (refusal, method, path) =>
         context.logger.warn(
           `station-control authority refused ${method} ${path}: ${refusal.code}`,
@@ -5191,6 +5196,11 @@ export function configureRuntimeRoutes(
             ? { resolveAndroidAvd: deviceShareAccess.resolveAndroidAvd }
             : {}),
           automation: agentDeviceAutomation,
+          networkRestrictedSession: (sessionId) =>
+            sessionNetworkRestricted(
+              context.orchestrationEventStore,
+              sessionId,
+            ),
           taskCapture: () =>
             projectTaskRoomRuntime && taskCaptureService
               ? {

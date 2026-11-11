@@ -652,6 +652,18 @@ describe('bubblewrap arguments', () => {
       bubblewrapArgs({ ...specFor(where), network: 'loopback' }),
     ).toThrow(/does not restrict the network/);
   });
+
+  test('refuse a restricted network by name (#4769): the sandbox has no route to the broker yet', () => {
+    expect(() =>
+      bubblewrapArgs({
+        ...specFor(where),
+        network: 'broker',
+        brokerPort: 5_000,
+      }),
+    ).toThrow(
+      'A restricted network is not available with the bubblewrap sandbox yet.',
+    );
+  });
 });
 
 describe('bubblewrap breadth, read from the arguments', () => {

@@ -2857,11 +2857,19 @@ The `seatbelt-kernel` profile pins the kernel legs of
   Those run on Linux or Windows, where the whole suite skips and the skip
   passes. A regression in these legs therefore shows after merge, on the
   `main` push that introduced it, not on its pull request.
+- **Restricted network (#4769):** the nested `with a restricted network
+  (#4769)` legs run real `sandbox-exec` children under the broker-only
+  profile with an in-process egress broker and local listeners only; no
+  leg reaches the internet.
 - **Allowed to skip at runtime:** the app-launch and `security`-tool Keychain
-  legs skip when the host cannot provide their positive control. They must
-  still be present and must not fail.
-- **Not required:** the live Claude Code handshake runs only where `claude`
-  is on PATH, which a hosted runner does not have.
+  legs skip when the host cannot provide their positive control, and so do
+  three restricted-network legs: the host's own non-loopback address (a host
+  without one), IPv6 loopback (a host that cannot listen on `::1`) and the
+  background `URLSession` upload (no Swift toolchain, or no delivery even
+  unconfined). They must still be present and must not fail.
+- **Not required:** the live Claude Code handshake, and the live Claude turn
+  through the egress broker, run only where `claude` is on PATH, which a
+  hosted runner does not have.
 
 The `linux-bubblewrap-kernel` profile pins the kernel legs of
 `src-server/security/confinement/__tests__/bubblewrap.process.test.ts`

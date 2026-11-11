@@ -201,7 +201,8 @@ engine or establish that the Session is active.
 ## Visual replies
 
 `html_preview` and `html_render` on station-control act only for the verified
-calling Session. The internal POST leaves `/api/html-replies/preview` and
+calling Session, and never for one whose network Station restricts (#4769:
+the guard answers 403 `station_control_network_restricted`). The internal POST leaves `/api/html-replies/preview` and
 `/api/html-replies/render` accept bounded self-contained HTML, not a caller-chosen
 Session or workspace. Preview returns PNG data, contentHeight and console output;
 render returns a page reference. Both POST leaves require operate scope; preview launches Chromium rather than performing a read-only query. `GET /api/html-replies/:sessionId/:pageId` reads
@@ -2365,7 +2366,9 @@ updated `data`, optional `ignoredKeys`, and an activation receipt when relevant.
 Ordinary success is 200; persisted changes awaiting activation can return 202.
 A field being present in `AppConfig` does not mean this generic endpoint may
 write it: first-run decisions and revisioned log-level changes have separate
-routes, and contribution/full-access choices have additional checks.
+routes, and contribution/full-access choices have additional checks. A
+`confinedNetwork` whose shape or any `allowedHosts` entry the egress broker
+cannot read is refused with 400 and nothing is saved (#4769).
 A change to a setting the managed policy locks is refused before any other
 check with 403, `code: 'managed_setting_locked'`, the setting's `key` and the
 policy's denial sentence; nothing in the request is saved. Sending exactly the

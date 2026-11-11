@@ -254,6 +254,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // pushes that touch confinement paths, or dispatch), where
   // scripts/check-required-tests-ran.mjs fails the run unless the pinned legs
   // passed. The live Claude handshake runs only on a Mac with `claude` on PATH.
+  // #4769 adds the restricted-network legs: real
+  // `sandbox-exec` children under the broker-only profile, local loopback
+  // listeners and an in-process egress broker, and one bounded live Claude
+  // turn through the broker to a local stand-in model endpoint.
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
   // #4770: real `bwrap` kernel probes (git, hidden paths, namespaces) and
   // one bounded live Claude handshake (`claude` on PATH, else the Agent

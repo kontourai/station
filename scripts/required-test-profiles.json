@@ -1,6 +1,6 @@
 {
   "seatbelt-kernel": {
-    "description": "Kernel legs of the Seatbelt confinement profile (#2494, #4772). They run only on a macOS host where sandbox-exec applies the production profile, and are skipped elsewhere.",
+    "description": "Kernel legs of the Seatbelt confinement profile (#2494, #4772), including the restricted-network legs (#4769). They run only on a macOS host where sandbox-exec applies the production profile, and are skipped elsewhere.",
     "files": {
       "src-server/security/confinement/__tests__/seatbelt.process.test.ts": {
         "mustPass": [
@@ -195,6 +195,46 @@
           [
             "Seatbelt profile under the real kernel",
             "signals reach only processes inside the sandbox"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "the spawn is the restricted profile: one rule, to the broker port, and the proxy points at it"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a direct TCP connection to another loopback port is refused by the kernel"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a direct TCP connection to an outside address is refused by the kernel"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a Unix socket at a known path is refused by the kernel"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a UDP datagram is refused by the kernel"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a connection through the broker to an allowed host is tunnelled to it"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a connection through the broker to a host that is not allowed gets 403, and is recorded"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "with a restricted network (#4769)",
+            "a Mach service outside the allow-list is refused: configd answers scutil outside the profile and not inside it"
           ]
         ],
         "mayRuntimeSkip": [
@@ -211,6 +251,30 @@
               "the login Keychain is unreachable through the security tool"
             ],
             "reason": "Skips at runtime (ctx.skip) when the host user has no readable login Keychain item to compare against. A fresh hosted runner user is not expected to have one; a skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "a direct TCP connection to this host's own non-loopback address is refused by the kernel"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when the host has no non-loopback IPv4 address, so there is no outside address of its own to compare against; the documentation-address leg proves the refusal on every host. A skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "a connection to the broker port over IPv6 loopback is refused by the kernel"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when the host cannot listen on ::1 at the broker port, so there is no IPv6 listener to compare against. A skip is recorded, a failure is not accepted."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "a background URLSession upload, which nsurlsessiond carries out of process, cannot reach a listener outside the broker"
+            ],
+            "reason": "Skips at runtime (ctx.skip) when /usr/bin/swiftc cannot build the probe (no Swift toolchain), or when nsurlsessiond does not deliver the upload even unconfined, so a missing request inside would prove nothing. A skip is recorded, a failure is not accepted."
           }
         ],
         "notRequired": [
@@ -218,6 +282,14 @@
             "test": [
               "Seatbelt profile under the real kernel",
               "the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined"
+            ],
+            "reason": "Guarded by test.skipIf(!claudeExecutable): it needs Claude Code on PATH, which a hosted macOS runner does not have, so requiring it would fail every hosted run. It still runs on a developer Mac with claude on PATH."
+          },
+          {
+            "test": [
+              "Seatbelt profile under the real kernel",
+              "with a restricted network (#4769)",
+              "the installed Claude Code answers its handshake inside the restricted profile, and its model request reaches the model endpoint only through the broker"
             ],
             "reason": "Guarded by test.skipIf(!claudeExecutable): it needs Claude Code on PATH, which a hosted macOS runner does not have, so requiring it would fail every hosted run. It still runs on a developer Mac with claude on PATH."
           }
