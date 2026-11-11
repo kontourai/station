@@ -5414,13 +5414,15 @@ export class StationRuntime {
       skillService: this.skillService,
       configLoader: this.configLoader,
       // #4774: the factory owns the assembly and the non-creating readers;
-      // these are the inputs a Claude start reads.
+      // these are the inputs a Claude start reads. The two resolvers are
+      // read when a preflight runs, not while routes are composed, so
+      // composition touches no runtime field.
       readConfinementPreflight: createStationConfinementPreflight({
         claude: {
           processEnv: () => process.env,
-          connectionLaunch: this.claudeConnectionLaunch,
-          loadConnectionSettings:
-            this.claudeAppHomeSettings.loadConnectionSettings,
+          connectionLaunch: () => this.claudeConnectionLaunch(),
+          loadConnectionSettings: () =>
+            this.claudeAppHomeSettings.loadConnectionSettings(),
           stationHome: resolveHomeDir,
         },
       }),
