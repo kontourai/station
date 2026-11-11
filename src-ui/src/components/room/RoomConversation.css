@@ -32,6 +32,12 @@
   padding-block: var(--k-space-3);
 }
 
+/* An empty room centers its invitation instead of parking it at the bottom. */
+.room-conversation__content--empty {
+  margin-block: auto;
+  padding-inline: var(--room-inset);
+}
+
 .room-conversation__older {
   align-self: center;
   margin-block-end: var(--k-space-2);
@@ -353,6 +359,13 @@
 .room-conversation--compact .room-conversation__jump.button {
   min-height: 44px;
   min-width: 44px;
+}
+
+.room-conversation--compact .room-conversation__jump.button {
+  /* A phone line runs nearly edge to edge: the corner covers the least. */
+  right: var(--k-space-3);
+  left: auto;
+  transform: none;
 }
 
 .room-conversation--compact .room-row--system.room-row--failed {

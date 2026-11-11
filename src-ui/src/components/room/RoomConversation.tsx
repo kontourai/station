@@ -504,7 +504,10 @@ export function RoomConversation({
         onPointerDown={markPress}
         onKeyDown={markPress}
       >
-        <div ref={content} className="room-conversation__content">
+        <div
+          ref={content}
+          className={`room-conversation__content${!rows.length && !loading ? ' room-conversation__content--empty' : ''}`}
+        >
           {hasOlder && onLoadOlder && (
             <Button
               variant="ghost"
