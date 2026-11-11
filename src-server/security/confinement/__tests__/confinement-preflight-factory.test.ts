@@ -465,9 +465,9 @@ describe('#4774: createStationConfinementPreflight', () => {
       }
 
       function expectLinkUntouched(targets: string[]) {
-        expect(
-          lstatSync(join(stationHome, 'app-homes')).isSymbolicLink(),
-        ).toBe(true);
+        expect(lstatSync(join(stationHome, 'app-homes')).isSymbolicLink()).toBe(
+          true,
+        );
         for (const target of targets) expect(existsSync(target)).toBe(false);
       }
 

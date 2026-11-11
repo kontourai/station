@@ -452,7 +452,9 @@ describe('locateAppHomeProfile refuses what ensure could not create (#4774)', ()
         context.skip(`this host cannot create symlinks: ${String(error)}`);
       }
       const before = readdirSync(homeDir).sort();
-      await expect(ensureAppHomeProfile('claude', { homeDir })).rejects.toThrow();
+      await expect(
+        ensureAppHomeProfile('claude', { homeDir }),
+      ).rejects.toThrow();
       await expect(locateAppHomeProfile('claude', { homeDir })).rejects.toThrow(
         /exists but cannot be resolved/,
       );
