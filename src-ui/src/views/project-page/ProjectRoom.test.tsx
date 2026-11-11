@@ -418,6 +418,32 @@ test('a send whose acknowledgement was lost settles once the room shows its inte
   ).toHaveLength(1);
   expect(writes).toHaveLength(1);
 });
+test('an unsent message draft survives leaving the room and a reload, and Enter sends it', async () => {
+  const first = mount();
+  fireEvent.change(
+    await screen.findByRole('textbox', { name: 'Message the project' }),
+    { target: { value: 'Draft for the team' } },
+  );
+  first.unmount();
+  mount();
+  const composer = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Message the project',
+  });
+  expect(composer.value).toBe('Draft for the team');
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Send message' })
+        .disabled,
+    ).toBe(false),
+  );
+  fireEvent.keyDown(composer, { key: 'Enter' });
+  await waitFor(() =>
+    expect(writes).toEqual([
+      expect.objectContaining({ text: 'Draft for the team' }),
+    ]),
+  );
+  await waitFor(() => expect(composer.value).toBe(''));
+});
 test('shared notes preserve the draft on CAS conflict and dirty navigation asks before leaving', async () => {
   note = {
     roomId,
