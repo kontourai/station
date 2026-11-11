@@ -1,14 +1,18 @@
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
+  readdirSync,
   realpathSync,
   renameSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, join } from 'node:path';
+import { createServer } from 'node:net';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { HostImageTurnCapture } from '../../orchestration/host-image-turn-capture.js';
@@ -21,9 +25,12 @@ import {
   reapStaleSessionTmpDirs,
   removeLaunchedRoot,
   removeSessionTmpDir,
+  SESSION_TMPDIR_MAX_BYTES,
   sessionTempRoot,
   sessionTmpDirPath,
+  sessionTmpDirTestHooks,
   sessionTmpRoot,
+  shortSessionTmpRoots,
   stampLaunchExit,
 } from '../session-tmpdir.js';
 
@@ -49,9 +56,12 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
     home = realpathSync(makeTempDir('session-tmpdir-'));
     previousHome = process.env.STATION_HOME;
     process.env.STATION_HOME = home;
+    // These cases cover the in-home root; the short roots are covered below.
+    sessionTmpDirTestHooks.shortBases = () => [];
   });
 
   afterEach(() => {
+    sessionTmpDirTestHooks.shortBases = undefined;
     uninstall?.();
     uninstall = undefined;
     if (previousHome === undefined) delete process.env.STATION_HOME;
@@ -69,9 +79,7 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
     uninstall = installSessionTmpDirPolicy(() => true);
     const dir = launch('thread/../with:odd chars');
     expect(dir).toBe(sessionTmpDirPath('thread/../with:odd chars', home));
-    expect(basename(dir!)).toMatch(
-      new RegExp(`^session-${process.pid}-[0-9a-f]{24}$`),
-    );
+    expect(basename(dir!)).toMatch(new RegExp(`^${process.pid}-[0-9a-f]{16}$`));
     expect(statSync(dir!).mode & 0o777).toBe(0o700);
     expect(sessionTempRoot('thread/../with:odd chars')).toBe(dir);
     removeSessionTmpDir('thread/../with:odd chars');
@@ -302,17 +310,20 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
   test('the sweep removes only directories whose owning process is gone', () => {
     const root = sessionTmpRoot(home);
     mkdirSync(root, { recursive: true });
+    // An older Station's name, and the current one.
     const dead = join(root, `session-999999-${'a'.repeat(24)}`);
+    const deadCurrent = join(root, `999998-${'d'.repeat(16)}`);
     const alive = join(root, `session-12345-${'b'.repeat(24)}`);
-    const mine = join(root, `session-${process.pid}-${'c'.repeat(24)}`);
+    const mine = join(root, `${process.pid}-${'c'.repeat(16)}`);
     const foreign = join(root, 'not-a-session');
-    for (const dir of [dead, alive, mine, foreign]) mkdirSync(dir);
+    for (const dir of [dead, deadCurrent, alive, mine, foreign]) mkdirSync(dir);
     writeFileSync(join(dead, 'leftover.png'), 'x');
     const reaped = reapStaleSessionTmpDirs(home, {
       isAlive: (pid) => pid === 12345,
     });
-    expect(reaped).toBe(1);
+    expect(reaped).toBe(2);
     expect(existsSync(dead)).toBe(false);
+    expect(existsSync(deadCurrent)).toBe(false);
     expect([alive, mine, foreign].every((dir) => existsSync(dir))).toBe(true);
   });
 
@@ -344,3 +355,180 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
     expect(existsSync(dir)).toBe(false);
   });
 });
+
+/**
+ * The engine's TMPDIR is where agents' tools put Unix sockets, whose paths
+ * `sun_path` caps at 104 bytes (macOS) or 108 (Linux), NUL included.
+ */
+describe.skipIf(process.platform === 'win32')(
+  'per-session engine TMPDIR socket-path budget',
+  () => {
+    let previousHome: string | undefined;
+    let uninstall: (() => void) | undefined;
+    // Under the system /tmp so a test-owned root fits the budget; removed
+    // after each test whether it passed or not.
+    const makeShortDir = trackTempDirs({ base: '/tmp' });
+
+    /** A short base under the system /tmp, so a test-owned root fits. */
+    function shortBase(): string {
+      return realpathSync(makeShortDir('st'));
+    }
+
+    function withHome(dir: string): string {
+      mkdirSync(dir, { recursive: true });
+      process.env.STATION_HOME = dir;
+      return dir;
+    }
+
+    /** A realistic long home: a macOS-style data folder and a named instance. */
+    function longHome(): string {
+      return withHome(
+        join(
+          realpathSync(makeTempDir('session-tmpdir-long-')),
+          'Users',
+          'firstname.lastname',
+          'Library',
+          'Application Support',
+          'Station',
+          'instances',
+          'workstation-review',
+        ),
+      );
+    }
+
+    beforeEach(() => {
+      previousHome = process.env.STATION_HOME;
+      uninstall = installSessionTmpDirPolicy(() => true);
+    });
+
+    afterEach(() => {
+      sessionTmpDirTestHooks.shortBases = undefined;
+      uninstall?.();
+      uninstall = undefined;
+      if (previousHome === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previousHome;
+    });
+
+    test('a long STATION_HOME still gets a TMPDIR that leaves 40 bytes under the macOS socket limit', () => {
+      const home = longHome();
+      const thread = 'thread-long-home';
+      // Baseline: the home layout alone is far over budget.
+      const inHome = join(
+        sessionTmpRoot(home),
+        `${process.pid}-${'0'.repeat(16)}`,
+      );
+      expect(Buffer.byteLength(inHome)).toBeGreaterThan(
+        SESSION_TMPDIR_MAX_BYTES,
+      );
+      // The real roots (this process's temp directory, else /tmp).
+      const dir = launch(thread)!;
+      try {
+        expect(dir).toBe(sessionTmpDirPath(thread, home));
+        expect(SESSION_TMPDIR_MAX_BYTES).toBe(64);
+        expect(Buffer.byteLength(dir)).toBeLessThanOrEqual(
+          SESSION_TMPDIR_MAX_BYTES,
+        );
+        expect(shortSessionTmpRoots()).toContain(dirname(dir));
+        expect(dir.startsWith(home)).toBe(false);
+        for (const owned of [dir, dirname(dir)]) {
+          const stats = lstatSync(owned);
+          expect(stats.isDirectory() && !stats.isSymbolicLink()).toBe(true);
+          expect(stats.mode & 0o777).toBe(0o700);
+          expect(stats.uid).toBe(process.getuid!());
+        }
+        expect(sessionTempRoot(thread)).toBe(dir);
+      } finally {
+        removeSessionTmpDir(thread);
+      }
+      expect(existsSync(dir)).toBe(false);
+    });
+
+    test('a Unix socket listens at the full budget inside the TMPDIR a long home gets', async () => {
+      longHome();
+      const thread = 'thread-socket';
+      const dir = launch(thread)!;
+      try {
+        // tsx's IPC pipe, the path that failed with EINVAL ...
+        const tsxDir = join(dir, `tsx-${process.getuid!()}`);
+        mkdirSync(tsxDir);
+        // ... and a name using every byte the budget leaves (103 + NUL = 104).
+        const widest = join(dir, 'x'.repeat(103 - Buffer.byteLength(dir) - 1));
+        expect(Buffer.byteLength(widest)).toBe(103);
+        for (const path of [join(tsxDir, '4194304.pipe'), widest]) {
+          const server = createServer();
+          await new Promise<void>((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(path, resolve);
+          });
+          await new Promise<void>((resolve) => server.close(() => resolve()));
+        }
+      } finally {
+        removeSessionTmpDir(thread);
+      }
+    });
+
+    test('a short STATION_HOME keeps the directory in its own tmp tree', () => {
+      const home = withHome(shortBase());
+      sessionTmpDirTestHooks.shortBases = () => [shortBase()];
+      const dir = launch('thread-short-home')!;
+      expect(dir).toBe(
+        join(
+          sessionTmpRoot(home),
+          basename(sessionTmpDirPath('thread-short-home', home)),
+        ),
+      );
+      expect(Buffer.byteLength(dir)).toBeLessThanOrEqual(
+        SESSION_TMPDIR_MAX_BYTES,
+      );
+      removeSessionTmpDir('thread-short-home');
+    });
+
+    test('a short root that is a link, or not private to this user, is passed over', () => {
+      const home = longHome();
+      const base = shortBase();
+      sessionTmpDirTestHooks.shortBases = () => [base];
+      const [root] = shortSessionTmpRoots();
+      const elsewhere = shortBase();
+      symlinkSync(elsewhere, root!);
+      const dir = launch('thread-linked-root')!;
+      // The over-budget home path, never a folder through the planted link.
+      expect(dir.startsWith(sessionTmpRoot(home))).toBe(true);
+      expect(readdirSync(elsewhere)).toEqual([]);
+      removeSessionTmpDir('thread-linked-root');
+      // A real root is re-tightened to 0700 and then used.
+      rmSync(root!);
+      mkdirSync(root!, { mode: 0o755 });
+      chmodSync(root!, 0o755);
+      const tightened = launch('thread-loose-root')!;
+      expect(dirname(tightened)).toBe(root);
+      expect(statSync(root!).mode & 0o777).toBe(0o700);
+      removeSessionTmpDir('thread-loose-root');
+    });
+
+    test('the sweep reaps a short root by owner process, and never through a link', () => {
+      longHome();
+      const base = shortBase();
+      sessionTmpDirTestHooks.shortBases = () => [base];
+      const [root] = shortSessionTmpRoots();
+      mkdirSync(root!, { mode: 0o700 });
+      const dead = join(root!, `999999-${'a'.repeat(16)}`);
+      const alive = join(root!, `12345-${'b'.repeat(16)}`);
+      const legacyName = join(root!, `session-999997-${'c'.repeat(24)}`);
+      for (const dir of [dead, alive, legacyName]) mkdirSync(dir);
+      const isAlive = (pid: number) => pid === 12345;
+      expect(reapStaleSessionTmpDirs(undefined, { isAlive })).toBe(1);
+      expect(existsSync(dead)).toBe(false);
+      expect(existsSync(alive) && existsSync(legacyName)).toBe(true);
+      // A root that resolves elsewhere is not swept.
+      const linkedBase = shortBase();
+      const target = shortBase();
+      const victim = join(target, `999999-${'e'.repeat(16)}`);
+      mkdirSync(victim);
+      symlinkSync(target, join(linkedBase, basename(root!)));
+      sessionTmpDirTestHooks.shortBases = () => [linkedBase];
+      // realpath of the base is taken, but the root itself is the link.
+      expect(reapStaleSessionTmpDirs(undefined, { isAlive })).toBe(0);
+      expect(existsSync(victim)).toBe(true);
+    });
+  },
+);

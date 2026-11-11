@@ -18,10 +18,8 @@ import { spawnSync } from 'node:child_process';
 import {
   accessSync,
   constants,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   realpathSync,
   rmSync,
 } from 'node:fs';
@@ -34,6 +32,12 @@ import type {
 } from '@kontourai/station-contracts/execution-confinement';
 import { PROVIDER_CLAUDE } from '@kontourai/station-contracts/provider';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  claimShortSessionTmpRoot,
+  reapStaleSessionRoot,
+  SESSION_TMPDIR_MAX_BYTES,
+  shortSessionTmpRoots,
+} from '../../services/infra/session-tmpdir.js';
 import {
   locateGitDirectories,
   readSmallRegularFile,
@@ -147,8 +151,10 @@ export async function discoverSeatbeltGitLayout(
  * profile: credentials Station's own guards treat as secrets
  * (`git-guards.ts`), the engines' global credential files, the login
  * Keychain (a confined engine never reads the operator's Keychain login),
- * and Station's root and runtime home. `readable` re-opens Station's
- * installed binaries inside the root.
+ * Station's root and runtime home, and the short per-user session temp
+ * roots, which hold other sessions' temp directories (the session's own
+ * directory there is re-opened by its write grant). `readable` re-opens
+ * Station's installed binaries inside the root.
  */
 export function seatbeltHiddenPaths(
   options: { home?: string; stationRoot?: string; stationHome?: string } = {},
@@ -175,7 +181,10 @@ export function seatbeltHiddenPaths(
     join('.codex', 'auth.json'),
   ].map((entry) => join(home, entry));
   return {
-    hidden: [...fromHome, stationRoot, stationHome].map(canonicalPath),
+    hidden: [
+      ...[...fromHome, stationRoot, stationHome].map(canonicalPath),
+      ...shortSessionTmpRoots(),
+    ],
     readable: [canonicalPath(join(stationRoot, 'installs'))],
   };
 }
@@ -384,9 +393,23 @@ export interface SeatbeltBounds {
   git?: SeatbeltGitLayout;
 }
 
-/** Where a confined session's temp directory lives, under Station's home. */
+/**
+ * The in-home root for confined sessions' temp directories, used when the
+ * directory fits {@link SESSION_TMPDIR_MAX_BYTES} there (a short Station
+ * home) and as the last resort.
+ */
 export function seatbeltTempRoot(stationHome: string): string {
   return join(stationHome, 'tmp', 'confined-sessions');
+}
+
+/**
+ * Every root a confined session's temp directory may sit directly in: the
+ * in-home root and the short per-user roots (`stn-<uid>` in the system temp
+ * directory) that per-session engine `TMPDIR`s use. Canonical when
+ * `stationHome` is.
+ */
+export function seatbeltTempRoots(stationHome: string): string[] {
+  return [seatbeltTempRoot(stationHome), ...shortSessionTmpRoots()];
 }
 
 /**
@@ -407,6 +430,43 @@ export function seatbeltSessionDirPrefix(pid: number = process.pid): string {
   return `session-${pid}-`;
 }
 
+/**
+ * Creates a confined session's temp directory, which is also the engine's
+ * `TMPDIR`, and returns it symlink-resolved. Each launch gets a fresh
+ * `mkdtemp` directory (0700). Agents' tools put Unix sockets in it, so it is
+ * held to {@link SESSION_TMPDIR_MAX_BYTES} like an unconfined session's
+ * (`session-tmpdir.ts`): it goes in the in-home root when it fits there,
+ * otherwise in the first short per-user root that fits and is this user's
+ * own private, real directory, otherwise in the in-home root over budget.
+ */
+export function createSeatbeltSessionDir(
+  stationHome: string,
+  pid: number = process.pid,
+): string {
+  const prefix = seatbeltSessionDirPrefix(pid);
+  const fits = (root: string) =>
+    Buffer.byteLength(join(root, `${prefix}XXXXXX`)) <=
+    SESSION_TMPDIR_MAX_BYTES;
+  const inHome = seatbeltTempRoot(stationHome);
+  const shortRoots = shortSessionTmpRoots().filter(fits);
+  const candidates = fits(canonicalPath(inHome))
+    ? [inHome, ...shortRoots]
+    : [...shortRoots, inHome];
+  for (const root of candidates) {
+    if (root === inHome) {
+      mkdirSync(inHome, { recursive: true, mode: 0o700 });
+      return canonicalPath(mkdtempSync(join(inHome, prefix)));
+    }
+    if (!claimShortSessionTmpRoot(root)) continue;
+    try {
+      return canonicalPath(mkdtempSync(join(root, prefix)));
+    } catch {
+      // The next root is tried.
+    }
+  }
+  throw new Error('No confined-session temp root is usable.');
+}
+
 function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -419,11 +479,13 @@ function processAlive(pid: number): boolean {
 /**
  * Removes confined sessions' temp directories whose owner process is gone
  * (a crash or a kill skipped their cleanup). An entry is removed only when
- * ownership is proven: it is a real directory (not a link) directly in
- * Station's confined-session root, owned by this user, named
- * `session-<pid>-<random>`, and no process `pid` exists. A live owner, this
- * process included, keeps its directory: its sessions remove their own on
- * stop. Best-effort: an entry that cannot be read or removed is skipped.
+ * ownership is proven: it is a real directory (not a link) directly in one
+ * of {@link seatbeltTempRoots} (each canonical and owned by this user),
+ * owned by this user, named `session-<pid>-<random>`, and no process `pid`
+ * exists. A live owner, this process included, keeps its directory: its
+ * sessions remove their own on stop. A short root is shared by every
+ * Station instance this user runs, which is safe for the same reason.
+ * Best-effort: an entry that cannot be read or removed is skipped.
  */
 export function reapStaleSeatbeltSessionDirs(
   stationHome: string,
@@ -432,33 +494,11 @@ export function reapStaleSeatbeltSessionDirs(
     uid?: number | undefined;
   } = {},
 ): number {
-  const root = seatbeltTempRoot(canonicalPath(stationHome));
-  let entries: string[];
-  try {
-    if (realpathSync(root) !== root) return 0;
-    entries = readdirSync(root);
-  } catch {
-    return 0;
-  }
   const isAlive = deps.isAlive ?? processAlive;
   const uid = 'uid' in deps ? deps.uid : process.getuid?.();
   let reaped = 0;
-  for (const entry of entries) {
-    const owner = SESSION_DIR.exec(entry);
-    if (!owner) continue;
-    const pid = Number(owner[1]);
-    const path = join(root, entry);
-    try {
-      const stats = lstatSync(path);
-      if (!stats.isDirectory() || stats.isSymbolicLink()) continue;
-      if (uid !== undefined && stats.uid !== uid) continue;
-      if (pid === process.pid || isAlive(pid)) continue;
-      rmSync(path, { recursive: true, force: true });
-      reaped += 1;
-    } catch {
-      // Best-effort.
-    }
-  }
+  for (const root of seatbeltTempRoots(canonicalPath(stationHome)))
+    reaped += reapStaleSessionRoot(root, [SESSION_DIR], isAlive, uid);
   return reaped;
 }
 
@@ -491,7 +531,9 @@ export function seatbeltWorkspaceRefusal(
 /**
  * The kinds of the writes `grants` allows, or `undefined` when any grant
  * reaches past the workspace, the git subset, the session's Station temp
- * directory and the Station configuration directory, or when a deny the
+ * directory (one `session-<pid>-<random>` directly in a
+ * {@link seatbeltTempRoots} root, never a root itself) and the Station
+ * configuration directory, or when a deny the
  * layout needs is missing (slice 1 F3: breadth is part of the posture).
  */
 export function seatbeltWriteGrantKinds(
@@ -503,12 +545,13 @@ export function seatbeltWriteGrantKinds(
   if (!SEATBELT_ENGINE_CONFIG_NAMES.every((name) => deniedNames.has(name)))
     return undefined;
   const kinds = new Set<ConfinementWriteGrant>();
+  const tempRoots = seatbeltTempRoots(bounds.stationHome);
   const git = bounds.git;
   const linked = git && !isCanonicalPathWithin(bounds.workspace, git.commonDir);
   for (const path of grants.writable) {
     if (path === bounds.workspace) kinds.add('workspace');
     else if (
-      dirname(path) === seatbeltTempRoot(bounds.stationHome) &&
+      tempRoots.includes(dirname(path)) &&
       SESSION_DIR.test(basename(path))
     )
       kinds.add('station-temp');
