@@ -1204,9 +1204,9 @@ button:hover {
  *
  * The remaining overlays that carry this class have nothing to arbitrate, but
  * not for the reason an earlier draft of this comment gave: it said they
- * declare `--layer-dialog` themselves, and seven of them declare no z-index at
+ * declare `--layer-dialog` themselves, and six of them declare no z-index at
  * all (`.request-inspection-overlay`, `.composer-popover-overlay`,
- * `.background-tasks-sheet-overlay`, `.first-run-chapter__overlay`,
+ * `.background-tasks-sheet-overlay`,
  * `.agent-actions-overlay`, `.learning-source-overlay`,
  * `.basis-pane-fallback-overlay`). They compute automatically and take
  * whatever these rules give them, which is a different fact with the same
