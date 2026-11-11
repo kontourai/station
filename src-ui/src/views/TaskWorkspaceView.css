@@ -1986,13 +1986,10 @@
 .task-room-thread-summary__faces {
   --room-avatar-size: calc(var(--k-space-5) - var(--k-space-1));
   display: inline-flex;
+  gap: 2px;
 }
 .task-room-thread-summary__faces > .task-room-avatar {
-  box-shadow: 0 0 0 2px var(--k-bg);
   font-size: calc(var(--k-text-xs) - 2px);
-}
-.task-room-thread-summary__faces > .task-room-avatar + .task-room-avatar {
-  margin-inline-start: calc(-1 * var(--k-space-1) + 1px);
 }
 .task-room-thread-summary .button.task-room-thread-summary__count {
   min-height: calc(var(--k-space-5) + var(--k-space-1));
