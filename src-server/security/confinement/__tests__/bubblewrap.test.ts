@@ -6,7 +6,7 @@
  * arguments is `bubblewrap.process.test.ts`.
  */
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -26,6 +26,7 @@ import {
   bubblewrapWriteGrantKinds,
   confineWithBubblewrap,
   createBubblewrapConfinementProvider,
+  MAX_SHADOWED_ENTRIES,
   observeBubblewrapPosture,
 } from '../bubblewrap.js';
 import {
@@ -310,22 +311,28 @@ describe('bubblewrap grants', () => {
       runtimeDir: '/run/user/1000',
       env: {},
     }).hidden;
-    // Pinned independently of the builder: each path, symlink-resolved as
-    // every confinement path is (/var/run links to /run on most hosts, so
-    // the two Docker paths may be one).
+    // Pinned independently of the builder: each path, both resolved and as
+    // named with only its directory resolved (/var/run links to /run on most
+    // hosts, so the two Docker paths may be one).
     const expected = [
       ...seatbeltHiddenPaths(options).hidden,
       '/home/op/.local/share/keyrings',
       '/home/op/.docker/run',
       '/home/op/.Xauthority',
+      '/home/op/.1password',
+      '/home/op/.bitwarden-ssh-agent.sock',
       '/run/user/1000',
       '/run/docker.sock',
       '/var/run/docker.sock',
       '/run/podman',
       '/run/containerd',
       '/run/dbus/system_bus_socket',
-    ].map(canonicalPath);
-    expect(hidden).toEqual([...new Set(expected)]);
+      '/run/screen',
+    ].flatMap((path) => [
+      canonicalPath(path),
+      join(canonicalPath(dirname(path)), basename(path)),
+    ]);
+    expect(new Set(hidden)).toEqual(new Set(expected));
     expect(
       bubblewrapHiddenPaths({ ...options, runtimeDir: null, env: {} }).hidden,
     ).not.toContain(canonicalPath('/run/user/1000'));
@@ -428,9 +435,10 @@ describe('bubblewrap arguments', () => {
     for (const visible of ['.gitconfig', 'notes'].map((name) =>
       join(where.home, name),
     ))
-      expect(at(args, '--ro-bind', visible, visible), visible).toBeGreaterThan(
-        home,
-      );
+      expect(
+        at(args, '--ro-bind-try', visible, visible),
+        visible,
+      ).toBeGreaterThan(home);
     expect(
       at(
         args,
@@ -443,7 +451,7 @@ describe('bubblewrap arguments', () => {
     const config = join(where.home, '.config');
     expect(at(args, '--tmpfs', config)).toBeGreaterThan(home);
     const git = join(config, 'git');
-    expect(at(args, '--ro-bind', git, git)).toBeGreaterThan(0);
+    expect(at(args, '--ro-bind-try', git, git)).toBeGreaterThan(0);
     // The hidden entries are not in the sandbox at all: no mount names them.
     for (const hidden of [
       join(where.home, '.ssh'),
@@ -458,6 +466,64 @@ describe('bubblewrap arguments', () => {
       expect(at(args, '--remount-ro', shadow), shadow).toBeGreaterThan(
         at(args, '--ro-bind', dotGit, dotGit),
       );
+  });
+
+  test('a hidden path that is a link is left out as named, and what it points to is left out too', () => {
+    // `~/.claude/.credentials.json -> ../dots/creds.json`: the host could
+    // later replace the link itself with the secret.
+    mkdirSync(join(where.home, 'dots'));
+    writeFileSync(join(where.home, 'dots', 'creds.json'), '{}');
+    writeFileSync(join(where.home, 'dots', 'vimrc'), '');
+    mkdirSync(join(where.home, '.claude'));
+    writeFileSync(join(where.home, '.claude', 'settings.json'), '{}');
+    symlinkSync(
+      join('..', 'dots', 'creds.json'),
+      join(where.home, '.claude', '.credentials.json'),
+    );
+    const { hidden } = bubblewrapHiddenPaths({
+      home: where.home,
+      stationRoot: where.stationRoot,
+      stationHome: where.stationHome,
+      runtimeDir: null,
+      env: {},
+    });
+    const link = join(where.home, '.claude', '.credentials.json');
+    const target = join(where.home, 'dots', 'creds.json');
+    expect(hidden).toContain(link);
+    expect(hidden).toContain(target);
+    const args = bubblewrapArgs(
+      specFor(where, { ...grantsFor(where), hidden }),
+    );
+    // Both directories are shadowed; neither the link nor its target is
+    // mounted or re-created inside.
+    for (const dir of [join(where.home, '.claude'), join(where.home, 'dots')])
+      expect(at(args, '--tmpfs', dir), dir).toBeGreaterThan(0);
+    expect(args).not.toContain(link);
+    expect(args).not.toContain(target);
+    const settings = join(where.home, '.claude', 'settings.json');
+    expect(at(args, '--ro-bind-try', settings, settings)).toBeGreaterThan(0);
+  });
+
+  test('more entries than the shadows may mount back is refused by name', () => {
+    const crowded = join(where.home, 'crowded');
+    mkdirSync(crowded);
+    for (let index = 0; index <= MAX_SHADOWED_ENTRIES; index += 1)
+      writeFileSync(join(crowded, `f${index}`), '');
+    expect(MAX_SHADOWED_ENTRIES).toBe(1_000);
+    // Only these two hidden paths, so only the fixture's directories are
+    // shadowed: the home folder mounts back .netrc, .station and crowded
+    // (3), and crowded its 1,001 files.
+    const spec = () =>
+      specFor(where, {
+        ...grantsFor(where),
+        hidden: [join(where.home, '.ssh'), join(crowded, 'secret')],
+      });
+    expect(() => bubblewrapArgs(spec())).toThrow(
+      `too many entries to shadow: 1004 (at most 1000); ${crowded} holds 1001`,
+    );
+    // At the limit it is built: 3 + 997.
+    for (const index of [0, 1, 2, 3]) rmSync(join(crowded, `f${index}`));
+    expect(() => bubblewrapArgs(spec())).not.toThrow();
   });
 
   test('a hidden path under /tmp needs no mount: the sandbox has its own /tmp', () => {

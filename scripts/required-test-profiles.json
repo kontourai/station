@@ -424,6 +424,14 @@
           ],
           [
             "bubblewrap sandbox under the real kernel",
+            "a hidden path that is a link stays unreadable when the host replaces the link with the secret mid-session"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
+            "an entry the host removes after the arguments are built is left out, and the start still runs"
+          ],
+          [
+            "bubblewrap sandbox under the real kernel",
             "a granted path does not grant its sibling that shares the prefix"
           ],
           [

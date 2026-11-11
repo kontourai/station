@@ -164,7 +164,12 @@ describe.skipIf(!probe.ok)(
     });
 
     /** Runs `script` in `/bin/sh` under the production sandbox for `workspace`. */
-    async function confined(workspace: string, script: string) {
+    async function confined(
+      workspace: string,
+      script: string,
+      /** Runs after the arguments are built, before bubblewrap starts. */
+      beforeSpawn?: () => void,
+    ) {
       const launch = await prepareConfinedClaudeLaunch({
         workspace: canonicalPath(workspace),
         configDir: join(stationHome, 'confined-homes', 'claude'),
@@ -181,6 +186,7 @@ describe.skipIf(!probe.ok)(
         env: { PATH: '/usr/bin:/bin', HOME: home, ...GIT_IDENTITY },
       });
       expect(wrapped.command).toBe(BUBBLEWRAP);
+      beforeSpawn?.();
       const result = spawnSync(wrapped.command, wrapped.args, {
         cwd: wrapped.cwd,
         env: wrapped.env,
@@ -844,6 +850,66 @@ describe.skipIf(!probe.ok)(
         for (const server of servers) server.close();
         for (const path of [early, late]) rmSync(path, { force: true });
       }
+    });
+
+    test('a hidden path that is a link stays unreadable when the host replaces the link with the secret mid-session', async () => {
+      // `~/.claude/.credentials.json` and `~/.config/gh` as links into a
+      // dotfiles folder, as some operators keep them.
+      const credentials = join(home, '.claude', '.credentials.json');
+      const gh = join(home, '.config', 'gh');
+      const dots = join(home, 'dots');
+      const saved = `${root}/saved-${process.pid}`;
+      mkdirSync(join(dots, 'gh'), { recursive: true });
+      mkdirSync(saved, { recursive: true });
+      renameSync(credentials, join(saved, 'credentials.json'));
+      renameSync(gh, join(saved, 'gh'));
+      writeFileSync(join(dots, 'claude-creds.json'), 'OLDCREDS\n');
+      writeFileSync(join(dots, 'gh', 'hosts.yml'), 'OLDGHTOKEN\n');
+      symlinkSync(join('..', 'dots', 'claude-creds.json'), credentials);
+      symlinkSync(join(dots, 'gh'), gh);
+      try {
+        const live = await confinedLive(
+          worktree,
+          `echo "creds=$(cat "${credentials}" 2>/dev/null)"; echo "gh=$(cat "${gh}/hosts.yml" 2>/dev/null)"; echo "settings=$(cat "${home}/.claude/settings.json")"`,
+        );
+        // The host replaces each link with the real secret.
+        writeFileSync(`${credentials}.tmp`, 'NEWCREDS\n');
+        renameSync(`${credentials}.tmp`, credentials);
+        rmSync(gh);
+        mkdirSync(gh);
+        writeFileSync(join(gh, 'hosts.yml'), 'NEWGHTOKEN\n');
+        expect(readFileSync(credentials, 'utf8')).toBe('NEWCREDS\n');
+        live.release();
+        const result = await live.done;
+        expect(result.stdout).not.toMatch(
+          /NEWCREDS|NEWGHTOKEN|OLDCREDS|OLDGHTOKEN/,
+        );
+        expect(result.stdout).toContain('creds=\n');
+        expect(result.stdout).toContain('gh=\n');
+        // Positive control: the link's own folder is visible inside.
+        expect(result.stdout).toContain('settings={}');
+      } finally {
+        rmSync(credentials, { force: true });
+        rmSync(gh, { recursive: true, force: true });
+        rmSync(dots, { recursive: true, force: true });
+        renameSync(join(saved, 'credentials.json'), credentials);
+        renameSync(join(saved, 'gh'), gh);
+      }
+    });
+
+    test('an entry the host removes after the arguments are built is left out, and the start still runs', async () => {
+      const vanishing = join(home, '.vanishing-dotfile');
+      writeFileSync(vanishing, 'gone\n');
+      writeFileSync(join(home, '.gitconfig'), '[user]\n\tname = visible\n');
+      const result = await confined(
+        worktree,
+        `cat "${vanishing}" 2>/dev/null; echo "vanished=$?"; cat "${home}/.gitconfig"`,
+        () => rmSync(vanishing),
+      );
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/vanished=[1-9]/);
+      expect(result.stdout).toContain('name = visible');
     });
 
     test('a name resolves through DNS inside the sandbox', async (ctx) => {

@@ -33,8 +33,12 @@
  *
  * Its network is open (#4769), as Seatbelt's is, and the network namespace
  * is shared: abstract Unix sockets (a session bus or X11 listening on one,
- * discoverable through `/proc/net/unix`) stay connectable, and so does a
- * Unix socket outside the home folder, `/run`, `/tmp` and the hidden paths.
+ * discoverable through `/proc/net/unix`) stay connectable. So does any Unix
+ * socket that is not on the hidden list and not directly in a shadowed
+ * directory after the start: one outside the shadowed directories and
+ * `/tmp`, and one inside a directory mounted back from a shadow, there at
+ * the start or created later (an agent socket in `~/.1password` is hidden
+ * by name; one in `~/.cache/x` is reachable).
  */
 import { spawnSync } from 'node:child_process';
 import {
@@ -51,7 +55,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir, platform as osPlatform, tmpdir } from 'node:os';
+import { homedir, platform as osPlatform } from 'node:os';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type {
   ConfinementPosture,
@@ -67,6 +71,7 @@ import type {
 } from './confinement-provider.js';
 import {
   canonicalPath,
+  hiddenSecretPaths,
   isConfinedSessionTempDir,
   type SeatbeltBounds,
   type SeatbeltEvidence,
@@ -127,6 +132,7 @@ const OPTION_ARITY: Readonly<Record<string, number>> = {
   '--chdir': 1,
   '--bind': 2,
   '--ro-bind': 2,
+  '--ro-bind-try': 2,
   '--symlink': 2,
 };
 
@@ -146,6 +152,9 @@ const DAEMON_SOCKET_PATHS: readonly string[] = [
   '/run/podman',
   '/run/containerd',
   '/run/dbus/system_bus_socket',
+  // GNU screen's sessions (Debian, Ubuntu): they accept keystrokes from the
+  // same user. tmux keeps its sockets in /tmp.
+  '/run/screen',
 ];
 
 /**
@@ -187,17 +196,31 @@ export function bubblewrapHiddenPaths(
   const env = options.env ?? process.env;
   const xdgRuntimeDir = env.XDG_RUNTIME_DIR?.trim();
   const dockerHost = /^unix:\/\/(\/.+)$/.exec(env.DOCKER_HOST?.trim() ?? '');
-  const extra = [
+  const named = [
+    ...hiddenSecretPaths(options),
     join(home, '.local', 'share', 'keyrings'),
     join(home, '.docker', 'run'),
     join(home, '.Xauthority'),
+    // Password managers' SSH agents.
+    join(home, '.1password'),
+    join(home, '.bitwarden-ssh-agent.sock'),
     ...(runtimeDir ? [runtimeDir] : []),
     ...(xdgRuntimeDir && isAbsolute(xdgRuntimeDir) ? [xdgRuntimeDir] : []),
     ...(dockerHost ? [dockerHost[1]!] : []),
     ...DAEMON_SOCKET_PATHS,
-  ].map(canonicalPath);
+  ];
+  // Each path both as named (its directory resolved, its own name not) and
+  // resolved: a link at a hidden path is itself hidden, so its directory is
+  // shadowed and the host replacing the link with the secret shows nothing.
   return {
-    hidden: [...new Set([...base.hidden, ...extra])],
+    hidden: [
+      ...new Set(
+        named.flatMap((path) => [
+          join(canonicalPath(dirname(path)), basename(path)),
+          canonicalPath(path),
+        ]),
+      ),
+    ],
     readable: base.readable,
   };
 }
@@ -353,6 +376,15 @@ export function bubblewrapArgs(spec: ConfinementSpawnSpec): string[] {
 /** The sandbox's own `/tmp`: nothing beneath the host's is visible. */
 const PRIVATE_TMP = '/tmp';
 
+/**
+ * The most entries the shadows may mount back, together. Each costs three
+ * bubblewrap arguments (bubblewrap refuses more than 9,000) and setup time
+ * that grows faster than the count (measured: 1,000 entries 1.5 s, 2,000
+ * entries 6 s, against the probe's 8 s), so a host past this is refused by
+ * name rather than left to fail inside bubblewrap.
+ */
+export const MAX_SHADOWED_ENTRIES = 1_000;
+
 function strictlyWithin(root: string, path: string): boolean {
   return path !== root && isCanonicalPathWithin(root, path);
 }
@@ -367,15 +399,20 @@ function strictlyWithin(root: string, path: string): boolean {
  * - Each nearest existing parent of a hidden path (the home folder, `/run`,
  *   a socket's directory) becomes an empty memory file system, and every
  *   entry the host has there at the start is mounted back read-only, except
- *   the hidden ones. A symbolic link is re-created as itself, so it still
- *   resolves inside the sandbox. A directory on the way to a hidden path is
- *   shadowed the same way. Each shadow is made read-only last, once the
- *   grants inside it are mounted.
- * - So a hidden entry is absent inside whatever the host later does to it,
- *   an entry the host creates later is absent too, and a visible file the
- *   host replaces stays the old one. A hidden directory the host replaces
- *   as a whole is absent as well; a directory mounted back keeps showing
- *   the host's current contents.
+ *   the hidden ones. A symbolic link is re-created as a copy of itself (a
+ *   hidden path that is a link is listed as named too, so the link is left
+ *   out, not just what it points to). A directory on the way to a hidden
+ *   path is shadowed the same way. Each shadow is made read-only last, once
+ *   the grants inside it are mounted.
+ * - So, in a shadowed directory, a hidden entry is absent inside whatever
+ *   the host later does to it, an entry the host creates later is absent,
+ *   and a visible file or link the host replaces stays the old one.
+ * - Not covered: a directory mounted back keeps showing the host's live
+ *   contents, so a socket or file inside it (one there at the start, or
+ *   created later) is reachable unless it is itself on the hidden list.
+ * - An entry the host removes before bubblewrap mounts it is left out; one
+ *   whose name cannot be decoded is left out too. More than
+ *   {@link MAX_SHADOWED_ENTRIES} entries is refused by name.
  * - A hidden path under `/tmp` needs nothing: the sandbox's `/tmp` is its
  *   own. One directly under `/` (no parent to shadow) is covered itself.
  */
@@ -402,6 +439,8 @@ function hiddenMounts(paths: readonly string[]): {
         !hidden.some((path) => isCanonicalPathWithin(path, root)),
     )
     .sort();
+  let mounted = 0;
+  let largest = { dir: '', entries: 0 };
   const shadow = (dir: string): void => {
     args.push('--tmpfs', dir);
     readOnly.push(dir);
@@ -412,26 +451,37 @@ function hiddenMounts(paths: readonly string[]): {
       // Unreadable: it stays empty inside.
       return;
     }
+    if (entries.length > largest.entries)
+      largest = { dir, entries: entries.length };
     for (const entry of entries) {
       const path = join(dir, entry);
       if (hidden.includes(path)) continue;
       let stats: ReturnType<typeof lstatSync>;
+      let target: string | undefined;
       try {
         stats = lstatSync(path);
+        if (stats.isSymbolicLink()) target = readlinkSync(path);
       } catch {
+        // Gone (or a name that does not survive decoding): left out inside.
         continue;
       }
-      if (stats.isSymbolicLink())
-        args.push('--symlink', readlinkSync(path), path);
+      mounted += 1;
+      if (target !== undefined) args.push('--symlink', target, path);
       else if (
         stats.isDirectory() &&
         hidden.some((other) => strictlyWithin(path, other))
       )
         shadow(path);
-      else args.push('--ro-bind', path, path);
+      // `-try`: an entry the host removes before bubblewrap mounts it is
+      // left out, rather than failing the start.
+      else args.push('--ro-bind-try', path, path);
     }
   };
   for (const root of roots) shadow(root);
+  if (mounted > MAX_SHADOWED_ENTRIES)
+    throw new Error(
+      `too many entries to shadow: ${mounted} (at most ${MAX_SHADOWED_ENTRIES}); ${largest.dir} holds ${largest.entries}`,
+    );
   for (const path of direct) {
     const kind = kindOf(path);
     if (kind === 'directory') {
@@ -593,18 +643,17 @@ const PROBE_FAILURES: Readonly<Record<number, string>> = {
 };
 
 /**
- * Where the probe makes its throwaway directory: `/var/tmp` where it is a
- * writable directory, so the probe runs outside the sandbox's private
- * `/tmp` as a real workspace does; else the system temporary directory.
+ * Where the probe makes its throwaway directory: `/var/tmp`, outside the
+ * sandbox's private `/tmp` as a real workspace is, or nowhere.
  */
-function probeBase(): string {
+function probeBase(): string | undefined {
   try {
     accessSync('/var/tmp', constants.W_OK | constants.X_OK);
     if (statSync('/var/tmp').isDirectory()) return '/var/tmp';
   } catch {
     // Not there or not writable.
   }
-  return tmpdir();
+  return undefined;
 }
 
 /** The oldest bubblewrap with `--disable-userns`. */
@@ -650,7 +699,8 @@ function probeFailure(result: ReturnType<typeof spawnSync>): string {
  * list, a linked worktree's pointer file, an engine configuration
  * directory, and the session's temp and configuration directories inside a
  * hidden Station home, as a start mounts them) around `/bin/sh` in a
- * throwaway directory (under `/var/tmp` where it can). The shell must be
+ * throwaway directory under `/var/tmp` (a host without a writable one is
+ * refused by name). The shell must be
  * able to write the workspace and the temp directory, must be refused the
  * content of a hidden directory's file and of a hidden file and a write to
  * `.git`, and no write it makes outside the workspace or to the hidden home
@@ -680,7 +730,16 @@ export function probeBubblewrap(bwrap: string = BUBBLEWRAP): {
         ok: false,
         reason: `the bubblewrap sandbox cannot apply (${tooOld})`,
       };
-    root = canonicalPath(mkdtempSync(join(probeBase(), 'station-bubblewrap-')));
+    // Inside the private /tmp a write outside the workspace would land in
+    // memory, so a probe there could not tell a sandbox from none.
+    const base = probeBase();
+    if (!base)
+      return {
+        ok: false,
+        reason:
+          'the bubblewrap sandbox could not be probed (no writable /var/tmp outside its private /tmp)',
+      };
+    root = canonicalPath(mkdtempSync(join(base, 'station-bubblewrap-')));
     const workspace = join(root, 'workspace');
     const secret = join(root, 'secret');
     const common = join(root, 'repository.git');
