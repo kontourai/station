@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-11T03:33:26Z | nightly-desktop | 0.1.11-nightly.20261111 | `db39099` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42944787833) |
 | 2026-11-11T03:33:23Z | nightly-android | 0.1.11-nightly.20261111 | `db39099` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42944787833) |
 | 2026-11-11T02:30:09Z | nightly-npm | 0.11.0-nightly.20261111.42944787833 | `db39099` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/42944787833) |
 | 2026-11-10T18:28:01Z | nightly-desktop | 0.1.11-nightly.20261110.2 | `0d47400` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/42863491617) |
@@ -457,6 +458,33 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-11T03:33:26Z · nightly-desktop · 0.1.11-nightly.20261111
+
+- Ship SHA: `db39099bdf65812c547186bb3c1b818a249c55a7`
+- Artifact built at: `2026-11-11T02:28:13.503Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 42944787833)
+
+### Changelog
+
+Commits since `0d47400` ([full sha](https://github.com/kontourai/station/commit/0d474001f59ed2b15668a5a63749ca4a05e048b7)):
+
+**Features**
+
+- [#4765](https://github.com/kontourai/station/pull/4765) feat(ui): General Undo for Board delete and move (#4688)
+- [#4723](https://github.com/kontourai/station/pull/4723) feat(ui): 13px Comfortable default, Compact density and Reduced motion on Appearance
+
+**Fixes**
+
+- [#4776](https://github.com/kontourai/station/pull/4776) fix: offline sends, stream resume, restart recovery and pairing recover instead of sticking
+- [#4775](https://github.com/kontourai/station/pull/4775) fix(ui): keep pending messages through a missed read; steer natively by default
+- [#4763](https://github.com/kontourai/station/pull/4763) fix: repair defects, duplication and UI inconsistencies found in a repo-wide audit
+
+**Other**
+
+- [#4781](https://github.com/kontourai/station/pull/4781) test(confinement): check that the pinned Seatbelt kernel legs actually ran (#4772)
+- [#4766](https://github.com/kontourai/station/pull/4766) test(ui): stop phone-layer suites stranding the dialog-history wait under load
 
 ## 2026-11-11T03:33:23Z · nightly-android · 0.1.11-nightly.20261111
 

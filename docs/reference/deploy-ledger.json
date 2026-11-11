@@ -1,5 +1,42 @@
 [
   {
+    "timestampUtc": "2026-11-11T03:33:26Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.20261111",
+    "sha": "db39099bdf65812c547186bb3c1b818a249c55a7",
+    "artifactBuiltAt": "2026-11-11T02:28:13.503Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/42944787833",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 42944787833)"
+    ],
+    "changelog": {
+      "previousSha": "0d474001f59ed2b15668a5a63749ca4a05e048b7",
+      "groups": {
+        "feat": [
+          "[#4765](https://github.com/kontourai/station/pull/4765) feat(ui): General Undo for Board delete and move (#4688)",
+          "[#4723](https://github.com/kontourai/station/pull/4723) feat(ui): 13px Comfortable default, Compact density and Reduced motion on Appearance"
+        ],
+        "fix": [
+          "[#4776](https://github.com/kontourai/station/pull/4776) fix: offline sends, stream resume, restart recovery and pairing recover instead of sticking",
+          "[#4775](https://github.com/kontourai/station/pull/4775) fix(ui): keep pending messages through a missed read; steer natively by default",
+          "[#4763](https://github.com/kontourai/station/pull/4763) fix: repair defects, duplication and UI inconsistencies found in a repo-wide audit"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4781](https://github.com/kontourai/station/pull/4781) test(confinement): check that the pinned Seatbelt kernel legs actually ran (#4772)",
+          "[#4766](https://github.com/kontourai/station/pull/4766) test(ui): stop phone-layer suites stranding the dialog-history wait under load"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-11-11T03:33:23Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.20261111",
