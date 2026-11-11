@@ -411,7 +411,10 @@ the session's confinement record, read back from that session's own
 reported applying at that start (`confined`, `no-mechanism` or
 `configured-but-failed`), the mechanism (`codex-sandbox`, `seatbelt` or
 `bubblewrap`), workspace access and policy basis. A Seatbelt or bubblewrap
-record also lists the kinds of writes its profile grants (`writeGrants`). A start that asked for confinement
+record also lists the kinds of writes its profile grants (`writeGrants`), and
+says `network: 'restricted'` when the Station's
+[`confinedNetwork`](config.md#optional-fields) policy limited the started
+process to Station's egress broker (#4769); absent, its network was open. A start that asked for confinement
 but ran at Auto with none engaged names why in `fallback`
 (`confined-credential-unavailable`, `config-root-pinned`,
 `resume-bound-elsewhere` or `workspace-too-broad`). It
@@ -422,7 +425,8 @@ answers with the refusal's closed code (`confinement_mechanism_unavailable`,
 `confinement_workspace_incompatible`, `confinement_not_observed`) and leaves
 the conversation able to start again.
 A start whose required confinement has no mechanism on this host is refused
-before anything starts. See
+before anything starts, as is one whose restricted network no mechanism here
+can enforce (`confinement_mechanism_unavailable`, naming why). See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
 ### Find out what became of a send

@@ -2846,11 +2846,17 @@ The `seatbelt-kernel` profile pins the kernel legs of
 - **Where they do not:** every pull-request, merge-queue and corpus lane.
   Those run on Linux or Windows, where the whole suite skips and the skip
   passes. No automatic trigger runs the macOS workflow yet.
+- **Restricted network (#4769):** the nested `with a restricted network
+  (#4769)` legs run real `sandbox-exec` children under the broker-only
+  profile with an in-process egress broker and local listeners only; no
+  leg reaches the internet.
 - **Allowed to skip at runtime:** the app-launch and `security`-tool Keychain
-  legs skip when the host cannot provide their positive control. They must
-  still be present and must not fail.
-- **Not required:** the live Claude Code handshake runs only where `claude`
-  is on PATH, which a hosted runner does not have.
+  legs skip when the host cannot provide their positive control, and the
+  restricted-network leg against the host's own non-loopback address skips
+  on a host without one. They must still be present and must not fail.
+- **Not required:** the live Claude Code handshake, and the live Claude turn
+  through the egress broker, run only where `claude` is on PATH, which a
+  hosted runner does not have.
 
 The `linux-bubblewrap-kernel` profile pins the kernel legs of
 `src-server/security/confinement/__tests__/bubblewrap.process.test.ts`
