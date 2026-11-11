@@ -63,6 +63,34 @@ mutation. Refresh is observation, not permission to retry an uncertain write.
 Goal completion never mutates Task or workflow status. Turning the preview off
 refuses all subsequent Goal requests; ordinary Session controls remain available.
 
+## Worktree output settlement
+
+`GET /api/orchestration/sessions/:threadId/worktree-settlement` returns
+`{success:true, data:{settlement}}`: the Session's one
+[`WorktreeOutputSettlement`](../../packages/contracts/src/workspace-isolation.ts),
+or `null`. It uses Session read authority and the orchestration read scope.
+
+`POST` to the same path settles it once. It requires an authenticated person
+with Session mutation authority and the orchestration operate scope; agent
+callers are refused. The strict body is one of
+`{requestKey, outcome:'discarded', acceptUncommittedLoss?}`,
+`{requestKey, outcome:'kept'}` or
+`{requestKey, outcome:'released', pullRequest:{provider, host, repository:{owner, name}, ref}}`.
+`requestKey` is 1–128 characters of `A-Z a-z 0-9 . _ : -`. A body that names
+an `actor` is refused with 400: the actor is the request's principal. The
+Session must have started in a worktree of its own.
+
+A new record answers 201 with `data:{status:'recorded', settlement}`; a replay
+of the same request key and request, or a discard that completed an earlier
+half-done one, answers 200 with `status:'existing'`. A refusal answers 409 (404
+for a Session without its own worktree) with a `code` such as
+`already-settled`, `request-key-mismatch`, `settlement-pending`,
+`uncommitted-changes`, `base-does-not-contain-head`, `no-new-commits`,
+`pull-request-mismatch` or `task-owned-worktree`, and the record in the way
+when there is one. Outcomes, evidence and crash behavior are described in
+[worktree output settlement](../design/isolated-agent-runs.md#worktree-output-settlement).
+No SDK or CLI command calls this route yet.
+
 This reference explains selected HTTP route families and their current owners.
 It is not a complete endpoint inventory. Request examples use illustrative IDs;
 replace them with identities returned by the selected Station. Response excerpts

@@ -43,6 +43,85 @@ metadata are covered by the
 and [foreground caller test](../../src-server/services/execution-target/__tests__/execution-target-execution.test.ts);
 these fixtures do not establish a live engine or packaged-release journey.
 
+## Worktree output settlement
+
+A Session that started in a worktree of its own has at most one recorded
+outcome for its output ([#4771](https://github.com/kontourai/station/issues/4771)).
+The [settlement service](../../src-server/services/projects/worktree-output-settlement-service.ts)
+records it in the orchestration database; the
+[contract](../../packages/contracts/src/workspace-isolation.ts) names the
+shapes, and the [API reference](../reference/api.md#worktree-output-settlement)
+the route. A settlement is a receipt about a decision. It is not a review
+verdict or a gate result, and Station never writes to the base checkout to
+make one true.
+
+| Outcome | Recorded when | Git effect |
+| --- | --- | --- |
+| `discarded` | A person asks. | Station removes the worktree and the branch it created for that Session, and nothing else. |
+| `kept` | The base ref's current tip contains the branch head commit. | None. Station does not merge. |
+| `released` | The forge reports an `OPEN` or `MERGED` pull request whose head branch and head commit equal the worktree branch's. | None. |
+| `cleaned-up-without-decision` | The Session-exit cleanup policy removed the worktree and no settlement existed. | The cleanup policy's own removal. |
+
+`kept` is derived, never asserted: a request to record it is refused with
+`base-does-not-contain-head` unless `git merge-base --is-ancestor` finds the
+branch head in the base ref's tip, resolved at request time with replacement
+objects disabled. A squash or rebase merge creates new commits, so the base
+never contains the original head; such a merge is recorded as `released`
+through its merged pull request instead. Deriving `kept` from a merged pull
+request would also need the pull request's target to be the worktree's base,
+and `baseRef` is often `HEAD`, which names no branch. `kept` is also refused
+while the worktree has uncommitted or untracked changes, and for a branch with
+no commit beyond the one it started from.
+
+`released` uses the existing [pull request identity read](../../src-server/services/pull-requests/pull-request-identity-read.ts)
+that conversation links and Task close-out use, with the forge credentials
+Station already has. The caller names the pull request; the forge's state,
+head branch and head commit decide. A commit SHA match is the evidence; the
+pull request's repository is not separately matched to the worktree's remote.
+
+Each record carries the actor (the request's authenticated principal, or
+Station's cleanup policy), the request key, the repository, worktree path,
+branch, `baseRef`, the starting `baseCommit` when known, the head commit the
+decision was made on, the time, and the evidence: the containing commit, the
+pull request read, or what the discard removed and whether it accepted losing
+uncommitted changes. A recorded outcome does not change when the base moves
+later; it states what was true when it was made.
+
+**Once only.** A second settlement is refused (`already-settled`) and the first
+record is unchanged. The same request key with the same request returns the
+original record; the same key with a different request is refused
+(`request-key-mismatch`). The table's triggers refuse any update or delete of
+a settled row.
+
+**Discard and crashes.** A discard is refused while the worktree has
+uncommitted or untracked changes unless the request sets
+`acceptUncommittedLoss`, which the record keeps. Station writes the discard's
+intent (`pending`) before any Git effect, then removes the worktree (forced
+only with that acceptance) and deletes the branch only at the recorded head.
+If the process stops between the effect and the record, a retry converges: a
+discard request finds the half-done intent and completes it as recorded,
+reporting what this attempt still had to remove. A request for another
+outcome is refused (`settlement-pending`) once removal may have started. An
+intent whose worktree is still intact had no effect, so a later request
+replaces it. A branch that gained a commit after its head was recorded is
+kept; the record says `branchMoved`.
+
+**Cleanup policy.** Session-exit cleanup records
+`cleaned-up-without-decision` only when it removed the worktree and no
+settlement existed; a decision made first stands. Unlike a discard, it writes
+no intent first: a crash between that removal and its record leaves no record.
+
+**Scope and limits.** Task-owned worktrees ([#4507](task-dispatcher.md#workspace-isolation))
+are shared by a Task's Sessions and are refused here (`task-owned-worktree`).
+Station does not apply output onto a base that has moved, and records
+`kept` and `released` without removing the worktree. Operations on one
+Session run one at a time within a Station process; across processes the
+database row is the only guard. The
+[real Git tests](../../src-server/services/projects/__tests__/worktree-output-settlement.test.ts)
+cover discard ownership, uncommitted changes, kept, squash merges, released,
+replay, a moved base, crash convergence and the cleanup record; the forge in
+them is a scripted provider, not a live pull request.
+
 ## Purpose
 
 New chat Sessions use the selected Project directory and runtime connection. Qualified existing Sessions keep their recorded directory while its attached resource remains authorized. Long-running autonomous work is different: Ralph, team execution, scheduled code work, and future project-task runs may need isolation so agent edits, temp homes, ports, and cleanup do not disturb the user's primary workspace.
@@ -66,6 +145,8 @@ An isolated run should record:
 - server and UI ports
 - temp home path
 - cleanup status
+- output outcome; for a Session's own worktree this is recorded today as a
+  [worktree output settlement](#worktree-output-settlement)
 
 The orchestration run ledger is the read model for these records. It should expose state and failure metadata first. It should not become a second task queue.
 
