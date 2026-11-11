@@ -501,6 +501,10 @@ export function RoomConversation({
       {/* biome-ignore lint/a11y/noStaticElementInteractions: passive listeners only tell a reader's scroll from a programmatic one. */}
       <div
         ref={scroller}
+        // Keyboard readers scroll the history with arrows and Page keys even
+        // when no row shows a control (phone action bars open on long press).
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroll region must be focusable to be keyboard-scrollable (WCAG 2.1.1).
+        tabIndex={0}
         className="room-conversation__scroller"
         onScroll={onScroll}
         onWheel={markReaderInput}
