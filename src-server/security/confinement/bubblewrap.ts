@@ -559,9 +559,11 @@ export function probeBubblewrap(bwrap: string = BUBBLEWRAP): {
 } {
   let root: string | undefined;
   try {
+    // The version check and the probe share the 10 s a first preflight
+    // read may pause the server for.
     const version = spawnSync(bwrap, ['--version'], {
       encoding: 'utf8',
-      timeout: 10_000,
+      timeout: 2_000,
       windowsHide: true,
     });
     const tooOld = bubblewrapVersionRefusal(
@@ -636,7 +638,7 @@ export function probeBubblewrap(bwrap: string = BUBBLEWRAP): {
       env: { PATH: '/usr/bin:/bin' },
       stdio: ['ignore', 'ignore', 'pipe'],
       encoding: 'utf8',
-      timeout: 10_000,
+      timeout: 8_000,
       windowsHide: true,
     });
     const enforced =

@@ -1176,16 +1176,18 @@ identity, and `EDITOR`/`VISUAL`. Everything else in Station's environment is
 dropped: `GH_TOKEN`, `NPM_TOKEN`, cloud keys, and toolchain variables such as
 `NVM_DIR`, `JAVA_HOME`, `GOPATH` or `PYENV_ROOT` (set them in the
 connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
-push with your SSH agent. In a linked worktree it can commit to its own
-branch, but `git stash`, `fetch` and `pull` are refused: they write shared
-refs (`refs/stash`, remote-tracking refs, `packed-refs`) that it may not
-change. In a folder whose `.git` is inside it, `fetch`, `pull` and ref
-packing are refused too: its remote-tracking refs are what a later Codex
-session trusts the folder's `.codex` by. It also cannot create or change any `.claude` or `.codex`
-directory in the folder, at any depth, which other sessions there would
-load. On Linux and
-Windows such a session is
-refused, because no confinement exists for it there. See
+push with your SSH agent. Under Seatbelt (macOS), in a linked worktree
+it can commit to its own branch, but `git stash`, `fetch` and `pull` are
+refused: they write shared refs (`refs/stash`, remote-tracking refs,
+`packed-refs`) that it may not change. In a folder whose `.git` is inside
+it, `fetch`, `pull` and ref packing are refused too: its remote-tracking
+refs are what a later Codex session trusts the folder's `.codex` by. It also
+cannot create or change any `.claude` or `.codex` directory in the folder,
+at any depth, which other sessions there would load. Under bubblewrap
+(Linux) git metadata is read-only and existing `.claude` and `.codex`
+folders at the folder's root cannot be changed, but new ones can be
+created, as above. On Windows such a session is refused, because no
+confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
 A Codex session that does not run as `host` (started by you in person, or
