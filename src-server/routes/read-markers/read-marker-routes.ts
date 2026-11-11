@@ -19,6 +19,7 @@ import {
   parseReadMarkerMarkRequest,
   parseReadMarkerSummaryRequest,
   READ_MARKER_REFUSAL_CODES,
+  READ_MARKER_SUMMARY_MAX_TARGETS,
   ReadMarkerTooManyTargetsError,
 } from '@kontourai/station-contracts/read-markers';
 import { Hono } from 'hono';
@@ -50,34 +51,50 @@ export function createReadMarkerRoutes(deps: {
 }) {
   const app = new Hono();
 
+  // Every refusal answers an authored sentence, never a caught `.message`
+  // (route-error-egress-gate): the typed errors below only choose which.
   const refuse = (
     c: { json: (body: unknown, status: 400 | 403 | 409) => Response },
     error: unknown,
   ): Response => {
     if (error instanceof ReadMarkerTooManyTargetsError)
       return c.json(
-        { success: false, code: error.code, error: error.message },
+        {
+          success: false,
+          code: READ_MARKER_REFUSAL_CODES.tooManyTargets,
+          error: `A summary names at most ${READ_MARKER_SUMMARY_MAX_TARGETS} conversations.`,
+        },
         400,
       );
     if (error instanceof InvalidReadMarkerInputError)
-      return c.json({ success: false, error: error.message }, 400);
+      return c.json(
+        { success: false, error: 'Invalid read marker request.' },
+        400,
+      );
     if (error instanceof ReadMarkerFutureVersionError)
       return c.json(
         {
           success: false,
           code: READ_MARKER_REFUSAL_CODES.futureVersion,
-          error: error.message,
+          error: "That version is past the conversation's current version.",
           latestVersion: error.latestVersion,
         },
         409,
       );
     // As the conversation acknowledgement route answers a non-person.
     if (error instanceof ReadMarkerNoPersonError)
-      return c.json({ success: false, error: error.message }, 403);
+      return c.json(
+        { success: false, error: 'Only a person has read state' },
+        403,
+      );
     // A deterministic authz refusal, answered like `/api/me/layouts` does.
     if (error instanceof PrincipalUnresolvedError)
       return c.json(
-        { success: false, code: error.code, error: error.message },
+        {
+          success: false,
+          code: error.code,
+          error: 'This request has no resolvable person.',
+        },
         400,
       );
     throw error;

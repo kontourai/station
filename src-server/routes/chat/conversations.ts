@@ -3014,7 +3014,7 @@ export function createGlobalConversationRoutes(
           {
             success: false,
             code: error.code,
-            error: error.message,
+            error: "That version is past the conversation's current version.",
             latestVersion: error.latestVersion,
           },
           409,
