@@ -201,7 +201,8 @@ engine or establish that the Session is active.
 ## Visual replies
 
 `html_preview` and `html_render` on station-control act only for the verified
-calling Session. The internal POST leaves `/api/html-replies/preview` and
+calling Session, and never for one whose network Station restricts (#4769:
+the guard answers 403 `station_control_network_restricted`). The internal POST leaves `/api/html-replies/preview` and
 `/api/html-replies/render` accept bounded self-contained HTML, not a caller-chosen
 Session or workspace. Preview returns PNG data, contentHeight and console output;
 render returns a page reference. Both POST leaves require operate scope; preview launches Chromium rather than performing a read-only query. `GET /api/html-replies/:sessionId/:pageId` reads

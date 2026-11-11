@@ -22,6 +22,8 @@ example does not grant one implicitly.
 
 Attach `station-control` and select `html_preview` and `html_render` to let an
 Agent preview and publish a self-contained HTML reply in its own conversation.
+A session whose network Station restricts is not given them: they run in
+Station's Chromium, outside its sandbox.
 This works through the existing Claude, Codex and ACP MCP passthroughs when the
 connection supports tool servers. Preview starts Chromium and publishing stores a page. Both are bounded writes
 and respect the engine's approval policy. The [visual replies guide](../user/html-replies.md)
