@@ -575,6 +575,16 @@ vi.mock('../views/settings/CoreUpdateCheck', () => ({
   CoreUpdateCheck: () => <button type="button">check</button>,
 }));
 
+/**
+ * The save error's own Retry. A settings section that failed to load shows a
+ * Retry of its own on the same page, so the save one is asked for by its alert.
+ */
+const saveRetry = () =>
+  within(screen.getByRole('alert', { name: 'Settings save error' })).getByRole(
+    'button',
+    { name: 'Retry' },
+  );
+
 describe('settings catalog completeness', () => {
   beforeEach(() => {
     telemetryDisclosureRevision = 'settings-revision';
@@ -1075,7 +1085,7 @@ describe('settings catalog completeness', () => {
       'debug',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(saveRetry());
     await waitFor(() => expect(sdk.updateAppLogLevel).toHaveBeenCalledTimes(2));
     expect(updateConfig).not.toHaveBeenCalled();
   });
@@ -1117,7 +1127,7 @@ describe('settings catalog completeness', () => {
       revision: 'revision-2',
       operationId: 'config-edit-00000001',
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(saveRetry());
     await waitFor(() => expect(sdk.updateAppLogLevel).toHaveBeenCalledTimes(2));
     expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Unsaved changes')).toBeNull();
@@ -1145,7 +1155,7 @@ describe('settings catalog completeness', () => {
     await screen.findByText(
       /Some settings were saved. Unsaved changes are kept here/,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(saveRetry());
     await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(2));
     expect(sdk.updateAppLogLevel).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Unsaved changes')).toBeNull();
@@ -1379,7 +1389,7 @@ describe('settings catalog completeness', () => {
       revision: 'revision-2',
       operationId: 'config-edit-00000001',
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(saveRetry());
 
     await waitFor(() =>
       expect(
@@ -3070,7 +3080,7 @@ describe('settings catalog completeness', () => {
         noData: true,
         disabled: [false, true, true],
         limit:
-          'Sharing options could not be loaded. You can try turning sharing off, or try again. Try again',
+          'Sharing options could not be loaded. You can try turning sharing off, or try again. Retry loading',
       },
       {
         // An older host already answered without capabilities; a failed
@@ -3183,7 +3193,7 @@ describe('settings catalog completeness', () => {
       },
     );
 
-    test('after a failed main read, Try again re-reads the disclosure', async () => {
+    test('after a failed main read, Retry loading re-reads the disclosure', async () => {
       telemetryEndpointConfigured = undefined;
       telemetryDisclosureIsError = true;
       telemetryDisclosureReadError = true;
@@ -3192,7 +3202,7 @@ describe('settings catalog completeness', () => {
       invalidateQuery.mockClear();
       fireEvent.click(
         within(screen.getByTestId('usage-sharing-limit')).getByRole('button', {
-          name: 'Try again',
+          name: 'Retry loading',
         }),
       );
       expect(invalidateQuery).toHaveBeenCalledWith([

@@ -359,7 +359,7 @@ export function AppearancePage() {
           : 'loading';
   const loading = sheetState === 'loading';
   const failed = sheetState === 'failed';
-  // Try again sits in the notice that goes away while the retry loads, so
+  // Retry sits in the notice that goes away while the retry loads, so
   // focus moves first to the choice being retried; it would otherwise drop to
   // the page body.
   const selectedRadio = useRef<HTMLInputElement | null>(null);
@@ -537,7 +537,7 @@ export function AppearancePage() {
             title={`Couldn't load ${selectedOption.label}.`}
             action={
               <Button size="sm" onClick={retry}>
-                Try again
+                Retry
               </Button>
             }
           >

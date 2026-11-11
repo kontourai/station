@@ -208,7 +208,7 @@ export function GuestDeviceOnboarding({
             Request access for this browser
           </Button>
         ) : (
-          <Button onClick={() => void projects.refetch()}>Try again</Button>
+          <Button onClick={() => void projects.refetch()}>Retry</Button>
         )}
       </section>
     );

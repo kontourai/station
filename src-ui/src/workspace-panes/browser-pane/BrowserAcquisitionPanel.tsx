@@ -64,7 +64,7 @@ export function BrowserAcquisitionPanel({
             className="browser-pane__control"
             onClick={() => void acquisition.refetch()}
           >
-            Try again
+            Retry
           </Button>
         }
       />

@@ -137,7 +137,7 @@ function DesktopUpdateRestartDialogView({
             pending={installing}
             pendingLabel="Installing…"
           >
-            {installError ? 'Try again' : 'Restart now'}
+            {installError ? 'Retry' : 'Restart now'}
           </Button>
         </>
       }

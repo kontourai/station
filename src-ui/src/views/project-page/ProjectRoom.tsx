@@ -270,7 +270,7 @@ function ProjectRoomSession({
           Room unavailable. Check your connection and Project access, then try
           again.
         </p>
-        <Button onClick={room.recover}>Try again</Button>
+        <Button onClick={room.recover}>Retry</Button>
       </section>
     );
   if (!view)
@@ -370,7 +370,7 @@ function ProjectRoomSession({
                   void room.history.refetch();
                 }}
               >
-                Try again
+                Retry
               </Button>
             </p>
           ) : room.history.isPending ? (
@@ -930,7 +930,7 @@ function ProjectRoomAgentPanel({
             <p role="alert">
               Agents unavailable.{' '}
               <Button onClick={() => void agent.catalog.refetch()}>
-                Try again
+                Retry
               </Button>
             </p>
           ) : agent.catalog.data?.catalogState === 'reconciling' ? (

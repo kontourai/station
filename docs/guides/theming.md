@@ -169,7 +169,7 @@ Choosing a family resets flavor and accent to that family's defaults, and
 choosing a named accent clears a custom `accentColor`, which would otherwise
 win. A different family's sheet loads first, so until the applier names it
 on the root the chosen card reads "Loading…" with no tick. A sheet that fails
-leaves the card reading "Not loaded" under a warning with Try again, which
+leaves the card reading "Not loaded" under a warning with Retry, which
 applies the selection once more; rapid choices end on the last one ([AppearancePage.test.tsx](../../src-ui/src/__tests__/AppearancePage.test.tsx),
 and with real delayed sheets in
 [appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)).

@@ -588,7 +588,7 @@ export function useDevicePresentation(
  * never-connected, still-pending case behind Station's connect screen — has no
  * data, so a mid-flight `refetch()` falls through to `continueRetry()` and
  * simply re-attaches to the attempt already running. No new request is made.
- * A "Try again" button wired straight to `refetch()` is therefore a no-op in
+ * A "Retry" button wired straight to `refetch()` is therefore a no-op in
  * exactly the state a user is most likely to press it, while the label
  * cheerfully reads "Retrying...".
  *

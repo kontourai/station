@@ -601,7 +601,7 @@ anchors coachmarks over real surfaces, and it is only ever entered on request.
 
 **Completion is derived from the outcome, never from reaching the end.** A batch
 in which any selected engine FAILED to materialise is not offered a plain
-"Continue": the report's two exits are "Try again" — which re-plans only the
+"Continue": the report's two exits are "Retry" — which re-plans only the
 engines that failed — and "Continue without them", which writes `skipped` and
 leaves the Home card offering the run again. `completed` is written only when
 every selected engine was materialised (or none was selected); a warned

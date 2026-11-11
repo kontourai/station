@@ -506,7 +506,7 @@ describe('ConnectedSessionInventory', () => {
     expect(failure.textContent).toContain('update Station on the host');
     expect(failure.textContent).not.toContain('runs an older version');
     // Not a retry of the read: a re-ask of the host, for after it updates.
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(
       [...failure.querySelectorAll('button')].map((b) => b.textContent),
     ).toEqual(['Check again', 'Open session']);
@@ -637,7 +637,7 @@ describe('ConnectedSessionInventory', () => {
           "Station didn't accept this message.",
         );
       expect(screen.queryByText('Recorded origin')).toBeNull();
-      const retry = screen.queryByRole('button', { name: 'Try again' });
+      const retry = screen.queryByRole('button', { name: 'Retry' });
       expect(Boolean(retry)).toBe(retryable);
       if (retry) {
         fireEvent.click(retry);

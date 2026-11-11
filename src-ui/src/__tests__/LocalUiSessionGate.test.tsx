@@ -222,7 +222,7 @@ describe('LocalUiSessionGate degraded access check', () => {
       expect(
         screen.getByText("Checking this browser's Station access…"),
       ).toBeTruthy();
-      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
 
       // Just short of the window: still an honest wait, not yet a claim.
       await act(async () => {
@@ -241,7 +241,7 @@ describe('LocalUiSessionGate degraded access check', () => {
       ).toBeNull();
       const alert = screen.getByRole('alert');
       expect(alert.textContent).toContain('taking longer than expected');
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(reload).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();

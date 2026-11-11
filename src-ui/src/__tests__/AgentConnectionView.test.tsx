@@ -1111,7 +1111,7 @@ describe('AgentConnectionView', () => {
     expect(screen.getByRole('alert').textContent).not.toContain(
       'Could not add Claude Code',
     );
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test.each([

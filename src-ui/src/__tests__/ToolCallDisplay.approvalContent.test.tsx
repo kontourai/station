@@ -128,7 +128,7 @@ describe('approval card with content stored out of line', () => {
       screen.getByText('The full request could not be loaded'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(query.refetch).toHaveBeenCalled();
   });
 

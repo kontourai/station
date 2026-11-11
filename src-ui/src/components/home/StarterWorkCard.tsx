@@ -62,7 +62,7 @@ export function StarterWorkCard() {
           ariaLabel="Starter work"
           role="status"
           action={
-            <Button onClick={() => void boundTask.refetch()}>Try again</Button>
+            <Button onClick={() => void boundTask.refetch()}>Retry</Button>
           }
         >
           {/* archive#3965: was "Starter task is NOT_VERIFIED or unavailable" —

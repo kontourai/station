@@ -255,7 +255,7 @@ export function GuestSharedTaskView({
     return (
       <div className="account-entry__shared-state" role="alert">
         <p>Shared Tasks are unavailable.</p>
-        <Button onClick={() => void tasks.refetch()}>Try again</Button>
+        <Button onClick={() => void tasks.refetch()}>Retry</Button>
       </div>
     );
 

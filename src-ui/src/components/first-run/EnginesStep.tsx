@@ -267,7 +267,7 @@ export function EnginesStep({
                 data-testid="first-run-engines-retry"
                 onClick={onRetry}
               >
-                Try again
+                Retry
               </button>
             </ResponsiveSurfaceActions>
           ) : (

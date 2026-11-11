@@ -613,7 +613,7 @@ function ApprovalContentStatus({ gate }: { gate?: ApprovalContentGate }) {
       variant="compact"
       title="The full request could not be loaded"
       description="It cannot be allowed until it has loaded. You can still deny it."
-      action={<Button onClick={gate.retry}>Try again</Button>}
+      action={<Button onClick={gate.retry}>Retry</Button>}
     />
   );
 }
