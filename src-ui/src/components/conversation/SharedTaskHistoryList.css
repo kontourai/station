@@ -42,26 +42,6 @@
   margin-top: auto;
 }
 
-.task-room-avatar {
-  width: var(--k-space-6);
-  height: var(--k-space-6);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  border: 1px solid var(--k-line-strong);
-  border-radius: var(--k-radius-sm);
-  background: color-mix(in oklab, var(--room-avatar-ink) 14%, var(--k-panel));
-  color: var(--room-avatar-ink);
-  font: 600 var(--k-text-sm) / 1 var(--k-font-ui);
-}
-
-.task-room-avatar--agent {
-  background: var(--k-brand);
-  border-radius: var(--k-radius-control);
-  border-color: var(--k-brand);
-  color: var(--k-brand-contrast);
-}
-
 .task-room-agent-badge {
   font-size: var(--k-text-sm);
   color: var(--k-text-muted);

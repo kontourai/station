@@ -830,7 +830,8 @@
 
 @media (max-width: 640px) {
   .task-room-message-actions > .button,
-  .task-room-running > .button,
+  .task-room-running__actions .button,
+  .task-room-thread-summary .button,
   .task-room-expand {
     min-height: calc(var(--k-space-6) + var(--k-space-3));
   }
@@ -1408,24 +1409,6 @@
 .task-room-avatars li + li {
   margin-left: calc(-1 * var(--k-space-2));
 }
-.task-room-avatar {
-  width: var(--k-space-6);
-  height: var(--k-space-6);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  border: 1px solid var(--k-line-strong);
-  border-radius: var(--k-radius-sm);
-  background: color-mix(in oklab, var(--room-avatar-ink) 14%, var(--k-panel));
-  color: var(--k-text);
-  font: 600 var(--k-text-sm) / 1 var(--k-font-ui);
-}
-.task-room-avatar--agent {
-  background: var(--k-brand);
-  border-radius: var(--k-radius-control);
-  border-color: var(--k-brand);
-  color: var(--k-brand-contrast);
-}
 .project-task-room-conversation {
   flex: 1;
   display: flex;
@@ -1433,27 +1416,6 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
-.task-room-messages {
-  display: flex;
-  flex-direction: column;
-  overflow-anchor: none;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  padding: var(--k-space-4);
-}
-.task-room-messages > ol,
-.task-room-thread > ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.task-room-messages > ol {
-  margin-top: auto;
-}
-.task-room-messages > * {
-  flex-shrink: 0;
 }
 .task-room-message {
   position: relative;
@@ -1496,13 +1458,6 @@
 .task-room-answer p {
   margin: 0 0 var(--k-space-2);
 }
-.task-room-answer {
-  padding: var(--k-space-3);
-  background: var(--k-bg);
-  border: 1px solid var(--k-line);
-  border-left: 2px solid var(--k-brand);
-  border-radius: var(--k-radius-control);
-}
 .task-room-answer pre {
   overflow: auto;
   max-width: 100%;
@@ -1524,21 +1479,6 @@
   color: var(--k-text-faint);
   padding: var(--k-space-2);
   font-size: var(--k-text-sm);
-}
-.task-room-running {
-  display: flex;
-  align-items: center;
-  gap: var(--k-space-2);
-  flex-wrap: wrap;
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
-  padding-left: calc(var(--k-space-6) + var(--k-space-3));
-}
-.task-room-live-dot {
-  width: var(--k-space-2);
-  height: var(--k-space-2);
-  border-radius: 50%;
-  background: var(--k-active);
 }
 .task-room-chat-empty {
   padding: var(--k-space-6) var(--k-space-4);
@@ -1576,24 +1516,8 @@
   margin: 0;
   font: 600 var(--k-text-md) / var(--k-leading-normal) var(--k-font-ui);
 }
-.task-room-thread > .task-room-thread-messages {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  padding: var(--k-space-3);
-}
 .task-room-thread .task-room-message {
   gap: var(--k-space-2);
-}
-.task-room-thread .task-room-thread-composer {
-  margin: var(--k-space-3);
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-.task-room-thread-composer .task-room-brief-choice {
-  grid-column: 1;
-}
-.task-room-thread-composer .task-room-send {
-  grid-column: 2;
 }
 .task-room-thread pre {
   max-width: 100%;
@@ -1793,13 +1717,6 @@
   justify-content: start;
   width: 100%;
   overflow-wrap: anywhere;
-}
-.task-room-composer fieldset {
-  min-width: 0;
-  margin: 0;
-  padding: var(--k-space-2);
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-control);
 }
 .task-room-composer input[type="checkbox"],
 .task-room-thread input[type="checkbox"] {
@@ -2041,4 +1958,136 @@
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-sm);
   padding: var(--k-space-2);
+}
+
+/* Task room on the shared room list (#4790). */
+.project-task-room-conversation .room-conversation {
+  flex: 1 1 auto;
+}
+.task-room-thread > .task-room-thread-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.task-room-answer pre {
+  overflow: auto;
+  max-width: 100%;
+}
+.task-room-thread-summary {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-1);
+  padding: 2px var(--k-space-2) 2px 2px;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: color-mix(in oklab, var(--k-panel) 70%, transparent);
+}
+.task-room-thread-summary__faces {
+  --room-avatar-size: calc(var(--k-space-5) - var(--k-space-1));
+  display: inline-flex;
+  gap: 2px;
+}
+.task-room-thread-summary__faces > .task-room-avatar {
+  font-size: calc(var(--k-text-xs) - 2px);
+}
+.task-room-thread-summary .button.task-room-thread-summary__count {
+  min-height: calc(var(--k-space-5) + var(--k-space-1));
+  padding: 0 var(--k-space-1);
+  border: 0;
+  background: transparent;
+  color: var(--k-action);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+.room-conversation--compact
+  .task-room-thread-summary
+  .button.task-room-thread-summary__count {
+  /* The base rule above is more specific than the phone floor (#4810 review 6). */
+  min-height: 44px;
+  min-width: 44px;
+}
+.task-room-thread-summary__last {
+  color: var(--k-text-faint);
+  font-size: var(--k-text-sm);
+}
+.task-room-live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  padding-block: var(--k-space-3) var(--k-space-1);
+}
+.task-room-running {
+  display: grid;
+  grid-template-columns: var(--room-avatar-size, var(--k-space-6)) minmax(
+      0,
+      1fr
+    );
+  column-gap: var(--k-space-3);
+  align-items: start;
+  padding: var(--k-space-1) var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.task-room-running__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-1) var(--k-space-3);
+  min-width: 0;
+}
+.task-room-running__line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+}
+.task-room-running__line strong {
+  color: var(--k-text);
+}
+.task-room-running__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.task-room-running__meta {
+  color: var(--k-text-faint);
+  font-size: var(--k-text-sm);
+}
+.task-room-running__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+.task-room-live-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.task-room-live-dots > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--k-brand);
+  /* Four slow beats a cycle; reduced motion collapses the token. */
+  animation: task-room-typing calc(var(--motion-slow) * 4) var(--k-ease)
+    infinite;
+}
+.task-room-live-dots > span:nth-child(2) {
+  animation-delay: var(--motion-fast);
+}
+.task-room-live-dots > span:nth-child(3) {
+  animation-delay: var(--motion-slow);
+}
+@keyframes task-room-typing {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
 }

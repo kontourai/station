@@ -3,6 +3,7 @@ import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-s
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { analyticsHomeExportActivation } from '../../analytics/analytics-activation.js';
 import { ReviewedTariffConfigurationService } from '../../analytics/reviewed-tariff-config.js';
+import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
@@ -915,20 +916,8 @@ export class StationRuntime {
     );
   };
   private claudeAdapter = new ClaudeAdapter({
-    isCoordinatorSession: (threadId) => {
-      const principal =
-        this.orchestrationService?.resolveSessionActingPrincipal(threadId);
-      if (!principal || principal.source !== 'session-owner') return false;
-      const conversationId =
-        this.orchestrationEventStore.conversationForSession(threadId)
-          ?.conversationId ?? threadId;
-      return (
-        this.orchestrationEventStore
-          .coordinatorStore()
-          .designationForConversation(conversationId)?.actor.userId ===
-        principal.id
-      );
-    },
+    isCoordinatorSession: (threadId) =>
+      this.isClaudeCoordinatorSession(threadId),
     resolveCoordinatorStationControl: async (threadId) =>
       this.orchestrationService?.resolveCoordinatorStationControl(threadId),
     coordinatorGenerationForSession: (threadId) =>
@@ -1018,20 +1007,7 @@ export class StationRuntime {
     ...claudeInProcessStationControlOptions(() =>
       this.orchestrationService
         ? createStationControlCallerRecordResolver(
-            stationControlCallerRecordSources({
-              orchestrationService: {
-                resolveSessionActingPrincipal: (threadId) =>
-                  this.orchestrationService.resolveSessionActingPrincipal(
-                    threadId,
-                  ),
-                firstStartedMetadataOfThread: (threadId) =>
-                  this.orchestrationService.firstStartedMetadataOfThread(
-                    threadId,
-                  ),
-              },
-              eventStore: this.orchestrationEventStore,
-              getProject: (slug) => this.storageAdapter.getProject(slug),
-            }),
+            this.stationControlRecordSources(),
           )
         : undefined,
     ),
@@ -1061,20 +1037,7 @@ export class StationRuntime {
       createCodexBoundToolServer({
         ...input,
         resolveRecord: createStationControlCallerRecordResolver(
-          stationControlCallerRecordSources({
-            orchestrationService: {
-              resolveSessionActingPrincipal: (threadId) =>
-                this.orchestrationService.resolveSessionActingPrincipal(
-                  threadId,
-                ),
-              firstStartedMetadataOfThread: (threadId) =>
-                this.orchestrationService.firstStartedMetadataOfThread(
-                  threadId,
-                ),
-            },
-            eventStore: this.orchestrationEventStore,
-            getProject: (slug) => this.storageAdapter.getProject(slug),
-          }),
+          this.stationControlRecordSources(),
         ),
         dispatch: (request) => {
           if (!this.codexToolDispatch)
@@ -1331,6 +1294,7 @@ export class StationRuntime {
   private accountSharingSettingPreview!: FeaturePreviewSelector;
   private codexBoundToolsPreview?: FeaturePreviewSelector;
   private stationInstructionsPreview?: FeaturePreviewSelector;
+  private coordinatorSessionPreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1758,6 +1722,7 @@ export class StationRuntime {
       this.bindChatHostImagesPreview();
       this.bindMemberPasskeysPreview();
       this.bindAccountSharingSettingPreview();
+      this.bindCoordinatorSessionPreview();
       this.stationInstructionsPreview = this.featurePreviews.bind({
         id: 'station-orchestration-instructions',
         label: 'Station orchestration instructions',
@@ -4486,6 +4451,7 @@ export class StationRuntime {
           onACPConnectionsReady: () => this.reloadDefaultAgent(),
           orchestrationEventStore: this.orchestrationEventStore,
           hostImagesPreview: this.chatHostImagesPreview,
+          coordinatorSessionPreview: this.coordinatorSessionPreview,
           durableAgentPreview: this.featurePreviews.bind({
             id: 'durable-station-agent',
             label: 'Crash-durable Station Agent',
@@ -4629,11 +4595,7 @@ export class StationRuntime {
               });
               const learningSessionSource =
                 createStationControlCallerRecordResolver(
-                  stationControlCallerRecordSources({
-                    orchestrationService: this.orchestrationService,
-                    eventStore: this.orchestrationEventStore,
-                    getProject: (slug) => this.storageAdapter.getProject(slug),
-                  }),
+                  this.stationControlRecordSources(),
                 );
               this.learningReview = composeLearningReviewRuntime(
                 this.featurePreviews,
@@ -5501,6 +5463,7 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
+      coordinatorSessionPreview: this.coordinatorSessionPreview,
       projectWorkingConfiguration: this.projectWorkingConfiguration,
       learningReview: this.learningReview,
       getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
@@ -5893,6 +5856,67 @@ export class StationRuntime {
    * capture and the agent instruction (orchestration), and the per-session
    * engine TMPDIR, decided when an engine starts (`session-tmpdir.ts`).
    */
+  /**
+   * #3628: the person's coordinator chat. Bound here rather than with the
+   * routes because the Session tool grant (the agent resolver and the Claude
+   * adapter) is composed in this constructor. Hosted Stations have none.
+   */
+  private bindCoordinatorSessionPreview(): void {
+    if (
+      !servesCoordinatorSession({
+        hosted: loadHostedTenantRegistryFromEnvironment() !== undefined,
+      })
+    )
+      return;
+    this.coordinatorSessionPreview = this.featurePreviews.bind({
+      id: 'coordinator-session',
+      label: 'Coordinator chat',
+      description:
+        'Make one chat your personal agent, woken when work you can read needs you, fails or finishes. Each wake is a model call; on an engine with Station tools it acts with your permissions.',
+    });
+  }
+
+  private coordinatorSessionEnabled(): boolean {
+    return (
+      this.coordinatorSessionPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true
+    );
+  }
+
+  /** The in-process Station Control caller records (Claude, Codex, learning). */
+  private stationControlRecordSources() {
+    return stationControlCallerRecordSources({
+      orchestrationService: {
+        resolveSessionActingPrincipal: (threadId) =>
+          this.orchestrationService.resolveSessionActingPrincipal(threadId),
+        firstStartedMetadataOfThread: (threadId) =>
+          this.orchestrationService.firstStartedMetadataOfThread(threadId),
+      },
+      eventStore: this.orchestrationEventStore,
+      getProject: (slug) => this.storageAdapter.getProject(slug),
+      coordinatorEnabled: () => this.coordinatorSessionEnabled(),
+    });
+  }
+
+  /** Whether the Claude adapter adds coordinator tools to this Session. */
+  private isClaudeCoordinatorSession(threadId: string): boolean {
+    if (!this.coordinatorSessionEnabled()) return false;
+    const principal =
+      this.orchestrationService?.resolveSessionActingPrincipal(threadId);
+    if (!principal || principal.source !== 'session-owner') return false;
+    const conversationId =
+      this.orchestrationEventStore.conversationForSession(threadId)
+        ?.conversationId ?? threadId;
+    return (
+      this.orchestrationEventStore
+        .coordinatorStore()
+        .designationForConversation(conversationId)?.actor.userId ===
+      principal.id
+    );
+  }
+
   private bindChatHostImagesPreview(): void {
     this.chatHostImagesPreview = this.featurePreviews.bind({
       id: 'chat-host-images',

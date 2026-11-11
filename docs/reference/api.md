@@ -1020,7 +1020,7 @@ history, note and Agent requests unchanged. Rooms created by an older Station
 after the upgrade are adopted the next time the store opens. A room whose stored
 record does not match its row is never adopted; that Project's room and channels
 stay refused, as before the upgrade. A database from a newer Station is refused
-without being modified.
+before any schema change or migration.
 
 Reads, discussion, note editing and execution require their distinct current
 Project actions plus transport permission. Agent requests also require current
@@ -5257,6 +5257,9 @@ conversation is another person's. `DELETE` removes it (`undesignated`). The
 user id is the request principal's; a request that may be an agent's is
 refused (403 `person-approval-required`). A hosted Station answers 503
 `coordinator_unavailable` and withdraws the `coordinatorSession` capability.
+While the `coordinator-session` Feature Preview is off, every route here
+except `DELETE` answers 404 `feature_preview_disabled`; the stored designation
+is kept.
 With a designation, GET and PUT also answer `delivery` (`CoordinatorDelivery`):
 `wakes` is `blocked` when the coordinator's last turn has ended but its
 turn boundary is still held, so the inbox would hold a wake indefinitely
@@ -5270,7 +5273,8 @@ or removing a designation withdraws the wakes still queued for the old
 conversation and revokes its designation-derived Station Control and Knowledge
 credentials. Independently authored Agent or Project grants remain separate.
 
-The default-off coordinator-picture preview adds
+The default-off coordinator-picture preview, which also needs
+`coordinator-session`, adds
 `GET /api/orchestration/coordinator/picture` for the person's readable notes.
 A bound designated coordinator reads and writes its own picture through
 `GET` and `POST /api/orchestration/station-control/coordinator-picture`.

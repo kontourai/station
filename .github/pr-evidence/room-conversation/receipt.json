@@ -1,0 +1,302 @@
+{
+  "beforeSource": "c493a11367da6f920634c452fce9843847a37a75 (origin/main) UI with this branch's room gallery scenes and fixtures only",
+  "afterSource": "f1e23f52d97f branch head with the #4810 review, delta and round-2 fixes, merged with origin/main e5b5bd24e1ae",
+  "capture": "node scripts/heavy-check-slot.mjs screenshots-room scripts/run-e2e-suite.mjs --suite=screenshot --screens=<the 40 room-* scenes>, local isolated e2e Station, Chromium",
+  "assets": {
+    "branch": "pr-assets/room-conversation-4810",
+    "commit": "65d5d2f7d15b29ea1f341686d805b1a0a8ec3282",
+    "path": "room-conversation-4810/",
+    "rawBase": "https://raw.githubusercontent.com/kontourai/station/65d5d2f7d15b29ea1f341686d805b1a0a8ec3282/room-conversation-4810"
+  },
+  "pixelComparison": "NOT_VERIFIED:40new/0comparisons (scenes are new; no tracked baseline)",
+  "files": [
+    {
+      "file": "after-room-agent-abandon-dark-desktop.png",
+      "sha256": "f8eb06f953a29bf880be1a492e2ab0f2619a207d73ade2f2aea3a9a6619947b7"
+    },
+    {
+      "file": "after-room-agent-abandon-dark-mobile.png",
+      "sha256": "957a913f62a2e1b63f7a77ade8453a1b0b06cf02ab7f4447eb8116453ba59abb"
+    },
+    {
+      "file": "after-room-agent-abandon-light-desktop.png",
+      "sha256": "47a1c484285a9b2a4ad4981ba0b4423815d214c237920494f0cde0b3c73c727b"
+    },
+    {
+      "file": "after-room-agent-abandon-light-mobile.png",
+      "sha256": "73cd1b84148b0278441371de4cef88c54f1a9805956a28145917bdba772e79d8"
+    },
+    {
+      "file": "after-room-agent-pending-dark-desktop.png",
+      "sha256": "ba10d5e38be960359fb7257c8ad03f66e30a98c8990ce875148c2d7d54361ab7"
+    },
+    {
+      "file": "after-room-agent-pending-dark-mobile.png",
+      "sha256": "bbced5dd482f06ef6c2344793b35f6aa989560b867cfc9a4000b5e2fb4658064"
+    },
+    {
+      "file": "after-room-agent-pending-light-desktop.png",
+      "sha256": "a01bd9499fcbb0e026467eabf58bf123982597dd2aff51afc9d7e364df032195"
+    },
+    {
+      "file": "after-room-agent-pending-light-mobile.png",
+      "sha256": "2da403633ea83c4517a339f5c1d8655866f57e58d0fa911e578beb36d563caa9"
+    },
+    {
+      "file": "after-room-empty-dark-desktop.png",
+      "sha256": "59d9a10a259786f2f96af9970f9e5c4f629a384bd14e8d66b83a53f9f141a2d2"
+    },
+    {
+      "file": "after-room-empty-dark-mobile.png",
+      "sha256": "3c15df19c0dcce8e783cdc8b353d1958b7544ee8634413b5cfd25cc94f02515c"
+    },
+    {
+      "file": "after-room-empty-light-desktop.png",
+      "sha256": "300143ae04c84766df7234ffadbbca66bec5817adf3d9f2a76ac294b76c5a0e7"
+    },
+    {
+      "file": "after-room-empty-light-mobile.png",
+      "sha256": "50db6cff2d46340bfbdbd56709a3e5a8998054d0335e9451ca66878e812e9edf"
+    },
+    {
+      "file": "after-room-failed-send-dark-desktop.png",
+      "sha256": "6ab95dae7592f88825757190f23bcf3820197569064f15a8efd6db9b51b9c84d"
+    },
+    {
+      "file": "after-room-failed-send-dark-mobile.png",
+      "sha256": "035ad47bf87a0ee2984b6694f22699340cc905145e710e3b0388edbfe6e5c943"
+    },
+    {
+      "file": "after-room-failed-send-light-desktop.png",
+      "sha256": "2cf8cbb89bf8162dfc8d208ed523886b07aa12bf014048d70ce9dfe1b3ca3776"
+    },
+    {
+      "file": "after-room-failed-send-light-mobile.png",
+      "sha256": "1d4e100c0d09fdb6aced73ce0fa8c5eb95885fc227440225eaa9a018ed60bd95"
+    },
+    {
+      "file": "after-room-long-dark-desktop.png",
+      "sha256": "ba599b5a7eb51dc9fb865e3ea46c860bcc2df682ae300a7fa58c078e500c5ae0"
+    },
+    {
+      "file": "after-room-long-dark-mobile.png",
+      "sha256": "319358dd8f8818b0fb655433ce296705fbdf7180e86dbab6bf0a4ef2e2e512d1"
+    },
+    {
+      "file": "after-room-long-light-desktop.png",
+      "sha256": "db573c16595e27a0dc7fcf505e335a83bbd307ba50a4c217aee8d268a1d7c677"
+    },
+    {
+      "file": "after-room-long-light-mobile.png",
+      "sha256": "3a23d70e7406520337d7d1c027504da3bc9b8f7d760a013685e38936fa546329"
+    },
+    {
+      "file": "after-room-mention-dark-desktop.png",
+      "sha256": "f5323be1419f2d5229d0a2a8aaf227ff4031aab4afc5321e0171ab167b302185"
+    },
+    {
+      "file": "after-room-mention-dark-mobile.png",
+      "sha256": "3878f255563b4ba5154e692a3df53f277ac81631b3871004bbc19485e51a84a9"
+    },
+    {
+      "file": "after-room-mention-light-desktop.png",
+      "sha256": "7d1c989ec39d8fd1f6c8818814266c6562dc443c0cc46f60daf169fd84c4fce2"
+    },
+    {
+      "file": "after-room-mention-light-mobile.png",
+      "sha256": "610dc2c8c407451c37f92b78c8ea4771e763ac4ed54776d5566a77e702c33c28"
+    },
+    {
+      "file": "after-room-new-messages-dark-desktop.png",
+      "sha256": "2aaafac72e1d14c877758c5123c506882fafe97399a13617e338eb1a0a15b6ed"
+    },
+    {
+      "file": "after-room-new-messages-dark-mobile.png",
+      "sha256": "77569d2287e301aa86082afcdf3cf1993b026cbf76322a67a391f14dccbba0cc"
+    },
+    {
+      "file": "after-room-new-messages-light-desktop.png",
+      "sha256": "e9feacb3d58ce1d0a223409bba9fba6bfc8d72c8550dcdf990aff800e1d8b350"
+    },
+    {
+      "file": "after-room-new-messages-light-mobile.png",
+      "sha256": "f16486fb82a5a617b2cb14a014201671105f41dc7e855729747baaed091ea4ca"
+    },
+    {
+      "file": "after-room-short-dark-desktop.png",
+      "sha256": "b14ee2be0fcee0bcb0413532844e2cd3af149d36a595ff47d164892dccec8b4f"
+    },
+    {
+      "file": "after-room-short-dark-mobile.png",
+      "sha256": "a94a66419ca11260b778287ea825a3b00c71264c276e9c790bab772a2723e0d2"
+    },
+    {
+      "file": "after-room-short-light-desktop.png",
+      "sha256": "fac8534ca27e9785a2a7233f2b035ff78af4071ae4f5ea52523718a2abdb6cfb"
+    },
+    {
+      "file": "after-room-short-light-mobile.png",
+      "sha256": "554360dc39f3a220640ac25dd827037300c17d4fd068baef3800b6e982a2c624"
+    },
+    {
+      "file": "after-room-task-thread-dark-desktop.png",
+      "sha256": "f0282bbc6fb433938648390b9a950e711cbca67c400a53dcbc01eaac8a8751a3"
+    },
+    {
+      "file": "after-room-task-thread-dark-mobile.png",
+      "sha256": "6cfca0981688a4996786a5314c1406e7f73ef12001e477f3312b485209d517b0"
+    },
+    {
+      "file": "after-room-task-thread-light-desktop.png",
+      "sha256": "f15ef7dfc628906eb203e305be641ddb03c01e3df2d576fdb2c7165494af8bd1"
+    },
+    {
+      "file": "after-room-task-thread-light-mobile.png",
+      "sha256": "53de491219c4b205789a2a9db41c180c59047662045adb26d7ca2c0a6496ac66"
+    },
+    {
+      "file": "after-room-task-working-dark-desktop.png",
+      "sha256": "fa3507c65ec2e194862896ef07c313dd3983f59ef35e4b1ef27a41aa71047c75"
+    },
+    {
+      "file": "after-room-task-working-dark-mobile.png",
+      "sha256": "a8f5d5712daa12d1c9d5e90c348a01bf96637cf294633186fce7e3962af32a61"
+    },
+    {
+      "file": "after-room-task-working-light-desktop.png",
+      "sha256": "92e34a43b48aebdc3ad0fa7d5af9083c275f2d7292196f4255264e58ab427a99"
+    },
+    {
+      "file": "after-room-task-working-light-mobile.png",
+      "sha256": "21c51d91d4241b18185f2b2983d3ae780190f4fabb3b963387912fcd2df22565"
+    },
+    {
+      "file": "before-room-empty-dark-desktop.png",
+      "sha256": "d13cc90bc1e46e8ffb508c1c321ff32367593effbbb8a42498c7f9f90fb4bbcb"
+    },
+    {
+      "file": "before-room-empty-dark-mobile.png",
+      "sha256": "d92feb4762d7d4538f620fb6f9b417316b5d492d9d0a2344c8049e58438e5f5a"
+    },
+    {
+      "file": "before-room-empty-light-desktop.png",
+      "sha256": "c216553c9caa4f5a292706568e4b29c3335cf7137b307465bb9299c559e6c2bb"
+    },
+    {
+      "file": "before-room-empty-light-mobile.png",
+      "sha256": "5769b6c01862432636b171b71c3be672ca9410e8fea1cf98e8971ff0a0ae9eab"
+    },
+    {
+      "file": "before-room-failed-send-dark-desktop.png",
+      "sha256": "4ab73ed187a99996d3a55d6d5783040ac0d995c59d6a4c9f05e1bb8edef47d72"
+    },
+    {
+      "file": "before-room-failed-send-dark-mobile.png",
+      "sha256": "021917c97810e598b71a3eabd3fd028bb7f7a4419a91a8ea82a83ddecc654cbb"
+    },
+    {
+      "file": "before-room-failed-send-light-desktop.png",
+      "sha256": "202cb6a29accbf9417b93f93530d1a89db7f93c30a058fad359fb508c3078817"
+    },
+    {
+      "file": "before-room-failed-send-light-mobile.png",
+      "sha256": "b2dd0b047d5863e889552deda11e8a2798b60cf0a5a891a03ec2c55a0f82163d"
+    },
+    {
+      "file": "before-room-long-dark-desktop.png",
+      "sha256": "0caba4c13086f8efc7c7dd09e9583791c4838ebc697ee27626fcbb0f6f6196e9"
+    },
+    {
+      "file": "before-room-long-dark-mobile.png",
+      "sha256": "cb69cbecf08151e884d6ee206e54e15267edcf0288ec43ec1073850ab3a61550"
+    },
+    {
+      "file": "before-room-long-light-desktop.png",
+      "sha256": "52d51ca8e9a0ac638fce7ea31cccd4218196b045614a720cec20f5ab132f6602"
+    },
+    {
+      "file": "before-room-long-light-mobile.png",
+      "sha256": "62970c946740dc74b171010410f410139bd095b4e0c429ded66d57e59b27efa6"
+    },
+    {
+      "file": "before-room-mention-dark-desktop.png",
+      "sha256": "5108801b6afab6a333e55b61409462024b2cdf8cebc934385f6a91d05a1083ea"
+    },
+    {
+      "file": "before-room-mention-dark-mobile.png",
+      "sha256": "36fe5bbf769204fc6c914013fd5b2ea6ff38a9eadf47dc5ae243924b98ca5c6b"
+    },
+    {
+      "file": "before-room-mention-light-desktop.png",
+      "sha256": "f50b4717f44abcd8be38b65b25f2f37781361430a886c8f6b03d0ae5b83f6181"
+    },
+    {
+      "file": "before-room-mention-light-mobile.png",
+      "sha256": "206aea77995687393cdbe40716d983aaed56ea9a135d6621ceba68812df67f70"
+    },
+    {
+      "file": "before-room-new-messages-dark-desktop.png",
+      "sha256": "4b496b898b35ee066be26a6fdf985d644c8019cb886c1f2de248fe573f94b31b"
+    },
+    {
+      "file": "before-room-new-messages-dark-mobile.png",
+      "sha256": "52b78980152ffb42fd4364368953b05041ff0a31dde7bc9f5ade2551efd77ae7"
+    },
+    {
+      "file": "before-room-new-messages-light-desktop.png",
+      "sha256": "0452a246ec87ca82ec6cdba34440c5383af1e84f764ea8d171a755c97c93cdb7"
+    },
+    {
+      "file": "before-room-new-messages-light-mobile.png",
+      "sha256": "60563d28e7fb3a1e9dee4674236b834dd0a64b60db59f43793c3d73fcaa55376"
+    },
+    {
+      "file": "before-room-short-dark-desktop.png",
+      "sha256": "e29134d2c4c305f8649372ea004dcb73344fff5244ab7e6c2a7b222cf0ef00a1"
+    },
+    {
+      "file": "before-room-short-dark-mobile.png",
+      "sha256": "4366c620b710c09c68081a15509d802ad37845ab9c4402f6ed4f80220f200b9a"
+    },
+    {
+      "file": "before-room-short-light-desktop.png",
+      "sha256": "dae10ceca36b02a453311984eebb2b5f724626a514aaeeb75dc59e9fc4716b0a"
+    },
+    {
+      "file": "before-room-short-light-mobile.png",
+      "sha256": "7f68eed7297f8aadb4ed0130c45f5ad6314771f2a2097a625af30e90d6dde337"
+    },
+    {
+      "file": "before-room-task-thread-dark-desktop.png",
+      "sha256": "114a342aef5421b989619d1f2ed32162d0eb4cc5e8e4759c8a8a749ad08b0369"
+    },
+    {
+      "file": "before-room-task-thread-dark-mobile.png",
+      "sha256": "2f3e9a76cbd86ee229474c2ec3449d2b30db4d11eed20274bab7fbec0390532e"
+    },
+    {
+      "file": "before-room-task-thread-light-desktop.png",
+      "sha256": "e498038e55fe32de458dc84cc0e1af11da01fb42d0e27999787fa54bd26f1918"
+    },
+    {
+      "file": "before-room-task-thread-light-mobile.png",
+      "sha256": "26e416fb00eda578f5703c02cb02a753628cafabc3d6831760900982a08eb863"
+    },
+    {
+      "file": "before-room-task-working-dark-desktop.png",
+      "sha256": "c01ed898d9023468d032ea9ecd909eac08d9862c8b9934f76a9077c327315c3b"
+    },
+    {
+      "file": "before-room-task-working-dark-mobile.png",
+      "sha256": "e8f102f18b15bfc473be7b9c7aed1018afa2e1ad4635fd96b53206671a26f764"
+    },
+    {
+      "file": "before-room-task-working-light-desktop.png",
+      "sha256": "9a361557a32752594b54273bd4437262cb5338bb46251e3d9443e4a22d989809"
+    },
+    {
+      "file": "before-room-task-working-light-mobile.png",
+      "sha256": "4d0690e8fa8656d61ee07d19fe03d1606cc641f57d6c266b4dce6e22ef3b0dd7"
+    }
+  ]
+}

@@ -1238,6 +1238,8 @@ interface OrchestrationServiceOptions {
    * which case `startSession` input reaches the adapter exactly as before.
    */
   coordinatorGenerationForSession?: (threadId: string) => number;
+  /** #3628: the `coordinator-session` preview; absent reads as off. */
+  coordinatorEnabled?: () => boolean;
   resolveSessionAgent?: (
     input: ProviderSessionStartInput,
     captured?: { agentId: string; spec: AgentSpec },
@@ -3423,6 +3425,7 @@ export class OrchestrationService {
           !store ||
           ENGINE_CAPABILITY_MATRICES[provider]?.toolServers.state !==
             'session' ||
+          options.coordinatorEnabled?.() !== true ||
           !store.isCoordinatorConversation(conversationId)
         )
           return false;
@@ -4312,7 +4315,8 @@ export class OrchestrationService {
             ?.conversationId ?? input.threadId);
     const generation =
       derivedServer?.coordinatorGeneration ??
-      (this.options.eventStore?.isCoordinatorConversation(conversationId)
+      (this.options.coordinatorEnabled?.() === true &&
+      this.options.eventStore?.isCoordinatorConversation(conversationId)
         ? this.options.coordinatorGenerationForSession?.(input.threadId)
         : undefined);
     if (generation !== undefined)
@@ -5608,6 +5612,7 @@ export class OrchestrationService {
     const conversationId =
       store.conversationForSession(threadId)?.conversationId ?? threadId;
     const stillDesignated = () => {
+      if (this.options.coordinatorEnabled?.() !== true) return false;
       const current = this.resolveSessionActingPrincipal(threadId);
       return (
         store.coordinatorStore().designationForConversation(conversationId)

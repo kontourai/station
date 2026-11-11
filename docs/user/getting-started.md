@@ -1073,7 +1073,7 @@ An existing chat can become a Task through **New Task from this** in its More me
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
 **New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.
 
-To keep one chat as your personal agent, choose **Make this Houston** in its More menu. Home then pins it with **Talk to Houston**, and Station tells it when your work needs you, fails or finishes. See [Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md).
+To keep one chat as your personal agent, turn on **Coordinator chat** in Settings → Advanced → Feature previews, then choose **Make this Houston** in the chat's More menu. Home then pins it with **Talk to Houston**, and Station tells it when your work needs you, fails or finishes. See [Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md).
 
 On a Project's Tasks board, a GitHub issue offers **Start Task**. It copies the
 issue's description and latest comments into a new Task and links back to the
@@ -1082,9 +1082,14 @@ issue; if the issue already has an open Task, Station opens that Task instead.
 After reload, an accepted card offers **Open Task**. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.
 
 The Task opens as a chat room. Press Enter to send, or Shift+Enter for a new
-line. New messages follow the newest message while you are at the bottom; if
-you scroll up, **Jump to latest** returns you there. **Load earlier messages**
-appears above the visible history. A failed agent request stays in the room
+line; on a phone keyboard, Return adds a line and the round send button sends.
+An unsent draft is kept for each room and thread in this tab. Messages from one
+person within a few minutes share one name and avatar, a divider marks each day,
+and agents have square avatars where people have round ones. New messages
+follow the newest message while you are at the bottom; if you scroll up, the
+room keeps your place, marks where new messages start, and **N new messages**
+returns you to the latest. **Load earlier messages** appears above the visible
+history. A failed agent request stays in the room
 with **Retry** and **Open run**. The Brief is shared with agent requests unless
 you turn off **Brief attached**. Saved answers appear in Results, with their
 source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.

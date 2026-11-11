@@ -2863,6 +2863,7 @@ test('restart preserves delivery proof before applying coordinator policy', asyn
   });
   policy = new CoordinatorWakeDelivery({
     store: second.store.coordinatorStore(),
+    enabled: () => true,
     mayRead: (_userId, sessionId) => sessionId !== 'source-b',
     conversationOf: (id) => id,
     delegatedBy: () => undefined,

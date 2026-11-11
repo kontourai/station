@@ -34,6 +34,9 @@ type Channel = {
 let channels: Channel[];
 let channelsSupported: boolean;
 let edit: boolean;
+let execute: boolean;
+let selectedAuthority: string;
+let handles: Map<string, Record<string, unknown>>;
 let reads: string[];
 let writes: Array<{ method: string; path: string; body: unknown }>;
 function fixture() {
@@ -51,7 +54,8 @@ function fixture() {
       if (method !== 'GET' && !path.endsWith('/presence'))
         writes.push({ method, path, body });
       else reads.push(path);
-      if (path === '/api/agents') return ok([]);
+      if (path === '/api/agents')
+        return ok(execute ? [{ slug: 'researcher', name: 'Researcher' }] : []);
       if (path === '/api/projects/team/channels') {
         if (!channelsSupported)
           return new Response('Not Found', { status: 404 });
@@ -86,6 +90,34 @@ function fixture() {
           headers: { 'Content-Type': 'text/event-stream' },
         });
       if (suffix === '/presence') return ok([]);
+      if (suffix === '/messages' && method === 'POST')
+        return ok({
+          intentId: body.intentId,
+          text: body.text,
+          ...(body.replyTo ? { replyTo: body.replyTo } : {}),
+          roomId,
+          messageId: crypto.randomUUID(),
+          seq: 1,
+          actor,
+          createdAt: '2026-11-11T12:00:00.000Z',
+        });
+      if (suffix === '/agents' && method === 'POST') {
+        const handle = {
+          intentId: body.intentId,
+          agentId: body.agentId,
+          text: body.text,
+          roomId,
+          requestId: crypto.randomUUID(),
+          actor,
+          state: 'started',
+          createdAt: '2026-11-11T12:00:00.000Z',
+          updatedAt: '2026-11-11T12:00:00.000Z',
+        };
+        handles.set(String(handle.requestId), handle);
+        return ok(handle);
+      }
+      const request = suffix.match(/^\/agents\/([0-9a-f-]{36})$/);
+      if (request && method === 'GET') return ok(handles.get(request[1]!));
       if (suffix === '/messages')
         return ok({
           scope,
@@ -100,7 +132,7 @@ function fixture() {
           roomId,
           actor,
           presence: [],
-          capabilities: { view: true, discuss: true, edit, execute: false },
+          capabilities: { view: true, discuss: true, edit, execute },
           checkpoint: { roomId, lastSeq: 0 },
           note: null,
         });
@@ -108,7 +140,8 @@ function fixture() {
     }),
   );
 }
-function mount() {
+/** `draftRecoveryKey` is the shell's reload partition; drafts persist only with one. */
+function mount(draftRecoveryKey?: string) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -117,10 +150,29 @@ function mount() {
       <ProjectRoom
         slug="team"
         projectId="project"
-        requestScope={requestScope}
+        requestScope={{
+          ...requestScope,
+          authorityKey: selectedAuthority,
+          ...(draftRecoveryKey ? { draftRecoveryKey } : {}),
+        }}
       />
     </QueryClientProvider>,
   );
+}
+const composerField = () =>
+  screen.getByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Message the project',
+  });
+async function switchTo(from: string, to: string) {
+  const list = await openSwitcher(from);
+  const archived = within(list).queryByRole('button', { name: /Archived/ });
+  if (
+    archived?.getAttribute('aria-expanded') === 'false' &&
+    !within(list).queryByRole('button', { name: to })
+  )
+    fireEvent.click(archived);
+  fireEvent.click(within(list).getByRole('button', { name: to }));
+  await screen.findByRole('button', { name: trigger(to) });
 }
 const trigger = (name: string) => new RegExp(`^${name}\\b.*switch channel$`);
 async function openSwitcher(name: string) {
@@ -140,11 +192,18 @@ beforeEach(() => {
   ];
   channelsSupported = true;
   edit = true;
+  execute = false;
+  selectedAuthority = 'one';
+  handles = new Map();
   reads = [];
   writes = [];
   setClientCredentialResolver(() => ({
     origin: requestScope.apiBase,
-    requestAuthority: { ...requestScope, isCurrent: () => true },
+    requestAuthority: {
+      ...requestScope,
+      authorityKey: selectedAuthority,
+      isCurrent: () => true,
+    },
   }));
   fixture();
 });
@@ -273,4 +332,248 @@ test('a host without channels shows its room as #general with no switcher', asyn
   expect(await screen.findByRole('heading', { name: 'general' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: /switch channel/ })).toBeNull();
   expect(screen.queryByText('Channels unavailable')).toBeNull();
+});
+
+// #4810 integration: one shared conversation and composer, addressed per channel.
+
+test('each channel keeps its own unsent draft while switching', async () => {
+  mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  fireEvent.change(composerField(), { target: { value: 'General draft' } });
+  await switchTo('general', 'design');
+  await waitFor(() => expect(composerField().value).toBe(''));
+  fireEvent.change(composerField(), { target: { value: 'Design draft' } });
+  await switchTo('design', 'general');
+  await waitFor(() => expect(composerField().value).toBe('General draft'));
+  await switchTo('general', 'design');
+  await waitFor(() => expect(composerField().value).toBe('Design draft'));
+});
+
+test('a reload in a non-default channel returns to that channel with its draft', async () => {
+  const first = mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await switchTo('general', 'design');
+  fireEvent.change(composerField(), { target: { value: 'Design draft' } });
+  first.unmount();
+  // A reload mints a new authority epoch; the reload partition is stable.
+  selectedAuthority = 'two';
+  mount('tab');
+  expect(
+    await screen.findByRole('button', { name: trigger('design') }),
+  ).toBeTruthy();
+  await waitFor(() => expect(composerField().value).toBe('Design draft'));
+  await waitFor(() =>
+    expect(reads).toContain(`/api/projects/team/channels/${design}/messages`),
+  );
+});
+
+test('a message and an @agent ask go to the selected channel', async () => {
+  execute = true;
+  mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await switchTo('general', 'design');
+  const user = userEvent.setup();
+  await user.type(composerField(), 'Hello design');
+  await user.keyboard('{Enter}');
+  await waitFor(() =>
+    expect(writes).toContainEqual(
+      expect.objectContaining({
+        method: 'POST',
+        path: `/api/projects/team/channels/${design}/messages`,
+        body: expect.objectContaining({
+          expectedRoomId: design,
+          text: 'Hello design',
+        }),
+      }),
+    ),
+  );
+  await waitFor(() => expect(composerField().value).toBe(''));
+  fireEvent.change(composerField(), { target: { value: '@' } });
+  fireEvent.click(
+    await screen.findByRole('option', { name: 'Researcher @researcher' }),
+  );
+  await screen.findByText('@Researcher');
+  fireEvent.change(composerField(), { target: { value: 'Check the copy' } });
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Ask Researcher' })
+        .disabled,
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() =>
+    expect(writes).toContainEqual(
+      expect.objectContaining({
+        method: 'POST',
+        path: `/api/projects/team/channels/${design}/agents`,
+        body: expect.objectContaining({
+          expectedRoomId: design,
+          agentId: 'researcher',
+          text: 'Check the copy',
+        }),
+      }),
+    ),
+  );
+  expect(
+    writes.filter(
+      (write) =>
+        write.path.startsWith('/api/projects/team/room/') ||
+        write.path.startsWith(`/api/projects/team/channels/${general}/`),
+    ),
+  ).toEqual([]);
+});
+
+test('an archived channel offers no composer, no Agent asks and its own empty state', async () => {
+  execute = true;
+  channels[1].archivedAt = '2026-11-10T00:00:00.000Z';
+  mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await switchTo('general', 'design');
+  const empty = await screen.findByText('No messages were posted here.');
+  // It is the shared conversation's own empty state, not a separate block.
+  expect(empty.closest('.room-conversation__content--empty')).not.toBeNull();
+  expect(screen.queryByText('Start a chat with your project team.')).toBeNull();
+  expect(screen.getByText('This channel is read-only.')).toBeTruthy();
+  expect(
+    screen.queryByRole('textbox', { name: 'Message the project' }),
+  ).toBeNull();
+});
+
+test('a host without channels shows its room as #general with no switcher', async () => {
+  channelsSupported = false;
+  mount();
+  expect(await screen.findByRole('heading', { name: 'general' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /switch channel/ })).toBeNull();
+  expect(screen.queryByText('Channels unavailable')).toBeNull();
+});
+
+// #4810 integration: one shared conversation and composer, addressed per channel.
+
+test('each channel keeps its own unsent draft while switching', async () => {
+  mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  fireEvent.change(composerField(), { target: { value: 'General draft' } });
+  await switchTo('general', 'design');
+  await waitFor(() => expect(composerField().value).toBe(''));
+  fireEvent.change(composerField(), { target: { value: 'Design draft' } });
+  await switchTo('design', 'general');
+  await waitFor(() => expect(composerField().value).toBe('General draft'));
+  await switchTo('general', 'design');
+  await waitFor(() => expect(composerField().value).toBe('Design draft'));
+});
+
+test('a reload in a non-default channel returns to that channel with its draft', async () => {
+  const first = mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await switchTo('general', 'design');
+  fireEvent.change(composerField(), { target: { value: 'Design draft' } });
+  first.unmount();
+  // A reload mints a new authority epoch; the reload partition is stable.
+  selectedAuthority = 'two';
+  mount('tab');
+  expect(
+    await screen.findByRole('button', { name: trigger('design') }),
+  ).toBeTruthy();
+  await waitFor(() => expect(composerField().value).toBe('Design draft'));
+  await waitFor(() =>
+    expect(reads).toContain(`/api/projects/team/channels/${design}/messages`),
+  );
+});
+
+test('a message and an @agent ask go to the selected channel', async () => {
+  execute = true;
+  mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await switchTo('general', 'design');
+  const user = userEvent.setup();
+  await user.type(composerField(), 'Hello design');
+  await user.keyboard('{Enter}');
+  await waitFor(() =>
+    expect(writes).toContainEqual(
+      expect.objectContaining({
+        method: 'POST',
+        path: `/api/projects/team/channels/${design}/messages`,
+        body: expect.objectContaining({
+          expectedRoomId: design,
+          text: 'Hello design',
+        }),
+      }),
+    ),
+  );
+  await waitFor(() => expect(composerField().value).toBe(''));
+  fireEvent.change(composerField(), { target: { value: '@' } });
+  fireEvent.click(
+    await screen.findByRole('option', { name: 'Researcher @researcher' }),
+  );
+  await screen.findByText('@Researcher');
+  fireEvent.change(composerField(), { target: { value: 'Check the copy' } });
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Ask Researcher' })
+        .disabled,
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() =>
+    expect(writes).toContainEqual(
+      expect.objectContaining({
+        method: 'POST',
+        path: `/api/projects/team/channels/${design}/agents`,
+        body: expect.objectContaining({
+          expectedRoomId: design,
+          agentId: 'researcher',
+          text: 'Check the copy',
+        }),
+      }),
+    ),
+  );
+  expect(
+    writes.filter(
+      (write) =>
+        write.path.startsWith('/api/projects/team/room/') ||
+        write.path.startsWith(`/api/projects/team/channels/${general}/`),
+    ),
+  ).toEqual([]);
+});
+
+test('an archived channel offers no composer, no Agent asks and its own empty state', async () => {
+  execute = true;
+  channels[1].archivedAt = '2026-11-10T00:00:00.000Z';
+  mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await switchTo('general', 'design');
+  const conversation = await screen.findByRole('list', {
+    name: 'Conversation',
+  });
+  const empty = await screen.findByText('No messages were posted here.');
+  // The empty state lives inside the shared conversation's own region.
+  expect(
+    empty.closest('.room-conversation') ??
+      conversation.closest('.room-conversation'),
+  ).toBe(conversation.closest('.room-conversation'));
+  expect(empty.closest('.room-conversation')).not.toBeNull();
+  expect(screen.queryByText('Start a chat with your project team.')).toBeNull();
+  expect(screen.getByText('This channel is read-only.')).toBeTruthy();
+  expect(
+    screen.queryByRole('textbox', { name: 'Message the project' }),
+  ).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Ask / })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Bring an Agent' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Recap Project' })).toBeNull();
+});
+
+test('switching away from an unsaved notes draft asks first', async () => {
+  mount('tab');
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+  fireEvent.change(
+    await screen.findByRole('textbox', { name: 'Notes (Markdown)' }),
+    { target: { value: 'Unsaved notes' } },
+  );
+  const list = await openSwitcher('general');
+  fireEvent.click(within(list).getByRole('button', { name: 'design' }));
+  expect(
+    await screen.findByRole('dialog', { name: 'Unsaved Changes' }),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: trigger('general') })).toBeTruthy();
 });

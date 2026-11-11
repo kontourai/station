@@ -1,119 +1,167 @@
 .project-room {
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-4);
+  gap: var(--k-space-3);
+  min-width: 0;
   padding: 0;
   color: var(--k-text);
   background: transparent;
-  min-width: 0;
 }
-.project-room__header,
-.project-room__byline,
-.project-room__actions,
-.project-room__tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--k-space-3);
-  flex-wrap: wrap;
-}
-.project-room__header {
-  justify-content: space-between;
-}
+
 .project-room h2,
 .project-room h3,
 .project-room p {
   margin: 0;
 }
-.project-room__header p,
-.project-room__presence,
-.project-room__byline time,
-.project-room__reply {
-  color: var(--k-text-muted);
-}
-.project-room__messages {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-space-4);
-}
-.project-room__message {
-  border-bottom: 1px solid var(--k-line);
-  padding-block: var(--k-space-3);
-  overflow-wrap: anywhere;
-}
-.project-room__byline {
-  font-size: var(--k-text-sm);
-}
-.project-room__text,
-.project-room pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.project-room__text {
-  padding-block: var(--k-space-2);
-}
-.project-room__answer {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  padding-block: var(--k-space-2);
-}
-.project-room__answer > :not(:first-child) {
-  margin-block-start: var(--k-space-3);
-}
-.project-room__composer,
-.project-room__notes {
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-space-3);
-}
-.project-room textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 7rem;
-  resize: vertical;
-  padding: var(--k-space-3);
+
+/* The full room is a chat column: header, conversation, pinned composer.
+   Its height is set from the page's scroll area (useFillPageHeight). */
+.project-room--full {
+  gap: 0;
+  min-height: 320px;
+  overflow: hidden;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
   background: var(--k-bg);
-  color: var(--k-text);
-  border: 1px solid var(--k-line-strong);
-  border-radius: var(--k-radius-md);
-  font: inherit;
-}
-.project-room__notes textarea {
-  min-height: 14rem;
-}
-.project-room button {
-  min-height: 44px;
-  min-width: 44px;
-}
-.project-room :is(textarea, button):focus-visible {
-  outline: 2px solid var(--k-focus-ring);
-  outline-offset: 2px;
-}
-.project-room--preview .project-room__messages {
-  max-height: 24rem;
-  overflow-y: auto;
 }
 
-.project-room__title {
+.project-room--preview .project-room__conversation {
+  max-height: 24rem;
+  min-height: 12rem;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-bg);
+}
+
+.project-room--preview .room-composer {
+  padding-inline: 0;
+}
+
+.project-room__header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--k-space-3);
-}
-.project-room--full {
-  min-height: 65vh;
-}
-.project-room--full .project-room__composer {
-  margin-top: auto;
+  gap: var(--k-space-2) var(--k-space-3);
+  min-width: 0;
 }
 
+.project-room--full > .project-room__header {
+  padding: var(--k-space-3) var(--k-space-4);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+  background: var(--k-panel);
+}
+
+.project-room__title {
+  font: 600 var(--k-text-lg) / var(--k-leading-tight) var(--k-font-ui);
+}
+
+.project-room__presence {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.project-room__faces {
+  --room-avatar-size: calc(var(--k-space-5) - var(--k-space-1));
+  display: inline-flex;
+  flex: 0 0 auto;
+  /* Side by side: overlapping faces hid each other's initials. */
+  gap: 2px;
+}
+
+.project-room__faces > .task-room-avatar {
+  font-size: calc(var(--k-text-xs) - 2px);
+}
+
+.project-room__names {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-room__tabs,
+.project-room__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+}
+
+.project-room__notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-4);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+  background: var(--k-active-soft);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+}
+
+.project-room--preview .project-room__notice {
+  border: 0;
+  border-radius: var(--k-radius-sm);
+}
+
+.project-room__reply {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.project-room__reply svg {
+  width: var(--k-space-3);
+  height: var(--k-space-3);
+  color: var(--k-text-faint);
+}
+
+.project-room__reply strong {
+  color: var(--k-text);
+  font-weight: 600;
+}
+
+.project-room__delivery {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  color: var(--k-text-faint);
+  font-size: var(--k-text-sm);
+}
+
+.project-room__delivery--failed {
+  color: var(--k-negative);
+  font-weight: 600;
+}
+
+.project-room__delivery .button {
+  min-height: calc(var(--k-space-5) + var(--k-space-1));
+  font-size: var(--k-text-sm);
+}
+
+/* Agent request status sits between the conversation and the composer. */
 .project-room__agent {
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-3);
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-4);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
+
+.project-room__agent:empty {
+  display: none;
+}
+
+.project-room__agent > :first-child {
+  margin-top: var(--k-space-2);
+}
+
 .project-room__agent-select {
   display: block;
   width: 100%;
@@ -126,7 +174,75 @@
   border-radius: var(--k-radius-control);
   font: inherit;
 }
+
 .project-room__agent-select:focus-visible {
   outline: 2px solid var(--k-focus-ring);
   outline-offset: var(--k-space-1);
+}
+
+.room-composer__slot {
+  display: contents;
+}
+
+.project-room__notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  overflow-y: auto;
+}
+
+.project-room__notes textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 14rem;
+  resize: vertical;
+  padding: var(--k-space-3);
+  background: var(--k-bg);
+  color: var(--k-text);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  font: inherit;
+}
+
+.project-room__notes pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.project-room :is(textarea, button):focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: 2px;
+}
+
+/* MOBILE_MEDIA_QUERY (hooks/useIsMobile.ts). */
+/* Phone layout: `useIsMobile` (MOBILE_MEDIA_QUERY) sets the class. */
+.project-room--compact.project-room--full > .project-room__header {
+  padding: var(--k-space-2) var(--k-space-3);
+}
+
+.project-room--compact .project-room__title {
+  font-size: var(--k-text-md);
+}
+
+.project-room--compact .project-room__presence {
+  order: 3;
+  flex-basis: 100%;
+}
+
+.project-room--compact .project-room__tabs {
+  margin-inline-start: auto;
+}
+
+.project-room--compact .project-room__agent,
+.project-room--compact .project-room__notice {
+  padding-inline: var(--k-space-3);
+}
+
+.project-room--compact button,
+.project-room--compact .project-room__delivery .button {
+  /* The delivery row's compact sizing is more specific; phones still get
+     44px Retry and Discard (#4810 review 6). */
+  min-height: 44px;
+  min-width: 44px;
 }

@@ -27,10 +27,9 @@
   display: flex;
   min-width: 0;
   margin: 0;
-  font-size: var(--k-text-lg);
-  font-weight: 650;
+  /* The room's title owns the type: large on desktop, smaller on phones. */
+  font: inherit;
   letter-spacing: var(--k-tracking-tight);
-  line-height: var(--k-leading-tight);
 }
 .room-channel__trigger,
 .room-channel__static {

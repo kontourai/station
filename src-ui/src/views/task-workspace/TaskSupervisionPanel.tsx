@@ -23,7 +23,9 @@ export function TaskSupervisionPanel(props: {
   authority: ApiRequestScope;
 }) {
   const flags = useSurfaceVisibilityFlags();
-  return flags.has('project-supervision') ? (
+  // Supervision wakes the person's coordinator, so it needs both previews.
+  return flags.has('project-supervision') &&
+    flags.has('coordinator-session') ? (
     <SupervisionControls {...props} />
   ) : null;
 }

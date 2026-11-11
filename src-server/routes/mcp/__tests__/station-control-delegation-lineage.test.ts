@@ -201,6 +201,7 @@ const resolveRecord = createStationControlCallerRecordResolver(
           ? { conversationId: CONVERSATIONS[sessionId] }
           : undefined,
     },
+    coordinatorEnabled: () => true,
     getProject: () => {
       throw new Error('no projects in this suite');
     },

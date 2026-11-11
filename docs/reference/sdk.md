@@ -775,38 +775,26 @@ invalidate queries, `presence` updates participants, and `revoked` or terminal
 401/403 stops the stream and clears retained query content. Cache identities
 include the API authority, local Project ID, and room ID for history.
 
-`useProjectRoom(scope, slug, projectId, channelId?)` addresses one channel.
-Without `channelId` it is the default channel at `/room`, with the same request
-paths and cache keys as before channels. With it, every read, write, presence
-call and the event stream use `/channels/:channelId`, and the cache root is
-`projectRoomChannelKey(...)`, which shares no prefix with the default room's
-key, so leaving one channel never clears another's cache. Each React-free
-per-room client (`discoverProjectRoom`, `fetchProjectRoomHistory`,
-`sendProjectRoomMessage`, `saveProjectRoomNote`, `setProjectRoomPresence`,
-`subscribeProjectRoom`, `projectRoomAgentRequest`) takes the same optional
-trailing `channelId`, and `useProjectRoomAgent` takes it as its last argument.
-
-`useProjectRoomChannels(scope, slug, projectId)` lists the Project's channels
-(`listProjectRoomChannels`) and exposes `create` and `update` mutations
-(`createProjectRoomChannel`, `updateProjectRoomChannel`). Both send the
-discovered `expectedProjectId` and `expectedActorId` guards and refresh the list
-on success. `unsupported` is true when the host answers 404 for the list: it
-predates channels, so show only the default room. Clients check names and
-topics with the contract parsers before sending; the server's refusal codes
-(`project_room_duplicate`, `project_room_capacity`, `project_room_archived`)
-arrive as `StationHttpError.code`.
-
-The embeddable `ProjectRoom` UI shows the current channel's `# name` and topic
-in its header; a long name wraps to two lines at its hyphens. The name opens a
-channel list (an anchored panel on desktop, a sheet on phones) that starts on the
-current channel, shows every name whole and folds archived channels away; people
-with `edit` also get New channel there and Rename, Topic and Archive in the
-header's settings menu. An archived channel is read-only and says so, including
-when it has no messages.
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
-session storage before sending, per channel. A lost acknowledgement or reload offers an
-explicit retry of that exact payload and UUID; it never automatically resends.
-Changing authority, Project, or discovered actor retires the prior draft.
+session storage before sending, per channel. Until it is confirmed, the message waits in the
+conversation; a lost acknowledgement or reload offers an explicit retry of that
+exact payload and UUID and never resends automatically. The retained intent
+settles once room history shows a message with its intent ID. The unsent draft
+(text, reply target and Agent recipient) is kept per channel in the same tab's
+session storage, keyed by the shell's reload partition rather than its
+per-reload authority epoch; `#general` keeps the key the room used before
+channels, and the channel on screen is remembered the same way, so a reload
+returns to it. Messages, `@agent` asks and retained Agent requests are addressed
+to the channel on screen; a restored recipient must still be an available
+Agent, shown under its current catalog name. While an Agent request is
+unsettled, Ask is disabled and shows which Agent it is waiting for; ordinary
+messages still send. A new `@agent` ask never reuses a retained Agent intent,
+which only an explicit retry sends, and its acknowledgement clears the draft
+only if the draft is unchanged since that ask. A retained request that never got
+a handle can be abandoned after a confirmation; the current draft is kept and
+the original may already have run. Changing Project, discovered actor or reload partition
+retires the prior drafts and channel selection; changing authority retires every
+channel's retained send.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
 comparison. With both discussion and execution capabilities, Bring an Agent
 selects from the current scoped catalog's available Agents. `useProjectRoomAgent`

@@ -953,6 +953,7 @@ describe('OrchestrationService', () => {
           firstStartedMetadataOfThread: (threadId) =>
             service.firstStartedMetadataOfThread(threadId),
         },
+        coordinatorEnabled: () => true,
         getProject: (slug) => {
           const project = configuredProjects.find((p) => p.slug === slug);
           if (!project?.id) throw new Error('no project');

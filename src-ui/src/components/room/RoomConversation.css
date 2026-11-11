@@ -1,0 +1,376 @@
+/* One conversation list for Project and Task rooms (#4790). Message text is
+   14px on a 22px line; the gutter holds a 36px avatar (32px on a phone). */
+.room-conversation {
+  --room-avatar-size: calc(var(--k-space-6) + var(--k-space-1));
+  --room-line: calc(var(--k-text-md) + var(--k-space-2));
+  --room-inset: var(--k-space-4);
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.room-conversation__scroller {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+}
+
+/* A short history sits at the bottom, beside the composer. */
+.room-conversation__content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-top: auto;
+  padding-block: var(--k-space-3);
+}
+
+/* An empty room centers its invitation instead of parking it at the bottom. */
+.room-conversation__content--empty {
+  margin-block: auto;
+  padding-inline: var(--room-inset);
+}
+
+.room-conversation__older {
+  align-self: center;
+  margin-block-end: var(--k-space-2);
+}
+
+.room-conversation__list {
+  min-width: 0;
+}
+
+.room-item {
+  padding-inline: var(--room-inset);
+}
+
+/* ── Message rows ─────────────────────────────────────────────────────── */
+.room-row--message {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--room-avatar-size) minmax(0, 1fr);
+  column-gap: var(--k-space-3);
+  margin-top: var(--k-space-3);
+  padding: var(--k-space-1) var(--k-space-2);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text);
+  font: var(--k-text-md) / var(--room-line) var(--k-font-ui);
+  overflow-wrap: anywhere;
+}
+
+.room-row--stacked {
+  margin-top: 0;
+  padding-block: 1px;
+}
+
+/* A grouped row's lines sit one line-height apart. */
+.room-row--continues {
+  padding-bottom: 1px;
+}
+
+.room-row__gutter {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.room-row__gutter-time {
+  visibility: hidden;
+  color: var(--k-text-faint);
+  font: var(--k-text-xs) / var(--room-line) var(--k-font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.room-row--message:focus-within .room-row__gutter-time,
+.room-row--actions-open .room-row__gutter-time {
+  visibility: visible;
+}
+
+.room-row__main {
+  min-width: 0;
+}
+
+.room-row__header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: var(--k-space-2);
+  line-height: var(--room-line);
+}
+
+.room-row__author {
+  color: var(--k-text);
+  font-weight: 600;
+}
+
+.room-row__badge {
+  align-self: center;
+  padding: 0 var(--k-space-1);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text-muted);
+  font: 600 var(--k-text-xs) / 1.6 var(--k-font-ui);
+  letter-spacing: var(--k-tracking-wide);
+  text-transform: uppercase;
+}
+
+.room-row__time {
+  color: var(--k-text-faint);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.room-row__context {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--room-line);
+}
+
+.room-row__body {
+  min-width: 0;
+}
+
+.room-row .room-row__body :is(p, ul, ol, blockquote, pre, table) {
+  margin: 0;
+}
+
+.room-row
+  .room-row__body
+  :is(p, ul, ol, blockquote, pre, table)
+  + :is(p, ul, ol, blockquote, pre, table) {
+  margin-top: var(--k-space-2);
+}
+
+.room-row__body :is(ul, ol) {
+  padding-inline-start: var(--k-space-5);
+}
+
+.room-row__body pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* A recorded @mention leads the first line instead of sitting above it. */
+.room-message-text > .task-room-mention {
+  float: left;
+  margin-inline-end: var(--k-space-1);
+  line-height: var(--room-line);
+}
+
+.room-message-text__source {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.room-row__footer {
+  margin-top: var(--k-space-1);
+}
+
+.room-row--failed > .room-row__main > .room-row__body {
+  color: var(--k-text-muted);
+}
+
+.room-row--pending > .room-row__main > .room-row__body {
+  opacity: 0.72;
+}
+
+/* The action bar rides the row's top edge so it never covers text. */
+.room-row__actions {
+  position: absolute;
+  top: calc(-1 * var(--k-space-4));
+  right: var(--k-space-2);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  box-shadow: var(--k-elevation-overlay, var(--k-shadow));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--k-ease);
+}
+
+.room-row--message:focus-within .room-row__actions,
+.room-row--actions-open .room-row__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.room-row__actions .button {
+  min-height: calc(var(--k-space-6) - var(--k-space-1));
+  border: 0;
+  white-space: nowrap;
+}
+
+/* Hover reveal only where a pointer can hover (RoomConversation sets the class). */
+.room-conversation--hover .room-row--message:hover {
+  background: color-mix(in oklab, var(--k-text) 4%, transparent);
+}
+
+.room-conversation--hover .room-row--message:hover .room-row__gutter-time {
+  visibility: visible;
+}
+
+.room-conversation--hover .room-row--message:hover .room-row__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.room-row--actions-open {
+  background: color-mix(in oklab, var(--k-text) 6%, transparent);
+}
+
+/* ── System and live rows ─────────────────────────────────────────────── */
+.room-row--system {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-1) var(--k-space-2);
+  margin-block: var(--k-space-3);
+  padding-inline: var(--k-space-2);
+  color: var(--k-text-muted);
+  font: var(--k-text-sm) / var(--room-line) var(--k-font-ui);
+  text-align: center;
+}
+
+.room-row--system .room-row__time {
+  color: var(--k-text-faint);
+}
+
+.room-row--system.room-row--failed {
+  justify-content: flex-start;
+  margin-inline: calc(
+      var(--room-avatar-size) +
+      var(--k-space-3) +
+      var(--k-space-2)
+    )
+    0;
+  padding: var(--k-space-1) var(--k-space-1) var(--k-space-1) var(--k-space-3);
+  border: var(--k-border-thin) solid
+    color-mix(in oklab, var(--k-negative) 40%, var(--k-line));
+  border-radius: var(--k-radius-sm);
+  background: var(--k-negative-soft);
+  color: var(--k-text);
+  text-align: start;
+}
+
+.room-row__system-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  margin-inline-start: auto;
+}
+
+.room-trailing {
+  padding-block: var(--k-space-2) 0;
+}
+
+/* ── Dividers ─────────────────────────────────────────────────────────── */
+.room-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  margin: var(--k-space-5) 0 var(--k-space-1);
+  color: var(--k-text-muted);
+  font: 600 var(--k-text-xs) / 1 var(--k-font-ui);
+}
+
+.room-divider::before,
+.room-divider::after {
+  content: "";
+  flex: 1;
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+
+.room-divider--day > span {
+  padding: var(--k-space-1) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  white-space: nowrap;
+}
+
+.room-divider--unread {
+  margin-block: var(--k-space-3) 0;
+  color: var(--k-negative);
+  text-transform: uppercase;
+  letter-spacing: var(--k-tracking-wide);
+}
+
+.room-divider--unread::before {
+  border-color: color-mix(in oklab, var(--k-negative) 70%, transparent);
+}
+
+.room-divider--unread::after {
+  display: none;
+}
+
+.room-divider--day + .room-divider--unread {
+  margin-top: var(--k-space-2);
+}
+
+/* ── Jump to latest ───────────────────────────────────────────────────── */
+.room-conversation__jump.button {
+  position: absolute;
+  bottom: var(--k-space-3);
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  border-color: var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  box-shadow: var(--k-elevation-overlay, var(--k-shadow));
+  color: var(--k-text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Phone layout: `useIsMobile` (MOBILE_MEDIA_QUERY) sets the class. */
+.room-conversation.room-conversation--compact {
+  --room-avatar-size: var(--k-space-6);
+  --room-inset: var(--k-space-3);
+}
+
+.room-conversation--compact .room-row--message {
+  column-gap: var(--k-space-2);
+  padding-inline: var(--k-space-1);
+}
+
+.room-conversation--compact .room-row__actions {
+  top: calc(-1 * var(--k-space-5));
+}
+
+.room-conversation--compact .room-row__actions .button,
+.room-conversation--compact .room-row__system-actions .button,
+.room-conversation--compact .room-conversation__older.button,
+.room-conversation--compact .room-conversation__jump.button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.room-conversation--compact .room-conversation__jump.button {
+  /* A phone line runs edge to edge, so no overlay spot is free: the control
+     takes its own row under the list while it is shown (#4810 review 8). */
+  position: static;
+  align-self: flex-end;
+  margin: var(--k-space-1) var(--room-inset) 0;
+  transform: none;
+  box-shadow: none;
+}
+
+.room-conversation--compact .room-row--system.room-row--failed {
+  margin-inline-start: 0;
+}
