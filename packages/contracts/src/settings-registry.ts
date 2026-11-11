@@ -546,12 +546,13 @@ export const APP_SETTINGS_REGISTRY = [
     key: 'knowledgeStores',
     scope: 'station',
     descriptor: { kind: 'boolean' },
-    label: 'Knowledge stores (preview)',
-    help: 'Create the read-only conversation-history Knowledge root at personal Station startup.',
+    label: 'Past conversations in Knowledge',
+    help: 'After a restart, adds past conversations on this Station to Knowledge, searchable after a reindex; turning it off later does not remove them.',
+    // Read once at personal startup (ensureConversationKnowledgeRoot); hosted
+    // startup skips it. Indexing is a separate operator-run rebuild, and
+    // DELETE /api/knowledge/roots refuses this root, so off cannot remove it.
     description:
-      'When enabled, personal Station startup registers root:conversations if absent. Other Knowledge routes do not depend on this flag. Turning it off does not remove an existing root; hosted mode does not register this projection.',
-    // Kept out of the Settings UI; this does not disable the bootstrap consumer.
-    userFacing: false,
+      'Adds past conversations on this Station to Knowledge as a read-only source. They become searchable after a Knowledge reindex, which needs an embedding connection and the Station operator. Off by default because conversation history is personal. Applies after a restart. Turning it off does not remove the source. No effect on a hosted Station.',
     defaultValue: false,
   }),
   defineSetting({

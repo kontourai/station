@@ -535,10 +535,10 @@ describe('runCli', () => {
     const { parseLifecycleArgs } = await import('../cli.js');
 
     expect(
-      parseLifecycleArgs([`--base=${home}`, '--features=a=1,b']),
+      parseLifecycleArgs([`--base=${home}`, '--log=/tmp/a=1,b.log']),
     ).toMatchObject({
       baseDir: home,
-      features: 'a=1,b',
+      logFile: '/tmp/a=1,b.log',
     });
   });
 
@@ -552,6 +552,73 @@ describe('runCli', () => {
         /cannot be used with local lifecycle commands/,
       );
     }
+  });
+
+  // #3909: `--features=strands-runtime` used to switch the process to
+  // Strands. Lifecycle commands ignore unknown options, so ignoring it would
+  // start such a caller on VoltAgent without saying so; it is refused before
+  // any lifecycle effect. Every other value never changed the runtime and
+  // stays an ignored unknown option.
+  test.each([
+    ['start', ['start']],
+    ['service install', ['service', 'install']],
+    ['service run', ['service', 'run']],
+  ])(
+    '%s refuses a --features list naming strands-runtime and ignores any other',
+    async (_label, command) => {
+      const { lifecycle, runCli, service } = await loadCliWithLifecycleMocks();
+      for (const option of [
+        '--features=strands-runtime',
+        '--features=voice,strands-runtime',
+      ]) {
+        await expect(
+          runCli([...command, `--base=${STATION_HOME}`, option]),
+        ).rejects.toThrow(
+          /no longer selects the Strands runtime \(#3909\)\. Run `station config set runtime strands`/,
+        );
+      }
+      // The spaced form must not slip through as two ignored arguments.
+      await expect(
+        runCli([
+          ...command,
+          `--base=${STATION_HOME}`,
+          '--features',
+          'strands-runtime',
+        ]),
+      ).rejects.toThrow(/--features requires the --features=<value> form/);
+      expect(lifecycle.start).not.toHaveBeenCalled();
+      expect(lifecycle.clean).not.toHaveBeenCalled();
+      expect(service.runServiceCommand).not.toHaveBeenCalled();
+
+      for (const option of [
+        '--features=managed-chat-orchestration',
+        '--features=strands-runtime-x',
+        '--features=voice, strands-runtime',
+      ]) {
+        await runCli([...command, `--base=${STATION_HOME}`, option]);
+      }
+      const runs =
+        command[0] === 'start'
+          ? lifecycle.start.mock.calls
+          : service.runServiceCommand.mock.calls;
+      expect(runs).toHaveLength(3);
+    },
+  );
+
+  test('start --clean refuses STATION_FEATURES=strands-runtime before cleaning the home', async () => {
+    const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
+    vi.stubEnv('STATION_FEATURES', 'strands-runtime');
+    try {
+      await expect(
+        runCli(['start', `--base=${STATION_HOME}`, '--clean', '--force']),
+      ).rejects.toThrow(
+        /^STATION_FEATURES=strands-runtime no longer selects the Strands runtime/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(lifecycle.clean).not.toHaveBeenCalled();
+    expect(lifecycle.start).not.toHaveBeenCalled();
   });
 
   test('rejects ephemeral service commands before creating a temp home', async () => {
@@ -830,7 +897,6 @@ describe('runCli', () => {
       allowedOrigins: undefined,
       baseDir: STATION_HOME,
       build: false,
-      features: undefined,
       force: true,
       homeSource: '--base',
       host: '127.0.0.1',

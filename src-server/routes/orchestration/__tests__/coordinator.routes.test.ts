@@ -9,11 +9,16 @@ import {
   bindStationControlRequestAuthority,
   stationControlRequestAuthority,
 } from '../../../security/station-control-request-authority.js';
+import {
+  FeaturePreviewRegistry,
+  type FeaturePreviewSelector,
+} from '../../../services/feature-previews/feature-preview-registry.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import {
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
   STATION_CONTROL_ORIGIN_HEADER,
 } from '../../../tools/station-control-shared.js';
+import type { Logger } from '../../../utils/logger.js';
 import { createCoordinatorRoutes } from '../coordinator.js';
 
 const makeTempDir = trackTempDirs();
@@ -21,12 +26,14 @@ const stores: EventStore[] = [];
 afterEach(() => {
   for (const store of stores.splice(0)) store.close();
 });
+const ENABLED: FeaturePreviewSelector = { select: ({ enabled }) => enabled() };
 
 function app(options: {
   userId?: string;
   writable?: (conversationId: string) => boolean;
   store?: 'none';
   revoke?: (conversationId: string) => void;
+  preview?: FeaturePreviewSelector;
 }) {
   const store = new EventStore(
     join(makeTempDir('coordinator-routes-'), 'orchestration.sqlite'),
@@ -35,6 +42,7 @@ function app(options: {
   const userId = options.userId ?? 'human:local:owner';
   const routes = createCoordinatorRoutes({
     store: options.store === 'none' ? undefined : store.coordinatorStore(),
+    preview: options.preview ?? ENABLED,
     person: () => ({
       userId,
       mayRead: () => true,
@@ -137,6 +145,7 @@ describe('coordinator routes: targets that stop being the coordinator', () => {
       '/api/orchestration',
       createCoordinatorRoutes({
         store: store.coordinatorStore(),
+        preview: ENABLED,
         person: () => ({
           userId: 'human:local:owner',
           mayRead: options.readable ?? (() => true),
@@ -218,8 +227,13 @@ describe('coordinator working picture', () => {
     let callerConversation = 'coordinator';
     let callerCurrent = true;
     let observedCaller: (() => void) | undefined;
+    let sessionPreview = true;
     const routes = createCoordinatorRoutes({
       store: coordinator,
+      preview: {
+        select: ({ enabled, disabled }) =>
+          sessionPreview ? enabled() : disabled(),
+      },
       person: () => ({
         userId: 'owner',
         mayRead: (id) => !denied.has(id),
@@ -299,6 +313,23 @@ describe('coordinator working picture', () => {
     ).toBe(404);
     expect(coordinator.pictureItems('owner')).toHaveLength(1);
     preview = true;
+    // The picture also needs the coordinator preview, and names that one.
+    sessionPreview = false;
+    for (const response of [
+      await send('coordinator/picture'),
+      await send('station-control/coordinator-picture'),
+      await send('station-control/coordinator-picture', 'POST', {
+        conversationId: 'work-b',
+        status: 'waiting',
+        summary: 'No write while the coordinator is off',
+      }),
+    ])
+      expect(await response.json()).toMatchObject({
+        code: 'feature_preview_disabled',
+        previewId: 'coordinator-session',
+      });
+    expect(coordinator.pictureItems('owner')).toHaveLength(1);
+    sessionPreview = true;
     let finishBody!: (text: string) => void;
     let started!: () => void;
     const admitted = new Promise<void>((resolve) => {
@@ -374,5 +405,143 @@ describe('coordinator working picture', () => {
     expect(await (await send('coordinator/picture')).json()).toMatchObject({
       data: { items: [{ summary: 'Needs review' }] },
     });
+  });
+});
+
+describe('coordinator-session preview', () => {
+  const logger = {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+  } as unknown as Logger;
+
+  test('off by default, GET and PUT refuse and keep the stored designation; on again restores it', async () => {
+    const registry = new FeaturePreviewRegistry(
+      makeTempDir('coordinator-preview-home-'),
+      logger,
+    );
+    const preview = registry.bind({
+      id: 'coordinator-session',
+      label: 'Coordinator chat',
+      description: 'test',
+    });
+    const { call, store } = app({ preview });
+    store.coordinatorStore().designate({
+      conversationId: 'chat-a',
+      actor: { userId: 'human:local:owner' },
+      replace: false,
+      now: 1,
+    });
+    const refusal = {
+      success: false,
+      code: 'feature_preview_disabled',
+      previewId: 'coordinator-session',
+      settingsPath:
+        '/settings?view=feature-previews&highlight=feature-previews',
+    };
+    for (const response of [
+      await call('GET'),
+      await call('PUT', { conversationId: 'chat-b', replace: true }),
+    ]) {
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject(refusal);
+    }
+    // An agent's request is still refused as an agent's, preview or not.
+    expect((await call('GET', undefined, true)).status).toBe(403);
+    expect(
+      store
+        .coordinatorStore()
+        .designations()
+        .map((record) => record.conversationId),
+    ).toEqual(['chat-a']);
+
+    await registry.setEnabled('coordinator-session', true);
+    expect(await (await call('GET')).json()).toMatchObject({
+      data: { designation: { conversationId: 'chat-a' } },
+    });
+    await registry.setEnabled('coordinator-session', false);
+    expect((await call('GET')).status).toBe(404);
+  });
+
+  test('while off, a person can still remove their own designation, and an agent cannot', async () => {
+    const revoked: string[] = [];
+    const { call, store } = app({
+      preview: { select: ({ disabled }) => disabled() },
+      revoke: (id) => revoked.push(id),
+    });
+    store.coordinatorStore().designate({
+      conversationId: 'chat-a',
+      actor: { userId: 'human:local:owner' },
+      replace: false,
+      now: 1,
+    });
+    expect((await call('DELETE', undefined, true)).status).toBe(403);
+    expect(store.coordinatorStore().designations()).toHaveLength(1);
+    expect(await (await call('DELETE')).json()).toEqual({
+      success: true,
+      data: { undesignated: true },
+    });
+    expect(store.coordinatorStore().designations()).toEqual([]);
+    expect(revoked).toEqual(['chat-a']);
+  });
+
+  test('a designation whose body arrives after the preview was turned off is refused', async () => {
+    const registry = new FeaturePreviewRegistry(
+      makeTempDir('coordinator-preview-race-'),
+      logger,
+    );
+    const preview = registry.bind({
+      id: 'coordinator-session',
+      label: 'Coordinator chat',
+      description: 'test',
+    });
+    await registry.setEnabled('coordinator-session', true);
+    const store = new EventStore(
+      join(makeTempDir('coordinator-routes-race-'), 'orchestration.sqlite'),
+    );
+    stores.push(store);
+    const hono = new Hono().route(
+      '/api/orchestration',
+      createCoordinatorRoutes({
+        store: store.coordinatorStore(),
+        preview,
+        person: () => ({
+          userId: 'owner',
+          mayRead: () => true,
+          mayMutate: () => true,
+        }),
+        dispatchActor: () => ({ userId: 'owner' }),
+      }),
+    );
+    let finish!: () => void;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        finish = () => {
+          controller.enqueue(
+            new TextEncoder().encode(
+              JSON.stringify({ conversationId: 'chat-a' }),
+            ),
+          );
+          controller.close();
+        };
+      },
+    });
+    const inFlight = hono.fetch(
+      new Request('http://station.test/api/orchestration/coordinator', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body,
+        duplex: 'half',
+      } as RequestInit & { duplex: 'half' }),
+    );
+    await registry.setEnabled('coordinator-session', false);
+    finish();
+    const response = await inFlight;
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      code: 'feature_preview_disabled',
+    });
+    expect(store.coordinatorStore().designations()).toEqual([]);
   });
 });

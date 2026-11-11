@@ -971,6 +971,8 @@ describe('CI verification workflow contracts', () => {
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
       '.github/workflows/ios-rust-cache-warm.yml':
         'writes the iOS Rust cache from trusted main only; build-ios.yml is the pull-request and merge-queue signal and only restores it',
+      '.github/workflows/seatbelt-kernel.yml':
+        'macOS-only Seatbelt kernel legs (#4772), path-filtered to confinement code; the Linux and Windows PR lanes skip them and the workflow gate refuses a new candidate-controlled pull_request trigger, so a regression shows after merge',
     };
 
     const pushOnly = readWorkflowDocuments()

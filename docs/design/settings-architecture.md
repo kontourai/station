@@ -41,11 +41,13 @@ written down (§4.1) and audited against every existing surface. Remaining
 longer-term architecture: the naming/cross-links slice (#5) and the
 plumbing-debt slice (#6).
 
-**Some fields have since moved.** `knowledgeStores` is `userFacing: false`
-and has no Settings row, but it has a current consumer: personal startup can
-register the read-only `root:conversations` Knowledge root. Ordinary Knowledge
-routes do not depend on it, and disabling it does not remove an existing root.
-The earlier description of the flag as inert is obsolete.
+**Some fields have since moved.** `knowledgeStores` was
+`userFacing: false` with no Settings row for a time; it is user-facing again
+as **Past conversations in Knowledge** in the My knowledge store card
+(catalog id `knowledge-conversation-history`). Personal startup reads it to
+register the read-only `root:conversations` Knowledge root. Ordinary
+Knowledge routes do not depend on it, and disabling it does not remove an
+existing root. The earlier description of the flag as inert is obsolete.
 `defaultChatFontSize` and `workspaceCheckpoints` gained Station-configuration rows.
 
 ## Panel state within a layout
@@ -476,10 +478,10 @@ encoding) and remains what `views/settings/registry-row.tsx` renders and what
 `settings-catalog.ts` searches. Four keys nothing reads — `gitRemote`,
 `defaultEmbeddingProvider`, `defaultEmbeddingModel`, `defaultVectorDbProvider`
 — are `userFacing: false`: a row for a key nothing reads is a control that
-persists and does nothing. Unlike those keys, `knowledgeStores` has the startup
-consumer described above. Their `help`
-sentences say exactly that rather than describing behavior that does not
-exist.
+persists and does nothing; the `help` sentences of those four keys say
+exactly that rather than describing behavior that does not exist. Unlike
+them, `knowledgeStores` has the startup consumer described above, so it has a
+Settings row.
 
 ### 4.2 Project overrides (epic #2144 slice 2)
 

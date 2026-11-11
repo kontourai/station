@@ -257,6 +257,8 @@ export interface InitializeRuntimeDeps {
   orchestrationEventStore: EventStore;
   /** The `chat-host-images` Feature Preview selector, passed to orchestration. */
   hostImagesPreview?: FeaturePreviewSelector;
+  /** #3628: absent on a hosted Station, where no chat is a coordinator. */
+  coordinatorSessionPreview?: FeaturePreviewSelector;
   durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -442,15 +444,7 @@ export async function initializeRuntime(
   // Keep this tiny forwarding seam stable, then install the real catalog
   // authority below before adapter streams can emit usage events.
   let usagePricingSnapshotCapture: UsagePricingSnapshotCapture | undefined;
-  const features = (process.env.STATION_FEATURES || '')
-    .split(',')
-    .filter(Boolean);
-  // SUNSET(#3909): delete once the persisted `runtime` setting is the only
-  // runtime selector, or Strands is the default.
-  if (features.includes('strands-runtime')) {
-    appConfig.runtime = 'strands';
-  }
-
+  // The persisted `runtime` setting is the only runtime selector (#3909).
   const runtime = appConfig.runtime || 'voltagent';
   const framework: RuntimeFramework =
     runtime === 'strands'
@@ -603,6 +597,11 @@ export async function initializeRuntime(
   const flowRunService = new FlowRunService();
   const hostedTenantRegistry = loadHostedTenantRegistryFromEnvironment();
   const publicAdapterRegistry = createProviderAdapterRegistry();
+  const coordinatorEnabled = () =>
+    deps.coordinatorSessionPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
   // archive#895 wave A: resolve per-agent capability delivery (ACP tool servers,
   // Claude skills) into a session's ResolvedAgentDefinition before dispatch.
   // Fail-open closures, mirroring the ClaudeAdapter skills wiring above:
@@ -630,6 +629,7 @@ export async function initializeRuntime(
     // #3628: read at each Session start, so a designation reaches the
     // coordinator's next Session (and a successor Session of it).
     isCoordinatorSession: (threadId) => {
+      if (!coordinatorEnabled()) return false;
       try {
         const conversationId =
           orchestrationEventStore.conversationForSession(threadId)
@@ -832,6 +832,7 @@ export async function initializeRuntime(
     agentPolicyService: getAgentPolicyService(logger),
     workflowSidecarService: new WorkflowSidecarService({ logger }),
     resolveSessionAgent,
+    coordinatorEnabled,
     coordinatorGenerationForSession: (threadId) =>
       coordinatorGeneration(
         orchestrationEventStore.conversationForSession(threadId)

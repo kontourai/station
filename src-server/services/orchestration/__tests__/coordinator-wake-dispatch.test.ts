@@ -12,6 +12,10 @@
  *
  * The coordinator's own wake turn ending writes a "finished" notification of
  * its own; each test also pins that it does not wake the coordinator again.
+ *
+ * The `coordinator-session` preview is a real registry binding, on unless a
+ * test turns it off; the inbox's placement policy is the wake's, as in
+ * production.
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -35,6 +39,7 @@ import type { IProviderAdapterRegistry } from '../../../providers/provider-inter
 import { createCoordinatorRoutes } from '../../../routes/orchestration/coordinator.js';
 import { inboxPlacementStartPort } from '../../../runtime/routes/conversation-start-ports.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
+import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import {
   coordinatorDeliveryPorts,
@@ -82,6 +87,7 @@ interface World {
   notifications: NotificationService;
   /** The real coordinator routes, as the person (owner) calls them. */
   routes: Hono;
+  setPreview(enabled: boolean): Promise<unknown>;
   dispose: () => Promise<void>;
 }
 
@@ -90,11 +96,24 @@ afterEach(async () => {
   for (const world of worlds.splice(0)) await world.dispose();
 });
 
-function boot(adapters: ProviderAdapterShape[]): World {
+async function boot(adapters: ProviderAdapterShape[]): Promise<World> {
   const tmp = makeTempDir('coordinator-wake-');
   const previousHome = process.env.STATION_HOME;
   process.env.STATION_HOME = join(tmp, 'home');
   mkdirSync(process.env.STATION_HOME, { recursive: true });
+  const previews = new FeaturePreviewRegistry(process.env.STATION_HOME, {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  } as never);
+  const preview = previews.bind({
+    id: 'coordinator-session',
+    label: 'Coordinator chat',
+    description: 'test',
+  });
+  await previews.setEnabled('coordinator-session', true);
+  let placement: ReturnType<typeof wireCoordinatorWakes> | undefined;
   const store = new EventStore(join(tmp, 'orchestration.sqlite'));
   const bus = new EventBus();
   const service = new OrchestrationService({
@@ -178,6 +197,13 @@ function boot(adapters: ProviderAdapterShape[]): World {
         if (frame.event === 'orchestration:event' && event)
           listener({ threadId: event.threadId, method: event.method });
       }),
+    placementRefusal: (input) =>
+      placement?.placementRefusal({
+        conversationId: input.conversationId,
+        clientTurnId: input.clientTurnId,
+        userId: input.payload.actor.userId,
+        queuedAt: input.queuedAt,
+      }),
     logger: { warn: vi.fn() },
     retryDelaysMs: [20, 50, 100],
   });
@@ -199,6 +225,8 @@ function boot(adapters: ProviderAdapterShape[]): World {
     eventBus: bus,
     eventStore: store,
     store: store.coordinatorStore(),
+    enabled: () =>
+      preview.select({ enabled: () => true, disabled: () => false }),
     threadInbox: inbox,
     // The person may read a Session they own (the owner branch of the
     // production read rule).
@@ -211,10 +239,12 @@ function boot(adapters: ProviderAdapterShape[]): World {
       return () => clearTimeout(timer);
     },
   });
+  placement = wakes;
   const routes = new Hono().route(
     '/api/orchestration',
     createCoordinatorRoutes({
       store: store.coordinatorStore(),
+      preview,
       person: () => ({
         userId: OWNER,
         mayRead: () => true,
@@ -231,6 +261,8 @@ function boot(adapters: ProviderAdapterShape[]): World {
     inbox,
     notifications,
     routes,
+    setPreview: (enabled) =>
+      previews.setEnabled('coordinator-session', enabled),
     dispose: async () => {
       wakes.unsubscribe();
       unwireCompletions();
@@ -270,7 +302,7 @@ async function acpWorld() {
       return child as unknown as ACPProcess;
     },
   });
-  const world = boot([acp]);
+  const world = await boot([acp]);
   const start = async (threadId: string) => {
     await world.service.dispatch(
       {
@@ -418,6 +450,60 @@ describe('a worker finishing wakes the coordinator once', () => {
     expect(prompts(coordinatorProcess)).toHaveLength(1);
   });
 
+  test('ACP: with the preview off nothing is recorded or delivered; turned on, the next finish wakes it', async () => {
+    const { world, coordinatorProcess, prompts, finishWorkerTurn } =
+      await acpWorld();
+    await world.setPreview(false);
+    await finishWorkerTurn('build it');
+    await quiet();
+    await world.inbox.idle();
+    expect(prompts(coordinatorProcess)).toEqual([]);
+    expect(world.inbox.list(COORDINATOR)).toEqual([]);
+    expect(world.store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
+
+    // The choice is read when the next notification arrives, not at boot.
+    await world.setPreview(true);
+    await finishWorkerTurn('build another');
+    const [wake] = await waitFor(
+      () => prompts(coordinatorProcess),
+      (p) => p.length === 1,
+      'the wake after turning the preview on',
+    );
+    expect(wake).toContain(FRAME);
+  });
+
+  test('ACP: a wake queued while on is refused after the preview is turned off, and is not re-sent when it is turned on', async () => {
+    const { world, coordinatorProcess, prompts, finishWorkerTurn } =
+      await acpWorld();
+    await finishWorkerTurn('build it');
+    await waitFor(
+      () => prompts(coordinatorProcess),
+      (p) => p.length === 1,
+      'the first wake',
+    );
+    await finishWorkerTurn('build another');
+    const queued = await waitFor(
+      () => world.inbox.list(COORDINATOR).find((row) => row.state === 'queued'),
+      (row) => row !== undefined,
+      'the second wake queued',
+    );
+    await world.setPreview(false);
+    coordinatorProcess!.resolvePrompt('end_turn');
+    await waitFor(
+      () => world.inbox.entry(COORDINATOR, queued!.clientTurnId!),
+      (entry) => entry?.state === 'refused',
+      'the queued wake refused at placement',
+    );
+    expect(world.inbox.entry(COORDINATOR, queued!.clientTurnId!)).toMatchObject(
+      { reasonCode: 'coordinator_preview_disabled' },
+    );
+    await world.setPreview(true);
+    await quiet();
+    await world.inbox.idle();
+    expect(prompts(coordinatorProcess)).toHaveLength(1);
+    expect(world.store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
+  });
+
   test('Claude provider: the coordinator engine receives one framed Station turn', async () => {
     const sends = new Map<string, string[]>();
     const invocations = new Map<string, (string | undefined)[]>();
@@ -436,7 +522,7 @@ describe('a worker finishing wakes the coordinator once', () => {
       }
     }
     const adapter = new CountingAdapter();
-    const world = boot([adapter]);
+    const world = await boot([adapter]);
     let sequence = 0;
     const emit = async (
       threadId: string,
@@ -525,7 +611,7 @@ describe('Muse inbox delivery after a completed turn', () => {
       logger: { warn: vi.fn(), info: vi.fn() },
     });
     vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
-    const world = boot([adapter]);
+    const world = await boot([adapter]);
     await world.service.dispatch(
       {
         type: 'startSession',
@@ -588,7 +674,7 @@ describe('delivery state through the production ports', () => {
     stamp: boolean,
   ) {
     const adapter = new RecordingAdapter();
-    const world = boot([adapter]);
+    const world = await boot([adapter]);
     let sequence = 0;
     const emit = async (method: string, fields: Record<string, unknown>) => {
       sequence += 1;

@@ -3,8 +3,12 @@ import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-s
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { analyticsHomeExportActivation } from '../../analytics/analytics-activation.js';
 import { ReviewedTariffConfigurationService } from '../../analytics/reviewed-tariff-config.js';
+import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
-import { getBrandingProvider } from '../../providers/registries/registry.js';
+import {
+  getBrandingProvider,
+  listProviders,
+} from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
@@ -247,6 +251,7 @@ import { composeTaskBriefSource } from '../../services/projects/task-brief-sourc
 import { composeTaskDispatcher } from '../../services/projects/task-dispatch-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { WorktreeOutputSettlementService } from '../../services/projects/worktree-output-settlement-service.js';
 import {
   sessionExitWorktreeMetadata,
   terminalWorktreeStateForExit,
@@ -915,20 +920,8 @@ export class StationRuntime {
     );
   };
   private claudeAdapter = new ClaudeAdapter({
-    isCoordinatorSession: (threadId) => {
-      const principal =
-        this.orchestrationService?.resolveSessionActingPrincipal(threadId);
-      if (!principal || principal.source !== 'session-owner') return false;
-      const conversationId =
-        this.orchestrationEventStore.conversationForSession(threadId)
-          ?.conversationId ?? threadId;
-      return (
-        this.orchestrationEventStore
-          .coordinatorStore()
-          .designationForConversation(conversationId)?.actor.userId ===
-        principal.id
-      );
-    },
+    isCoordinatorSession: (threadId) =>
+      this.isClaudeCoordinatorSession(threadId),
     resolveCoordinatorStationControl: async (threadId) =>
       this.orchestrationService?.resolveCoordinatorStationControl(threadId),
     coordinatorGenerationForSession: (threadId) =>
@@ -1018,20 +1011,7 @@ export class StationRuntime {
     ...claudeInProcessStationControlOptions(() =>
       this.orchestrationService
         ? createStationControlCallerRecordResolver(
-            stationControlCallerRecordSources({
-              orchestrationService: {
-                resolveSessionActingPrincipal: (threadId) =>
-                  this.orchestrationService.resolveSessionActingPrincipal(
-                    threadId,
-                  ),
-                firstStartedMetadataOfThread: (threadId) =>
-                  this.orchestrationService.firstStartedMetadataOfThread(
-                    threadId,
-                  ),
-              },
-              eventStore: this.orchestrationEventStore,
-              getProject: (slug) => this.storageAdapter.getProject(slug),
-            }),
+            this.stationControlRecordSources(),
           )
         : undefined,
     ),
@@ -1068,20 +1048,7 @@ export class StationRuntime {
       createCodexBoundToolServer({
         ...input,
         resolveRecord: createStationControlCallerRecordResolver(
-          stationControlCallerRecordSources({
-            orchestrationService: {
-              resolveSessionActingPrincipal: (threadId) =>
-                this.orchestrationService.resolveSessionActingPrincipal(
-                  threadId,
-                ),
-              firstStartedMetadataOfThread: (threadId) =>
-                this.orchestrationService.firstStartedMetadataOfThread(
-                  threadId,
-                ),
-            },
-            eventStore: this.orchestrationEventStore,
-            getProject: (slug) => this.storageAdapter.getProject(slug),
-          }),
+          this.stationControlRecordSources(),
         ),
         dispatch: (request) => {
           if (!this.codexToolDispatch)
@@ -1288,6 +1255,11 @@ export class StationRuntime {
   private readonly taskFollowUps = new TaskFollowUpStoreHolder(() =>
     taskFollowUpStorePath(this.configLoader.getProjectHomeDir()),
   );
+  /**
+   * #4771: what became of each worktree Session's output. Absent without an
+   * orchestration store; Session-exit cleanup then records nothing.
+   */
+  private worktreeOutputSettlements?: WorktreeOutputSettlementService;
   private ptyAdapter!: IPtyAdapter;
   private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
     {};
@@ -1338,6 +1310,7 @@ export class StationRuntime {
   private accountSharingSettingPreview!: FeaturePreviewSelector;
   private codexBoundToolsPreview?: FeaturePreviewSelector;
   private stationInstructionsPreview?: FeaturePreviewSelector;
+  private coordinatorSessionPreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1765,6 +1738,7 @@ export class StationRuntime {
       this.bindChatHostImagesPreview();
       this.bindMemberPasskeysPreview();
       this.bindAccountSharingSettingPreview();
+      this.bindCoordinatorSessionPreview();
       this.stationInstructionsPreview = this.featurePreviews.bind({
         id: 'station-orchestration-instructions',
         label: 'Station orchestration instructions',
@@ -1980,20 +1954,7 @@ export class StationRuntime {
         resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
         // #4507: a Task worktree is never removed while a Session in it has a
         // running turn. Read when finalization runs, not at construction.
-        isWorkspaceBusy: (path) => {
-          const root = resolve(path);
-          return this.orchestrationService
-            .listActiveTurnThreadIds()
-            .some((threadId) => {
-              const cwd =
-                this.orchestrationEventStore?.readSessionByThread(
-                  threadId,
-                )?.cwd;
-              if (!cwd) return false;
-              const at = resolve(cwd);
-              return at === root || at.startsWith(`${root}${sep}`);
-            });
-        },
+        isWorkspaceBusy: (path) => this.isWorkspaceBusy(path),
       });
       // Release a task's assignment claim when its orchestration session ends
       // (natural completion or `stopSession`/cancel — both surface as the
@@ -2016,6 +1977,19 @@ export class StationRuntime {
       });
       subscribeConversationTitleGeneration(this.eventBus, conversationTitles);
       const worktreeProvisioningService = new WorktreeProvisioningService();
+      const settlementStore =
+        this.orchestrationEventStore?.worktreeOutputSettlementStore();
+      this.worktreeOutputSettlements = settlementStore
+        ? new WorktreeOutputSettlementService({
+            store: settlementStore,
+            worktrees: worktreeProvisioningService,
+            pullRequestProviders: () =>
+              listProviders('pullRequest').map((entry) => entry.provider),
+            // A worktree is not settled while a turn runs in it, the rule
+            // Task finalization follows (#4507).
+            isWorkspaceBusy: (path) => this.isWorkspaceBusy(path),
+          })
+        : undefined;
       this.eventBus.subscribe((serverEvent) => {
         if (serverEvent.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
         const event = serverEvent.data?.event as
@@ -2114,11 +2088,10 @@ export class StationRuntime {
               exitCode: event.exitCode,
               events: detail.events,
             });
-            await worktreeProvisioningService.finalize({
-              metadata,
-              terminalState,
-              sessionId,
-            });
+            const exit = { metadata, terminalState, sessionId };
+            await (this.worktreeOutputSettlements
+              ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
+              : worktreeProvisioningService.finalize(exit));
           })
           .catch((error) => {
             this.logger.warn('Failed to finalize worktree on session exit', {
@@ -2635,6 +2608,23 @@ export class StationRuntime {
         { graceMs: this.drainGraceMs() },
       );
     }
+  }
+
+  /**
+   * Whether a Session with a running turn works in `path` or below it. Read
+   * when asked, never at construction (#4507, #4771).
+   */
+  private isWorkspaceBusy(path: string): boolean {
+    const root = resolve(path);
+    return this.orchestrationService
+      .listActiveTurnThreadIds()
+      .some((threadId) => {
+        const cwd =
+          this.orchestrationEventStore?.readSessionByThread(threadId)?.cwd;
+        if (!cwd) return false;
+        const at = resolve(cwd);
+        return at === root || at.startsWith(`${root}${sep}`);
+      });
   }
 
   /**
@@ -4493,6 +4483,7 @@ export class StationRuntime {
           onACPConnectionsReady: () => this.reloadDefaultAgent(),
           orchestrationEventStore: this.orchestrationEventStore,
           hostImagesPreview: this.chatHostImagesPreview,
+          coordinatorSessionPreview: this.coordinatorSessionPreview,
           durableAgentPreview: this.featurePreviews.bind({
             id: 'durable-station-agent',
             label: 'Crash-durable Station Agent',
@@ -4636,11 +4627,7 @@ export class StationRuntime {
               });
               const learningSessionSource =
                 createStationControlCallerRecordResolver(
-                  stationControlCallerRecordSources({
-                    orchestrationService: this.orchestrationService,
-                    eventStore: this.orchestrationEventStore,
-                    getProject: (slug) => this.storageAdapter.getProject(slug),
-                  }),
+                  this.stationControlRecordSources(),
                 );
               this.learningReview = composeLearningReviewRuntime(
                 this.featurePreviews,
@@ -5451,6 +5438,7 @@ export class StationRuntime {
       taskDispatcher: this.taskDispatcher,
       workItemObserver: this.workItemObserver,
       taskFollowUps: this.taskFollowUps,
+      worktreeOutputSettlements: () => this.worktreeOutputSettlements,
       ptyAdapter: this.ptyAdapter,
       scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,
@@ -5508,6 +5496,7 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
+      coordinatorSessionPreview: this.coordinatorSessionPreview,
       projectWorkingConfiguration: this.projectWorkingConfiguration,
       learningReview: this.learningReview,
       getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
@@ -5900,6 +5889,67 @@ export class StationRuntime {
    * capture and the agent instruction (orchestration), and the per-session
    * engine TMPDIR, decided when an engine starts (`session-tmpdir.ts`).
    */
+  /**
+   * #3628: the person's coordinator chat. Bound here rather than with the
+   * routes because the Session tool grant (the agent resolver and the Claude
+   * adapter) is composed in this constructor. Hosted Stations have none.
+   */
+  private bindCoordinatorSessionPreview(): void {
+    if (
+      !servesCoordinatorSession({
+        hosted: loadHostedTenantRegistryFromEnvironment() !== undefined,
+      })
+    )
+      return;
+    this.coordinatorSessionPreview = this.featurePreviews.bind({
+      id: 'coordinator-session',
+      label: 'Coordinator chat',
+      description:
+        'Make one chat your personal agent, woken when work you can read needs you, fails or finishes. Each wake is a model call; on an engine with Station tools it acts with your permissions.',
+    });
+  }
+
+  private coordinatorSessionEnabled(): boolean {
+    return (
+      this.coordinatorSessionPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true
+    );
+  }
+
+  /** The in-process Station Control caller records (Claude, Codex, learning). */
+  private stationControlRecordSources() {
+    return stationControlCallerRecordSources({
+      orchestrationService: {
+        resolveSessionActingPrincipal: (threadId) =>
+          this.orchestrationService.resolveSessionActingPrincipal(threadId),
+        firstStartedMetadataOfThread: (threadId) =>
+          this.orchestrationService.firstStartedMetadataOfThread(threadId),
+      },
+      eventStore: this.orchestrationEventStore,
+      getProject: (slug) => this.storageAdapter.getProject(slug),
+      coordinatorEnabled: () => this.coordinatorSessionEnabled(),
+    });
+  }
+
+  /** Whether the Claude adapter adds coordinator tools to this Session. */
+  private isClaudeCoordinatorSession(threadId: string): boolean {
+    if (!this.coordinatorSessionEnabled()) return false;
+    const principal =
+      this.orchestrationService?.resolveSessionActingPrincipal(threadId);
+    if (!principal || principal.source !== 'session-owner') return false;
+    const conversationId =
+      this.orchestrationEventStore.conversationForSession(threadId)
+        ?.conversationId ?? threadId;
+    return (
+      this.orchestrationEventStore
+        .coordinatorStore()
+        .designationForConversation(conversationId)?.actor.userId ===
+      principal.id
+    );
+  }
+
   private bindChatHostImagesPreview(): void {
     this.chatHostImagesPreview = this.featurePreviews.bind({
       id: 'chat-host-images',

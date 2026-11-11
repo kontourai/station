@@ -63,6 +63,49 @@ mutation. Refresh is observation, not permission to retry an uncertain write.
 Goal completion never mutates Task or workflow status. Turning the preview off
 refuses all subsequent Goal requests; ordinary Session controls remain available.
 
+## Worktree output settlement
+
+`GET /api/orchestration/sessions/:threadId/worktree-settlement` returns
+`{success:true, data:{settlement}}`: the Session's one
+[`WorktreeOutputSettlement`](../../packages/contracts/src/workspace-isolation.ts),
+or `null`. It uses Session read authority and the orchestration read scope.
+
+`POST` to the same path settles it once. It requires an authenticated person
+with Session mutation authority and the orchestration operate scope; agent
+callers are refused. The strict body is one of
+`{requestKey, outcome:'discarded', acceptUncommittedLoss?}`,
+`{requestKey, outcome:'kept'}` or
+`{requestKey, outcome:'released', pullRequest:{provider, host, repository:{owner, name}, ref}}`.
+`requestKey` is 1–128 characters of `A-Z a-z 0-9 . _ : -`. A body that names
+an `actor` is refused with 400: the actor is the request's principal. The
+Session must have started in a worktree of its own, and no turn may be running
+in it. A discard removes files the repository ignores without
+`acceptUncommittedLoss`; the record counts the ignored paths `git status`
+listed (`ignoredEntries`). A discard is refused while the branch has moved on
+or another checkout has it; only when it completes an earlier discard whose
+worktree is already gone does it keep the branch in those cases, and the
+record says so (`branchKept`). A `kept` base must name a local or
+remote-tracking branch: a branch name is read as that branch even when a tag
+shares it, any spelling of `HEAD` is the branch it has checked out, and a
+detached checkout, a tag or a commit id is refused. The cleanup record's
+`afterCleanup` reports what was observed gone afterwards, not who removed it.
+
+A new record answers 201 with `data:{status:'recorded', settlement}`; a replay
+of the same request key and request, or a discard that completed an earlier
+half-done one, answers 200 with `status:'existing'`. Session authority is
+checked again after Station's Git and forge reads, immediately before anything
+is recorded or removed. A refusal answers 409 (404 for a Session without its
+own worktree, or `authority-changed`) with a `code` such as
+`already-settled`, `request-key-mismatch`, `settlement-pending`,
+`session-running`, `uncommitted-changes`, `branch-checked-out-elsewhere`,
+`branch-moved`, `worktree-path-not-a-directory`, `worktree-replaced`,
+`repository-missing`, `base-detached`, `base-is-session-branch`,
+`base-does-not-contain-head`, `no-new-commits`, `pull-request-mismatch` or
+`task-owned-worktree`, and the record in the way when there is one. A refusal
+records and removes nothing. Outcomes, evidence and crash behavior are described in
+[worktree output settlement](../design/isolated-agent-runs.md#worktree-output-settlement).
+No SDK or CLI command calls this route yet.
+
 This reference explains selected HTTP route families and their current owners.
 It is not a complete endpoint inventory. Request examples use illustrative IDs;
 replace them with identities returned by the selected Station. Response excerpts
@@ -5227,6 +5270,9 @@ conversation is another person's. `DELETE` removes it (`undesignated`). The
 user id is the request principal's; a request that may be an agent's is
 refused (403 `person-approval-required`). A hosted Station answers 503
 `coordinator_unavailable` and withdraws the `coordinatorSession` capability.
+While the `coordinator-session` Feature Preview is off, every route here
+except `DELETE` answers 404 `feature_preview_disabled`; the stored designation
+is kept.
 With a designation, GET and PUT also answer `delivery` (`CoordinatorDelivery`):
 `wakes` is `blocked` when the coordinator's last turn has ended but its
 turn boundary is still held, so the inbox would hold a wake indefinitely
@@ -5240,7 +5286,8 @@ or removing a designation withdraws the wakes still queued for the old
 conversation and revokes its designation-derived Station Control and Knowledge
 credentials. Independently authored Agent or Project grants remain separate.
 
-The default-off coordinator-picture preview adds
+The default-off coordinator-picture preview, which also needs
+`coordinator-session`, adds
 `GET /api/orchestration/coordinator/picture` for the person's readable notes.
 A bound designated coordinator reads and writes its own picture through
 `GET` and `POST /api/orchestration/station-control/coordinator-picture`.

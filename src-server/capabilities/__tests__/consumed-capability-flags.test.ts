@@ -363,6 +363,7 @@ const CONSUMED_FLAGS: Record<
             mayMutate: () => true,
           }),
           dispatchActor: () => ({ userId: 'owner' }),
+          preview: { select: (branches) => branches.enabled() },
         }),
       );
       const response = await routes.request('/api/orchestration/coordinator');

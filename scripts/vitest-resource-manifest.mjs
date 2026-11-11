@@ -249,11 +249,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
   // Claude handshake; skips loudly where Seatbelt cannot apply (non-macOS).
   // A skip still passes, and no hosted corpus lane runs on macOS, so the
-  // corpus never runs the kernel legs. They run on a developer Mac, or when
-  // `.github/workflows/seatbelt-kernel.yml` is dispatched on a hosted macOS
-  // runner, where scripts/check-required-tests-ran.mjs fails the run unless
-  // the pinned legs passed. The live Claude handshake runs only on a Mac with
-  // `claude` on PATH. #4769 adds the restricted-network legs: real
+  // corpus never runs the kernel legs. They run on a developer Mac, or in
+  // `.github/workflows/seatbelt-kernel.yml` on a hosted macOS runner (main
+  // pushes that touch confinement paths, or dispatch), where
+  // scripts/check-required-tests-ran.mjs fails the run unless the pinned legs
+  // passed. The live Claude handshake runs only on a Mac with `claude` on PATH.
+  // #4769 adds the restricted-network legs: real
   // `sandbox-exec` children under the broker-only profile, local loopback
   // listeners and an in-process egress broker, and one bounded live Claude
   // turn through the broker to a local stand-in model endpoint.
@@ -1429,6 +1430,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/task-worktree-finalization.test.ts',
   'src-server/services/projects/__tests__/task-worktree-ownership.test.ts',
   'src-server/services/projects/__tests__/task-worktree-removal-race.test.ts',
+  // #4771: settling a worktree Session's output over real repositories
+  // (discard, kept, released, crash convergence, cleanup), each spawning
+  // real git against a real orchestration SQLite store.
+  'src-server/services/projects/__tests__/worktree-output-settlement.test.ts',
+  // #4771: a real StationRuntime's Session-exit handler removing a real
+  // worktree and recording it, spawning real git.
+  'src-server/runtime/bootstrap/__tests__/station-runtime-worktree-exit-settlement.test.ts',
+  // #4771: the settlement route through the production runtime route
+  // composition, discarding a real worktree with real git.
+  'src-server/runtime/routes/__tests__/runtime-routes-worktree-settlement.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.

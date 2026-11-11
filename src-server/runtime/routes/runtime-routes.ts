@@ -570,6 +570,7 @@ import {
 import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
+import { createWorktreeOutputSettlementRoutes } from '../../routes/orchestration/worktree-output-settlement.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
 import { createPluginEventRelayGate } from '../../routes/plugins/plugin-identity-enumeration.js';
 import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
@@ -897,6 +898,7 @@ import {
 } from '../../services/projects/task-room-work-module.js';
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
+import type { WorktreeOutputSettlementService } from '../../services/projects/worktree-output-settlement-service.js';
 import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
 import { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
@@ -1286,6 +1288,12 @@ export interface ConfigureRuntimeRoutesContext {
    * Task brief reads it. Absent: no follow-ups are polled or shown.
    */
   taskFollowUps?: TaskFollowUpStoreHolder;
+  /**
+   * #4771: the runtime's one worktree output settlement service, read per
+   * request (the runtime composes it after routes are configured in some
+   * boots). Absent or returning nothing: the routes answer unavailable.
+   */
+  worktreeOutputSettlements?: () => WorktreeOutputSettlementService | undefined;
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
@@ -1377,6 +1385,8 @@ export interface ConfigureRuntimeRoutesContext {
   // Origin of the isolated plugin-frame document, if the shared listener runs.
   getPluginFrameOrigin?: () => string | undefined;
   featurePreviews: FeaturePreviewRegistry;
+  /** #3628: bound by the runtime, absent on a hosted Station. */
+  coordinatorSessionPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
   progressiveToolsEnabled?: () => boolean;
   projectWorkingConfiguration?: import('../project-working-configuration-runtime.js').ProjectWorkingRuntime;
   learningReview?: import('../learning-review-runtime.js').LearningReviewRuntime;
@@ -1952,6 +1962,11 @@ export function configureRuntimeRoutes(
   // This must run before every public, bespoke, and credential-protected
   // mount below. Personal mode has no configured registry and is unchanged.
   const hostedTenantRegistry = loadHostedTenantRegistryFromEnvironment();
+  const coordinatorSessionEnabled = () =>
+    context.coordinatorSessionPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
   // #749: chat inventory/open routes receive a principal-derived authority
   // through this request-local binding.  Keeping it separate from legacy
   // read-only route fallbacks prevents a cached OS display alias from being
@@ -2602,6 +2617,7 @@ export function configureRuntimeRoutes(
         },
         eventStore: context.orchestrationEventStore,
         getProject: (slug) => context.storageAdapter.getProject(slug),
+        coordinatorEnabled: coordinatorSessionEnabled,
       }),
     );
   const projectIdForSlug = (slug: string): string | undefined => {
@@ -2791,6 +2807,7 @@ export function configureRuntimeRoutes(
   // resolved fails here rather than reading as the OS alias.
   for (const path of [
     '/api/orchestration/sessions/:threadId/goal',
+    '/api/orchestration/sessions/:threadId/worktree-settlement',
     '/integrations/:serverId/ui/:toolName/initial-result',
     '/tool-approval/:approvalId',
     '/api/shares',
@@ -7240,6 +7257,16 @@ export function configureRuntimeRoutes(
     description:
       'Inspect engine Goals and save paused objectives. Automatic goal execution is unavailable.',
   });
+  // #4771: what became of a worktree Session's output, recorded once.
+  context.app.route(
+    '/api/orchestration',
+    createWorktreeOutputSettlementRoutes({
+      orchestration: context.orchestrationService,
+      settlements: () => context.worktreeOutputSettlements?.(),
+      authority: conversationReadAuthorityForRequest,
+      current: isRequestPrincipalCurrent,
+    }),
+  );
   context.app.route(
     '/api/orchestration',
     createSessionGoalRoutes({
@@ -7255,7 +7282,8 @@ export function configureRuntimeRoutes(
   );
   // #3628: a person's coordinator Session, woken through the same inbox when
   // work they can read needs them, finished or failed. Not on a hosted
-  // Station (no inbox there).
+  // Station (no inbox there). Everything below waits on the
+  // `coordinator-session` preview, bound by the runtime.
   const coordinatorStore = servesCoordinatorSession({
     hosted: hostedTenantRegistry !== undefined,
   })
@@ -7266,7 +7294,7 @@ export function configureRuntimeRoutes(
         id: 'coordinator-picture',
         label: 'Coordinator working picture',
         description:
-          'Keep a bounded coordinator-maintained picture of readable work across sessions.',
+          'Keep a bounded coordinator-maintained picture of readable work across sessions. Needs Coordinator chat.',
       })
     : undefined;
   const coordinatorWakes =
@@ -7275,6 +7303,7 @@ export function configureRuntimeRoutes(
           eventBus: context.eventBus,
           eventStore: context.orchestrationEventStore,
           store: coordinatorStore,
+          enabled: coordinatorSessionEnabled,
           pictureEnabled: () =>
             picturePreview?.select({
               enabled: () => true,
@@ -7308,6 +7337,7 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createCoordinatorRoutes({
       store: coordinatorStore,
+      preview: context.coordinatorSessionPreview,
       revokeCoordinatorCredentials: (conversationId) => {
         const sessions =
           context.orchestrationEventStore?.conversationSessions(

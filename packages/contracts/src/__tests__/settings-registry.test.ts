@@ -69,20 +69,19 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
     ).toBe(false);
   });
 
-  test('the inert knowledge-stores preview is excluded from user-facing settings', () => {
-    // Its own description says turning it on changes nothing today. A
-    // Settings row for it is a control that persists and does nothing, so it
-    // stays settable through `station config set` and out of every renderer
-    // until a consumer gates on it.
-    const knowledgeStores = APP_SETTINGS_REGISTRY.find(
+  test('the conversation-history Knowledge setting is user-facing and off by default', () => {
+    // Personal startup reads it to register root:conversations
+    // (conversation-root-bootstrap.ts), so it is an ordinary Settings row.
+    // Conversation history is personal: it must stay off until chosen.
+    const knowledgeStores = USER_FACING_APP_SETTINGS_REGISTRY.find(
       (definition) => definition.key === 'knowledgeStores',
     );
-    expect(knowledgeStores?.userFacing).toBe(false);
-    expect(
-      USER_FACING_APP_SETTINGS_REGISTRY.some(
-        (definition) => definition.key === 'knowledgeStores',
-      ),
-    ).toBe(false);
+    expect(knowledgeStores).toBeDefined();
+    expect(knowledgeStores?.userFacing).toBeUndefined();
+    expect(knowledgeStores?.scope).toBe('station');
+    expect(knowledgeStores?.descriptor).toEqual({ kind: 'boolean' });
+    expect(knowledgeStores?.defaultValue).toBe(false);
+    expect(knowledgeStores?.label).not.toMatch(/preview/i);
   });
 
   test('every registered key exists in schemas/app.schema.json', () => {

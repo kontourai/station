@@ -1313,6 +1313,66 @@ describe('settings catalog completeness', () => {
     );
   });
 
+  describe('Past conversations in Knowledge (knowledgeStores)', () => {
+    test('renders in the My knowledge store card, off by default, and saving writes knowledgeStores', async () => {
+      window.history.replaceState(
+        {},
+        '',
+        '/settings?view=knowledge&highlight=knowledge-conversation-history',
+      );
+      updateConfig.mockResolvedValueOnce(undefined);
+      const { container } = await renderSettings();
+
+      const card = container.querySelector('#section-knowledge');
+      if (!card) throw new Error('Missing the My knowledge store card');
+      const row = card.querySelector(
+        '[data-catalog-id="knowledge-conversation-history"]',
+      );
+      if (!(row instanceof HTMLElement))
+        throw new Error('Missing the past conversations row');
+      const toggle = within(row).getByRole('switch', {
+        name: 'Past conversations in Knowledge',
+      });
+      // Nothing stored: the registry default, off.
+      expect(toggle.getAttribute('aria-checked')).toBe('false');
+      // Before turning it on, a person sees without opening Details that it
+      // needs a reindex and cannot be undone by turning it off.
+      const visible = row.cloneNode(true) as HTMLElement;
+      for (const details of visible.querySelectorAll('details'))
+        details.remove();
+      expect(visible.textContent).toContain(
+        'Searchable after a Knowledge reindex',
+      );
+      expect(visible.textContent).toContain(
+        'Turning it off later does not remove them',
+      );
+
+      fireEvent.click(toggle);
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({ knowledgeStores: true });
+    });
+
+    test('shows a stored true as on and turning it off saves false', async () => {
+      configSnapshot.config = { ...INITIAL_CONFIG, knowledgeStores: true };
+      window.history.replaceState({}, '', '/settings?view=knowledge');
+      updateConfig.mockResolvedValueOnce(undefined);
+      await renderSettings();
+
+      const toggle = screen.getByRole('switch', {
+        name: 'Past conversations in Knowledge',
+      });
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+
+      fireEvent.click(toggle);
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({ knowledgeStores: false });
+    });
+  });
+
   test('imported settings save without transferring first-run progress', async () => {
     configSnapshot.config = {
       ...INITIAL_CONFIG,

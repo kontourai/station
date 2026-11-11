@@ -168,6 +168,7 @@ import {
 } from './platform.js';
 import { getProfileCredentialStore } from './profile-credentials.js';
 import { readProfileStore } from './profile-store.js';
+import { refuseStrandsRuntimeEnvironment } from './retired-features-option.js';
 import type { CommandRunner } from './service.js';
 import {
   renderServiceStatusCommand,
@@ -1590,7 +1591,6 @@ export interface StartOptions extends InstanceSelector {
    * either way.
    */
   consentPort?: number;
-  features?: string;
   // Force a restart of an already-running instance (stop + start, reusing the
   // existing build). Distinct from `build`, which forces a rebuild.
   force?: boolean;
@@ -4792,7 +4792,9 @@ export async function waitForTcpOk(
 }
 
 export async function start(opts: StartOptions = {}): Promise<void> {
-  const { build, features, force, watch } = opts;
+  // `service run` starts here without passing the `start` or `dev` handler.
+  refuseStrandsRuntimeEnvironment(process.env);
+  const { build, force, watch } = opts;
   if (watch && build) {
     throw new Error(
       '--watch runs from source and builds nothing; --build does not apply.',
@@ -5182,7 +5184,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   if (opts.lifecycleJournal) {
     serverEnv.STATION_LIFECYCLE_JOURNAL = opts.lifecycleJournal;
   }
-  if (features) serverEnv.STATION_FEATURES = features;
   serverEnv.STATION_LOG_FILE = logFile;
 
   const watchPlan = watch
