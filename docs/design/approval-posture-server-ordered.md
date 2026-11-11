@@ -1307,8 +1307,10 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
   never `PATH`) of version 0.8.0 or later (`--disable-userns`), and a probe
   run once per process. An older bubblewrap is refused with its version
   named. The probe runs the production arguments, with the real hidden
-  list, around `/bin/sh` in a throwaway directory (under `/var/tmp` where
-  it can be, outside the sandbox's own `/tmp`), with the session's temp and
+  list, around `/bin/sh` in a throwaway directory under `/var/tmp` (outside
+  the sandbox's own `/tmp`; a host without a writable `/var/tmp` is refused
+  by name, since inside the private `/tmp` the outside-write check would
+  prove nothing), with the session's temp and
   configuration directories inside a hidden Station home as a start mounts
   them. The shell must be able to write the workspace and the temp
   directory, and must be refused the content of a hidden directory's file
@@ -1336,10 +1338,26 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
     nearest existing parent of a hidden path (in practice the home folder,
     `/run` and a `DOCKER_HOST` socket's directory) becomes an empty memory
     file system, and every entry the host has there at the start is mounted
-    back read-only, except the hidden ones. Symbolic links are re-created
-    as themselves. A directory on the way to a hidden path (`~/.config`,
-    `~/.claude`, `/run/user`) is shadowed the same way. A hidden path under
-    `/tmp` needs nothing.
+    back read-only (`--ro-bind-try`, so an entry the host removes before
+    bubblewrap mounts it is left out rather than failing the start), except
+    the hidden ones. Symbolic links are re-created as copies of themselves.
+    Each hidden path is listed both resolved and as named, so a hidden path
+    that is a link is left out itself, not only what it points to: the host
+    replacing `~/.claude/.credentials.json -> ../dots/creds.json` with the
+    file itself shows nothing (EXECUTED in review, now a kernel test). A
+    directory on the way to a hidden path (`~/.config`, `~/.claude`,
+    `/run/user`) is shadowed the same way. A hidden path under `/tmp` needs
+    nothing.
+  - The home folder is shadowed because hidden files live directly in it
+    (`.netrc`, `.git-credentials`, `.npmrc`, `.claude.json`) and only a
+    shadowed directory keeps a replaced entry out; every other directory is
+    shadowed only on the way to a hidden path. Each entry mounted back costs
+    three bubblewrap arguments (it accepts at most 9,000) and setup time
+    that grows faster than the count (measured in review: 1,000 entries
+    1.5 s, 2,000 entries 6 s, against the probe's 8 s), so more than 1,000
+    entries across the shadows is refused by name: "too many entries to
+    shadow: N (at most 1000); <directory> holds M". The mechanism is then
+    reported unavailable, and a requiring start is refused.
   - Station's installs re-opened read-only, then the write grants bound
     writable. Each shadow is made read-only last.
   - The workspace's `.git` read-only whenever it exists, even when its
@@ -1353,9 +1371,10 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
   arguments are built is named in the start's refusal message.
 
   So inside the sandbox a hidden entry is absent whatever the host later
-  does to it, an entry the host creates later in a shadowed directory is
-  absent too, a visible file the host replaces stays the old one, and a
-  directory mounted back keeps showing the host's current contents.
+  does to it, an entry the host creates later directly in a shadowed
+  directory is absent too, and a visible file or link the host replaces
+  stays the old one. A directory mounted back keeps showing the host's live
+  contents, including sockets and files created there later.
   Anything under the host's `/tmp` other than the grants is absent, which
   includes a workspace's git directory there.
 - **Grants.** The write kinds are `workspace`, `station-temp` and
@@ -1384,8 +1403,8 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
 
   | Seatbelt | bubblewrap |
   | --- | --- |
-  | Secret stores, `~/.claude.json`, the engines' credential files, Station's root and runtime home: reads refused | Absent inside (no such file), including when the host replaces or creates them during the session, as long as their directory is not itself replaced (below). |
-  | `~/Library/Keychains` hidden | Not applicable on Linux. Hidden instead: the login keyring (`~/.local/share/keyrings`); the runtime directory (`/run/user/<uid>`, and one `XDG_RUNTIME_DIR` names elsewhere: session bus, keyring SSH agent, rootless Docker or Podman); `~/.docker/run`; the Docker, Podman and containerd sockets under `/run`, and the socket a `unix://` `DOCKER_HOST` names; the system bus socket; `~/.Xauthority`; and everything in the host's `/tmp` (X11 and `ssh-agent` sockets). A read-only mount does not stop `connect()`, and the process keeps its user's groups (`docker`), so these sockets are absent, not just read-only. |
+  | Secret stores, `~/.claude.json`, the engines' credential files, Station's root and runtime home: reads refused | Absent inside (no such file), including when the host replaces or creates them during the session, or replaces a link at that path with the secret itself. |
+  | `~/Library/Keychains` hidden | Not applicable on Linux. Hidden instead: the login keyring (`~/.local/share/keyrings`); the runtime directory (`/run/user/<uid>`, and one `XDG_RUNTIME_DIR` names elsewhere: session bus, keyring SSH agent, rootless Docker or Podman); `~/.docker/run`; the Docker, Podman and containerd sockets under `/run`, and the socket a `unix://` `DOCKER_HOST` names; the system bus socket; `~/.Xauthority`; the 1Password and Bitwarden SSH agents (`~/.1password`, `~/.bitwarden-ssh-agent.sock`); GNU screen's sessions (`/run/screen`), which accept keystrokes from the same user; and everything in the host's `/tmp` (X11, tmux and `ssh-agent` sockets). A read-only mount does not stop `connect()`, and the process keeps its user's groups (`docker`), so these sockets are absent, not just read-only. |
   | Station's `installs` readable | Matched. |
   | A hidden file through a symlink, another case, a firmlink | Matched through a symlink, `/proc/self/root` and `..`. Linux file systems are case-sensitive. |
   | A hard link to a hidden file made inside | Matched: refused. |
@@ -1413,10 +1432,21 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
   - **What stays reachable.** The network is open until #4769, and the
     network namespace is shared, so abstract Unix sockets stay connectable:
     a session bus or X11 server listening on one is reachable, and
-    `/proc/net/unix` lists them. Unix sockets stay connectable outside the
-    home folder, `/run`, `/tmp` and the hidden paths (an agent or daemon
-    socket in another directory), and inside a directory mounted back from
-    a shadow (such as `/run/systemd`), including one created there later.
+    `/proc/net/unix` lists them. What is unreachable is exactly: the hidden
+    paths above, `/run/user/<uid>`, the host's `/tmp`, and any entry created
+    after the start directly in a shadowed directory (the home folder,
+    `/run`). Every other Unix socket the user can open stays connectable,
+    whether it exists at the start or is created later: one directly in the
+    home folder or `/run` at the start and not on the list, one inside a
+    directory mounted back from a shadow (EXECUTED in review:
+    `/run/snapd.socket`, `/run/screen/...` before it was listed, a socket
+    created mid-session in `~/.cache/sock/`), and one outside the home
+    folder, `/run` and `/tmp`. The list names the known agents and daemons;
+    it cannot name every program that listens.
+  - **Hard links and names.** A hard link elsewhere in the home folder (or
+    any visible directory) to a hidden file is readable, as with Seatbelt:
+    the sandbox hides paths, and a hard link is another path. An entry whose
+    name is not valid UTF-8 is left out of a shadow inside the sandbox.
   - **A hidden directory replaced as a whole.** A hidden directory is absent
     because its parent is shadowed; a directory mounted back from a shadow
     shows the host's live contents. A hidden directory that has no shadowed
@@ -1433,15 +1463,17 @@ allowlist and credential check as for Seatbelt (`claude-seatbelt.ts`).
   path that refuses a connection from inside, the host's Docker socket
   (where this user can reach one outside), a hidden home file the host
   replaces by rename mid-session, a hidden socket the host unlinks and
-  creates again mid-session, a socket under the host's `/tmp` at the start
-  and created mid-session, and DNS resolution inside. It skips loudly where the
+  creates again mid-session, a hidden path that is a link replaced by the
+  secret mid-session, an entry removed between building the arguments and
+  the start, a socket under the host's `/tmp` at the start and created
+  mid-session, and DNS resolution inside. It skips loudly where the
   sandbox cannot apply. Its ids are pinned as the `linux-bubblewrap-kernel`
   profile, and the dispatch-only
   [`Tool: bubblewrap kernel legs`](../../.github/workflows/bubblewrap-kernel.yml)
   workflow runs it on a hosted Ubuntu runner. EXECUTED: Linux 7.2.12
   (OrbStack, aarch64, Landlock ABI 10 present and unused), bubblewrap 0.8.0,
-  git 2.39.5, with a root-owned Docker socket for the `docker` group: 53 of
-  53 passed.
+  git 2.39.5, with a root-owned Docker socket for the `docker` group: 55 of
+  55 passed.
 
 Not in this slice: the foreground chat handle's receipt, ACP, and Windows
 mechanisms.

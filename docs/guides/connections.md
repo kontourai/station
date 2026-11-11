@@ -1179,8 +1179,13 @@ connection's `env` if its tools need them). It does not inherit
 `SSH_AUTH_SOCK`, but on macOS it can still connect to an SSH agent socket
 whose path it can find, so do not rely on confinement to keep your agent
 from it there. On Linux the sandbox has its own `/tmp` and hides the
-runtime directory, so an agent socket in either is not reachable; one
-elsewhere (outside the home folder and `/run`) still is. Under Seatbelt (macOS), in a linked worktree
+runtime directory and the 1Password and Bitwarden agent sockets, so an
+agent socket in any of those is not reachable. Any other agent socket it
+can find stays reachable, including one directly in your home folder or
+inside a folder in it (`~/.cache/...`) that is not on the hidden list, so
+do not rely on confinement to keep an agent from it on Linux either. The
+sandbox mounts back each entry of your home folder and `/run`; more than
+1,000 entries there refuses a confined start, naming the folder. Under Seatbelt (macOS), in a linked worktree
 it can commit to its own branch, but `git stash`, `fetch` and `pull` are
 refused: they write shared refs (`refs/stash`, remote-tracking refs,
 `packed-refs`) that it may not change. In a folder whose `.git` is inside
