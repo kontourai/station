@@ -544,9 +544,11 @@ Project admission still applies. A foreground chat stays on its owning Station;
 choosing another destination starts new work. With no other Station to choose,
 the control is plain text.
 
-The Project page opens on **Overview**. **Project room** is shared discussion
-with people in that Project; use **Bring an Agent** for an explicit request
-whose answer returns to the room. Direct Agent conversations stay in the chat
+The Project page opens on **Overview**. **Room** is shared discussion with
+people in that Project, in named channels starting with `#general`; choose the
+channel name to switch, and people who can edit can add, rename or archive
+channels. Use **Bring an Agent** for an explicit request whose answer returns
+to the channel. Direct Agent conversations stay in the chat
 dock. **Tasks** separates current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
