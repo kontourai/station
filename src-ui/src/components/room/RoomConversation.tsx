@@ -440,7 +440,9 @@ export function RoomConversation({
       performance.now() - readerInputAt.current < READER_INPUT_MS;
     const distance =
       element.scrollHeight - element.scrollTop - element.clientHeight;
-    if (reader) {
+    // Momentum keeps scrolling after the gesture's input window; any scroll
+    // that is not the list's own correction moves the reader's saved place.
+    if (reader || (!programmatic && !following.current)) {
       setAnchorVersion((version) => version + 1);
       captureReader();
     }

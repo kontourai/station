@@ -92,9 +92,7 @@ test.each([
       const box = await scroller(page).boundingBox();
       await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
       await page.mouse.wheel(0, -900);
-      await expect
-        .poll(() => distanceFromEnd(page))
-        .toBeGreaterThan(400);
+      await expect.poll(() => distanceFromEnd(page)).toBeGreaterThan(400);
       await settle(page);
       const before = await readerRow(page);
       expect(before).not.toBeNull();
@@ -103,8 +101,9 @@ test.each([
       await call(page, 'append', 3);
       await settle(page);
       expect(await readerRow(page)).toEqual(before);
-      const jump = page.getByRole('button', { name: /3 new messages/ });
-      await jump.waitFor();
+      await page
+        .getByRole('button', { name: '3 new messages', exact: true })
+        .waitFor();
 
       // Older history loads above: the reader still does not move.
       await call(page, 'prepend', 30);
@@ -112,8 +111,24 @@ test.each([
       await settle(page);
       expect(await readerRow(page)).toEqual(before);
 
+      // Momentum: a scroll long after the last input still moves the
+      // reader's place, so the next arrival keeps them where they ended up.
+      await page.waitForTimeout(1000);
+      await scroller(page).evaluate((element) => {
+        element.scrollTop -= 150;
+      });
+      await settle(page);
+      const drifted = await readerRow(page);
+      expect(drifted).not.toEqual(before);
+      await call(page, 'append', 1);
+      await settle(page);
+      await settle(page);
+      expect(await readerRow(page)).toEqual(drifted);
+
       // Jump to latest returns to the end and clears the count.
-      await jump.click();
+      await page
+        .getByRole('button', { name: '4 new messages', exact: true })
+        .click();
       await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
       await expect
         .poll(() => page.getByRole('button', { name: /new message/ }).count())
