@@ -711,6 +711,13 @@ test('an unconfirmed Agent request without a handle can be abandoned, keeping th
   expect(agentWrites).toHaveLength(1);
 
   fireEvent.click(screen.getByRole('button', { name: 'Abandon this request' }));
+  fireEvent.click(
+    within(
+      await screen.findByRole('dialog', {
+        name: 'Stop tracking this request?',
+      }),
+    ).getByRole('button', { name: 'Stop tracking' }),
+  );
   await screen.findByText(/may already have run/);
   expect(composerField().value).toBe('A new question');
   expect(
@@ -738,6 +745,97 @@ test('a restored recipient takes the catalog name after a rename (#4810 delta 3)
   expect(
     await screen.findByRole('button', { name: 'Ask Research Lead' }),
   ).toBeTruthy();
+});
+
+test('while an Agent request is unsettled, Ask is disabled and a follow-up draft survives the first acknowledgement (#4810 round 2, 1)', async () => {
+  mount();
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+        .disabled,
+    ).toBe(false),
+  );
+  await mentionAgent('Researcher');
+  fireEvent.change(composerField(), { target: { value: 'First ask' } });
+  const release = holdAgentRequest();
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() => expect(agentWrites).toHaveLength(1));
+  // A follow-up typed while the first ask is pending, then an attempt to ask.
+  fireEvent.change(composerField(), { target: { value: 'Follow-up' } });
+  fireEvent.click(screen.getByRole('button', { name: /Researcher/ }));
+  await act(async () => release());
+  await screen.findByText(
+    'Agent is working. Its answer will appear in the Room.',
+  );
+  expect(composerField().value).toBe('Follow-up');
+  expect(screen.getByText('@Researcher')).toBeTruthy();
+  expect(agentWrites).toHaveLength(1);
+  // Still unsettled: Ask stays disabled and says why; Send still works.
+  const ask = screen.getByRole<HTMLButtonElement>('button', {
+    name: 'Waiting for Researcher…',
+  });
+  expect(ask.disabled).toBe(true);
+  expect(screen.getByText('Waiting for Researcher…')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Remove Researcher' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() =>
+    expect(writes).toEqual([expect.objectContaining({ text: 'Follow-up' })]),
+  );
+});
+
+test('Abandon asks first, defaults to Cancel, and cancelling keeps the request (#4810 round 2, 2)', async () => {
+  agentLostAck = true;
+  mount();
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+        .disabled,
+    ).toBe(false),
+  );
+  await mentionAgent('Researcher');
+  fireEvent.change(composerField(), { target: { value: 'Lost ask' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await screen.findByText(/Agent request not confirmed/);
+  const retainedKeys = () =>
+    Object.keys(sessionStorage).filter((key) => key.endsWith(':agent'));
+  expect(retainedKeys()).toHaveLength(1);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Abandon this request' }));
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Stop tracking this request?',
+  });
+  expect(
+    within(dialog).getByText(
+      /It may still be running, and you won’t be able to retry it from here\./,
+    ),
+  ).toBeTruthy();
+  const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+  await waitFor(() => expect(document.activeElement).toBe(cancel));
+  fireEvent.click(cancel);
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'Stop tracking this request?' }),
+    ).toBeNull(),
+  );
+  // Not confirmed: the retained intent and its retry stay.
+  expect(retainedKeys()).toHaveLength(1);
+  expect(
+    screen.getByRole('button', { name: 'Retry same Agent request' }),
+  ).toBeTruthy();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Abandon this request' }));
+  fireEvent.click(
+    within(
+      await screen.findByRole('dialog', {
+        name: 'Stop tracking this request?',
+      }),
+    ).getByRole('button', { name: 'Stop tracking' }),
+  );
+  await screen.findByText(/may already have run/);
+  expect(retainedKeys()).toEqual([]);
+  expect(composerField().value).toBe('Lost ask');
 });
 
 test('shared notes preserve the draft on CAS conflict and dirty navigation asks before leaving', async () => {
