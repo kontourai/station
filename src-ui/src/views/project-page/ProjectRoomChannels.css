@@ -20,7 +20,9 @@
 .room-channel__line {
   display: flex;
   align-items: center;
-  gap: var(--k-space-1);
+  /* Clears the settings menu's 44px hit expander (6px past its 32px box), so
+     the name and the menu never share a touch target. */
+  gap: var(--k-space-2);
   min-width: 0;
 }
 .room-channel__name {

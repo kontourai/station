@@ -59,7 +59,11 @@ const hook = {
   update: { isPending: false, isError: false },
 } as unknown as ProjectRoomChannels;
 
-function markup(current: ProjectRoomChannel, openSwitcher: boolean) {
+function markup(
+  current: ProjectRoomChannel,
+  openSwitcher: boolean,
+  canEdit = false,
+) {
   render(
     <section className="project-room project-room--full">
       <header className="project-room__header">
@@ -67,8 +71,12 @@ function markup(current: ProjectRoomChannel, openSwitcher: boolean) {
           <ProjectRoomChannelHeader
             channels={hook}
             current={current}
-            canEdit={false}
-            guards={undefined}
+            canEdit={canEdit}
+            guards={
+              canEdit
+                ? { expectedProjectId: 'project', expectedActorId: 'maya' }
+                : undefined
+            }
             onSelect={() => {}}
           />
         </div>
@@ -99,6 +107,9 @@ describe.skipIf(!chromiumAvailable)(
         resolveCssImports(resolve(HERE, '../../index.css')),
         resolveCssImports(resolve(HERE, './ProjectRoom.css')),
         resolveCssImports(resolve(HERE, './ProjectRoomChannels.css')),
+        resolveCssImports(
+          resolve(HERE, '../../components/ActionOverflowMenu.css'),
+        ),
       ].join('\n');
       assertNoImportsSurvive(composed);
       return composed;
@@ -130,6 +141,47 @@ describe.skipIf(!chromiumAvailable)(
         await page.close();
       }
     }
+
+    test.each([390, 1440])(
+      'the channel name and its settings menu never share a touch target at %ipx',
+      async (width) => {
+        const body = markup(channels[0], false, true);
+        const page = await browser.newPage({
+          viewport: { width, height: 900 },
+        });
+        try {
+          await page.setContent(`<!doctype html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>${css()}</style></head>
+<body style="margin:0;padding:0 16px">${body}</body></html>`);
+          // A control's touch area: its box, grown by a centred ::after hit
+          // expander (control-recipes.css), as the gallery's audit measures it.
+          const hitArea = (name: RegExp) =>
+            page.getByRole('button', { name }).evaluate((el) => {
+              const box = el.getBoundingClientRect();
+              const after = getComputedStyle(el, '::after');
+              const grow = (size: string, own: number) =>
+                after.content !== 'none' && after.position === 'absolute'
+                  ? Math.max(own, Number.parseFloat(size) || 0)
+                  : own;
+              const width = grow(after.width, box.width);
+              const height = grow(after.height, box.height);
+              const x = box.left + box.width / 2 - width / 2;
+              return { left: x, right: x + width, height };
+            });
+          const trigger = await hitArea(/switch channel/);
+          const settings = await hitArea(/^Channel settings$/);
+          expect(
+            settings.left - trigger.right,
+            'gap between the name and settings touch areas',
+          ).toBeGreaterThanOrEqual(0);
+          expect(trigger.height).toBeGreaterThanOrEqual(44);
+          expect(settings.height).toBeGreaterThanOrEqual(44);
+        } finally {
+          await page.close();
+        }
+      },
+    );
 
     test('the header shows the whole of a long name that shares a prefix', async () => {
       const names = await measure(
