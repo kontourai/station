@@ -41,6 +41,16 @@ let initializationBodies: unknown[];
 let loseAck: boolean;
 let failWrite: boolean;
 let researcherAvailable: boolean;
+let researcherName: string;
+let agentHold: Promise<void> | undefined;
+/** Holds the next Agent request until the returned release is called. */
+function holdAgentRequest() {
+  let release!: () => void;
+  agentHold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return release;
+}
 let conflict: boolean;
 let writes: Array<Record<string, unknown>>;
 let streams: ReadableStreamDefaultController<Uint8Array>[];
@@ -66,9 +76,10 @@ function fixture() {
         return ok([
           {
             slug: 'researcher',
-            name: 'Researcher',
+            name: researcherName,
             ...(researcherAvailable ? {} : { available: false }),
           },
+          { slug: 'reviewer', name: 'Reviewer' },
           { slug: 'offline', name: 'Offline', available: false },
         ]);
       if (url.pathname.endsWith('/room/agents')) {
@@ -97,6 +108,9 @@ function fixture() {
           createdAt: at,
           updatedAt: at,
         };
+        const hold = agentHold;
+        agentHold = undefined;
+        if (hold) await hold;
         if (agentLostAck) {
           agentLostAck = false;
           throw new TypeError('Lost Agent acknowledgement');
@@ -304,6 +318,8 @@ beforeEach(() => {
   loseAck = false;
   failWrite = false;
   researcherAvailable = true;
+  researcherName = 'Researcher';
+  agentHold = undefined;
   conflict = false;
   note = null;
   selectedAuthority = 'one';
@@ -460,7 +476,8 @@ const composerField = () =>
   });
 async function mentionAgent(name: string) {
   const field = composerField();
-  fireEvent.change(field, { target: { value: `${field.value}@` } });
+  const lead = field.value && !/\s$/.test(field.value) ? ' @' : '@';
+  fireEvent.change(field, { target: { value: `${field.value}${lead}` } });
   fireEvent.click(
     await screen.findByRole('option', {
       name: `${name} @${name.toLowerCase()}`,
@@ -600,6 +617,122 @@ test('a restored draft keeps its Agent recipient and reply, revalidated on resto
   expect(screen.queryByText('@Researcher')).toBeNull();
   expect(composerField().value).toBe('Still needed');
   expect(screen.getByRole('button', { name: 'Send message' })).toBeTruthy();
+});
+
+test('an acknowledgement clears the draft only when the asked revision is still the current one (#4810 delta 1)', async () => {
+  messages = [
+    {
+      roomId,
+      messageId: randomCorrelationId(),
+      intentId: randomCorrelationId(),
+      seq: 1,
+      actor,
+      createdAt: at,
+      text: 'Team question',
+    },
+  ];
+  mount();
+  await screen.findByText('Team question');
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+        .disabled,
+    ).toBe(false),
+  );
+  // Case A: the text changes while the ask is in flight; recipient and reply stay.
+  fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+  await mentionAgent('Researcher');
+  fireEvent.change(composerField(), { target: { value: 'First ask' } });
+  let release = holdAgentRequest();
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() => expect(agentWrites).toHaveLength(1));
+  fireEvent.change(composerField(), { target: { value: 'Follow-up ask' } });
+  await act(async () => release());
+  await screen.findByText(
+    'Agent is working. Its answer will appear in the Room.',
+  );
+  expect(composerField().value).toBe('Follow-up ask');
+  expect(screen.getByText('@Researcher')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Cancel reply' })).toBeTruthy();
+
+  // Settle the first request so a second ask is allowed.
+  fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
+  await screen.findByText('Agent answer shared in the Room.');
+
+  // Case B: the recipient changes while the ask is in flight; text stays.
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel reply' }));
+  release = holdAgentRequest();
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() => expect(agentWrites).toHaveLength(2));
+  fireEvent.click(screen.getByRole('button', { name: 'Remove Researcher' }));
+  await mentionAgent('Reviewer');
+  // Same text as the asked revision; only the recipient changed.
+  fireEvent.change(composerField(), { target: { value: 'Follow-up ask' } });
+  await act(async () => release());
+  await waitFor(() => expect(agentHandle?.text).toBe('Follow-up ask'));
+  await screen.findByText(
+    'Agent is working. Its answer will appear in the Room.',
+  );
+  expect(composerField().value).toBe('Follow-up ask');
+  expect(screen.getByText('@Reviewer')).toBeTruthy();
+
+  // Unchanged since the ask: the whole envelope clears on acknowledgement.
+  fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
+  await screen.findByText('Agent answer shared in the Room.');
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Reviewer' }));
+  await waitFor(() => expect(agentWrites).toHaveLength(3));
+  await waitFor(() => expect(composerField().value).toBe(''));
+  expect(screen.queryByText('@Reviewer')).toBeNull();
+});
+
+test('an unconfirmed Agent request without a handle can be abandoned, keeping the new draft (#4810 delta 2)', async () => {
+  agentLostAck = true;
+  mount();
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+        .disabled,
+    ).toBe(false),
+  );
+  await mentionAgent('Researcher');
+  fireEvent.change(composerField(), { target: { value: 'Lost ask' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await screen.findByText(/Agent request not confirmed/);
+  expect(composerField().value).toBe('Lost ask');
+  fireEvent.change(composerField(), { target: { value: 'A new question' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await screen.findByText(/Finish or clear the current Agent request/);
+  expect(agentWrites).toHaveLength(1);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Abandon this request' }));
+  await screen.findByText(/may already have run/);
+  expect(composerField().value).toBe('A new question');
+  expect(
+    Object.keys(sessionStorage).filter((key) => key.endsWith(':agent')),
+  ).toEqual([]);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() => expect(agentWrites).toHaveLength(2));
+  expect(agentWrites[1]).toEqual(
+    expect.objectContaining({ text: 'A new question' }),
+  );
+  expect(agentWrites[1]?.intentId).not.toBe(agentWrites[0]?.intentId);
+});
+
+test('a restored recipient takes the catalog name after a rename (#4810 delta 3)', async () => {
+  const first = mount();
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  await mentionAgent('Researcher');
+  fireEvent.change(composerField(), { target: { value: 'Still relevant' } });
+  first.unmount();
+  researcherName = 'Research Lead';
+  mount();
+  await screen.findByText('@Research Lead');
+  expect(screen.queryByText('@Researcher')).toBeNull();
+  expect(
+    await screen.findByRole('button', { name: 'Ask Research Lead' }),
+  ).toBeTruthy();
 });
 
 test('shared notes preserve the draft on CAS conflict and dirty navigation asks before leaving', async () => {
