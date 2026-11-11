@@ -23,7 +23,31 @@ class StopComposition extends Error {}
 const composed = vi.hoisted(() => ({
   initialize: undefined as Record<string, unknown> | undefined,
   routes: undefined as Record<string, unknown> | undefined,
+  claudeRecords: undefined as (() => unknown) | undefined,
+  codexInput: undefined as { resolveRecord?: unknown } | undefined,
 }));
+vi.mock('../../mcp/station-control-in-process.js', async (original) => {
+  const actual =
+    await original<typeof import('../../mcp/station-control-in-process.js')>();
+  return {
+    ...actual,
+    claudeInProcessStationControlOptions: (
+      resolveRecord: () => unknown,
+      ...rest: unknown[]
+    ) => {
+      composed.claudeRecords = resolveRecord;
+      return (
+        actual.claudeInProcessStationControlOptions as never as (
+          ...args: unknown[]
+        ) => object
+      )(resolveRecord, ...rest);
+    },
+    createCodexBoundToolServer: (input: { resolveRecord?: unknown }) => {
+      composed.codexInput = input;
+      return {};
+    },
+  };
+});
 vi.mock('../runtime-initialize-deps.js', async (original) => ({
   ...(await original<typeof import('../runtime-initialize-deps.js')>()),
   createRuntimeInitializationDeps: (context: Record<string, unknown>) => {
@@ -149,6 +173,60 @@ describe('#3628 coordinator-session preview in the runtime', () => {
       expect(composed.routes?.coordinatorSessionPreview).toBe(bound);
     } finally {
       runtime.runtimeSearch = undefined;
+      await runtime.shutdown();
+    }
+  });
+
+  test('the Claude and Codex in-process callers refuse a coordinator credential while the preview is off', async () => {
+    const runtime = new StationRuntime({
+      projectHomeDir: makeTempDir('station-runtime-coordinator-callers-'),
+      port: 43199,
+      logLevel: 'error',
+    }) as any;
+    const service = runtime.orchestrationService;
+    try {
+      runtime.orchestrationService = {
+        resolveSessionActingPrincipal: () => ({
+          id: 'owner',
+          source: 'session-owner',
+        }),
+        firstStartedMetadataOfThread: () => undefined,
+      };
+      runtime.orchestrationEventStore.coordinatorStore().designate({
+        conversationId: 'chat-a',
+        actor: { userId: 'owner' },
+        replace: false,
+        now: 1,
+      });
+      runtime.codexAdapter.options.createBoundTools({});
+      const sites = {
+        claude: composed.claudeRecords?.() as never,
+        codex: composed.codexInput?.resolveRecord as never,
+      };
+      expect(sites.claude).toBeTypeOf('function');
+      expect(sites.codex).toBeTypeOf('function');
+      const generation = coordinatorGeneration('chat-a');
+      const { token } = mintStationControlMcpToken(
+        'chat-a',
+        'url-token',
+        undefined,
+        undefined,
+        undefined,
+        'coordinator-control',
+        undefined,
+        () => coordinatorGeneration('chat-a') === generation,
+      );
+      for (const resolver of Object.values(sites))
+        expect(resolveStationControlCallerFromToken(token, resolver)).toBe(
+          null,
+        );
+      await runtime.featurePreviews.setEnabled('coordinator-session', true);
+      for (const resolver of Object.values(sites))
+        expect(
+          resolveStationControlCallerFromToken(token, resolver),
+        ).toMatchObject({ sessionId: 'chat-a' });
+    } finally {
+      runtime.orchestrationService = service;
       await runtime.shutdown();
     }
   });
