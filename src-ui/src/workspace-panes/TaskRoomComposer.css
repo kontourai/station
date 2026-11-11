@@ -51,7 +51,40 @@
   white-space: nowrap;
 }
 .task-room-brief-choice input {
-  accent-color: var(--k-action);
+  position: relative;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  appearance: none;
+  border: 1.5px solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+  cursor: pointer;
+}
+.task-room-brief-choice input:checked {
+  border-color: var(--k-action);
+  background: var(--k-action);
+}
+/* The tick, drawn in the action's contrast colour. */
+.task-room-brief-choice input:checked::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 5.5px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--k-action-contrast);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.task-room-brief-choice input:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
+  outline-offset: var(--k-focus-ring-offset);
+}
+.task-room-brief-choice input:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .task-room-brief-short {
   display: none;
@@ -111,4 +144,14 @@
 
 .room-composer--compact .task-room-brief-choice {
   min-height: 44px;
+}
+/* Phones: a 44px press area centred on the 20px box. */
+.room-composer--compact .task-room-brief-choice input::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
 }

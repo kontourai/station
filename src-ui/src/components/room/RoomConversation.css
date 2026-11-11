@@ -267,6 +267,11 @@
   text-align: start;
 }
 
+/* Faint text on the negative wash misses 4.5:1; muted keeps the hierarchy. */
+.room-row--system.room-row--failed .room-row__time {
+  color: var(--k-text-muted);
+}
+
 .room-row__system-actions {
   display: inline-flex;
   flex-wrap: wrap;
@@ -351,6 +356,16 @@
 
 .room-conversation--compact .room-row__actions {
   top: calc(-1 * var(--k-space-5));
+  /* Touch has no hover: the bar exists only once a long press opens it, so an
+     invisible bar is neither a target nor clipped at the list edge. */
+  visibility: hidden;
+}
+
+.room-conversation--compact .room-row--actions-open .room-row__actions,
+.room-conversation--compact.room-conversation--hover
+  .room-row--message:hover
+  .room-row__actions {
+  visibility: visible;
 }
 
 .room-conversation--compact .room-row__actions .button,

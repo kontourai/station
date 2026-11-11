@@ -480,7 +480,7 @@ async function mentionAgent(name: string) {
   fireEvent.change(field, { target: { value: `${field.value}${lead}` } });
   fireEvent.click(
     await screen.findByRole('option', {
-      name: `${name} @${name.toLowerCase()}`,
+      name: new RegExp(`^${name} Agent @${name.toLowerCase()}\\b`),
     }),
   );
   await screen.findByText(`@${name}`);
@@ -976,7 +976,7 @@ test('loads older history and explicitly requests an available Agent with actual
   );
   fireEvent.click(screen.getByRole('button', { name: 'Bring an Agent' }));
   const picker = await screen.findByRole('combobox', { name: 'Agent' });
-  expect(screen.queryByRole('option', { name: 'Offline' })).toBeNull();
+  expect(screen.queryByRole('option', { name: /^Offline\b/ })).toBeNull();
   expect(agentWrites).toHaveLength(0);
   fireEvent.change(picker, { target: { value: 'researcher' } });
   fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));

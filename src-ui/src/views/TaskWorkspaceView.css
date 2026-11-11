@@ -2091,3 +2091,8 @@
     transform: translateY(-2px);
   }
 }
+.room-conversation--compact .button.task-room-expand,
+.room-conversation--compact .task-room-message-actions > .button {
+  /* The base rule above outranks the 640px floor; phones get 44px. */
+  min-height: 44px;
+}

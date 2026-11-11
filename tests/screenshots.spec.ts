@@ -3582,7 +3582,7 @@ function roomConversationScreens(): Screen[] {
                 await composer.click();
                 await composer.pressSequentially('@');
                 await roomRegion
-                  .getByRole('option', { name: 'Scout @scout' })
+                  .getByRole('option', { name: /^Scout Agent @scout\b/ })
                   .click();
               };
               await mentionScout();
