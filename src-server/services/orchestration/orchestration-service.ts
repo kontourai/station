@@ -195,7 +195,6 @@ import {
   SendTurnRefusedError,
   SessionStartRefusedError,
 } from '../../providers/adapter-shape.js';
-import { codexSandboxConfinementProvider } from '../../providers/adapters/codex-confinement.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import { ProviderRefusalError } from '../../providers/provider-failure.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
@@ -246,7 +245,7 @@ import {
   readConfinementRecord,
   resolveConfinement,
 } from '../../security/confinement/confinement-provider.js';
-import { seatbeltConfinementProvider } from '../../security/confinement/seatbelt.js';
+import { DEFAULT_CONFINEMENT_PROVIDERS } from '../../security/confinement/default-confinement-providers.js';
 import {
   clampToManagedCeiling,
   ManagedApprovalCeilingRefusedError,
@@ -15146,10 +15145,8 @@ export class OrchestrationService {
         ? readApprovalMode(input.modelOptions)
         : undefined,
       isolationMode,
-      providers: this.options.confinementProviders ?? [
-        codexSandboxConfinementProvider,
-        seatbeltConfinementProvider,
-      ],
+      providers:
+        this.options.confinementProviders ?? DEFAULT_CONFINEMENT_PROVIDERS,
     });
     if (resolution.plan) return { ...input, confinementPlan: resolution.plan };
     return {

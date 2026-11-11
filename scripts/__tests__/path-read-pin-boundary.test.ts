@@ -597,6 +597,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists the archive directory of the temporary install it builds, to read the signed archive size',
   'src-server/services/infra/__tests__/workload-budget.test.ts':
     'lists the config directory under its temporary Station home to prove a refused settings save leaves no temporary file beside workload-budgets.json',
+  'src-server/security/confinement/__tests__/confinement-preflight-factory.test.ts':
+    'snapshots its temporary Station home before and after a confinement preflight read, to prove the read created and changed nothing under it',
   'packages/supervisor/src/__tests__/control-server.test.ts':
     'lists the run directory under its temporary Station home to check leftover private socket names',
   'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts':

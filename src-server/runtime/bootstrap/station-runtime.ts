@@ -169,10 +169,14 @@ import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
-import { createCredentialProfileAppHomeEnvResolver } from '../../providers/app-home/credential-profile-env.js';
+import {
+  type CredentialProfileAppHomeEnvOptions,
+  createCredentialProfileAppHomeEnvResolver,
+} from '../../providers/app-home/credential-profile-env.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
+import { createStationConfinementPreflight } from '../../security/confinement/confinement-preflight.js';
 import {
   createManagedListenerAdmission,
   type ManagedListenerAdmission,
@@ -892,6 +896,24 @@ export class StationRuntime {
   private readonly codexRolloutSource = new CodexRolloutSessionSource();
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
+  // The Claude adapter's app-home settings and connection-launch resolver,
+  // held here so the confinement preflight (#4774) reads the same ones a
+  // start does. Comments on their use sit at the adapter options below.
+  private readonly claudeAppHomeSettings: CredentialProfileAppHomeEnvOptions = {
+    engine: 'claude',
+    loadConnectionSettings: async () =>
+      (await this.configLoader.loadAppConfig()).agentConnections?.claude,
+    warn: (message) =>
+      (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(message),
+  };
+  private readonly claudeConnectionLaunch = async () => {
+    const config = await this.configLoader.loadAppConfig();
+    return engineProxyLaunch(
+      'claude',
+      config.agentConnections?.claude?.config,
+      this.providerService.listProviderConnections(),
+    );
+  };
   private claudeAdapter = new ClaudeAdapter({
     isCoordinatorSession: (threadId) => {
       const principal =
@@ -966,15 +988,9 @@ export class StationRuntime {
     // never be attributed to credentials that were not actually applied.
     // #2966: a selected profile's env overlay joins its home key here
     // (`credential-profile-env.ts` owns the merge and its exclusions).
-    getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
-      engine: 'claude',
-      loadConnectionSettings: async () =>
-        (await this.configLoader.loadAppConfig()).agentConnections?.claude,
-      warn: (message) =>
-        (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          message,
-        ),
-    }),
+    getAppHomeEnv: createCredentialProfileAppHomeEnvResolver(
+      this.claudeAppHomeSettings,
+    ),
     // station#2072: per-connection env overrides + explicit config home
     // (`config.env`, `config.configHome`) — re-sanitized and tilde-expanded
     // by `connectionSpawnEnv`, so a hand-edited config file meets the same
@@ -983,14 +999,7 @@ export class StationRuntime {
     // byte-identical spawn env. Lazy-captured posture identical to
     // `getAppHomeEnv` above: only invoked at spawn time, well after
     // construction.
-    getConnectionLaunch: async () => {
-      const config = await this.configLoader.loadAppConfig();
-      return engineProxyLaunch(
-        'claude',
-        config.agentConnections?.claude?.config,
-        this.providerService.listProviderConnections(),
-      );
-    },
+    getConnectionLaunch: this.claudeConnectionLaunch,
     // Station#1157 review fix (MEDIUM): the built-in station-control MCP
     // server needs THIS instance's actual bound port, not
     // `process.env.PORT`/`STATION_PORT` (stale/unset under `PORT=0`/
@@ -5404,6 +5413,19 @@ export class StationRuntime {
       getUsageTelemetry: () => this.usageTelemetry,
       skillService: this.skillService,
       configLoader: this.configLoader,
+      // #4774: the factory owns the assembly and the non-creating readers;
+      // these are the inputs a Claude start reads. The two resolvers are
+      // read when a preflight runs, not while routes are composed, so
+      // composition touches no runtime field.
+      readConfinementPreflight: createStationConfinementPreflight({
+        claude: {
+          processEnv: () => process.env,
+          connectionLaunch: () => this.claudeConnectionLaunch(),
+          loadConnectionSettings: () =>
+            this.claudeAppHomeSettings.loadConnectionSettings(),
+          stationHome: resolveHomeDir,
+        },
+      }),
       feedbackService: this.feedbackService,
       fileTreeService: this.fileTreeService,
       storageAdapter: this.storageAdapter,

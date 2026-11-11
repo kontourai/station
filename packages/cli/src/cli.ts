@@ -51,6 +51,7 @@ import {
   resolveApiBase,
 } from './commands/core-api.js';
 import { runDevCommand } from './commands/dev-command.js';
+import { readStationConfinementPreflight } from './commands/doctor-confinement-reader.js';
 import {
   type EnvironmentSecurityServiceFactory,
   type PeerCredentialStoreFactory,
@@ -853,8 +854,12 @@ function buildProgram(
       await runPlaybookMigrationReport(rawArgs, dependencies);
       return;
     }
-    if (rawArgs.includes('--json')) await doctorJson();
-    else await doctor();
+    // #4774: the selected Station's confinement preflight, read with the
+    // target and credential flags this invocation carries.
+    const inspectConfinement = () => readStationConfinementPreflight(rawArgs);
+    if (rawArgs.includes('--json'))
+      await doctorJson({}, { inspectConfinement });
+    else await doctor({ inspectConfinement });
   });
 
   register('plugin', async (args) => {

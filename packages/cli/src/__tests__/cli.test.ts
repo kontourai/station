@@ -415,6 +415,22 @@ describe('runCli', () => {
 
     expect(doctor.doctorJson).toHaveBeenCalledOnce();
     expect(doctor.doctor).not.toHaveBeenCalled();
+    // #4774: both forms ask the selected Station for its confinement
+    // preflight.
+    expect(doctor.doctorJson).toHaveBeenCalledWith(
+      {},
+      { inspectConfinement: expect.any(Function) },
+    );
+  });
+
+  test('dispatches human doctor with the confinement preflight reader', async () => {
+    const { doctor, runCli } = await loadCliWithLifecycleMocks();
+
+    await runCli(['doctor']);
+
+    expect(doctor.doctor).toHaveBeenCalledWith({
+      inspectConfinement: expect.any(Function),
+    });
   });
 
   test('the direct `service install` dispatch signposts setup local; other actions do not', async () => {

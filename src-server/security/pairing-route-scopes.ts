@@ -4235,6 +4235,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // refused there; the scope is the floor, not the gate.
     { method: 'POST', path: '/api/conversations/:id/agent-title' },
     { method: 'GET', path: '/api/diagnostics/bundle' },
+    // #4774: this Station's host-level confinement facts before any start:
+    // states and the providers' reasons with paths removed, no environment
+    // value, path or credential. Less than the bundle above discloses (its
+    // doctor report), so the same family read tier.
+    { method: 'GET', path: '/api/diagnostics/confinement-preflight' },
     // archive#1896 logging slice 2: server log entries are redacted on
     // egress unless the caller's credential was minted with home-possession
     // (`locality: 'home-possession'` — local-grant secret, or UI-bootstrap

@@ -1378,10 +1378,13 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Setup',
     summary: 'Check prerequisites and runtime readiness',
     usage: [
-      'station doctor [--json]',
+      'station doctor [--json] [--station=<name> | --api-base=<url>] [--credential=<value>]',
       'station doctor --migrate-playbooks [--dry-run] [--json]',
     ],
     detail: [
+      'Also asks the selected Station whether a confined start would have a',
+      'mechanism and a credential (warn rows; "Not checked" when no running',
+      'Station answers or this CLI holds no credential for it).',
       '--migrate-playbooks folds a legacy prompts.json store from an older',
       'home into skills. It never deletes: the old store is archived as',
       'prompts.migrated-<timestamp>/. Add --dry-run to see the whole',

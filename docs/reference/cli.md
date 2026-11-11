@@ -3848,8 +3848,70 @@ host bundle (<instance>)` warns when `station-pty-host.js` is missing beside
 the server bundle. With no instance running, one `Terminal shell host` line
 says so.
 
+Doctor also asks the selected Station for its confinement preflight
+(`GET /api/diagnostics/confinement-preflight`, #4774). The Station is
+selected as for client commands (`--station`, `--api-base`, `STATION_TARGET`,
+the project or default Station, the active local Station, then loopback), and
+doctor sends only a credential this CLI already holds (`--credential`,
+`STATION_API_CREDENTIAL`, or the saved Station's keyring entry); it never
+pairs or self-authorizes. The running server answers from the provider check
+and the credential check a Claude start makes, with the server's own
+environment and home, so a shell variable in doctor's own environment does
+not change the answer. Reading it creates no app-home profile or spawn
+temporary directory on the Station; the server's ordinary config read, as
+any config read does, may still write a default `config/app.json` when none
+exists and may rewrite an existing one when it normalizes it (for example
+filling missing defaults or removing legacy, internal or retired keys). On
+macOS the first read may run the one-time Seatbelt
+probe a confined start would also run, in a throwaway temporary directory it
+removes; that probe pauses the server for up to 10 seconds, and its result,
+a failure included, is kept for the server process and used by later
+starts.
+Rows name the Station that answered (`Station "<name>"`, or the Station
+selected by `<source>`), and `--json` carries it as `target`; that Station may
+be remote. Per engine:
+
+- `Confinement mechanism (<engine>: <mechanism>)`: `pass` when the provider
+  applies on that Station's host, `warn` with the provider's reason when it
+  does not (a start that requires that level is refused there), and `warn`
+  "Decided by the engine at start" for Codex, whose own sandbox is reported
+  only after a start.
+- `Confined credential (<engine>)`: `pass` when a credential a confined
+  start can use is in its environment or enrolled in Station's confined
+  configuration; `warn` naming `confined-credential-unavailable` and the
+  setup step when none is, because such a start runs at Auto with nothing
+  engaged; `warn` "Not verified" when the server could not resolve the
+  connection or credential profile the check needs, including a credential
+  profile whose home a start could not create (its path or an ancestor is
+  not a directory, or the directory it would go in is not writable), where
+  such a start is refused. Where the mechanism is
+  unavailable the row is a `warn` saying the question is moot there: a start
+  that requires confinement is refused before any credential is checked. The
+  answer covers starts that name no credential profile of their own (the
+  connection's active credential profile or app-home setting applies;
+  `appliesTo: starts-without-own-credential-profile` in `--json`); an Agent
+  with its own credential profile, or a credential-recovery restart, is
+  decided at start.
+- `Confinement preflight`: one `warn` "Not checked: <reason>" row when no
+  answer was obtained: no server answered, no credential is held, the
+  Station refused it, an older Station answered HTTP 404, or the answer is
+  not a confinement preflight (for example an engine id other than lowercase
+  letters, digits, `.`, `_` and `-` up to 64 characters, or a
+  `decidedAtStart` with an unknown or repeated reason).
+
+The workspace and conversation checks (`workspace-too-broad`,
+`config-root-pinned`, `resume-bound-elsewhere`) are decided only when a
+Session starts. Confinement rows are never `fail` and do not change the exit
+status. The server's answer is states, kinds and fixed setup text, never an
+environment value or credential content. Doctor removes terminal escape
+sequences and control characters from every text it shows from the Station
+(a run of line, page or tab breaks between words becomes one space), then
+passes it through Station's free-text sanitizer, which redacts known
+credential shapes and replaces URLs and the absolute paths it recognizes; it
+does the same to `--json`.
+
 ```
-station doctor [--json]
+station doctor [--json] [--station=<name> | --api-base=<url>] [--credential=<value>]
 ```
 
 ```bash
@@ -3906,7 +3968,33 @@ The JSON document has this top-level schema:
         "command": "npm install",
         "reason": "tsx is provided by the project dependency set."
       }
-    ]
+    ],
+    "confinement": {
+      "checked": true,
+      "target": { "station": "laptop", "source": "default-station" },
+      "preflight": {
+        "engines": [
+          {
+            "engine": "claude",
+            "mechanism": "seatbelt",
+            "level": "os-profile",
+            "mechanismState": "available",
+            "mechanismReason": "the Seatbelt profile applies on this host",
+            "confinedAuthentication": {
+              "state": "unavailable",
+              "fallback": "confined-credential-unavailable",
+              "remedy": "Give confined Claude sessions a credential of their own: ...",
+              "appliesTo": "starts-without-own-credential-profile"
+            }
+          }
+        ],
+        "decidedAtStart": [
+          "workspace-too-broad",
+          "config-root-pinned",
+          "resume-bound-elsewhere"
+        ]
+      }
+    }
   },
   "exitReady": {
     "chatReady": true,
@@ -3956,6 +4044,46 @@ interface DoctorReport {
     mismatches: KontourDependencyVersion[];
   };
   fixCommands: DoctorFixCommand[];
+  /** #4774: absent only when the caller did not ask (server diagnostics). */
+  confinement?:
+    | {
+        checked: true;
+        target: { station: string | null; source: string };
+        /** `ConfinementPreflight` from @kontourai/station-contracts/execution-confinement. */
+        preflight: {
+          engines: Array<{
+            engine: string;
+            mechanism: 'codex-sandbox' | 'seatbelt';
+            level: 'os-profile' | 'container' | 'microvm';
+            mechanismState: 'available' | 'unavailable' | 'engine-reported';
+            mechanismReason: string;
+            confinedAuthentication:
+              | {
+                  state: 'available';
+                  source: 'environment' | 'config-dir';
+                  appliesTo: 'starts-without-own-credential-profile';
+                }
+              | {
+                  state: 'unavailable';
+                  fallback: 'confined-credential-unavailable';
+                  remedy: string;
+                  appliesTo: 'starts-without-own-credential-profile';
+                }
+              | {
+                  state: 'unverified';
+                  reason: string;
+                  appliesTo: 'starts-without-own-credential-profile';
+                }
+              | { state: 'not-applicable'; reason: string };
+          }>;
+          decidedAtStart: string[];
+        };
+      }
+    | {
+        checked: false;
+        target?: { station: string | null; source: string };
+        reason: string;
+      };
 }
 
 interface DoctorJsonDocument {

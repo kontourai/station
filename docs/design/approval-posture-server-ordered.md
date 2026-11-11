@@ -1190,6 +1190,38 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   `claude-confined-credential` prerequisite, without attempting a login. It
   checks `confined-homes/claude`; a selected credential profile's twin is
   not modelled.
+
+  The confinement preflight (#4774,
+  [confinement-preflight.ts](../../src-server/security/confinement/confinement-preflight.ts),
+  `GET /api/diagnostics/confinement-preflight`, read by `station doctor`)
+  answers the two host-level facts before any start: each provider's own
+  `availability()` from the list a start resolves from
+  (`DEFAULT_CONFINEMENT_PROVIDERS`), and the credential step
+  `confinedClaudeDecision` itself calls (`confinedClaudeCredentialCheck`),
+  over the inputs a fresh start that names no credential profile of its own
+  builds: the inherited spawn environment, the connection's environment and
+  the app home of the connection's active credential profile (or its
+  app-home opt-in). The answer's `appliesTo` says so: an Agent with its own
+  `execution.credentialProfileRef`, or a credential-recovery restart, uses
+  that profile's confined home and is decided at start. It creates no
+  app-home profile and no spawn TMPDIR: it uses `inheritedSpawnEnv` (no
+  PATH augmentation, no TMPDIR creation) and
+  `createCredentialProfileAppHomeEnvPeek`, which names a profile home that
+  does not exist yet by the directory a start would create, and answers
+  `unverified` where it can see, without writing, that the start would be
+  refused (that home's path or an ancestor is not a directory, or the
+  directory it would be created in is not writable). The connection
+  settings come from the ordinary app config load, which, as any config
+  read does, may write a default `config/app.json` when none exists and
+  may rewrite an existing one when it normalizes it (for example filling
+  missing defaults or removing legacy, internal or retired keys).
+  `createStationConfinementPreflight` assembles these inputs.
+  Known gap: that assembly mirrors the layering in
+  `ClaudeAdapter.startSession` and `prepareSeatbeltStart` rather than
+  sharing it, so a change to the adapter's layering is not seen by the
+  preflight or its tests. The other three fallbacks depend on the workspace
+  or the conversation and are reported as decided at start. Codex's
+  engine-native sandbox is reported as decided by the engine at start.
 - **What a confined session does not load.** Its `CLAUDE_CONFIG_DIR` is
   Station's, so the operator's own `CLAUDE.md`, settings, hooks, plugins and
   MCP configuration do not apply. The workspace's project settings still do.

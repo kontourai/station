@@ -25,6 +25,11 @@ import {
   type KontourDependencyState,
 } from '../lib/kontour-dependency-drift.js';
 import { loadInstalledManagedPolicyChecked } from './app-config-schema.js';
+import {
+  confinementDoctorChecks,
+  type DoctorConfinement,
+  describeConfinementTarget,
+} from './doctor-confinement.js';
 import { CWD, LIFECYCLE_CODE_ROOT, PROJECT_HOME } from './helpers.js';
 import {
   collectInstanceStatus,
@@ -68,6 +73,12 @@ export interface DoctorReport {
   };
   dependencyState: KontourDependencyState;
   fixCommands: DoctorFixCommand[];
+  /**
+   * #4774: the selected Station's confinement preflight, or why it was not
+   * obtained. Absent when the caller supplied no `inspectConfinement` (the
+   * server's own diagnostics callers do not).
+   */
+  confinement?: DoctorConfinement;
 }
 
 export interface DoctorDeps {
@@ -92,6 +103,11 @@ export interface DoctorDeps {
   processRuntime: { version: string; execPath: string };
   /** The installed managed policy, as server startup accepts it (#4517). */
   loadManagedPolicy: () => LoadedManagedPolicy | null;
+  /**
+   * #4774: asks the selected Station for its confinement preflight. Without
+   * it, the report has no confinement rows and no `confinement` field.
+   */
+  inspectConfinement?: () => Promise<DoctorConfinement>;
 }
 
 export interface DoctorJsonDocument {
@@ -517,6 +533,7 @@ export async function collectDoctorReport(
   );
   const terminalCapability = runtimeDeps.probeTerminalPty(runtimeDeps.repoRoot);
   const shellHosts = runtimeDeps.inspectShellHosts(runtimeDeps.projectHome);
+  const confinement = await runtimeDeps.inspectConfinement?.();
 
   // #4517: readiness is derived from the settings in effect, with the
   // managed policy's locks and defaults applied the way the server applies
@@ -685,6 +702,7 @@ export async function collectDoctorReport(
             ? 'ACP runtime connection configured.'
             : 'No ACP runtime detected.',
     },
+    ...(confinement ? confinementDoctorChecks(confinement) : []),
   ];
   const checks = archive
     ? prebuiltArchiveChecks(
@@ -771,12 +789,15 @@ export async function collectDoctorReport(
     },
     dependencyState,
     fixCommands,
+    ...(confinement ? { confinement } : {}),
   };
 }
 
-export async function doctor(): Promise<void> {
+export async function doctor(
+  reportDeps: Partial<DoctorDeps> = {},
+): Promise<void> {
   console.log('Checking prerequisites and runtime readiness...\n');
-  const report = await collectDoctorReport();
+  const report = await collectDoctorReport(reportDeps);
 
   for (const check of report.checks) {
     console.log(
@@ -835,6 +856,10 @@ export async function doctor(): Promise<void> {
         : 'none'
     }`,
   );
+  if (report.confinement?.checked)
+    console.log(
+      `  Confinement: host facts from ${describeConfinementTarget(report.confinement.target)}; ${report.confinement.preflight.decidedAtStart.join(', ')} depend on the workspace or conversation and are decided when a Session starts.`,
+    );
   console.log(`\n  Next: ${report.recommendation}`);
 
   if (report.fixCommands.length > 0) {
@@ -862,9 +887,10 @@ export async function doctor(): Promise<void> {
 
 export async function doctorJson(
   deps: Partial<DoctorJsonDeps> = {},
+  reportDeps: Partial<DoctorDeps> = {},
 ): Promise<void> {
   const runtimeDeps: DoctorJsonDeps = {
-    collectReport: collectDoctorReport,
+    collectReport: () => collectDoctorReport(reportDeps),
     now: () => new Date(),
     write: (document) => process.stdout.write(`${document}\n`),
     setExitCode: (code) => {

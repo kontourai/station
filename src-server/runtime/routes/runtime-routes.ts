@@ -338,6 +338,7 @@ import {
   parsePairingScope,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import type { ConfinementPreflight } from '@kontourai/station-contracts/execution-confinement';
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import {
@@ -1256,6 +1257,8 @@ export interface ConfigureRuntimeRoutesContext {
   getUsageTelemetry?: () => UsageTelemetryService | undefined;
   skillService: SkillService;
   configLoader: ConfigLoader;
+  /** #4774: this host's confinement facts before any start, for doctor. */
+  readConfinementPreflight?: () => Promise<ConfinementPreflight>;
   feedbackService: FeedbackService;
   fileTreeService: FileTreeService;
   storageAdapter: FileStorageAdapter;
@@ -4229,6 +4232,9 @@ export function configureRuntimeRoutes(
                 .environmentId ?? null,
           },
         ),
+        ...(context.readConfinementPreflight
+          ? { confinementPreflight: context.readConfinementPreflight }
+          : {}),
       },
     ),
   );
