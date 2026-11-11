@@ -164,19 +164,23 @@ export function ProjectRoomChannelHeader({
               aria-expanded={panel?.kind === 'switch'}
               onClick={() => setPanel({ kind: 'switch' })}
             >
-              <span className="room-channel__hash" aria-hidden="true">
-                #
+              <span className="room-channel__label" title={name}>
+                <span className="room-channel__hash" aria-hidden="true">
+                  #
+                </span>
+                {name}
               </span>
-              <span className="room-channel__label">{name}</span>
               <span className="sr-only">, switch channel</span>
               <ArrowDownGlyph className="room-channel__caret" />
             </button>
           ) : name ? (
             <span className="room-channel__static">
-              <span className="room-channel__hash" aria-hidden="true">
-                #
+              <span className="room-channel__label" title={name}>
+                <span className="room-channel__hash" aria-hidden="true">
+                  #
+                </span>
+                {name}
               </span>
-              <span className="room-channel__label">{name}</span>
             </span>
           ) : channels.list.isError ? (
             <span className="room-channel__static">Room</span>
@@ -300,6 +304,8 @@ function ChannelSwitcher({
       anchorRef={anchorRef}
       returnFocusTarget={anchorRef.current}
       initialFocusRef={currentRef}
+      // Start on the current channel, on phones too: a list button raises no keyboard.
+      initialFocusPolicy="always"
       overlayClassName="room-channel-overlay"
       panelClassName="room-channel-panel"
     >

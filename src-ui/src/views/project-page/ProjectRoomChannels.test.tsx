@@ -9,6 +9,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { setClientCredentialResolver } from '../../../../packages/sdk/src/client/http';
 import { ProjectRoom } from './ProjectRoom';
@@ -158,6 +159,12 @@ test('the header names the current channel and the switcher moves to another cha
   const heading = await screen.findByRole('heading', { name: /general/ });
   expect(heading.textContent).not.toContain('Project room');
   const list = await openSwitcher('general');
+  // Opening lands on the current channel, so arrow/Tab moves from there.
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(list).getByRole('button', { name: 'general' }),
+    ),
+  );
   const items = within(list).getAllByRole('button', { name: /general|design/ });
   expect(items.map((item) => item.getAttribute('aria-current'))).toEqual([
     'true',
@@ -185,15 +192,17 @@ test('New channel normalizes the typed name, shows a taken name inline, and subm
   const form = await screen.findByRole('dialog', { name: 'New channel' });
   const name = within(form).getByRole('textbox', { name: 'Name' });
   await waitFor(() => expect(document.activeElement).toBe(name));
-  fireEvent.change(name, { target: { value: 'Design Review' } });
+  const user = userEvent.setup();
+  await user.type(name, 'Design Review');
   expect((name as HTMLInputElement).value).toBe('design-review');
-  fireEvent.submit(name.closest('form')!);
+  await user.keyboard('{Enter}');
   const error = await within(form).findByText('#design-review already exists.');
   expect(name.getAttribute('aria-invalid')).toBe('true');
   expect(name.getAttribute('aria-describedby')).toBe(error.id);
-  fireEvent.change(name, { target: { value: 'research' } });
+  await user.clear(name);
+  await user.type(name, 'research');
   expect(within(form).queryByText(/already exists/)).toBeNull();
-  fireEvent.submit(name.closest('form')!);
+  await user.keyboard('{Enter}');
   await waitFor(() =>
     expect(screen.queryByRole('dialog', { name: 'New channel' })).toBeNull(),
   );
@@ -250,9 +259,9 @@ test('an archived channel is marked and read-only', async () => {
   fireEvent.click(within(list).getByRole('button', { name: /Archived \(1\)/ }));
   fireEvent.click(within(list).getByRole('button', { name: 'design' }));
   expect(await screen.findByText('Archived')).toBeTruthy();
-  expect(
-    await screen.findByText('You can read this conversation.'),
-  ).toBeTruthy();
+  expect(await screen.findByText('Archived with no messages.')).toBeTruthy();
+  expect(screen.queryByText('Start a chat with your project team.')).toBeNull();
+  expect(screen.getByText('Archived channels are read-only.')).toBeTruthy();
   expect(
     screen.queryByRole('textbox', { name: 'Message the project' }),
   ).toBeNull();

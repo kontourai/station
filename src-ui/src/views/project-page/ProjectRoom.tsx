@@ -446,7 +446,11 @@ function ProjectRoomSession({
             !messages.length && (
               <Empty
                 variant="compact"
-                label="Start a chat with your project team."
+                label={
+                  channel?.archivedAt
+                    ? 'Archived with no messages.'
+                    : 'Start a chat with your project team.'
+                }
               />
             )
           )}
@@ -596,7 +600,11 @@ Report observed freshness and coverage, including timestamps or checkpoints when
               />
             </form>
           ) : (
-            <p>You can read this conversation.</p>
+            <p>
+              {channel?.archivedAt
+                ? 'Archived channels are read-only.'
+                : 'You can read this conversation.'}
+            </p>
           )}
         </>
       ) : (

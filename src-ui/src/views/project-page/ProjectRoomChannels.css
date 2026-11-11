@@ -63,17 +63,26 @@
   outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
   outline-offset: 0;
 }
+.room-channel__label > .room-channel__hash {
+  /* Inline in the name, so it rides the first line when the name wraps. */
+  margin-inline-end: 1px;
+}
 .room-channel__hash {
   flex: none;
   color: var(--k-text-faint);
   font-weight: 400;
 }
 .room-channel__label {
+  /* Two lines, breaking at the name's hyphens, so long names that share a
+     prefix still differ on screen. The switcher shows every name whole. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .room-channel__caret {
   flex: none;
@@ -204,17 +213,19 @@
 .room-channel-list__item,
 .room-channel-list__new {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--k-space-1);
   width: 100%;
   min-height: 44px;
-  padding: 0 var(--k-space-2);
+  /* 12px + one tight line + 12px is the 44px row; longer names grow it. */
+  padding: var(--k-space-3) var(--k-space-2);
   border: 0;
   border-radius: var(--k-radius-md);
   background: transparent;
   color: var(--k-text-muted);
   font: inherit;
   font-size: var(--k-text-md);
+  line-height: var(--k-leading-tight);
   text-align: left;
   cursor: pointer;
   transition:
@@ -225,10 +236,10 @@
   width: 1ch;
 }
 .room-channel-list__name {
+  /* Whole names, wrapped at hyphens: this list is where a person tells
+     similar channels apart, by touch as well as pointer. */
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .room-channel-list__item:hover,
 .room-channel-list__new:hover {

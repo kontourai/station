@@ -899,7 +899,9 @@ test('channels: the Project refuses a channel past its limit, archived ones incl
     code: 'project_room_capacity',
   });
 });
-test('channels: an archived channel refuses posts, notes and Agent asks but still serves history', async () => {
+// Agent requests into an archived channel are refused at the Agent module seam
+// (project-room-agent-module.test.ts); this harness mounts no Agent routes.
+test('channels: an archived channel refuses posts and note edits but still serves history', async () => {
   const h = await harness();
   const design = parseProjectRoomChannel(
     await data(await createChannel(h, 'alice', 'design')),
