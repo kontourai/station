@@ -780,8 +780,12 @@ session storage before sending. Until it is confirmed, the message waits in the
 conversation; a lost acknowledgement or reload offers an explicit retry of that
 exact payload and UUID and never resends automatically. The retained intent
 settles once room history shows a message with its intent ID. The unsent draft
-is kept per room in the same tab's session storage. Changing authority, Project,
-or discovered actor retires the prior draft.
+(text, reply target and Agent recipient) is kept per room in the same tab's
+session storage, keyed by the shell's reload partition rather than its
+per-reload authority epoch; a restored recipient must still be an available
+Agent. A new `@agent` ask never reuses a retained Agent intent, which only an
+explicit retry sends. Changing Project, discovered actor or reload partition
+retires the prior draft.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
 comparison. With both discussion and execution capabilities, Bring an Agent
 selects from the current scoped catalog's available Agents. `useProjectRoomAgent`
