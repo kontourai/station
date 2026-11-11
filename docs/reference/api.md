@@ -78,7 +78,11 @@ callers are refused. The strict body is one of
 `{requestKey, outcome:'released', pullRequest:{provider, host, repository:{owner, name}, ref}}`.
 `requestKey` is 1–128 characters of `A-Z a-z 0-9 . _ : -`. A body that names
 an `actor` is refused with 400: the actor is the request's principal. The
-Session must have started in a worktree of its own.
+Session must have started in a worktree of its own, and no turn may be running
+in it. A discard removes files the repository ignores without
+`acceptUncommittedLoss`; the record counts them (`ignoredEntries`). It keeps
+the branch when the branch moved on or another checkout has it, and says so
+(`branchKept`).
 
 A new record answers 201 with `data:{status:'recorded', settlement}`; a replay
 of the same request key and request, or a discard that completed an earlier
@@ -87,9 +91,12 @@ checked again after Station's Git and forge reads, immediately before anything
 is recorded or removed. A refusal answers 409 (404 for a Session without its
 own worktree, or `authority-changed`) with a `code` such as
 `already-settled`, `request-key-mismatch`, `settlement-pending`,
-`uncommitted-changes`, `base-does-not-contain-head`, `no-new-commits`,
-`pull-request-mismatch` or `task-owned-worktree`, and the record in the way
-when there is one. Outcomes, evidence and crash behavior are described in
+`session-running`, `uncommitted-changes`, `branch-checked-out-elsewhere`,
+`branch-moved`, `worktree-path-not-a-directory`, `worktree-replaced`,
+`repository-missing`, `base-detached`, `base-is-session-branch`,
+`base-does-not-contain-head`, `no-new-commits`, `pull-request-mismatch` or
+`task-owned-worktree`, and the record in the way when there is one. A refusal
+records and removes nothing. Outcomes, evidence and crash behavior are described in
 [worktree output settlement](../design/isolated-agent-runs.md#worktree-output-settlement).
 No SDK or CLI command calls this route yet.
 
