@@ -1162,7 +1162,7 @@ describe.skipIf(!probe.ok)(
             arrived = resolve;
           });
           const model = createServer((socket: Socket) => {
-            quiet(socket).once('data', (chunk) => {
+            quiet(socket).once('data', (chunk: Buffer) => {
               received = chunk;
               arrived();
               socket.destroy();
