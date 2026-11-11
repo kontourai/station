@@ -2195,13 +2195,21 @@ Unread state is kept by the server (see
 [read marker contracts](contracts.md#read-marker-contracts)). Conversation
 inventory items carry `readState` (`version`, `seenVersion`, `unread`); read it
 rather than comparing `acknowledgedAt` or `updatedAt` yourself. `version` is
-the conversation's content version, not its `updatedAt`. `{ version, unavailable: true }`
-means the server could not read it: show it as unknown, never as read.
+the conversation's content version: a monotonic, opaque number that moves only
+when readable content arrives, never its `updatedAt`. Compare it only with
+versions of the same conversation. `{ version, unavailable: true }` means the
+server could not read it: show it as unknown, never as read.
 
-- `useAcknowledgeConversationMutation()` marks an agent conversation read at
-  the inventory `updatedAt` it showed. The cached row reads as read at once
-  (an unknown row stays unknown until the server answers); if
-  the server refuses, the row is restored and the mutation rejects.
+- `useAcknowledgeConversationMutation()` takes `{ conversationId, updatedAt,
+  readVersion? }`: `readVersion` is the content version the client rendered
+  (`readState.version`) and is what the server marks read; `updatedAt` is the
+  inventory version shown, kept as "last viewed". With `readVersion` the
+  cached row reads as read at once; if the server refuses, the row is restored
+  and the mutation rejects. Without it (older callers) the row waits for the
+  server, which maps `updatedAt` conservatively. An unknown row stays unknown
+  until the server answers.
+- `acknowledgeConversation(apiBase, conversationId, updatedAt, opts?,
+  readVersion?)` is the same call without React Query.
 - `useMarkReadMutation()` marks `{ target, version }` read for any kind, with
   the same immediate update for an agent conversation.
 - `useReadMarkerSummaryQuery(targets, config?)` reads up to 100 agent

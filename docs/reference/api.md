@@ -2198,22 +2198,35 @@ state and changes nothing. A version above the current one is a 409 with
 cannot read is a 404, and a caller that is not a person a 403 (on a hosted
 Station, a request that carries only the tenant). A marker store that does
 not decode for the caller is a 503, never an answer of "read". A file-backed
-conversation id must be one file name (letters, digits, `.`, `_`, `-`, `:`,
-starting with a letter or digit), and the stored record must carry exactly
-that id; anything else is a 404. A marker that moves is
+conversation id keeps the conversation id contract (ids such as
+`human:tailscale-serve:casey@example.test:…` are valid); one with a path
+separator, a `.` or `..` segment, a control character such as NUL, or an
+encoded separator (`%2F`, `%5C`) names no file, and the stored record must
+carry exactly the requested id; anything else is a 404. A marker that moves is
 announced as `read-markers:changed` on that person's own
-`GET /api/orchestration/events` streams, with an empty payload.
-An agent conversation's version is its content version: the time of its newest
-finished, unfinished or failed turn, never its `updatedAt`, which a Station
-stop also moves. `POST /api/conversations/:id/acknowledgement` takes the
-`updatedAt` the client showed and refuses only one above the current
-`updatedAt`. `POST /api/read-markers/mark` takes `readState.version` and
-refuses one above it.
-`GET /api/conversations` items carry the same answer as `readState`, or
-`{ version, unavailable: true }` when the caller's read state cannot be read;
-the conversations are listed either way.
-`POST /api/conversations/:id/acknowledgement` writes the same marker under the
-same rules.
+`GET /api/orchestration/events` streams, with an empty payload; whose streams
+those are is checked again for every change, so a device that loses owner
+standing stops receiving the owner's changes at once.
+
+An agent conversation's version is its content version: a monotonic number
+from the event store that moves only when readable transcript content is
+appended (a prompt, assistant text, a tool result, host images, a turn
+completing, ending unfinished or failing), never on lifecycle bookkeeping.
+`GET /api/conversations` items carry it as `readState.version`, or
+`readState: { version, unavailable: true }` when the caller's read state
+cannot be read; the conversations are listed either way.
+
+```http
+POST /api/conversations/:id/acknowledgement
+{ "updatedAt": "2026-11-11T10:15:00.000Z", "readVersion": 41 }
+```
+
+`readVersion` is the content version the client rendered and is what is marked
+read; above the current one it is a 409. `updatedAt` is the inventory version
+shown, recorded as "last viewed" (`acknowledgedAt`, Home's Just finished) and
+refused above the current `updatedAt`. A request without `readVersion` (an
+older client) is mapped conservatively: only content appended no later than
+the first event that gave the conversation that `updatedAt` is marked read.
 
 ## Conversation Management
 

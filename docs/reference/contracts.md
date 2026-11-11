@@ -2304,28 +2304,40 @@ three rules:
   `POST /api/conversations/:id/acknowledgement` too.
 
 Versions are content versions: they move only when something a person would
-read arrives, never on lifecycle bookkeeping. An agent conversation's version
-(`readState.version` on `GET /api/conversations`) is the epoch milliseconds of
-its newest content event: a `turn.completed`, `turn.aborted` or `runtime.error`
-on any Session in its lineage
-([`readConversationContentTimes`](../../src-server/services/orchestration/event-store.ts)).
-Its inventory `updatedAt` also moves on bookkeeping such as the
-`session.exited` a Station stop writes, so it is never the read version. It
-only bounds the acknowledgement a client sends, which is the `updatedAt` it
-showed. A file-backed conversation has no lifecycle events and uses its own
-`updatedAt`. Markers recorded against `updatedAt` before this are already in
-the same epoch-millisecond space and at or after the content they covered, so
-none reads unread after an upgrade. Its marker lives in the inventory's acknowledgement
-store under the person's key. On a personal Station that is the inventory's own
-acknowledgement, so `acknowledgedAt` is the stored fact and `readState` the
-derived answer. On a hosted Station `acknowledgedAt` stays the tenant's "last
-viewed" record, and `readState` is the person's own. A
-Project room uses its `checkpoint.lastSeq`. A Task room uses
+read is appended, never on lifecycle bookkeeping (start, stop, exit, restore,
+reindex, settings or metadata). For an agent conversation the event store
+maintains the version as a projection
+([`orchestration_thread_content`](../../src-server/services/orchestration/event-store.ts)):
+the same write that appends readable transcript content (a person's prompt,
+assistant text, a tool result, host images, or a turn completing, ending
+unfinished or failing) raises the Session's version to that event's
+`global_sequence`. A conversation's `readState.version` is the highest across
+its Sessions, read as one primary-key lookup per Session, never a history
+scan. It is monotonic and opaque: compare it only with versions of the same
+conversation. A file-backed conversation has no lifecycle events and uses the
+epoch milliseconds of its own `updatedAt`.
+
+Every marker lives in the
+[read-marker store](../../src-server/services/read-markers/read-marker-store.ts).
+A client marks read the content version it rendered (`readVersion` on
+`POST /api/conversations/:id/acknowledgement`, or `version` on
+`POST /api/read-markers/mark`), never more than the current one. An older
+client that sends only `updatedAt` is mapped conservatively: content appended
+no later than the first event that gave the conversation that `updatedAt`, so
+content persisted afterwards stays unread whatever its own timestamp. The
+inventory's `acknowledgedAt` is a separate "last viewed" record that Home's
+Just finished reads; an acknowledgement writes it alongside, and unread never
+reads it. A Project room uses its `checkpoint.lastSeq`. A Task room uses
 `checkpoint.throughSeq` within its current epoch, so a re-homed room starts a
-new marker. Nothing recorded what anyone had seen before read state was kept.
-Agent conversations therefore read as seen up to the time the
-[store](../../src-server/services/read-markers/read-marker-store.ts) was created;
-anything that changes after that becomes unread normally.
+new marker.
+
+Nothing recorded what anyone had seen before read state was kept, so agent
+conversations read as seen up to where the store began: the event store's
+sequence for runtime conversations, its creation time for file-backed ones.
+A home from before content versions upgrades once at start: the event store
+backfills the projection from its history, the store's time baseline becomes
+the sequence as of that time, and each recorded view becomes the content
+version as of its time, so nobody reads unread on upgrade.
 
 A marker that moves emits `read-markers:changed` (scoped). The orchestration
 event stream forwards it only to that person's own streams, with an empty
@@ -2334,10 +2346,11 @@ inventory's own refresh: at most once now and once at the end of its window,
 never cancelling a read in flight.
 
 The marker store decodes strictly, and never reads a corrupt record as "read".
-One person's malformed record refuses only that person's room markers. A store
-whose envelope does not decode, or an acknowledgement store that does not
-decode, has no read state for anyone. `GET /api/conversations` then still lists
-every conversation, with `readState: { version, unavailable: true }`.
+One person's malformed record refuses only that person's read state (their
+rooms and conversations read as unknown). A store whose envelope does not
+decode has no read state for anyone. `GET /api/conversations` then still lists
+every conversation, with `readState: { version, unavailable: true }`. An
+acknowledgement store that does not decode costs only "last viewed".
 
 `parseReadMarkerSummaryRequest` refuses more than
 `READ_MARKER_SUMMARY_MAX_TARGETS` (100) targets rather than truncating. A target
