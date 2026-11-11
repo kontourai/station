@@ -1188,20 +1188,21 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
 });
 
 /**
- * #3075: idle conversations whose titles run from short to long, so some
- * land on the phone inbox's two-line boundary, where a wider (bolder) title
- * would re-wrap and grow its row.
+ * #3075: idle conversations whose titles grow one character at a time across
+ * the phone inbox's one-to-two-line boundary. A bold title is about two
+ * characters wider, so some title in this run fits one line in the regular
+ * weight and needs two in bold: exactly where a naive weight change would
+ * grow its row.
  */
+const READ_STATE_TITLE_LENGTHS = Array.from({ length: 46 }, (_, i) => 15 + i);
 function readStateWork(unread: boolean) {
-  const words =
-    'Review the unread marker design for project channels task rooms and every paired phone before the release goes out'.split(
-      ' ',
-    );
+  const sentence =
+    'Review the unread marker design for project channels and task rooms before the release';
   return {
-    items: Array.from({ length: 16 }, (_, index) =>
+    items: READ_STATE_TITLE_LENGTHS.map((length, index) =>
       item({
         id: `conversation-${index}`,
-        title: words.slice(0, 3 + index).join(' '),
+        title: sentence.slice(0, length).trim(),
         unread,
         readVersion: 1,
       }),
@@ -1227,14 +1228,14 @@ describe.skipIf(!chromiumAvailable)('unread row geometry (#3075)', () => {
         label: 'panel',
         markup: (work: ReturnType<typeof readStateWork>) =>
           panelMarkup(undefined, undefined, work),
-        viewport: { width: 1440, height: 2400 },
+        viewport: { width: 1440, height: 4000 },
         dot: '6px',
       },
       {
         label: 'phone',
         markup: (work: ReturnType<typeof readStateWork>) =>
           sheetMarkup(undefined, undefined, work),
-        viewport: { width: 390, height: 2400 },
+        viewport: { width: 390, height: 6000 },
         dot: '8px',
       },
     ];
@@ -1283,7 +1284,7 @@ describe.skipIf(!chromiumAvailable)('unread row geometry (#3075)', () => {
         };
         const before = await measure(read);
         const after = await measure(unread);
-        expect(before.length, label).toBe(16);
+        expect(before.length, label).toBe(READ_STATE_TITLE_LENGTHS.length);
         expect(
           after.map((row) => row.geometry),
           `${label}: geometry`,
