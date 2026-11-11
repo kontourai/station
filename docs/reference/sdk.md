@@ -797,10 +797,12 @@ topics with the contract parsers before sending; the server's refusal codes
 arrive as `StationHttpError.code`.
 
 The embeddable `ProjectRoom` UI shows the current channel's `# name` and topic
-in its header. The name opens a channel list (an anchored panel on desktop, a
-sheet on phones) with the current channel marked and archived channels folded
-away; people with `edit` also get New channel there and Rename, Topic and
-Archive in the header's settings menu. An archived channel is read-only.
+in its header; a long name wraps to two lines at its hyphens. The name opens a
+channel list (an anchored panel on desktop, a sheet on phones) that starts on the
+current channel, shows every name whole and folds archived channels away; people
+with `edit` also get New channel there and Rename, Topic and Archive in the
+header's settings menu. An archived channel is read-only and says so, including
+when it has no messages.
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
 session storage before sending, per channel. A lost acknowledgement or reload offers an
 explicit retry of that exact payload and UUID; it never automatically resends.

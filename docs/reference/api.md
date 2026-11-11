@@ -1017,7 +1017,10 @@ not archived.
 
 Upgrading moves each Project's existing room into `#general` with its room UUID,
 history, note and Agent requests unchanged. Rooms created by an older Station
-after the upgrade are adopted the next time the store opens.
+after the upgrade are adopted the next time the store opens. A room whose stored
+record does not match its row is never adopted; that Project's room and channels
+stay refused, as before the upgrade. A database from a newer Station is refused
+without being modified.
 
 Reads, discussion, note editing and execution require their distinct current
 Project actions plus transport permission. Agent requests also require current

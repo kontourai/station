@@ -3588,8 +3588,11 @@ retains sequenced messages, actor-scoped duplicate-send receipts, revisioned not
 and Agent-request records in private SQLite. A Project's room holds named channels
 (`project_room_channels`): each channel is one room, keyed by its room UUID, and
 the Project's original room is its default `#general`. Schema version 1
-(`PRAGMA user_version`) added channels; every open adopts any channel-less room
-as `#general`, and a newer schema is refused. Channel limits, unique names and
+(`PRAGMA user_version`) added channels. A newer schema is refused before any table
+is created; otherwise tables are created and every channel-less room is adopted as
+`#general` under the writer lock, after re-reading the version there, so a racing
+newer Station's upgrade is never overwritten. A room whose stored record does not
+match its row is not adopted, and it refuses its channels as it refuses its reads. Channel limits, unique names and
 archived read-only state are enforced in the store transaction. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
