@@ -30,9 +30,7 @@
     {
       "assertionResults": [
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the probe ran the production profile, not a stand-in",
           "status": "passed",
           "title": "the probe ran the production profile, not a stand-in",
@@ -42,9 +40,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a write in the workspace is allowed; a write outside it is denied",
           "status": "passed",
           "title": "a write in the workspace is allowed; a write outside it is denied",
@@ -54,9 +50,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree can commit twice and read its status",
           "status": "passed",
           "title": "a linked worktree can commit twice and read its status",
@@ -66,9 +60,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not write a shared hook",
           "status": "passed",
           "title": "a linked worktree may not write a shared hook",
@@ -78,9 +70,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not write the shared config",
           "status": "passed",
           "title": "a linked worktree may not write the shared config",
@@ -90,9 +80,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not write shared info",
           "status": "passed",
           "title": "a linked worktree may not write shared info",
@@ -102,9 +90,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not move main",
           "status": "passed",
           "title": "a linked worktree may not move main",
@@ -114,9 +100,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not create another branch",
           "status": "passed",
           "title": "a linked worktree may not create another branch",
@@ -126,9 +110,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not repoint the .git pointer file",
           "status": "passed",
           "title": "a linked worktree may not repoint the .git pointer file",
@@ -138,9 +120,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree may not write config.worktree",
           "status": "passed",
           "title": "a linked worktree may not write config.worktree",
@@ -150,9 +130,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace still cannot write its hooks, config or info",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace still cannot write its hooks, config or info",
@@ -162,9 +140,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel secret stores and Station data are unreadable; Station installs stay readable",
           "status": "passed",
           "title": "secret stores and Station data are unreadable; Station installs stay readable",
@@ -174,9 +150,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the operator's login Keychain is hidden from the confined process",
           "status": "passed",
           "title": "the operator's login Keychain is hidden from the confined process",
@@ -186,9 +160,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the operator's Claude config is not writable; the Station-owned one is",
           "status": "passed",
           "title": "the operator's Claude config is not writable; the Station-owned one is",
@@ -198,9 +170,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write a Codex project config (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write a Codex project config (#3800)",
@@ -210,9 +180,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write a Claude project settings file (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write a Claude project settings file (#3800)",
@@ -222,9 +190,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write Claude local settings (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write Claude local settings (#3800)",
@@ -234,9 +200,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot move a prepared directory into place (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot move a prepared directory into place (#3800)",
@@ -246,9 +210,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot create it in another case (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot create it in another case (#3800)",
@@ -258,9 +220,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write a Codex config in a subdirectory a later session may start in (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write a Codex config in a subdirectory a later session may start in (#3800)",
@@ -270,9 +230,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot write Claude settings in a subdirectory, in another case (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot write Claude settings in a subdirectory, in another case (#3800)",
@@ -282,9 +240,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the workspace engine configuration is read-only: a confined process cannot prepare one in its temp directory and move it into the workspace (#3800)",
           "status": "passed",
           "title": "the workspace engine configuration is read-only: a confined process cannot prepare one in its temp directory and move it into the workspace (#3800)",
@@ -294,9 +250,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the session temp directory is writable and the confined env points at it",
           "status": "passed",
           "title": "the session temp directory is writable and the confined env points at it",
@@ -306,9 +260,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined",
           "status": "passed",
           "title": "the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined",
@@ -318,9 +270,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree can commit but not stash: refs/stash is shared, by design (L1)",
           "status": "passed",
           "title": "a linked worktree can commit but not stash: refs/stash is shared, by design (L1)",
@@ -330,9 +280,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace can stash and switch to an existing branch",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace can stash and switch to an existing branch",
@@ -342,9 +290,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel an SSH key is unreadable, however it is spelled",
           "status": "passed",
           "title": "an SSH key is unreadable, however it is spelled",
@@ -354,9 +300,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel AWS credentials is unreadable, however it is spelled",
           "status": "passed",
           "title": "AWS credentials is unreadable, however it is spelled",
@@ -366,9 +310,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the gh login is unreadable, however it is spelled",
           "status": "passed",
           "title": "the gh login is unreadable, however it is spelled",
@@ -378,9 +320,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the operator's Claude credential file is unreadable, however it is spelled",
           "status": "passed",
           "title": "the operator's Claude credential file is unreadable, however it is spelled",
@@ -390,9 +330,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel Station's runtime home is unreadable, however it is spelled",
           "status": "passed",
           "title": "Station's runtime home is unreadable, however it is spelled",
@@ -402,9 +340,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel Station's root, outside the runtime home is unreadable, however it is spelled",
           "status": "passed",
           "title": "Station's root, outside the runtime home is unreadable, however it is spelled",
@@ -414,9 +350,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a hidden file cannot be hard-linked or cloned into the workspace",
           "status": "passed",
           "title": "a hidden file cannot be hard-linked or cloned into the workspace",
@@ -426,9 +360,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a hard link made outside the sandbox beforehand is readable: an accepted residual",
           "status": "passed",
           "title": "a hard link made outside the sandbox beforehand is readable: an accepted residual",
@@ -438,9 +370,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a granted path does not grant its sibling that shares the prefix",
           "status": "passed",
           "title": "a granted path does not grant its sibling that shares the prefix",
@@ -450,9 +380,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a denied git path is denied in another case",
           "status": "passed",
           "title": "a denied git path is denied in another case",
@@ -462,9 +390,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree's git directory keeps its commondir read-only (R1)",
           "status": "passed",
           "title": "a linked worktree's git directory keeps its commondir read-only (R1)",
@@ -474,9 +400,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree's git directory keeps its gitdir read-only (R1)",
           "status": "passed",
           "title": "a linked worktree's git directory keeps its gitdir read-only (R1)",
@@ -486,9 +410,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree's git directory keeps its a config read-only (R1)",
           "status": "passed",
           "title": "a linked worktree's git directory keeps its a config read-only (R1)",
@@ -498,9 +420,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a linked worktree's git directory keeps its hooks read-only (R1)",
           "status": "passed",
           "title": "a linked worktree's git directory keeps its hooks read-only (R1)",
@@ -510,9 +430,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change another worktree's commondir (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change another worktree's commondir (R2)",
@@ -522,9 +440,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change another worktree's gitdir (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change another worktree's gitdir (R2)",
@@ -534,9 +450,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change a submodule's config (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change a submodule's config (R2)",
@@ -546,9 +460,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change a commondir redirect (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change a commondir redirect (R2)",
@@ -558,9 +470,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change object alternates (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change object alternates (R2)",
@@ -570,9 +480,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a checkout whose .git is inside the workspace cannot change a renamed .git (R2)",
           "status": "passed",
           "title": "a checkout whose .git is inside the workspace cannot change a renamed .git (R2)",
@@ -582,9 +490,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a .git emptied from inside is never replaced by a pointer file or given config (R2)",
           "status": "passed",
           "title": "a .git emptied from inside is never replaced by a pointer file or given config (R2)",
@@ -594,9 +500,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel an app in the workspace cannot be launched outside the sandbox",
           "status": "passed",
           "title": "an app in the workspace cannot be launched outside the sandbox",
@@ -606,9 +510,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel a setuid program cannot be run from inside",
           "status": "passed",
           "title": "a setuid program cannot be run from inside",
@@ -618,9 +520,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel the login Keychain is unreachable through the security tool",
           "status": "passed",
           "title": "the login Keychain is unreachable through the security tool",
@@ -630,9 +530,7 @@
           "tags": []
         },
         {
-          "ancestorTitles": [
-            "Seatbelt profile under the real kernel"
-          ],
+          "ancestorTitles": ["Seatbelt profile under the real kernel"],
           "fullName": "Seatbelt profile under the real kernel signals reach only processes inside the sandbox",
           "status": "passed",
           "title": "signals reach only processes inside the sandbox",
