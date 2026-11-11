@@ -20,7 +20,15 @@
 
     "src-server/services/projects/__tests__/worktree-provisioning-service.test.ts",
 
-    "src-server/services/execution-target/__tests__/execution-target-execution.test.ts"
+    "src-server/services/execution-target/__tests__/execution-target-execution.test.ts",
+
+    "src-server/services/projects/worktree-output-settlement-service.ts",
+
+    "src-server/services/orchestration/worktree-output-settlement-store.ts",
+
+    "src-server/routes/orchestration/worktree-output-settlement.ts",
+
+    "src-server/services/projects/__tests__/worktree-output-settlement.test.ts"
   ],
 
   "checks": [
