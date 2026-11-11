@@ -26,6 +26,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { observedConfinementRecord } from '../../../security/confinement/confinement-provider.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
@@ -157,6 +158,8 @@ async function fakeHub(): Promise<{ url: string; server: Server }> {
 }
 
 describe('device tools lease rule in the runtime composition (S3)', () => {
+  // #4769: removed in an after-hook even when the test fails.
+  const makeStoreDir = trackTempDirs();
   const directories: string[] = [];
   const servers: Server[] = [];
   const originalHub = process.env[HUB_ENV];
@@ -508,8 +511,7 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
     const hub = await fakeHub();
     servers.push(hub.server);
     process.env[HUB_ENV] = hub.url;
-    const storeDir = mkdtempSync(join(tmpdir(), 'station-device-network-'));
-    directories.push(storeDir);
+    const storeDir = makeStoreDir('station-device-network-');
     const store = new EventStore(join(storeDir, 'orchestration.sqlite'));
     const plan = {
       requiredLevel: 'os-profile',
