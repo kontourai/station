@@ -3843,9 +3843,11 @@ pairs or self-authorizes. The running server answers from the provider check
 and the credential check a Claude start makes, with the server's own
 environment and home, so a shell variable in doctor's own environment does
 not change the answer. Reading it creates no app-home profile or spawn
-temporary directory on the Station; the server's ordinary config read may
-still write a default `config/app.json` or migrate legacy keys in it, as any
-config read does. On macOS the first read may run the one-time Seatbelt
+temporary directory on the Station; the server's ordinary config read, as
+any config read does, may still write a default `config/app.json` when none
+exists and may rewrite an existing one when it normalizes it (for example
+filling missing defaults or removing legacy, internal or retired keys). On
+macOS the first read may run the one-time Seatbelt
 probe a confined start would also run, in a throwaway temporary directory it
 removes; that probe pauses the server for up to 10 seconds, and its result,
 a failure included, is kept for the server process and used by later

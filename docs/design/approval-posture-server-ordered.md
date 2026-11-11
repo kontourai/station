@@ -1211,9 +1211,11 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   `unverified` where it can see, without writing, that the start would be
   refused (that home's path or an ancestor is not a directory, or the
   directory it would be created in is not writable). The connection
-  settings come from the ordinary app config load, which may write a
-  default `config/app.json` or migrate legacy keys in it, as any config
-  read does. `createStationConfinementPreflight` assembles these inputs.
+  settings come from the ordinary app config load, which, as any config
+  read does, may write a default `config/app.json` when none exists and
+  may rewrite an existing one when it normalizes it (for example filling
+  missing defaults or removing legacy, internal or retired keys).
+  `createStationConfinementPreflight` assembles these inputs.
   Known gap: that assembly mirrors the layering in
   `ClaudeAdapter.startSession` and `prepareSeatbeltStart` rather than
   sharing it, so a change to the adapter's layering is not seen by the

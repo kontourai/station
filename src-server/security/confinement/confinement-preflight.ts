@@ -33,7 +33,7 @@ const CONFINEMENT_DECIDED_AT_START: readonly ConfinementFallbackReason[] = [
   'resume-bound-elsewhere',
 ];
 
-export interface ConfinementPreflightInput {
+interface ConfinementPreflightInput {
   providers: readonly ConfinementProvider[];
   /** Each engine's own confined-credential check, keyed by engine id. */
   credentialChecks: Readonly<
@@ -144,9 +144,10 @@ interface StationConfinementPreflightResolvers {
  * `getAppHomeEnv` (which creates the profile home). So no app-home profile
  * and no spawn TMPDIR is created. The other inputs are read as a start
  * reads them: `loadConnectionSettings` and `connectionLaunch` are the
- * ordinary app config load, which writes a default `config/app.json` when
- * none exists and rewrites one holding legacy keys, as any config read
- * does. On macOS the first call may run the Seatbelt provider's
+ * ordinary app config load, which, as any config read does, may write a
+ * default `config/app.json` when none exists and may rewrite an existing
+ * one when it normalizes it (for example filling missing defaults or
+ * removing legacy, internal or retired keys). On macOS the first call may run the Seatbelt provider's
  * once-per-process probe (a synchronous spawn of up to 10 s that blocks the
  * server meanwhile); its result, a failure included, is cached on the
  * provider and is the one later starts use.
