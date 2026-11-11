@@ -450,10 +450,9 @@ export function useChatInput({
   useEffect(() => {
     if (!sessionId) return;
     const restored = getDraft(sessionId);
-    if (
-      restored &&
-      activeChatsStore.getSnapshot()[sessionId]?.input !== restored
-    ) {
+    // Only into an empty composer. What the composer already holds is the
+    // newer text, and can be longer than its saved copy, which is capped.
+    if (restored && !activeChatsStore.getSnapshot()[sessionId]?.input) {
       updateChat(sessionId, { input: restored });
     }
   }, [sessionId, getDraft, updateChat]);

@@ -14,6 +14,7 @@ import {
   outboundTurnKey,
   rowBelongsToStation,
 } from '../lib/outboundQueue';
+import { outboundQueueUnavailableReported } from '../lib/outboundQueueReporting';
 
 export interface OutboundQueuedTurnProjection {
   clientTurnId: string;
@@ -135,12 +136,18 @@ export function projectOutboundQueueEntries(
       !chat.ephemeralMessages?.some((message) => message.queuedRetry)
     )
       continue;
+    // This read succeeded, so an outage an earlier one reported is over.
+    const outageReported = outboundQueueUnavailableReported(chat);
     activeChatsStore.updateChat(sessionId, {
       outboundQueuedTurns: [],
       ephemeralMessages: chat.ephemeralMessages?.filter(
         (message) => !message.queuedRetry,
       ),
-      ...(chat.status === 'queued' ? { status: 'idle' } : {}),
+      ...(chat.status === 'queued' ||
+      (outageReported && chat.status === 'error')
+        ? { status: 'idle' }
+        : {}),
+      ...(outageReported ? { error: undefined } : {}),
     });
   }
 
@@ -171,8 +178,20 @@ export function projectOutboundQueueEntries(
       ...queued.filter((entry) => entry.heldBy),
       ...queued.filter((entry) => !entry.heldBy),
     ];
+    // A message Station accepted was delivered: its row only waits for the
+    // turn it started to end, so a chat holding nothing else is not waiting
+    // on the connection and keeps the status its turn gives it.
+    const waiting = ordered.some((entry) => entry.status !== 'accepted');
+    const outageReported = outboundQueueUnavailableReported(chat);
     activeChatsStore.updateChat(sessionId, {
-      status: 'queued',
+      ...(waiting
+        ? { status: 'queued' as const }
+        : chat?.status === 'queued' ||
+            (outageReported && chat?.status === 'error')
+          ? { status: 'idle' as const }
+          : {}),
+      // This read succeeded, so an outage an earlier one reported is over.
+      ...(outageReported ? { error: undefined } : {}),
       outboundQueuedTurns: ordered.map(
         ({
           clientTurnId,

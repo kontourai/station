@@ -148,7 +148,8 @@ to your chat and is not continued. Each such turn the restart cut off gets one t
 **Continue** sends, oldest Task first, as the Session's owner. The chat shows it
 as **Continued after restart**. It is never sent for a turn you sent yourself
 (including Station's automatic continuation of your turn after a memory kill),
-an Automation's run (Automations keep their own recovery), a coordinator, or a
+an Automation's run (Station never repeats a run a restart cut off; the run is
+recorded with its outcome unknown, see [Automations](automations.md)), a coordinator, or a
 turn whose cause Station did not record. It also skips a Task that is done,
 canceled or blocked, a chat that has moved on since, and a turn that was itself
 such a continuation, so a second restart does not continue it again. It uses

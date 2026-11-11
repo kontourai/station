@@ -9,7 +9,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { PERSISTED_QUERY_KEY_PREFIXES } from '../lib/queryPersistence';
 
 const connectionStatus: {
@@ -185,5 +186,52 @@ describe('useQueryCacheReconnectSync', () => {
     rerender();
 
     expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The live stream and the health poll recover separately. After a server
+ * restart the poll reports `connected` within its ten-second interval, while
+ * the stream could be up to thirty seconds into a backoff: freshly loaded
+ * lists beside "Reconnecting live updates…".
+ *
+ * The stream module and the SDK transport are real here; only `fetch` is
+ * stubbed, so "woken" means another request was sent.
+ */
+describe('useQueryCacheReconnectSync and the live stream', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('cuts the orchestration stream backoff short when health recovers', async () => {
+    const apiBase = 'https://reconnect-sync-stream-wake.example.test';
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => {
+        throw new TypeError('network down');
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const streamRequests = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).startsWith(`${apiBase}/api/orchestration/events`),
+      ).length;
+
+    connectionStatus.status = 'error';
+    const release = ensureOrchestrationEventStream(apiBase);
+    const { rerender } = renderHook(() => useQueryCacheReconnectSync(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    // The first attempt failed; the stream is now inside its 2s backoff.
+    await vi.waitFor(() => expect(streamRequests()).toBe(1));
+
+    // Control: a render with health still down leaves the backoff alone.
+    rerender();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(streamRequests()).toBe(1);
+
+    connectionStatus.status = 'connected';
+    rerender();
+    await vi.waitFor(() => expect(streamRequests()).toBe(2), { timeout: 500 });
+    release();
   });
 });

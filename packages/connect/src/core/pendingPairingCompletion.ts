@@ -34,7 +34,16 @@ export type PendingPairingCompletion =
   | { status: 'identity-changed' }
   | { status: 'failed' }
   | { status: 'aborted' }
-  | { status: 'indeterminate'; pending: PendingPairingExchange }
+  | {
+      status: 'indeterminate';
+      pending: PendingPairingExchange;
+      /**
+       * Present only when the exchange succeeded and the completion owner then
+       * did not save it: that owner's own `failure` (or what it threw). The
+       * attempt is held exactly as for any other indeterminate outcome.
+       */
+      failure?: unknown;
+    }
   | { status: 'not-started' };
 
 /**
@@ -286,7 +295,9 @@ export function createPendingPairingCompletion(
   const runFlight = async (
     flight: Flight,
   ): Promise<PendingPairingCompletion> => {
-    const indeterminate = (): PendingPairingCompletion => ({
+    const indeterminate = (saveFailure?: {
+      failure: unknown;
+    }): PendingPairingCompletion => ({
       status: 'indeterminate',
       pending: {
         ...(deps.readPending(
@@ -295,6 +306,7 @@ export function createPendingPairingCompletion(
         ) ?? flight.pending),
         exchangeAttempt: true,
       },
+      ...saveFailure,
     });
     const terminal = async (
       completion: TerminalCompletion,
@@ -344,8 +356,16 @@ export function createPendingPairingCompletion(
             pairingExchangeIntentKey(flight.pending) !== flight.key ||
             (flight.requiresPendingRecord &&
               (!current || pairingExchangeIntentKey(current) !== flight.key))
-          )
-            return indeterminate();
+          ) {
+            // Nothing has been sent, so there is no uncertainty to hold: give
+            // the claim back. A hold here would read as approved access that
+            // was not saved, and the journal admits no new claim for this
+            // Station and request kind while one is held.
+            if (!(await deps.settleExchange(flight.pending, 'unconsumed')))
+              return indeterminate();
+            flight.exchangeClaimed = false;
+            return { status: 'aborted' };
+          }
           const result = await deps.exchange({
             ...flight.pending,
             signal: flight.controller.signal,
@@ -365,10 +385,11 @@ export function createPendingPairingCompletion(
             const completion = await flight.completePaired(result, {
               signal: flight.controller.signal,
             });
-            if (completion.status !== 'completed') return indeterminate();
+            if (completion.status !== 'completed')
+              return indeterminate({ failure: completion.failure });
             return terminal({ status: 'paired', result });
-          } catch {
-            return indeterminate();
+          } catch (failure) {
+            return indeterminate({ failure });
           }
         } catch (error) {
           if (flight.controller.signal.aborted) return indeterminate();

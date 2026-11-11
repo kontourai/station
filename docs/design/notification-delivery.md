@@ -31,7 +31,11 @@ the earlier ones. Reading time pauses while a card is hovered, focused, expanded
 queued, or the app is hidden. Visibility uses viewport intersection and document
 visibility; it does not detect an overlapping dialog or another occluding surface.
 Actions that transfer from Station details close that dialog before reporting their
-outcome in a toast. Failed actions stay available to retry.
+outcome in a toast. Failed actions stay available to retry; an action can name
+why it failed instead of the generic line. A toast's dismissal callback runs once
+when it leaves the screen, which
+[General Undo](../../src-ui/src/components/undo/undoable-actions.tsx) uses to
+commit a deferred write, or to drop it when Station changes.
 [NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx)
 adds **Troubleshoot** to an error-tone toast that has fewer than two actions
 and is not one of troubleshooting's own (`troubleshoot-*` deduplication keys);

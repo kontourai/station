@@ -41,6 +41,7 @@ import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
 import {
   readSequencedLiveEvents,
+  readSequencedLiveFloor,
   readSequencedLiveTruncation,
   subscribeSequencedLiveEvents,
 } from './sequencedLiveEvents';
@@ -428,6 +429,49 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.id,
     windowWatermark,
     liveGap,
+    serverWindow.settled,
+    serverWindow.loading,
+    serverWindow.error,
+    serverWindow.reload,
+  ]);
+  // A stream snapshot delivers no events, so a window served before the
+  // snapshot's cursor is the only source for anything up to it. The cursor is
+  // the Station's head and the watermark this conversation's newest event in
+  // the window, so the two compare only through the conversation's own head:
+  // behind the cursor AND behind what the stream reports for this conversation
+  // means events may sit between the two reads. Re-read once per watermark,
+  // without the `liveGap` hold: nothing on screen is known to be wrong.
+  const readLiveFloor = useCallback(
+    () => readSequencedLiveFloor(apiBase),
+    [apiBase],
+  );
+  const liveFloor = useSyncExternalStore(
+    subscribeLive,
+    readLiveFloor,
+    readLiveFloor,
+  );
+  const behindSnapshot =
+    !replay &&
+    windowWatermark < liveFloor &&
+    windowWatermark < (session.conversationActivity?.asOfSequence ?? 0);
+  const snapshotReloadKey = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (
+      !behindSnapshot ||
+      !serverWindow.settled ||
+      serverWindow.loading ||
+      serverWindow.error
+    )
+      return;
+    const key = `${apiBase}\0${session.id}\0${windowWatermark}`;
+    if (snapshotReloadKey.current === key) return;
+    snapshotReloadKey.current = key;
+    void serverWindow.reload();
+  }, [
+    apiBase,
+    session.id,
+    windowWatermark,
+    behindSnapshot,
     serverWindow.settled,
     serverWindow.loading,
     serverWindow.error,

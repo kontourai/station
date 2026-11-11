@@ -1,0 +1,99 @@
+{
+  "numTotalTestSuites": 3,
+  "numPassedTestSuites": 1,
+  "numFailedTestSuites": 2,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 6,
+  "numPassedTests": 1,
+  "numFailedTests": 1,
+  "numPendingTests": 3,
+  "numTodoTests": 1,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1794347972876,
+  "success": false,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["a skipped suite"],
+          "fullName": "a skipped suite inside a skipped suite",
+          "status": "skipped",
+          "title": "inside a skipped suite",
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["a running suite"],
+          "fullName": "a running suite passes",
+          "status": "passed",
+          "title": "passes",
+          "duration": 0.48725000000000307,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["a running suite"],
+          "fullName": "a running suite skipped by skipIf",
+          "status": "skipped",
+          "title": "skipped by skipIf",
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["a running suite"],
+          "fullName": "a running suite skipped at runtime",
+          "status": "skipped",
+          "title": "skipped at runtime",
+          "duration": 0.11558300000000088,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["a running suite"],
+          "fullName": "a running suite fails",
+          "status": "failed",
+          "title": "fails",
+          "duration": 1.8433750000000089,
+          "failureMessages": [
+            "AssertionError: expected 1 to be 2 // Object.is equality\n    at /station/scripts/__tests__/zz-scratch-4772/shape.test.ts:20:15\n    at file:///station/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///station/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///station/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///station/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///station/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///station/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n    at file:///station/node_modules/@vitest/runner/dist/chunk-artifact.js:2959:64"
+          ],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": ["a running suite"],
+          "fullName": "a running suite a todo",
+          "status": "todo",
+          "title": "a todo",
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1794347973017,
+      "endTime": 1794347973019.8433,
+      "status": "failed",
+      "message": "",
+      "name": "/station/scripts/__tests__/zz-scratch-4772/shape.test.ts"
+    }
+  ]
+}

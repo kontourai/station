@@ -248,6 +248,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/author-telemetry-build.test.ts',
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
   // Claude handshake; skips loudly where Seatbelt cannot apply (non-macOS).
+  // A skip still passes, and no hosted corpus lane runs on macOS, so the
+  // corpus never runs the kernel legs. They run on a developer Mac, or when
+  // `.github/workflows/seatbelt-kernel.yml` is dispatched on a hosted macOS
+  // runner, where scripts/check-required-tests-ran.mjs fails the run unless
+  // the pinned legs passed. The live Claude handshake runs only on a Mac with
+  // `claude` on PATH.
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
   // The stale-session reaper case spawns one short-lived Node child to obtain
   // a pid that has exited.
@@ -288,6 +294,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
   'scripts/__tests__/ci-event-environment.test.ts',
+  // Runs the required-tests check as short Node children over report
+  // fixtures (one with the hosted workflow's own arguments, one over a FIFO
+  // from a bounded mkfifo), and one nested Vitest collection (no test bodies
+  // run) of the Seatbelt process file to compare its ids with the pinned
+  // profile.
+  'scripts/__tests__/check-required-tests-ran.test.ts',
   // Builds disposable Git repositories to prove the real-ledger freshness
   // check keeps the job's event mode through the worker env scrub.
   'scripts/__tests__/docs-freshness-job-env.probe.test.ts',

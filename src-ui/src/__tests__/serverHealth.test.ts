@@ -280,6 +280,96 @@ describe('probeServerConnection', () => {
     }
   });
 
+  describe('the probe deadline covers steps that take no abort signal', () => {
+    // The route resolver runs host IPC for a native relay route and is not
+    // handed the probe's signal. A probe that never settles leaves the health
+    // coordinator queueing every later trigger behind it.
+    async function settledAfter(
+      pending: Promise<unknown>,
+      advance: () => Promise<unknown>,
+    ) {
+      let settled: unknown = 'still pending';
+      void pending.then((result) => {
+        settled = result;
+      });
+      await advance();
+      return settled;
+    }
+
+    it('times out when the route resolver never settles', async () => {
+      vi.useFakeTimers();
+      try {
+        const direct = vi.spyOn(globalThis, 'fetch');
+        setStationHealthRouteResolver(() => new Promise<never>(() => {}));
+
+        const pending = probeServerConnection(
+          'https://station.example.test',
+          undefined,
+          null,
+          new AbortController().signal,
+        );
+
+        expect(
+          await settledAfter(pending, () =>
+            vi.advanceTimersByTimeAsync(HEALTH_PROBE_TIMEOUT_MS - 1),
+          ),
+        ).toBe('still pending');
+        expect(
+          await settledAfter(pending, () => vi.advanceTimersByTimeAsync(1)),
+        ).toEqual({ ok: false, reason: 'timeout' });
+        expect(direct).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('reads a resolver that hangs after the handshake answered as busy', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+          Response.json(handshake),
+        );
+        setStationHealthRouteResolver((_origin, _route, authenticated) =>
+          authenticated ? new Promise<never>(() => {}) : null,
+        );
+
+        const pending = probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        );
+
+        expect(
+          await settledAfter(pending, () =>
+            vi.advanceTimersByTimeAsync(HEALTH_PROBE_TIMEOUT_MS),
+          ),
+        ).toEqual({ ok: false, reason: 'busy' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('settles when the caller aborts a probe whose resolver never settles', async () => {
+      const controller = new AbortController();
+      setStationHealthRouteResolver(() => new Promise<never>(() => {}));
+
+      const pending = probeServerConnection(
+        'https://station.example.test',
+        undefined,
+        null,
+        controller.signal,
+      );
+
+      expect(
+        await settledAfter(pending, async () => {
+          controller.abort();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }),
+      ).toEqual({ ok: false, reason: 'unreachable' });
+    });
+  });
+
   /**
    * station#2327 — the handshake answered, so the address is proven to
    * respond; the authenticated identity read that follows it then waited in
