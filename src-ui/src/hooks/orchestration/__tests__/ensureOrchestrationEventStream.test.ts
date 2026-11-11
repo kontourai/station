@@ -202,7 +202,10 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     };
     const stops = [
       observe(['conversation-inventory', apiBase, 'current'], 'inventory'),
-      observe(['read-markers', 'summary', ['agent-conversation:c1']], 'summary'),
+      observe(
+        ['read-markers', 'summary', ['agent-conversation:c1']],
+        'summary',
+      ),
     ];
     try {
       await settleAll();

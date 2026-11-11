@@ -6,7 +6,13 @@ import {
 } from '../memory-adapter-paths.js';
 
 const home = join('/', 'station-home');
-const conversations = join(home, 'agents', 'default', 'memory', 'conversations');
+const conversations = join(
+  home,
+  'agents',
+  'default',
+  'memory',
+  'conversations',
+);
 
 test('#3075 review: a conversation file never resolves outside its conversations directory', () => {
   const paths = new MemoryAdapterPaths(home, 'linux');

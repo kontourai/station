@@ -205,7 +205,14 @@ describe('inbox unread state comes from the server', () => {
     render(
       <QueryClientProvider client={client}>
         <ChatDockInboxPanel
-          items={[lost, fromServer('known', { version: VERSION, seenVersion: VERSION, unread: false })]}
+          items={[
+            lost,
+            fromServer('known', {
+              version: VERSION,
+              seenVersion: VERSION,
+              unread: false,
+            }),
+          ]}
           activeChatSessionId={null}
           openChatSessionIds={['lost', 'known']}
           onFocusChat={vi.fn()}
@@ -223,11 +230,13 @@ describe('inbox unread state comes from the server', () => {
     const row = rowOf(name);
     expect(row?.hasAttribute('data-unread')).toBe(false);
     expect(row?.hasAttribute('data-read-unknown')).toBe(true);
-    expect(rowOf(/^known title, station/)?.hasAttribute('data-read-unknown')).toBe(false);
+    expect(
+      rowOf(/^known title, station/)?.hasAttribute('data-read-unknown'),
+    ).toBe(false);
     // One note for the surface, not one per row.
-    const notes = screen.getAllByRole('status').filter((node) =>
-      node.textContent?.includes('Read status unavailable'),
-    );
+    const notes = screen
+      .getAllByRole('status')
+      .filter((node) => node.textContent?.includes('Read status unavailable'));
     expect(notes).toHaveLength(1);
     fireEvent.click(within(notes[0]!).getByRole('button', { name: 'Retry' }));
     expect(invalidate).toHaveBeenCalledWith(

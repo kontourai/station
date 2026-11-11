@@ -9,6 +9,7 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { MessageGlyph, RefreshGlyph, SearchGlyph } from '../icons/Glyph';
+import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { NewChatAction } from '../NewChatAction';
 import { Empty, ErrorState, FilteredEmpty } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
@@ -17,7 +18,6 @@ import {
   InboxGroupList,
   type InboxGroupListProps,
 } from './ChatDockInboxRows';
-import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { InboxScopeFilter } from './InboxScopeFilter';
 import {
   type InboxPanelControllerOptions,

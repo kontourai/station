@@ -41,7 +41,11 @@ export async function markInventoryRead(
             items: page.items.map((item) => {
               const state = item.readState;
               // An unknown read state stays unknown: the server answers it.
-              if (item.id !== conversationId || !state || 'unavailable' in state)
+              if (
+                item.id !== conversationId ||
+                !state ||
+                'unavailable' in state
+              )
                 return item;
               const seenVersion = Math.min(
                 Math.max(state.seenVersion, version),

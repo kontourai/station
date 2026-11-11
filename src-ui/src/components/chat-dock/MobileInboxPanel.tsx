@@ -11,10 +11,10 @@ import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { Button } from '../Button';
 import { SearchGlyph } from '../icons/Glyph';
+import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import { InboxGroupList, type InboxGroupListProps } from './ChatDockInboxRows';
-import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { InboxScopeFilter } from './InboxScopeFilter';
 import {
   type InboxPanelControllerOptions,

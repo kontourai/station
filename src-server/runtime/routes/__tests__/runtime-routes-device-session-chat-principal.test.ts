@@ -2559,9 +2559,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(await guest.until(FENCE), 'visitor, own change').toContain(
         `event: ${SERVER_EVENTS.READ_MARKERS_CHANGED}`,
       );
-      expect(await owner.until(FENCE), 'owner device, visitor change').not.toContain(
-        SERVER_EVENTS.READ_MARKERS_CHANGED,
-      );
+      expect(
+        await owner.until(FENCE),
+        'owner device, visitor change',
+      ).not.toContain(SERVER_EVENTS.READ_MARKERS_CHANGED);
     } finally {
       for (const abort of aborts) abort.abort();
       await owner.cancel();

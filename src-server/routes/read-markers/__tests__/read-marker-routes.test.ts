@@ -890,7 +890,11 @@ describe('delta review fixes (#4813)', () => {
         },
       }),
     );
-    const room = { kind: 'project-room', projectSlug: 'alpha', roomId: 'room-1' };
+    const room = {
+      kind: 'project-room',
+      projectSlug: 'alpha',
+      roomId: 'room-1',
+    };
     expect((await s.inventory('ada')).get('c1')?.readState).toEqual({
       version: V1,
       seenVersion: V1,
@@ -918,15 +922,18 @@ describe('delta review fixes (#4813)', () => {
       'conversation-acknowledgements.json',
       '{"version":',
     ],
-  ])('%s reads as unknown for everyone, never as read, and the conversations stay listed', async (_name, file, text) => {
-    const s = station();
-    expect((await s.acknowledge('ada', 'c1', T1)).status).toBe(200);
-    writeFileSync(join(dir, file), text);
-    const inventory = await s.inventory('ada');
-    expect([...inventory.keys()]).toEqual(['c1']);
-    expect(inventory.get('c1')?.readState).toEqual({
-      version: V1,
-      unavailable: true,
-    });
-  });
+  ])(
+    '%s reads as unknown for everyone, never as read, and the conversations stay listed',
+    async (_name, file, text) => {
+      const s = station();
+      expect((await s.acknowledge('ada', 'c1', T1)).status).toBe(200);
+      writeFileSync(join(dir, file), text);
+      const inventory = await s.inventory('ada');
+      expect([...inventory.keys()]).toEqual(['c1']);
+      expect(inventory.get('c1')?.readState).toEqual({
+        version: V1,
+        unavailable: true,
+      });
+    },
+  );
 });
