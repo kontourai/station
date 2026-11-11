@@ -1184,8 +1184,11 @@ agent socket in any of those is not reachable. Any other agent socket it
 can find stays reachable, including one directly in your home folder or
 inside a folder in it (`~/.cache/...`) that is not on the hidden list, so
 do not rely on confinement to keep an agent from it on Linux either. The
-sandbox mounts back each entry of your home folder and `/run`; more than
-1,000 entries there refuses a confined start, naming the folder. Under Seatbelt (macOS), in a linked worktree
+sandbox mounts back each entry of every folder it shadows (your home
+folder, `/run`, and the folders on the way to a hidden path such as
+`~/.config`, `~/.claude` and `~/.codex`); more than 1,000 entries across
+them refuses a confined start, naming the folder. Leftover files such as
+`~/.claude.json.tmp.*` count toward that limit. Under Seatbelt (macOS), in a linked worktree
 it can commit to its own branch, but `git stash`, `fetch` and `pull` are
 refused: they write shared refs (`refs/stash`, remote-tracking refs,
 `packed-refs`) that it may not change. In a folder whose `.git` is inside
