@@ -73,7 +73,7 @@ describe('Project destination navigation', () => {
     const first = mount('?section=room');
     expect(
       screen
-        .getByRole('link', { name: '# Project room' })
+        .getByRole('link', { name: 'Room' })
         .getAttribute('aria-current'),
     ).toBe('location');
     first.unmount();
@@ -120,7 +120,7 @@ test('member navigation exposes the shared room and work without operator destin
     </NavigationProvider>,
   );
   expect(
-    screen.getByRole('link', { name: '# Project room' }).getAttribute('href'),
+    screen.getByRole('link', { name: 'Room' }).getAttribute('href'),
   ).toBe('/projects/team?section=room');
   expect(screen.getByRole('link', { name: 'Tasks' })).toBeTruthy();
   expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
@@ -137,7 +137,7 @@ test('expanding a room preserves its editor while leaving for Tasks asks the dir
     (proceed) => decisions.push(proceed),
   );
   try {
-    fireEvent.click(screen.getByRole('link', { name: '# Project room' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Room' }));
     expect(new URLSearchParams(window.location.search).get('section')).toBe(
       'room',
     );

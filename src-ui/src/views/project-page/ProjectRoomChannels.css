@@ -1,4 +1,10 @@
 /* Channel header: `# name` as the switcher trigger, the topic under it. */
+/* The title column takes the header's free width so the name truncates only
+   when it has to. */
+.project-room__header > .project-room__title {
+  flex: 1 1 0;
+  min-width: 0;
+}
 .room-channel {
   display: flex;
   flex-direction: column;
@@ -26,8 +32,9 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  /* No percentage max-width: with the negative start margin it would clip
+     the trigger 8px short of its own name. The flex chain truncates. */
   min-width: 0;
-  max-width: 100%;
   font: inherit;
   letter-spacing: inherit;
   color: var(--k-text);
@@ -57,6 +64,7 @@
   font-weight: 400;
 }
 .room-channel__label {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -74,7 +82,21 @@
 }
 .room-channel .room-channel__settings {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--k-radius-md);
+  background: transparent;
   color: var(--k-text-muted);
+  transition:
+    background-color var(--k-dur) var(--k-ease),
+    color var(--k-dur) var(--k-ease);
+}
+.room-channel .room-channel__settings:hover,
+.room-channel .room-channel__settings[aria-expanded="true"] {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
 }
 .room-channel__topic {
   margin: 0;
@@ -158,6 +180,10 @@
 }
 
 /* Channel list: a chat app's list, current channel highlighted. */
+/* Header title, list text and footer share one 16px text edge. */
+.room-channel-panel > .responsive-dialog-header {
+  padding: var(--k-space-2) var(--k-space-2) var(--k-space-2) var(--k-space-4);
+}
 .room-channel-list {
   display: flex;
   flex-direction: column;
@@ -173,7 +199,7 @@
   gap: var(--k-space-1);
   width: 100%;
   min-height: 44px;
-  padding: 0 var(--k-space-3);
+  padding: 0 var(--k-space-2);
   border: 0;
   border-radius: var(--k-radius-md);
   background: transparent;
@@ -222,11 +248,30 @@
 .room-channel-list__archived {
   padding: 0 var(--k-space-2) var(--k-space-1);
 }
-.room-channel-list__archived > button {
+.room-channel-list__archived > .disclosure-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  width: 100%;
   min-height: 44px;
-  padding-inline: var(--k-space-3);
-  color: var(--k-text-muted);
+  padding: 0 var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-text-faint);
+  font: inherit;
   font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+.room-channel-list__archived > .disclosure-toggle:hover {
+  color: var(--k-text-muted);
+}
+.room-channel-list__archived > .disclosure-toggle:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
+  outline-offset: -2px;
+}
+.room-channel-list__archived .room-channel-list {
+  padding-inline: 0;
 }
 .room-channel-list__footer {
   margin-top: auto;
