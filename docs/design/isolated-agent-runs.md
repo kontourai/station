@@ -152,8 +152,9 @@ records; the second then finds the first's row and is refused. The
 [real Git tests](../../src-server/services/projects/__tests__/worktree-output-settlement.test.ts)
 cover discard ownership, uncommitted and ignored changes, a branch checked out
 elsewhere, kept (including `HEAD` bases), squash merges, released, replay, a
-moved base, crash convergence, two services on one database, path shapes and
-the cleanup record; the forge in them is a scripted provider, not a live pull
+moved base (including one that edited the same file, refused until a merge
+resolves it), crash convergence, the intent being recorded before the removal
+runs, two services on one database, path shapes and the cleanup record; the forge in them is a scripted provider, not a live pull
 request. A [runtime route test](../../src-server/runtime/routes/__tests__/runtime-routes-worktree-settlement.test.ts)
 goes through the production route composition and scope table.
 

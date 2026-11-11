@@ -170,6 +170,16 @@ function lstatOrMissing(path: string): Stats | undefined {
   }
 }
 
+/** #4771: why a discard keeps the Session's branch, or `undefined`. */
+function branchKeptReason(
+  tip: string,
+  expectedHead: string,
+  checkouts: { elsewhere: boolean },
+): 'moved' | 'checked-out-elsewhere' | undefined {
+  if (tip !== expectedHead) return 'moved';
+  return checkouts.elsewhere ? 'checked-out-elsewhere' : undefined;
+}
+
 function discardRefusal(
   kept: 'moved' | 'checked-out-elsewhere',
   branch: string,
@@ -1276,13 +1286,9 @@ export class WorktreeProvisioningService {
       if (tip.kind === 'unsafe-config')
         return { kind: 'refused', reason: 'unsafe-config', detail: tip.detail };
       const kept =
-        tip.kind !== 'tip'
-          ? undefined
-          : tip.commit !== request.expectedHead
-            ? ('moved' as const)
-            : checkouts.elsewhere
-              ? ('checked-out-elsewhere' as const)
-              : undefined;
+        tip.kind === 'tip'
+          ? branchKeptReason(tip.commit, request.expectedHead, checkouts)
+          : undefined;
       // Nothing removed yet: refuse rather than leave a half discard.
       if (kept && checkouts.registered && shape === 'directory')
         return discardRefusal(kept, metadata.branch);
