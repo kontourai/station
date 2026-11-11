@@ -34,12 +34,23 @@ const HOME_VARIABLES = [
 /**
  * Literals the scan finds under one of those names that are not Station
  * home roots, each for a stated reason. Kept to entries whose owner joins
- * them onto the OPERATING SYSTEM user home or a provider's home.
+ * them onto the OPERATING SYSTEM user home or a provider's home, plus one
+ * the bubblewrap probe joins onto a throwaway Station home it creates.
  */
 const NOT_STATION_HOME_ROOTS: Readonly<Record<string, string>> = {
+  '.1password':
+    '1Password agent folder the bubblewrap sandbox hides (OS user home)',
+  '.bitwarden-ssh-agent.sock':
+    'Bitwarden SSH agent socket the bubblewrap sandbox hides (OS user home)',
   '.claude': "Claude Code's home under the OS user home",
   '.codex': "Codex's home under the OS user home",
   '.config': "OpenCode's XDG fallback under the OS user home, not Station home",
+  '.docker': 'Docker client folder the bubblewrap sandbox hides (OS user home)',
+  '.local':
+    'XDG data folder the bubblewrap sandbox hides keyrings in (OS user home)',
+  '.Xauthority': 'X11 cookie the bubblewrap sandbox hides (OS user home)',
+  'outside-grants':
+    "the bubblewrap probe's write target in the throwaway Station home it builds under /var/tmp",
   Android: 'Android SDK under the OS user home',
   AppData: 'Windows AppData under the OS user home',
   Applications: 'macOS Applications under the OS user home',
