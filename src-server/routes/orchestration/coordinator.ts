@@ -10,9 +10,9 @@
  * counts as absent: GET shows none, and PUT replaces it. Replacing or removing
  * a designation withdraws the wakes still queued for the old conversation.
  *
- * Every route needs the `coordinator-session` Feature Preview. While it is off
- * they all refuse, removal included: the stored designation is kept so turning
- * the preview back on restores it.
+ * Every route but DELETE needs the `coordinator-session` Feature Preview; the
+ * stored designation is kept while it is off. DELETE stays open so a person
+ * can withdraw their own coordinator before someone turns the preview back on.
  */
 import {
   COORDINATOR_PICTURE_FINISHED_WINDOW_MS,
@@ -332,7 +332,6 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
     const person = personFor(c);
     if (person instanceof Response) return person;
     if (!deps.store) return unavailable(c);
-    if (!enabled()) return disabled(c);
     const previous = deps.store.designation(person.userId);
     const undesignated = deps.store.undesignate(person.userId);
     if (previous && undesignated) {

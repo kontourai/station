@@ -69,8 +69,8 @@ export function HomeCoordinatorCard() {
         <div className="home-view__coordinator-body">
           <p>
             {COORDINATOR_PRODUCT_NAME} is a chat you choose as your personal
-            agent. Station tells it when your work needs you, fails or finishes,
-            so it can bring you the result.
+            agent. Station tells it when work you can read needs you, fails or
+            finishes.
           </p>
           <p>
             To set it up, open a chat and choose Make this{' '}

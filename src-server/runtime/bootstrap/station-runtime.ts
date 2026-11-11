@@ -998,21 +998,7 @@ export class StationRuntime {
     ...claudeInProcessStationControlOptions(() =>
       this.orchestrationService
         ? createStationControlCallerRecordResolver(
-            stationControlCallerRecordSources({
-              orchestrationService: {
-                resolveSessionActingPrincipal: (threadId) =>
-                  this.orchestrationService.resolveSessionActingPrincipal(
-                    threadId,
-                  ),
-                firstStartedMetadataOfThread: (threadId) =>
-                  this.orchestrationService.firstStartedMetadataOfThread(
-                    threadId,
-                  ),
-              },
-              eventStore: this.orchestrationEventStore,
-              getProject: (slug) => this.storageAdapter.getProject(slug),
-              coordinatorEnabled: () => this.coordinatorSessionEnabled(),
-            }),
+            this.stationControlRecordSources(),
           )
         : undefined,
     ),
@@ -1042,21 +1028,7 @@ export class StationRuntime {
       createCodexBoundToolServer({
         ...input,
         resolveRecord: createStationControlCallerRecordResolver(
-          stationControlCallerRecordSources({
-            orchestrationService: {
-              resolveSessionActingPrincipal: (threadId) =>
-                this.orchestrationService.resolveSessionActingPrincipal(
-                  threadId,
-                ),
-              firstStartedMetadataOfThread: (threadId) =>
-                this.orchestrationService.firstStartedMetadataOfThread(
-                  threadId,
-                ),
-            },
-            eventStore: this.orchestrationEventStore,
-            getProject: (slug) => this.storageAdapter.getProject(slug),
-            coordinatorEnabled: () => this.coordinatorSessionEnabled(),
-          }),
+          this.stationControlRecordSources(),
         ),
         dispatch: (request) => {
           if (!this.codexToolDispatch)
@@ -4614,12 +4586,7 @@ export class StationRuntime {
               });
               const learningSessionSource =
                 createStationControlCallerRecordResolver(
-                  stationControlCallerRecordSources({
-                    orchestrationService: this.orchestrationService,
-                    eventStore: this.orchestrationEventStore,
-                    getProject: (slug) => this.storageAdapter.getProject(slug),
-                    coordinatorEnabled: () => this.coordinatorSessionEnabled(),
-                  }),
+                  this.stationControlRecordSources(),
                 );
               this.learningReview = composeLearningReviewRuntime(
                 this.featurePreviews,
@@ -5894,6 +5861,21 @@ export class StationRuntime {
         disabled: () => false,
       }) === true
     );
+  }
+
+  /** The in-process Station Control caller records (Claude, Codex, learning). */
+  private stationControlRecordSources() {
+    return stationControlCallerRecordSources({
+      orchestrationService: {
+        resolveSessionActingPrincipal: (threadId) =>
+          this.orchestrationService.resolveSessionActingPrincipal(threadId),
+        firstStartedMetadataOfThread: (threadId) =>
+          this.orchestrationService.firstStartedMetadataOfThread(threadId),
+      },
+      eventStore: this.orchestrationEventStore,
+      getProject: (slug) => this.storageAdapter.getProject(slug),
+      coordinatorEnabled: () => this.coordinatorSessionEnabled(),
+    });
   }
 
   /** Whether the Claude adapter adds coordinator tools to this Session. */

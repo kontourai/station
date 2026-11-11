@@ -1,9 +1,10 @@
 /**
  * #3628: the runtime binds the `coordinator-session` preview, off by default,
- * and its Claude adapter grant and designation-derived Station Control
- * credentials follow the live choice.
+ * and hands that one selector to the Claude adapter grant, its in-process
+ * caller records, `initializeRuntime` and the route composition.
  */
 import { join } from 'node:path';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
@@ -11,13 +12,32 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import {
   createStationControlCallerRecordResolver,
   resolveStationControlCallerFromToken,
-  stationControlCallerRecordSources,
 } from '../../mcp/station-control-caller.js';
 import {
   coordinatorGeneration,
   mintStationControlMcpToken,
 } from '../../mcp/station-control-mcp-token.js';
 import { StationRuntime } from '../station-runtime.js';
+
+class StopComposition extends Error {}
+const composed = vi.hoisted(() => ({
+  initialize: undefined as Record<string, unknown> | undefined,
+  routes: undefined as Record<string, unknown> | undefined,
+}));
+vi.mock('../runtime-initialize-deps.js', async (original) => ({
+  ...(await original<typeof import('../runtime-initialize-deps.js')>()),
+  createRuntimeInitializationDeps: (context: Record<string, unknown>) => {
+    composed.initialize = context;
+    throw new StopComposition();
+  },
+}));
+vi.mock('../../routes/runtime-routes.js', async (original) => ({
+  ...(await original<typeof import('../../routes/runtime-routes.js')>()),
+  configureRuntimeRoutes: (context: Record<string, unknown>) => {
+    composed.routes = context;
+    throw new StopComposition();
+  },
+}));
 
 const makeTempDir = trackTempDirs();
 const logger = {
@@ -78,16 +98,15 @@ describe('#3628 coordinator-session preview in the runtime', () => {
   });
 
   test('a designation-derived credential is refused while the preview is off', async () => {
-    const { runtime, registry, store } = runtimeWithDesignation();
+    const { runtime, registry } = runtimeWithDesignation();
+    runtime.storageAdapter = {
+      getProject: () => {
+        throw new Error('no projects');
+      },
+    };
+    // The sources the in-process Claude, Codex and learning callers use.
     const resolver = createStationControlCallerRecordResolver(
-      stationControlCallerRecordSources({
-        orchestrationService: runtime.orchestrationService,
-        eventStore: store,
-        getProject: () => {
-          throw new Error('no projects');
-        },
-        coordinatorEnabled: () => runtime.coordinatorSessionEnabled(),
-      }),
+      runtime.stationControlRecordSources(),
     );
     const generation = coordinatorGeneration('chat-a');
     const minted = mintStationControlMcpToken(
@@ -107,5 +126,30 @@ describe('#3628 coordinator-session preview in the runtime', () => {
     expect(
       resolveStationControlCallerFromToken(minted.token, resolver),
     ).toMatchObject({ sessionId: 'chat-a' });
+  });
+
+  test('initializeRuntime and the routes receive the bound selector', async () => {
+    const runtime = new StationRuntime({
+      projectHomeDir: makeTempDir('station-runtime-coordinator-compose-'),
+      port: 43198,
+      logLevel: 'error',
+    }) as any;
+    try {
+      const bound = runtime.coordinatorSessionPreview;
+      expect(bound).toBeDefined();
+      // Composition stops at the captured call; the failed-start cleanup
+      // that follows is not under test.
+      await runtime.runInitialize(undefined).catch(() => {});
+      expect(composed.initialize?.coordinatorSessionPreview).toBe(bound);
+      runtime.stationEnvironmentId = 'station-test';
+      runtime.runtimeSearch = { stop() {}, close: async () => {} };
+      expect(() => runtime.configureRoutes(new Hono())).toThrow(
+        StopComposition,
+      );
+      expect(composed.routes?.coordinatorSessionPreview).toBe(bound);
+    } finally {
+      runtime.runtimeSearch = undefined;
+      await runtime.shutdown();
+    }
   });
 });

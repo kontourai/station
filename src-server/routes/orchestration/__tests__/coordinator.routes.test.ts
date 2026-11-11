@@ -416,7 +416,7 @@ describe('coordinator-session preview', () => {
     error() {},
   } as unknown as Logger;
 
-  test('off by default, every route refuses and keeps the stored designation; on again restores it', async () => {
+  test('off by default, GET and PUT refuse and keep the stored designation; on again restores it', async () => {
     const registry = new FeaturePreviewRegistry(
       makeTempDir('coordinator-preview-home-'),
       logger,
@@ -443,7 +443,6 @@ describe('coordinator-session preview', () => {
     for (const response of [
       await call('GET'),
       await call('PUT', { conversationId: 'chat-b', replace: true }),
-      await call('DELETE'),
     ]) {
       expect(response.status).toBe(404);
       expect(await response.json()).toMatchObject(refusal);
@@ -463,6 +462,28 @@ describe('coordinator-session preview', () => {
     });
     await registry.setEnabled('coordinator-session', false);
     expect((await call('GET')).status).toBe(404);
+  });
+
+  test('while off, a person can still remove their own designation, and an agent cannot', async () => {
+    const revoked: string[] = [];
+    const { call, store } = app({
+      preview: { select: ({ disabled }) => disabled() },
+      revoke: (id) => revoked.push(id),
+    });
+    store.coordinatorStore().designate({
+      conversationId: 'chat-a',
+      actor: { userId: 'human:local:owner' },
+      replace: false,
+      now: 1,
+    });
+    expect((await call('DELETE', undefined, true)).status).toBe(403);
+    expect(store.coordinatorStore().designations()).toHaveLength(1);
+    expect(await (await call('DELETE')).json()).toEqual({
+      success: true,
+      data: { undesignated: true },
+    });
+    expect(store.coordinatorStore().designations()).toEqual([]);
+    expect(revoked).toEqual(['chat-a']);
   });
 
   test('a designation whose body arrives after the preview was turned off is refused', async () => {

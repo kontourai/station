@@ -246,7 +246,7 @@ describe('Home coordinator card', () => {
     render(<HomeCoordinatorCard />, { wrapper: wrapper() });
     expect(
       await screen.findByText(
-        `${COORDINATOR_PRODUCT_NAME} is a chat you choose as your personal agent. Station tells it when your work needs you, fails or finishes, so it can bring you the result.`,
+        `${COORDINATOR_PRODUCT_NAME} is a chat you choose as your personal agent. Station tells it when work you can read needs you, fails or finishes.`,
       ),
     ).toBeTruthy();
     expect(

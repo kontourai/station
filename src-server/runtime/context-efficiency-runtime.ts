@@ -187,7 +187,7 @@ export function composeContextEfficiencyRuntime(
     id: 'project-supervision',
     label: 'Project supervision',
     description:
-      'Wake a designated coordinator for actionable Task checkpoints under explicit wake and stop limits. Wakes can spend model credits.',
+      'Wake a designated coordinator for actionable Task checkpoints under explicit wake and stop limits. Wakes can spend model credits. Needs Coordinator chat.',
   });
   const compactionEnabled = () =>
     compactionPreview.select({ enabled: () => true, disabled: () => false });
