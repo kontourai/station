@@ -4,10 +4,14 @@
  * production grant and profile builders, against a real git repository and
  * worktree, and reads what the kernel allowed.
  *
- * Skips LOUDLY (the reason is in the suite name and on stderr) on a host
- * where the production profile does not apply: Linux, Windows, or a macOS
- * without a working `sandbox-exec`. On a macOS host that can apply it, it
- * must run.
+ * Skips LOUDLY (the reason is on stderr) on a host where the production
+ * profile does not apply: Linux, Windows, or a macOS without a working
+ * `sandbox-exec`. On a macOS host that can apply it, it must run.
+ *
+ * Titles are the same on every host so each test keeps one exact id:
+ * `scripts/required-test-profiles.json` pins these ids, and
+ * `scripts/check-required-tests-ran.mjs` fails a report in which they were
+ * skipped or absent (#4772).
  */
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
@@ -103,7 +107,8 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 describe.skipIf(!probe.ok)(
-  `Seatbelt profile under the real kernel${probe.ok ? '' : ` (SKIPPED: ${probe.reason})`}`,
+  // One title on every host, so a skipped run reports the same ids (#4772).
+  'Seatbelt profile under the real kernel',
   () => {
     const makeTempDir = trackTempDirs({ lifetime: 'file' });
     const provider = createSeatbeltConfinementProvider();
@@ -444,7 +449,8 @@ describe.skipIf(!probe.ok)(
     });
 
     test.skipIf(!claudeExecutable)(
-      `the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined${claudeExecutable ? '' : ' (SKIPPED: no claude on PATH)'}`,
+      // One title on every host, so a skipped run reports the same id (#4772).
+      'the installed Claude Code answers its handshake from inside the profile, and the provider observes it confined',
       async () => {
         // A fake env credential: no request reaches a model, and the
         // operator's own login is never involved.

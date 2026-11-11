@@ -1,0 +1,59 @@
+name: "Tool: Seatbelt kernel legs"
+
+# The Seatbelt process tests skip on every Linux and Windows lane, and a skip
+# passes (#4772). This runs them on a hosted macOS runner, where sandbox-exec
+# applies the production profile, then fails unless the legs pinned in
+# scripts/required-test-profiles.json passed.
+#
+# Dispatch only, for now. The workflow gate refuses candidate-controlled
+# pull_request workflows and reserves pull_request_target for a reviewed list,
+# and a push-to-main lane must be declared in ci-workflow-contract.test.ts.
+# Which automatic trigger to add is an owner decision about macOS minutes.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: station-seatbelt-kernel-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  seatbelt-kernel:
+    name: Seatbelt kernel legs (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with: { install: false }
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: npm run dependencies:ci
+
+      - name: Run the Seatbelt process tests with a JSON report
+        run: >-
+          npx vitest run --root .
+          src-server/security/confinement/__tests__/seatbelt.process.test.ts
+          --maxWorkers=1
+          --reporter=default
+          --reporter=json
+          --outputFile.json="$RUNNER_TEMP/seatbelt-process.report.json"
+
+      # Runs after a test failure too, so the log names each leg that did not
+      # pass; a missing report fails here rather than reading as success.
+      - name: Require the pinned kernel legs to have run
+        if: ${{ !cancelled() }}
+        run: >-
+          node scripts/check-required-tests-ran.mjs
+          --profile-name seatbelt-kernel
+          --report "$RUNNER_TEMP/seatbelt-process.report.json"
