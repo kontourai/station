@@ -191,7 +191,9 @@ export type ProjectRoomScene =
   | 'long'
   | 'failed-send'
   | 'new-messages'
-  | 'mention';
+  | 'mention'
+  | 'agent-pending'
+  | 'agent-abandon';
 
 function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];
@@ -357,6 +359,64 @@ export async function installProjectRoomFixture(
       },
     ],
   ];
+  if (scene === 'agent-pending' || scene === 'agent-abandon') {
+    // The Station's real catalog plus one available Agent, Scout, shaped like
+    // the catalog's own entries.
+    handlers.push([
+      '**/api/agents',
+      async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        const response = await route.fetch();
+        const body = await response.json();
+        const sample = Array.isArray(body?.data) ? body.data[0] : undefined;
+        if (Array.isArray(body?.data))
+          body.data.push({
+            ...(sample ?? {}),
+            slug: 'scout',
+            name: 'Scout',
+            description: 'Checks drafts against the plan.',
+            available: true,
+          });
+        return route.fulfill({ response, json: body });
+      },
+    ]);
+    let handle: Record<string, unknown> | undefined;
+    handlers.push([
+      `${base}/agents`,
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        // agent-abandon: the acknowledgement is lost, so no handle exists.
+        if (scene === 'agent-abandon')
+          return route.fulfill({
+            status: 503,
+            json: { success: false, error: 'Station is restarting.' },
+          });
+        const intent = route.request().postDataJSON();
+        handle = {
+          intentId: intent.intentId,
+          agentId: intent.agentId,
+          text: intent.text,
+          ...(intent.replyTo ? { replyTo: intent.replyTo } : {}),
+          roomId: ROOM_ID,
+          requestId: uuid(1, 'f1'),
+          actor: VIEWER,
+          state: 'started',
+          createdAt: at(2, 16, 10),
+          updatedAt: at(2, 16, 10),
+        };
+        return route.fulfill({ json: { success: true, data: handle } });
+      },
+    ]);
+    handlers.push([
+      `${base}/agents/*`,
+      (route) => {
+        if (route.request().method() !== 'GET' || !handle)
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({ json: { success: true, data: handle } });
+      },
+    ]);
+  }
   for (const [pattern, handler] of handlers) await page.route(pattern, handler);
   return {
     arrivals: ARRIVALS.length,

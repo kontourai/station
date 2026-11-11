@@ -409,6 +409,30 @@
     ],
     "room-task-working-light-mobile": [
       "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
+    ],
+    "room-agent-pending-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-pending-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-pending-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-pending-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-abandon-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-abandon-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-abandon-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
+    ],
+    "room-agent-abandon-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx"
     ]
   }
 }

@@ -122,7 +122,7 @@ describe('gallery screen sources', () => {
   });
 
   it('keeps every room conversation scene, each loading the shared room list and composer', () => {
-    // Pinned independently of the map (#4791): eight scenes at 390 and 1440 in
+    // Pinned independently of the map (#4791): ten scenes at 390 and 1440 in
     // both themes. Dropping one, or pointing it at a surface that no longer
     // loads the shared room components, fails here.
     const scenes = [
@@ -132,6 +132,8 @@ describe('gallery screen sources', () => {
       'room-new-messages',
       'room-failed-send',
       'room-mention',
+      'room-agent-pending',
+      'room-agent-abandon',
       'room-task-thread',
       'room-task-working',
     ];
@@ -140,7 +142,7 @@ describe('gallery screen sources', () => {
         ['desktop', 'mobile'].map((width) => `${scene}-${theme}-${width}`),
       ),
     );
-    expect(names).toHaveLength(32);
+    expect(names).toHaveLength(40);
     const declared = Object.keys(GALLERY_SCREEN_ENTRIES).filter((name) =>
       name.startsWith('room-'),
     );

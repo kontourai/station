@@ -3399,6 +3399,8 @@ const ROOM_SCENES = [
   { scene: 'new-messages', room: 'project' },
   { scene: 'failed-send', room: 'project' },
   { scene: 'mention', room: 'project' },
+  { scene: 'agent-pending', room: 'project' },
+  { scene: 'agent-abandon', room: 'project' },
   { scene: 'thread', room: 'task' },
   { scene: 'working', room: 'task' },
 ] as const satisfies readonly (
@@ -3574,6 +3576,64 @@ function roomConversationScreens(): Screen[] {
             if (scene === 'mention') {
               await composer.click();
               await composer.pressSequentially('@');
+            }
+            if (scene === 'agent-pending' || scene === 'agent-abandon') {
+              const mentionScout = async () => {
+                await composer.click();
+                await composer.pressSequentially('@');
+                await roomRegion
+                  .getByRole('option', { name: 'Scout @scout' })
+                  .click();
+              };
+              await mentionScout();
+              await composer.fill('Check the pricing copy against the plan.');
+              await roomRegion
+                .getByRole('button', { name: 'Ask Scout', exact: true })
+                .click();
+              if (scene === 'agent-pending') {
+                await expect(
+                  roomRegion.getByText(
+                    'Agent is working. Its answer will appear in the Room.',
+                  ),
+                ).toBeVisible();
+                // A follow-up for the same Agent waits; Ask is disabled.
+                await mentionScout();
+                await composer.fill('Also check the FAQ links.');
+                await expect(
+                  roomRegion.getByRole('button', {
+                    name: 'Waiting for Scout…',
+                  }),
+                ).toBeDisabled();
+                await expect(
+                  roomRegion
+                    .locator('.room-composer__status')
+                    .getByText('Waiting for Scout…'),
+                ).toBeVisible();
+              } else {
+                await expect(
+                  roomRegion.getByText(/Agent request not confirmed/),
+                ).toBeVisible();
+                await roomRegion
+                  .getByRole('button', { name: 'Abandon this request' })
+                  .click();
+                const dialog = page.getByRole('dialog', {
+                  name: 'Stop tracking this request?',
+                });
+                await expect(dialog).toBeVisible();
+                await expect(
+                  dialog.getByRole('button', { name: 'Cancel' }),
+                ).toBeFocused();
+                if (viewport.width === MOBILE.width) {
+                  await expectTouchTarget(
+                    dialog.getByRole('button', { name: 'Cancel' }),
+                    'Cancel',
+                  );
+                  await expectTouchTarget(
+                    dialog.getByRole('button', { name: 'Stop tracking' }),
+                    'Stop tracking',
+                  );
+                }
+              }
             }
             if (scene === 'short' && viewport.width === MOBILE.width) {
               // A real reload mints a new activation epoch; the draft is
