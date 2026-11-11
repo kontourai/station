@@ -29,7 +29,7 @@ import {
 const APPLIES_TO: ConfinementPreflightCredentialScope =
   'starts-without-own-credential-profile';
 
-export interface ClaudeConfinedCredentialPreflightInput {
+interface ClaudeConfinedCredentialPreflightInput {
   /** The spawn environment before the connection and app-home layers. */
   baseEnv: () => Promise<Readonly<Record<string, string | undefined>>>;
   /** The connection's spawn environment (the adapter's `getConnectionLaunch`). */
