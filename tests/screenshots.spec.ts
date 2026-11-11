@@ -3575,6 +3575,23 @@ function roomConversationScreens(): Screen[] {
               await composer.click();
               await composer.pressSequentially('@');
             }
+            if (scene === 'short' && viewport.width === MOBILE.width) {
+              // A real reload mints a new activation epoch; the draft is
+              // keyed by the reload partition and survives (#4810 review 1).
+              const draftText = 'Draft that survives a reload';
+              await composer.fill(draftText);
+              await page.reload();
+              await page.evaluate(
+                (selected) =>
+                  document.documentElement.setAttribute('data-theme', selected),
+                theme,
+              );
+              await expect(
+                page
+                  .getByRole('region', { name: 'Project room' })
+                  .getByRole('textbox', { name: /^Message/ }),
+              ).toHaveValue(draftText);
+            }
             if (scene === 'new-messages' && fixture) {
               const box = await roomRegion
                 .locator('.room-conversation__scroller')
