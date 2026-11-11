@@ -265,7 +265,7 @@ export class ProjectRoomStore {
             .prepare(
               'SELECT 1 FROM project_room_channels WHERE scope_key=? AND name=?',
             )
-            .get(row.scope_key, PROJECT_ROOM_DEFAULT_CHANNEL_NAME)
+            .get(key(room.scope), PROJECT_ROOM_DEFAULT_CHANNEL_NAME)
         )
           continue;
         this.insertChannel({
