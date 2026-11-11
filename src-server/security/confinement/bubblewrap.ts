@@ -237,20 +237,8 @@ export function bubblewrapArgs(spec: ConfinementSpawnSpec): string[] {
       'The bubblewrap sandbox cannot deny a path exactly while its contents stay writable.',
     );
   const writable = grants.writable.map(requireAbsolute);
-  const args: string[] = [...BUBBLEWRAP_BASE_ARGS];
-  const hiddenDirectories: string[] = [];
-  const hidden = [...(grants.hidden ?? [])]
-    .map(requireAbsolute)
-    .sort((left, right) => left.length - right.length);
-  for (const path of hidden) {
-    if (hiddenDirectories.some((dir) => isCanonicalPathWithin(dir, path)))
-      continue;
-    const kind = kindOf(path);
-    if (kind === 'directory') {
-      args.push('--tmpfs', path);
-      hiddenDirectories.push(path);
-    } else if (kind === 'other') args.push('--ro-bind', '/dev/null', path);
-  }
+  const hidden = hiddenMounts(grants.hidden ?? []);
+  const args: string[] = [...BUBBLEWRAP_BASE_ARGS, ...hidden.args];
   for (const path of grants.readable.map(requireAbsolute))
     if (kindOf(path)) args.push('--ro-bind', path, path);
   for (const path of writable) {
@@ -258,6 +246,49 @@ export function bubblewrapArgs(spec: ConfinementSpawnSpec): string[] {
       throw new Error('A writable confinement grant is not a directory.');
     args.push('--bind', path, path);
   }
+  for (const path of deniedMounts(grants, writable))
+    args.push('--ro-bind', path, path);
+  for (const path of hidden.directories) args.push('--remount-ro', path);
+  args.push('--chdir', requireAbsolute(spec.cwd), '--', spec.command);
+  args.push(...spec.args);
+  return args;
+}
+
+/**
+ * The mounts hiding each hidden path that exists, parents first: a
+ * directory as an empty memory file system (made read-only last, once the
+ * grants inside it are mounted), a file as `/dev/null`. A path inside a
+ * hidden directory is hidden already.
+ */
+function hiddenMounts(paths: readonly string[]): {
+  args: string[];
+  directories: string[];
+} {
+  const args: string[] = [];
+  const directories: string[] = [];
+  const sorted = paths
+    .map(requireAbsolute)
+    .sort((left, right) => left.length - right.length);
+  for (const path of sorted) {
+    if (directories.some((dir) => isCanonicalPathWithin(dir, path))) continue;
+    const kind = kindOf(path);
+    if (kind === 'directory') {
+      args.push('--tmpfs', path);
+      directories.push(path);
+    } else if (kind === 'other') args.push('--ro-bind', '/dev/null', path);
+  }
+  return { args, directories };
+}
+
+/**
+ * The paths mounted read-only over the write grants: each denied path, or
+ * the nearest existing ancestor of an absent one, and each existing real
+ * directory at a grant root with a denied name (in any case).
+ */
+function deniedMounts(
+  grants: ConfinementSpawnSpec['grants'],
+  writable: readonly string[],
+): Set<string> {
   const denied = new Set<string>();
   for (const path of (grants.writeDenied ?? []).map(requireAbsolute)) {
     const target = nearestExisting(path);
@@ -270,25 +301,20 @@ export function bubblewrapArgs(spec: ConfinementSpawnSpec): string[] {
       );
     denied.add(target);
   }
-  for (const root of writable) {
-    const names = new Set(
-      (grants.writeDeniedNames ?? []).map((name) => name.toLowerCase()),
-    );
-    if (names.size === 0) continue;
-    // Only a real directory: a link could be replaced by one, which is
-    // the creation this cannot deny.
+  const names = new Set(
+    (grants.writeDeniedNames ?? []).map((name) => name.toLowerCase()),
+  );
+  if (names.size === 0) return denied;
+  // Only a real directory: a link could be replaced by one, which is the
+  // creation this cannot deny.
+  for (const root of writable)
     for (const entry of readdirSync(root))
       if (
         names.has(entry.toLowerCase()) &&
         lstatSync(join(root, entry)).isDirectory()
       )
         denied.add(join(root, entry));
-  }
-  for (const path of denied) args.push('--ro-bind', path, path);
-  for (const path of hiddenDirectories) args.push('--remount-ro', path);
-  args.push('--chdir', requireAbsolute(spec.cwd), '--', spec.command);
-  args.push(...spec.args);
-  return args;
+  return denied;
 }
 
 /** `spec` wrapped in bubblewrap. */
