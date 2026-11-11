@@ -348,6 +348,14 @@
   overflow: hidden;
 }
 
+/* Holding an empty or error state, which draws its own card: no second frame
+   around it and no reserved height below it. */
+.project-page__task-list--state {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+}
+
 .project-page__task-row {
   width: 100%;
   display: grid;
@@ -1419,15 +1427,6 @@
   color: var(--text-muted);
 }
 
-.project-page__navigation {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--k-space-2);
-  border-bottom: 1px solid var(--k-line);
-  padding-block: var(--k-space-3);
-}
-
-.project-page__navigation a,
 .project-page__workspace > summary {
   display: flex;
   align-items: center;
@@ -1438,14 +1437,6 @@
   cursor: pointer;
 }
 
-.project-page__navigation a[aria-current="page"] {
-  background: var(--k-panel-raised);
-  color: var(--k-text);
-  text-decoration: underline;
-  text-underline-offset: var(--k-space-1);
-}
-
-.project-page__navigation a:focus-visible,
 .project-page__workspace > summary:focus-visible {
   outline: 2px solid var(--k-focus-ring);
   outline-offset: var(--k-space-1);
@@ -1481,33 +1472,22 @@
 }
 
 .project-page__inner.project-page__space {
-  display: grid;
-  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
   width: 100%;
   max-width: none;
   margin: 0;
   min-height: 100%;
   padding: 0;
-  align-content: start;
 }
 .project-page__space > .project-page__header {
-  grid-column: 1 / -1;
   margin: 0;
   padding: var(--k-space-5);
   border-bottom: 1px solid var(--k-line-strong);
   background: var(--k-panel);
 }
-.project-page__space > .project-page__navigation-panel {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  align-self: stretch;
-  border: 0;
-  border-right: 1px solid var(--k-line-strong);
-  padding: var(--k-space-4) var(--k-space-3);
-  background: var(--k-panel);
-}
-.project-page__space:has(> .project-page__navigation-panel:not([open])) {
-  grid-template-columns: minmax(6rem, 8rem) minmax(0, 1fr);
+/* The section navigation and its body: the shared rail from
+   `page-layout.css`, as in Settings. This only gives it the page's padding. */
+.project-page__layout {
+  padding: var(--k-space-5);
 }
 .project-tasks-section__collections {
   display: flex;
@@ -1519,39 +1499,14 @@
   color: var(--k-text-muted);
   padding-block: var(--k-space-4);
 }
-.project-page__space .project-page__navigation a {
-  text-decoration: none;
-  font-weight: 600;
-}
-.project-page__space .project-page__navigation a[aria-current="page"] {
-  background: var(--k-action);
-  color: var(--k-action-contrast);
-}
 .project-page__content {
   min-width: 0;
-  padding: var(--k-space-6);
   display: flex;
   flex-direction: column;
   gap: var(--k-space-6);
 }
 .project-page__content > [hidden] {
   display: none;
-}
-
-.project-page__navigation-panel > summary {
-  display: list-item;
-  min-height: 44px;
-  padding: var(--k-space-2) var(--k-space-3);
-  cursor: pointer;
-  color: var(--k-text);
-}
-.project-page__navigation-panel > .project-page__navigation {
-  flex-direction: column;
-  border: 0;
-}
-.project-page__navigation-panel > summary:focus-visible {
-  outline: 2px solid var(--k-focus-ring);
-  outline-offset: var(--k-space-1);
 }
 
 @media (max-width: 768px) {
@@ -1572,27 +1527,7 @@
     min-height: 44px;
   }
 
-  .project-page__inner.project-page__space {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .project-page__space:has(> .project-page__navigation-panel:not([open])) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .project-page__space > .project-page__navigation-panel {
-    flex-direction: row;
-    flex-wrap: wrap;
-    border-right: 0;
-    border-bottom: 1px solid var(--k-line);
-  }
-  .project-page__content {
+  .project-page__layout {
     padding: var(--k-space-4);
-  }
-
-  .project-page__navigation-panel > summary {
-    display: list-item;
-    align-content: center;
-  }
-  .project-page__navigation-panel > .project-page__navigation {
-    flex-direction: row;
   }
 }
