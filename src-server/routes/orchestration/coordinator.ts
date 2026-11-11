@@ -9,6 +9,10 @@
  * conversation the person can no longer read (deleted, or access withdrawn)
  * counts as absent: GET shows none, and PUT replaces it. Replacing or removing
  * a designation withdraws the wakes still queued for the old conversation.
+ *
+ * Every route needs the `coordinator-session` Feature Preview. While it is off
+ * they all refuse, removal included: the stored designation is kept so turning
+ * the preview back on restores it.
  */
 import {
   COORDINATOR_PICTURE_FINISHED_WINDOW_MS,
@@ -38,6 +42,8 @@ const CONVERSATION_ID_MAX_CHARS = 512;
 export interface CoordinatorRoutesDeps {
   /** Absent (hosted, or no durable store): every route answers unavailable. */
   readonly store: CoordinatorStore | undefined;
+  /** The `coordinator-session` preview; absent reads as off. */
+  readonly preview: FeaturePreviewSelector | undefined;
   person(c: Context): AgentSchedulePerson | undefined;
   /** Who a dispatch from this request would act as (`resolveDispatchActor`). */
   dispatchActor(c: Context): AgentScheduleActor;
@@ -79,11 +85,22 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
   };
   const unavailable = (c: Context) =>
     c.json({ success: false, code: 'coordinator_unavailable' }, 503, NO_STORE);
+  const enabled = () =>
+    deps.preview?.select({ enabled: () => true, disabled: () => false }) ===
+    true;
+  const disabled = (c: Context) =>
+    c.json(
+      new FeaturePreviewDisabledError('coordinator-session', 'Coordinator chat')
+        .refusal,
+      404,
+      NO_STORE,
+    );
 
   app.get('/coordinator', (c) => {
     const person = personFor(c);
     if (person instanceof Response) return person;
     if (!deps.store) return unavailable(c);
+    if (!enabled()) return disabled(c);
     const record = deps.store.designation(person.userId);
     // A designation the person can no longer read is not shown as theirs.
     const shown =
@@ -156,6 +173,7 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
   app.get('/coordinator/picture', (c) => {
     const person = personFor(c);
     if (person instanceof Response) return person;
+    if (!enabled()) return disabled(c);
     if (!pictureEnabled()) return pictureDisabled(c);
     if (!deps.store) return unavailable(c);
     return c.json(
@@ -171,6 +189,7 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
     const caller = pictureCaller(c);
     if (!caller)
       return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+    if (!enabled()) return disabled(c);
     if (!pictureEnabled()) return pictureDisabled(c);
     return c.json(
       {
@@ -185,6 +204,7 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
     const caller = pictureCaller(c);
     if (!caller)
       return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+    if (!enabled()) return disabled(c);
     if (!pictureEnabled()) return pictureDisabled(c);
     const read = await readBoundedRequestBody(c.req.raw, 16 * 1024);
     if (read.status !== 'ok')
@@ -219,6 +239,7 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
       !current.mayRead(value.conversationId)
     )
       return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+    if (!enabled()) return disabled(c);
     if (!pictureEnabled()) return pictureDisabled(c);
     if (value.status === 'remove') {
       deps.store!.removePictureItem(caller.userId, value.conversationId);
@@ -240,6 +261,7 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
     const person = personFor(c);
     if (person instanceof Response) return person;
     if (!deps.store) return unavailable(c);
+    if (!enabled()) return disabled(c);
     let body: { conversationId?: unknown; replace?: unknown } | null;
     try {
       body = (await c.req.json()) as typeof body;
@@ -254,6 +276,8 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
       (body?.replace !== undefined && typeof body.replace !== 'boolean')
     )
       return c.json({ success: false, code: 'invalid_request' }, 400, NO_STORE);
+    // The body can arrive after the preview was turned off.
+    if (!enabled()) return disabled(c);
     if (!person.mayMutate(conversationId))
       return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
     const actor = deps.dispatchActor(c);
@@ -308,6 +332,7 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
     const person = personFor(c);
     if (person instanceof Response) return person;
     if (!deps.store) return unavailable(c);
+    if (!enabled()) return disabled(c);
     const previous = deps.store.designation(person.userId);
     const undesignated = deps.store.undesignate(person.userId);
     if (previous && undesignated) {

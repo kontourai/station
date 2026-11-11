@@ -26,9 +26,13 @@ import { HomeCoordinatorCard } from '../components/home/HomeCoordinatorCard';
 import { COORDINATOR_PRODUCT_NAME } from '../lib/productNames';
 
 const picturePreview = vi.hoisted(() => ({ enabled: false }));
+const sessionPreview = vi.hoisted(() => ({ enabled: true }));
 vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () =>
-    new Set(picturePreview.enabled ? ['coordinator-picture'] : []),
+    new Set([
+      ...(sessionPreview.enabled ? ['coordinator-session'] : []),
+      ...(picturePreview.enabled ? ['coordinator-picture'] : []),
+    ]),
 }));
 const API = 'http://station.test';
 const authority = vi.hoisted(() => ({
@@ -66,6 +70,7 @@ beforeEach(() => {
   designation = null;
   delivery = undefined;
   picturePreview.enabled = false;
+  sessionPreview.enabled = true;
   status = 200;
   showToast.mockReset();
   calls = [];
@@ -237,11 +242,16 @@ describe('Home coordinator card', () => {
     });
   });
 
-  test('without one, it says where to make one', async () => {
+  test('without one, it says what it is, then where to make one', async () => {
     render(<HomeCoordinatorCard />, { wrapper: wrapper() });
     expect(
       await screen.findByText(
-        `Open a chat and choose Make this ${COORDINATOR_PRODUCT_NAME} from its menu.`,
+        `${COORDINATOR_PRODUCT_NAME} is a chat you choose as your personal agent. Station tells it when your work needs you, fails or finishes, so it can bring you the result.`,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        `To set it up, open a chat and choose Make this ${COORDINATOR_PRODUCT_NAME} from its menu.`,
       ),
     ).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
@@ -364,5 +374,47 @@ describe('what the person is told about delivery', () => {
         'error',
       ),
     );
+  });
+});
+
+describe('with the coordinator-session preview off', () => {
+  const houston = {
+    conversationId: 'chat-houston',
+    designatedAt: '2026-10-28T09:00:00.000Z',
+  };
+
+  test('Home, the chat menu and the tools notice offer nothing and read nothing, even with a stored designation', async () => {
+    sessionPreview.enabled = false;
+    picturePreview.enabled = true;
+    designation = houston;
+    delivery = { wakes: 'ready', toolsPending: false, toolsUnavailable: true };
+    const { container } = render(
+      <>
+        <HomeCoordinatorCard />
+        <CoordinatorToolsNotice conversationId="chat-houston" />
+      </>,
+      { wrapper: wrapper() },
+    );
+    const menu = renderHook(() => useCoordinatorDockActions('chat-houston'), {
+      wrapper: wrapper(),
+    });
+    // Let any query that would start settle.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(container.innerHTML).toBe('');
+    expect(menu.result.current).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  test('turned on, the same surfaces appear', async () => {
+    sessionPreview.enabled = false;
+    const { rerender, container } = render(<HomeCoordinatorCard />, {
+      wrapper: wrapper(),
+    });
+    expect(container.innerHTML).toBe('');
+    sessionPreview.enabled = true;
+    rerender(<HomeCoordinatorCard />);
+    expect(
+      await screen.findByRole('heading', { name: COORDINATOR_PRODUCT_NAME }),
+    ).toBeTruthy();
   });
 });

@@ -421,3 +421,67 @@ test.each([false, true])(
     expect(store.latestEventByMethod(session, 'turn.started')).toBeUndefined();
   },
 );
+
+test('project supervision also needs the coordinator-session preview, and its route names that preview', async () => {
+  const home = temp('context-runtime-supervision-'),
+    store = new EventStore(join(home, 'events.sqlite'));
+  cleanups.push(() => {
+    store.close();
+  });
+  const logger = createLogger({ name: 'context-runtime-supervision-test' });
+  const app = new Hono(),
+    previews = new FeaturePreviewRegistry(home, logger);
+  const context = {
+    app,
+    orchestrationEventStore: store,
+    // Composition binds verifiers on the service; the route refuses before
+    // it reads anything else.
+    orchestrationService: new Proxy({}, { get: () => () => undefined }),
+    eventBus: new EventBus(),
+    featurePreviews: previews,
+    coordinatorSessionPreview: previews.bind({
+      id: 'coordinator-session',
+      label: 'Coordinator chat',
+      description: 'test',
+    }),
+    logger,
+    taskGraphService: { readTaskView: () => null },
+  } as unknown as ConfigureRuntimeRoutesContext;
+  const runtime = composeContextEfficiencyRuntime(context, {
+    hosted: false,
+    inbox: {} as never,
+    person: () =>
+      ({
+        userId: 'human:local:owner',
+        mayRead: () => true,
+        mayMutate: () => true,
+      }) as never,
+    authority: () =>
+      sessionReadAuthorityFromRequest(
+        'human:local:owner',
+        undefined,
+        undefined,
+      ),
+    currentRequest: () => true,
+    questionWake: () => undefined,
+    taskRequestMayRead: () => true,
+    taskBrief: async () => ({ kind: 'unbound' }),
+    sessionTaskAccess: async () => ({ kind: 'no-task' }),
+  })!;
+  cleanups.push(() => runtime.close());
+  await previews.setEnabled('project-supervision', true);
+  const read = () =>
+    app.request('/api/tasks/task-1/supervision?taskCreatedAt=1');
+  const off = await read();
+  expect(off.status).toBe(404);
+  expect(await off.json()).toMatchObject({
+    code: 'feature_preview_disabled',
+    previewId: 'coordinator-session',
+  });
+  await previews.setEnabled('coordinator-session', true);
+  // Past both previews, the ordinary Task check answers.
+  expect(await (await read()).json()).toEqual({
+    success: false,
+    error: 'Task not found',
+  });
+});

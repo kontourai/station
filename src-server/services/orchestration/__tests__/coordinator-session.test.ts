@@ -75,6 +75,8 @@ function harness(
     /** Start the clock here (a restart resumes where the last one stopped). */
     startAt?: number;
     pictureEnabled?: boolean;
+    /** The `coordinator-session` preview; on unless a test says otherwise. */
+    enabled?: () => boolean;
   } = {},
 ): Harness {
   const clock = { now: options.startAt ?? Date.UTC(2026, 9, 28, 9) };
@@ -83,6 +85,7 @@ function harness(
   const withdrawn: Harness['withdrawn'] = [];
   const delivery = new CoordinatorWakeDelivery({
     store: store.coordinatorStore(),
+    enabled: options.enabled ?? (() => true),
     pictureEnabled: () => options.pictureEnabled === true,
     mayRead: options.readable ?? (() => true),
     conversationOf: (sessionId) => sessionId,
@@ -519,6 +522,7 @@ describe('wireCoordinatorWakes', () => {
       eventBus: bus,
       eventStore: store,
       store: store.coordinatorStore(),
+      enabled: () => true,
       threadInbox: {
         submit: vi.fn() as never,
         list: vi.fn(() => []),
@@ -1013,5 +1017,54 @@ describe('coordinator working picture', () => {
       now: 12,
     });
     expect(second.coordinatorStore().pictureItems(OWNER)).toHaveLength(1);
+  });
+});
+
+describe('the coordinator-session preview', () => {
+  test('items waiting when it is turned off are dropped at their flush, not sent when it is turned back on', () => {
+    const store = openStore(
+      join(makeTempDir('coordinator-preview-off-'), 'orchestration.sqlite'),
+    );
+    designate(store);
+    let on = true;
+    const h = harness(store, { enabled: () => on });
+    h.delivery.observe(item(1));
+    expect(store.coordinatorStore().waitingItems(OWNER)).toHaveLength(1);
+    on = false;
+    h.advance(COORDINATOR_WAKE_COALESCE_MS);
+    expect(h.submitted).toEqual([]);
+    expect(store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
+    on = true;
+    h.delivery.reconcile();
+    h.advance(COORDINATOR_WAKE_COALESCE_MS);
+    expect(h.submitted).toEqual([]);
+    // Still a designation: nothing about it changed.
+    expect(store.coordinatorStore().designation(OWNER)).toBeDefined();
+  });
+
+  test('a wake a restart cut short is not handed over while it is off', () => {
+    const store = openStore(
+      join(makeTempDir('coordinator-preview-restart-'), 'orchestration.sqlite'),
+    );
+    designate(store);
+    store.coordinatorStore().recordItem(OWNER, item(1), 10);
+    const claimed = store.coordinatorStore().claimWake({
+      designation: store.coordinatorStore().designation(OWNER)!,
+      now: 11,
+      compose: () => 'framed',
+    });
+    if (claimed.outcome !== 'claimed') throw new Error('not claimed');
+    let on = false;
+    const h = harness(store, { enabled: () => on });
+    h.delivery.reconcile();
+    expect(h.submitted).toEqual([]);
+    expect(store.coordinatorStore().wake(claimed.wake.id)).toMatchObject({
+      state: 'failed',
+      reasonCode: 'preview_disabled',
+    });
+    on = true;
+    h.delivery.reconcile();
+    h.advance(COORDINATOR_WAKE_COALESCE_MS);
+    expect(h.submitted).toEqual([]);
   });
 });

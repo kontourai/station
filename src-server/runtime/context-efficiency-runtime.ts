@@ -191,7 +191,14 @@ export function composeContextEfficiencyRuntime(
   });
   const compactionEnabled = () =>
     compactionPreview.select({ enabled: () => true, disabled: () => false });
+  // Supervision wakes the person's coordinator, so it also needs that preview.
+  const coordinatorEnabled = () =>
+    context.coordinatorSessionPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
   const supervisionEnabled = () =>
+    coordinatorEnabled() &&
     supervisionPreview.select({ enabled: () => true, disabled: () => false });
   let closed = false,
     driving = false;
@@ -977,6 +984,8 @@ export function composeContextEfficiencyRuntime(
     })
     .strict();
   const supervisionRoute = async (c: Context, write: boolean) => {
+    if (!coordinatorEnabled())
+      return c.json(disabled('coordinator-session'), 404);
     if (!supervisionEnabled())
       return c.json(disabled('project-supervision'), 404);
     const person = options.person(c),
