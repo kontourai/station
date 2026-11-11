@@ -5,7 +5,8 @@
  * Fixtures are real Vitest JSON reports (`--reporter=json`), with only the
  * checkout path replaced by `/station`:
  * - `seatbelt-process-macos.report.json`: `seatbelt.process.test.ts` run on a
- *   macOS host where `sandbox-exec` applies the production profile (51 passed).
+ *   macOS host where `sandbox-exec` applies the production profile (60 passed,
+ *   the restricted-network legs of #4769 included).
  * - `bubblewrap-process-linux.report.json`: `bubblewrap.process.test.ts` run
  *   on a Linux kernel where `bwrap` applies the production sandbox (#4770,
  *   55 passed).
@@ -144,7 +145,7 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      '[required-tests] OK: profile "seatbelt-kernel": 50 passed, 0 allowed runtime skip(s), 1 not required',
+      '[required-tests] OK: profile "seatbelt-kernel": 58 passed, 0 allowed runtime skip(s), 2 not required',
     );
   });
 
@@ -156,7 +157,7 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
     expect(result.stderr).toContain(
       `skipped, and must not skip: ${id(MUST_PASS_TITLE)}`,
     );
-    expect(result.stderr).toContain('1 of 50 required test(s)');
+    expect(result.stderr).toContain('1 of 58 required test(s)');
   });
 
   test('fails and names a must-pass leg that skipped itself at runtime', () => {
@@ -201,7 +202,7 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
     for (const result of results(report)) skipBeforeStart(result);
     const result = check(writeReport(report));
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('50 of 50 required test(s)');
+    expect(result.stderr).toContain('58 of 58 required test(s)');
     expect(result.stderr).toContain(
       `skipped, and must not skip: ${id('the probe ran the production profile, not a stand-in')}`,
     );
@@ -214,7 +215,7 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
   test('fails a narrowed selection that collected none of the legs', () => {
     const result = check(writeReport({ ...seatbeltReport(), testResults: [] }));
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('50 of 50 required test(s)');
+    expect(result.stderr).toContain('58 of 58 required test(s)');
   });
 
   test('fails when the same file ran from another root', () => {
@@ -223,7 +224,7 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
     report.testResults[0].name = `/elsewhere/${SEATBELT_FILE}`;
     const result = check(writeReport(report));
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('50 of 50 required test(s)');
+    expect(result.stderr).toContain('58 of 58 required test(s)');
   });
 
   test('allows a runtime skip of a leg the profile marks mayRuntimeSkip, and says so', () => {
@@ -234,7 +235,7 @@ describe('the seatbelt-kernel profile over a real macOS report', () => {
     expect(result.stdout).toContain(
       `skipped at runtime (allowed by the profile): ${id(MAY_SKIP_TITLE)}`,
     );
-    expect(result.stdout).toContain('49 passed, 1 allowed runtime skip(s)');
+    expect(result.stdout).toContain('57 passed, 1 allowed runtime skip(s)');
   });
 
   test('fails a mayRuntimeSkip leg that a filter or skipped suite left out', () => {
@@ -654,8 +655,8 @@ describe('statuses read from a real run of every skip form', () => {
 
 describe('the pinned profile agrees with the real test file', () => {
   test.each([
-    // 48 must-pass + 2 may-skip + 1 not-required today.
-    ['seatbelt.process.test.ts', 'seatbelt-kernel', SEATBELT_FILE, 51],
+    // 55 must-pass + 3 may-skip + 2 not-required today (#4769 added 7 + 1 + 1).
+    ['seatbelt.process.test.ts', 'seatbelt-kernel', SEATBELT_FILE, 60],
     // 52 must-pass + 3 may-skip today (#4770).
     [
       'bubblewrap.process.test.ts',
