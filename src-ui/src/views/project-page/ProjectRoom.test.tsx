@@ -527,22 +527,17 @@ test('a second @agent request never replays the first or wipes its own draft (#4
   ]);
   await waitFor(() => expect(composerField().value).toBe(''));
 
-  // While the first request is still running, a new ask is refused and kept.
+  // While the first request is still running, Ask is disabled and the new
+  // draft is kept; nothing replays the first intent.
   await mentionAgent('Researcher');
   fireEvent.change(composerField(), { target: { value: 'Second ask' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
-  await waitFor(() =>
-    expect(
-      agentWrites.length > 1 ||
-        !!screen.queryByText(/Finish or clear the current Agent request/),
-    ).toBe(true),
-  );
-  // No replay of the first intent, and the new draft is still there.
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Waiting for Researcher…',
+    }).disabled,
+  ).toBe(true);
   expect(agentWrites).toHaveLength(1);
   expect(composerField().value).toBe('Second ask');
-  expect(
-    screen.getByText(/Finish or clear the current Agent request/),
-  ).toBeTruthy();
 
   // Once the first settles, the new ask sends its own text.
   fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
@@ -706,8 +701,11 @@ test('an unconfirmed Agent request without a handle can be abandoned, keeping th
   await screen.findByText(/Agent request not confirmed/);
   expect(composerField().value).toBe('Lost ask');
   fireEvent.change(composerField(), { target: { value: 'A new question' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
-  await screen.findByText(/Finish or clear the current Agent request/);
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Waiting for Researcher…',
+    }).disabled,
+  ).toBe(true);
   expect(agentWrites).toHaveLength(1);
 
   fireEvent.click(screen.getByRole('button', { name: 'Abandon this request' }));

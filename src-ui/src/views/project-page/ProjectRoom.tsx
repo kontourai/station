@@ -33,6 +33,7 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { IconButton } from '../../components/IconButton';
 import { ReturnGlyph } from '../../components/icons/Glyph';
+import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { RoomAvatar } from '../../components/room/RoomAvatar';
 import { RoomComposer } from '../../components/room/RoomComposer';
 import {
@@ -912,9 +913,17 @@ function ProjectRoomComposer({
       setRecipient({ id: recipient.id, name: current.name });
   }, [recipient, agents, catalog.isSuccess, catalog.data, setRecipient]);
   const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
-  const agentPanel = useRef<{ ask(agentId: string): void }>(null);
-  // The draft revision an in-flight @agent ask was made from.
-  const askedRevision = useRef<ProjectRoomDraft | undefined>(undefined);
+  const agentPanel = useRef<{
+    ask(agentId: string, revision: ProjectRoomDraft): void;
+  }>(null);
+  // The Agent whose request is not settled yet. While there is one, Ask is
+  // disabled rather than refused on press (#4810 round 2).
+  const [pendingAgent, setPendingAgent] = useState<string>();
+  const pendingName = pendingAgent
+    ? (catalog.data?.agents.find((agent) => agent.slug === pendingAgent)
+        ?.name ?? pendingAgent)
+    : undefined;
+  const waiting = !!recipient && !!pendingAgent;
   const candidates: RoomMentionCandidate[] = [
     ...participants
       .filter((actor) => actor.id !== view.actor.id && actor.kind === 'person')
@@ -957,7 +966,7 @@ function ProjectRoomComposer({
   });
   const tooLong =
     new TextEncoder().encode(text).length > PROJECT_ROOM_LIMITS.textBytes;
-  const canSend = restored && !blocked && !!text.trim() && !tooLong;
+  const canSend = restored && !blocked && !!text.trim() && !tooLong && !waiting;
   return (
     <>
       {agents && view.capabilities.discuss && (
@@ -975,11 +984,8 @@ function ProjectRoomComposer({
           blocked={!restored || blocked}
           toolsSlot={toolsSlot}
           askRef={agentPanel}
-          onAsked={() => {
-            const revision = askedRevision.current;
-            askedRevision.current = undefined;
-            if (revision) clearDraftIfCurrent(revision);
-          }}
+          onPendingChange={setPendingAgent}
+          onAsked={clearDraftIfCurrent}
           prepareRecap={prepareRecap}
           refresh={refresh}
         />
@@ -996,13 +1002,20 @@ function ProjectRoomComposer({
         }}
         onSend={() => {
           if (recipient) {
-            askedRevision.current = draft;
-            agentPanel.current?.ask(recipient.id);
+            // The revision travels with the accepted request; nothing is
+            // recorded for an attempt the panel refuses.
+            if (!waiting) agentPanel.current?.ask(recipient.id, draft);
           } else send();
         }}
         canSend={canSend}
         pending={sending}
-        sendLabel={recipient ? `Ask ${recipient.name}` : 'Send message'}
+        sendLabel={
+          waiting
+            ? `Waiting for ${pendingName}…`
+            : recipient
+              ? `Ask ${recipient.name}`
+              : 'Send message'
+        }
         textareaRef={composer}
         inputProps={{
           'aria-controls': mention.open ? `${id}-mentions` : undefined,
@@ -1095,6 +1108,11 @@ function ProjectRoomComposer({
               Enter to send, Shift+Enter for a new line. Type @ to mention a
               person or agent.
             </p>
+            {waiting && (
+              <p className="room-composer__status" role="status">
+                Waiting for {pendingName}…
+              </p>
+            )}
             {recipientNotice && (
               <p className="room-composer__status" role="status">
                 {recipientNotice}
@@ -1128,6 +1146,7 @@ function ProjectRoomAgentPanel({
   toolsSlot,
   askRef,
   onAsked,
+  onPendingChange,
 }: {
   requestScope: ApiRequestScope;
   slug: string;
@@ -1144,9 +1163,11 @@ function ProjectRoomAgentPanel({
   /** The composer's tool bar: Recap and Bring an Agent render there. */
   toolsSlot: HTMLElement | null;
   /** Lets an @agent pick in the composer ask through this same request path. */
-  askRef: Ref<{ ask(agentId: string): void }>;
-  /** An @agent request was acknowledged; the composer clears that revision. */
-  onAsked(): void;
+  askRef: Ref<{ ask(agentId: string, revision: ProjectRoomDraft): void }>;
+  /** An @agent request was acknowledged for the draft revision it was asked from. */
+  onAsked(revision: ProjectRoomDraft): void;
+  /** The Agent whose request is in flight or retained and unsettled. */
+  onPendingChange(agentId: string | undefined): void;
 }) {
   const guard = {
     expectedRoomId: roomId,
@@ -1154,6 +1175,7 @@ function ProjectRoomAgentPanel({
     expectedActorId: actorId,
   };
   const [open, setOpen] = useState(false);
+  const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [agentId, setAgentId] = useState('');
   const [retained, setRetained] = useState<{
     intent: ProjectRoomAgentIntent;
@@ -1208,11 +1230,11 @@ function ProjectRoomAgentPanel({
       : [];
   async function act(
     action: 'request' | 'inspect' | 'reconcile' | 'cancel',
-    mentioned?: string,
+    mentioned?: { agentId: string; revision: ProjectRoomDraft },
   ) {
     if (!ready || stopped || busy.current) return;
     let saved = retained;
-    const chosen = mentioned ?? agentId;
+    const chosen = mentioned?.agentId ?? agentId;
     if (mentioned && retained) {
       // A new @agent ask never reuses the retained intent: that is only for
       // an explicit retry (#4810 review 2). One request is tracked at a time.
@@ -1276,7 +1298,9 @@ function ProjectRoomAgentPanel({
       sessionStorage.setItem(storageKey, JSON.stringify(next));
       setOpen(false);
       setNotice('');
-      if (mentioned) onAsked();
+      // `mentioned` belongs to this accepted call only; a refused call
+      // returned above without recording anything.
+      if (mentioned) onAsked(mentioned.revision);
       if (result.state === 'published') refresh();
     } catch (error) {
       if (!mounted.current) return;
@@ -1306,9 +1330,20 @@ function ProjectRoomAgentPanel({
     requestAction.current = act;
   });
   useImperativeHandle(askRef, () => ({
-    ask: (mentionedAgent: string) =>
-      void requestAction.current('request', mentionedAgent),
+    ask: (mentionedAgent: string, revision: ProjectRoomDraft) =>
+      void requestAction.current('request', {
+        agentId: mentionedAgent,
+        revision,
+      }),
   }));
+  const pendingAgent =
+    (retained && !terminal) || agent.request.isPending
+      ? retained?.intent.agentId
+      : undefined;
+  useEffect(() => {
+    onPendingChange(pendingAgent);
+  }, [pendingAgent, onPendingChange]);
+  useEffect(() => () => onPendingChange(undefined), [onPendingChange]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: settlement wakes the latest checkpoint skipped while the request ref was busy.
   useEffect(() => {
     if (!retained?.requestId || stopped || terminal || busy.current) return;
@@ -1431,14 +1466,7 @@ function ProjectRoomAgentPanel({
               // reader can still let it go (#4810 delta 2).
               <Button
                 disabled={agent.request.isPending}
-                onClick={() => {
-                  sessionStorage.removeItem(storageKey);
-                  setRetained(undefined);
-                  setHandle(undefined);
-                  setNotice(
-                    'Request abandoned. It may already have run; check the room before asking again.',
-                  );
-                }}
+                onClick={() => setConfirmAbandon(true)}
               >
                 Abandon this request
               </Button>
@@ -1460,6 +1488,23 @@ function ProjectRoomAgentPanel({
           }
         />
       ) : null}
+      <ConfirmModal
+        isOpen={confirmAbandon && !!retained && !retained.requestId}
+        title="Stop tracking this request?"
+        message="It may still be running, and you won’t be able to retry it from here."
+        confirmLabel="Stop tracking"
+        variant="warning"
+        onCancel={() => setConfirmAbandon(false)}
+        onConfirm={() => {
+          setConfirmAbandon(false);
+          sessionStorage.removeItem(storageKey);
+          setRetained(undefined);
+          setHandle(undefined);
+          setNotice(
+            'Request abandoned. It may already have run; check the room before asking again.',
+          );
+        }}
+      />
       {open && (
         <Dialog
           title="Bring an Agent"
