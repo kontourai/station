@@ -2197,10 +2197,15 @@ state and changes nothing. A version above the current one is a 409 with
 `read_marker_future_version` and `latestVersion`. A conversation the caller
 cannot read is a 404, and a caller that is not a person a 403 (on a hosted
 Station, a request that carries only the tenant). A marker store that does
-not decode is a 503, never an answer of "read". A marker that moves is
+not decode for the caller is a 503, never an answer of "read". A file-backed
+conversation id must be one file name (letters, digits, `.`, `_`, `-`, `:`,
+starting with a letter or digit), and the stored record must carry exactly
+that id; anything else is a 404. A marker that moves is
 announced as `read-markers:changed` on that person's own
 `GET /api/orchestration/events` streams, with an empty payload.
-`GET /api/conversations` items carry the same answer as `readState`, and
+`GET /api/conversations` items carry the same answer as `readState`, or
+`{ version, unavailable: true }` when the caller's read state cannot be read;
+the conversations are listed either way.
 `POST /api/conversations/:id/acknowledgement` writes the same marker under the
 same rules.
 

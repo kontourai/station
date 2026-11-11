@@ -2289,10 +2289,11 @@ three rules:
 
 - The marker belongs to the request's person
   ([`readMarkerPersonKey`](../../src-server/services/read-markers/read-marker-service.ts)).
-  On a personal Station that is the key the conversation inventory already
-  files "last viewed" under (`conversationAcknowledgementKey`): the local
-  operator and their own unbound paired devices are one person, so reading on
-  one clears unread on the others. On a hosted Station it is the verified
+  On a personal Station the local operator and each paired device that holds
+  owner standing (`DevicePairingService.deviceHasOwnerStanding`) are one
+  person, so reading on one clears unread on the others. Any other device,
+  such as a read-only visitor, is its own person and never receives the
+  owner's changes. On a hosted Station it is the verified
   person inside the tenant, so one member reading never clears another's; a
   request that carries only the tenant has no read state and is refused. No
   body field names a person.
@@ -2318,8 +2319,15 @@ anything that changes after that becomes unread normally.
 
 A marker that moves emits `read-markers:changed` (scoped). The orchestration
 event stream forwards it only to that person's own streams, with an empty
-payload, and each open client re-reads its inventory and summaries. The marker
-store decodes strictly: a corrupt store is refused, never read as "read".
+payload. Each open client re-reads its inventory and summaries through the
+inventory's own refresh: at most once now and once at the end of its window,
+never cancelling a read in flight.
+
+The marker store decodes strictly, and never reads a corrupt record as "read".
+One person's malformed record refuses only that person's room markers. A store
+whose envelope does not decode, or an acknowledgement store that does not
+decode, has no read state for anyone. `GET /api/conversations` then still lists
+every conversation, with `readState: { version, unavailable: true }`.
 
 `parseReadMarkerSummaryRequest` refuses more than
 `READ_MARKER_SUMMARY_MAX_TARGETS` (100) targets rather than truncating. A target

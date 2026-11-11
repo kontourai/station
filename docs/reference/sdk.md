@@ -2194,10 +2194,12 @@ Deletes a conversation, invalidates that agent's conversation list, and removes 
 Unread state is kept by the server (see
 [read marker contracts](contracts.md#read-marker-contracts)). Conversation
 inventory items carry `readState` (`version`, `seenVersion`, `unread`); read it
-rather than comparing `acknowledgedAt` yourself.
+rather than comparing `acknowledgedAt` yourself. `{ version, unavailable: true }`
+means the server could not read it: show it as unknown, never as read.
 
 - `useAcknowledgeConversationMutation()` marks an agent conversation read at
-  the inventory `updatedAt` it showed. The cached row reads as read at once; if
+  the inventory `updatedAt` it showed. The cached row reads as read at once
+  (an unknown row stays unknown until the server answers); if
   the server refuses, the row is restored and the mutation rejects.
 - `useMarkReadMutation()` marks `{ target, version }` read for any kind, with
   the same immediate update for an agent conversation.
@@ -2211,8 +2213,9 @@ rather than comparing `acknowledgedAt` yourself.
 
 Gate the summary and mark calls on the handshake's `readMarkers` flag: an
 older host answers them 404. Open clients of the same person refresh on their
-own: the shared orchestration event stream invalidates the inventory and
-read-marker queries when that person's marker moves.
+own: the shared orchestration event stream re-reads the inventory and
+read-marker queries when that person's marker moves, coalesced with the
+inventory's own refresh.
 
 ### `useCreateProjectMutation(requestScope?)`
 
