@@ -259,9 +259,9 @@ test('an archived channel is marked and read-only', async () => {
   fireEvent.click(within(list).getByRole('button', { name: /Archived \(1\)/ }));
   fireEvent.click(within(list).getByRole('button', { name: 'design' }));
   expect(await screen.findByText('Archived')).toBeTruthy();
-  expect(await screen.findByText('Archived with no messages.')).toBeTruthy();
+  expect(await screen.findByText('No messages were posted here.')).toBeTruthy();
   expect(screen.queryByText('Start a chat with your project team.')).toBeNull();
-  expect(screen.getByText('Archived channels are read-only.')).toBeTruthy();
+  expect(screen.getByText('This channel is read-only.')).toBeTruthy();
   expect(
     screen.queryByRole('textbox', { name: 'Message the project' }),
   ).toBeNull();

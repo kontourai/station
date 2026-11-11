@@ -448,7 +448,7 @@ function ProjectRoomSession({
                 variant="compact"
                 label={
                   channel?.archivedAt
-                    ? 'Archived with no messages.'
+                    ? 'No messages were posted here.'
                     : 'Start a chat with your project team.'
                 }
               />
@@ -602,7 +602,7 @@ Report observed freshness and coverage, including timestamps or checkpoints when
           ) : (
             <p>
               {channel?.archivedAt
-                ? 'Archived channels are read-only.'
+                ? 'This channel is read-only.'
                 : 'You can read this conversation.'}
             </p>
           )}
